@@ -16,7 +16,8 @@ class LimitFirstExecution:
         # Get current quote
         try:
             quote = await self.broker.get_quote(request.symbol)
-            offset = quote.ask * self.offset_bps / 10000
+            ref_price = quote.ask if request.side == "buy" else quote.bid
+            offset = ref_price * self.offset_bps / 10_000
 
             if request.side == "buy":
                 limit_price = quote.ask - offset    # post below ask to improve fill

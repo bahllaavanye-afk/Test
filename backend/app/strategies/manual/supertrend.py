@@ -1,6 +1,6 @@
 """Supertrend indicator strategy — ATR-based trend following."""
 import pandas as pd
-import pandas_ta as ta
+import app.ml.features.pandas_ta_compat as ta
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
 

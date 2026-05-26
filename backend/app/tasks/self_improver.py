@@ -69,7 +69,7 @@ class SelfImprover:
 
             end = datetime.now(timezone.utc)
             start = end - timedelta(days=730)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
                 lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),

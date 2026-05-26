@@ -45,6 +45,7 @@ class CircuitBreaker:
         self.state = BreakerState.NORMAL
         self.peak_equity = equity
         self.halted_at = None
+        self.halt_reasons = []
         logger.info("Circuit breaker RESET", name=self.name)
 
     @property

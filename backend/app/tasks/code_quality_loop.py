@@ -76,7 +76,7 @@ class CodeQualityLoop:
         self._running = False
 
     async def _snapshot(self) -> dict:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         loc = await loop.run_in_executor(None, _count_loc, BACKEND_ROOT)
         strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
         tests = await loop.run_in_executor(None, _count_tests, BACKEND_ROOT)

@@ -88,5 +88,6 @@ def add_labels(df: pd.DataFrame, horizon: int = 1, threshold: float = 0.002) -> 
     """
     df = df.copy()
     future_return = df["close"].pct_change(horizon).shift(-horizon)
-    df["target"] = (future_return > threshold).astype(int)
-    return df.dropna(subset=["target"])
+    df["label"] = (future_return > threshold).astype(int)
+    df["target"] = df["label"]  # alias for create_sequences compatibility
+    return df.dropna(subset=["label"])

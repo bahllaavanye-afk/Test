@@ -1,11 +1,12 @@
 """Order submission and management endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.order import Order
 from app.models.user import User
+from app.models.account import Account
 from pydantic import BaseModel, field_validator, Field
 from datetime import datetime, timezone
 import uuid
@@ -47,12 +48,16 @@ class OrderOut(BaseModel):
 
 @router.get("/", response_model=list[OrderOut])
 async def list_orders(
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Order).order_by(Order.created_at.desc()).limit(limit)
+        select(Order)
+        .join(Account, Order.account_id == Account.id)
+        .where(Account.user_id == current_user.id)
+        .order_by(Order.created_at.desc())
+        .limit(limit)
     )
     return result.scalars().all()
 
@@ -64,6 +69,10 @@ async def submit_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    acct_result = await db.execute(select(Account).where(Account.id == body.account_id))
+    account = acct_result.scalar_one_or_none()
+    if not account or account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     order = Order(
         id=str(uuid.uuid4()),
         account_id=body.account_id,
@@ -94,6 +103,10 @@ async def cancel_order(
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(404, "Order not found")
+    acct_result = await db.execute(select(Account).where(Account.id == order.account_id))
+    account = acct_result.scalar_one_or_none()
+    if not account or account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     order.status = "cancelled"
     await db.commit()
     return {"cancelled": order_id}

@@ -3,7 +3,7 @@ Bollinger Band Mean Reversion Strategy.
 Enter when price touches lower/upper band; exit at middle band.
 """
 import pandas as pd
-import pandas_ta as ta
+import app.ml.features.pandas_ta_compat as ta
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
 

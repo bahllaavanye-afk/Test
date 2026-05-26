@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -56,6 +56,18 @@ class Settings(BaseSettings):
     slack_webhook_alerts: str = ""
     slack_webhook_experiments: str = ""
     slack_webhook_system: str = ""
+
+    @model_validator(mode="after")
+    def _validate_secret_key(self) -> "Settings":
+        if (
+            self.secret_key == "change-me-in-production-32-byte-hex"
+            and self.trading_mode not in ("development", "dev", "test", "paper")
+        ):
+            raise ValueError(
+                "SECRET_KEY must be set to a secure random value in non-dev modes. "
+                "Run: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return self
 
     @property
     def is_paper(self) -> bool:

@@ -19,6 +19,11 @@ def _today_file(category: str) -> Path:
     return ARCHIVE_DIR / f"{category}_{date_str}.jsonl"
 
 
+def _sync_append(path: str, line: str) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(line)
+
+
 async def archive_event(category: str, data: dict) -> None:
     """
     category: 'orders' | 'fills' | 'signals' | 'decisions' | 'risk'
@@ -28,9 +33,9 @@ async def archive_event(category: str, data: dict) -> None:
     line = json.dumps(record, default=str) + "\n"
     file = _today_file(category)
     try:
+        loop = asyncio.get_running_loop()
         async with _lock:
-            with open(file, "a", encoding="utf-8") as f:
-                f.write(line)
+            await loop.run_in_executor(None, _sync_append, str(file), line)
     except Exception as e:
         logger.warning("Archive failed", category=category, error=str(e))
 

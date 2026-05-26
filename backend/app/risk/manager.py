@@ -68,7 +68,7 @@ class RiskManager:
             return RiskDecision(False, f"Arb circuit breaker halted: {self.arb_breaker.halt_reasons[-1]}")
 
         if self._equity <= 0:
-            return RiskDecision(True, "equity unknown — allowing", request.quantity)
+            return RiskDecision(False, "equity not yet initialized — orders halted until account snapshot loaded")
 
         # Position size cap
         estimated_value = request.quantity * (request.limit_price or 100)
@@ -76,7 +76,6 @@ class RiskManager:
         if estimated_value > max_allowed:
             adj_qty = max_allowed / (request.limit_price or 100)
             logger.warning("Position size capped", symbol=request.symbol, original=request.quantity, adjusted=adj_qty)
-            request = request  # immutable in practice; caller uses adjusted_quantity
             return RiskDecision(True, "size capped", adj_qty)
 
         # Correlation cluster check

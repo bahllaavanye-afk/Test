@@ -86,7 +86,7 @@ class OCOOrder:
     """
     One-Cancels-Other: submit two opposing orders. Poll; whichever fills, cancel the other.
     """
-    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_wait_seconds: int = 86400):
+    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_wait_seconds: int = 28800):
         self.broker = broker
         self.poll_seconds = poll_seconds
         self.max_wait_seconds = max_wait_seconds
@@ -119,9 +119,10 @@ class TrailingStop:
     Trailing stop that follows price by trail_pct. Continually adjusts stop price upward
     (or downward for shorts) as price moves favorably.
     """
-    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5):
+    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_hold_seconds: int = 28800):
         self.broker = broker
         self.poll_seconds = poll_seconds
+        self.max_hold_seconds = max_hold_seconds
 
     async def execute(self, request: OrderRequest, trail_pct: float = 0.05) -> OrderResult:
         if request.side == "sell":
@@ -131,7 +132,12 @@ class TrailingStop:
             stop_price = high_water * (1 - trail_pct)
             logger.info("Trailing stop starting", symbol=request.symbol, hw=high_water, stop=stop_price)
 
+            start_time = asyncio.get_event_loop().time()
             while True:
+                if asyncio.get_event_loop().time() - start_time > self.max_hold_seconds:
+                    logger.warning(f"TrailingStop for {request.symbol} timed out")
+                    market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
+                    return await self.broker.place_order(market_req)
                 await asyncio.sleep(self.poll_seconds)
                 try:
                     quote = await self.broker.get_quote(request.symbol)
@@ -151,7 +157,12 @@ class TrailingStop:
             quote = await self.broker.get_quote(request.symbol)
             low_water = quote.last
             stop_price = low_water * (1 + trail_pct)
+            start_time = asyncio.get_event_loop().time()
             while True:
+                if asyncio.get_event_loop().time() - start_time > self.max_hold_seconds:
+                    logger.warning(f"TrailingStop for {request.symbol} timed out")
+                    market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
+                    return await self.broker.place_order(market_req)
                 await asyncio.sleep(self.poll_seconds)
                 try:
                     quote = await self.broker.get_quote(request.symbol)
