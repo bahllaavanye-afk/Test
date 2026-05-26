@@ -16,6 +16,7 @@ import PnL from './pages/PnL'
 import Archive from './pages/Archive'
 import SystemMonitor from './pages/SystemMonitor'
 import OptionsFlow from './pages/OptionsFlow'
+import MacroSignals from './pages/MacroSignals'
 import { selectIsAuthenticated } from './store/slices/authSlice'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="archive" element={<Archive />} />
         <Route path="system" element={<SystemMonitor />} />
         <Route path="options" element={<OptionsFlow />} />
+        <Route path="macro" element={<MacroSignals />} />
       </Route>
     </Routes>
   )

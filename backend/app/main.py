@@ -13,6 +13,7 @@ from app.ws.orders import router as orders_router
 from app.ws.alerts import router as alerts_router
 from app.tasks.scheduler import start_scheduler
 from app.utils.logging import logger
+from app.risk.correlation_monitor import correlation_monitor
 
 
 @asynccontextmanager
@@ -44,6 +45,8 @@ async def lifespan(app: FastAPI):
     code_quality_loop = CodeQualityLoop(interval_seconds=3600)
     app.state.code_quality_loop = code_quality_loop
     asyncio.create_task(code_quality_loop.run())
+
+    asyncio.create_task(correlation_monitor.run_forever())
 
     yield
 

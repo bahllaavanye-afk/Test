@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker, LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker, LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers, Globe } from 'lucide-react'
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -16,6 +16,7 @@ const NAV = [
   { to: '/archive', icon: Archive, label: 'Archive' },
   { to: '/system', icon: Monitor, label: 'System Monitor' },
   { to: '/options', icon: Layers, label: 'Options & Macro' },
+  { to: '/macro', icon: Globe, label: 'Macro & Sentiment' },
 ]
 
 export default function Sidebar() {
