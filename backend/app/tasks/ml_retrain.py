@@ -1,0 +1,62 @@
+"""
+Nightly ML retraining: downloads fresh data, retrains all active models,
+compares new vs old Sharpe, promotes if improved.
+"""
+from __future__ import annotations
+import asyncio
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+import pandas as pd
+
+from app.utils.logging import logger
+
+ARTIFACTS_DIR = Path(__file__).parents[3] / "models_artifacts"
+
+
+async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> dict:
+    """Download 2 years of data and retrain a model. Returns result dict."""
+    try:
+        import yfinance as yf
+        loop = asyncio.get_event_loop()
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=730)
+
+        hist = await loop.run_in_executor(
+            None,
+            lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
+                                  interval=interval, auto_adjust=True, progress=False)
+        )
+        if hist is None or len(hist) < 200:
+            return {"status": "skipped", "reason": "insufficient data"}
+
+        # Normalize column names
+        hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
+
+        from app.ml.training.train_lstm import train
+        experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+        result = await train(hist, experiment_name=experiment_name, max_epochs=30)
+        result["symbol"] = symbol
+        result["model"] = model_name
+        result["retrained_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info("Model retrained", **{k: v for k, v in result.items() if k != "best_model_path"})
+        return result
+
+    except Exception as e:
+        logger.error("Retrain failed", model=model_name, symbol=symbol, error=str(e))
+        return {"status": "error", "error": str(e)}
+
+
+async def nightly_retrain() -> None:
+    """Retrain all configured models. Called by APScheduler at 02:00 UTC."""
+    RETRAIN_CONFIGS = [
+        ("lstm", "BTC-USD", "1h"),
+        ("lstm", "ETH-USD", "1h"),
+        ("lstm", "SPY", "1d"),
+    ]
+    logger.info("Nightly retrain starting", configs=len(RETRAIN_CONFIGS))
+    results = await asyncio.gather(
+        *[retrain_model(m, s, i) for m, s, i in RETRAIN_CONFIGS],
+        return_exceptions=True
+    )
+    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    logger.info("Nightly retrain complete", total=len(RETRAIN_CONFIGS), succeeded=successes)

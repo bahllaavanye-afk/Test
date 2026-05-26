@@ -1,0 +1,139 @@
+"""
+Unified ML inference service. Loaded once at app startup.
+Provides ensemble predictions for any symbol.
+"""
+import pandas as pd
+from typing import Any
+from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
+from app.ml.features.normalization import FeatureScaler
+from app.config import settings
+from pathlib import Path
+import structlog
+
+logger = structlog.get_logger()
+
+_inference_service: "InferenceService | None" = None
+
+
+class InferenceService:
+    def __init__(self):
+        self.models: dict[str, Any] = {}
+        self.scalers: dict[str, FeatureScaler] = {}
+        self.weights = {"lstm": 0.50, "xgboost": 0.35, "lorentzian": 0.15}
+
+    def load_models(self) -> None:
+        """Load all active model artifacts from disk."""
+        models_dir = Path(settings.models_dir)
+        if not models_dir.exists():
+            logger.warning("models_artifacts directory not found — ML predictions disabled")
+            return
+
+        # Try loading LSTM
+        lstm_path = models_dir / "lstm_latest.pt"
+        if lstm_path.exists():
+            try:
+                from app.ml.models.lstm import LSTMPredictor
+                self.models["lstm"] = LSTMPredictor.load(str(lstm_path))
+                logger.info("LSTM model loaded", path=str(lstm_path))
+            except Exception as e:
+                logger.error("Failed to load LSTM", error=str(e))
+
+        # Try loading XGBoost
+        xgb_path = models_dir / "xgboost_latest.ubj"
+        if xgb_path.exists():
+            try:
+                from app.ml.models.xgboost_model import XGBoostClassifier
+                self.models["xgboost"] = XGBoostClassifier.load(str(xgb_path))
+                logger.info("XGBoost model loaded")
+            except Exception as e:
+                logger.error("Failed to load XGBoost", error=str(e))
+
+        # Try loading Lorentzian KNN
+        lk_path = models_dir / "lorentzian_latest.pkl"
+        if lk_path.exists():
+            try:
+                from app.ml.models.lorentzian_knn import LorentzianKNN
+                self.models["lorentzian"] = LorentzianKNN.load(str(lk_path))
+                logger.info("Lorentzian KNN loaded")
+            except Exception as e:
+                logger.error("Failed to load Lorentzian KNN", error=str(e))
+
+        # Load scaler
+        scaler_path = models_dir / "scaler_latest.pkl"
+        if scaler_path.exists():
+            self.scalers["default"] = FeatureScaler.load(str(scaler_path))
+
+    async def predict(self, data: pd.DataFrame, symbol: str) -> dict | None:
+        """
+        Generate ensemble prediction for the latest bar in data.
+        Returns: {prediction: 'up'|'down'|'neutral', confidence: float, ...}
+        """
+        if not self.models:
+            return None
+
+        try:
+            # Feature engineering
+            feat_df = engineer_features(data, normalize=False)
+            if len(feat_df) < 60:
+                return None
+
+            # Gather individual predictions
+            predictions = {}
+
+            if "lstm" in self.models:
+                scaler = self.scalers.get("default")
+                if scaler:
+                    feat_df_norm = feat_df.copy()
+                    feat_df_norm[FEATURE_COLS] = scaler.transform(feat_df_norm[FEATURE_COLS])
+                    X, _ = create_sequences(feat_df_norm, seq_len=60)
+                    if len(X) > 0:
+                        import torch
+                        prob = float(self.models["lstm"].predict_proba(X[-1:]).item())
+                        predictions["lstm"] = prob
+
+            if "xgboost" in self.models:
+                import numpy as np
+                X_flat = feat_df[FEATURE_COLS].values[-1:]
+                prob = float(self.models["xgboost"].predict_proba(X_flat)[0])
+                predictions["xgboost"] = prob
+
+            if "lorentzian" in self.models:
+                from app.ml.models.lorentzian_knn import compute_lorentzian_features, LORENTZIAN_FEATURES
+                import torch, numpy as np
+                lf = compute_lorentzian_features(data)
+                x = torch.tensor(lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32)
+                prob = float(self.models["lorentzian"].forward(x).item())
+                predictions["lorentzian"] = prob
+
+            if not predictions:
+                return None
+
+            # Weighted ensemble
+            total_w = sum(self.weights.get(n, 1.0) for n in predictions)
+            ensemble_prob = sum(v * self.weights.get(n, 1.0) for n, v in predictions.items()) / total_w
+            confidence = abs(ensemble_prob - 0.5) * 2
+
+            if ensemble_prob > 0.5 + 0.05:
+                prediction = "up"
+            elif ensemble_prob < 0.5 - 0.05:
+                prediction = "down"
+            else:
+                prediction = "neutral"
+
+            return {
+                "prediction": prediction,
+                "probability": round(ensemble_prob, 4),
+                "confidence": round(confidence, 4),
+                "individual": {k: round(v, 4) for k, v in predictions.items()},
+            }
+        except Exception as e:
+            logger.error("Inference error", symbol=symbol, error=str(e))
+            return None
+
+
+def get_inference_service() -> InferenceService:
+    global _inference_service
+    if _inference_service is None:
+        _inference_service = InferenceService()
+        _inference_service.load_models()
+    return _inference_service
