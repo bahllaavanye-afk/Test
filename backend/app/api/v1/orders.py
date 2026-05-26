@@ -6,7 +6,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.order import Order
 from app.models.user import User
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, Field
 from datetime import datetime, timezone
 import uuid
 
@@ -14,14 +14,19 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 class OrderCreate(BaseModel):
-    symbol: str
-    side: str                    # buy | sell
-    order_type: str = "market"   # market | limit | stop
-    quantity: float
-    limit_price: float | None = None
-    stop_price: float | None = None
-    execution_algo: str = "auto"  # auto | market | limit_first | twap
-    account_id: str
+    symbol: str = Field(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9:/._-]+$")
+    side: str = Field(..., pattern=r"^(buy|sell)$")
+    order_type: str = Field("market", pattern=r"^(market|limit|stop|stop_limit)$")
+    quantity: float = Field(..., gt=0, le=1_000_000)
+    limit_price: float | None = Field(None, gt=0)
+    stop_price: float | None = Field(None, gt=0)
+    execution_algo: str = Field("auto", pattern=r"^(auto|market|limit_first|twap|vwap|iceberg)$")
+    account_id: str = Field(..., min_length=1, max_length=64)
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_uppercase(cls, v: str) -> str:
+        return v.upper()
 
 
 class OrderOut(BaseModel):
