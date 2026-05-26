@@ -57,12 +57,12 @@ async def get_pnl_attribution(
     """P&L broken down by strategy — the #1 feature missing from open-source bots."""
     result = await db.execute(
         select(
-            Trade.strategy_id,
+            Trade.strategy_name,
             func.count(Trade.id).label("trades"),
             func.sum(Trade.realized_pnl).label("total_pnl"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
-        ).group_by(Trade.strategy_id).order_by(func.sum(Trade.realized_pnl).desc())
+        ).group_by(Trade.strategy_name).order_by(func.sum(Trade.realized_pnl).desc())
     )
     rows = result.all()
     out = []
@@ -71,7 +71,7 @@ async def get_pnl_attribution(
         trades = r.trades or 0
         wins = r.wins or 0
         out.append({
-            "strategy": r.strategy_id or "manual",
+            "strategy": r.strategy_name or "manual",
             "trades": trades,
             "total_pnl": round(total, 2),
             "avg_pnl": round(float(r.avg_pnl or 0), 2),

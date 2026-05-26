@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, Numeric, DateTime, JSON
+from sqlalchemy import String, ForeignKey, Numeric, DateTime, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
@@ -8,6 +8,12 @@ from app.models.base import TimestampMixin
 
 class Order(Base, TimestampMixin):
     __tablename__ = "orders"
+    __table_args__ = (
+        # Composite indexes for the most common query patterns
+        Index("ix_orders_account_status", "account_id", "status"),
+        Index("ix_orders_account_created", "account_id", "created_at"),
+        Index("ix_orders_symbol_status", "symbol", "status"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"))
