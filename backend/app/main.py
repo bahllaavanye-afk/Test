@@ -34,6 +34,17 @@ async def lifespan(app: FastAPI):
     app.state.algo_agent = algo_agent
     asyncio.create_task(algo_agent.run())
 
+    # Self-improvement autoloop
+    from app.tasks.self_improver import SelfImprover
+    from app.tasks.code_quality_loop import CodeQualityLoop
+    self_improver = SelfImprover(algo_agent=algo_agent, interval_seconds=900)
+    app.state.self_improver = self_improver
+    asyncio.create_task(self_improver.run())
+
+    code_quality_loop = CodeQualityLoop(interval_seconds=3600)
+    app.state.code_quality_loop = code_quality_loop
+    asyncio.create_task(code_quality_loop.run())
+
     yield
 
     scheduler.shutdown(wait=False)

@@ -1,6 +1,7 @@
 """API v1 router — mounts all sub-routers."""
 from fastapi import APIRouter
-from app.api.v1 import auth, accounts, orders, positions, trades, strategies, backtests, comparison, experiments, ml, risk, market_data, analytics, agents
+from app.api.v1 import auth, accounts, orders, positions, trades, strategies, backtests, comparison, experiments, ml, risk, market_data, analytics, agents, notifications, archive, improvements
+from app.api.v1.options import router as options_router
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -17,3 +18,7 @@ api_router.include_router(risk.router)
 api_router.include_router(market_data.router)
 api_router.include_router(analytics.router)
 api_router.include_router(agents.router)
+api_router.include_router(notifications.router)
+api_router.include_router(archive.router)
+api_router.include_router(improvements.router)
+api_router.include_router(options_router)

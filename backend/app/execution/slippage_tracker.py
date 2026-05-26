@@ -35,6 +35,17 @@ class SlippageTracker:
                         slippage_bps=round(slippage_bps, 2),
                         algo=request.execution_algo)
 
+            from app.notifications.slack import slack
+            from app.notifications.tracker import tracker
+            tracker.record("order_filled", "order",
+                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
+                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
+            await slack.notify_order_filled(
+                request.symbol, request.side, request.quantity,
+                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+                algo=request.execution_algo,
+            )
+
             if self.db:
                 record = SlippageRecord(
                     id=str(uuid.uuid4()),

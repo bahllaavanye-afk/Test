@@ -82,6 +82,13 @@ class ContinuousStrategyRunner:
                     await manager.broadcast("alerts", alert)
                     logger.info("Signal generated", **alert)
 
+                    from app.notifications.slack import slack
+                    from app.notifications.tracker import tracker
+                    tracker.record("signal_fired", "signal",
+                                    f"{strategy_name} → {symbol} {signal.side} (conf={signal.confidence:.2f})")
+                    await slack.notify_signal(strategy_name, symbol, signal.side,
+                                                signal.confidence, signal.target_price)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:

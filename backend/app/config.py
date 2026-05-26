@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     arb_bucket_pct: float = 0.70         # 70% capital to arbitrage bucket
     ml_bucket_pct: float = 0.30          # 30% capital to ML bucket
 
+    # Slack webhooks (optional, each channel separately)
+    slack_webhook_default: str = ""
+    slack_webhook_orders: str = ""
+    slack_webhook_signals: str = ""
+    slack_webhook_alerts: str = ""
+    slack_webhook_experiments: str = ""
+    slack_webhook_system: str = ""
+
     @property
     def is_paper(self) -> bool:
         return self.trading_mode == "paper"
