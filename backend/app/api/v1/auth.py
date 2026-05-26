@@ -1,15 +1,43 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from pydantic import BaseModel, EmailStr
-import uuid
+from __future__ import annotations
+from collections import defaultdict
 from datetime import datetime, timezone
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database import get_db
 from app.models.user import User
-from app.utils.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from app.utils.security import (
+    create_access_token, create_refresh_token, decode_token,
+    hash_password, verify_password,
+)
 from app.utils.exceptions import UnauthorizedError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Simple in-memory brute-force protection (per IP, resets on restart)
+# Production: use Redis-backed counter with TTL via Upstash
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_MAX_ATTEMPTS = 10
+_WINDOW_SECONDS = 300  # 10 attempts per 5 minutes per IP
+
+
+def _check_rate_limit(ip: str) -> None:
+    import time
+    now = time.time()
+    window_start = now - _WINDOW_SECONDS
+    attempts = [t for t in _login_attempts[ip] if t > window_start]
+    _login_attempts[ip] = attempts
+    if len(attempts) >= _MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again in 5 minutes.",
+            headers={"Retry-After": "300"},
+        )
+    _login_attempts[ip].append(now)
 
 
 class LoginRequest(BaseModel):
@@ -53,7 +81,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    _check_rate_limit(request.client.host if request.client else "unknown")
     result = await db.execute(select(User).where(User.email == body.email, User.is_active == True))
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):
