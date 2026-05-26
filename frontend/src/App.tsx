@@ -17,6 +17,8 @@ import Archive from './pages/Archive'
 import SystemMonitor from './pages/SystemMonitor'
 import OptionsFlow from './pages/OptionsFlow'
 import MacroSignals from './pages/MacroSignals'
+import Polymarket from './pages/Polymarket'
+import Landing from './pages/Landing'
 import { selectIsAuthenticated } from './store/slices/authSlice'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -27,6 +29,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/landing" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<Dashboard />} />
@@ -44,6 +47,7 @@ export default function App() {
         <Route path="system" element={<SystemMonitor />} />
         <Route path="options" element={<OptionsFlow />} />
         <Route path="macro" element={<MacroSignals />} />
+        <Route path="polymarket" element={<Polymarket />} />
       </Route>
     </Routes>
   )
