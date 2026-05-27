@@ -65,3 +65,4 @@ backend/dev.db
 backend/.env
 experiments/research_log.jsonl
 experiments/modeling_log.jsonl
+backend/seed_comparisons.py
