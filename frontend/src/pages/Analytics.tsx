@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
+import CorrelationMatrix from '../components/analytics/CorrelationMatrix'
 
 // ─── Components ─────────────────────────────────────────────────────────────
 
@@ -501,6 +502,9 @@ export default function Analytics() {
           </div>
         )}
       </div>
+
+      {/* Correlation Matrix */}
+      <CorrelationMatrix days={30} />
 
       {/* Risk & architecture notes */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
