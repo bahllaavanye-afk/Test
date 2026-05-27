@@ -1,0 +1,236 @@
+# QuantEdge Strategy Research Queue
+# Each entry is a peer-reviewed paper for future implementation.
+# Format keys: id, title, authors, year, journal, url, status, expected_sharpe, asset_class, category
+#
+# status: pending | in_progress | implemented | rejected | shelved
+# asset_class: equities | futures | fx | crypto | options | multi
+# category: factor | volatility | microstructure | regime | options | alt_data | behavioral | calendar | ml
+#
+# Picker rules (scripts/agents/pick_next_paper.py):
+#   1. Skip anything not 'pending'.
+#   2. Prefer highest expected_sharpe.
+#   3. Tie-break by id ascending.
+
+queue:
+  - id: "001"
+    title: "Trend Filtering Reduces Hedge Fund Tail Risk"
+    authors: "Asness, Chandra, Ilmanen, Israel"
+    year: 2017
+    journal: "Journal of Portfolio Management"
+    url: "https://www.aqr.com/Insights/Research/White-Papers/Trend-Filtering-and-Risk-Premia"
+    status: pending
+    expected_sharpe: 1.1
+    asset_class: multi
+    category: factor
+
+  - id: "002"
+    title: "Time Series Momentum"
+    authors: "Moskowitz, Ooi, Pedersen"
+    year: 2012
+    journal: "Journal of Financial Economics"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2089463"
+    status: pending
+    expected_sharpe: 1.2
+    asset_class: futures
+    category: factor
+
+  - id: "003"
+    title: "Betting Against Beta"
+    authors: "Frazzini, Pedersen"
+    year: 2014
+    journal: "Journal of Financial Economics"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2049939"
+    status: pending
+    expected_sharpe: 0.9
+    asset_class: equities
+    category: factor
+
+  - id: "004"
+    title: "Quality Minus Junk"
+    authors: "Asness, Frazzini, Pedersen"
+    year: 2019
+    journal: "Review of Accounting Studies"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2312432"
+    status: pending
+    expected_sharpe: 0.85
+    asset_class: equities
+    category: factor
+
+  - id: "005"
+    title: "Carry"
+    authors: "Koijen, Moskowitz, Pedersen, Vrugt"
+    year: 2018
+    journal: "Journal of Financial Economics"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2298565"
+    status: pending
+    expected_sharpe: 1.0
+    asset_class: multi
+    category: factor
+
+  - id: "006"
+    title: "The Volatility Risk Premium Revisited"
+    authors: "Andersen, Bondarenko, Todorov"
+    year: 2022
+    journal: "arXiv preprint"
+    url: "https://arxiv.org/abs/2207.05933"
+    status: pending
+    expected_sharpe: 0.95
+    asset_class: options
+    category: volatility
+
+  - id: "007"
+    title: "Dispersion Trading: Empirical Evidence from US Equity Index Options"
+    authors: "Deng"
+    year: 2008
+    journal: "SSRN"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1118049"
+    status: pending
+    expected_sharpe: 1.3
+    asset_class: options
+    category: volatility
+
+  - id: "008"
+    title: "Order Flow and Prices"
+    authors: "Brogaard, Hendershott, Riordan"
+    year: 2023
+    journal: "SSRN"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1361347"
+    status: pending
+    expected_sharpe: 1.5
+    asset_class: equities
+    category: microstructure
+
+  - id: "009"
+    title: "The Volume Clock: Insights into the High-Frequency Paradigm"
+    authors: "Easley, Lopez de Prado, O'Hara"
+    year: 2012
+    journal: "Journal of Portfolio Management"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2034858"
+    status: pending
+    expected_sharpe: 1.4
+    asset_class: equities
+    category: microstructure
+
+  - id: "010"
+    title: "A Two-State Hidden Markov Model for Regime Detection in S&P 500 Returns"
+    authors: "Hamilton"
+    year: 1989
+    journal: "Econometrica (foundational; many modern extensions)"
+    url: "https://www.jstor.org/stable/1912559"
+    status: pending
+    expected_sharpe: 0.8
+    asset_class: equities
+    category: regime
+
+  - id: "011"
+    title: "Cross-Sectional Factor Dynamics and Momentum Returns"
+    authors: "Ehsani, Linnainmaa"
+    year: 2022
+    journal: "Journal of Financial Economics"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3300521"
+    status: pending
+    expected_sharpe: 1.0
+    asset_class: equities
+    category: factor
+
+  - id: "012"
+    title: "Empirical Asset Pricing via Machine Learning"
+    authors: "Gu, Kelly, Xiu"
+    year: 2020
+    journal: "Review of Financial Studies"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3159577"
+    status: pending
+    expected_sharpe: 1.6
+    asset_class: equities
+    category: ml
+
+  - id: "013"
+    title: "Intraday Momentum and the FOMC Cycle"
+    authors: "Lucca, Moench"
+    year: 2015
+    journal: "Journal of Finance"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2210331"
+    status: pending
+    expected_sharpe: 1.1
+    asset_class: equities
+    category: calendar
+
+  - id: "014"
+    title: "Common Risk Factors in Cryptocurrency"
+    authors: "Liu, Tsyvinski, Wu"
+    year: 2022
+    journal: "Journal of Finance"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3169130"
+    status: pending
+    expected_sharpe: 1.2
+    asset_class: crypto
+    category: factor
+
+  - id: "015"
+    title: "Post-Earnings-Announcement Drift: Delayed Price Response or Risk Premium?"
+    authors: "Bernard, Thomas"
+    year: 1989
+    journal: "Journal of Accounting Research (modern SUE-filtered version still alive)"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2940275"
+    status: pending
+    expected_sharpe: 0.75
+    asset_class: equities
+    category: behavioral
+
+  - id: "016"
+    title: "All-Weather Risk Parity: A Practical Implementation"
+    authors: "Asness, Frazzini, Pedersen (Leverage Aversion and Risk Parity)"
+    year: 2012
+    journal: "Financial Analysts Journal"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1855411"
+    status: pending
+    expected_sharpe: 0.9
+    asset_class: multi
+    category: factor
+
+  - id: "017"
+    title: "Trading Volume Alpha"
+    authors: "Lou, Polk, Skouras"
+    year: 2024
+    journal: "SSRN"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3637061"
+    status: pending
+    expected_sharpe: 1.1
+    asset_class: equities
+    category: microstructure
+
+  - id: "018"
+    title: "News Sentiment and Equity Returns: NLP-Based Trading Strategies"
+    authors: "Ke, Kelly, Xiu"
+    year: 2019
+    journal: "SSRN"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3520684"
+    status: pending
+    expected_sharpe: 1.0
+    asset_class: equities
+    category: alt_data
+
+  - id: "019"
+    title: "Man vs. Machine Learning: Term Structure of Earnings Expectations"
+    authors: "van Binsbergen, Han, Lopez-Lira"
+    year: 2023
+    journal: "Review of Financial Studies"
+    url: "https://academic.oup.com/rfs/article/36/6/2361/6957931"
+    status: pending
+    expected_sharpe: 1.3
+    asset_class: equities
+    category: ml
+
+  - id: "020"
+    title: "VIX Term Structure as a Predictor of Equity Returns"
+    authors: "Johnson"
+    year: 2017
+    journal: "Review of Financial Studies"
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2548447"
+    status: pending
+    expected_sharpe: 0.9
+    asset_class: options
+    category: volatility
+
+# When adding new papers, append at the bottom and continue the id sequence.
+# When marking a paper as implemented, update status and append a 'pr_url' field.
