@@ -154,6 +154,178 @@ function HeatmapCell({ month, ret }: { month: string; ret: number }) {
   )
 }
 
+// ─── Strategy Leaderboard ─────────────────────────────────────────────────────
+
+interface LeaderboardRow {
+  name: string
+  sharpe: number
+  annualReturn: number
+  winRate: number
+  maxDD: number
+  status: 'live' | 'paper' | 'paused' | 'backtest'
+}
+
+const MOCK_LEADERBOARD: LeaderboardRow[] = [
+  { name: 'arb_crypto',      sharpe: 3.21, annualReturn: 42.1, winRate: 0.82, maxDD: -4.2,  status: 'live' },
+  { name: 'momentum_equity', sharpe: 2.74, annualReturn: 34.8, winRate: 0.71, maxDD: -8.7,  status: 'live' },
+  { name: 'mean_reversion',  sharpe: 2.31, annualReturn: 28.5, winRate: 0.68, maxDD: -11.3, status: 'paper' },
+  { name: 'ml_lstm_btc',     sharpe: 1.98, annualReturn: 22.1, winRate: 0.65, maxDD: -15.6, status: 'live' },
+  { name: 'options_flow',    sharpe: 1.74, annualReturn: 18.9, winRate: 0.58, maxDD: -9.4,  status: 'paper' },
+  { name: 'breakout_daily',  sharpe: 1.42, annualReturn: 15.2, winRate: 0.54, maxDD: -18.1, status: 'paused' },
+  { name: 'poly_event',      sharpe: 1.18, annualReturn: 12.4, winRate: 0.61, maxDD: -6.8,  status: 'backtest' },
+]
+
+const STATUS_STYLE: Record<LeaderboardRow['status'], { label: string; color: string; bg: string }> = {
+  live:     { label: 'LIVE',     color: '#00c853', bg: 'rgba(0,200,83,0.15)' },
+  paper:    { label: 'PAPER',    color: '#2979ff', bg: 'rgba(41,121,255,0.15)' },
+  paused:   { label: 'PAUSED',   color: '#f5a623', bg: 'rgba(245,166,35,0.15)' },
+  backtest: { label: 'BACKTEST', color: '#888888', bg: 'rgba(136,136,136,0.15)' },
+}
+
+function StrategyLeaderboard({ rows }: { rows: LeaderboardRow[] }) {
+  return (
+    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+      <h2 className="text-sm font-semibold text-white mb-4">Strategy Leaderboard</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="text-[#555555] uppercase tracking-wider border-b border-[#1e1e1e]">
+              <th className="text-left pb-2 pr-3 w-8">#</th>
+              <th className="text-left pb-2 pr-4">Strategy</th>
+              <th className="text-right pb-2 pr-4">Sharpe</th>
+              <th className="text-right pb-2 pr-4">Ann. Return</th>
+              <th className="text-right pb-2 pr-4">Win Rate</th>
+              <th className="text-right pb-2 pr-4">Max DD</th>
+              <th className="text-right pb-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => {
+              const st = STATUS_STYLE[row.status]
+              const sharpeColor = row.sharpe >= 2.5 ? '#00c853' : row.sharpe >= 1.5 ? '#f5a623' : '#ff1744'
+              return (
+                <tr
+                  key={row.name}
+                  className="border-b border-[#1a1a1a] last:border-0 hover:bg-[#1a1a1a] transition-colors"
+                >
+                  <td className="py-2.5 pr-3 text-[#555555]">{idx + 1}</td>
+                  <td className="py-2.5 pr-4 text-[#e8e8e8] font-semibold">{row.name}</td>
+                  <td className="py-2.5 pr-4 text-right font-black" style={{ color: sharpeColor }}>{row.sharpe.toFixed(2)}</td>
+                  <td className={`py-2.5 pr-4 text-right font-bold ${row.annualReturn >= 0 ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>
+                    {row.annualReturn >= 0 ? '+' : ''}{row.annualReturn.toFixed(1)}%
+                  </td>
+                  <td className="py-2.5 pr-4 text-right text-[#e8e8e8]">{(row.winRate * 100).toFixed(0)}%</td>
+                  <td className="py-2.5 pr-4 text-right text-[#ff1744]">{row.maxDD.toFixed(1)}%</td>
+                  <td className="py-2.5 text-right">
+                    <span
+                      className="px-2 py-0.5 rounded text-[9px] font-black tracking-wider"
+                      style={{ color: st.color, backgroundColor: st.bg }}
+                    >
+                      {st.label}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── Benchmark Comparison Card ────────────────────────────────────────────────
+
+interface BenchmarkRow {
+  name: string
+  color: string
+  sharpe: number
+  annualReturn: number
+  maxDD: number
+}
+
+const BENCHMARKS: BenchmarkRow[] = [
+  { name: 'QuantEdge', color: '#f5a623', sharpe: 2.74, annualReturn: 34.8, maxDD: -14.2 },
+  { name: 'SPY',       color: '#2196F3', sharpe: 0.47, annualReturn:  8.6, maxDD: -34.1 },
+  { name: 'QQQ',       color: '#9C27B0', sharpe: 0.61, annualReturn: 12.3, maxDD: -38.4 },
+  { name: 'BRK-B',     color: '#FF9800', sharpe: 0.79, annualReturn: 10.1, maxDD: -22.7 },
+  { name: 'All Weather',color: '#4CAF50',sharpe: 0.67, annualReturn:  7.4, maxDD: -11.3 },
+]
+
+function BenchmarkComparison() {
+  const qe = BENCHMARKS[0]
+  const maxSharpe = Math.max(...BENCHMARKS.map(b => b.sharpe))
+  const maxRet   = Math.max(...BENCHMARKS.map(b => b.annualReturn))
+
+  return (
+    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-sm font-semibold text-white">Benchmark Comparison</h2>
+          <p className="text-xs text-[#888888] mt-0.5">QuantEdge vs SPY · QQQ · BRK-B · All Weather</p>
+        </div>
+        <span className="text-[10px] text-[#555555] font-mono">annualized · trailing 12m</span>
+      </div>
+
+      <div className="space-y-3">
+        {BENCHMARKS.map((b) => {
+          const isQE = b.name === 'QuantEdge'
+          const sharpePct = (b.sharpe / maxSharpe) * 100
+          const retPct    = (b.annualReturn / maxRet) * 100
+          const sharpeDelta = b.sharpe - (isQE ? 0 : qe.sharpe)
+          const retDelta    = b.annualReturn - (isQE ? 0 : qe.annualReturn)
+          return (
+            <div key={b.name} className={`rounded-lg p-3 ${isQE ? 'border border-[#f5a623]/30 bg-[#f5a623]/05' : ''}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold" style={{ color: b.color }}>{b.name}</span>
+                <div className="flex items-center gap-4 text-xs font-mono">
+                  {/* Sharpe */}
+                  <span className="text-[#888888]">
+                    Sharpe <span style={{ color: b.color }} className="font-black">{b.sharpe.toFixed(2)}</span>
+                    {!isQE && (
+                      <span className={`ml-1 text-[9px] ${sharpeDelta < 0 ? 'text-[#ff1744]' : 'text-[#00c853]'}`}>
+                        ({sharpeDelta > 0 ? '+' : ''}{sharpeDelta.toFixed(2)})
+                      </span>
+                    )}
+                  </span>
+                  {/* Annual Return */}
+                  <span className="text-[#888888]">
+                    Ret <span style={{ color: b.color }} className="font-black">{b.annualReturn >= 0 ? '+' : ''}{b.annualReturn.toFixed(1)}%</span>
+                    {!isQE && (
+                      <span className={`ml-1 text-[9px] ${retDelta < 0 ? 'text-[#ff1744]' : 'text-[#00c853]'}`}>
+                        ({retDelta > 0 ? '+' : ''}{retDelta.toFixed(1)}%)
+                      </span>
+                    )}
+                  </span>
+                  {/* Max DD */}
+                  <span className="text-[#888888]">
+                    DD <span className="text-[#ff1744] font-black">{b.maxDD.toFixed(1)}%</span>
+                  </span>
+                </div>
+              </div>
+              {/* Dual bar: Sharpe + Return */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-[9px] text-[#555555] mb-1">Sharpe</div>
+                  <div className="h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${sharpePct}%`, backgroundColor: b.color, opacity: isQE ? 1 : 0.55 }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] text-[#555555] mb-1">Annual Return</div>
+                  <div className="h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${retPct}%`, backgroundColor: b.color, opacity: isQE ? 1 : 0.55 }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function Analytics() {
@@ -404,6 +576,12 @@ export default function Analytics() {
           </span>
         </div>
       </div>
+
+      {/* Strategy Leaderboard */}
+      <StrategyLeaderboard rows={MOCK_LEADERBOARD} />
+
+      {/* Benchmark Comparison */}
+      <BenchmarkComparison />
 
       {/* Risk & architecture notes */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">

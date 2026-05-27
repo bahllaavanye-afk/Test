@@ -10,11 +10,14 @@ from app.strategies.manual.supertrend import SupertrendStrategy
 from app.strategies.manual.low_volatility import LowVolatilityStrategy
 from app.strategies.manual.triangular_arb import TriangularArbStrategy
 from app.strategies.manual.poly_binary_arb import PolyBinaryArbStrategy
+from app.strategies.manual.pca_stat_arb import PCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
+from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
 from app.strategies.ml_enhanced.ml_breakout import MLBreakoutStrategy
 from app.strategies.ml_enhanced.lorentzian_knn import LorentzianStrategy
 from app.strategies.ml_enhanced.ensemble import EnsembleStrategy
+from app.strategies.ml_enhanced.rl_trader import RLTraderStrategy
 
 STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "pairs_trading": PairsTradingStrategy,
@@ -26,11 +29,14 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "low_volatility": LowVolatilityStrategy,
     "triangular_arb": TriangularArbStrategy,
     "poly_binary_arb": PolyBinaryArbStrategy,
+    "pca_stat_arb": PCAStatArbStrategy,
     "ml_momentum": MLMomentumStrategy,
+    "ml_pca_arb": MLPCAStatArbStrategy,
     "ml_mean_reversion": MLMeanReversionStrategy,
     "ml_breakout": MLBreakoutStrategy,
     "lorentzian_knn": LorentzianStrategy,
     "ensemble": EnsembleStrategy,
+    "rl_trader": RLTraderStrategy,
 }
 
 

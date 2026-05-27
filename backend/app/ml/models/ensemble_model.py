@@ -13,16 +13,39 @@ from app.ml.models.base_model import AbstractModel, EvalMetrics
 class EnsembleModel(AbstractModel):
     model_type = "ensemble"
 
-    def __init__(self, weights: dict | None = None, confidence_threshold: float = 0.65):
+    def __init__(
+        self,
+        weights: dict | None = None,
+        confidence_threshold: float = 0.65,
+        gnn_weight: float = 0.0,
+    ):
         self.weights = weights or {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}
         self.confidence_threshold = confidence_threshold
+        self.gnn_weight = gnn_weight
         self.models: dict[str, AbstractModel] = {}
+        self._gnn_model = None  # optional GNNSignal instance
 
     def add_model(self, name: str, model: AbstractModel) -> None:
         self.models[name] = model
 
+    def register_gnn(self, gnn_model) -> None:
+        """
+        Register a GNNSignal model to be included in the weighted ensemble.
+        When registered, gnn_weight controls how much the GNN output contributes.
+        If gnn_weight is 0.0 (default), the GNN is registered but has no effect
+        until gnn_weight is set > 0.
+
+        Args:
+            gnn_model: GNNSignal instance from app.ml.models.gnn_signal
+        """
+        self._gnn_model = gnn_model
+
     def forward(self, x) -> np.ndarray:
-        """x can be dict of {model_name: tensor} or single tensor shared across all."""
+        """
+        x can be dict of {model_name: tensor} or single tensor shared across all.
+        When a GNN model is registered and gnn_weight > 0, its output is blended
+        into the weighted average using gnn_weight as its contribution weight.
+        """
         predictions = {}
         for name, model in self.models.items():
             model_input = x[name] if isinstance(x, dict) else x
@@ -36,6 +59,18 @@ class EnsembleModel(AbstractModel):
                 predictions[name] = pred
             except Exception:
                 continue
+
+        # Include GNN prediction if registered with non-zero weight
+        if self._gnn_model is not None and self.gnn_weight > 0.0:
+            try:
+                gnn_input = x.get("gnn") if isinstance(x, dict) else None
+                if gnn_input is not None:
+                    returns_df, node_features = gnn_input
+                    gnn_pred = self._gnn_model.predict(returns_df, node_features)
+                    predictions["_gnn"] = gnn_pred
+                    self.weights["_gnn"] = self.gnn_weight
+            except Exception:
+                pass
 
         if not predictions:
             return np.full(1, 0.5)
@@ -91,10 +126,19 @@ class EnsembleModel(AbstractModel):
 
     def save(self, path: str, metadata: dict | None = None) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        data = {"weights": self.weights, "confidence_threshold": self.confidence_threshold, **(metadata or {})}
+        data = {
+            "weights": self.weights,
+            "confidence_threshold": self.confidence_threshold,
+            "gnn_weight": self.gnn_weight,
+            **(metadata or {}),
+        }
         Path(path).write_text(json.dumps(data, indent=2))
 
     @classmethod
     def load(cls, path: str) -> "EnsembleModel":
         data = json.loads(Path(path).read_text())
-        return cls(weights=data.get("weights"), confidence_threshold=data.get("confidence_threshold", 0.65))
+        return cls(
+            weights=data.get("weights"),
+            confidence_threshold=data.get("confidence_threshold", 0.65),
+            gnn_weight=data.get("gnn_weight", 0.0),
+        )

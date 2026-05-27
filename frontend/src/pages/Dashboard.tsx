@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
+import { RegimeIndicator } from '../components/risk/RegimeIndicator'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -46,6 +47,9 @@ export default function Dashboard() {
         <MetricCard label="Active Strategies" value={String(activeCount)} sub="running 24/7" color="#f5a623" />
         <MetricCard label="Target Sharpe" value=">2.0" sub="vs SPY 0.47" color="#9C27B0" />
       </div>
+
+      {/* Market Regime Indicator */}
+      <RegimeIndicator />
 
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
