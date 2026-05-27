@@ -74,11 +74,13 @@ jobs:
 
       - name: Run database migrations
         working-directory: backend
+        shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: |
+          set -eo pipefail
           if [ -n "$ALEMBIC_DATABASE_URL" ]; then
-            alembic upgrade head 2>&1 | tail -30
+            alembic upgrade head
           else
             echo "No ALEMBIC_DATABASE_URL set, skipping migrations"
           fi

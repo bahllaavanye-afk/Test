@@ -27,6 +27,11 @@ from app.strategies.manual.order_flow_imbalance import OrderFlowImbalanceStrateg
 from app.strategies.manual.earnings_accruals import EarningsAccrualsStrategy
 from app.strategies.manual.cross_asset_carry import CrossAssetCarryStrategy
 from app.strategies.manual.vol_term_structure import VolTermStructureStrategy
+from app.strategies.manual.triple_barrier_momentum import TripleBarrierMomentumStrategy
+from app.strategies.manual.residual_momentum import ResidualMomentumStrategy
+from app.strategies.manual.idio_vol_anomaly import IdiosyncraticVolAnomalyStrategy
+from app.strategies.manual.fifty_two_week_high import FiftyTwoWeekHighStrategy
+from app.strategies.manual.open_close_revert import OpenCloseRevertStrategy
 from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
 from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
@@ -62,6 +67,11 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "earnings_accruals": EarningsAccrualsStrategy,
     "cross_asset_carry": CrossAssetCarryStrategy,
     "vol_term_structure": VolTermStructureStrategy,
+    "triple_barrier_momentum": TripleBarrierMomentumStrategy,
+    "residual_momentum": ResidualMomentumStrategy,
+    "idio_vol_anomaly": IdiosyncraticVolAnomalyStrategy,
+    "fifty_two_week_high": FiftyTwoWeekHighStrategy,
+    "open_close_revert": OpenCloseRevertStrategy,
     "ml_momentum": MLMomentumStrategy,
     "ml_pca_arb": MLPCAStatArbStrategy,
     "ml_mean_reversion": MLMeanReversionStrategy,

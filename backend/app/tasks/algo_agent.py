@@ -78,6 +78,11 @@ class AlgoAgent:
         ("dispersion_trading", "QQQ", "manual"),
         ("pead_sue", "AAPL", "manual"),
         ("skew_arb", "SPY", "manual"),
+        ("triple_barrier_momentum", "NVDA", "manual"),
+        ("residual_momentum", "AAPL", "manual"),
+        ("idio_vol_anomaly", "AAPL", "manual"),
+        ("fifty_two_week_high", "MSFT", "manual"),
+        ("open_close_revert", "SPY", "manual"),
     ]
 
     def __init__(self, broker=None, interval_seconds: int = 300):

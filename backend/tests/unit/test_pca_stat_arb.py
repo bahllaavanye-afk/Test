@@ -268,7 +268,7 @@ class TestMLPCAStatArbFallback:
         async def _run():
             return await s.analyze(df, DEFAULT_BASKET[0])
 
-        result = asyncio.get_event_loop().run_until_complete(_run())
+        result = asyncio.run(_run())
         # Without a live ML service the result must be None (graceful fallback)
         assert result is None
 
