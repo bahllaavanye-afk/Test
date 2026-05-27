@@ -5,6 +5,7 @@ import api from '../api/client'
 import { RegimeIndicator } from '../components/risk/RegimeIndicator'
 import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
 import LiveChartPlaceholder from '../components/charts/MockCandlestickChart'
+import NewsSentimentPanel from '../components/trading/NewsSentimentPanel'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -281,6 +282,11 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Market News ── */}
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+        <NewsSentimentPanel symbols={['SPY', 'QQQ', 'AAPL', 'NVDA', 'META']} />
       </div>
 
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>

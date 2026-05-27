@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import TVAdvancedChart from '../components/charts/TVAdvancedChart'
 import AdvancedOrderForm from '../components/trading/AdvancedOrderForm'
+import NewsSentimentPanel from '../components/trading/NewsSentimentPanel'
 import api from '../api/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -266,7 +267,7 @@ export default function EquityTrading() {
   const [activeSymbol, setActiveSymbol] = useState('NASDAQ:AAPL')
   const [interval, setInterval] = useState<Interval>('60')
   const [studyPreset, setStudyPreset] = useState<keyof typeof STUDIES_PRESETS>('default')
-  const [rightTab, setRightTab] = useState<'order' | 'positions' | 'orders'>('order')
+  const [rightTab, setRightTab] = useState<'order' | 'positions' | 'orders' | 'news'>('order')
 
   const tickerSymbol = useMemo(
     () => activeSymbol.split(':')[1] ?? activeSymbol,
@@ -369,6 +370,7 @@ export default function EquityTrading() {
               { key: 'order',     label: 'Order Entry' },
               { key: 'positions', label: 'Positions' },
               { key: 'orders',    label: 'History' },
+              { key: 'news',      label: 'News' },
             ] as { key: typeof rightTab; label: string }[]).map(tab => (
               <button
                 key={tab.key}
@@ -395,6 +397,7 @@ export default function EquityTrading() {
             )}
             {rightTab === 'positions' && <PositionsPanel onSymbolClick={setActiveSymbol} />}
             {rightTab === 'orders' && <OrdersFeed />}
+            {rightTab === 'news' && <NewsSentimentPanel symbols={[tickerSymbol]} />}
           </div>
         </div>
       </div>
