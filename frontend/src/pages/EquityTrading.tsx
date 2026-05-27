@@ -1,12 +1,10 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import TVAdvancedChart from '../components/charts/TVAdvancedChart'
+import AdvancedOrderForm from '../components/trading/AdvancedOrderForm'
 import api from '../api/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Side = 'buy' | 'sell'
-type OrdType = 'market' | 'limit' | 'stop' | 'stop_limit'
-type Algo = 'auto' | 'market' | 'limit_first' | 'twap' | 'vwap'
 type Interval = '1' | '5' | '15' | '60' | '240' | 'D' | 'W'
 
 const SYMBOLS = [
@@ -36,14 +34,6 @@ const STUDIES_PRESETS: Record<string, string[]> = {
   momentum: ['Volume@tv-basicstudies', 'RSI@tv-basicstudies', 'MACD@tv-basicstudies', 'MOM@tv-basicstudies'],
   bands: ['Volume@tv-basicstudies', 'BB@tv-basicstudies', 'ATR@tv-basicstudies'],
   trend: ['Volume@tv-basicstudies', 'MAExp@tv-basicstudies', 'MAExp@tv-basicstudies'],
-}
-
-const ALGO_INFO: Record<Algo, { label: string; desc: string; color: string }> = {
-  auto:        { label: 'Auto',        desc: 'Smart route: size-based selection',        color: '#888' },
-  market:      { label: 'Market',      desc: 'Immediate fill at best available price',   color: '#ff1744' },
-  limit_first: { label: 'Limit-First', desc: 'Limit → market fallback (saves ~5 bps)',  color: '#00c853' },
-  twap:        { label: 'TWAP',        desc: 'Time-slice over 30min — low market impact',color: '#2196f3' },
-  vwap:        { label: 'VWAP',        desc: 'Volume-weighted — tracks market rhythm',   color: '#9c27b0' },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -223,241 +213,6 @@ function OrdersFeed() {
   )
 }
 
-// ─── Order Entry ──────────────────────────────────────────────────────────────
-function OrderEntry({ defaultSymbol }: { defaultSymbol: string }) {
-  const qc = useQueryClient()
-  const [sym, setSym] = useState(defaultSymbol.split(':')[1] ?? defaultSymbol)
-  const [side, setSide] = useState<Side>('buy')
-  const [type, setType] = useState<OrdType>('limit')
-  const [qty, setQty] = useState('1')
-  const [limit, setLimit] = useState('')
-  const [stop, setStop] = useState('')
-  const [algo, setAlgo] = useState<Algo>('limit_first')
-  const [notional, setNotional] = useState('')
-  const [useNotional, setUseNotional] = useState(false)
-
-  const { data: accounts } = useQuery({
-    queryKey: ['accounts-order'],
-    queryFn: () => api.get('/accounts/').then(r => r.data),
-    staleTime: 60_000,
-  })
-  const accountList: any[] = Array.isArray(accounts) ? accounts : []
-  const [accountId, setAccountId] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: () => {
-      if (!accountId) throw new Error('Select an account first')
-      return api.post('/orders/', {
-        symbol: sym.toUpperCase(),
-        side,
-        order_type: type,
-        quantity: useNotional ? undefined : parseFloat(qty) || 1,
-        notional: useNotional ? parseFloat(notional) : undefined,
-        limit_price: (type === 'limit' || type === 'stop_limit') && limit ? parseFloat(limit) : null,
-        stop_price: (type === 'stop' || type === 'stop_limit') && stop ? parseFloat(stop) : null,
-        execution_algo: algo,
-        account_id: accountId,
-      }).then(r => r.data)
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['orders-terminal'] })
-      qc.invalidateQueries({ queryKey: ['positions-terminal'] })
-    },
-  })
-
-  const needsLimit = type === 'limit' || type === 'stop_limit'
-  const needsStop  = type === 'stop'  || type === 'stop_limit'
-
-  return (
-    <div className="p-3 space-y-2.5">
-      {/* Symbol */}
-      <div>
-        <p className="text-[10px] text-[#555] mb-1 uppercase tracking-wider">Symbol</p>
-        <input
-          value={sym}
-          onChange={e => setSym(e.target.value.toUpperCase())}
-          className="w-full bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-2.5 py-1.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#333] transition-colors uppercase"
-          placeholder="AAPL"
-        />
-      </div>
-
-      {/* Account */}
-      {accountList.length > 0 ? (
-        <div>
-          <p className="text-[10px] text-[#555] mb-1 uppercase tracking-wider">Account</p>
-          <select
-            value={accountId}
-            onChange={e => setAccountId(e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-2 py-1.5 text-xs text-[#e8e8e8] focus:outline-none"
-          >
-            <option value="">Select account…</option>
-            {accountList.map((a: any) => (
-              <option key={a.id} value={a.id}>{a.label} ({a.mode})</option>
-            ))}
-          </select>
-        </div>
-      ) : (
-        <div className="bg-[#0d0d0d] border border-[#f5a623]/20 rounded-lg px-2.5 py-2">
-          <p className="text-[10px] text-[#f5a623] font-medium">No broker account connected</p>
-          <p className="text-[9px] text-[#555] mt-0.5">Add Alpaca API keys in Settings to place real orders.</p>
-        </div>
-      )}
-
-      {/* Side */}
-      <div className="grid grid-cols-2 gap-1.5">
-        {(['buy', 'sell'] as Side[]).map(s => (
-          <button
-            key={s}
-            onClick={() => setSide(s)}
-            className="py-2 rounded-lg text-xs font-bold tracking-wide transition-all duration-150"
-            style={{
-              background: side === s
-                ? (s === 'buy' ? '#00c853' : '#ff1744')
-                : '#1a1a1a',
-              color: side === s ? (s === 'buy' ? '#000' : '#fff') : '#555',
-              border: `1px solid ${side === s ? (s === 'buy' ? '#00c853' : '#ff1744') : '#222'}`,
-            }}
-          >
-            {s === 'buy' ? '▲ BUY / LONG' : '▼ SELL / SHORT'}
-          </button>
-        ))}
-      </div>
-
-      {/* Order type */}
-      <div>
-        <p className="text-[10px] text-[#555] mb-1 uppercase tracking-wider">Order type</p>
-        <div className="grid grid-cols-4 gap-1 bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg p-1">
-          {(['market', 'limit', 'stop', 'stop_limit'] as OrdType[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setType(t)}
-              className="py-1 rounded text-[10px] font-medium transition-colors"
-              style={{
-                background: type === t ? '#1e1e1e' : 'transparent',
-                color: type === t ? '#e8e8e8' : '#555',
-              }}
-            >
-              {t === 'stop_limit' ? 'STP-LMT' : t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Qty / Notional toggle */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-[10px] text-[#555] uppercase tracking-wider">{useNotional ? 'Notional ($)' : 'Shares / Qty'}</p>
-          <button
-            onClick={() => setUseNotional(v => !v)}
-            className="text-[9px] text-[#444] hover:text-[#888] transition-colors"
-          >
-            Switch to {useNotional ? 'shares' : 'notional'}
-          </button>
-        </div>
-        {useNotional ? (
-          <input
-            type="number"
-            min="1"
-            value={notional}
-            onChange={e => setNotional(e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#333]"
-            placeholder="1000.00"
-          />
-        ) : (
-          <input
-            type="number"
-            min="0.001"
-            step="any"
-            value={qty}
-            onChange={e => setQty(e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#333]"
-            placeholder="1"
-          />
-        )}
-      </div>
-
-      {/* Limit price */}
-      {needsLimit && (
-        <div>
-          <p className="text-[10px] text-[#555] mb-1 uppercase tracking-wider">Limit price</p>
-          <input
-            type="number"
-            step="0.01"
-            value={limit}
-            onChange={e => setLimit(e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#2196f3]/40 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#2196f3]/80 transition-colors"
-            placeholder="0.00"
-          />
-        </div>
-      )}
-
-      {/* Stop price */}
-      {needsStop && (
-        <div>
-          <p className="text-[10px] text-[#555] mb-1 uppercase tracking-wider">Stop price</p>
-          <input
-            type="number"
-            step="0.01"
-            value={stop}
-            onChange={e => setStop(e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#f5a623]/40 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#f5a623]/80 transition-colors"
-            placeholder="0.00"
-          />
-        </div>
-      )}
-
-      {/* Execution algo */}
-      <div>
-        <p className="text-[10px] text-[#555] mb-1 uppercase tracking-wider">Execution</p>
-        <div className="space-y-1">
-          {(Object.keys(ALGO_INFO) as Algo[]).map(a => (
-            <button
-              key={a}
-              onClick={() => setAlgo(a)}
-              className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all"
-              style={{
-                background: algo === a ? '#111' : 'transparent',
-                border: `1px solid ${algo === a ? ALGO_INFO[a].color + '44' : '#1a1a1a'}`,
-                color: algo === a ? ALGO_INFO[a].color : '#555',
-              }}
-            >
-              <span className="font-bold">{ALGO_INFO[a].label}</span>
-              <span className="text-[9px] ml-2 opacity-70">{ALGO_INFO[a].desc}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Submit */}
-      <button
-        onClick={() => mutation.mutate()}
-        disabled={mutation.isPending || !accountId}
-        className="w-full py-2.5 rounded-lg text-sm font-bold tracking-wide transition-all duration-150 active:scale-[0.98]"
-        style={{
-          background: side === 'buy'
-            ? (mutation.isPending ? '#1a2a1a' : 'linear-gradient(135deg, #00c853, #00a843)')
-            : (mutation.isPending ? '#2a1a1a' : 'linear-gradient(135deg, #ff1744, #c62828)'),
-          color: '#fff',
-          opacity: !accountId ? 0.4 : 1,
-          cursor: !accountId ? 'not-allowed' : 'pointer',
-        }}
-      >
-        {mutation.isPending ? 'Submitting…' : side === 'buy' ? `▲ BUY ${sym || '—'}` : `▼ SELL ${sym || '—'}`}
-      </button>
-
-      {mutation.isError && (
-        <div className="bg-[#ff1744]/10 border border-[#ff1744]/20 rounded-lg px-2.5 py-2">
-          <p className="text-xs text-[#ff1744]">{String((mutation.error as any)?.response?.data?.detail ?? mutation.error)}</p>
-        </div>
-      )}
-      {mutation.isSuccess && (
-        <div className="bg-[#00c853]/10 border border-[#00c853]/20 rounded-lg px-2.5 py-2">
-          <p className="text-xs text-[#00c853]">Order submitted successfully</p>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Account Summary Bar ──────────────────────────────────────────────────────
 function AccountBar() {
@@ -631,8 +386,13 @@ export default function EquityTrading() {
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-hidden">
-            {rightTab === 'order' && <OrderEntry defaultSymbol={tickerSymbol} />}
+          <div className="flex-1 overflow-y-auto">
+            {rightTab === 'order' && (
+              <AdvancedOrderForm
+                defaultSymbol={tickerSymbol}
+                onSuccess={() => setRightTab('positions')}
+              />
+            )}
             {rightTab === 'positions' && <PositionsPanel onSymbolClick={setActiveSymbol} />}
             {rightTab === 'orders' && <OrdersFeed />}
           </div>

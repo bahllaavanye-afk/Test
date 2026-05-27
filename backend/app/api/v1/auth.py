@@ -87,6 +87,21 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):
         raise UnauthorizedError("Invalid email or password")
+
+    # Audit log for successful login
+    from app.models.audit_log import AuditLog
+    log = AuditLog(
+        user_id=user.id,
+        action="login",
+        resource_type="user",
+        resource_id=user.id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent", "")[:256],
+        extra_data={},
+    )
+    db.add(log)
+    await db.commit()
+
     return TokenResponse(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
