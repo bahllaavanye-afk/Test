@@ -91,7 +91,6 @@ export default function Dashboard() {
     <div className="space-y-5">
       {showLiveModal && <ConfirmLiveModal onConfirm={() => { dispatch(setMode('live')); setShowLiveModal(false) }} onCancel={() => setShowLiveModal(false)} />}
 
-      {/* Mode Banner */}
       <div className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all duration-500 ${isLive ? 'bg-[#ff1744]/10 border border-[#ff1744]/40' : 'bg-[#f5a623]/10 border border-[#f5a623]/30'}`}>
         <div className="flex items-center gap-3">
           <span className="w-3 h-3 rounded-full inline-block"
@@ -117,7 +116,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* No account connected banner */}
       {noAccountConnected && (
         <div className="bg-[#111111] border border-[#f5a623]/30 rounded-lg p-4 flex items-center gap-3">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="1.5">
@@ -130,7 +128,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="Total P&L" value={perf ? `$${totalPnl.toFixed(2)}` : '—'} sub={perf ? `${perf.total_trades ?? 0} trades` : 'Connect Alpaca to see P&L'} color={perf ? (totalPnl >= 0 ? '#00c853' : '#ff1744') : '#555555'} />
         <MetricCard label="Open Positions" value={Array.isArray(positions) ? String(positions.length) : '—'} sub="live positions" color="#2979ff" />
@@ -155,7 +152,6 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-3">
-          {/* Account summary from real API */}
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
             <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Account Summary</h3>
             {noAccountConnected ? (
@@ -170,13 +166,13 @@ export default function Dashboard() {
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-[#888888]">{acc?.broker ?? 'Account'}</span>
                       <span className="text-xs font-mono font-bold" style={{ color: (acc?.total_pnl ?? 0) >= 0 ? '#00c853' : '#ff1744' }}>
-                        {acc?.total_pnl != null ? `${acc.total_pnl >= 0 ? '+' : ''}$${acc.total_pnl.toFixed(2)}` : '—'}
+                        {acc?.total_pnl != null ? `${acc.total_pnl >= 0 ? '+' : ''}$${acc.total_pnl.toFixed(2)}` : '---'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-[#555]">Equity</span>
                       <span className="text-xs font-mono text-[#e8e8e8]">
-                        {acc?.equity != null ? `$${Number(acc.equity).toLocaleString()}` : '—'}
+                        {acc?.equity != null ? `$${Number(acc.equity).toLocaleString()}` : '---'}
                       </span>
                     </div>
                   </div>
@@ -185,10 +181,9 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Agent Team from real API only */}
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
             <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">
-              Agent Team ({agentList.length > 0 ? agentList.length : '—'})
+              Agent Team ({agentList.length > 0 ? agentList.length : '---'})
             </h3>
             {agentList.length === 0 ? (
               <p className="text-xs text-[#555]">No agent status. Start the backend to see agent health.</p>
@@ -208,7 +203,7 @@ export default function Dashboard() {
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] text-[#555] truncate">{agent.role ?? ''}</span>
                           <span className="text-[10px] text-[#444] flex-shrink-0">
-                            {agent.last_run ? new Date(agent.last_run).toLocaleTimeString() : '—'}
+                            {agent.last_run ? new Date(agent.last_run).toLocaleTimeString() : '---'}
                           </span>
                         </div>
                       </div>
@@ -222,7 +217,6 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Macro Signals */}
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
           <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Macro Signals</h3>
           {!macro ? (
@@ -232,34 +226,33 @@ export default function Dashboard() {
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#888888]">VIX Level</span>
                 <span className="text-sm font-bold font-mono" style={{ color: vixColor(macro.vix) }}>
-                  {macro.vix != null ? macro.vix.toFixed(2) : '—'}
+                  {macro.vix != null ? macro.vix.toFixed(2) : '---'}
                   {macro.signals?.vix_regime && <span className="ml-1 text-xs font-normal">({macro.signals.vix_regime})</span>}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#888888]">Yield Curve (10Y-2Y)</span>
                 <span className="text-sm font-mono" style={{ color: macro.signals?.yield_curve_inverted ? '#ff1744' : '#00c853' }}>
-                  {macro.yield_spread_10y2y != null ? `${(macro.yield_spread_10y2y * 100).toFixed(0)} bps` : '—'}
+                  {macro.yield_spread_10y2y != null ? `${(macro.yield_spread_10y2y * 100).toFixed(0)} bps` : '---'}
                   {macro.signals?.yield_curve_inverted != null && <span className="ml-1 text-xs">({macro.signals.yield_curve_inverted ? 'INVERTED' : 'normal'})</span>}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#888888]">Macro Bias</span>
                 <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ color: biasColor(macro.macro_bias), background: `${biasColor(macro.macro_bias)}20` }}>
-                  {macro.macro_bias?.replace('_', ' ').toUpperCase() ?? '—'}
+                  {macro.macro_bias?.replace('_', ' ').toUpperCase() ?? '---'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#888888]">Macro Score</span>
                 <span className="text-sm font-bold font-mono" style={{ color: biasColor(macro.macro_bias) }}>
-                  {macro.macro_score != null ? (macro.macro_score > 0 ? `+${macro.macro_score}` : macro.macro_score) : '—'} / 3
+                  {macro.macro_score != null ? (macro.macro_score > 0 ? `+${macro.macro_score}` : macro.macro_score) : '---'} / 3
                 </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Reddit Buzz */}
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
           <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Reddit Buzz (WSB)</h3>
           {!sentiment ? (
