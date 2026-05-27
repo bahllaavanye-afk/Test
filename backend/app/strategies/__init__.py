@@ -22,6 +22,11 @@ from app.strategies.manual.kalman_pairs import KalmanPairsStrategy
 from app.strategies.manual.vrp_systematic import VRPSystematicStrategy
 from app.strategies.manual.hmm_regime import HMMRegimeStrategy
 from app.strategies.manual.opening_range_breakout import OpeningRangeBreakoutStrategy
+from app.strategies.manual.overnight_return import OvernightReturnStrategy
+from app.strategies.manual.order_flow_imbalance import OrderFlowImbalanceStrategy
+from app.strategies.manual.earnings_accruals import EarningsAccrualsStrategy
+from app.strategies.manual.cross_asset_carry import CrossAssetCarryStrategy
+from app.strategies.manual.vol_term_structure import VolTermStructureStrategy
 from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
 from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
@@ -52,6 +57,11 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "vrp_systematic": VRPSystematicStrategy,
     "hmm_regime": HMMRegimeStrategy,
     "opening_range_breakout": OpeningRangeBreakoutStrategy,
+    "overnight_return": OvernightReturnStrategy,
+    "order_flow_imbalance": OrderFlowImbalanceStrategy,
+    "earnings_accruals": EarningsAccrualsStrategy,
+    "cross_asset_carry": CrossAssetCarryStrategy,
+    "vol_term_structure": VolTermStructureStrategy,
     "ml_momentum": MLMomentumStrategy,
     "ml_pca_arb": MLPCAStatArbStrategy,
     "ml_mean_reversion": MLMeanReversionStrategy,
