@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import api from '../api/client'
 import { RegimeIndicator } from '../components/risk/RegimeIndicator'
 import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
-import MockCandlestickChart from '../components/charts/MockCandlestickChart'
+import LiveChartPlaceholder from '../components/charts/MockCandlestickChart'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -32,7 +32,6 @@ function MetricCard({ label, value, sub, color = '#f5a623' }: { label: string; v
 function ConfirmLiveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
   const [input, setInput] = useState('')
   const valid = input.trim() === 'CONFIRM LIVE'
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-[#111111] border border-[#ff1744]/40 rounded-xl p-6 w-full max-w-md shadow-2xl">
@@ -50,30 +49,13 @@ function ConfirmLiveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCa
           <li>Risk limits and position sizing apply immediately</li>
         </ul>
         <p className="text-xs text-[#888888] mb-2">Type <span className="text-white font-mono font-bold">CONFIRM LIVE</span> to proceed:</p>
-        <input
-          autoFocus
-          value={input}
-          onChange={e => setInput(e.target.value)}
+        <input autoFocus value={input} onChange={e => setInput(e.target.value)}
           className="w-full bg-[#0a0a0a] border border-[#1e1e1e] rounded px-3 py-2 text-sm font-mono text-white mb-4 focus:outline-none focus:border-[#ff1744]/60"
-          placeholder="CONFIRM LIVE"
-        />
+          placeholder="CONFIRM LIVE" />
         <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2 rounded bg-[#1e1e1e] text-[#888888] text-sm hover:bg-[#2e2e2e] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => valid && onConfirm()}
-            disabled={!valid}
-            className="flex-1 px-4 py-2 rounded text-sm font-bold transition-all duration-200"
-            style={{
-              background: valid ? '#ff1744' : '#3a1a1e',
-              color: valid ? '#fff' : '#666',
-              cursor: valid ? 'pointer' : 'not-allowed',
-            }}
-          >
+          <button onClick={onCancel} className="flex-1 px-4 py-2 rounded bg-[#1e1e1e] text-[#888888] text-sm hover:bg-[#2e2e2e] transition-colors">Cancel</button>
+          <button onClick={() => valid && onConfirm()} disabled={!valid} className="flex-1 px-4 py-2 rounded text-sm font-bold transition-all duration-200"
+            style={{ background: valid ? '#ff1744' : '#3a1a1e', color: valid ? '#fff' : '#666', cursor: valid ? 'pointer' : 'not-allowed' }}>
             Switch to Live
           </button>
         </div>
@@ -82,28 +64,11 @@ function ConfirmLiveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCa
   )
 }
 
-const BENCHMARKS = [
-  { label: 'SPY (S&P 500)', ytd: 11.4, sharpe: 0.47, color: '#2196F3' },
-  { label: 'QQQ (NASDAQ)', ytd: 14.2, sharpe: 0.61, color: '#9C27B0' },
-  { label: 'BRK.B (Buffett)', ytd: 9.8, sharpe: 0.79, color: '#FF9800' },
-  { label: 'All Weather', ytd: 6.3, sharpe: 0.67, color: '#4CAF50' },
-  { label: 'QuantEdge', ytd: 0, sharpe: 0, color: '#f5a623', isUs: true },
-]
-
-const AGENTS = [
-  { name: 'AlgoAgent', role: 'Strategy Optimizer', status: true },
-  { name: 'RiskAgent', role: 'Risk Monitor', status: true },
-  { name: 'DataAgent', role: 'Market Data Feed', status: true },
-  { name: 'ExecutionAgent', role: 'Order Router', status: true },
-  { name: 'MacroAgent', role: 'Macro Signals', status: false },
-  { name: 'SentimentAgent', role: 'Reddit/WSB', status: true },
-  { name: 'MLAgent', role: 'Model Training', status: false },
-]
-
 export default function Dashboard() {
   const dispatch = useDispatch()
   const mode = useSelector(selectTradingMode)
   const [showLiveModal, setShowLiveModal] = useState(false)
+  const [chartSymbol, setChartSymbol] = useState('NYSE:SPY')
 
   const { data: perf } = useQuery({ queryKey: ['performance'], queryFn: () => api.get('/analytics/performance').then(r => r.data), refetchInterval: 30_000 })
   const { data: positions } = useQuery({ queryKey: ['positions'], queryFn: () => api.get('/positions/').then(r => r.data), refetchInterval: 10_000 })
@@ -111,169 +76,147 @@ export default function Dashboard() {
   const { data: macro } = useQuery({ queryKey: ['macro'], queryFn: () => api.get('/analytics/macro').then(r => r.data), refetchInterval: 300_000 })
   const { data: sentiment } = useQuery({ queryKey: ['sentiment'], queryFn: () => api.get('/analytics/sentiment').then(r => r.data), refetchInterval: 600_000 })
   const { data: agentStatus } = useQuery({ queryKey: ['agents-status'], queryFn: () => api.get('/agents/status').then(r => r.data), refetchInterval: 15_000 })
+  const { data: accounts } = useQuery({ queryKey: ['accounts'], queryFn: () => api.get('/accounts/').then(r => r.data), refetchInterval: 30_000 })
 
-  const activeCount = strategies?.filter((s: any) => s.is_active || s.is_enabled)?.length ?? 0
+  const activeCount = Array.isArray(strategies) ? strategies.filter((s: any) => s.is_active || s.is_enabled).length : 0
   const totalPnl = perf?.total_pnl ?? 0
-
-  // Compute QuantEdge benchmark vs others based on PnL
-  const qePct = perf ? (totalPnl / 100000) * 100 : 0 // Assume $100k starting capital
-  const maxYtd = Math.max(...BENCHMARKS.map(b => b.ytd), Math.abs(qePct), 15)
-
-  function handleSwitchToLive() {
-    dispatch(setMode('live'))
-    setShowLiveModal(false)
-  }
-
-  function handleSwitchToPaper() {
-    dispatch(setMode('paper'))
-  }
+  const noAccountConnected = !accounts || (Array.isArray(accounts) && accounts.length === 0)
+  const agentList: any[] = Array.isArray(agentStatus?.agents) ? agentStatus.agents : []
 
   const isLive = mode === 'live'
   const isPaper = mode === 'paper'
+  const CHART_SYMBOLS = ['NYSE:SPY', 'NASDAQ:AAPL', 'NASDAQ:MSFT', 'NASDAQ:QQQ']
 
   return (
     <div className="space-y-5">
-      {/* Modal */}
-      {showLiveModal && (
-        <ConfirmLiveModal onConfirm={handleSwitchToLive} onCancel={() => setShowLiveModal(false)} />
-      )}
+      {showLiveModal && <ConfirmLiveModal onConfirm={() => { dispatch(setMode('live')); setShowLiveModal(false) }} onCancel={() => setShowLiveModal(false)} />}
 
       {/* Mode Banner */}
-      <div
-        className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all duration-500 ${
-          isLive
-            ? 'bg-[#ff1744]/10 border border-[#ff1744]/40'
-            : 'bg-[#f5a623]/10 border border-[#f5a623]/30'
-        }`}
-      >
+      <div className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all duration-500 ${isLive ? 'bg-[#ff1744]/10 border border-[#ff1744]/40' : 'bg-[#f5a623]/10 border border-[#f5a623]/30'}`}>
         <div className="flex items-center gap-3">
-          <span
-            className="w-3 h-3 rounded-full inline-block"
-            style={{
-              background: isLive ? '#ff1744' : '#f5a623',
-              boxShadow: isLive ? '0 0 8px #ff1744' : '0 0 8px #f5a623',
-              animation: isLive ? 'pulse 1s infinite' : 'none',
-            }}
-          />
+          <span className="w-3 h-3 rounded-full inline-block"
+            style={{ background: isLive ? '#ff1744' : '#f5a623', boxShadow: isLive ? '0 0 8px #ff1744' : '0 0 8px #f5a623', animation: isLive ? 'pulse 1s infinite' : 'none' }} />
           <div>
             <p className="text-sm font-bold" style={{ color: isLive ? '#ff1744' : '#f5a623' }}>
               {isLive ? 'LIVE TRADING — REAL MONEY AT RISK' : 'PAPER TRADING MODE'}
             </p>
             <p className="text-xs text-[#888888] mt-0.5">
-              {isLive
-                ? 'Strategies are executing against live markets. Monitor positions closely.'
-                : 'All orders are simulated. No real capital at risk. Run paper for 2 weeks before going live.'}
+              {isLive ? 'Strategies are executing against live markets. Monitor positions closely.' : 'All orders are simulated. No real capital at risk. Run paper for 2 weeks before going live.'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {isPaper && (
-            <button
-              onClick={() => setShowLiveModal(true)}
-              className="px-3 py-1.5 rounded text-xs font-bold text-white transition-all duration-200 hover:opacity-90 active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #ff1744, #c62828)' }}
-            >
-              Switch to Live Trading
-            </button>
+            <button onClick={() => setShowLiveModal(true)} className="px-3 py-1.5 rounded text-xs font-bold text-white transition-all duration-200 hover:opacity-90 active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #ff1744, #c62828)' }}>Switch to Live Trading</button>
           )}
           {isLive && (
-            <button
-              onClick={handleSwitchToPaper}
-              className="px-3 py-1.5 rounded text-xs font-bold text-black transition-all duration-200 hover:opacity-90 active:scale-95"
-              style={{ background: '#f5a623' }}
-            >
-              Switch to Paper
-            </button>
+            <button onClick={() => dispatch(setMode('paper'))} className="px-3 py-1.5 rounded text-xs font-bold text-black transition-all duration-200 hover:opacity-90 active:scale-95"
+              style={{ background: '#f5a623' }}>Switch to Paper</button>
           )}
         </div>
       </div>
 
+      {/* No account connected banner */}
+      {noAccountConnected && (
+        <div className="bg-[#111111] border border-[#f5a623]/30 rounded-lg p-4 flex items-center gap-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+          </svg>
+          <div>
+            <p className="text-sm text-[#f5a623] font-semibold">Connect your Alpaca account to see live P&amp;L</p>
+            <p className="text-xs text-[#888888] mt-0.5">No broker account detected. <a href="/settings" className="text-[#f5a623] underline">Add API keys in Settings</a> to start paper trading.</p>
+          </div>
+        </div>
+      )}
+
       {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Total P&L" value={`$${totalPnl.toFixed(2)}`} sub={`${perf?.total_trades ?? 0} trades`} color={totalPnl >= 0 ? '#00c853' : '#ff1744'} />
-        <MetricCard label="Open Positions" value={String(positions?.length ?? 0)} sub="live positions" color="#2979ff" />
+        <MetricCard label="Total P&L" value={perf ? `$${totalPnl.toFixed(2)}` : '—'} sub={perf ? `${perf.total_trades ?? 0} trades` : 'Connect Alpaca to see P&L'} color={perf ? (totalPnl >= 0 ? '#00c853' : '#ff1744') : '#555555'} />
+        <MetricCard label="Open Positions" value={Array.isArray(positions) ? String(positions.length) : '—'} sub="live positions" color="#2979ff" />
         <MetricCard label="Active Strategies" value={String(activeCount)} sub="running 24/7" color="#f5a623" />
         <MetricCard label="Target Sharpe" value=">2.0" sub="vs SPY 0.47" color="#9C27B0" />
       </div>
 
-      {/* Market Regime */}
       <RegimeIndicator />
 
       <div className="grid grid-cols-3 gap-4">
-        {/* Main chart */}
-        <div className="col-span-2">
-          <MockCandlestickChart symbol="NYSE:SPY" height={420} />
+        <div className="col-span-2 flex flex-col gap-2">
+          <div className="flex gap-2">
+            {CHART_SYMBOLS.map(s => (
+              <button key={s} onClick={() => setChartSymbol(s)}
+                className="text-xs px-2 py-1 rounded transition-colors"
+                style={{ background: chartSymbol === s ? '#f5a623' : '#1e1e1e', color: chartSymbol === s ? '#000' : '#888' }}>
+                {s.split(':')[1]}
+              </button>
+            ))}
+          </div>
+          <LiveChartPlaceholder symbol={chartSymbol} height={400} />
         </div>
 
         <div className="space-y-3">
-          {/* Benchmark Comparison */}
+          {/* Account summary from real API */}
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
-            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">YTD Benchmark Comparison</h3>
-            <div className="space-y-2.5">
-              {BENCHMARKS.map(b => {
-                const ytdVal = b.isUs ? qePct : b.ytd
-                const barWidth = Math.min(Math.abs(ytdVal) / maxYtd * 100, 100)
-                const isNeg = ytdVal < 0
-                return (
-                  <div key={b.label}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs" style={{ color: b.color }}>{b.label}</span>
-                      <span className="text-xs font-mono font-bold" style={{ color: b.color }}>
-                        {b.isUs ? (ytdVal >= 0 ? '+' : '') + ytdVal.toFixed(2) + '%' : `+${b.ytd}%`}
+            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Account Summary</h3>
+            {noAccountConnected ? (
+              <div className="text-center py-4 space-y-2">
+                <p className="text-xs text-[#888888]">No account connected</p>
+                <a href="/settings" className="text-xs text-[#f5a623] underline">Add API keys in Settings</a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(Array.isArray(accounts) ? accounts : [accounts]).filter(Boolean).map((acc: any, i: number) => (
+                  <div key={acc?.id ?? i} className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#888888]">{acc?.broker ?? 'Account'}</span>
+                      <span className="text-xs font-mono font-bold" style={{ color: (acc?.total_pnl ?? 0) >= 0 ? '#00c853' : '#ff1744' }}>
+                        {acc?.total_pnl != null ? `${acc.total_pnl >= 0 ? '+' : ''}$${acc.total_pnl.toFixed(2)}` : '—'}
                       </span>
                     </div>
-                    <div className="h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-1000"
-                        style={{
-                          width: `${barWidth}%`,
-                          background: isNeg ? '#ff1744' : b.color,
-                          boxShadow: b.isUs ? `0 0 6px ${b.color}60` : 'none',
-                        }}
-                      />
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#555]">Equity</span>
+                      <span className="text-xs font-mono text-[#e8e8e8]">
+                        {acc?.equity != null ? `$${Number(acc.equity).toLocaleString()}` : '—'}
+                      </span>
                     </div>
-                    <p className="text-[10px] text-[#555] mt-0.5">Sharpe {b.isUs ? (perf?.sharpe_ratio?.toFixed(2) ?? '—') : b.sharpe}</p>
                   </div>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Team Agents Status */}
+          {/* Agent Team from real API only */}
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
-            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Agent Team ({AGENTS.length})</h3>
-            <div className="space-y-1.5">
-              {AGENTS.map((agent) => {
-                const apiStatus = agentStatus?.agents?.find?.((a: any) => a.name?.toLowerCase().includes(agent.name.toLowerCase()))
-                const isRunning = apiStatus ? apiStatus.running : agent.status
-                const actionCount = apiStatus?.total_runs ?? Math.floor(Math.random() * 200 + 10)
-                const lastAction = apiStatus?.last_run
-                  ? new Date(apiStatus.last_run).toLocaleTimeString()
-                  : `${Math.floor(Math.random() * 59 + 1)}m ago`
-
-                return (
-                  <div key={agent.name} className="flex items-center gap-2 py-1 group">
-                    <span
-                      className="w-2 h-2 rounded-full flex-shrink-0 transition-all"
-                      style={{
-                        background: isRunning ? '#00c853' : '#ff1744',
-                        boxShadow: isRunning ? '0 0 5px #00c853' : 'none',
-                      }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-[#e8e8e8] truncate">{agent.name}</span>
-                        <span className="text-[10px] text-[#555] ml-1 flex-shrink-0">{actionCount} runs</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-[#555] truncate">{agent.role}</span>
-                        <span className="text-[10px] text-[#444] flex-shrink-0">{lastAction}</span>
+            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">
+              Agent Team ({agentList.length > 0 ? agentList.length : '—'})
+            </h3>
+            {agentList.length === 0 ? (
+              <p className="text-xs text-[#555]">No agent status. Start the backend to see agent health.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {agentList.map((agent: any) => {
+                  const isRunning = agent.running ?? false
+                  return (
+                    <div key={agent.name} className="flex items-center gap-2 py-1">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: isRunning ? '#00c853' : '#ff1744', boxShadow: isRunning ? '0 0 5px #00c853' : 'none' }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-[#e8e8e8] truncate">{agent.name}</span>
+                          <span className="text-[10px] text-[#555] ml-1 flex-shrink-0">{agent.total_runs ?? 0} runs</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-[#555] truncate">{agent.role ?? ''}</span>
+                          <span className="text-[10px] text-[#444] flex-shrink-0">
+                            {agent.last_run ? new Date(agent.last_run).toLocaleTimeString() : '—'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -283,29 +226,21 @@ export default function Dashboard() {
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
           <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Macro Signals</h3>
           {!macro ? (
-            <div className="space-y-2">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />
-              ))}
-            </div>
+            <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />)}</div>
           ) : (
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#888888]">VIX Level</span>
                 <span className="text-sm font-bold font-mono" style={{ color: vixColor(macro.vix) }}>
                   {macro.vix != null ? macro.vix.toFixed(2) : '—'}
-                  {macro.signals?.vix_regime && (
-                    <span className="ml-1 text-xs font-normal">({macro.signals.vix_regime})</span>
-                  )}
+                  {macro.signals?.vix_regime && <span className="ml-1 text-xs font-normal">({macro.signals.vix_regime})</span>}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#888888]">Yield Curve (10Y-2Y)</span>
                 <span className="text-sm font-mono" style={{ color: macro.signals?.yield_curve_inverted ? '#ff1744' : '#00c853' }}>
                   {macro.yield_spread_10y2y != null ? `${(macro.yield_spread_10y2y * 100).toFixed(0)} bps` : '—'}
-                  {macro.signals?.yield_curve_inverted != null && (
-                    <span className="ml-1 text-xs">({macro.signals.yield_curve_inverted ? 'INVERTED' : 'normal'})</span>
-                  )}
+                  {macro.signals?.yield_curve_inverted != null && <span className="ml-1 text-xs">({macro.signals.yield_curve_inverted ? 'INVERTED' : 'normal'})</span>}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -328,13 +263,11 @@ export default function Dashboard() {
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
           <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Reddit Buzz (WSB)</h3>
           {!sentiment ? (
-            <div className="space-y-2">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />
-              ))}
-            </div>
+            <div className="space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />)}</div>
           ) : sentiment.error ? (
             <p className="text-xs text-[#888888]">Sentiment unavailable</p>
+          ) : (Array.isArray(sentiment.results) && sentiment.results.length === 0) ? (
+            <p className="text-xs text-[#555]">No sentiment data available</p>
           ) : (
             <div className="space-y-2">
               {(sentiment.results ?? []).slice(0, 5).map((item: any, i: number) => {
@@ -357,12 +290,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-      `}</style>
+      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
     </div>
   )
 }
