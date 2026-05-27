@@ -62,6 +62,14 @@ async def lifespan(app: FastAPI):
     qa_monitor = QAMonitor(interval_seconds=300)
     app.state.qa_monitor = qa_monitor
 
+    from app.tasks.research_scientist import ResearchScientist
+    research_scientist = ResearchScientist(interval_seconds=3600)
+    app.state.research_scientist = research_scientist
+
+    from app.tasks.modeling_engineer import ModelingEngineer
+    modeling_engineer = ModelingEngineer(interval_seconds=1800)
+    app.state.modeling_engineer = modeling_engineer
+
     bg_tasks = []
     app.state.bg_tasks = bg_tasks
 
@@ -70,6 +78,8 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: code_quality_loop.run(), "code_quality_loop")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: correlation_monitor.run_forever(), "correlation_monitor")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: qa_monitor.run(), "qa_monitor")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: research_scientist.run(), "research_scientist")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: modeling_engineer.run(), "modeling_engineer")))
 
     yield
 

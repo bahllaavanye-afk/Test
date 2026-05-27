@@ -63,3 +63,5 @@ qa_fix_log.jsonl
 qa_health_report.json
 backend/dev.db
 backend/.env
+experiments/research_log.jsonl
+experiments/modeling_log.jsonl
