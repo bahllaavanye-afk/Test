@@ -1,4 +1,4 @@
-"""Options trading endpoints: chain, snapshots, expirations.
+"""Options trading endpoints: chain, snapshots, expirations, rules validation.
 
 Proxies Alpaca's options API. Uses settings.alpaca_api_key and
 settings.alpaca_secret_key directly for market data (no per-account
@@ -6,15 +6,21 @@ credentials needed).
 """
 from __future__ import annotations
 
-from datetime import date
-from typing import Literal
+import math
+from datetime import date, datetime, timezone
+from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.api.deps import get_current_user
 from app.config import settings
+from app.database import get_db
 from app.models.user import User
+from app.models.account import Account
 
 router = APIRouter(prefix="/options", tags=["options"])
 
@@ -211,6 +217,256 @@ async def get_options_expirations(
     contracts: list[dict] = data.get("option_contracts") or []
     dates = sorted({c["expiration_date"] for c in contracts if c.get("expiration_date")})
     return {"underlying": underlying.upper(), "expirations": dates}
+
+
+# ── Options Rules Validation ───────────────────────────────────────────────
+
+
+class OptionsRulesRequest(BaseModel):
+    account_id: Optional[str] = None
+    symbol: str
+    option_symbol: str
+    expiration_date: str  # YYYY-MM-DD
+    side: Literal["buy", "sell"]
+    quantity: int = 1
+    credit_received: float = 0.0  # per share (× 100 for contract value)
+    delta: float = 0.0
+    strategy_type: Literal["csp", "covered_call", "iron_condor", "long_call", "long_put"] = "csp"
+
+
+async def _fetch_account_equity(account_id: str, current_user: User, db: AsyncSession) -> float:
+    """Fetch account equity from Alpaca for a given account."""
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+    )
+    acct = result.scalar_one_or_none()
+    if not acct or acct.broker != "alpaca" or not acct.encrypted_key:
+        return 0.0
+    try:
+        from app.brokers.alpaca_orders import get_alpaca_account
+        data = await get_alpaca_account(acct)
+        return float(data.get("equity", 0))
+    except Exception:
+        return 0.0
+
+
+async def _fetch_iv_rank(symbol: str) -> Optional[float]:
+    """
+    Compute a proxy IV rank from Alpaca historical bars using 52-week realized vol.
+    Returns a value 0–100 representing where current IV sits vs 52-week range.
+    Falls back to None on any error.
+    """
+    headers = {
+        "APCA-API-KEY-ID": settings.alpaca_api_key,
+        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+    }
+    start_dt = (datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                - __import__("datetime").timedelta(days=380)).strftime("%Y-%m-%d")
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://data.alpaca.markets/v2/stocks/bars",
+                headers=headers,
+                params={
+                    "symbols": symbol.upper(),
+                    "timeframe": "1Day",
+                    "start": start_dt,
+                    "feed": "iex",
+                    "adjustment": "raw",
+                },
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            bars = data.get("bars", {}).get(symbol.upper(), [])
+            if len(bars) < 20:
+                return None
+
+            closes = [float(b["c"]) for b in bars]
+
+            # Rolling 30-day realized vol windows across 52 weeks
+            window = 21  # ~1 month
+            rv_list = []
+            for i in range(window, len(closes)):
+                window_closes = closes[i - window: i]
+                returns = [math.log(window_closes[j] / window_closes[j - 1])
+                           for j in range(1, len(window_closes))]
+                mean_r = sum(returns) / len(returns)
+                variance = sum((r - mean_r) ** 2 for r in returns) / max(len(returns) - 1, 1)
+                rv = math.sqrt(variance * 252) * 100  # annualised %
+                rv_list.append(rv)
+
+            if not rv_list:
+                return None
+
+            current_rv = rv_list[-1]
+            min_rv = min(rv_list)
+            max_rv = max(rv_list)
+            if max_rv == min_rv:
+                return 50.0
+            iv_rank = (current_rv - min_rv) / (max_rv - min_rv) * 100.0
+            return round(iv_rank, 1)
+    except Exception:
+        return None
+
+
+@router.post("/rules/validate")
+async def validate_options_rules(
+    body: OptionsRulesRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Validate an options trade against professional Options Alpha risk rules.
+    Returns pass/warn/fail status per rule plus calculated exit levels.
+    """
+    # Fetch account equity if account_id provided
+    account_equity = 0.0
+    if body.account_id:
+        account_equity = await _fetch_account_equity(body.account_id, current_user, db)
+
+    # ── DTE check ─────────────────────────────────────────────────────────
+    today = date.today()
+    try:
+        exp_date = date.fromisoformat(body.expiration_date)
+        dte_value = max(0, (exp_date - today).days)
+    except ValueError:
+        dte_value = 0
+
+    if dte_value < 21:
+        dte_status = "error"
+    elif dte_value < 30:
+        dte_status = "warn"
+    elif dte_value <= 45:
+        dte_status = "ok"
+    elif dte_value <= 60:
+        dte_status = "warn"
+    else:
+        dte_status = "warn"
+
+    # ── Delta check ────────────────────────────────────────────────────────
+    abs_delta = abs(body.delta)
+    is_selling = body.side == "sell"
+    if is_selling and body.strategy_type in ("csp", "covered_call"):
+        if abs_delta > 0.35:
+            delta_status = "error"
+        elif abs_delta < 0.10:
+            delta_status = "warn"
+        elif 0.20 <= abs_delta <= 0.30:
+            delta_status = "ok"
+        else:
+            delta_status = "warn"
+    else:
+        # For long strategies, delta is a feature not a constraint
+        delta_status = "ok"
+
+    # ── IV Rank check ──────────────────────────────────────────────────────
+    iv_rank = await _fetch_iv_rank(body.symbol)
+    if iv_rank is None:
+        iv_rank_status = "warn"
+    elif iv_rank < 30:
+        iv_rank_status = "error" if is_selling else "ok"
+    elif iv_rank < 50:
+        iv_rank_status = "warn" if is_selling else "ok"
+    else:
+        iv_rank_status = "ok"
+
+    # ── Position size check ────────────────────────────────────────────────
+    contract_value = body.credit_received * 100.0
+    if account_equity > 0 and contract_value > 0:
+        max_quantity = int(account_equity * 0.05 / contract_value)
+    else:
+        max_quantity = 0  # unknown
+
+    if max_quantity > 0:
+        position_size_status = "ok" if body.quantity <= max_quantity else "error"
+    else:
+        position_size_status = "warn"
+
+    # ── Build rules summary ────────────────────────────────────────────────
+    rules = {
+        "dte": {
+            "value": dte_value,
+            "target": "30-45",
+            "status": dte_status,
+        },
+        "delta": {
+            "value": round(abs_delta, 3),
+            "target": "0.20-0.30" if is_selling else "any",
+            "status": delta_status,
+        },
+        "iv_rank": {
+            "value": iv_rank,
+            "target": ">50",
+            "status": iv_rank_status,
+        },
+        "position_size": {
+            "value": body.quantity,
+            "max": max_quantity if max_quantity > 0 else None,
+            "status": position_size_status,
+        },
+    }
+
+    # ── Warnings and errors ────────────────────────────────────────────────
+    warnings = []
+    errors = []
+
+    if dte_status == "warn":
+        if dte_value < 30:
+            warnings.append(f"DTE is {dte_value} — below optimal 30-45 range")
+        else:
+            warnings.append(f"DTE is {dte_value} — above optimal 30-45 range")
+    elif dte_status == "error":
+        errors.append(f"DTE is {dte_value} — too close to expiration (< 21 days), high gamma risk")
+
+    if delta_status == "warn":
+        warnings.append(f"|Delta| is {abs_delta:.2f} — outside optimal 0.20-0.30 range")
+    elif delta_status == "error":
+        errors.append(f"|Delta| is {abs_delta:.2f} — too aggressive (> 0.35), high assignment risk")
+
+    if iv_rank_status == "warn" and is_selling:
+        warnings.append(f"IV Rank is {iv_rank} — below optimal >50 for premium selling")
+    elif iv_rank_status == "error" and is_selling:
+        errors.append(f"IV Rank is {iv_rank} — too low (< 30), premium is cheap, poor selling environment")
+    elif iv_rank is None:
+        warnings.append("IV Rank unavailable — could not fetch historical volatility data")
+
+    if position_size_status == "warn":
+        warnings.append("Account equity unavailable — position size not validated")
+    elif position_size_status == "error":
+        errors.append(
+            f"Quantity {body.quantity} exceeds max {max_quantity} contracts "
+            f"(5% of ${account_equity:,.0f} equity @ ${contract_value:.0f}/contract)"
+        )
+
+    # ── Exit levels ────────────────────────────────────────────────────────
+    profit_target_price = round(body.credit_received * 0.50, 2) if body.credit_received > 0 else None
+    stop_loss_price = round(body.credit_received * 2.00, 2) if body.credit_received > 0 else None
+    max_profit = round(body.credit_received * 100.0 * body.quantity, 2)
+    max_loss_if_stopped = round(-stop_loss_price * 100.0 * body.quantity, 2) if stop_loss_price else None
+
+    # 21-DTE exit date
+    exit_before_date = None
+    if exp_date:
+        exit_dt = exp_date - __import__("datetime").timedelta(days=21)
+        exit_before_date = exit_dt.isoformat()
+
+    is_valid = len(errors) == 0
+
+    return {
+        "is_valid": is_valid,
+        "warnings": warnings,
+        "errors": errors,
+        "rules": rules,
+        "profit_target_price": profit_target_price,
+        "stop_loss_price": stop_loss_price,
+        "exit_before_date": exit_before_date,
+        "max_profit": max_profit,
+        "max_loss_if_stopped": max_loss_if_stopped,
+        "account_equity": round(account_equity, 2),
+        "dte": dte_value,
+    }
 
 
 # ── Legacy endpoints (kept for backward compatibility) ──────────────────────

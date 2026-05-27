@@ -2,10 +2,13 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import Optional
+import re
+import math
 import httpx
 import pandas as pd
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -434,4 +437,211 @@ async def get_tax_lots(
         "total_unrealized_pnl": round(float(total_unrealized_pnl), 2),
         "recommended_method": recommended_method,
         "tax_savings_hifo_vs_fifo": tax_savings_hifo_vs_fifo,
+    }
+
+
+# ─── Portfolio Greeks ─────────────────────────────────────────────────────────
+
+_ALPACA_OPTIONS_BASE = "https://paper-api.alpaca.markets"
+
+_OPTION_SYMBOL_RE = re.compile(
+    r"^[A-Z]{1,6}\d{6}[CP]\d{8}$"
+)
+
+
+def _is_option_symbol(symbol: str) -> bool:
+    """Return True if symbol looks like an OCC-formatted option symbol."""
+    return bool(_OPTION_SYMBOL_RE.match(symbol.upper()))
+
+
+async def _fetch_options_snapshots_for_symbols(symbols: list[str]) -> dict[str, dict]:
+    """Fetch Alpaca options snapshots for a list of option symbols."""
+    if not symbols:
+        return {}
+    headers = {
+        "APCA-API-KEY-ID": settings.alpaca_api_key,
+        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+        "accept": "application/json",
+    }
+    results: dict[str, dict] = {}
+    BATCH = 50
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for i in range(0, len(symbols), BATCH):
+            batch = symbols[i : i + BATCH]
+            try:
+                resp = await client.get(
+                    f"{_ALPACA_OPTIONS_BASE}/v2/options/snapshots",
+                    params={"symbols": ",".join(batch), "feed": "indicative"},
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results.update(data.get("snapshots") or {})
+            except Exception:
+                pass
+    return results
+
+
+async def _get_account_equity_for_user(
+    account_id: Optional[str],
+    current_user: "User",
+    db: AsyncSession,
+) -> float:
+    """Sum equity across user accounts (or a specific account). Falls back to 0."""
+    acct_q = select(Account).where(
+        Account.user_id == current_user.id,
+        Account.is_active == True,  # noqa: E712
+    )
+    if account_id:
+        acct_q = acct_q.where(Account.id == account_id)
+    acct_result = await db.execute(acct_q)
+    accounts = acct_result.scalars().all()
+
+    total_equity = 0.0
+    for acct in accounts:
+        if acct.broker == "alpaca" and acct.encrypted_key:
+            try:
+                from app.brokers.alpaca_orders import get_alpaca_account
+                data = await get_alpaca_account(acct)
+                total_equity += float(data.get("equity", 0))
+            except Exception:
+                pass
+    return total_equity
+
+
+@router.get("/portfolio-greeks")
+async def get_portfolio_greeks(
+    account_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Aggregate portfolio-level options Greeks across all open option positions.
+    Returns net delta/gamma/theta/vega, targets, warnings, and per-position breakdown.
+    """
+    # Resolve accounts
+    acct_q = select(Account).where(
+        Account.user_id == current_user.id,
+        Account.is_active == True,  # noqa: E712
+    )
+    if account_id:
+        acct_q = acct_q.where(Account.id == account_id)
+    acct_result = await db.execute(acct_q)
+    accounts = acct_result.scalars().all()
+
+    account_ids = [a.id for a in accounts]
+    if not account_ids:
+        raise HTTPException(status_code=404, detail="No active accounts found for this user.")
+
+    # Fetch all open positions
+    pos_result = await db.execute(
+        select(Position).where(Position.account_id.in_(account_ids))
+    )
+    all_positions = pos_result.scalars().all()
+
+    # Filter to option positions
+    option_positions = [p for p in all_positions if _is_option_symbol(p.symbol)]
+
+    # Fetch account equity
+    account_equity = await _get_account_equity_for_user(account_id, current_user, db)
+
+    if not option_positions:
+        theta_target = account_equity * 0.0015
+        delta_limit = 0.30 * account_equity / 100.0
+        return {
+            "net_delta": 0.0,
+            "net_gamma": 0.0,
+            "net_theta": 0.0,
+            "net_vega": 0.0,
+            "theta_target": round(theta_target, 2),
+            "theta_pct_of_target": 0.0,
+            "delta_limit": round(delta_limit, 2),
+            "is_delta_neutral": True,
+            "warnings": [],
+            "position_count": 0,
+            "options_positions": [],
+            "account_equity": round(account_equity, 2),
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    # Fetch snapshots for all option symbols
+    opt_symbols = [p.symbol.upper() for p in option_positions]
+    snapshots = await _fetch_options_snapshots_for_symbols(opt_symbols)
+
+    # Aggregate Greeks
+    net_delta = 0.0
+    net_gamma = 0.0
+    net_theta = 0.0
+    net_vega = 0.0
+    positions_out = []
+
+    for pos in option_positions:
+        sym = pos.symbol.upper()
+        qty = float(pos.quantity)
+        snap = snapshots.get(sym, {})
+        greeks = snap.get("greeks") or {}
+        iv = snap.get("impliedVolatility")
+
+        delta = greeks.get("delta") or 0.0
+        gamma = greeks.get("gamma") or 0.0
+        theta = greeks.get("theta") or 0.0
+        vega = greeks.get("vega") or 0.0
+
+        # Multiply by quantity and 100 (contract multiplier)
+        multiplier = qty * 100.0
+        pos_delta = delta * multiplier
+        pos_gamma = gamma * multiplier
+        pos_theta = theta * multiplier
+        pos_vega = vega * multiplier
+
+        net_delta += pos_delta
+        net_gamma += pos_gamma
+        net_theta += pos_theta
+        net_vega += pos_vega
+
+        positions_out.append({
+            "symbol": sym,
+            "quantity": qty,
+            "delta": round(delta, 4),
+            "gamma": round(gamma, 4),
+            "theta": round(theta, 4),
+            "vega": round(vega, 4),
+            "iv": round(float(iv), 4) if iv is not None else None,
+            "position_delta": round(pos_delta, 4),
+            "position_gamma": round(pos_gamma, 4),
+            "position_theta": round(pos_theta, 4),
+            "position_vega": round(pos_vega, 4),
+        })
+
+    # Calculate targets
+    theta_target = account_equity * 0.0015 if account_equity > 0 else 0.0
+    delta_limit = 0.30 * account_equity / 100.0 if account_equity > 0 else 0.0
+    theta_pct_of_target = (net_theta / theta_target * 100.0) if theta_target > 0 else 0.0
+    is_delta_neutral = abs(net_delta) < delta_limit if delta_limit > 0 else True
+
+    # Build warnings
+    warnings = []
+    if net_vega < -1000:
+        warnings.append("Net vega exceeds -1000 — high IV risk")
+    if not is_delta_neutral:
+        warnings.append(f"Net delta ({net_delta:+.2f}) exceeds limit (±{delta_limit:.2f}) — portfolio not delta neutral")
+    if theta_target > 0 and net_theta < theta_target * 0.5:
+        warnings.append(f"Net theta (${net_theta:.2f}) is below 50% of target (${theta_target:.2f}) — consider adding premium")
+    if account_equity == 0:
+        warnings.append("Unable to fetch account equity — targets may be zero")
+
+    return {
+        "net_delta": round(net_delta, 4),
+        "net_gamma": round(net_gamma, 4),
+        "net_theta": round(net_theta, 4),
+        "net_vega": round(net_vega, 4),
+        "theta_target": round(theta_target, 2),
+        "theta_pct_of_target": round(theta_pct_of_target, 2),
+        "delta_limit": round(delta_limit, 2),
+        "is_delta_neutral": is_delta_neutral,
+        "warnings": warnings,
+        "position_count": len(option_positions),
+        "options_positions": positions_out,
+        "account_equity": round(account_equity, 2),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
     }
