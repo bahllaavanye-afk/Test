@@ -52,8 +52,8 @@ export default function SystemMonitor() {
     refetchInterval: 60000,
   })
 
-  const isRunning: boolean = agentStatus?.running ?? false
-  const top3: string[] = agentStatus?.top_3 ?? []
+  const isRunning: boolean = agentStatus?.algo_agent?.running ?? false
+  const top3 = agentStatus?.algo_agent?.top_3 ?? []
 
   // Flatten bestParams: { strategy: { param: value, ... }, ... } → rows
   const paramRows: { strategy: string; param: string; value: string }[] = []
@@ -90,11 +90,11 @@ export default function SystemMonitor() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-[#888888]">Total Runs</p>
-              <p className="text-2xl font-bold text-[#f5a623]">{agentStatus?.total_runs ?? 0}</p>
+              <p className="text-2xl font-bold text-[#f5a623]">{agentStatus?.algo_agent?.total_runs ?? 0}</p>
             </div>
             <div>
               <p className="text-xs text-[#888888]">Candidates</p>
-              <p className="text-2xl font-bold text-[#2196f3]">{agentStatus?.candidates ?? 0}</p>
+              <p className="text-2xl font-bold text-[#2196f3]">{agentStatus?.algo_agent?.candidates ?? 0}</p>
             </div>
           </div>
           {top3.length > 0 && (
@@ -119,7 +119,10 @@ export default function SystemMonitor() {
           <h2 className="text-xs text-[#888888] uppercase tracking-wider mb-3">System Health</h2>
           <HealthRow label="Database" ok={true} detail="Supabase" />
           <HealthRow label="Redis" ok={true} detail="Upstash" />
-          <HealthRow label="AlgoAgent" ok={isRunning} detail={isRunning ? `${agentStatus?.total_runs ?? 0} runs` : 'Not running'} />
+          <HealthRow label="AlgoAgent" ok={isRunning} detail={isRunning ? `${agentStatus?.algo_agent?.total_runs ?? 0} runs` : 'Not running'} />
+          <HealthRow label="ResearchScientist" ok={agentStatus?.research_scientist?.running ?? false} detail={`${agentStatus?.research_scientist?.cycles_completed ?? 0} cycles`} />
+          <HealthRow label="ModelingEngineer" ok={agentStatus?.modeling_engineer?.running ?? false} detail={`${agentStatus?.modeling_engineer?.cycles_completed ?? 0} cycles`} />
+          <HealthRow label="QAMonitor" ok={agentStatus?.qa_monitor?.running ?? false} detail="Auto-fixing bugs" />
         </div>
       </div>
 
