@@ -6,19 +6,20 @@ import api from '../api/client'
 
 type Interval = '1' | '5' | '15' | '60' | '240' | 'D'
 
+// Alpaca crypto pairs — traded via Alpaca, charted via Coinbase/CRYPTO feed
 const CRYPTO_PAIRS = [
-  { tv: 'BINANCE:BTCUSDT',  label: 'BTC/USDT',  color: '#f7931a' },
-  { tv: 'BINANCE:ETHUSDT',  label: 'ETH/USDT',  color: '#627eea' },
-  { tv: 'BINANCE:SOLUSDT',  label: 'SOL/USDT',  color: '#9945ff' },
-  { tv: 'BINANCE:BNBUSDT',  label: 'BNB/USDT',  color: '#f3ba2f' },
-  { tv: 'COINBASE:BTCUSD',  label: 'BTC/USD',   color: '#0052ff' },
-  { tv: 'COINBASE:ETHUSD',  label: 'ETH/USD',   color: '#627eea' },
-  { tv: 'BINANCE:XRPUSDT',  label: 'XRP/USDT',  color: '#346aa9' },
-  { tv: 'BINANCE:ADAUSDT',  label: 'ADA/USDT',  color: '#0033ad' },
+  { tv: 'COINBASE:BTCUSD',  alpaca: 'BTC/USD',  label: 'BTC',  color: '#f7931a' },
+  { tv: 'COINBASE:ETHUSD',  alpaca: 'ETH/USD',  label: 'ETH',  color: '#627eea' },
+  { tv: 'COINBASE:SOLUSD',  alpaca: 'SOL/USD',  label: 'SOL',  color: '#9945ff' },
+  { tv: 'COINBASE:DOGEUSD', alpaca: 'DOGE/USD', label: 'DOGE', color: '#c2a633' },
+  { tv: 'COINBASE:LTCUSD',  alpaca: 'LTC/USD',  label: 'LTC',  color: '#bfbbbb' },
+  { tv: 'COINBASE:BCHUSD',  alpaca: 'BCH/USD',  label: 'BCH',  color: '#8dc351' },
+  { tv: 'COINBASE:UNIUSD',  alpaca: 'UNI/USD',  label: 'UNI',  color: '#ff007a' },
+  { tv: 'COINBASE:LINKUSD', alpaca: 'LINK/USD', label: 'LINK', color: '#2a5ada' },
 ]
 
 const CRYPTO_WATCHLIST = CRYPTO_PAIRS.map(p => p.tv)
-  .concat(['BINANCE:DOGEUSDT', 'BINANCE:AVAXUSDT', 'BINANCE:DOTUSDT', 'BINANCE:MATICUSDT'])
+  .concat(['COINBASE:AVAXUSD', 'COINBASE:MATICUSD', 'COINBASE:XRPUSD'])
 
 const INTERVALS: { label: string; value: Interval }[] = [
   { label: '1m',  value: '1' },
@@ -56,9 +57,9 @@ function ArbScanner() {
       <div className="px-3 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-[#f5a623] animate-pulse" />
-          <span className="text-[10px] text-[#555] uppercase tracking-wider font-medium">Triangular Arb Scanner</span>
+          <span className="text-[10px] text-[#555] uppercase tracking-wider font-medium">Spread Scanner</span>
         </div>
-        <span className="text-[10px] text-[#333]">BTC→ETH→USDT→BTC</span>
+        <span className="text-[10px] text-[#333]">Alpaca crypto spreads</span>
       </div>
       <div className="px-3 pb-2">
         {isLoading ? (
@@ -67,7 +68,7 @@ function ArbScanner() {
           <div className="space-y-1">
             {ops.map((op: any, i: number) => (
               <div key={i} className="flex items-center justify-between text-xs bg-[#111] rounded px-2 py-1.5">
-                <span className="font-mono text-[#e8e8e8]">{op.path ?? 'BTC→ETH→USDT→BTC'}</span>
+                <span className="font-mono text-[#e8e8e8]">{op.path ?? 'BTC/USD spread'}</span>
                 <span className="font-bold" style={{ color: (op.spread ?? 0) > 0 ? '#00c853' : '#ff1744' }}>
                   {op.spread != null ? `${(op.spread * 100).toFixed(3)}%` : '—'}
                 </span>
@@ -77,7 +78,7 @@ function ArbScanner() {
           </div>
         ) : (
           <p className="text-[10px] text-[#333] italic">
-            Strategy monitors BTC/ETH/USDT mismatches automatically. Signals fire when spread &gt; 0.15%.
+            Monitors BTC/ETH/SOL bid-ask spreads on Alpaca. Signals fire when spread &gt; 0.15%.
           </p>
         )}
       </div>
@@ -175,7 +176,7 @@ function CryptoOrders() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function CryptoTrading() {
-  const [activePair, setActivePair] = useState('BINANCE:BTCUSDT')
+  const [activePair, setActivePair] = useState('COINBASE:BTCUSD')
   const [interval, setInterval] = useState<Interval>('60')
   const [rightTab, setRightTab] = useState<'order' | 'positions' | 'orders'>('order')
 
@@ -253,7 +254,7 @@ export default function CryptoTrading() {
           <div className="flex-1 overflow-y-auto">
             {rightTab === 'order' && (
               <AdvancedOrderForm
-                defaultSymbol={activePair.replace('BINANCE:', '').replace('COINBASE:', '')}
+                defaultSymbol={CRYPTO_PAIRS.find(p => p.tv === activePair)?.alpaca ?? activePair.replace('COINBASE:', '').replace('/', '')}
                 onSuccess={() => setRightTab('positions')}
               />
             )}

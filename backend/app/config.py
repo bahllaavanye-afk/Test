@@ -34,9 +34,6 @@ class Settings(BaseSettings):
     tradestation_secret: str = ""
     tradestation_paper: bool = True
 
-    binance_api_key: str = ""
-    binance_secret: str = ""
-
     polymarket_private_key: str = ""
     polymarket_chain_id: int = 137  # Polygon mainnet
 

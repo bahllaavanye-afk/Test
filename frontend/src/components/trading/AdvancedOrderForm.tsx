@@ -1,6 +1,27 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../api/client'
+
+// ─── Market Hours Helper ──────────────────────────────────────────────────────
+function isMarketOpen(): boolean {
+  const now = new Date()
+  // Convert to ET (UTC-4 DST / UTC-5 EST)
+  // Approximate: use US/Eastern offset
+  const etOffset = -4 * 60 // -4 hours in minutes (DST approximation)
+  const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes()
+  const etMins = ((utcMins + etOffset) % (24 * 60) + 24 * 60) % (24 * 60)
+  const etHour = Math.floor(etMins / 60)
+  const etMin = etMins % 60
+  const dayOfWeek = now.getUTCDay() // 0=Sun, 6=Sat
+  // Adjust day for ET offset
+  const etTotalMins = now.getUTCDay() * 24 * 60 + utcMins + etOffset
+  const etDay = Math.floor(((etTotalMins % (7 * 24 * 60)) + 7 * 24 * 60) / (24 * 60)) % 7
+  if (etDay === 0 || etDay === 6) return false // weekend
+  const open = 9 * 60 + 30
+  const close = 16 * 60
+  const current = etHour * 60 + etMin
+  return current >= open && current < close
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Side = 'buy' | 'sell'
@@ -197,6 +218,9 @@ export default function AdvancedOrderForm({ defaultSymbol = 'AAPL', defaultSide 
 
   // Quote (for % offset helpers)
   const [livePrice, setLivePrice] = useState<number | null>(null)
+  const [priceFlash, setPriceFlash] = useState(false)
+  const prevPriceRef = useRef<number | null>(null)
+  const marketOpen = isMarketOpen()
 
   useEffect(() => {
     setSym(defaultSymbol)
@@ -220,8 +244,25 @@ export default function AdvancedOrderForm({ defaultSymbol = 'AAPL', defaultSide 
     enabled: sym.length >= 2,
   })
   useEffect(() => {
-    if (quote?.last) setLivePrice(quote.last)
+    const mid = quote?.mid_price ?? quote?.last ?? null
+    if (mid != null && mid !== prevPriceRef.current) {
+      setLivePrice(mid)
+      if (prevPriceRef.current !== null) {
+        setPriceFlash(true)
+        setTimeout(() => setPriceFlash(false), 600)
+      }
+      prevPriceRef.current = mid
+    }
   }, [quote])
+
+  // Auto-fill limit price when switching to limit order type
+  const prevType = useRef<OrdType>(type)
+  useEffect(() => {
+    if (type !== prevType.current && (type === 'limit' || type === 'stop_limit') && livePrice && !limitPrice) {
+      setLimitPrice(livePrice.toFixed(2))
+    }
+    prevType.current = type
+  }, [type])
 
   const { data: acctEquity } = useQuery({
     queryKey: ['account-equity', accountId],
@@ -251,7 +292,7 @@ export default function AdvancedOrderForm({ defaultSymbol = 'AAPL', defaultSide 
     mutationFn: async () => {
       if (!accountId) throw new Error('Select an account')
       const payload: any = {
-        symbol: sym.replace(/^(NASDAQ:|NYSE:|BINANCE:)/, '').toUpperCase(),
+        symbol: sym.replace(/^(NASDAQ:|NYSE:|COINBASE:|CRYPTO:)/, '').toUpperCase(),
         side,
         order_type: useTrailing ? 'trailing_stop' : type,
         time_in_force: tif,
@@ -288,12 +329,27 @@ export default function AdvancedOrderForm({ defaultSymbol = 'AAPL', defaultSide 
           className="flex-1 bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-2.5 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#333] uppercase"
           placeholder="AAPL"
         />
-        {livePrice && (
-          <div className="text-right">
-            <p className="text-sm font-bold font-mono text-[#e8e8e8]">${livePrice.toFixed(2)}</p>
-            <p className="text-[9px] text-[#444]">live</p>
-          </div>
-        )}
+        <div className="text-right flex-shrink-0">
+          {livePrice && (
+            <p
+              className="text-sm font-bold font-mono transition-colors duration-300"
+              style={{ color: priceFlash ? '#00c853' : '#e8e8e8' }}
+            >
+              ${livePrice.toFixed(2)}
+            </p>
+          )}
+          {quote?.bid_price != null && quote?.ask_price != null && (
+            <p className="text-[9px] text-[#444] font-mono">
+              {quote.bid_price.toFixed(2)}&nbsp;/&nbsp;{quote.ask_price.toFixed(2)}
+            </p>
+          )}
+          {!marketOpen && (
+            <p className="text-[9px] text-[#f5a623]">Market closed</p>
+          )}
+          {!livePrice && !quote?.bid_price && (
+            <p className="text-[9px] text-[#333]">loading…</p>
+          )}
+        </div>
       </div>
 
       {/* Account selector */}
