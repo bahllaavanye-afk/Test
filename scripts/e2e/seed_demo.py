@@ -19,13 +19,22 @@ from app.models.user import User
 from app.models.account import Account
 from app.models.strategy import Strategy
 from app.api.v1.auth import hash_password
-from app.brokers.encryption import encrypt_secret
+from app.utils.security import encrypt_secret
 
 DEMO_EMAIL = os.environ.get("DEMO_EMAIL", "demo@quantedge.local")
 DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "demo-pass-1234")
 ALPACA_KEY = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
 DB_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./dev.db")
+
+# Strategy metadata: (name, market_type, strategy_type, risk_bucket, symbols)
+DEFAULT_STRATEGIES = [
+    ("momentum",       "equity",  "manual",      "directional", ["SPY", "QQQ", "AAPL", "MSFT", "GOOGL"]),
+    ("mean_reversion", "equity",  "manual",      "directional", ["SPY", "AAPL", "MSFT"]),
+    ("pairs_trading",  "equity",  "manual",      "arbitrage",   ["GLD", "SLV"]),
+    ("kalman_pairs",   "equity",  "manual",      "arbitrage",   ["GLD", "SLV"]),
+    ("vrp_systematic", "equity",  "manual",      "arbitrage",   ["SPY", "VIX"]),
+]
 
 
 async def main():
@@ -63,28 +72,36 @@ async def main():
                 user_id=user_id,
                 broker="alpaca",
                 mode="paper",
-                api_key_encrypted=encrypt_secret(ALPACA_KEY),
-                api_secret_encrypted=encrypt_secret(ALPACA_SECRET),
+                encrypted_key=encrypt_secret(ALPACA_KEY),
+                encrypted_secret=encrypt_secret(ALPACA_SECRET),
                 is_active=True,
             )
             db.add(acct)
             await db.commit()
             print(f"  + created alpaca paper account {acct.id}")
         else:
-            print("  ⚠ no ALPACA_API_KEY/SECRET — skipping account")
+            print("  no ALPACA_API_KEY/SECRET — skipping account")
 
         # 3. Enable a few default strategies (no-op if already enabled)
         try:
-            defaults = ["momentum", "mean_reversion", "pairs_trading", "kalman_pairs", "vrp_systematic"]
-            for name in defaults:
+            for name, market_type, strategy_type, risk_bucket, symbols in DEFAULT_STRATEGIES:
                 existing_strat = (
                     await db.execute(select(Strategy).where(Strategy.name == name))
                 ).scalar_one_or_none()
                 if not existing_strat:
-                    strat = Strategy(id=str(uuid.uuid4()), name=name, is_active=True, params={})
+                    strat = Strategy(
+                        id=str(uuid.uuid4()),
+                        name=name,
+                        market_type=market_type,
+                        strategy_type=strategy_type,
+                        risk_bucket=risk_bucket,
+                        symbols=symbols,
+                        is_enabled=True,
+                        params={},
+                    )
                     db.add(strat)
             await db.commit()
-            print(f"  + enabled {len(defaults)} default strategies")
+            print(f"  + enabled {len(DEFAULT_STRATEGIES)} default strategies")
         except Exception as e:
             print(f"  strategy seed skipped: {e}")
 
