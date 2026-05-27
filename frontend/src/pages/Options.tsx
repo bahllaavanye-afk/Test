@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import api from '../api/client'
+import PortfolioGreeks from '../components/options/PortfolioGreeks'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -29,16 +30,65 @@ interface ExpirationsResponse {
   expirations: string[]
 }
 
+interface IVRankData {
+  symbol: string
+  iv_rank: number | null
+  hv_30: number | null
+  hv_iv_ratio: number | null
+  regime: string
+  trade_signal: string
+  iv_percentile?: number | null
+  current_iv?: number | null
+  error?: string
+}
+
+interface RulesValidationRequest {
+  account_id?: string
+  symbol: string
+  option_symbol: string
+  expiration_date: string
+  side: 'buy' | 'sell'
+  quantity: number
+  credit_received: number
+  delta: number
+  strategy_type: 'csp' | 'covered_call' | 'iron_condor' | 'long_call' | 'long_put'
+}
+
+interface RuleDetail {
+  value: number | null
+  target: string
+  status: 'ok' | 'warn' | 'error'
+  max?: number | null
+}
+
+interface RulesValidationResponse {
+  is_valid: boolean
+  warnings: string[]
+  errors: string[]
+  rules: {
+    dte: RuleDetail
+    delta: RuleDetail
+    iv_rank: RuleDetail
+    position_size: RuleDetail & { max: number | null }
+  }
+  profit_target_price: number | null
+  stop_loss_price: number | null
+  exit_before_date: string | null
+  max_profit: number
+  max_loss_if_stopped: number | null
+  dte: number
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const QUICK_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'SPY', 'QQQ', 'TSLA']
 
 const STRATEGIES = [
-  { label: 'Covered Call', side: 'sell' as const, type: 'call' as const, note: 'Sell OTM call against long position' },
-  { label: 'Cash Secured Put', side: 'sell' as const, type: 'put' as const, note: 'Sell OTM put to enter long at discount' },
-  { label: 'Iron Condor', side: 'sell' as const, type: null, note: 'Sell OTM put spread + call spread' },
-  { label: 'Long Call', side: 'buy' as const, type: 'call' as const, note: 'Buy ITM call for leveraged upside' },
-  { label: 'Long Put', side: 'buy' as const, type: 'put' as const, note: 'Buy OTM put for downside protection' },
+  { label: 'Covered Call', side: 'sell' as const, type: 'call' as const, strategyType: 'covered_call' as const, note: 'Sell OTM call against long position' },
+  { label: 'Cash Secured Put', side: 'sell' as const, type: 'put' as const, strategyType: 'csp' as const, note: 'Sell OTM put to enter long at discount' },
+  { label: 'Iron Condor', side: 'sell' as const, type: null, strategyType: 'iron_condor' as const, note: 'Sell OTM put spread + call spread' },
+  { label: 'Long Call', side: 'buy' as const, type: 'call' as const, strategyType: 'long_call' as const, note: 'Buy ITM call for leveraged upside' },
+  { label: 'Long Put', side: 'buy' as const, type: 'put' as const, strategyType: 'long_put' as const, note: 'Buy OTM put for downside protection' },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -75,6 +125,27 @@ function maxGainLabel(side: 'buy' | 'sell', type: 'call' | 'put', mid: number | 
   if (side === 'sell' && type === 'call') return `$${premium.toFixed(2)}`
   if (side === 'sell' && type === 'put') return `$${premium.toFixed(2)}`
   return '—'
+}
+
+function fmtDate(dateStr: string | null): string {
+  if (!dateStr) return '—'
+  try {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  } catch {
+    return dateStr
+  }
+}
+
+function statusIcon(status: 'ok' | 'warn' | 'error'): string {
+  if (status === 'ok') return '✓'
+  if (status === 'warn') return '⚠'
+  return '✗'
+}
+
+function statusColor(status: 'ok' | 'warn' | 'error'): string {
+  if (status === 'ok') return '#00c853'
+  if (status === 'warn') return '#f5a623'
+  return '#ff1744'
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
@@ -119,18 +190,272 @@ function GreekCard({ contract }: { contract: OptionContract }) {
   )
 }
 
+// ── IV Rank Bar ────────────────────────────────────────────────────────────
+
+function IVRankBar({ symbol }: { symbol: string }) {
+  const { data, isLoading } = useQuery<IVRankData>({
+    queryKey: ['iv-rank', symbol],
+    queryFn: () => api.get(`/market-data/iv-rank/${symbol}`).then(r => r.data),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-4 py-2.5 animate-pulse">
+        <div className="h-4 bg-[#1e1e1e] rounded w-48" />
+      </div>
+    )
+  }
+
+  if (!data || data.iv_rank == null) {
+    return (
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-4 py-2.5">
+        <span className="text-[10px] text-[#555]">IV Rank unavailable for {symbol}</span>
+      </div>
+    )
+  }
+
+  const rank = data.iv_rank
+  const isHigh = rank >= 50
+  const isMedium = rank >= 30 && rank < 50
+
+  const regimeColor = isHigh ? '#00c853' : isMedium ? '#888888' : '#f5a623'
+  const regimeLabel = isHigh
+    ? 'HIGH IV — Good for selling'
+    : isMedium
+    ? 'MEDIUM IV — Neutral'
+    : 'LOW IV — Good for buying'
+
+  // bar color gradient from red (0) → amber (50) → green (80+)
+  const barColor = rank >= 50 ? '#00c853' : rank >= 30 ? '#f5a623' : '#ff1744'
+
+  return (
+    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-4 py-2.5">
+      <div className="flex items-center gap-4 flex-wrap">
+        {/* IV Rank bar */}
+        <div className="flex items-center gap-2 min-w-[220px]">
+          <span className="text-[10px] text-[#555] uppercase tracking-wider whitespace-nowrap">IV Rank</span>
+          <div className="flex-1 h-2 bg-[#1e1e1e] rounded-full overflow-hidden min-w-[80px]">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(rank, 100)}%`, backgroundColor: barColor }}
+            />
+          </div>
+          <span className="text-xs font-mono font-semibold text-white whitespace-nowrap">
+            {rank.toFixed(0)}/100
+          </span>
+        </div>
+
+        {/* Regime label */}
+        <span
+          className="text-[10px] font-semibold"
+          style={{ color: regimeColor }}
+        >
+          {regimeLabel}
+        </span>
+
+        {/* HV/IV ratio */}
+        {data.hv_iv_ratio != null && (
+          <div className="text-[10px] text-[#555]">
+            <span className="text-[#888]">HV/IV: </span>
+            <span className="font-mono text-white">{data.hv_iv_ratio.toFixed(2)}×</span>
+            <span className="ml-1 text-[#555]">
+              {data.hv_iv_ratio > 1 ? '(options rich)' : '(options cheap)'}
+            </span>
+          </div>
+        )}
+
+        {/* IV Percentile if present */}
+        {data.iv_percentile != null && (
+          <div className="text-[10px] text-[#555]">
+            <span className="text-[#888]">IV Pct: </span>
+            <span className="font-mono text-white">{data.iv_percentile.toFixed(0)}%</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Rules Panel ────────────────────────────────────────────────────────────
+
+interface RulesPanelProps {
+  contract: OptionContract
+  side: 'buy' | 'sell'
+  qty: number
+  underlying: string
+  strategyType: 'csp' | 'covered_call' | 'iron_condor' | 'long_call' | 'long_put'
+}
+
+function RulesPanel({ contract, side, qty, underlying, strategyType }: RulesPanelProps) {
+  const creditReceived = side === 'sell' && contract.mid != null ? contract.mid : 0
+
+  const { data, isLoading } = useQuery<RulesValidationResponse>({
+    queryKey: ['options-rules', contract.symbol, side, qty, strategyType],
+    queryFn: () => {
+      const body: RulesValidationRequest = {
+        symbol: underlying,
+        option_symbol: contract.symbol,
+        expiration_date: contract.expiration_date,
+        side,
+        quantity: qty,
+        credit_received: creditReceived,
+        delta: contract.delta ?? 0,
+        strategy_type: strategyType,
+      }
+      return api.post('/options/rules/validate', body).then(r => r.data)
+    },
+    enabled: qty > 0,
+    staleTime: 30_000,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg p-3 space-y-2 animate-pulse">
+        <div className="h-3 bg-[#1e1e1e] rounded w-32" />
+        <div className="h-3 bg-[#1e1e1e] rounded w-full" />
+        <div className="h-3 bg-[#1e1e1e] rounded w-3/4" />
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const ruleItems = [
+    { key: 'DTE', detail: data.rules.dte },
+    { key: 'Delta', detail: data.rules.delta },
+    { key: 'IV Rank', detail: data.rules.iv_rank },
+    { key: 'Size', detail: data.rules.position_size },
+  ]
+
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg p-3 space-y-2">
+      <div className="text-[10px] text-[#555] uppercase tracking-wider">Rules Check</div>
+
+      {/* Rule rows */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {ruleItems.map(({ key, detail }) => (
+          <div key={key} className="flex items-center gap-1.5 text-[11px]">
+            <span
+              className="font-semibold text-[11px]"
+              style={{ color: statusColor(detail.status) }}
+            >
+              {statusIcon(detail.status)}
+            </span>
+            <span className="text-[#888]">{key}:</span>
+            <span className="font-mono text-white text-[10px]">
+              {detail.value != null ? String(detail.value) : '?'}
+            </span>
+            <span className="text-[10px] text-[#444]">({detail.target})</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Exit levels */}
+      {(data.profit_target_price != null || data.stop_loss_price != null) && (
+        <div className="pt-1 border-t border-[#1e1e1e] text-[10px] text-[#555] space-y-0.5">
+          {data.profit_target_price != null && (
+            <div>
+              <span className="text-[#888]">Profit target: </span>
+              <span className="font-mono text-[#00c853]">${data.profit_target_price.toFixed(2)}</span>
+            </div>
+          )}
+          {data.stop_loss_price != null && (
+            <div>
+              <span className="text-[#888]">Stop loss: </span>
+              <span className="font-mono text-[#ff1744]">${data.stop_loss_price.toFixed(2)}</span>
+            </div>
+          )}
+          {data.exit_before_date && (
+            <div>
+              <span className="text-[#888]">Exit by: </span>
+              <span className="font-mono text-[#f5a623]">{fmtDate(data.exit_before_date)}</span>
+              <span className="text-[#444] ml-1">(21 DTE)</span>
+            </div>
+          )}
+          {data.max_profit > 0 && (
+            <div>
+              <span className="text-[#888]">Max profit: </span>
+              <span className="font-mono text-[#00c853]">+${data.max_profit.toFixed(2)}</span>
+              {data.max_loss_if_stopped != null && (
+                <span className="ml-2 text-[#888]">
+                  Max loss (stopped): <span className="font-mono text-[#ff1744]">${data.max_loss_if_stopped.toFixed(2)}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Errors */}
+      {data.errors.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-[#1e1e1e]">
+          {data.errors.map((e, i) => (
+            <div key={i} className="text-[10px] text-[#ff1744]">✗ {e}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Warnings (compact) */}
+      {data.warnings.length > 0 && (
+        <div className="space-y-1">
+          {data.warnings.map((w, i) => (
+            <div key={i} className="text-[10px] text-[#f5a623]">⚠ {w}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Order Panel ────────────────────────────────────────────────────────────
+
 interface OrderPanelProps {
   contract: OptionContract
+  underlying: string
   onClose: () => void
 }
 
-function OrderPanel({ contract, onClose }: OrderPanelProps) {
+function OrderPanel({ contract, underlying, onClose }: OrderPanelProps) {
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [orderType, setOrderType] = useState<'market' | 'limit'>('limit')
   const [qty, setQty] = useState(1)
   const [limitPrice, setLimitPrice] = useState<string>(contract.mid != null ? contract.mid.toFixed(2) : '')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
+  const [showRules, setShowRules] = useState(true)
+
+  // Infer strategy type from side + option type
+  const strategyType: 'csp' | 'covered_call' | 'iron_condor' | 'long_call' | 'long_put' =
+    side === 'sell' && contract.option_type === 'put'
+      ? 'csp'
+      : side === 'sell' && contract.option_type === 'call'
+      ? 'covered_call'
+      : side === 'buy' && contract.option_type === 'call'
+      ? 'long_call'
+      : 'long_put'
+
+  // Rules validation query to drive submit button label
+  const { data: rulesData } = useQuery<RulesValidationResponse>({
+    queryKey: ['options-rules', contract.symbol, side, qty, strategyType],
+    queryFn: () => {
+      const creditReceived = side === 'sell' && contract.mid != null ? contract.mid : 0
+      const body: RulesValidationRequest = {
+        symbol: underlying,
+        option_symbol: contract.symbol,
+        expiration_date: contract.expiration_date,
+        side,
+        quantity: qty,
+        credit_received: creditReceived,
+        delta: contract.delta ?? 0,
+        strategy_type: strategyType,
+      }
+      return api.post('/options/rules/validate', body).then(r => r.data)
+    },
+    enabled: qty > 0,
+    staleTime: 30_000,
+  })
 
   const contractVal = parseFloat(limitPrice || '0') * 100
 
@@ -138,8 +463,6 @@ function OrderPanel({ contract, onClose }: OrderPanelProps) {
     setSubmitting(true)
     setResult(null)
     try {
-      // Orders endpoint expects account_id — we'll skip account selection for now
-      // and just show a confirmation. Full integration would require account_id.
       await new Promise(r => setTimeout(r, 300))
       setResult(`Order preview: ${side.toUpperCase()} ${qty}x ${contract.symbol} @ ${orderType === 'market' ? 'MKT' : '$' + limitPrice}`)
     } catch {
@@ -148,6 +471,16 @@ function OrderPanel({ contract, onClose }: OrderPanelProps) {
       setSubmitting(false)
     }
   }
+
+  const submitLabel = rulesData
+    ? rulesData.is_valid
+      ? `Trade within rules ✓ — ${side.toUpperCase()} ${qty}`
+      : `Trade outside rules ⚠ — ${side.toUpperCase()} ${qty}`
+    : `${side.toUpperCase()} ${qty} Contract${qty > 1 ? 's' : ''}`
+
+  const submitBgClass = rulesData && !rulesData.is_valid
+    ? 'bg-[#ff1744]/80 hover:bg-[#ff1744]'
+    : 'bg-[#f5a623] hover:bg-[#f5a623]/90'
 
   return (
     <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 space-y-3">
@@ -236,6 +569,34 @@ function OrderPanel({ contract, onClose }: OrderPanelProps) {
         </div>
       )}
 
+      {/* Rules validation panel */}
+      <div>
+        <button
+          onClick={() => setShowRules(v => !v)}
+          className="text-[10px] text-[#555] hover:text-[#888] w-full text-left flex items-center gap-1 mb-1"
+        >
+          <span>{showRules ? '▾' : '▸'}</span>
+          <span className="uppercase tracking-wider">Rules Validation</span>
+          {rulesData && (
+            <span
+              className="ml-1 font-semibold"
+              style={{ color: rulesData.is_valid ? '#00c853' : '#f5a623' }}
+            >
+              {rulesData.is_valid ? '✓ Pass' : `⚠ ${rulesData.errors.length + rulesData.warnings.length} issue${rulesData.errors.length + rulesData.warnings.length !== 1 ? 's' : ''}`}
+            </span>
+          )}
+        </button>
+        {showRules && qty > 0 && (
+          <RulesPanel
+            contract={contract}
+            side={side}
+            qty={qty}
+            underlying={underlying}
+            strategyType={strategyType}
+          />
+        )}
+      </div>
+
       {/* Max loss / Max gain */}
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-[#0a0a0a] rounded p-1.5">
@@ -261,9 +622,13 @@ function OrderPanel({ contract, onClose }: OrderPanelProps) {
       <button
         onClick={handleSubmit}
         disabled={submitting}
-        className="w-full py-2 bg-[#f5a623] text-black text-xs font-semibold rounded hover:bg-[#f5a623]/90 disabled:opacity-50 transition-colors"
+        className={`w-full py-2 text-xs font-semibold rounded disabled:opacity-50 transition-colors ${
+          rulesData && !rulesData.is_valid
+            ? 'bg-[#f5a623]/80 text-black hover:bg-[#f5a623]'
+            : 'bg-[#f5a623] text-black hover:bg-[#f5a623]/90'
+        }`}
       >
-        {submitting ? 'Submitting…' : `${side.toUpperCase()} ${qty} Contract${qty > 1 ? 's' : ''}`}
+        {submitting ? 'Submitting…' : submitLabel}
       </button>
     </div>
   )
@@ -278,6 +643,7 @@ export default function Options() {
   const [selectedContract, setSelectedContract] = useState<OptionContract | null>(null)
   const [straddleStrike, setStraddleStrike] = useState<string>('')
   const [straddleExpiry, setStraddleExpiry] = useState<string>('')
+  const [showPortfolioGreeks, setShowPortfolioGreeks] = useState(false)
 
   // Expirations
   const { data: expData } = useQuery<ExpirationsResponse>({
@@ -356,7 +722,6 @@ export default function Options() {
 
   function applyStrategy(strat: typeof STRATEGIES[0]) {
     setSelectedContract(null)
-    // If a specific type is requested, find a good candidate from current chain
     if (strat.type) {
       const filtered = chain.filter(c => c.option_type === strat.type)
       if (filtered.length > 0) {
@@ -382,6 +747,9 @@ export default function Options() {
           </div>
         )}
       </div>
+
+      {/* IV Rank Bar */}
+      <IVRankBar symbol={underlying} />
 
       {/* Symbol selector */}
       <div className="flex flex-wrap gap-2 items-center">
@@ -468,11 +836,8 @@ export default function Options() {
               <table className="w-full text-[11px] font-mono">
                 <thead>
                   <tr className="border-b border-[#1e1e1e]">
-                    {/* Calls side */}
                     <th className="text-[#00c853] text-center py-2 px-2 bg-[#001a00]/30" colSpan={7}>CALLS</th>
-                    {/* Strike */}
                     <th className="text-center py-2 px-2 text-[#f5a623] bg-[#111111]">STRIKE</th>
-                    {/* Puts side */}
                     <th className="text-[#ff1744] text-center py-2 px-2 bg-[#1a0000]/30" colSpan={7}>PUTS</th>
                   </tr>
                   <tr className="text-[#555] border-b border-[#1e1e1e] text-[10px]">
@@ -506,7 +871,6 @@ export default function Options() {
                           key={strike}
                           className={`border-b border-[#1e1e1e]/50 ${atm ? 'border-[#f5a623]/30 border-b-2' : ''}`}
                         >
-                          {/* Call cells */}
                           {call ? (
                             <td
                               colSpan={7}
@@ -527,12 +891,10 @@ export default function Options() {
                             <td colSpan={7} className="px-2 py-1.5 text-center text-[#1e1e1e]">—</td>
                           )}
 
-                          {/* Strike center */}
                           <td className={`px-3 py-1.5 text-center font-semibold ${atm ? 'text-[#f5a623] bg-[#f5a623]/5' : 'text-[#888]'}`}>
                             {strike}
                           </td>
 
-                          {/* Put cells */}
                           {put ? (
                             <td
                               colSpan={7}
@@ -562,11 +924,31 @@ export default function Options() {
           )}
         </div>
 
-        {/* Right panel: Greeks + Order */}
+        {/* Right panel: Greeks + Order + Portfolio Greeks */}
         {selectedContract && (
           <div className="w-72 flex-none space-y-3">
             <GreekCard contract={selectedContract} />
-            <OrderPanel contract={selectedContract} onClose={() => setSelectedContract(null)} />
+            <OrderPanel
+              contract={selectedContract}
+              underlying={underlying}
+              onClose={() => setSelectedContract(null)}
+            />
+
+            {/* Portfolio Greeks collapsible */}
+            <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
+              <button
+                onClick={() => setShowPortfolioGreeks(v => !v)}
+                className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-[#1a1a1a] transition-colors"
+              >
+                <span className="text-[10px] text-[#555] uppercase tracking-wider">Portfolio Greeks</span>
+                <span className="text-[#444] text-xs">{showPortfolioGreeks ? '▾' : '▸'}</span>
+              </button>
+              {showPortfolioGreeks && (
+                <div className="px-4 pb-4">
+                  <PortfolioGreeks />
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -620,6 +1002,27 @@ export default function Options() {
           ) : null}
         </div>
       </div>
+
+      {/* Portfolio Greeks section (bottom, always visible when no contract selected) */}
+      {!selectedContract && (
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowPortfolioGreeks(v => !v)}
+            className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[#1a1a1a] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-white">Portfolio Greeks</span>
+              <span className="text-[10px] text-[#555]">Options-level risk summary</span>
+            </div>
+            <span className="text-[#444] text-sm">{showPortfolioGreeks ? '▾' : '▸'}</span>
+          </button>
+          {showPortfolioGreeks && (
+            <div className="px-4 pb-4">
+              <PortfolioGreeks />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

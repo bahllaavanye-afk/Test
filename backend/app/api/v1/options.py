@@ -6,11 +6,13 @@ credentials needed).
 """
 from __future__ import annotations
 
+import asyncio
 import math
 from datetime import date, datetime, timezone
 from typing import Literal, Optional
 
 import httpx
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -467,6 +469,206 @@ async def validate_options_rules(
         "account_equity": round(account_equity, 2),
         "dte": dte_value,
     }
+
+
+# ── Options Alpha Scanner ──────────────────────────────────────────────────
+
+_ALPACA_DATA_BASE = "https://data.alpaca.markets"
+
+
+def _data_headers() -> dict[str, str]:
+    return {
+        "APCA-API-KEY-ID": settings.alpaca_api_key,
+        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+        "accept": "application/json",
+    }
+
+
+async def _fetch_symbol_bars(client: httpx.AsyncClient, symbol: str) -> list[dict]:
+    """Fetch up to 252 daily bars for a symbol from Alpaca data API."""
+    try:
+        resp = await client.get(
+            f"{_ALPACA_DATA_BASE}/v2/stocks/{symbol}/bars",
+            headers=_data_headers(),
+            params={
+                "timeframe": "1Day",
+                "limit": 252,
+                "feed": "iex",
+                "adjustment": "raw",
+            },
+        )
+        if resp.status_code != 200:
+            return []
+        return resp.json().get("bars", [])
+    except Exception:
+        return []
+
+
+def _compute_scanner_metrics(bars: list[dict]) -> dict | None:
+    """Compute IV rank proxy, RSI-14, HV-20 from daily bars."""
+    if len(bars) < 30:
+        return None
+
+    closes = np.array([float(b["c"]) for b in bars], dtype=np.float64)
+    current_price = float(closes[-1])
+
+    # Log returns
+    log_ret = np.diff(np.log(closes))
+
+    # HV-20 (annualised)
+    hv_20 = float(log_ret[-20:].std() * np.sqrt(252)) if len(log_ret) >= 20 else None
+    if hv_20 is None:
+        return None
+
+    # IV rank proxy using full history
+    n = len(log_ret)
+    if n >= 252:
+        hv_series = np.array([
+            log_ret[max(0, i - 20): i].std() * np.sqrt(252)
+            for i in range(20, n + 1)
+        ])
+        hv_min = float(hv_series.min())
+        hv_max = float(hv_series.max())
+        iv_rank = float((hv_20 - hv_min) / max(hv_max - hv_min, 0.001) * 100)
+
+        # IV percentile: fraction of days where HV was below current HV20
+        iv_percentile = float((hv_series < hv_20).mean() * 100)
+    else:
+        iv_rank = 50.0
+        iv_percentile = 50.0
+
+    # RSI-14
+    diff = np.diff(closes)
+    gains = np.where(diff > 0, diff, 0.0)
+    losses = np.where(diff < 0, -diff, 0.0)
+    if len(gains) >= 14:
+        avg_gain = float(gains[-14:].mean())
+        avg_loss = float(losses[-14:].mean())
+        rsi_14 = float(100 - 100 / (1 + avg_gain / max(avg_loss, 1e-10)))
+    else:
+        rsi_14 = 50.0
+
+    return {
+        "current_price": round(current_price, 2),
+        "iv_rank": round(iv_rank, 1),
+        "iv_percentile": round(iv_percentile, 1),
+        "hv_20": round(hv_20, 4),
+        "rsi_14": round(rsi_14, 1),
+    }
+
+
+def _determine_best_strategy(iv_rank: float, rsi_14: float) -> tuple[str, str, str, str | None]:
+    """Return (best_strategy, signal_strength, trade_signal, avoid_reason)."""
+    avoid_reason: str | None = None
+
+    # RSI extremes warn about trend direction
+    if rsi_14 > 75 or rsi_14 < 25:
+        # Trending market — iron condor has higher failure rate
+        if iv_rank > 70:
+            return "earnings_iv_crush", "moderate", "sell_premium", "strong_trend"
+        elif iv_rank > 50:
+            return "covered_call" if rsi_14 > 75 else "cash_secured_put", "moderate", "sell_premium", "strong_trend"
+        elif rsi_14 < 25:
+            return "long_call", "moderate", "buy_premium", None
+        else:
+            return "long_put", "moderate", "buy_premium", None
+
+    if iv_rank > 70:
+        best = "iron_condor"
+        strength = "strong" if iv_rank > 80 else "moderate"
+        trade_signal = "sell_premium"
+    elif iv_rank > 50:
+        # Good premium but not extreme — prefer directional theta plays
+        best = "covered_call" if rsi_14 >= 50 else "cash_secured_put"
+        strength = "moderate"
+        trade_signal = "sell_premium"
+    elif iv_rank > 30:
+        best = "wheel"
+        strength = "moderate" if iv_rank > 40 else "weak"
+        trade_signal = "sell_premium"
+    else:
+        # IV cheap — buy premium instead of selling
+        best = "long_call" if rsi_14 >= 50 else "long_put"
+        strength = "weak"
+        trade_signal = "buy_premium"
+
+    return best, strength, trade_signal, avoid_reason
+
+
+@router.get("/scanner")
+async def options_scanner(
+    symbols: str = Query(
+        "AAPL,MSFT,NVDA,SPY,QQQ,TSLA,AMZN,META",
+        description="Comma-separated list of underlying symbols to scan",
+    ),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Options Alpha Scanner — ranks symbols by IV rank and recommends the best
+    options strategy for each.
+
+    For each symbol:
+    1. Fetches 252 days of daily bars from Alpaca
+    2. Calculates IV Rank (HV20 percentile proxy)
+    3. Checks RSI-14 for trend direction
+    4. Recommends best strategy based on IV regime
+
+    Returns list sorted by iv_rank descending.
+    """
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not symbol_list:
+        raise HTTPException(400, "No symbols provided")
+
+    # Fetch all symbols concurrently
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        bar_results = await asyncio.gather(
+            *[_fetch_symbol_bars(client, sym) for sym in symbol_list],
+            return_exceptions=True,
+        )
+
+    output = []
+    for sym, bars in zip(symbol_list, bar_results):
+        if isinstance(bars, Exception) or not bars:
+            continue
+
+        metrics = _compute_scanner_metrics(bars)
+        if metrics is None:
+            continue
+
+        iv_rank = metrics["iv_rank"]
+        rsi_14 = metrics["rsi_14"]
+
+        # Determine IV regime label
+        if iv_rank >= 70:
+            regime = "high_iv"
+        elif iv_rank >= 50:
+            regime = "elevated_iv"
+        elif iv_rank >= 30:
+            regime = "normal_iv"
+        else:
+            regime = "low_iv"
+
+        best_strategy, signal_strength, trade_signal, avoid_reason = _determine_best_strategy(
+            iv_rank, rsi_14
+        )
+
+        output.append({
+            "symbol": sym,
+            "current_price": metrics["current_price"],
+            "iv_rank": iv_rank,
+            "iv_percentile": metrics["iv_percentile"],
+            "hv_20": metrics["hv_20"],
+            "rsi_14": rsi_14,
+            "regime": regime,
+            "best_strategy": best_strategy,
+            "signal_strength": signal_strength,
+            "trade_signal": trade_signal,
+            "avoid_reason": avoid_reason,
+        })
+
+    # Sort by IV rank descending (highest premium opportunity first)
+    output.sort(key=lambda x: x["iv_rank"], reverse=True)
+    return output
 
 
 # ── Legacy endpoints (kept for backward compatibility) ──────────────────────
