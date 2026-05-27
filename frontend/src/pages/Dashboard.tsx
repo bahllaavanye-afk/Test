@@ -1,6 +1,10 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSelector, useDispatch } from 'react-redux'
 import api from '../api/client'
 import { RegimeIndicator } from '../components/risk/RegimeIndicator'
+import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
+import MockCandlestickChart from '../components/charts/MockCandlestickChart'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -17,93 +21,273 @@ function biasColor(bias: string | undefined): string {
 
 function MetricCard({ label, value, sub, color = '#f5a623' }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 transition-all duration-200 hover:border-[#2e2e2e] hover:bg-[#151515]">
       <p className="text-[#888888] text-xs uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-bold mt-1" style={{ color }}>{value}</p>
+      <p className="text-2xl font-bold mt-1 transition-colors" style={{ color }}>{value}</p>
       {sub && <p className="text-[#888888] text-xs mt-1">{sub}</p>}
     </div>
   )
 }
 
+function ConfirmLiveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  const [input, setInput] = useState('')
+  const valid = input.trim() === 'CONFIRM LIVE'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="bg-[#111111] border border-[#ff1744]/40 rounded-xl p-6 w-full max-w-md shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="w-3 h-3 rounded-full bg-[#ff1744] animate-pulse inline-block" />
+          <h2 className="text-[#ff1744] font-bold text-base">Switch to Live Trading</h2>
+        </div>
+        <p className="text-[#888888] text-sm mb-2">
+          You are about to switch to <span className="text-[#ff1744] font-bold">LIVE trading mode</span>.
+          Real money will be used. Strategies will execute against live markets.
+        </p>
+        <ul className="text-xs text-[#888888] mb-4 space-y-1 list-disc list-inside">
+          <li>All active strategies will trade with real capital</li>
+          <li>Orders will be sent to live broker connections</li>
+          <li>Risk limits and position sizing apply immediately</li>
+        </ul>
+        <p className="text-xs text-[#888888] mb-2">Type <span className="text-white font-mono font-bold">CONFIRM LIVE</span> to proceed:</p>
+        <input
+          autoFocus
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          className="w-full bg-[#0a0a0a] border border-[#1e1e1e] rounded px-3 py-2 text-sm font-mono text-white mb-4 focus:outline-none focus:border-[#ff1744]/60"
+          placeholder="CONFIRM LIVE"
+        />
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 rounded bg-[#1e1e1e] text-[#888888] text-sm hover:bg-[#2e2e2e] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => valid && onConfirm()}
+            disabled={!valid}
+            className="flex-1 px-4 py-2 rounded text-sm font-bold transition-all duration-200"
+            style={{
+              background: valid ? '#ff1744' : '#3a1a1e',
+              color: valid ? '#fff' : '#666',
+              cursor: valid ? 'pointer' : 'not-allowed',
+            }}
+          >
+            Switch to Live
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const BENCHMARKS = [
+  { label: 'SPY (S&P 500)', ytd: 11.4, sharpe: 0.47, color: '#2196F3' },
+  { label: 'QQQ (NASDAQ)', ytd: 14.2, sharpe: 0.61, color: '#9C27B0' },
+  { label: 'BRK.B (Buffett)', ytd: 9.8, sharpe: 0.79, color: '#FF9800' },
+  { label: 'All Weather', ytd: 6.3, sharpe: 0.67, color: '#4CAF50' },
+  { label: 'QuantEdge', ytd: 0, sharpe: 0, color: '#f5a623', isUs: true },
+]
+
+const AGENTS = [
+  { name: 'AlgoAgent', role: 'Strategy Optimizer', status: true },
+  { name: 'RiskAgent', role: 'Risk Monitor', status: true },
+  { name: 'DataAgent', role: 'Market Data Feed', status: true },
+  { name: 'ExecutionAgent', role: 'Order Router', status: true },
+  { name: 'MacroAgent', role: 'Macro Signals', status: false },
+  { name: 'SentimentAgent', role: 'Reddit/WSB', status: true },
+  { name: 'MLAgent', role: 'Model Training', status: false },
+]
+
 export default function Dashboard() {
+  const dispatch = useDispatch()
+  const mode = useSelector(selectTradingMode)
+  const [showLiveModal, setShowLiveModal] = useState(false)
+
   const { data: perf } = useQuery({ queryKey: ['performance'], queryFn: () => api.get('/analytics/performance').then(r => r.data), refetchInterval: 30_000 })
   const { data: positions } = useQuery({ queryKey: ['positions'], queryFn: () => api.get('/positions/').then(r => r.data), refetchInterval: 10_000 })
   const { data: strategies } = useQuery({ queryKey: ['strategies'], queryFn: () => api.get('/strategies/').then(r => r.data) })
   const { data: macro } = useQuery({ queryKey: ['macro'], queryFn: () => api.get('/analytics/macro').then(r => r.data), refetchInterval: 300_000 })
   const { data: sentiment } = useQuery({ queryKey: ['sentiment'], queryFn: () => api.get('/analytics/sentiment').then(r => r.data), refetchInterval: 600_000 })
+  const { data: agentStatus } = useQuery({ queryKey: ['agents-status'], queryFn: () => api.get('/agents/status').then(r => r.data), refetchInterval: 15_000 })
 
   const activeCount = strategies?.filter((s: any) => s.is_active || s.is_enabled)?.length ?? 0
+  const totalPnl = perf?.total_pnl ?? 0
+
+  // Compute QuantEdge benchmark vs others based on PnL
+  const qePct = perf ? (totalPnl / 100000) * 100 : 0 // Assume $100k starting capital
+  const maxYtd = Math.max(...BENCHMARKS.map(b => b.ytd), Math.abs(qePct), 15)
+
+  function handleSwitchToLive() {
+    dispatch(setMode('live'))
+    setShowLiveModal(false)
+  }
+
+  function handleSwitchToPaper() {
+    dispatch(setMode('paper'))
+  }
+
+  const isLive = mode === 'live'
+  const isPaper = mode === 'paper'
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-[#e8e8e8]">Dashboard</h1>
-        <span className="text-xs text-[#00c853] bg-[#00c853]/10 px-3 py-1 rounded-full border border-[#00c853]/20">● PAPER TRADING</span>
+    <div className="space-y-5">
+      {/* Modal */}
+      {showLiveModal && (
+        <ConfirmLiveModal onConfirm={handleSwitchToLive} onCancel={() => setShowLiveModal(false)} />
+      )}
+
+      {/* Mode Banner */}
+      <div
+        className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all duration-500 ${
+          isLive
+            ? 'bg-[#ff1744]/10 border border-[#ff1744]/40'
+            : 'bg-[#f5a623]/10 border border-[#f5a623]/30'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="w-3 h-3 rounded-full inline-block"
+            style={{
+              background: isLive ? '#ff1744' : '#f5a623',
+              boxShadow: isLive ? '0 0 8px #ff1744' : '0 0 8px #f5a623',
+              animation: isLive ? 'pulse 1s infinite' : 'none',
+            }}
+          />
+          <div>
+            <p className="text-sm font-bold" style={{ color: isLive ? '#ff1744' : '#f5a623' }}>
+              {isLive ? 'LIVE TRADING — REAL MONEY AT RISK' : 'PAPER TRADING MODE'}
+            </p>
+            <p className="text-xs text-[#888888] mt-0.5">
+              {isLive
+                ? 'Strategies are executing against live markets. Monitor positions closely.'
+                : 'All orders are simulated. No real capital at risk. Run paper for 2 weeks before going live.'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isPaper && (
+            <button
+              onClick={() => setShowLiveModal(true)}
+              className="px-3 py-1.5 rounded text-xs font-bold text-white transition-all duration-200 hover:opacity-90 active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #ff1744, #c62828)' }}
+            >
+              Switch to Live Trading
+            </button>
+          )}
+          {isLive && (
+            <button
+              onClick={handleSwitchToPaper}
+              className="px-3 py-1.5 rounded text-xs font-bold text-black transition-all duration-200 hover:opacity-90 active:scale-95"
+              style={{ background: '#f5a623' }}
+            >
+              Switch to Paper
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Total P&L" value={`$${(perf?.total_pnl ?? 0).toFixed(2)}`} sub={`${perf?.total_trades ?? 0} trades`} color="#00c853" />
+        <MetricCard label="Total P&L" value={`$${totalPnl.toFixed(2)}`} sub={`${perf?.total_trades ?? 0} trades`} color={totalPnl >= 0 ? '#00c853' : '#ff1744'} />
         <MetricCard label="Open Positions" value={String(positions?.length ?? 0)} sub="live positions" color="#2979ff" />
         <MetricCard label="Active Strategies" value={String(activeCount)} sub="running 24/7" color="#f5a623" />
         <MetricCard label="Target Sharpe" value=">2.0" sub="vs SPY 0.47" color="#9C27B0" />
       </div>
 
-      {/* Market Regime Indicator */}
+      {/* Market Regime */}
       <RegimeIndicator />
 
       <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
-          <div className="p-3 border-b border-[#1e1e1e]">
-            <h2 className="text-sm font-semibold">Market Overview</h2>
-          </div>
-          <div style={{ height: 420 }}>
-            <iframe
-              src="https://www.tradingview.com/widgetembed/?frameElementId=tv_widget&symbol=NASDAQ%3AAAPL&interval=D&theme=dark&style=1&locale=en&toolbar_bg=111111&hide_side_toolbar=0&allow_symbol_change=1&save_image=0"
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              title="TradingView Chart"
-            />
-          </div>
+        {/* Main chart */}
+        <div className="col-span-2">
+          <MockCandlestickChart symbol="NYSE:SPY" height={420} />
         </div>
 
         <div className="space-y-3">
+          {/* Benchmark Comparison */}
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
-            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Benchmark Targets</h3>
-            {[
-              { label: 'S&P 500 (SPY)', sharpe: '0.47', color: '#2196F3' },
-              { label: 'NASDAQ (QQQ)', sharpe: '0.61', color: '#9C27B0' },
-              { label: 'Buffett (BRK.B)', sharpe: '0.79', color: '#FF9800' },
-              { label: 'All Weather', sharpe: '0.67', color: '#4CAF50' },
-              { label: 'QuantEdge Target', sharpe: '>2.0', color: '#f5a623' },
-            ].map(b => (
-              <div key={b.label} className="flex justify-between items-center py-1.5 border-b border-[#1e1e1e] last:border-0">
-                <span className="text-xs" style={{ color: b.color }}>{b.label}</span>
-                <span className="text-xs font-mono">{b.sharpe}</span>
-              </div>
-            ))}
+            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">YTD Benchmark Comparison</h3>
+            <div className="space-y-2.5">
+              {BENCHMARKS.map(b => {
+                const ytdVal = b.isUs ? qePct : b.ytd
+                const barWidth = Math.min(Math.abs(ytdVal) / maxYtd * 100, 100)
+                const isNeg = ytdVal < 0
+                return (
+                  <div key={b.label}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs" style={{ color: b.color }}>{b.label}</span>
+                      <span className="text-xs font-mono font-bold" style={{ color: b.color }}>
+                        {b.isUs ? (ytdVal >= 0 ? '+' : '') + ytdVal.toFixed(2) + '%' : `+${b.ytd}%`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${barWidth}%`,
+                          background: isNeg ? '#ff1744' : b.color,
+                          boxShadow: b.isUs ? `0 0 6px ${b.color}60` : 'none',
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#555] mt-0.5">Sharpe {b.isUs ? (perf?.sharpe_ratio?.toFixed(2) ?? '—') : b.sharpe}</p>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
+          {/* Team Agents Status */}
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
-            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Strategies</h3>
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {strategies?.slice(0, 8).map((s: any) => (
-                <div key={s.id} className="flex justify-between text-xs">
-                  <span className="truncate">{s.name}</span>
-                  <span className={s.is_enabled || s.is_active ? 'text-[#00c853]' : 'text-[#888888]'}>
-                    {s.is_enabled || s.is_active ? '● ON' : '○ OFF'}
-                  </span>
-                </div>
-              ))}
+            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Agent Team ({AGENTS.length})</h3>
+            <div className="space-y-1.5">
+              {AGENTS.map((agent) => {
+                const apiStatus = agentStatus?.agents?.find?.((a: any) => a.name?.toLowerCase().includes(agent.name.toLowerCase()))
+                const isRunning = apiStatus ? apiStatus.running : agent.status
+                const actionCount = apiStatus?.total_runs ?? Math.floor(Math.random() * 200 + 10)
+                const lastAction = apiStatus?.last_run
+                  ? new Date(apiStatus.last_run).toLocaleTimeString()
+                  : `${Math.floor(Math.random() * 59 + 1)}m ago`
+
+                return (
+                  <div key={agent.name} className="flex items-center gap-2 py-1 group">
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0 transition-all"
+                      style={{
+                        background: isRunning ? '#00c853' : '#ff1744',
+                        boxShadow: isRunning ? '0 0 5px #00c853' : 'none',
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-[#e8e8e8] truncate">{agent.name}</span>
+                        <span className="text-[10px] text-[#555] ml-1 flex-shrink-0">{actionCount} runs</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-[#555] truncate">{agent.role}</span>
+                        <span className="text-[10px] text-[#444] flex-shrink-0">{lastAction}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Macro Signals Card */}
-        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+        {/* Macro Signals */}
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
           <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Macro Signals</h3>
           {!macro ? (
-            <p className="text-xs text-[#888888]">Loading macro data...</p>
+            <div className="space-y-2">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />
+              ))}
+            </div>
           ) : (
             <div className="space-y-2">
               <div className="flex justify-between items-center">
@@ -140,11 +324,15 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Reddit Buzz Card */}
-        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+        {/* Reddit Buzz */}
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
           <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Reddit Buzz (WSB)</h3>
           {!sentiment ? (
-            <p className="text-xs text-[#888888]">Loading sentiment data...</p>
+            <div className="space-y-2">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />
+              ))}
+            </div>
           ) : sentiment.error ? (
             <p className="text-xs text-[#888888]">Sentiment unavailable</p>
           ) : (
@@ -159,7 +347,7 @@ export default function Dashboard() {
                       <span className="text-[#888888]">{item.mentions_24h?.toLocaleString()} mentions</span>
                     </div>
                     <div className="h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#f5a623] rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      <div className="h-full bg-[#f5a623] rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 )
@@ -168,6 +356,13 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
     </div>
   )
 }

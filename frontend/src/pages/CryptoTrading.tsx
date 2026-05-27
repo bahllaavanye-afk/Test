@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import TVAdvancedChart from '../components/charts/TVAdvancedChart'
+import MockCandlestickChart from '../components/charts/MockCandlestickChart'
 import OrderForm from '../components/trading/OrderForm'
 
 export default function CryptoTrading() {
@@ -18,7 +18,7 @@ export default function CryptoTrading() {
           ))}
         </div>
         <div className="flex-1">
-          <TVAdvancedChart symbol={pair} height={520} />
+          <MockCandlestickChart symbol={pair} height={520} />
         </div>
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-3">
           <h3 className="text-xs text-[#888888] uppercase mb-2">Triangular Arb Opportunities</h3>

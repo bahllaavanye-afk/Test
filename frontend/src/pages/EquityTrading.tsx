@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import TVAdvancedChart from '../components/charts/TVAdvancedChart'
+import MockCandlestickChart from '../components/charts/MockCandlestickChart'
 import OrderForm from '../components/trading/OrderForm'
 import api from '../api/client'
 
@@ -34,7 +34,7 @@ export default function EquityTrading() {
             placeholder="Custom symbol" />
         </div>
         <div className="flex-1">
-          <TVAdvancedChart symbol={symbol} height={480} />
+          <MockCandlestickChart symbol={symbol} height={480} />
         </div>
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-3">
           <h3 className="text-xs text-[#888888] uppercase mb-2">Open Positions</h3>
