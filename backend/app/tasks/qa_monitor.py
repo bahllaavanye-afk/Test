@@ -226,7 +226,7 @@ def scan_security_issues() -> list[SecurityIssue]:
         (r'asyncio\.get_event_loop\(\)', "low", "deprecated_api",
          "get_event_loop() deprecated — use get_running_loop()", True),
         (r'datetime\.utcnow\(\)', "low", "deprecated_api",
-         "datetime.utcnow() deprecated — use datetime.now(timezone.utc)", True),
+         "datetime.now(timezone.utc) deprecated — use datetime.now(timezone.utc)", True),
         (r'except\s+Exception\s*:\s*\n\s*pass', "medium", "silent_exception",
          "Bare 'except Exception: pass' silently swallows errors", False),
     ]
@@ -270,8 +270,8 @@ def auto_fix_deprecated_apis(issues: list[SecurityIssue]) -> int:
                 continue
             content = file_path.read_text(errors="replace")
             original = content
-            content = content.replace("asyncio.get_event_loop()", "asyncio.get_running_loop()")
-            content = content.replace("datetime.utcnow()", "datetime.now(timezone.utc)")
+            content = content.replace("asyncio.get_running_loop()", "asyncio.get_running_loop()")
+            content = content.replace("datetime.now(timezone.utc)", "datetime.now(timezone.utc)")
             if content != original:
                 file_path.write_text(content)
                 fixes_applied += 1

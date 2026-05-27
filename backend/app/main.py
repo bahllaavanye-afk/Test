@@ -58,6 +58,10 @@ async def lifespan(app: FastAPI):
     code_quality_loop = CodeQualityLoop(interval_seconds=3600)
     app.state.code_quality_loop = code_quality_loop
 
+    from app.tasks.qa_monitor import QAMonitor
+    qa_monitor = QAMonitor(interval_seconds=300)
+    app.state.qa_monitor = qa_monitor
+
     bg_tasks = []
     app.state.bg_tasks = bg_tasks
 
@@ -65,6 +69,7 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: self_improver.run(), "self_improver")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: code_quality_loop.run(), "code_quality_loop")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: correlation_monitor.run_forever(), "correlation_monitor")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: qa_monitor.run(), "qa_monitor")))
 
     yield
 

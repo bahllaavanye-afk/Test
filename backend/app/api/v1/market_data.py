@@ -13,7 +13,7 @@ async def get_quote(
     symbol: str,
     current_user: User = Depends(get_current_user),
 ):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     ticker = await loop.run_in_executor(None, lambda: yf.Ticker(symbol).fast_info)
     return {
         "symbol": symbol,
@@ -30,7 +30,7 @@ async def get_history(
     period: str = Query("1y", enum=["1mo", "3mo", "6mo", "1y", "2y", "5y"]),
     current_user: User = Depends(get_current_user),
 ):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     hist = await loop.run_in_executor(
         None, lambda: yf.download(symbol, period=period, interval=interval, auto_adjust=True, progress=False)
     )

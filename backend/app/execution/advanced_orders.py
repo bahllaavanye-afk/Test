@@ -132,9 +132,9 @@ class TrailingStop:
             stop_price = high_water * (1 - trail_pct)
             logger.info("Trailing stop starting", symbol=request.symbol, hw=high_water, stop=stop_price)
 
-            start_time = asyncio.get_event_loop().time()
+            start_time = asyncio.get_running_loop().time()
             while True:
-                if asyncio.get_event_loop().time() - start_time > self.max_hold_seconds:
+                if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
                     logger.warning(f"TrailingStop for {request.symbol} timed out")
                     market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
                     return await self.broker.place_order(market_req)
@@ -157,9 +157,9 @@ class TrailingStop:
             quote = await self.broker.get_quote(request.symbol)
             low_water = quote.last
             stop_price = low_water * (1 + trail_pct)
-            start_time = asyncio.get_event_loop().time()
+            start_time = asyncio.get_running_loop().time()
             while True:
-                if asyncio.get_event_loop().time() - start_time > self.max_hold_seconds:
+                if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
                     logger.warning(f"TrailingStop for {request.symbol} timed out")
                     market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
                     return await self.broker.place_order(market_req)

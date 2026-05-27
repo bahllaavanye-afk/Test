@@ -109,7 +109,7 @@ class ReportBuilder:
             p_value=cr.p_value,
             winner=winner,
             equity_curves=equity_curves,
-            generated_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         )
 
     def to_dict(self, report: ComparisonReport) -> dict:

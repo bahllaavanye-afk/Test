@@ -34,7 +34,7 @@ def _download_sync(tickers: list[str], start: date, end: date) -> pd.DataFrame:
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, list[dict]]:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     closes = await loop.run_in_executor(None, _download_sync, all_tickers, start, end)
 
     result: dict[str, list[dict]] = {}
