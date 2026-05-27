@@ -92,28 +92,55 @@ class AlgoAgent:
 
     async def _run_quick_backtest(self, candidate: AlgoCandidate) -> float:
         """
-        Runs a quick 2-year backtest using yfinance data.
+        Runs a quick 2-year backtest using Alpaca historical bars.
         Returns Sharpe ratio or 0.0 on failure.
         """
         try:
             import pandas as pd
-            import yfinance as yf
+            import httpx
+            from app.config import settings
             from app.backtest.engine import run_backtest
             from app.strategies import STRATEGY_REGISTRY
 
             end = datetime.now(timezone.utc)
             start = end - timedelta(days=730)
+            start_str = start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            loop = asyncio.get_running_loop()
-            hist = await loop.run_in_executor(
-                None,
-                lambda: yf.download(candidate.symbol, start=str(start.date()), end=str(end.date()),
-                                     interval="1d", auto_adjust=True, progress=False)
+            headers = {
+                "APCA-API-KEY-ID": settings.alpaca_api_key,
+                "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+            }
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    f"https://data.alpaca.markets/v2/stocks/{candidate.symbol.upper()}/bars",
+                    params={"timeframe": "1Day", "start": start_str, "limit": 1000},
+                    headers=headers,
+                )
+
+            if resp.status_code != 200:
+                return 0.0
+
+            raw_bars = resp.json().get("bars", [])
+            if not raw_bars or len(raw_bars) < 60:
+                return 0.0
+
+            dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True)
+            closes = [float(b["c"]) for b in raw_bars]
+            opens  = [float(b["o"]) for b in raw_bars]
+            highs  = [float(b["h"]) for b in raw_bars]
+            lows   = [float(b["l"]) for b in raw_bars]
+            vols   = [float(b["v"]) for b in raw_bars]
+
+            hist = pd.DataFrame(
+                {"Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": vols},
+                index=dates,
             )
+
             if hist is None or len(hist) < 60:
                 return 0.0
 
-            close = hist["Close"].squeeze() if hasattr(hist["Close"], "squeeze") else hist["Close"]
+            close = hist["Close"]
 
             strategy_cls = STRATEGY_REGISTRY.get(candidate.name)
             if not strategy_cls:

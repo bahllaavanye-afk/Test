@@ -1,15 +1,15 @@
 """
-Download benchmark equity curves via yfinance.
+Download benchmark equity curves via Alpaca historical bars API.
 Benchmarks: SPY, QQQ, BRK-B, GLD + Ray Dalio All Weather (rebalanced monthly).
 """
 from __future__ import annotations
 import asyncio
-from datetime import date
-from functools import lru_cache
+from datetime import date, datetime, timezone
 
+import httpx
 import pandas as pd
-import yfinance as yf
 
+from app.config import settings
 from app.utils.logging import logger
 
 BENCHMARKS = {
@@ -21,43 +21,98 @@ BENCHMARKS = {
 
 ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP": 0.075}
 
+ALPACA_DATA_URL = "https://data.alpaca.markets"
 
-def _download_sync(tickers: list[str], start: date, end: date) -> pd.DataFrame:
-    raw = yf.download(tickers, start=str(start), end=str(end), auto_adjust=True, progress=False)
-    if isinstance(raw.columns, pd.MultiIndex):
-        closes = raw["Close"]
-    else:
-        closes = raw[["Close"]] if "Close" in raw.columns else raw
-    return closes.dropna(how="all")
+
+def _alpaca_headers() -> dict:
+    return {
+        "APCA-API-KEY-ID": settings.alpaca_api_key,
+        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+    }
+
+
+async def _fetch_ticker_bars(client: httpx.AsyncClient, ticker: str, start: date, end: date) -> pd.Series:
+    """
+    Fetch daily close prices for a single ticker from Alpaca.
+    Returns a pd.Series indexed by date, or empty Series on failure.
+    """
+    # BRK-B uses a slash in some systems; Alpaca uses "BRK/B" for class-B shares
+    # but typically "BRK.B" style won't work — try the symbol as-is first
+    sym = ticker.upper()
+    start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_str   = datetime.combine(end,   datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    try:
+        resp = await client.get(
+            f"{ALPACA_DATA_URL}/v2/stocks/{sym}/bars",
+            params={"timeframe": "1Day", "start": start_str, "end": end_str, "limit": 1500},
+            headers=_alpaca_headers(),
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            logger.warning("Alpaca bars fetch failed", ticker=ticker, status=resp.status_code)
+            return pd.Series(dtype=float)
+
+        raw_bars = resp.json().get("bars", [])
+        if not raw_bars:
+            return pd.Series(dtype=float)
+
+        dates  = pd.to_datetime([b["t"] for b in raw_bars], utc=True).normalize()
+        closes = [float(b["c"]) for b in raw_bars]
+        series = pd.Series(closes, index=dates, name=ticker)
+        # De-duplicate any same-day entries (take last)
+        series = series[~series.index.duplicated(keep="last")]
+        return series
+
+    except Exception as exc:
+        logger.warning("Alpaca bars exception", ticker=ticker, error=str(exc))
+        return pd.Series(dtype=float)
 
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, list[dict]]:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
-    loop = asyncio.get_running_loop()
-    closes = await loop.run_in_executor(None, _download_sync, all_tickers, start, end)
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        series_list = await asyncio.gather(
+            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers]
+        )
+
+    closes_dict: dict[str, pd.Series] = {
+        ticker: series
+        for ticker, series in zip(all_tickers, series_list)
+        if not series.empty
+    }
 
     result: dict[str, list[dict]] = {}
 
     for ticker in BENCHMARKS:
-        if ticker not in closes.columns:
+        if ticker not in closes_dict:
             continue
-        series = closes[ticker].dropna()
+        series = closes_dict[ticker].dropna()
         if series.empty:
             continue
         normalized = (series / series.iloc[0] * 100).round(2)
-        result[ticker] = [{"date": str(d.date()), "value": float(v)} for d, v in normalized.items()]
+        result[ticker] = [
+            {"date": str(idx.date()), "value": float(v)}
+            for idx, v in normalized.items()
+        ]
 
     # All Weather: monthly rebalanced weighted portfolio
-    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes.columns]
+    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
     if len(aw_tickers) >= 3:
-        aw_prices = closes[aw_tickers].dropna()
+        # Align all series on a common date index
+        aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
+        aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
         weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
         weights = weights / weights.sum()  # renormalize if any tickers missing
         monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
         aw_ret = (monthly_returns * weights).sum(axis=1)
         aw_equity = (1 + aw_ret).cumprod() * 100
-        result["ALL_WEATHER"] = [{"date": str(d.date()), "value": round(float(v), 2)} for d, v in aw_equity.items()]
+        result["ALL_WEATHER"] = [
+            {"date": str(idx.date()), "value": round(float(v), 2)}
+            for idx, v in aw_equity.items()
+        ]
 
     return result
 
