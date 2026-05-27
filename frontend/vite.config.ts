@@ -10,4 +10,10 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:8000', ws: true },
     },
   },
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api': 'http://localhost:8000',
+    },
+  },
 })

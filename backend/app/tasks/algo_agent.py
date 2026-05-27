@@ -198,10 +198,16 @@ class AlgoAgent:
 
     def get_leaderboard(self) -> list[dict]:
         """Return candidates sorted by average Sharpe descending."""
+        def _safe(v: float) -> float:
+            import math
+            if math.isinf(v) or math.isnan(v):
+                return 9999.0 if v > 0 else -9999.0
+            return round(v, 3)
+
         return sorted(
             [{"key": k, "strategy": c.name, "symbol": c.symbol, "type": c.strategy_type,
               "avg_sharpe": round(c.avg_sharpe, 3), "best_sharpe": round(c.best_sharpe, 3),
-              "n_runs": c.n_runs, "ucb": round(c.ucb_score(self._total_runs), 3)}
+              "n_runs": c.n_runs, "ucb": _safe(c.ucb_score(self._total_runs))}
              for k, c in self._candidates.items()],
             key=lambda x: x["avg_sharpe"],
             reverse=True,
