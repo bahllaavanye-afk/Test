@@ -16,6 +16,7 @@ import PnL from './pages/PnL'
 import Archive from './pages/Archive'
 import SystemMonitor from './pages/SystemMonitor'
 import OptionsFlow from './pages/OptionsFlow'
+import Options from './pages/Options'
 import MacroSignals from './pages/MacroSignals'
 import Polymarket from './pages/Polymarket'
 import Landing from './pages/Landing'
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="archive" element={<Archive />} />
         <Route path="system" element={<SystemMonitor />} />
         <Route path="options" element={<OptionsFlow />} />
+        <Route path="options-chain" element={<Options />} />
         <Route path="macro" element={<MacroSignals />} />
         <Route path="polymarket" element={<Polymarket />} />
       </Route>
