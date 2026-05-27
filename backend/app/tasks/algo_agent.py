@@ -70,6 +70,14 @@ class AlgoAgent:
         ("ml_mean_reversion", "AAPL", "ml_enhanced"),
         ("ml_breakout", "SPY", "ml_enhanced"),
         ("ensemble", "SPY", "ml_enhanced"),
+        ("gamma_exposure", "SPY", "manual"),
+        ("kalman_pairs", "XOM", "manual"),
+        ("vrp_systematic", "SPY", "manual"),
+        ("hmm_regime", "SPY", "manual"),
+        ("opening_range_breakout", "SPY", "manual"),
+        ("dispersion_trading", "QQQ", "manual"),
+        ("pead_sue", "AAPL", "manual"),
+        ("skew_arb", "SPY", "manual"),
     ]
 
     def __init__(self, broker=None, interval_seconds: int = 300):

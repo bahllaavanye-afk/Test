@@ -14,6 +14,14 @@ from app.strategies.manual.pca_stat_arb import PCAStatArbStrategy
 from app.strategies.manual.news_momentum import NewsMomentumStrategy
 from app.strategies.manual.vix_mean_reversion import VIXMeanReversionStrategy
 from app.strategies.manual.sector_rotation import SectorRotationStrategy
+from app.strategies.manual.dispersion_trading import DispersionTradingStrategy
+from app.strategies.manual.pead_sue import PEADStrategy
+from app.strategies.manual.skew_arb import SkewArbitrageStrategy
+from app.strategies.manual.gamma_exposure import GammaExposureStrategy
+from app.strategies.manual.kalman_pairs import KalmanPairsStrategy
+from app.strategies.manual.vrp_systematic import VRPSystematicStrategy
+from app.strategies.manual.hmm_regime import HMMRegimeStrategy
+from app.strategies.manual.opening_range_breakout import OpeningRangeBreakoutStrategy
 from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
 from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
@@ -36,6 +44,14 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "news_momentum": NewsMomentumStrategy,
     "vix_mean_reversion": VIXMeanReversionStrategy,
     "sector_rotation": SectorRotationStrategy,
+    "dispersion_trading": DispersionTradingStrategy,
+    "pead_sue": PEADStrategy,
+    "skew_arb": SkewArbitrageStrategy,
+    "gamma_exposure": GammaExposureStrategy,
+    "kalman_pairs": KalmanPairsStrategy,
+    "vrp_systematic": VRPSystematicStrategy,
+    "hmm_regime": HMMRegimeStrategy,
+    "opening_range_breakout": OpeningRangeBreakoutStrategy,
     "ml_momentum": MLMomentumStrategy,
     "ml_pca_arb": MLPCAStatArbStrategy,
     "ml_mean_reversion": MLMeanReversionStrategy,
