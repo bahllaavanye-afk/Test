@@ -1,19 +1,15 @@
 name: E2E Demo with Live Data
 
 on:
+  # Manual-only trigger. Auto-trigger on push was failing every push because
+  # Supabase / Alpaca secrets aren't set yet — dispatch from the Actions tab
+  # once those are added to repo secrets.
   workflow_dispatch:
     inputs:
       pages:
         description: "Pages to record (comma-separated or 'all')"
         required: false
         default: "all"
-  push:
-    branches: [claude/advanced-trading-bot-d5Lmw]
-    paths:
-      - "frontend/**"
-      - "backend/**"
-      - ".github/workflows/e2e-demo.yml"
-      - "scripts/e2e/**"
 
 permissions:
   contents: read
