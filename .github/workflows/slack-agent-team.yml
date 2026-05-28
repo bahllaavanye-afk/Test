@@ -48,7 +48,6 @@ jobs:
             python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
             sqlalchemy[asyncio] alembic \
             pandas numpy scipy statsmodels scikit-learn \
-            pandas-ta \
             structlog tenacity python-dotenv anyio apscheduler \
             redis
       - name: Run agent team

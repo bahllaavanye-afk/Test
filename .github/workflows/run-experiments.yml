@@ -38,20 +38,43 @@ jobs:
         run: |
           pip install --quiet \
             pandas numpy scipy statsmodels scikit-learn \
-            pandas-ta yfinance \
+            yfinance \
             pytest pytest-asyncio anyio \
             fastapi pydantic pydantic-settings \
             python-dotenv structlog tenacity
 
+      - name: Notify job start
+        if: always()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GITHUB_RUN_ID:   ${{ github.run_id }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+        run: |
+          python .github/scripts/notify_slack.py start \
+            "ML Experiment Runner ($(date -u +%H:%M) UTC)" \
+            "#ml-experiments"
+
       - name: Run backtest experiments
         env:
           STRATEGY_FILTER: ${{ github.event.inputs.strategy }}
-          SYMBOL_FILTER: ${{ github.event.inputs.symbol }}
-          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          SYMBOL_FILTER:   ${{ github.event.inputs.symbol }}
+          ALPACA_API_KEY:  ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          PYTHONPATH: ${{ github.workspace }}/backend
+          PYTHONPATH:      ${{ github.workspace }}/backend
         run: python .github/scripts/run_experiments.py
+
+      - name: Notify job end
+        if: always()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GITHUB_RUN_ID:   ${{ github.run_id }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+        run: |
+          python .github/scripts/notify_slack.py end \
+            "ML Experiment Runner" \
+            "#ml-experiments" \
+            --exit-code ${{ job.status == 'success' && '0' || '1' }}
 
       - name: Commit experiment results
         run: |

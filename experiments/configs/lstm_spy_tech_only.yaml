@@ -1,0 +1,31 @@
+experiment:
+  name: lstm_spy_tech_only
+  model: lstm
+  symbol: SPY
+  interval: 1d
+data:
+  train_start: '2015-01-01'
+  train_end: '2024-06-30'
+  val_start: '2023-01-01'
+  val_end: '2024-06-30'
+  test_start: '2024-07-01'
+  test_end: '2026-01-01'
+features:
+  technical: true
+  advanced: false
+  multi_timeframe: false
+  lookback: 60
+model_params:
+  hidden_size: 128
+  num_layers: 2
+  dropout: 0.3
+  bidirectional: true
+training:
+  epochs: 100
+  batch_size: 256
+  lr: 0.001
+  optimizer: adamw
+  early_stopping_patience: 15
+  scheduler: cosine
+ablation_group: lstm
+ablation_var: hidden=128,layers=2,bidirectional=True,dropout=0.3

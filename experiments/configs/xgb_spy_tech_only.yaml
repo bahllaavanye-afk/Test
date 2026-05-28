@@ -1,0 +1,29 @@
+experiment:
+  name: xgb_spy_tech_only
+  model: xgboost
+  symbol: SPY
+  interval: 1d
+data:
+  train_start: '2015-01-01'
+  train_end: '2024-06-30'
+  val_start: '2023-01-01'
+  val_end: '2024-06-30'
+  test_start: '2024-07-01'
+  test_end: '2026-01-01'
+features:
+  technical: true
+  advanced: false
+  multi_timeframe: false
+  lookback: 60
+model_params:
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.05
+  subsample: 0.8
+  colsample_bytree: 0.8
+  use_gpu: false
+training:
+  early_stopping_rounds: 50
+  eval_metric: auc
+ablation_group: xgboost
+ablation_var: n_est=500,depth=6,lr=0.05
