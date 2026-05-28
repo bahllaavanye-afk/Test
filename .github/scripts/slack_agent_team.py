@@ -1235,6 +1235,42 @@ def trading_desk_eod_pnl() -> list[Post]:
             px = float(o.get("filled_avg_price", 0) or 0)
             lines.append(f"  `{sym}` {side.upper()} {qty:g} @ ${px:.4f}")
 
+    # Cross-desk metrics from experiments/results
+    results_dir = REPO_ROOT / "experiments" / "results"
+    result_files = sorted(results_dir.glob("*.json")) if results_dir.exists() else []
+    by_desk: dict[str, list[float]] = {
+        "Equities": [], "Crypto": [], "Options": [], "Macro/FX": [],
+    }
+    desk_strategy_map = {
+        "Equities": {"momentum", "mean_reversion", "breakout", "rsi_macd",
+                     "supertrend", "low_volatility", "time_series_momentum"},
+        "Crypto":   {"triangular_arb", "funding_rate_arb", "crypto_adaptive_trend"},
+        "Options":  {"options_pcr_reversal", "gamma_exposure", "dispersion_trading"},
+        "Macro/FX": {"sector_rotation", "vix_mean_reversion", "overnight_return"},
+    }
+    for f in result_files[-50:]:
+        try:
+            r = json.loads(f.read_text())
+            strat   = r.get("experiment", {}).get("strategy", "")
+            sharpe  = r.get("results", {}).get("sharpe", None)
+            if sharpe is None:
+                continue
+            for desk, strats in desk_strategy_map.items():
+                if strat in strats:
+                    by_desk[desk].append(float(sharpe))
+                    break
+        except Exception:
+            pass
+
+    active_desks = {d: v for d, v in by_desk.items() if v}
+    if active_desks:
+        lines.append("\n*Cross-desk Sharpe summary (backtest):*")
+        for desk, sharpes in sorted(active_desks.items(), key=lambda kv: max(kv[1]), reverse=True):
+            avg_s = sum(sharpes) / len(sharpes)
+            max_s = max(sharpes)
+            emoji = "🟢" if max_s > 1.0 else ("🟡" if max_s > 0.5 else "🔴")
+            lines.append(f"  {emoji} *{desk}*: avg={avg_s:+.3f} · best={max_s:+.3f} · n={len(sharpes)}")
+
     return [Post(
         channel="pnl-daily",
         text="\n".join(lines),

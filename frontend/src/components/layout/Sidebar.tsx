@@ -24,16 +24,23 @@ const NAV = [
 
 export default function Sidebar() {
   return (
-    <aside className="w-16 bg-[#111111] border-r border-[#1e1e1e] flex flex-col items-center py-4 gap-1">
-      <div className="text-[#f5a623] font-bold text-lg mb-6">Q</div>
+    <aside className="w-16 glass-panel border-r border-white/[0.06] flex flex-col items-center py-4 gap-1 relative z-10">
+      <div
+        className="font-bold text-lg mb-6 text-transparent bg-clip-text"
+        style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
+      >
+        Q
+      </div>
       {NAV.map(({ to, icon: Icon, label }) => (
         <NavLink
           key={to}
           to={to}
           end={to === '/'}
           className={({ isActive }) =>
-            `w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
-              isActive ? 'bg-[#f5a623]/20 text-[#f5a623]' : 'text-[#888888] hover:text-[#e8e8e8] hover:bg-[#1e1e1e]'
+            `w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 ${
+              isActive
+                ? 'bg-[#00ff88]/10 text-[#00ff88] shadow-[0_0_12px_rgba(0,255,136,0.20)]'
+                : 'text-[#888888] hover:text-[#e8e8e8] hover:bg-white/[0.06] hover:shadow-[0_0_8px_rgba(0,212,255,0.10)]'
             }`
           }
           title={label}

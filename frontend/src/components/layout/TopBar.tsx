@@ -4,6 +4,7 @@ import { logout } from '../../store/slices/authSlice'
 import { callLogout } from '../../api/client'
 import { selectTradingMode, setMode } from '../../store/slices/tradingModeSlice'
 import { LogOut, Activity } from 'lucide-react'
+import { LiveIndicator } from '../ui/LiveIndicator'
 
 function ModeModal({ mode, onClose }: { mode: 'paper' | 'live'; onClose: () => void }) {
   const dispatch = useDispatch()
@@ -84,31 +85,42 @@ export default function TopBar() {
   return (
     <>
       {showModal && <ModeModal mode={mode} onClose={() => setShowModal(false)} />}
-      <header className="h-10 bg-[#111111] border-b border-[#1e1e1e] flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-          <Activity size={14} className="text-[#00c853]" />
+      <header className="relative h-10 glass-panel border-b border-white/[0.06] flex items-center justify-between px-4 z-10">
+        {/* Animated gradient border on bottom */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-px animate-gradient"
+          style={{
+            backgroundImage: 'linear-gradient(90deg, transparent, #00ff88, #00d4ff, #6366f1, #00d4ff, #00ff88, transparent)',
+            backgroundSize: '300% 100%',
+          }}
+        />
+        <div className="flex items-center gap-3">
+          <Activity size={14} className="text-[#00ff88]" />
+          {/* Trading mode badge */}
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 group transition-all duration-200"
+            className="flex items-center group transition-all duration-200"
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{
-                background: isLive ? '#ff1744' : '#f5a623',
-                boxShadow: isLive ? '0 0 5px #ff1744' : 'none',
-                animation: isLive ? 'topbar-pulse 1.2s infinite' : 'none',
-              }}
-            />
-            <span
-              className="text-xs font-bold group-hover:underline"
-              style={{ color: isLive ? '#ff1744' : '#f5a623' }}
-            >
-              {isLive ? 'LIVE' : 'PAPER'}
-            </span>
+            {isLive ? (
+              <LiveIndicator label="LIVE" color="#ff1744" />
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[#f5a623]/30 bg-[#f5a623]/10 text-[10px] font-bold tracking-widest font-mono text-[#f5a623] group-hover:border-[#f5a623]/60 transition-colors"
+              >
+                PAPER
+              </span>
+            )}
           </button>
+          {/* Data feed live badge */}
+          <LiveIndicator label="DATA FEED" color="#00ff88" />
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[#f5a623] font-bold text-xs">QUANTEDGE</span>
+          <span
+            className="font-bold text-xs text-transparent bg-clip-text"
+            style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
+          >
+            QUANTEDGE
+          </span>
           <button
             onClick={async () => {
               await callLogout()  // revoke refresh token on server

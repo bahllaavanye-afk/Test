@@ -1,12 +1,16 @@
 import { useNavigate } from 'react-router-dom'
+import { GradientText } from '../components/ui/GradientText'
+import { AnimatedCounter } from '../components/ui/AnimatedCounter'
+import { LiveIndicator } from '../components/ui/LiveIndicator'
+import '../styles/animations.css'
 
 const METRICS = [
-  { label: 'Sharpe Ratio', value: '>2.0', sub: 'annualized' },
-  { label: 'Max Drawdown', value: '<15%', sub: 'historical' },
-  { label: 'Win Rate', value: '~68%', sub: 'across strategies' },
-  { label: 'Uptime', value: '24/7', sub: '365 days' },
-  { label: 'Strategies', value: '48', sub: '41 manual + 7 ML' },
-  { label: 'ML Models', value: '7', sub: 'PyTorch + XGBoost' },
+  { label: 'Sharpe Ratio', value: '>2.0', sub: 'annualized', numeric: 2.0, decimals: 1, prefix: '' },
+  { label: 'Max Drawdown', value: '<15%', sub: 'historical', numeric: 15, decimals: 0, prefix: '<', suffix: '%' },
+  { label: 'Win Rate', value: '~68%', sub: 'across strategies', numeric: 68, decimals: 0, prefix: '~', suffix: '%' },
+  { label: 'Uptime', value: '24/7', sub: '365 days', numeric: null, prefix: '' },
+  { label: 'Strategies', value: '48', sub: '41 manual + 7 ML', numeric: 48, decimals: 0, prefix: '' },
+  { label: 'ML Models', value: '7', sub: 'PyTorch + XGBoost', numeric: 7, decimals: 0, prefix: '' },
 ]
 
 const FEATURES = [
@@ -87,18 +91,33 @@ export default function Landing() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div className="min-h-screen bg-[#0a0d12] text-white relative overflow-x-hidden">
+      {/* Animated grid background */}
+      <div className="fixed inset-0 pointer-events-none animated-grid-bg z-0" aria-hidden="true" />
 
+      {/* Floating particle decorations */}
+      <div className="fixed top-1/4 left-1/4 w-64 h-64 rounded-full pointer-events-none z-0 opacity-5 animate-particle-float"
+        style={{ background: 'radial-gradient(circle, #00ff88 0%, transparent 70%)', animationDelay: '0s' }}
+        aria-hidden="true"
+      />
+      <div className="fixed top-2/3 right-1/4 w-96 h-96 rounded-full pointer-events-none z-0 opacity-5 animate-particle-float"
+        style={{ background: 'radial-gradient(circle, #00d4ff 0%, transparent 70%)', animationDelay: '2s' }}
+        aria-hidden="true"
+      />
+      <div className="fixed top-1/2 right-1/3 w-48 h-48 rounded-full pointer-events-none z-0 opacity-4 animate-particle-float"
+        style={{ background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)', animationDelay: '4s' }}
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10">
       {/* Sticky nav */}
-      <nav className="border-b border-[#1e1e1e] px-8 py-4 flex items-center justify-between sticky top-0 bg-[#0a0a0a]/95 backdrop-blur-sm z-10">
-        <div className="flex items-center gap-2">
-          <span
-            className="font-black text-xl tracking-tight text-transparent bg-clip-text"
-            style={{ backgroundImage: 'linear-gradient(135deg, #f5a623, #ffcc70)' }}
-          >
-            QuantEdge
+      <nav className="border-b border-white/[0.06] px-8 py-4 flex items-center justify-between sticky top-0 glass-panel z-20">
+        <div className="flex items-center gap-3">
+          <span className="font-black text-xl tracking-tight">
+            <GradientText gradient="green-blue">QuantEdge</GradientText>
           </span>
           <span className="text-[10px] text-[#555555] border border-[#1e1e1e] rounded px-1.5 py-0.5 font-mono">BETA</span>
+          <LiveIndicator label="LIVE" color="#00ff88" />
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -109,7 +128,12 @@ export default function Landing() {
           </button>
           <button
             onClick={() => navigate('/login')}
-            className="px-4 py-2 text-sm bg-[#f5a623] text-black font-bold rounded-lg hover:bg-[#e8971a] transition-colors"
+            className="px-4 py-2 text-sm font-bold rounded-lg transition-all hover:scale-105"
+            style={{
+              background: 'linear-gradient(135deg, #00ff88, #00d4ff)',
+              color: '#000',
+              boxShadow: '0 0 20px rgba(0,255,136,0.25)',
+            }}
           >
             Request Demo
           </button>
@@ -118,17 +142,12 @@ export default function Landing() {
 
       {/* Hero */}
       <section className="px-8 pt-24 pb-20 text-center max-w-5xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 text-xs border border-[#f5a623]/30 bg-[#f5a623]/10 text-[#f5a623] rounded-full mb-8">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#f5a623] animate-pulse" />
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 text-xs border border-[#00ff88]/30 bg-[#00ff88]/10 text-[#00ff88] rounded-full mb-8">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
           Live 24/7 · Institutional-Grade Quant Trading
         </div>
         <h1 className="text-7xl font-black tracking-tight mb-5 leading-none">
-          <span
-            className="text-transparent bg-clip-text"
-            style={{ backgroundImage: 'linear-gradient(135deg, #f5a623 0%, #ffcc70 50%, #f5a623 100%)' }}
-          >
-            QuantEdge
-          </span>
+          <GradientText gradient="green-blue">QuantEdge</GradientText>
         </h1>
         <p className="text-2xl text-[#aaaaaa] font-light mb-4">
           Institutional-Grade Quantitative Trading Platform
@@ -139,13 +158,17 @@ export default function Landing() {
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <button
             onClick={() => navigate('/login')}
-            className="px-8 py-3.5 bg-[#f5a623] text-black font-bold rounded-xl hover:bg-[#e8971a] transition-all hover:scale-105 text-sm shadow-[0_0_30px_rgba(245,166,35,0.3)]"
+            className="px-8 py-3.5 font-bold rounded-xl transition-all hover:scale-105 text-sm text-black"
+            style={{
+              background: 'linear-gradient(135deg, #00ff88, #00d4ff)',
+              boxShadow: '0 0 30px rgba(0,255,136,0.3)',
+            }}
           >
             Request Demo →
           </button>
           <button
             onClick={() => navigate('/login')}
-            className="px-8 py-3.5 border border-[#333333] text-[#aaaaaa] font-medium rounded-xl hover:border-[#f5a623]/50 hover:text-white transition-colors text-sm"
+            className="px-8 py-3.5 border border-white/[0.12] text-[#aaaaaa] font-medium rounded-xl hover:border-[#00ff88]/40 hover:text-white transition-colors text-sm backdrop-blur-sm"
           >
             View Live Dashboard
           </button>
@@ -153,12 +176,31 @@ export default function Landing() {
       </section>
 
       {/* Key metrics bar */}
-      <section className="border-y border-[#1e1e1e] bg-[#111111] py-8">
-        <div className="max-w-5xl mx-auto px-8">
+      <section className="border-y border-white/[0.06] py-8 relative">
+        <div
+          className="absolute inset-0 animate-gradient opacity-30"
+          style={{
+            backgroundImage: 'linear-gradient(135deg, rgba(0,255,136,0.05), rgba(0,212,255,0.05), rgba(99,102,241,0.05))',
+            backgroundSize: '300% 300%',
+          }}
+        />
+        <div className="max-w-5xl mx-auto px-8 relative">
           <div className="grid grid-cols-3 md:grid-cols-6 gap-6 text-center">
             {METRICS.map((m, i) => (
-              <div key={m.label} className={`${i < METRICS.length - 1 ? 'md:border-r border-[#1e1e1e]' : ''} pr-6`}>
-                <div className="text-2xl font-black text-[#f5a623]">{m.value}</div>
+              <div key={m.label} className={`${i < METRICS.length - 1 ? 'md:border-r border-white/[0.06]' : ''} pr-6`}>
+                <div className="text-2xl font-black">
+                  {m.numeric !== null ? (
+                    <AnimatedCounter
+                      value={m.numeric as number}
+                      prefix={m.prefix}
+                      suffix={'suffix' in m ? (m.suffix as string) : ''}
+                      decimals={'decimals' in m ? (m.decimals as number) : 0}
+                      duration={1500}
+                    />
+                  ) : (
+                    <span className="text-[#00ff88]">{m.value}</span>
+                  )}
+                </div>
                 <div className="text-xs font-semibold text-white mt-1">{m.label}</div>
                 <div className="text-[10px] text-[#555555] mt-0.5">{m.sub}</div>
               </div>
@@ -170,17 +212,19 @@ export default function Landing() {
       {/* Feature grid 3×2 */}
       <section className="py-24 px-8 max-w-5xl mx-auto">
         <div className="text-center mb-14">
-          <h2 className="text-3xl font-black mb-3">Built for Edge</h2>
+          <h2 className="text-3xl font-black mb-3">
+            <GradientText gradient="blue-purple">Built for Edge</GradientText>
+          </h2>
           <p className="text-sm text-[#666666]">Every component is designed to compound returns, not complexity.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {FEATURES.map(f => (
             <div
               key={f.title}
-              className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5 hover:border-[#f5a623]/30 transition-all hover:shadow-[0_0_20px_rgba(245,166,35,0.05)] group"
+              className="glass-card p-5 hover:scale-[1.02] transition-all duration-300 cursor-default group hover:shadow-[0_0_24px_rgba(0,255,136,0.08)]"
             >
               <div className="text-3xl mb-4">{f.icon}</div>
-              <h3 className="text-sm font-bold text-white mb-2 group-hover:text-[#f5a623] transition-colors">
+              <h3 className="text-sm font-bold text-white mb-2 group-hover:text-[#00ff88] transition-colors">
                 {f.title}
               </h3>
               <p className="text-xs text-[#666666] leading-relaxed">{f.desc}</p>
@@ -190,9 +234,10 @@ export default function Landing() {
       </section>
 
       {/* Comparison table */}
-      <section className="py-20 px-8 bg-[#111111] border-y border-[#1e1e1e]">
+      <section className="py-20 px-8 border-y border-white/[0.06] relative">
+        <div className="absolute inset-0 glass-panel opacity-60 pointer-events-none" aria-hidden="true" />
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
+          <div className="text-center mb-12 relative">
             <h2 className="text-3xl font-black mb-3">How We Compare</h2>
             <p className="text-sm text-[#666666]">Risk-adjusted performance vs traditional alternatives.</p>
           </div>
@@ -235,15 +280,17 @@ export default function Landing() {
       {/* Built different — architecture highlights */}
       <section className="py-24 px-8 max-w-5xl mx-auto">
         <div className="text-center mb-14">
-          <h2 className="text-3xl font-black mb-3">Built Different</h2>
+          <h2 className="text-3xl font-black mb-3">
+            <GradientText gradient="amber-pink">Built Different</GradientText>
+          </h2>
           <p className="text-sm text-[#666666]">Architecture decisions that protect capital and maximize long-run compound growth.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {ARCH_HIGHLIGHTS.map(a => (
-            <div key={a.label} className="flex gap-4 bg-[#111111] border border-[#1e1e1e] rounded-xl p-5 hover:border-[#f5a623]/20 transition-colors group">
-              <div className="w-1 rounded-full bg-gradient-to-b from-[#f5a623] to-[#f5a623]/30 shrink-0 self-stretch" />
+            <div key={a.label} className="glass-card flex gap-4 p-5 hover:scale-[1.01] transition-all duration-300 group hover:shadow-[0_0_24px_rgba(0,212,255,0.08)]">
+              <div className="w-1 rounded-full bg-gradient-to-b from-[#00ff88] to-[#00d4ff] shrink-0 self-stretch" />
               <div>
-                <h3 className="text-sm font-bold text-white mb-1.5 group-hover:text-[#f5a623] transition-colors">{a.label}</h3>
+                <h3 className="text-sm font-bold text-white mb-1.5 group-hover:text-[#00d4ff] transition-colors">{a.label}</h3>
                 <p className="text-xs text-[#666666] leading-relaxed">{a.desc}</p>
               </div>
             </div>
@@ -252,14 +299,15 @@ export default function Landing() {
       </section>
 
       {/* Tech stack section */}
-      <section className="py-14 px-8 border-y border-[#1e1e1e] bg-[#111111]">
-        <div className="max-w-5xl mx-auto text-center">
+      <section className="py-14 px-8 border-y border-white/[0.06] relative">
+        <div className="absolute inset-0 glass-panel opacity-50 pointer-events-none" aria-hidden="true" />
+        <div className="max-w-5xl mx-auto text-center relative">
           <h3 className="text-xs font-bold text-[#555555] uppercase tracking-widest mb-8">Technology Stack</h3>
           <div className="flex flex-wrap items-center justify-center gap-3">
             {TECH_STACK.map(t => (
               <span
                 key={t}
-                className="px-3 py-1.5 border border-[#1e1e1e] rounded-full text-xs text-[#666666] hover:border-[#f5a623]/30 hover:text-[#aaaaaa] transition-colors"
+                className="px-3 py-1.5 border border-white/[0.08] rounded-full text-xs text-[#666666] hover:border-[#00ff88]/30 hover:text-[#aaaaaa] transition-all duration-200 backdrop-blur-sm cursor-default"
               >
                 {t}
               </span>
@@ -272,19 +320,18 @@ export default function Landing() {
       <section className="py-28 px-8 text-center max-w-2xl mx-auto">
         <h2 className="text-4xl font-black mb-4 leading-tight">
           Ready to trade with{' '}
-          <span
-            className="text-transparent bg-clip-text"
-            style={{ backgroundImage: 'linear-gradient(135deg, #f5a623, #ffcc70)' }}
-          >
-            institutional edge?
-          </span>
+          <GradientText gradient="green-blue">institutional edge?</GradientText>
         </h2>
         <p className="text-sm text-[#666666] mb-10 max-w-md mx-auto leading-relaxed">
           Request a demo to see live paper-trading performance, backtests, and the full strategy dashboard.
         </p>
         <button
           onClick={() => navigate('/login')}
-          className="px-12 py-4 bg-[#f5a623] text-black font-black rounded-xl hover:bg-[#e8971a] transition-all hover:scale-105 text-base shadow-[0_0_40px_rgba(245,166,35,0.25)]"
+          className="px-12 py-4 font-black rounded-xl transition-all hover:scale-105 text-base text-black"
+          style={{
+            background: 'linear-gradient(135deg, #00ff88, #00d4ff)',
+            boxShadow: '0 0 40px rgba(0,255,136,0.25)',
+          }}
         >
           Request Demo →
         </button>
@@ -292,7 +339,7 @@ export default function Landing() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-[#1e1e1e] py-8 px-8 text-center">
+      <footer className="border-t border-white/[0.06] py-8 px-8 text-center">
         <div className="flex items-center justify-center gap-6 text-[10px] text-[#333333] mb-3">
           <span>Privacy Policy</span>
           <span>Terms of Service</span>
@@ -302,6 +349,7 @@ export default function Landing() {
           QuantEdge © 2025 — Quantitative trading involves significant financial risk. Past performance does not guarantee future results. For demonstration purposes only.
         </p>
       </footer>
+      </div>
     </div>
   )
 }
