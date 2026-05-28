@@ -35,6 +35,10 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 86_400.0  # daily rebalance
 
+    # Alpaca crypto symbols for the tracked universe (spot, no perps needed)
+    UNIVERSE = ["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "LINK/USD",
+                "DOT/USD", "MATIC/USD", "ALGO/USD", "UNI/USD", "AAVE/USD"]
+
     TARGET_VOL = 0.40     # 40% annualized vol target
     MIN_SIGNAL = 0.30     # minimum composite signal to enter (0–1 scale)
     STOP_MULT  = 3.0      # stop loss as multiple of daily ATR
