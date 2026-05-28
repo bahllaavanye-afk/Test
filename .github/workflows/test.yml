@@ -54,6 +54,29 @@ jobs:
             'pytest>=8.3.0' 'pytest-asyncio>=0.24.0' 'pytest-xdist>=3.6.0' \
             'pytest-timeout>=2.3.0'
 
+      - name: Debug — env + collect
+        env:
+          PYTHONPATH: "."
+          SECRET_KEY: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          ALEMBIC_DATABASE_URL: "sqlite:///./test.db"
+          REDIS_URL: ""
+          TRADING_MODE: "test"
+          ALPACA_API_KEY: "test"
+          ALPACA_SECRET_KEY: "test"
+          ALPACA_BASE_URL: "https://paper-api.alpaca.markets"
+        run: |
+          echo "=== Python info ==="
+          python --version
+          echo "=== Installed packages (top 50) ==="
+          pip list --format=columns | head -60
+          echo "=== Try importing app.main ==="
+          python -c "from app.main import app; print(f'app.main OK with {len(app.routes)} routes')" || echo "app.main import FAILED"
+          echo "=== Test collection ==="
+          pytest tests/ --collect-only -q \
+            --ignore=tests/unit/test_ml_models.py \
+            --ignore=tests/unit/test_a3c_lstm.py 2>&1 | tail -30
+
       - name: Run tests in parallel
         env:
           PYTHONPATH: "."
