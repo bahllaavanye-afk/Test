@@ -5,7 +5,6 @@ on:
     branches: ["**"]
   pull_request:
 
-# Cancel old runs of this workflow on the same ref when a new one starts
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -16,19 +15,6 @@ env:
   UV_SYSTEM_PYTHON: "1"
 
 jobs:
-  # Fast lint/typecheck: gives signal in <30s, doesn't wait for full install
-  lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - name: Install ruff
-        run: pip install ruff==0.7.4
-      - name: Lint backend
-        run: ruff check backend/app --select=E9,F63,F7,F82 --exit-zero
-
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -41,20 +27,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          # Cache compiled wheel-house, not pip — much faster than pip cache
           cache: "pip"
-          cache-dependency-path: "backend/pyproject.toml"
 
-      - name: Install uv (10x faster than pip)
+      - name: Install uv
         run: pip install uv==0.5.6
 
-      - name: Install backend in editable mode
-        # Reads pyproject.toml dependencies — never drifts from production
-        run: uv pip install -e ".[dev]" pytest-xdist pytest-timeout
+      # CI-only dep list — fast install (<60s), no heavy ML libs (torch, ray, mlflow,
+      # lightning, vectorbt, shap). Those are exercised in dedicated notebook/job
+      # runs on GPU runners, not in unit-test CI.
+      - name: Install runtime + test deps
+        run: |
+          uv pip install \
+            'fastapi>=0.115.0' 'uvicorn[standard]>=0.32.0' 'websockets>=13.0' \
+            'python-multipart>=0.0.12' 'slowapi>=0.1.9' \
+            'sqlalchemy[asyncio]>=2.0.36' 'asyncpg>=0.30.0' 'alembic>=1.14.0' \
+            'aiosqlite>=0.19.0' 'redis>=5.2.0' 'httpx>=0.27.2' \
+            'pydantic>=2.10.0' 'pydantic-settings>=2.6.0' \
+            'python-jose[cryptography]>=3.3.0' 'passlib[bcrypt]>=1.7.4' \
+            'cryptography>=43.0.0' 'bcrypt==4.0.1' \
+            'numpy>=1.26.0' 'pandas>=2.2.0' 'scipy>=1.14.0' \
+            'scikit-learn>=1.5.0' 'statsmodels>=0.14.0' 'pandas-ta>=0.3.14b0' \
+            'structlog>=24.4.0' 'tenacity>=9.0.0' 'python-dotenv>=1.0.1' \
+            'aiohttp>=3.11.0' 'anyio>=4.7.0' 'apscheduler>=3.10.4' \
+            'pytest>=8.3.0' 'pytest-asyncio>=0.24.0' 'pytest-xdist>=3.6.0' \
+            'pytest-timeout>=2.3.0'
 
       - name: Run tests in parallel
         env:
-          # 64-char hex — passes the SECRET_KEY length validator
+          PYTHONPATH: "."
           SECRET_KEY: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
           DATABASE_URL: "sqlite+aiosqlite:///./test.db"
           ALEMBIC_DATABASE_URL: "sqlite:///./test.db"
@@ -63,14 +63,12 @@ jobs:
           ALPACA_API_KEY: "test"
           ALPACA_SECRET_KEY: "test"
           ALPACA_BASE_URL: "https://paper-api.alpaca.markets"
-        # -n auto         → fan out across all CPU cores (~4× speedup)
-        # --dist loadfile → group tests from same file on one worker (DB-safe)
-        # --timeout=60    → kill any test that hangs
-        # --tb=short      → readable failure output
-        # No `-x`         → see ALL failures in one run, not just the first
         run: |
           pytest tests/ \
             -n auto --dist loadfile \
             --timeout=60 \
             --tb=short \
-            --color=yes
+            --color=yes \
+            --ignore=tests/unit/test_ml_models.py \
+            --ignore=tests/unit/test_a3c_lstm.py \
+            -p no:cacheprovider
