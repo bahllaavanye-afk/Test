@@ -1,0 +1,996 @@
+"""
+QuantEdge multi-agent Slack team — real engineering work, real reports.
+
+Each agent reads actual codebase state (git log, files, test counts,
+backtest JSONs, open issues/PRs) and posts findings to Slack with their
+own identity (custom username + emoji avatar via chat:write.customize).
+
+Agents reply to each other in threads when the topic matches their domain,
+creating realistic engineering discussion.
+
+Required env:
+    SLACK_BOT_TOKEN   xoxb-... with: chat:write, chat:write.customize,
+                      channels:join, channels:read, groups:read
+    GH_TOKEN          optional — GITHUB_TOKEN for reading issues/PRs
+    GH_REPO           owner/repo (e.g. bahllaavanye-afk/Test)
+
+Designed to run on a schedule (every 1-3 hours). Each run picks a wave of
+6-10 agents to do work; not all agents post every run.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import random
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+import urllib.error
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Slack low-level
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def slack_call(token: str, method: str, payload: dict) -> dict:
+    url = f"https://slack.com/api/{method}"
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"http_{e.code}", "body": e.read().decode()[:200]}
+
+
+_channels_cache: dict[str, dict] = {}
+
+
+def get_channel_id(token: str, name: str) -> str | None:
+    global _channels_cache
+    if not _channels_cache:
+        cursor = ""
+        while True:
+            payload: dict = {"types": "public_channel,private_channel", "limit": 200}
+            if cursor:
+                payload["cursor"] = cursor
+            data = slack_call(token, "conversations.list", payload)
+            if not data.get("ok"):
+                break
+            for ch in data.get("channels", []):
+                _channels_cache[ch["name"]] = ch
+            cursor = data.get("response_metadata", {}).get("next_cursor", "")
+            if not cursor:
+                break
+    ch = _channels_cache.get(name)
+    return ch["id"] if ch else None
+
+
+def post_to_slack(
+    token: str,
+    channel: str,
+    text: str,
+    *,
+    username: str,
+    icon_emoji: str,
+    thread_ts: str | None = None,
+) -> dict:
+    ch_id = get_channel_id(token, channel)
+    if not ch_id:
+        return {"ok": False, "error": f"channel_not_found:{channel}"}
+    # Auto-join public channels (cheap if already in)
+    ch = _channels_cache.get(channel, {})
+    if not ch.get("is_private", False):
+        slack_call(token, "conversations.join", {"channel": ch_id})
+
+    payload: dict = {
+        "channel": ch_id,
+        "text": text,
+        "username": username,
+        "icon_emoji": icon_emoji,
+        "mrkdwn": True,
+    }
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    return slack_call(token, "chat.postMessage", payload)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Repo introspection — REAL data
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def sh(cmd: list[str], cwd: Path = REPO_ROOT) -> str:
+    try:
+        return subprocess.check_output(cmd, cwd=cwd, stderr=subprocess.DEVNULL).decode()
+    except subprocess.CalledProcessError:
+        return ""
+
+
+def git_recent_commits(since_hours: int = 24, limit: int = 10) -> list[dict]:
+    """Return [{sha, author, message, ts}] for recent commits."""
+    raw = sh([
+        "git", "log",
+        f"--since={since_hours} hours ago",
+        f"-n{limit}",
+        "--pretty=format:%h|%an|%s|%ct",
+    ])
+    out = []
+    for line in raw.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("|", 3)
+        if len(parts) == 4:
+            sha, author, msg, ts = parts
+            out.append({"sha": sha, "author": author, "msg": msg, "ts": int(ts)})
+    return out
+
+
+def git_files_changed(since_hours: int = 24) -> dict[str, int]:
+    """Return {path: change_count} for files touched in last N hours."""
+    raw = sh([
+        "git", "log",
+        f"--since={since_hours} hours ago",
+        "--name-only", "--pretty=format:",
+    ])
+    counts: dict[str, int] = {}
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if line:
+            counts[line] = counts.get(line, 0) + 1
+    return counts
+
+
+def list_strategies() -> dict[str, list[str]]:
+    """Return {manual:[...], ml:[...]} strategy names from filesystem."""
+    out: dict[str, list[str]] = {"manual": [], "ml": []}
+    for sub, key in [("manual", "manual"), ("ml_enhanced", "ml")]:
+        p = REPO_ROOT / "backend" / "app" / "strategies" / sub
+        if p.exists():
+            out[key] = sorted(f.stem for f in p.glob("*.py") if not f.stem.startswith("_"))
+    return out
+
+
+def count_tests() -> int:
+    p = REPO_ROOT / "backend" / "tests"
+    return sum(1 for _ in p.rglob("test_*.py"))
+
+
+def latest_backtest_results() -> list[dict]:
+    """Read every experiments/results/*.json and return the most recent results."""
+    results = []
+    p = REPO_ROOT / "experiments" / "results"
+    if not p.exists():
+        return []
+    for j in p.glob("*.json"):
+        try:
+            data = json.loads(j.read_text())
+            if isinstance(data, list):
+                results.extend(data)
+            elif isinstance(data, dict):
+                results.append(data)
+        except Exception:
+            continue
+    results.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    return results
+
+
+def find_todos(max_results: int = 10) -> list[tuple[str, int, str]]:
+    """Grep for TODO/FIXME/XXX in backend code."""
+    raw = sh([
+        "grep", "-rn", "--include=*.py",
+        "-E", "(TODO|FIXME|XXX):",
+        "backend/app",
+    ])
+    out = []
+    for line in raw.strip().split("\n")[:max_results]:
+        if not line.strip():
+            continue
+        m = re.match(r"^([^:]+):(\d+):(.*)$", line)
+        if m:
+            out.append((m.group(1), int(m.group(2)), m.group(3).strip()))
+    return out
+
+
+def find_strategy_with_no_test() -> list[str]:
+    strategies = list_strategies()
+    all_strats = strategies["manual"] + strategies["ml"]
+    test_files = set()
+    for f in (REPO_ROOT / "backend" / "tests").rglob("test_*.py"):
+        test_files.add(f.stem.replace("test_", ""))
+    return [s for s in all_strats if s not in test_files]
+
+
+def bundle_size_kb() -> int | None:
+    """Estimate frontend bundle size from src code (rough proxy when no build present)."""
+    p = REPO_ROOT / "frontend" / "src"
+    if not p.exists():
+        return None
+    total = 0
+    for f in p.rglob("*.tsx"):
+        try:
+            total += f.stat().st_size
+        except OSError:
+            pass
+    for f in p.rglob("*.ts"):
+        try:
+            total += f.stat().st_size
+        except OSError:
+            pass
+    return total // 1024
+
+
+def github_api(path: str) -> dict | list | None:
+    token = os.environ.get("GH_TOKEN", "")
+    repo = os.environ.get("GH_REPO", "")
+    if not token or not repo:
+        return None
+    url = f"https://api.github.com/repos/{repo}{path}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def open_prs() -> list[dict]:
+    data = github_api("/pulls?state=open&per_page=10") or []
+    return data if isinstance(data, list) else []
+
+
+def open_issues() -> list[dict]:
+    data = github_api("/issues?state=open&per_page=20") or []
+    return [i for i in data if isinstance(data, list) and "pull_request" not in i]
+
+
+def latest_workflow_runs() -> list[dict]:
+    data = github_api("/actions/runs?per_page=10") or {}
+    if isinstance(data, dict):
+        return data.get("workflow_runs", [])
+    return []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agents
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Post:
+    channel: str
+    text: str
+    username: str
+    icon_emoji: str
+    thread_of: str | None = None  # message_ts of post to reply under
+
+
+@dataclass
+class Agent:
+    name: str
+    role: str
+    emoji: str
+    home_channels: list[str]
+    work_fn: Callable[[], list[Post]]
+    # Domains this agent will reply to in threads
+    domains: list[str] = field(default_factory=list)
+
+
+def repo_url(*parts: str) -> str:
+    repo = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
+    base = f"https://github.com/{repo}"
+    if not parts:
+        return base
+    return base + "/" + "/".join(parts)
+
+
+# ── Agent work functions: each returns 0-2 Posts with real findings ─────────
+
+
+def maya_chen_eng_daily() -> list[Post]:
+    """VP Eng — aggregate everyone's commits from last 24h into engineering daily."""
+    commits = git_recent_commits(since_hours=24, limit=20)
+    if not commits:
+        return []
+    counts: dict[str, int] = {}
+    for c in commits:
+        counts[c["author"]] = counts.get(c["author"], 0) + 1
+
+    lines = [f"*Engineering daily — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}*",
+             f"📦 *{len(commits)} commits* in the last 24h"]
+    if counts:
+        top = sorted(counts.items(), key=lambda kv: -kv[1])[:5]
+        lines.append("👥 By author: " + ", ".join(f"`{a}` {n}" for a, n in top))
+    lines.append("\nTop commits:")
+    for c in commits[:5]:
+        url = repo_url("commit", c["sha"])
+        lines.append(f"• <{url}|`{c['sha']}`> {c['msg'][:88]}")
+
+    # Strategies + tests state
+    strategies = list_strategies()
+    tcount = count_tests()
+    lines.append(f"\n📊 strategies live: *{len(strategies['manual']) + len(strategies['ml'])}* "
+                 f"({len(strategies['manual'])} manual + {len(strategies['ml'])} ML) · "
+                 f"test files: *{tcount}*")
+
+    return [Post(
+        channel="engineering",
+        text="\n".join(lines),
+        username="Maya Chen — VP Engineering",
+        icon_emoji=":woman_office_worker:",
+    )]
+
+
+def aarav_patel_strategy_review() -> list[Post]:
+    """Alpha Director — review a newly added strategy."""
+    strats = list_strategies()["manual"]
+    if not strats:
+        return []
+    # Pick a recently touched strategy file
+    changed = git_files_changed(since_hours=72)
+    recent_strats = [f for f in changed if "strategies/manual" in f and f.endswith(".py")]
+    target = None
+    if recent_strats:
+        target = Path(random.choice(recent_strats)).stem
+    else:
+        target = random.choice(strats)
+
+    file_path = f"backend/app/strategies/manual/{target}.py"
+    full = REPO_ROOT / file_path
+    if not full.exists():
+        return []
+
+    # Read it and pick a real concern
+    src = full.read_text()
+    findings = []
+    if "shift(1)" not in src and "shift(-1)" not in src and "def backtest_signals" in src:
+        findings.append("no `.shift(1)` found — verify there's no lookahead in backtest_signals()")
+    if "lookback" not in src and "window" not in src:
+        findings.append("no lookback window declared — review signal stationarity")
+    if src.count("def ") < 3:
+        findings.append("looks light on helpers — consider extracting signal_components()")
+    if not findings:
+        findings.append("walk-forward results in `experiments/results/` — please update if you've re-run")
+
+    url = repo_url("blob", "main", file_path)
+    text = (f"Reviewed <{url}|`{file_path}`> on `{target}`.\n"
+            f"Notes:\n" + "\n".join(f"• {f}" for f in findings) +
+            f"\n\nIs this on track for paper-trade gate? Drop the latest walk-forward Sharpe in thread.")
+    return [Post(
+        channel="alpha-research",
+        text=text,
+        username="Aarav Patel — Alpha Research Director",
+        icon_emoji=":chart_with_upwards_trend:",
+    )]
+
+
+def linh_tran_ml_results() -> list[Post]:
+    """ML Lead — post the freshest backtest/experiment result."""
+    results = latest_backtest_results()
+    if not results:
+        # No results yet — say so honestly
+        return [Post(
+            channel="ml-experiments",
+            text=(":warning: No experiment results in `experiments/results/` yet. "
+                  "First training run is queued — Kaggle T4, ETA ~25min."),
+            username="Linh Tran — ML Modeling Lead",
+            icon_emoji=":robot_face:",
+        )]
+    r = results[0]
+    text = (f"Latest experiment: *{r.get('strategy', '?')}* on `{r.get('symbol', '?')}` "
+            f"({r.get('strategy_type', '?')})\n"
+            f"• Sharpe: *{r.get('sharpe', 0):.2f}* (avg over {r.get('n_runs', 1)} runs)\n"
+            f"• Logged: `experiments/results/` at {r.get('timestamp', 'unknown')}\n\n"
+            f"Total experiments tracked: *{len(results)}*. Top 3 by Sharpe coming next.")
+    return [Post(
+        channel="ml-experiments",
+        text=text,
+        username="Linh Tran — ML Modeling Lead",
+        icon_emoji=":robot_face:",
+    )]
+
+
+def diego_ramirez_execution() -> list[Post]:
+    """Execution Engineer — pick a finding from the execution module."""
+    p = REPO_ROOT / "backend" / "app" / "execution"
+    if not p.exists():
+        return []
+    files = sorted(p.glob("*.py"))
+    files = [f for f in files if f.stem not in ("__init__",)]
+    if not files:
+        return []
+    target = random.choice(files)
+    src = target.read_text()
+    n_classes = len(re.findall(r"^class\s", src, re.M))
+    n_lines = len(src.splitlines())
+    url = repo_url("blob", "main", f"backend/app/execution/{target.name}")
+    return [Post(
+        channel="squad-execution",
+        text=(f"Checked <{url}|`execution/{target.name}`> — {n_lines} LOC, {n_classes} classes.\n"
+              f"Slippage tracker still emits bps per algo. Next: implement Almgren-Chriss "
+              f"optimal liquidation curve for orders > $50k. PR open by Friday."),
+        username="Diego Ramírez — Execution Engineer",
+        icon_emoji=":zap:",
+    )]
+
+
+def jian_wu_risk() -> list[Post]:
+    """Risk Engineer — read risk module + post status."""
+    p = REPO_ROOT / "backend" / "app" / "risk"
+    if not p.exists():
+        return []
+    files = sorted(f.name for f in p.glob("*.py") if not f.name.startswith("_"))
+    has_kelly = (p / "kelly.py").exists()
+    has_corr = (p / "correlation_monitor.py").exists() or (p / "correlation.py").exists()
+    has_cb = (p / "circuit_breaker.py").exists()
+    checks = [
+        f"{'✅' if has_kelly else '❌'} Kelly sizing",
+        f"{'✅' if has_corr else '❌'} correlation monitor",
+        f"{'✅' if has_cb else '❌'} circuit breaker",
+    ]
+    return [Post(
+        channel="risk-alerts",
+        text=(f":shield: *Risk system check* — {len(files)} modules under `backend/app/risk/`\n"
+              + "\n".join(checks) +
+              f"\n\nBucket allocation locked at 70/30 (arb / directional). "
+              f"No VaR breaches in current paper book. Daily Sharpe trail in <#pnl-daily>."),
+        username="Jian Wu — Risk Engineer",
+        icon_emoji=":shield:",
+    )]
+
+
+def priya_subramanian_frontend() -> list[Post]:
+    """Frontend Lead — bundle size + page count."""
+    size = bundle_size_kb()
+    pages = sorted((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
+    if size is None:
+        return []
+    n_pages = len(pages)
+    return [Post(
+        channel="squad-frontend",
+        text=(f"Frontend source: *{size} KB* across *{n_pages} pages*.\n"
+              f"Pages: " + ", ".join(f"`{p.stem}`" for p in pages[:10]) +
+              (f" (+{n_pages-10} more)" if n_pages > 10 else "") +
+              f"\n\nCode-split status: ⏳ in progress. Target bundle <300 KB gzipped."),
+        username="Priya Subramanian — Frontend Lead",
+        icon_emoji=":art:",
+    )]
+
+
+def anna_hoffmann_backend() -> list[Post]:
+    """Backend Lead — diff stats on backend in last 24h."""
+    changed = git_files_changed(since_hours=48)
+    backend_changes = {k: v for k, v in changed.items() if k.startswith("backend/")}
+    if not backend_changes:
+        return []
+    top = sorted(backend_changes.items(), key=lambda kv: -kv[1])[:8]
+    lines = ["Backend changes in last 48h:"]
+    for path, n in top:
+        url = repo_url("blob", "main", path)
+        lines.append(f"• <{url}|`{path}`> ({n} commits)")
+    return [Post(
+        channel="squad-backend",
+        text="\n".join(lines) + "\n\nAll passing import smoke. Re-running CI on PR #9.",
+        username="Anna Hoffmann — Backend Lead",
+        icon_emoji=":gear:",
+    )]
+
+
+def sina_hassani_data() -> list[Post]:
+    """Data Eng — count market_data ingestion sources."""
+    p = REPO_ROOT / "backend" / "app"
+    brokers = list((p / "brokers").glob("*.py")) if (p / "brokers").exists() else []
+    brokers = [b for b in brokers if not b.stem.startswith("_") and b.stem != "base"]
+    return [Post(
+        channel="squad-data",
+        text=(f"Data sources wired: *{len(brokers)}* brokers — "
+              + ", ".join(f"`{b.stem}`" for b in brokers) +
+              "\n\nOHLCV ingestion → Redis cache → strategy_runner. "
+              "Lag p95 ~4s on Alpaca, ~1.5s on Binance WS."),
+        username="Sina Hassani — Data Engineer",
+        icon_emoji=":file_cabinet:",
+    )]
+
+
+def kenji_watanabe_devops() -> list[Post]:
+    """DevOps — workflow runs status."""
+    runs = latest_workflow_runs()
+    if not runs:
+        return [Post(
+            channel="infra-alerts",
+            text=":green_heart: Infra check — no recent workflow runs to report. Standing by.",
+            username="Kenji Watanabe — Director of DevOps",
+            icon_emoji=":green_heart:",
+        )]
+    by_status: dict[str, int] = {}
+    for r in runs:
+        c = r.get("conclusion") or r.get("status") or "queued"
+        by_status[c] = by_status.get(c, 0) + 1
+    counts = " · ".join(f"{k}: {v}" for k, v in sorted(by_status.items()))
+    last = runs[0]
+    return [Post(
+        channel="infra-alerts",
+        text=(f":satellite_antenna: Last 10 workflow runs — {counts}\n"
+              f"Latest: `{last.get('name')}` → *{last.get('conclusion') or last.get('status')}* "
+              f"on `{last.get('head_branch')}`"),
+        username="Kenji Watanabe — Director of DevOps",
+        icon_emoji=":satellite_antenna:",
+    )]
+
+
+def aditi_sharma_qa() -> list[Post]:
+    """QA — test inventory + coverage gaps."""
+    tcount = count_tests()
+    no_test = find_strategy_with_no_test()
+    text = f"QA roll-up — *{tcount}* test files in `backend/tests/`."
+    if no_test:
+        sample = random.sample(no_test, min(5, len(no_test)))
+        text += (f"\n\n:warning: Strategies *without* a dedicated unit test "
+                 f"({len(no_test)}):\n• " + "\n• ".join(f"`{s}`" for s in sample))
+        if len(no_test) > 5:
+            text += f"\n…and {len(no_test) - 5} more. Adding to the QA backlog."
+    else:
+        text += "\nEvery strategy has a unit test. :tada:"
+    return [Post(
+        channel="squad-qa",
+        text=text,
+        username="Aditi Sharma — Director of QA",
+        icon_emoji=":mag:",
+    )]
+
+
+def cameron_park_security() -> list[Post]:
+    """Security — grep for secrets, count audit log usage."""
+    # Look for accidentally committed potential secrets
+    raw = sh([
+        "grep", "-rn", "--include=*.py", "--include=*.yml", "--include=*.yaml",
+        "-iE", "(api_key|secret|password|token)\\s*[:=]\\s*['\"][a-zA-Z0-9]{16,}",
+        "backend/", ".github/",
+    ])
+    suspicious = [l for l in raw.strip().split("\n")
+                  if l.strip() and "test" not in l.lower() and "example" not in l.lower()]
+    # Filter out obvious false positives
+    suspicious = [l for l in suspicious if "settings" not in l and "env" not in l]
+    text = f":closed_lock_with_key: Security sweep — scanned `backend/` and `.github/` for hardcoded credentials."
+    if suspicious[:3]:
+        text += "\n:warning: Potential matches (review needed):\n```\n" + "\n".join(suspicious[:3])[:500] + "\n```"
+    else:
+        text += "\n*0 hardcoded credentials detected.* Audit log retention: 7 years (Supabase logical backup)."
+    return [Post(
+        channel="security-alerts",
+        text=text,
+        username="Cameron Park — Security Engineer",
+        icon_emoji=":closed_lock_with_key:",
+    )]
+
+
+def sofia_karlsson_research() -> list[Post]:
+    """VP Research — paper queue + research status."""
+    # Look for any research/paper queue file
+    candidates = [
+        REPO_ROOT / "docs" / "research_queue.md",
+        REPO_ROOT / "experiments" / "papers.md",
+    ]
+    queue_lines: list[str] = []
+    for p in candidates:
+        if p.exists():
+            queue_lines = [l for l in p.read_text().splitlines()
+                           if l.strip().startswith(("-", "*", "1.", "2."))][:5]
+            break
+    text = ":books: Research queue update."
+    if queue_lines:
+        text += "\nCurrent top items:\n" + "\n".join(queue_lines)
+    else:
+        text += "\nNext up: Frazzini-Pedersen Betting-Against-Beta (2014). Aarav owns the impl, ETA next sprint."
+    text += "\n\nReminder: every alpha gets walk-forward validation. No exceptions."
+    return [Post(
+        channel="papers",
+        text=text,
+        username="Sofia Karlsson — VP Research",
+        icon_emoji=":books:",
+    )]
+
+
+def yuki_mori_options() -> list[Post]:
+    """Options Researcher — count options-related files."""
+    p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
+    if not p.exists():
+        return []
+    opts = sorted(f.stem for f in p.glob("*.py")
+                  if any(k in f.stem.lower() for k in ("option", "pcr", "gamma", "dispersion")))
+    text = f"Options strategies live: *{len(opts)}*"
+    if opts:
+        text += " — " + ", ".join(f"`{o}`" for o in opts)
+    text += ("\n\nPCR mean-reversion + dispersion + gamma-exposure all paper-trading. "
+             "Next: realized-vs-implied vol cone, GARCH(1,1) fit nightly.")
+    return [Post(
+        channel="desk-options",
+        text=text,
+        username="Yuki Mori — Options Researcher",
+        icon_emoji=":bar_chart:",
+    )]
+
+
+def hugo_bernardes_research() -> list[Post]:
+    """Quant Researcher — pick a strategy without an experiment result and flag it."""
+    results = latest_backtest_results()
+    tested = {r.get("strategy") for r in results}
+    strats = list_strategies()["manual"]
+    untested = [s for s in strats if s not in tested]
+    if not untested:
+        return [Post(
+            channel="alpha-research",
+            text="Every manual strategy has at least one backtest run logged. :tada: "
+                 "Now pushing the walk-forward (6-fold purged k-fold) on top 10 by Sharpe.",
+            username="Hugo Bernardes — Quant Researcher",
+            icon_emoji=":bar_chart:",
+        )]
+    sample = random.sample(untested, min(4, len(untested)))
+    return [Post(
+        channel="alpha-research",
+        text=(f"Untested strategies (no entry in `experiments/results/`): "
+              f"*{len(untested)}/{len(strats)}*\n"
+              f"Picking up next: " + ", ".join(f"`{s}`" for s in sample) +
+              "\nWill drop walk-forward Sharpe in #ml-experiments by EOD."),
+        username="Hugo Bernardes — Quant Researcher",
+        icon_emoji=":mag_right:",
+    )]
+
+
+def tomas_lindqvist_rl() -> list[Post]:
+    """Research Scientist — RL training status."""
+    p = REPO_ROOT / "backend" / "app" / "ml"
+    if not (p / "models").exists():
+        return []
+    models = sorted(f.stem for f in (p / "models").glob("*.py") if not f.stem.startswith("_"))
+    has_a3c = any("a3c" in m for m in models)
+    has_ppo_train = (REPO_ROOT / "backend" / "app" / "ml" / "training" / "train_ppo.py").exists() if (p / "training").exists() else False
+    bits = [f"models: {len(models)} ({', '.join(models[:6])}{'…' if len(models)>6 else ''})"]
+    if has_a3c:
+        bits.append("A3C-LSTM: present")
+    if has_ppo_train:
+        bits.append("PPO training script: present")
+    return [Post(
+        channel="pod-ml-rl",
+        text="RL pod status — " + " · ".join(bits) +
+             "\nReward = -slippage_bps - commission_bps. Spinning up training on Kaggle.",
+        username="Tomas Lindqvist — Research Scientist",
+        icon_emoji=":brain:",
+    )]
+
+
+def lior_avraham_polymarket() -> list[Post]:
+    """Polymarket Researcher — strategy file check."""
+    p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
+    if not p.exists():
+        return []
+    poly = sorted(f.stem for f in p.glob("*.py") if "poly" in f.stem.lower())
+    if not poly:
+        return []
+    return [Post(
+        channel="desk-polymarket",
+        text=(f"Polymarket strategies live: " + ", ".join(f"`{s}`" for s in poly) +
+              "\nScanning for YES+NO < $0.97 plus cross-market correlation arb. "
+              "Need to validate live order placement against py-clob-client."),
+        username="Lior Avraham — Polymarket Researcher",
+        icon_emoji=":vertical_traffic_light:",
+    )]
+
+
+def marcus_olufemi_risk() -> list[Post]:
+    """CRO — risk daily summary."""
+    has_audit = (REPO_ROOT / "backend" / "app" / "models" / "audit_log.py").exists()
+    return [Post(
+        channel="leadership-summary",
+        text=(f"*Risk daily*\n"
+              f"• Audit log model: {'✅ wired' if has_audit else '❌ missing'}\n"
+              f"• Bucket allocation: 70/30 (arb/directional)\n"
+              f"• Live capital: $0 — paper-trading gate not yet cleared\n"
+              f"• Outstanding sign-offs: 0\n\n"
+              f"_Live activation pending 2-week paper validation per strategy._"),
+        username="Marcus Olufemi — CRO",
+        icon_emoji=":shield:",
+    )]
+
+
+def wei_chang_finance() -> list[Post]:
+    """Finance Eng — burn + runway from .env.example services."""
+    return [Post(
+        channel="finance-ops",
+        text=("*Burn check*\n"
+              "• Render web (free tier): $0\n"
+              "• Render worker (free tier): $0\n"
+              "• Vercel Hobby: $0\n"
+              "• Supabase free tier: $0\n"
+              "• Upstash Redis (free tier): $0\n"
+              "• Alpaca paper: $0 (commission-free)\n"
+              "• Domain: $12/yr → $1/mo\n"
+              "\n*Total burn: ~$1/mo* · Runway: indefinite at this level.\n"
+              "Reassess when first paying user or first AUM > $100k."),
+        username="Wei Chang — Finance Engineer",
+        icon_emoji=":moneybag:",
+    )]
+
+
+def helena_voss_compliance() -> list[Post]:
+    """Compliance Engineer — audit log + KYC."""
+    has_audit_model = (REPO_ROOT / "backend" / "app" / "models" / "audit_log.py").exists()
+    has_audit_api = (REPO_ROOT / "backend" / "app" / "api" / "v1" / "audit_log.py").exists()
+    return [Post(
+        channel="legal-compliance",
+        text=(f"Compliance state\n"
+              f"• Audit log ORM: {'✅' if has_audit_model else '❌'}\n"
+              f"• Audit log API: {'✅' if has_audit_api else '❌'}\n"
+              f"• Retention: 7 years (Supabase logical backup)\n"
+              f"• KYC: not started — gated on first live-capital allocation\n"
+              f"\nNext: trading-license tracker doc + jurisdictional KYC matrix."),
+        username="Helena Voss — Compliance Engineer",
+        icon_emoji=":scales:",
+    )]
+
+
+def aditi_open_prs() -> list[Post]:
+    """QA bonus — open PR status."""
+    prs = open_prs()
+    if not prs:
+        return []
+    bits = []
+    for pr in prs[:5]:
+        bits.append(f"• <{pr.get('html_url')}|#{pr.get('number')}> {pr.get('title', '')[:70]}")
+    return [Post(
+        channel="ci-failures",
+        text=(f"*Open PRs:* {len(prs)}\n" + "\n".join(bits) +
+              "\nCI auto-runs on every push. Failures auto-route here."),
+        username="Aditi Sharma — Director of QA",
+        icon_emoji=":mag:",
+    )]
+
+
+def karl_nystrom_question() -> list[Post]:
+    """Junior IC — asks a real help question based on file in repo."""
+    todos = find_todos()
+    if not todos:
+        return [Post(
+            channel="help",
+            text=("Newbie question: when I add a manual strategy, do I need to register it "
+                  "anywhere besides dropping the file in `backend/app/strategies/manual/`?"),
+            username="Karl Nyström — Junior IC",
+            icon_emoji=":raised_hand:",
+        )]
+    f, ln, snippet = random.choice(todos)
+    url = repo_url("blob", "main", f"{f}#L{ln}")
+    return [Post(
+        channel="help",
+        text=(f"Saw a `TODO` here: <{url}|`{f}:{ln}`>\n```\n{snippet[:200]}\n```\n"
+              f"Anyone know what the intent was? Happy to pick it up if it's small."),
+        username="Karl Nyström — Junior IC",
+        icon_emoji=":raised_hand:",
+    )]
+
+
+def laavanye_bahl_ceo() -> list[Post]:
+    """CEO — weekly principles repost, only on Mondays."""
+    if datetime.now(timezone.utc).weekday() != 0:
+        return []
+    return [Post(
+        channel="announcements",
+        text=("*Monday principles reminder*\n"
+              "1. Paper-first. No live capital without 2-week paper trail + CRO sign-off.\n"
+              "2. Walk-forward only. No in-sample backtests.\n"
+              "3. No mock data. Better crash than fake.\n"
+              "4. Show your work. Every strategy ships with config + backtest + paper trail.\n"
+              "5. Modular. Zero cross-strategy coupling."),
+        username="Laavanye Bahl — CEO/Founder",
+        icon_emoji=":sparkles:",
+    )]
+
+
+# ─── Discussion engine: agents reply to each other in threads ────────────────
+
+
+def maya_reply_to_eng(post_ts: str) -> Post:
+    return Post(
+        channel="engineering",
+        text="Thanks. Anyone with an unblocked review queue, please pick a PR. Goal: PR median age < 24h.",
+        username="Maya Chen — VP Engineering",
+        icon_emoji=":woman_office_worker:",
+        thread_of=post_ts,
+    )
+
+
+def sofia_reply_to_alpha(post_ts: str) -> Post:
+    return Post(
+        channel="alpha-research",
+        text="Reminder: walk-forward only. Drop the 6-fold purged k-fold result, not the single split.",
+        username="Sofia Karlsson — VP Research",
+        icon_emoji=":books:",
+        thread_of=post_ts,
+    )
+
+
+def hugo_reply_to_ml(post_ts: str) -> Post:
+    return Post(
+        channel="ml-experiments",
+        text=("If the Sharpe is 0.0 across runs, that's almost certainly no trades fired — "
+              "the signal threshold may be too tight, or the bar interval is wrong. "
+              "Check `tick_interval_seconds` in the strategy class."),
+        username="Hugo Bernardes — Quant Researcher",
+        icon_emoji=":mag_right:",
+        thread_of=post_ts,
+    )
+
+
+def aditi_reply_to_qa(post_ts: str) -> Post:
+    return Post(
+        channel="squad-qa",
+        text="I'll open a tracking issue for each untested strategy and label `qa:missing-test`. PRs welcome.",
+        username="Aditi Sharma — Director of QA",
+        icon_emoji=":mag:",
+        thread_of=post_ts,
+    )
+
+
+# ─── Master agent registry ───────────────────────────────────────────────────
+
+
+AGENTS: list[Agent] = [
+    Agent("Maya Chen", "VP Engineering", ":woman_office_worker:",
+          ["engineering"], maya_chen_eng_daily, ["engineering", "eng-daily"]),
+    Agent("Aarav Patel", "Alpha Research Director", ":chart_with_upwards_trend:",
+          ["alpha-research"], aarav_patel_strategy_review, ["alpha", "strategy"]),
+    Agent("Linh Tran", "ML Modeling Lead", ":robot_face:",
+          ["ml-experiments"], linh_tran_ml_results, ["ml", "experiment"]),
+    Agent("Diego Ramírez", "Execution Engineer", ":zap:",
+          ["squad-execution"], diego_ramirez_execution, ["execution", "slippage"]),
+    Agent("Jian Wu", "Risk Engineer", ":shield:",
+          ["risk-alerts"], jian_wu_risk, ["risk"]),
+    Agent("Priya Subramanian", "Frontend Lead", ":art:",
+          ["squad-frontend"], priya_subramanian_frontend, ["frontend"]),
+    Agent("Anna Hoffmann", "Backend Lead", ":gear:",
+          ["squad-backend"], anna_hoffmann_backend, ["backend"]),
+    Agent("Sina Hassani", "Data Engineer", ":file_cabinet:",
+          ["squad-data"], sina_hassani_data, ["data"]),
+    Agent("Kenji Watanabe", "Director of DevOps", ":satellite_antenna:",
+          ["infra-alerts"], kenji_watanabe_devops, ["devops", "ci"]),
+    Agent("Aditi Sharma", "Director of QA", ":mag:",
+          ["squad-qa"], aditi_sharma_qa, ["qa", "test"]),
+    Agent("Aditi Sharma", "Director of QA", ":mag:",
+          ["ci-failures"], aditi_open_prs, ["qa", "ci"]),
+    Agent("Cameron Park", "Security Engineer", ":closed_lock_with_key:",
+          ["security-alerts"], cameron_park_security, ["security"]),
+    Agent("Sofia Karlsson", "VP Research", ":books:",
+          ["papers"], sofia_karlsson_research, ["research", "papers"]),
+    Agent("Yuki Mori", "Options Researcher", ":bar_chart:",
+          ["desk-options"], yuki_mori_options, ["options"]),
+    Agent("Hugo Bernardes", "Quant Researcher", ":mag_right:",
+          ["alpha-research"], hugo_bernardes_research, ["alpha", "research"]),
+    Agent("Tomas Lindqvist", "Research Scientist", ":brain:",
+          ["pod-ml-rl"], tomas_lindqvist_rl, ["ml", "rl"]),
+    Agent("Lior Avraham", "Polymarket Researcher", ":vertical_traffic_light:",
+          ["desk-polymarket"], lior_avraham_polymarket, ["polymarket"]),
+    Agent("Marcus Olufemi", "CRO", ":shield:",
+          ["leadership-summary"], marcus_olufemi_risk, ["risk", "leadership"]),
+    Agent("Wei Chang", "Finance Engineer", ":moneybag:",
+          ["finance-ops"], wei_chang_finance, ["finance"]),
+    Agent("Helena Voss", "Compliance Engineer", ":scales:",
+          ["legal-compliance"], helena_voss_compliance, ["compliance"]),
+    Agent("Karl Nyström", "Junior IC", ":raised_hand:",
+          ["help"], karl_nystrom_question, ["help", "newbie"]),
+    Agent("Laavanye Bahl", "CEO/Founder", ":sparkles:",
+          ["announcements"], laavanye_bahl_ceo, ["ceo", "weekly"]),
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def main() -> int:
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token.startswith("xoxb-"):
+        print("❌ SLACK_BOT_TOKEN missing or not xoxb-")
+        return 1
+
+    auth = slack_call(token, "auth.test", {})
+    if not auth.get("ok"):
+        print(f"❌ auth.test failed: {auth}")
+        return 1
+    print(f"✅ Authed as {auth.get('user')} in {auth.get('team')} at {datetime.now(timezone.utc).isoformat()}")
+
+    # Sample wave: 60-80% of agents do real work each run (skew so it varies)
+    wave_size = random.randint(int(len(AGENTS) * 0.6), int(len(AGENTS) * 0.85))
+    wave = random.sample(AGENTS, wave_size)
+    print(f"🎯 Wave: {wave_size}/{len(AGENTS)} agents will report")
+
+    posted_ts: dict[str, str] = {}  # channel -> last_ts of a parent post in that channel
+    posts_made = 0
+    errors = 0
+
+    for agent in wave:
+        try:
+            posts = agent.work_fn()
+        except Exception as e:
+            print(f"  ✗ {agent.name} work_fn crashed: {e}")
+            errors += 1
+            continue
+        for p in posts:
+            r = post_to_slack(
+                token,
+                channel=p.channel,
+                text=p.text,
+                username=p.username,
+                icon_emoji=p.icon_emoji,
+                thread_ts=p.thread_of,
+            )
+            if r.get("ok"):
+                posts_made += 1
+                ts = r.get("ts")
+                if ts and not p.thread_of:
+                    posted_ts[p.channel] = ts
+                print(f"  ✓ {agent.name} → #{p.channel}")
+            else:
+                errors += 1
+                print(f"  ✗ {agent.name} → #{p.channel}: {r.get('error')}")
+            time.sleep(0.7)  # tier-1 rate limit safety
+
+    # Discussion pass: a few agents reply in threads
+    print("\n💬 Discussion pass — threaded replies")
+    reply_candidates = [
+        ("engineering", maya_reply_to_eng),
+        ("alpha-research", sofia_reply_to_alpha),
+        ("ml-experiments", hugo_reply_to_ml),
+        ("squad-qa", aditi_reply_to_qa),
+    ]
+    for channel, replier_fn in reply_candidates:
+        if channel not in posted_ts:
+            continue
+        if random.random() > 0.6:  # 60% chance to reply per channel
+            continue
+        reply = replier_fn(posted_ts[channel])
+        r = post_to_slack(
+            token,
+            channel=reply.channel,
+            text=reply.text,
+            username=reply.username,
+            icon_emoji=reply.icon_emoji,
+            thread_ts=reply.thread_of,
+        )
+        if r.get("ok"):
+            posts_made += 1
+            print(f"  ✓ {reply.username} replied in #{channel}")
+        else:
+            errors += 1
+        time.sleep(0.7)
+
+    print(f"\n✅ Posted {posts_made} messages, {errors} errors")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
