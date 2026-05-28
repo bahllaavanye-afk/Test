@@ -56,6 +56,50 @@ CHANNELS = [
     {"name": "leadership-summary",   "is_private": True,  "topic": "Daily auto-summaries from each VP"},
     {"name": "board",                "is_private": True,  "topic": "CEO + CFO + CTO + board observers"},
     {"name": "pm-coordination",      "is_private": True,  "topic": "All PMs cross-coordinate"},
+
+    # ── Round 2: market-specific + research + product ─────────────────────────
+    # Public — market desks
+    {"name": "desk-equities",         "is_private": False, "topic": "US equity trading desk — Alpaca + TradeStation"},
+    {"name": "desk-crypto",           "is_private": False, "topic": "Crypto desk — Binance/Coinbase/Alpaca crypto"},
+    {"name": "desk-options",          "is_private": False, "topic": "Options flow + Greeks + volatility surface"},
+    {"name": "desk-polymarket",       "is_private": False, "topic": "Polymarket prediction-market opportunities"},
+    {"name": "desk-fx-rates",         "is_private": False, "topic": "FX + rates discussion (paper-only for now)"},
+    # Public — feeds
+    {"name": "news-feed",             "is_private": False, "topic": "Auto-posted: news headlines, earnings, Fed events"},
+    {"name": "earnings-watch",        "is_private": False, "topic": "Pre + post earnings reactions"},
+    {"name": "fed-watch",             "is_private": False, "topic": "FOMC, FRED prints, macro releases"},
+    {"name": "papers",                "is_private": False, "topic": "New quant/ML/finance papers worth reading"},
+    {"name": "competitors",           "is_private": False, "topic": "What other quant funds + retail bots are doing"},
+    {"name": "external-research",     "is_private": False, "topic": "External research links + sell-side notes"},
+    # Public — culture
+    {"name": "random",                "is_private": False, "topic": "Off-topic chatter"},
+    {"name": "book-club",             "is_private": False, "topic": "Quant book of the month + discussion"},
+    {"name": "culture",               "is_private": False, "topic": "Team culture, values, rituals"},
+    {"name": "show-and-tell",         "is_private": False, "topic": "Weekly demos from each squad (Fridays)"},
+    # Public — process
+    {"name": "okrs",                  "is_private": False, "topic": "Quarterly OKR check-ins per squad"},
+    {"name": "hiring",                "is_private": False, "topic": "Open roles, candidate pipeline, calibration"},
+    {"name": "postmortems",           "is_private": False, "topic": "Postmortem index + lessons learned"},
+    {"name": "security-alerts",       "is_private": False, "topic": "Secret rotation, scan results, vuln advisories"},
+    {"name": "infra-alerts",          "is_private": False, "topic": "Render/Vercel/Supabase/Upstash status"},
+
+    # Private — leadership sub-channels
+    {"name": "cxo-direct",            "is_private": True,  "topic": "C-level direct line (CEO/CTO/CFO/CRO/GC)"},
+    {"name": "board-prep",            "is_private": True,  "topic": "Monthly board-deck draft + Q&A prep"},
+    {"name": "investor-updates",      "is_private": True,  "topic": "Monthly investor letter drafts (CEO + CFO)"},
+    {"name": "legal-compliance",      "is_private": True,  "topic": "GC + Compliance — licenses, KYC, audit"},
+    {"name": "finance-ops",           "is_private": True,  "topic": "CFO — burn, runway, vendor costs"},
+
+    # Private — sub-squads / pods
+    {"name": "pod-equity-momentum",   "is_private": True,  "topic": "Equity momentum pod (TSMOM, factor)"},
+    {"name": "pod-equity-meanrev",    "is_private": True,  "topic": "Equity mean-reversion pod (pairs, stat-arb)"},
+    {"name": "pod-options-vol",       "is_private": True,  "topic": "Options volatility pod (PCR, vol surface)"},
+    {"name": "pod-crypto-perp",       "is_private": True,  "topic": "Crypto perps + funding pod"},
+    {"name": "pod-poly-arb",          "is_private": True,  "topic": "Polymarket arb + correlation pod"},
+    {"name": "pod-execution-tca",     "is_private": True,  "topic": "Execution / TCA / slippage pod"},
+    {"name": "pod-ml-features",       "is_private": True,  "topic": "ML feature engineering pod"},
+    {"name": "pod-ml-models",         "is_private": True,  "topic": "ML model training pod (LSTM, TFT, XGB)"},
+    {"name": "pod-ml-rl",             "is_private": True,  "topic": "Reinforcement learning execution pod"},
 ]
 
 

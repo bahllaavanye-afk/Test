@@ -1,0 +1,30 @@
+name: Slack Kickoff — fill all channels with team chatter
+
+# Run from the Actions tab → Slack Kickoff → Run workflow.
+# Posts a round of realistic team messages into every channel so the
+# workspace looks like a live engineering org. Safe to re-run.
+#
+# Required Bot Token scopes: chat:write, channels:join, channels:read,
+# groups:read, channels:manage, groups:write.
+on:
+  workflow_dispatch:
+    inputs:
+      bot_token:
+        description: "Slack Bot User OAuth Token (xoxb-...)"
+        required: true
+        type: string
+
+jobs:
+  kickoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Post team chatter to all channels
+        env:
+          SLACK_BOT_TOKEN: ${{ inputs.bot_token }}
+        run: python .github/scripts/slack_kickoff.py

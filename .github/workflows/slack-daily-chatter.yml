@@ -1,0 +1,40 @@
+name: Slack Daily Chatter
+
+# Two ways to run:
+#   1) Scheduled: 4x per day (UTC). Requires repo secret SLACK_BOT_TOKEN.
+#   2) Manual:    Actions tab → Slack Daily Chatter → Run workflow, paste a token.
+#
+# Each run posts 8-15 short messages across active channels so the org Slack
+# doesn't go quiet between live deploys.
+on:
+  schedule:
+    # 09:15, 13:15, 17:15, 21:15 UTC — spread across the workday
+    - cron: "15 9,13,17,21 * * *"
+  workflow_dispatch:
+    inputs:
+      bot_token:
+        description: "Slack Bot User OAuth Token (xoxb-...). Leave blank to use repo secret SLACK_BOT_TOKEN."
+        required: false
+        type: string
+
+concurrency:
+  group: slack-chatter
+  cancel-in-progress: false
+
+jobs:
+  chatter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Post chatter
+        env:
+          SLACK_BOT_TOKEN: ${{ inputs.bot_token || secrets.SLACK_BOT_TOKEN }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "⚠ No SLACK_BOT_TOKEN — set repo secret or pass via workflow_dispatch input. Skipping."
+            exit 0
+          fi
+          python .github/scripts/slack_daily_chatter.py
