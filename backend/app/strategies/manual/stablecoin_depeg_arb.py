@@ -139,9 +139,7 @@ class StablecoinDepegArbStrategy(AbstractStrategy):
                 target_price=current_price,
                 stop_loss=current_price * (1 - self.stop_bps / 10_000),
                 take_profit=1.0,  # target: return to peg
-                order_type="limit",
-                quantity=None,
-                metadata={"premium_bps": round(current_prem, 2), "z_score": round(current_z, 2)},
+                metadata={"premium_bps": round(current_prem, 2), "z_score": round(current_z, 2), "order_type": "limit"},
             )
 
         if current_prem > self.entry_bps and current_z > self.z_thresh:
@@ -157,9 +155,7 @@ class StablecoinDepegArbStrategy(AbstractStrategy):
                 target_price=current_price,
                 stop_loss=current_price * (1 + self.stop_bps / 10_000),
                 take_profit=1.0,
-                order_type="limit",
-                quantity=None,
-                metadata={"premium_bps": round(current_prem, 2), "z_score": round(current_z, 2)},
+                metadata={"premium_bps": round(current_prem, 2), "z_score": round(current_z, 2), "order_type": "limit"},
             )
 
         return None

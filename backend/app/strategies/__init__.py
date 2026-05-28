@@ -40,6 +40,7 @@ from app.strategies.manual.crypto_adaptive_trend import CryptoAdaptiveTrendStrat
 from app.strategies.manual.stablecoin_depeg_arb import StablecoinDepegArbStrategy
 from app.strategies.manual.moc_auction_imbalance import MOCAuctionImbalanceStrategy
 from app.strategies.manual.options_pcr_reversal import OptionsPCRReversalStrategy
+from app.strategies.manual.time_series_momentum import TimeSeriesMomentumStrategy
 from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
 from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
@@ -88,6 +89,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "stablecoin_depeg_arb": StablecoinDepegArbStrategy,
     "moc_auction_imbalance": MOCAuctionImbalanceStrategy,
     "options_pcr_reversal": OptionsPCRReversalStrategy,
+    "time_series_momentum": TimeSeriesMomentumStrategy,
     "ml_momentum": MLMomentumStrategy,
     "ml_pca_arb": MLPCAStatArbStrategy,
     "ml_mean_reversion": MLMeanReversionStrategy,

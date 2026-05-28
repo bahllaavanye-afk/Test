@@ -146,9 +146,7 @@ class OptionsPCRReversalStrategy(AbstractStrategy):
                 target_price=last_price,
                 stop_loss=last_price - stop_distance,
                 take_profit=last_price + stop_distance * 1.5,
-                order_type="market",
-                quantity=None,
-                metadata={"pcr": round(pcr, 3), "pcr_threshold_high": self.pcr_high},
+                metadata={"pcr": round(pcr, 3), "pcr_threshold_high": self.pcr_high, "order_type": "market"},
             )
 
         if pcr <= self.pcr_low:
@@ -162,9 +160,7 @@ class OptionsPCRReversalStrategy(AbstractStrategy):
                 target_price=last_price,
                 stop_loss=last_price + stop_distance,
                 take_profit=last_price - stop_distance * 1.5,
-                order_type="market",
-                quantity=None,
-                metadata={"pcr": round(pcr, 3), "pcr_threshold_low": self.pcr_low},
+                metadata={"pcr": round(pcr, 3), "pcr_threshold_low": self.pcr_low, "order_type": "market"},
             )
 
         return None

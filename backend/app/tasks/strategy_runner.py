@@ -136,9 +136,9 @@ class ContinuousStrategyRunner:
                         )
                         order_req = OrderRequest(
                             symbol=symbol,
-                            quantity=signal.quantity or 1,
+                            quantity=signal.metadata.get("quantity", 1),
                             side=signal.side,
-                            order_type=signal.order_type or "market",
+                            order_type=signal.metadata.get("order_type", "market"),
                             limit_price=signal.target_price,
                             stop_loss=signal.stop_loss,
                             take_profit=signal.take_profit,
