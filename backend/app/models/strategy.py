@@ -9,7 +9,7 @@ class Strategy(Base, TimestampMixin):
     __tablename__ = "strategies"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    account_id: Mapped[str | None] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True)
+    account_id: Mapped[str | None] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False)          # e.g. 'pairs_trading'
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     market_type: Mapped[str] = mapped_column(String(16), nullable=False)   # equity|crypto|polymarket

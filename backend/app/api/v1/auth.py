@@ -14,6 +14,7 @@ from app.utils.security import (
     create_access_token, create_refresh_token, decode_token,
     hash_password, verify_password,
 )
+from app.utils.token_blocklist import revoke_jti, is_revoked
 from app.utils.exceptions import UnauthorizedError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -117,14 +118,48 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
         if payload.get("type") != "refresh":
             raise UnauthorizedError()
         user_id = payload.get("sub")
+        jti = payload.get("jti")
     except Exception:
         raise UnauthorizedError("Invalid refresh token")
+
+    # Reject revoked tokens (logout / rotation)
+    if jti and await is_revoked(jti):
+        raise UnauthorizedError("Refresh token has been revoked")
 
     result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
     user = result.scalar_one_or_none()
     if not user:
         raise UnauthorizedError()
+
+    # Rotate: revoke the consumed token before issuing a new pair
+    if jti:
+        import time
+        exp = payload.get("exp", 0)
+        ttl = max(1, int(exp - time.time()))
+        await revoke_jti(jti, ttl)
+
     return TokenResponse(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
     )
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/logout", status_code=204)
+async def logout(body: LogoutRequest):
+    """Revoke the given refresh token. The client must discard the access token too."""
+    try:
+        payload = decode_token(body.refresh_token)
+        if payload.get("type") != "refresh":
+            return  # silently accept invalid type — token is already useless
+        jti = payload.get("jti")
+        if jti:
+            import time
+            exp = payload.get("exp", 0)
+            ttl = max(1, int(exp - time.time()))
+            await revoke_jti(jti, ttl)
+    except Exception:
+        pass  # expired/malformed tokens are already invalid — no need to raise

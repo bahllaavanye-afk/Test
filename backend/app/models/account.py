@@ -30,7 +30,7 @@ class AccountSnapshot(Base):
     __tablename__ = "account_snapshots"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"))
+    account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     total_equity: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
     cash: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
