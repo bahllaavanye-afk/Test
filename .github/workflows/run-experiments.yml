@@ -1,0 +1,66 @@
+name: Run ML Experiments
+
+on:
+  schedule:
+    # Every 6 hours: 00:00, 06:00, 12:00, 18:00 UTC
+    - cron: "0 0,6,12,18 * * *"
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: "Strategy name to backtest (leave empty for all)"
+        required: false
+        default: ""
+      symbol:
+        description: "Symbol to use (leave empty for defaults per strategy)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  run-experiments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet \
+            pandas numpy scipy statsmodels scikit-learn \
+            pandas-ta yfinance \
+            pytest pytest-asyncio anyio \
+            fastapi pydantic pydantic-settings \
+            python-dotenv structlog tenacity
+
+      - name: Run backtest experiments
+        env:
+          STRATEGY_FILTER: ${{ github.event.inputs.strategy }}
+          SYMBOL_FILTER: ${{ github.event.inputs.symbol }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python .github/scripts/run_experiments.py
+
+      - name: Commit experiment results
+        run: |
+          git config user.name  "QuantEdge ML Bot"
+          git config user.email "ml-bot@quantedge.local"
+          git add experiments/results/
+          if git diff --cached --quiet; then
+            echo "No new experiment results to commit."
+          else
+            git commit -m "chore: add experiment results $(date -u +%Y-%m-%dT%H:%M)Z [skip ci]"
+            git push origin claude/advanced-trading-bot-d5Lmw
+          fi

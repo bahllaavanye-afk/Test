@@ -15,13 +15,24 @@
 
 ## Where do trades happen? Where do I see them?
 
-**They don't happen yet.** Until backend is deployed to Render, no strategy code runs against live data. After Render deploy:
-1. `backend/app/main.py:lifespan()` boots — starts `StrategyRunner` (24/7 loop, one task per strategy×symbol)
-2. `PriceFeed` polls Alpaca paper for OHLCV, pushes to Redis
-3. Each strategy's `analyze()` runs every `tick_interval_seconds` (default 60s)
-4. Signals → `SmartOrderRouter` → Alpaca paper trade
-5. Fills flow back to DB → P&L attribution → Slack `#pnl-daily`
-6. Frontend pulls from REST `/api/v1/analytics/*` + WebSocket `/ws/orders`
+**GitHub Actions desk trading runs every 15 min (Mon–Fri, 09:30–22:00 UTC)** via `.github/workflows/desk-trading.yml`.
+No deployed backend needed — the runner talks directly to Alpaca paper REST API.
+
+Order flow (Actions-based, live now once secrets are added):
+1. `desk_order_placer.py` fetches OHLCV from Alpaca for each desk's symbols
+2. Each strategy's `analyze()` runs in-process on the Actions runner
+3. Signals with confidence ≥ threshold → Alpaca paper `POST /v2/orders`
+4. Per-desk Slack posts to `#desk-equities`, `#desk-crypto`, `#desk-options`, `#desk-polymarket`, `#desk-fx-rates`
+5. Global summary posted to `#pnl-daily`
+
+ML experiments auto-run every 6 hours via `.github/workflows/run-experiments.yml`:
+- Fetches historical OHLCV via yfinance for each strategy × symbol
+- Runs `backtest_signals()` and computes Sharpe/Sortino/drawdown on hold-out period
+- Saves JSON results to `experiments/results/` and commits them
+- Summary posted to `#ml-experiments`
+
+After Render deploy (backend):
+- `StrategyRunner` runs 24/7 with WebSocket price feed + DB-backed fills
 
 ## Slack agent team (the live "company")
 

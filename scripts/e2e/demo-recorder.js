@@ -24,13 +24,14 @@ const PAGES = [
   { name: '09-comparison',    path: '/comparison',      wait: 'networkidle', settleMs: 6000, requireAuth: true  },
   { name: '10-backtest',      path: '/backtest',        wait: 'networkidle', settleMs: 6000, requireAuth: true  },
   { name: '11-experiments',   path: '/experiments',     wait: 'networkidle', settleMs: 5000, requireAuth: true  },
-  { name: '12-analytics',     path: '/analytics',       wait: 'networkidle', settleMs: 5000, requireAuth: true  },
-  { name: '13-risk',          path: '/risk',            wait: 'networkidle', settleMs: 5000, requireAuth: true  },
-  { name: '14-activity',      path: '/activity',        wait: 'networkidle', settleMs: 5000, requireAuth: true  },
-  { name: '15-leaderboard',   path: '/leaderboard',     wait: 'networkidle', settleMs: 5000, requireAuth: true  },
-  { name: '16-pnl',           path: '/pnl',             wait: 'networkidle', settleMs: 5000, requireAuth: true  },
-  { name: '17-system',        path: '/system',          wait: 'networkidle', settleMs: 5000, requireAuth: true  },
-  { name: '18-macro',         path: '/macro',           wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '12-ml-insights',   path: '/ml-insights',     wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '13-analytics',     path: '/analytics',       wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '14-risk',          path: '/risk',            wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '15-activity',      path: '/activity',        wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '16-leaderboard',   path: '/leaderboard',     wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '17-pnl',           path: '/pnl',             wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '18-system',        path: '/system',          wait: 'networkidle', settleMs: 5000, requireAuth: true  },
+  { name: '19-macro',         path: '/macro',           wait: 'networkidle', settleMs: 5000, requireAuth: true  },
 ];
 
 // Test credentials seeded on each E2E run (must match seed script)

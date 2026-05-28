@@ -1295,6 +1295,89 @@ def trading_desk_crypto_positions() -> list[Post]:
     )]
 
 
+def trading_desk_options_positions() -> list[Post]:
+    """Options desk — posts equity positions used for options strategies to #desk-options."""
+    positions = alpaca_positions()
+    orders    = alpaca_recent_orders(limit=20)
+    # Options strategies trade the underlying equity on Alpaca paper
+    options_symbols = {"SPY", "QQQ", "AAPL", "TSLA", "NVDA"}
+    opt_pos = [p for p in positions if p.get("symbol") in options_symbols]
+    lines = [f"*Options desk — underlying positions ({len(opt_pos)})*"]
+    if opt_pos:
+        for p in opt_pos:
+            sym     = p.get("symbol", "?")
+            qty     = float(p.get("qty", 0))
+            avg     = float(p.get("avg_entry_price", 0) or 0)
+            upl_pct = float(p.get("unrealized_plpc", 0) or 0) * 100
+            lines.append(f"• `{sym}` qty {qty:g} · avg ${avg:.2f} · *{upl_pct:+.2f}%*")
+    else:
+        lines.append("_No options-underlying positions open._")
+    # Recent orders for these symbols
+    recent_opt_orders = [o for o in orders if o.get("symbol") in options_symbols
+                         and o.get("status") == "filled"][:5]
+    if recent_opt_orders:
+        lines.append("\n*Recent fills:*")
+        for o in recent_opt_orders:
+            lines.append(f"  `{o['symbol']}` {o['side'].upper()} {float(o.get('filled_qty', 0)):g} "
+                         f"@ ${float(o.get('filled_avg_price') or 0):.2f}")
+    return [Post(
+        channel="desk-options",
+        text="\n".join(lines),
+        username="Options desk bot",
+        icon_emoji=":game_die:",
+    )]
+
+
+def trading_desk_polymarket_positions() -> list[Post]:
+    """Polymarket desk — posts current macro proxy positions to #desk-polymarket."""
+    # Polymarket desk uses SPY as market regime proxy on Alpaca paper
+    positions = alpaca_positions()
+    spy_pos   = [p for p in positions if p.get("symbol") == "SPY"]
+    acct      = alpaca_account()
+    equity    = float(acct.get("equity", 0)) if acct else 0
+
+    lines = ["*Polymarket desk — market regime monitor*"]
+    if spy_pos:
+        p        = spy_pos[0]
+        qty      = float(p.get("qty", 0))
+        upl_pct  = float(p.get("unrealized_plpc", 0) or 0) * 100
+        lines.append(f"• SPY proxy: qty {qty:g} · *{upl_pct:+.2f}%*")
+    else:
+        lines.append("• No SPY proxy position open — sentiment: neutral")
+    lines.append(f"• Capital allocated: ${min(equity * 0.05, 1000):.0f} (5% of paper equity)")
+    lines.append("• Strategy: `polymarket_sentiment_momentum` — threshold 0.70")
+    return [Post(
+        channel="desk-polymarket",
+        text="\n".join(lines),
+        username="Polymarket desk bot",
+        icon_emoji=":crystal_ball:",
+    )]
+
+
+def trading_desk_macro_positions() -> list[Post]:
+    """Macro/FX desk — posts GLD/TLT/UUP/EEM positions to #desk-fx-rates."""
+    positions  = alpaca_positions()
+    macro_syms = {"GLD", "TLT", "UUP", "EWJ", "EEM", "DX-Y.NYB"}
+    macro_pos  = [p for p in positions if p.get("symbol") in macro_syms]
+    lines = [f"*Macro/FX desk — positions ({len(macro_pos)})*"]
+    if macro_pos:
+        for p in macro_pos:
+            sym     = p.get("symbol", "?")
+            qty     = float(p.get("qty", 0))
+            mv      = float(p.get("market_value", 0) or 0)
+            upl_pct = float(p.get("unrealized_plpc", 0) or 0) * 100
+            lines.append(f"• `{sym}` qty {qty:g} · MV ${mv:,.0f} · *{upl_pct:+.2f}%*")
+    else:
+        lines.append("_No macro positions open._")
+    lines.append("\n*Strategies active:* `cross_asset_carry`, `sector_rotation`, `time_series_momentum`")
+    return [Post(
+        channel="desk-fx-rates",
+        text="\n".join(lines),
+        username="Macro/FX desk bot",
+        icon_emoji=":earth_americas:",
+    )]
+
+
 def laavanye_bahl_ceo() -> list[Post]:
     """CEO — weekly principles repost, only on Mondays."""
     if datetime.now(timezone.utc).weekday() != 0:
@@ -1693,6 +1776,12 @@ AGENTS: list[Agent] = [
           ["desk-equities"], trading_desk_equity_positions, ["equities", "trading"]),
     Agent("Crypto desk bot", "automated", ":coin:",
           ["desk-crypto"], trading_desk_crypto_positions, ["crypto", "trading"]),
+    Agent("Options desk bot", "automated", ":game_die:",
+          ["desk-options"], trading_desk_options_positions, ["options", "trading"]),
+    Agent("Polymarket desk bot", "automated", ":crystal_ball:",
+          ["desk-polymarket"], trading_desk_polymarket_positions, ["polymarket", "trading"]),
+    Agent("Macro/FX desk bot", "automated", ":earth_americas:",
+          ["desk-fx-rates"], trading_desk_macro_positions, ["macro", "fx", "trading"]),
 ]
 
 

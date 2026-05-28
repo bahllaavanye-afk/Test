@@ -1,0 +1,50 @@
+name: Desk Trading (Paper Orders)
+
+on:
+  schedule:
+    # Every 15 minutes, Mon–Fri, 09:30–22:00 UTC (covers US market hours + pre/post)
+    - cron: "*/15 9-22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      desk:
+        description: "Specific desk to run (leave empty for all)"
+        required: false
+        default: ""
+
+jobs:
+  place-orders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet \
+            pandas numpy scipy statsmodels scikit-learn \
+            pandas-ta \
+            fastapi pydantic pydantic-settings \
+            python-dotenv structlog tenacity anyio \
+            alpaca-py
+
+      - name: Run desk order placer
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          DESK_FILTER:       ${{ github.event.inputs.desk }}
+          TRADING_MODE:      paper
+          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
+          DATABASE_URL:      ""
+          REDIS_URL:         ""
+          PYTHONPATH:        ${{ github.workspace }}/backend
+        run: python .github/scripts/desk_order_placer.py
