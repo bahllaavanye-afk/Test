@@ -12,126 +12,163 @@ jobs:
   bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install httpx
-      - name: Create all channels
+      - name: Create all channels + capture output
+        id: bootstrap
         env:
           SLACK_BOT_TOKEN: ${{ inputs.bot_token }}
         run: |
+          set +e
           cat > /tmp/bootstrap.py <<'PYEOF'
-          import os, sys
-          sys.path.insert(0, ".")
-
-          # Standalone — re-implement SlackBot inline so we don't need backend imports
-          import httpx
-          from dataclasses import dataclass
+          import os, sys, httpx, traceback
 
           SLACK_API = "https://slack.com/api"
 
           ENGINEERING_CHANNELS = [
-              {"name": "engineering-standup",  "is_private": False, "topic": "Daily standups from each squad (13:00 UTC)"},
-              {"name": "alpha-research",       "is_private": False, "topic": "New strategy proposals + paper reviews"},
-              {"name": "pnl-daily",            "is_private": False, "topic": "EOD P&L attribution by strategy"},
-              {"name": "risk-alerts",          "is_private": False, "topic": "VaR breaches, circuit breakers"},
-              {"name": "incidents",            "is_private": False, "topic": "P0/P1 incidents and postmortems"},
-              {"name": "deploys",              "is_private": False, "topic": "Deploy notifications"},
-              {"name": "ci-failures",          "is_private": False, "topic": "CI test failures (auto-routed)"},
-              {"name": "ml-experiments",       "is_private": False, "topic": "Training run results, model leaderboard"},
-              {"name": "engineering",          "is_private": False, "topic": "All engineers"},
-              {"name": "announcements",        "is_private": False, "topic": "Company-wide announcements (CEO only posts)"},
-              {"name": "wins",                 "is_private": False, "topic": "Celebrate shipped features and winning strategies"},
-              {"name": "help",                 "is_private": False, "topic": "Anyone can ask, anyone answers"},
-              {"name": "squad-alpha-research", "is_private": True,  "topic": "Alpha Research squad"},
-              {"name": "squad-microstructure", "is_private": True,  "topic": "Microstructure squad"},
-              {"name": "squad-ml-modeling",    "is_private": True,  "topic": "ML Modeling squad"},
-              {"name": "squad-ml-infra",       "is_private": True,  "topic": "ML Infrastructure squad"},
-              {"name": "squad-backend",        "is_private": True,  "topic": "Backend Platform squad"},
-              {"name": "squad-frontend",       "is_private": True,  "topic": "Frontend squad"},
-              {"name": "squad-data",           "is_private": True,  "topic": "Data Engineering squad"},
-              {"name": "squad-execution",      "is_private": True,  "topic": "Execution & Microstructure squad"},
-              {"name": "squad-risk",           "is_private": True,  "topic": "Risk Engineering squad"},
-              {"name": "squad-security",       "is_private": True,  "topic": "Security squad"},
-              {"name": "squad-devops",         "is_private": True,  "topic": "DevOps / SRE squad"},
-              {"name": "squad-qa",             "is_private": True,  "topic": "QA / Test Automation squad"},
-              {"name": "squad-compliance",     "is_private": True,  "topic": "Compliance Engineering"},
-              {"name": "squad-finance-eng",    "is_private": True,  "topic": "Finance Engineering"},
-              {"name": "leadership",           "is_private": True,  "topic": "VP+ only"},
-              {"name": "leadership-summary",   "is_private": True,  "topic": "Daily auto-summaries from each VP"},
-              {"name": "board",                "is_private": True,  "topic": "CEO + CFO + CTO + board observers"},
-              {"name": "pm-coordination",      "is_private": True,  "topic": "All PMs cross-coordinate"},
+              ("engineering-standup",  False, "Daily standups from each squad (13:00 UTC)"),
+              ("alpha-research",       False, "New strategy proposals + paper reviews"),
+              ("pnl-daily",            False, "EOD P&L attribution by strategy"),
+              ("risk-alerts",          False, "VaR breaches, circuit breakers"),
+              ("incidents",            False, "P0/P1 incidents and postmortems"),
+              ("deploys",              False, "Deploy notifications"),
+              ("ci-failures",          False, "CI test failures (auto-routed)"),
+              ("ml-experiments",       False, "Training run results, model leaderboard"),
+              ("engineering",          False, "All engineers"),
+              ("announcements",        False, "Company-wide announcements (CEO only posts)"),
+              ("wins",                 False, "Celebrate shipped features and winning strategies"),
+              ("help",                 False, "Anyone can ask, anyone answers"),
+              ("squad-alpha-research", True,  "Alpha Research squad"),
+              ("squad-microstructure", True,  "Microstructure squad"),
+              ("squad-ml-modeling",    True,  "ML Modeling squad"),
+              ("squad-ml-infra",       True,  "ML Infrastructure squad"),
+              ("squad-backend",        True,  "Backend Platform squad"),
+              ("squad-frontend",       True,  "Frontend squad"),
+              ("squad-data",           True,  "Data Engineering squad"),
+              ("squad-execution",      True,  "Execution squad"),
+              ("squad-risk",           True,  "Risk Engineering squad"),
+              ("squad-security",       True,  "Security squad"),
+              ("squad-devops",         True,  "DevOps / SRE squad"),
+              ("squad-qa",             True,  "QA / Test Automation squad"),
+              ("squad-compliance",     True,  "Compliance Engineering"),
+              ("squad-finance-eng",    True,  "Finance Engineering"),
+              ("leadership",           True,  "VP+ only"),
+              ("leadership-summary",   True,  "Daily auto-summaries from each VP"),
+              ("board",                True,  "CEO + CFO + CTO + board observers"),
+              ("pm-coordination",      True,  "All PMs cross-coordinate"),
           ]
 
-          token = os.environ["SLACK_BOT_TOKEN"]
-          if not token.startswith("xoxb-"):
-              print(f"ERROR: token must start with xoxb-, got: {token[:20]}...")
-              sys.exit(1)
+          out = []
+          def log(msg):
+              print(msg, flush=True)
+              out.append(msg)
 
-          client = httpx.Client(
-              base_url=SLACK_API,
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Content-Type": "application/json; charset=utf-8",
-              },
-              timeout=15,
-          )
+          try:
+              token = os.environ["SLACK_BOT_TOKEN"]
+              log(f"Token prefix: {token[:10]}... length={len(token)}")
+              if not token.startswith("xoxb-"):
+                  log(f"❌ FATAL: token must start with xoxb-")
+                  sys.exit(1)
 
-          def call(method, payload=None):
-              r = client.post(f"/{method}", json=payload or {})
-              r.raise_for_status()
-              d = r.json()
-              if not d.get("ok"):
-                  raise RuntimeError(f"{method} failed: {d.get('error')} - {d}")
-              return d
+              client = httpx.Client(
+                  base_url=SLACK_API,
+                  headers={"Authorization": f"Bearer {token}",
+                           "Content-Type": "application/json; charset=utf-8"},
+                  timeout=20,
+              )
 
-          auth = call("auth.test")
-          print(f"\n✅ Authenticated as bot '{auth.get('user')}' in team '{auth.get('team')}'")
-          print(f"   Team URL: {auth.get('url')}\n")
+              def call(method, payload=None):
+                  r = client.post(f"/{method}", json=payload or {})
+                  r.raise_for_status()
+                  d = r.json()
+                  if not d.get("ok"):
+                      raise RuntimeError(f"{method}: {d.get('error')} (response: {d})")
+                  return d
 
-          # Cache existing channels
-          existing = []
-          cursor = ""
-          while True:
-              d = call("conversations.list", {"types": "public_channel,private_channel", "limit": 200, "cursor": cursor})
-              existing.extend(d.get("channels", []))
-              cursor = d.get("response_metadata", {}).get("next_cursor", "")
-              if not cursor: break
-          existing_names = {c.get("name") for c in existing}
+              # 1. Auth check
+              auth = call("auth.test")
+              log(f"✅ Auth OK — bot user: {auth.get('user')}, team: {auth.get('team')}, url: {auth.get('url')}")
 
-          print(f"📋 Found {len(existing)} existing channels in workspace\n")
-          print(f"🚀 Creating {len(ENGINEERING_CHANNELS)} channels...\n")
-
-          created, skipped, errors = [], [], []
-          for spec in ENGINEERING_CHANNELS:
-              name = spec["name"]
-              if name in existing_names:
-                  skipped.append(name)
-                  print(f"   = #{name} (already exists)")
-                  continue
+              # 2. List existing channels
               try:
-                  d = call("conversations.create", {"name": name, "is_private": spec["is_private"]})
-                  cid = d.get("channel", {}).get("id")
-                  if spec.get("topic") and cid:
-                      try:
-                          call("conversations.setTopic", {"channel": cid, "topic": spec["topic"]})
-                      except Exception as e:
-                          print(f"   ! setTopic on #{name} failed: {e}")
-                  visibility = "private" if spec["is_private"] else "public"
-                  print(f"   + #{name} ({visibility})")
-                  created.append(name)
+                  existing, cursor = [], ""
+                  while True:
+                      d = call("conversations.list", {
+                          "types": "public_channel,private_channel",
+                          "limit": 200,
+                          "cursor": cursor,
+                      })
+                      existing.extend(d.get("channels", []))
+                      cursor = d.get("response_metadata", {}).get("next_cursor", "")
+                      if not cursor: break
+                  existing_names = {c.get("name") for c in existing}
+                  log(f"📋 {len(existing)} existing channels found")
               except Exception as e:
-                  errors.append((name, str(e)))
-                  print(f"   ! #{name} failed: {e}")
+                  log(f"⚠️ Cannot list channels (missing channels:read or groups:read scope?): {e}")
+                  existing_names = set()
 
-          print(f"\n========== SUMMARY ==========")
-          print(f"✅ Created:        {len(created)}")
-          print(f"⏭  Already existed: {len(skipped)}")
-          print(f"❌ Errors:          {len(errors)}")
-          if errors:
-              for n, e in errors:
-                  print(f"   - {n}: {e}")
+              # 3. Create each channel
+              created, skipped, errors = [], [], []
+              for name, is_private, topic in ENGINEERING_CHANNELS:
+                  if name in existing_names:
+                      skipped.append(name)
+                      log(f"  = #{name} (already exists)")
+                      continue
+                  try:
+                      d = call("conversations.create", {"name": name, "is_private": is_private})
+                      cid = d.get("channel", {}).get("id")
+                      vis = "private" if is_private else "public"
+                      log(f"  + #{name} ({vis}) id={cid}")
+                      created.append(name)
+                      if topic and cid:
+                          try:
+                              call("conversations.setTopic", {"channel": cid, "topic": topic})
+                          except Exception as te:
+                              log(f"    ! setTopic failed: {te}")
+                  except Exception as ce:
+                      log(f"  ! #{name} FAILED: {ce}")
+                      errors.append((name, str(ce)))
+
+              log(f"\nSUMMARY: created={len(created)} skipped={len(skipped)} errors={len(errors)}")
+
+              # Write output for next step
+              with open("/tmp/bootstrap_output.md", "w") as f:
+                  f.write("## Slack bootstrap result\n\n")
+                  f.write("```\n" + "\n".join(out) + "\n```\n")
+
+              if errors:
+                  log("\nERRORS DETAIL:")
+                  for n, e in errors:
+                      log(f"  - #{n}: {e}")
+                  sys.exit(1 if len(created) == 0 else 0)
+          except Exception as e:
+              log(f"\n❌ FATAL: {e}")
+              log(traceback.format_exc())
+              with open("/tmp/bootstrap_output.md", "w") as f:
+                  f.write("## Slack bootstrap FAILED\n\n```\n" + "\n".join(out) + "\n```\n")
               sys.exit(1)
           PYEOF
           python /tmp/bootstrap.py
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Post output to CTO issue #2
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f /tmp/bootstrap_output.md ]; then
+            echo "## Slack bootstrap — no output file generated" > /tmp/bootstrap_output.md
+          fi
+          BODY=$(cat /tmp/bootstrap_output.md | python3 -c "import sys, json; print(json.dumps(sys.stdin.read()))")
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/2/comments" \
+            -d "{\"body\": $BODY}"
+          echo "✓ Posted bootstrap result to issue #2"
