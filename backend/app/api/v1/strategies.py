@@ -3,11 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 import uuid
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
@@ -24,8 +24,7 @@ class StrategyOut(BaseModel):
     tick_interval_seconds: float
     confidence_threshold: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StrategyToggle(BaseModel):
@@ -33,7 +32,7 @@ class StrategyToggle(BaseModel):
 
 
 @router.get("/available")
-async def list_available():
+async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
     return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
 
@@ -52,7 +51,7 @@ async def toggle_strategy(
     strategy_id: str,
     body: StrategyToggle,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_superuser),
 ):
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()

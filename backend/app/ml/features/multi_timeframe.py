@@ -4,7 +4,7 @@ All features are properly aligned and lagged to prevent lookahead bias.
 """
 from __future__ import annotations
 import pandas as pd
-import pandas_ta as ta
+import app.ml.features.pandas_ta_compat as ta
 
 
 def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:

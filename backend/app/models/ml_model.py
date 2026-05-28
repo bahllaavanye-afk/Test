@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Numeric, DateTime, Boolean, Integer, JSON
+from sqlalchemy import String, Numeric, DateTime, Boolean, Integer, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -32,7 +32,7 @@ class MLPrediction(Base):
     __tablename__ = "ml_predictions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    model_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    model_id: Mapped[str] = mapped_column(String, ForeignKey("ml_models.id", ondelete="CASCADE"), nullable=False, index=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     prediction: Mapped[str] = mapped_column(String(8), nullable=False)   # up|down|neutral

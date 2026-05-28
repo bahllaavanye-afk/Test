@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
+import app.ml.features.pandas_ta_compat as ta
 from sklearn.metrics import roc_auc_score
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 

@@ -4,29 +4,41 @@ import pandas as pd
 from app.utils.logging import logger
 
 
-def compute_correlation_clusters(returns: pd.DataFrame, threshold: float = 0.70) -> dict[str, list[str]]:
-    """
-    Group symbols whose 60-day return correlation > threshold into clusters.
-    Returns {cluster_id: [symbol1, symbol2, ...]}
-    """
-    corr = returns.tail(60).corr()
-    visited: set[str] = set()
+def compute_correlation_clusters(
+    returns: pd.DataFrame,
+    threshold: float = 0.70,
+) -> dict[str, list[str]]:
+    """Union-find connected components for correlation clustering."""
+    returns_df = returns.tail(60) if len(returns) > 60 else returns
+    symbols = list(returns_df.columns)
+    if len(symbols) < 2 or len(returns_df) < 3:
+        return {}
+
+    parent = {s: s for s in symbols}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: str, y: str) -> None:
+        parent[find(x)] = find(y)
+
+    corr_matrix = returns_df.corr()
+    for i, s_a in enumerate(symbols):
+        for s_b in symbols[i + 1:]:
+            try:
+                corr = corr_matrix.loc[s_a, s_b]
+                if abs(corr) > threshold:
+                    union(s_a, s_b)
+            except Exception:
+                continue
+
     clusters: dict[str, list[str]] = {}
-    cluster_idx = 0
-
-    for sym in corr.columns:
-        if sym in visited:
-            continue
-        cluster = [sym]
-        for other in corr.columns:
-            if other != sym and other not in visited:
-                if abs(corr.loc[sym, other]) > threshold:
-                    cluster.append(other)
-                    visited.add(other)
-        visited.add(sym)
-        clusters[f"cluster_{cluster_idx}"] = cluster
-        cluster_idx += 1
-
+    for s in symbols:
+        root = find(s)
+        clusters.setdefault(root, []).append(s)
     return clusters
 
 

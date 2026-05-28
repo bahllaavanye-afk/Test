@@ -9,13 +9,13 @@ class RiskRule(Base):
     __tablename__ = "risk_rules"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"))
+    account_id: Mapped[str | None] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True)
     rule_type: Mapped[str] = mapped_column(String(64), nullable=False)
     risk_bucket: Mapped[str | None] = mapped_column(String(16))  # None=global, arbitrage, ml
     threshold: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
     action: Mapped[str] = mapped_column(String(32), nullable=False)  # alert|halt_bucket|halt_all
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     events: Mapped[list["RiskEvent"]] = relationship("RiskEvent", back_populates="rule")
 

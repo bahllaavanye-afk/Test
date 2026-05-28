@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, Numeric, DateTime, JSON
+from sqlalchemy import String, ForeignKey, Numeric, DateTime, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
@@ -8,6 +8,12 @@ from app.models.base import TimestampMixin
 
 class Order(Base, TimestampMixin):
     __tablename__ = "orders"
+    __table_args__ = (
+        # Composite indexes for the most common query patterns
+        Index("ix_orders_account_status", "account_id", "status"),
+        Index("ix_orders_account_created", "account_id", "created_at"),
+        Index("ix_orders_symbol_status", "symbol", "status"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"))
@@ -16,7 +22,7 @@ class Order(Base, TimestampMixin):
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     side: Mapped[str] = mapped_column(String(8), nullable=False)   # buy|sell
     order_type: Mapped[str] = mapped_column(String(16), nullable=False)  # market|limit|stop
-    quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    quantity: Mapped[float | None] = mapped_column(Numeric(18, 8))
     limit_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
     stop_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
@@ -28,6 +34,14 @@ class Order(Base, TimestampMixin):
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # Bracket / advanced order fields
+    take_profit_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    stop_loss_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    trailing_stop_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))  # e.g. 2.0 = 2%
+    notional: Mapped[float | None] = mapped_column(Numeric(18, 8))  # buy $500 worth
+    bracket_parent_id: Mapped[str | None] = mapped_column(String, ForeignKey("orders.id", ondelete="SET NULL"))
+    risk_reward_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4))
 
     account: Mapped["Account"] = relationship("Account", back_populates="orders")
     fills: Mapped[list["Fill"]] = relationship("Fill", back_populates="order")

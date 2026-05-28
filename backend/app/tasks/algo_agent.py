@@ -70,6 +70,19 @@ class AlgoAgent:
         ("ml_mean_reversion", "AAPL", "ml_enhanced"),
         ("ml_breakout", "SPY", "ml_enhanced"),
         ("ensemble", "SPY", "ml_enhanced"),
+        ("gamma_exposure", "SPY", "manual"),
+        ("kalman_pairs", "XOM", "manual"),
+        ("vrp_systematic", "SPY", "manual"),
+        ("hmm_regime", "SPY", "manual"),
+        ("opening_range_breakout", "SPY", "manual"),
+        ("dispersion_trading", "QQQ", "manual"),
+        ("pead_sue", "AAPL", "manual"),
+        ("skew_arb", "SPY", "manual"),
+        ("triple_barrier_momentum", "NVDA", "manual"),
+        ("residual_momentum", "AAPL", "manual"),
+        ("idio_vol_anomaly", "AAPL", "manual"),
+        ("fifty_two_week_high", "MSFT", "manual"),
+        ("open_close_revert", "SPY", "manual"),
     ]
 
     def __init__(self, broker=None, interval_seconds: int = 300):
@@ -92,28 +105,55 @@ class AlgoAgent:
 
     async def _run_quick_backtest(self, candidate: AlgoCandidate) -> float:
         """
-        Runs a quick 2-year backtest using yfinance data.
+        Runs a quick 2-year backtest using Alpaca historical bars.
         Returns Sharpe ratio or 0.0 on failure.
         """
         try:
             import pandas as pd
-            import yfinance as yf
+            import httpx
+            from app.config import settings
             from app.backtest.engine import run_backtest
             from app.strategies import STRATEGY_REGISTRY
 
             end = datetime.now(timezone.utc)
             start = end - timedelta(days=730)
+            start_str = start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            loop = asyncio.get_event_loop()
-            hist = await loop.run_in_executor(
-                None,
-                lambda: yf.download(candidate.symbol, start=str(start.date()), end=str(end.date()),
-                                     interval="1d", auto_adjust=True, progress=False)
+            headers = {
+                "APCA-API-KEY-ID": settings.alpaca_api_key,
+                "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+            }
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    f"https://data.alpaca.markets/v2/stocks/{candidate.symbol.upper()}/bars",
+                    params={"timeframe": "1Day", "start": start_str, "limit": 1000},
+                    headers=headers,
+                )
+
+            if resp.status_code != 200:
+                return 0.0
+
+            raw_bars = resp.json().get("bars", [])
+            if not raw_bars or len(raw_bars) < 60:
+                return 0.0
+
+            dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True)
+            closes = [float(b["c"]) for b in raw_bars]
+            opens  = [float(b["o"]) for b in raw_bars]
+            highs  = [float(b["h"]) for b in raw_bars]
+            lows   = [float(b["l"]) for b in raw_bars]
+            vols   = [float(b["v"]) for b in raw_bars]
+
+            hist = pd.DataFrame(
+                {"Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": vols},
+                index=dates,
             )
+
             if hist is None or len(hist) < 60:
                 return 0.0
 
-            close = hist["Close"].squeeze() if hasattr(hist["Close"], "squeeze") else hist["Close"]
+            close = hist["Close"]
 
             strategy_cls = STRATEGY_REGISTRY.get(candidate.name)
             if not strategy_cls:
@@ -159,8 +199,8 @@ class AlgoAgent:
             existing.append(result)
             existing = existing[-500:]  # keep last 500
             results_file.write_text(json.dumps(existing, indent=2))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("AlgoAgent: failed to persist result", error=str(e))
 
     async def run(self) -> None:
         """Main loop — runs forever, selecting and testing candidates via UCB1."""
@@ -198,10 +238,16 @@ class AlgoAgent:
 
     def get_leaderboard(self) -> list[dict]:
         """Return candidates sorted by average Sharpe descending."""
+        def _safe(v: float) -> float:
+            import math
+            if math.isinf(v) or math.isnan(v):
+                return 9999.0 if v > 0 else -9999.0
+            return round(v, 3)
+
         return sorted(
             [{"key": k, "strategy": c.name, "symbol": c.symbol, "type": c.strategy_type,
               "avg_sharpe": round(c.avg_sharpe, 3), "best_sharpe": round(c.best_sharpe, 3),
-              "n_runs": c.n_runs, "ucb": round(c.ucb_score(self._total_runs), 3)}
+              "n_runs": c.n_runs, "ucb": _safe(c.ucb_score(self._total_runs))}
              for k, c in self._candidates.items()],
             key=lambda x: x["avg_sharpe"],
             reverse=True,

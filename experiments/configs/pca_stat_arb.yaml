@@ -1,0 +1,28 @@
+experiment:
+  name: "pca_stat_arb_sp500_daily"
+  model: "xgboost"
+  symbol: "MULTI"
+  exchange: "alpaca"
+  interval: "1d"
+
+data:
+  train_start: "2020-01-01"
+  train_end: "2023-06-30"
+  val_start: "2023-07-01"
+  val_end: "2024-01-01"
+  test_start: "2024-01-01"
+  test_end: "2024-12-31"
+
+strategy:
+  name: "pca_stat_arb"
+  n_components: 5
+  lookback: 60
+  entry_z: 1.5
+  exit_z: 0.5
+  stop_z: 3.5
+  basket: ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","JPM","JNJ","V","PG","UNH","HD","MA","BAC","XOM","ABBV","PFE","BRK-B","LLY","AVGO"]
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null

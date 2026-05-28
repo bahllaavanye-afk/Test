@@ -7,13 +7,16 @@ from typing import Any
 class OrderRequest:
     symbol: str
     side: str               # buy|sell
-    order_type: str         # market|limit|stop
+    order_type: str         # market|limit|stop|bracket
     quantity: float
     limit_price: float | None = None
     stop_price: float | None = None
+    stop_loss: float | None = None      # for bracket orders
+    take_profit: float | None = None    # for bracket orders
     time_in_force: str = "GTC"
     account_id: str = ""
     strategy_id: str | None = None
+    risk_bucket: str = "directional"   # for risk manager routing
     execution_algo: str = "limit_first"  # market|limit_first|twap|vwap
 
 

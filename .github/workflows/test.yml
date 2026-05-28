@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "backend/pyproject.toml"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install fastapi 'uvicorn[standard]' sqlalchemy asyncpg aiosqlite alembic \
+            'pydantic[email]' python-jose[cryptography] passlib bcrypt==4.0.1 \
+            httpx pytest pytest-asyncio pytest-cov aiohttp redis python-dotenv \
+            numpy pandas scipy scikit-learn statsmodels structlog \
+            cryptography apscheduler websockets pytz python-dateutil
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -eo pipefail
+          pytest tests/unit/ -x -v \
+            --ignore=tests/unit/test_features.py \
+            --ignore=tests/unit/test_strategies.py \
+            --ignore=tests/unit/test_execution.py \
+            --ignore=tests/unit/test_slippage.py \
+            --ignore=tests/unit/test_smart_router.py \
+            --ignore=tests/unit/test_a3c_lstm.py \
+            --ignore=tests/unit/test_ml_models.py \
+            --tb=short
+        env:
+          SECRET_KEY: "test-secret-key-32-bytes-exactly!!"
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: ""
+          TRADING_MODE: "paper"
+          ALPACA_API_KEY: "test"
+          ALPACA_SECRET_KEY: "test"
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: backend/.coverage

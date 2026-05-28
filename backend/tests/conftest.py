@@ -1,34 +1,45 @@
+"""Shared test fixtures for all tests."""
+from __future__ import annotations
+
+import asyncio
+import os
+
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from app.main import app
-from app.database import get_db
-from app.models.base import Base
 
-TEST_DB_URL = "sqlite+aiosqlite:///./test.db"
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+os.environ.setdefault("ALEMBIC_DATABASE_URL", "sqlite:///./test.db")
+os.environ.setdefault("REDIS_URL", "")
+os.environ.setdefault("SECRET_KEY", "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+os.environ.setdefault("TRADING_MODE", "test")
+os.environ.setdefault("DEBUG", "false")
+os.environ.setdefault("ALPACA_API_KEY", "test-key")
+os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+os.environ.setdefault("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    return asyncio.DefaultEventLoopPolicy()
+
 
 @pytest_asyncio.fixture(scope="session")
-async def test_db():
-    engine = create_async_engine(TEST_DB_URL, echo=False)
+async def _create_tables():
+    """Create all DB tables once per test session (no background tasks)."""
+    from app.database import engine, Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    yield engine
+    yield
+    # teardown: drop all tables to keep things clean
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def client(test_db):
-    session_factory = sessionmaker(test_db, class_=AsyncSession, expire_on_commit=False)
-
-    async def override_db():
-        async with session_factory() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = override_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c
-    app.dependency_overrides.clear()
+async def client(_create_tables):
+    """Async HTTP test client — tables are pre-created, no background agents."""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac

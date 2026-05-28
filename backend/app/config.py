@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -34,9 +34,6 @@ class Settings(BaseSettings):
     tradestation_secret: str = ""
     tradestation_paper: bool = True
 
-    binance_api_key: str = ""
-    binance_secret: str = ""
-
     polymarket_private_key: str = ""
     polymarket_chain_id: int = 137  # Polygon mainnet
 
@@ -48,6 +45,28 @@ class Settings(BaseSettings):
     max_drawdown_pct: float = 0.10       # halt all at -10% drawdown
     arb_bucket_pct: float = 0.70         # 70% capital to arbitrage bucket
     ml_bucket_pct: float = 0.30          # 30% capital to ML bucket
+
+    # Slack webhooks (optional, each channel separately)
+    slack_webhook_default: str = ""
+    slack_webhook_orders: str = ""
+    slack_webhook_signals: str = ""
+    slack_webhook_alerts: str = ""
+    slack_webhook_experiments: str = ""
+    slack_webhook_system: str = ""
+
+    @model_validator(mode="after")
+    def _validate_secret_key(self) -> "Settings":
+        placeholder = "change-me-in-production-32-byte-hex"
+        test_placeholder = "test-secret-key-32-bytes-hex-xxxxx"
+        if self.secret_key in (placeholder, test_placeholder):
+            if self.trading_mode not in ("development", "dev", "test"):
+                raise ValueError(
+                    "SECRET_KEY must be set to a secure random 32-byte hex value. "
+                    "Run: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
+        elif len(self.secret_key) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters long.")
+        return self
 
     @property
     def is_paper(self) -> bool:

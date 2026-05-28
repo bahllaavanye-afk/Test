@@ -1,0 +1,194 @@
+name: E2E Demo with Live Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: "Pages to record (comma-separated or 'all')"
+        required: false
+        default: "all"
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - ".github/workflows/e2e-demo.yml"
+      - "scripts/e2e/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ALEMBIC_DATABASE_URL: ${{ secrets.ALEMBIC_DATABASE_URL }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_BASE_URL: "https://paper-api.alpaca.markets"
+      TRADING_MODE: "paper"
+      DEBUG: "true"
+      ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:3000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "backend/pyproject.toml"
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install fastapi 'uvicorn[standard]' sqlalchemy asyncpg aiosqlite alembic \
+            'pydantic[email]' python-jose[cryptography] passlib bcrypt==4.0.1 \
+            httpx aiohttp redis python-dotenv pytz python-dateutil \
+            numpy pandas scipy scikit-learn pandas-ta cryptography apscheduler websockets
+
+      - name: Verify external connectivity (sanity check)
+        run: |
+          echo "=== Testing live API reachability ==="
+          curl -s -o /tmp/alpaca.json -w "Alpaca account: %{http_code}\n" \
+            -H "APCA-API-KEY-ID: ${{ secrets.ALPACA_API_KEY }}" \
+            -H "APCA-API-SECRET-KEY: ${{ secrets.ALPACA_SECRET_KEY }}" \
+            https://paper-api.alpaca.markets/v2/account
+          echo "--- Alpaca account preview ---"
+          head -c 500 /tmp/alpaca.json || true
+          echo ""
+
+      - name: Run database migrations
+        working-directory: backend
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -eo pipefail
+          if [ -n "$ALEMBIC_DATABASE_URL" ]; then
+            alembic upgrade head
+          else
+            echo "No ALEMBIC_DATABASE_URL set, skipping migrations"
+          fi
+
+      - name: Seed demo user + Alpaca account + default strategies
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+          DEMO_EMAIL: "demo@quantedge.local"
+          DEMO_PASSWORD: "demo-pass-1234"
+        run: python scripts/e2e/seed_demo.py
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_API_URL: "http://localhost:8000/api/v1"
+          VITE_WS_URL: "ws://localhost:8000/ws"
+        run: npm run build
+
+      - name: Install Playwright browsers
+        working-directory: scripts/e2e
+        run: |
+          npm init -y > /dev/null
+          npm install --no-save playwright@latest
+          npx playwright install chromium --with-deps
+
+      - name: Start backend (background)
+        working-directory: backend
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
+          echo $! > /tmp/backend.pid
+          for i in {1..30}; do
+            if curl -s -o /dev/null http://localhost:8000/health; then
+              echo "Backend up after $i seconds"
+              break
+            fi
+            sleep 1
+          done
+          curl -s http://localhost:8000/health || echo "Backend failed"
+          tail -50 /tmp/backend.log
+
+      - name: Start frontend preview (background)
+        working-directory: frontend
+        run: |
+          nohup npx vite preview --port 5173 --host 0.0.0.0 > /tmp/frontend.log 2>&1 &
+          echo $! > /tmp/frontend.pid
+          for i in {1..20}; do
+            if curl -s -o /dev/null http://localhost:5173/; then
+              echo "Frontend up after $i seconds"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Capture videos + screenshots of all pages
+        working-directory: scripts/e2e
+        env:
+          BASE_URL: "http://localhost:5173"
+          DEMO_EMAIL: "demo@quantedge.local"
+          DEMO_PASSWORD: "demo-pass-1234"
+        run: node demo-recorder.js || echo "Recorder finished with errors (artifacts still uploaded)"
+
+      - name: Convert .webm → .mp4 and build combined reel
+        if: always()
+        working-directory: scripts/e2e/output
+        run: |
+          sudo apt-get install -y ffmpeg > /dev/null 2>&1 || true
+          for dir in */; do
+            if [ -f "$dir/video.webm" ]; then
+              ffmpeg -y -i "$dir/video.webm" -c:v libx264 -preset fast -crf 28 \
+                -pix_fmt yuv420p "$dir/video.mp4" -loglevel error 2>&1 | tail -5
+            fi
+          done
+          # Concat reel
+          : > concat.txt
+          for f in $(ls */video.mp4 | sort); do
+            echo "file '$f'" >> concat.txt
+          done
+          if [ -s concat.txt ]; then
+            ffmpeg -y -f concat -safe 0 -i concat.txt -c copy demo-reel.mp4 -loglevel error 2>&1 | tail -5 || true
+          fi
+          ls -lh
+
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p artifacts/logs
+          cp /tmp/backend.log artifacts/logs/backend.log 2>/dev/null || true
+          cp /tmp/frontend.log artifacts/logs/frontend.log 2>/dev/null || true
+          tail -200 /tmp/backend.log || true
+
+      - name: Upload demo artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-demo
+          path: |
+            scripts/e2e/output/
+            artifacts/logs/
+          retention-days: 14
+
+      - name: Stop backend / frontend
+        if: always()
+        run: |
+          [ -f /tmp/backend.pid ] && kill $(cat /tmp/backend.pid) 2>/dev/null || true
+          [ -f /tmp/frontend.pid ] && kill $(cat /tmp/frontend.pid) 2>/dev/null || true

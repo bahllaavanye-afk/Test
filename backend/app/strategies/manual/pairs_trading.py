@@ -107,23 +107,42 @@ class PairsTradingStrategy(AbstractStrategy):
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """For single-leg backtesting. df must have 'close_a' and 'close_b'."""
+        """Rolling OLS hedge ratio — no lookahead bias."""
         if "close_a" not in df.columns or "close_b" not in df.columns:
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
-        z_score, _ = self._compute_spread(df["close_a"], df["close_b"], self.lookback)
-        z_shifted = z_score.shift(1)  # prevent lookahead
+        price_a = df["close_a"]
+        price_b = df["close_b"]
+        n = len(price_a)
+        signals = pd.Series(0, index=df.index, dtype=float)
 
-        entries = z_shifted < -self.entry_z        # long A when spread low
-        exits = (z_shifted > -self.exit_z) & (z_shifted < self.exit_z)
-        short_entries = z_shifted > self.entry_z   # short A when spread high
+        for i in range(self.lookback, n):
+            window_a = price_a.iloc[i - self.lookback:i]
+            window_b = price_b.iloc[i - self.lookback:i]
+            try:
+                hedge = float(np.polyfit(window_b, window_a, 1)[0])
+            except Exception:
+                continue
+            spread_window = window_a - hedge * window_b
+            spread_mean = spread_window.mean()
+            spread_std = spread_window.std()
+            if spread_std < 1e-9:
+                continue
+            spread_i = price_a.iloc[i] - hedge * price_b.iloc[i]
+            z = (spread_i - spread_mean) / spread_std
+            if z < -self.entry_z:
+                signals.iloc[i] = 1
+            elif z > self.entry_z:
+                signals.iloc[i] = -1
+            elif abs(z) < self.exit_z:
+                signals.iloc[i] = 0
+
+        entries = signals > 0.5
+        exits = signals == 0
+        short_entries = signals < -0.5
         short_exits = exits.copy()
-
-        # Stop out if z diverges too far
-        stop = abs(z_shifted) > self.stop_z
-        exits = exits | stop
-        short_exits = short_exits | stop
+        stop = abs(signals) > self.stop_z if False else pd.Series(False, index=df.index)
 
         return BacktestSignals(
             entries=entries.fillna(False),

@@ -5,6 +5,7 @@ Minimizes market impact for large positions.
 """
 import asyncio
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
+from app.utils.logging import logger
 
 
 class TWAPExecution:
@@ -18,6 +19,7 @@ class TWAPExecution:
         total_filled = 0.0
         total_cost = 0.0
         last_result: OrderResult | None = None
+        consecutive_failures = 0
 
         for i in range(self.slices):
             slice_req = OrderRequest(
@@ -29,8 +31,13 @@ class TWAPExecution:
                 if result.avg_fill_price:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
-            except Exception:
-                pass  # Skip failed slices, continue
+                consecutive_failures = 0
+            except Exception as e:
+                consecutive_failures += 1
+                logger.warning(f"TWAP slice {i+1}/{self.slices} failed for {request.symbol}: {e}")
+                if consecutive_failures >= 3:
+                    logger.error(f"TWAP {request.symbol}: {consecutive_failures} consecutive failures — aborting")
+                    break
 
             if i < self.slices - 1:
                 await asyncio.sleep(self.sleep_seconds)

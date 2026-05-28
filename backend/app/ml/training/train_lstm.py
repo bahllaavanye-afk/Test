@@ -37,7 +37,7 @@ def build_dataloaders(
 
     n_features = X_t.shape[2]
     return (
-        DataLoader(train_ds, batch_size=batch_size, shuffle=True),
+        DataLoader(train_ds, batch_size=batch_size, shuffle=False),
         DataLoader(val_ds, batch_size=batch_size),
         DataLoader(test_ds, batch_size=batch_size),
         n_features,
@@ -58,7 +58,7 @@ async def train(
     train_loader, val_loader, test_loader, n_features = build_dataloaders(ohlcv_df, seq_len, batch_size)
 
     model = LSTMPredictor(
-        input_size=n_features,
+        n_features=n_features,
         hidden_size=hidden_size,
         num_layers=num_layers,
         dropout=dropout,

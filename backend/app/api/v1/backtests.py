@@ -6,7 +6,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.backtest import BacktestRun
 from app.models.user import User
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 from datetime import date, datetime, timezone
 import uuid
 
@@ -33,8 +33,7 @@ class BacktestOut(BaseModel):
     total_return: float | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @classmethod
     def from_run(cls, run) -> "BacktestOut":

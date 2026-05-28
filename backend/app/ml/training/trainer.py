@@ -40,7 +40,7 @@ class TradingLightningModule(L.LightningModule if HAS_LIGHTNING else object):
         self.model = model
         self.lr = lr
         self.weight_decay = weight_decay
-        self.criterion = nn.BCELoss()
+        self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, x):
         return self.model(x)
@@ -49,7 +49,7 @@ class TradingLightningModule(L.LightningModule if HAS_LIGHTNING else object):
         x, y = batch
         pred = self(x).squeeze(-1)
         loss = self.criterion(pred, y.float())
-        acc = ((pred > 0.5) == y.bool()).float().mean()
+        acc = ((torch.sigmoid(pred) > 0.5) == y.bool()).float().mean()
         self.log(f"{stage}_loss", loss, prog_bar=True)
         self.log(f"{stage}_acc", acc, prog_bar=True)
         return loss
@@ -134,7 +134,7 @@ def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-    criterion = nn.BCELoss()
+    criterion = nn.BCEWithLogitsLoss()
     best_val_loss = float("inf")
     patience_count = 0
     best_state = None
@@ -157,7 +157,7 @@ def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
                 x, y = x.to(device), y.to(device)
                 pred = model(x).squeeze(-1)
                 val_losses.append(criterion(pred, y.float()).item())
-                val_accs.append(((pred > 0.5) == y.bool()).float().mean().item())
+                val_accs.append(((torch.sigmoid(pred) > 0.5) == y.bool()).float().mean().item())
 
         val_loss = sum(val_losses) / len(val_losses) if val_losses else 999
         val_acc = sum(val_accs) / len(val_accs) if val_accs else 0

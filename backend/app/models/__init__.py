@@ -11,6 +11,7 @@ from app.models.market_data import OHLCV
 from app.models.risk import RiskRule, RiskEvent
 from app.models.slippage import SlippageRecord
 from app.models.comparison import ComparisonResult
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "User", "Account", "AccountSnapshot",
@@ -19,4 +20,5 @@ __all__ = [
     "Experiment", "MLModel", "MLPrediction",
     "OHLCV", "RiskRule", "RiskEvent",
     "SlippageRecord", "ComparisonResult",
+    "AuditLog",
 ]

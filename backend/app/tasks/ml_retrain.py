@@ -17,7 +17,7 @@ async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> d
     """Download 2 years of data and retrain a model. Returns result dict."""
     try:
         import yfinance as yf
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=730)
 

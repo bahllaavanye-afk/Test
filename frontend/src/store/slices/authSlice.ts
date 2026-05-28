@@ -1,12 +1,15 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import type { RootState } from '../index'
+import { setToken } from '../../api/client'
 
 interface AuthState {
   accessToken: string | null
   isAuthenticated: boolean
 }
 
-const storedToken = localStorage.getItem('access_token')
+// client.ts already initializes _accessToken from sessionStorage at module load,
+// so page refreshes preserve auth without re-login.
+const storedToken = sessionStorage.getItem('access_token')
 
 const initialState: AuthState = {
   accessToken: storedToken,
@@ -20,12 +23,12 @@ const authSlice = createSlice({
     setCredentials(state, action: PayloadAction<{ access_token: string }>) {
       state.accessToken = action.payload.access_token
       state.isAuthenticated = true
-      localStorage.setItem('access_token', action.payload.access_token)
+      setToken(action.payload.access_token)
     },
     logout(state) {
       state.accessToken = null
       state.isAuthenticated = false
-      localStorage.removeItem('access_token')
+      setToken(null)
     },
   },
 })
