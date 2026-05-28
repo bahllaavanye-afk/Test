@@ -810,6 +810,283 @@ def laavanye_bahl_ceo() -> list[Post]:
     )]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Asset-class sub-teams — compete on Sharpe, share wins cross-team
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Each team owns a subset of strategies. Scoring uses real experiments/results.
+TEAMS: dict[str, dict] = {
+    "Equities": {
+        "lead": "Aarav Patel",
+        "lead_role": "Alpha Research Director",
+        "lead_emoji": ":chart_with_upwards_trend:",
+        "channel": "desk-equities",
+        "strategies": {
+            "momentum", "low_volatility", "tsmom", "time_series_momentum",
+            "pairs_trading", "kalman_pairs", "mean_reversion", "breakout",
+            "rsi_macd", "supertrend", "fifty_two_week_high",
+            "idio_vol_anomaly", "earnings_accruals", "moc_auction_imbalance",
+            "news_momentum", "intraday_fomc_momentum",
+            "ml_momentum", "ml_mean_reversion", "ml_breakout",
+            "lorentzian_knn", "ensemble",
+        },
+        "members": [
+            ("Hugo Bernardes", "Quant Researcher", ":mag_right:"),
+            ("Karl Nyström", "Junior IC", ":raised_hand:"),
+        ],
+    },
+    "Crypto": {
+        "lead": "Linh Tran",
+        "lead_role": "ML Modeling Lead",
+        "lead_emoji": ":robot_face:",
+        "channel": "desk-crypto",
+        "strategies": {
+            "triangular_arb", "funding_rate_arb", "liquidation_cascade_fade",
+            "stablecoin_depeg_arb", "crypto_adaptive_trend",
+        },
+        "members": [
+            ("Tomas Lindqvist", "Research Scientist", ":brain:"),
+            ("Ravi Iyer", "ML Infra Engineer", ":wrench:"),
+        ],
+    },
+    "Options": {
+        "lead": "Yuki Mori",
+        "lead_role": "Options Researcher",
+        "lead_emoji": ":bar_chart:",
+        "channel": "desk-options",
+        "strategies": {
+            "options_pcr_reversal", "gamma_exposure", "dispersion_trading",
+        },
+        "members": [
+            ("Aarav Patel", "Alpha Research Director", ":chart_with_upwards_trend:"),
+        ],
+    },
+    "Polymarket": {
+        "lead": "Lior Avraham",
+        "lead_role": "Polymarket Researcher",
+        "lead_emoji": ":vertical_traffic_light:",
+        "channel": "desk-polymarket",
+        "strategies": {
+            "poly_binary_arb", "poly_corr_arb",
+        },
+        "members": [],
+    },
+    "Macro/FX": {
+        "lead": "Tomas Lindqvist",
+        "lead_role": "Research Scientist",
+        "lead_emoji": ":brain:",
+        "channel": "desk-fx-rates",
+        "strategies": {
+            "cross_asset_carry", "hmm_regime",
+        },
+        "members": [
+            ("Sofia Karlsson", "VP Research", ":books:"),
+        ],
+    },
+}
+
+
+def team_of(strategy: str) -> str | None:
+    for team, info in TEAMS.items():
+        if strategy in info["strategies"]:
+            return team
+    return None
+
+
+def team_scores() -> dict[str, dict]:
+    """Aggregate experiment results into per-team metrics."""
+    results = latest_backtest_results()
+    out: dict[str, dict] = {
+        team: {
+            "n_strategies_in_repo": 0,
+            "n_results_logged": 0,
+            "sharpes": [],
+            "strategies_with_results": set(),
+            "strategies_untested": set(),
+        }
+        for team in TEAMS
+    }
+    # Build "in repo" counts
+    fs_strats = set(list_strategies()["manual"] + list_strategies()["ml"])
+    for team, info in TEAMS.items():
+        owned = info["strategies"] & fs_strats
+        out[team]["n_strategies_in_repo"] = len(owned)
+        out[team]["strategies_untested"] = set(owned)  # start: all untested
+
+    for r in results:
+        s = r.get("strategy", "")
+        team = team_of(s)
+        if not team:
+            continue
+        out[team]["n_results_logged"] += 1
+        sharpe = r.get("sharpe", None)
+        if isinstance(sharpe, (int, float)):
+            out[team]["sharpes"].append(float(sharpe))
+        out[team]["strategies_with_results"].add(s)
+        out[team]["strategies_untested"].discard(s)
+    return out
+
+
+def team_lead_standup_for(team: str) -> Post | None:
+    info = TEAMS[team]
+    scores = team_scores()[team]
+    n_repo = scores["n_strategies_in_repo"]
+    n_done = len(scores["strategies_with_results"])
+    sharpes = scores["sharpes"]
+    avg = (sum(sharpes) / len(sharpes)) if sharpes else 0.0
+    best = max(sharpes) if sharpes else 0.0
+
+    progress_bar = "▰" * int((n_done / max(n_repo, 1)) * 10) + "▱" * (10 - int((n_done / max(n_repo, 1)) * 10))
+    blockers_line = ""
+    if scores["strategies_untested"]:
+        sample = sorted(scores["strategies_untested"])[:3]
+        blockers_line = f"\n• *Untested ({len(scores['strategies_untested'])}):* " + ", ".join(f"`{s}`" for s in sample)
+
+    text = (f"*Team {team} — daily standup*\n"
+            f"• Strategies owned: *{n_repo}*\n"
+            f"• Backtested: *{n_done}*  `{progress_bar}`\n"
+            f"• Avg Sharpe (logged runs): *{avg:.2f}*  ·  Best: *{best:.2f}*"
+            f"{blockers_line}\n"
+            f"• Goal this sprint: every owned strategy walk-forward-validated.")
+    return Post(
+        channel=info["channel"],
+        text=text,
+        username=f"{info['lead']} — {info['lead_role']}",
+        icon_emoji=info["lead_emoji"],
+    )
+
+
+def team_member_observation_for(team: str) -> Post | None:
+    info = TEAMS[team]
+    if not info["members"]:
+        return None
+    name, role, emoji = random.choice(info["members"])
+    scores = team_scores()[team]
+    untested = sorted(scores["strategies_untested"])
+    if untested:
+        target = random.choice(untested)
+        text = (f"Picking up `{target}` for walk-forward validation. "
+                f"Config in `experiments/configs/`, results land in "
+                f"`experiments/results/{target}_*.json`. ETA EOD.")
+    else:
+        # All tested — share an improvement idea grounded in real file
+        strategies = list(info["strategies"] & set(list_strategies()["manual"] + list_strategies()["ml"]))
+        if not strategies:
+            return None
+        target = random.choice(strategies)
+        text = (f"`{target}` is in production paper. "
+                f"Idea: regime-conditional sizing — scale entries by HMM state probability "
+                f"from `backend/app/strategies/manual/hmm_regime.py`. PR or thread thoughts?")
+    return Post(
+        channel=info["channel"],
+        text=text,
+        username=f"{name} — {role}",
+        icon_emoji=emoji,
+    )
+
+
+def team_leaderboard_post() -> Post | None:
+    """Daily competitive leaderboard — posted to pnl-daily."""
+    scores = team_scores()
+    rows = []
+    for team in TEAMS:
+        sh = scores[team]["sharpes"]
+        avg = (sum(sh) / len(sh)) if sh else 0.0
+        rows.append((team, avg, len(sh), scores[team]["n_strategies_in_repo"]))
+    rows.sort(key=lambda r: -r[1])
+
+    medals = [":first_place_medal:", ":second_place_medal:", ":third_place_medal:", "▪", "▪"]
+    lines = ["*Team scoreboard — by avg Sharpe (real backtest results)*"]
+    for i, (team, avg, n_runs, n_strats) in enumerate(rows):
+        medal = medals[i] if i < len(medals) else "▪"
+        coverage = f"{n_runs} runs / {n_strats} strategies"
+        lines.append(f"{medal}  *{team}* — Sharpe *{avg:.2f}*  ({coverage})")
+    lines.append("")
+    lines.append("_Standings update with every committed backtest in `experiments/results/`._")
+    lines.append("_Empty/zero scores mean no runs logged yet — go ship some backtests._")
+
+    winner = rows[0][0] if rows else None
+    if winner and rows[0][1] > 0:
+        lines.append(f"\n:trophy: This wave's leader: *Team {winner}* — share one technique in <#alpha-research>.")
+
+    return Post(
+        channel="pnl-daily",
+        text="\n".join(lines),
+        username="Scoreboard bot",
+        icon_emoji=":trophy:",
+    )
+
+
+def friday_presentation_post() -> list[Post]:
+    """Friday only — winning team presents to leadership-summary."""
+    if datetime.now(timezone.utc).weekday() != 4:  # 4 = Friday
+        return []
+    scores = team_scores()
+    ranked = sorted(
+        TEAMS.keys(),
+        key=lambda t: -((sum(scores[t]["sharpes"]) / len(scores[t]["sharpes"])) if scores[t]["sharpes"] else 0),
+    )
+    if not ranked:
+        return []
+    winner = ranked[0]
+    info = TEAMS[winner]
+    sh = scores[winner]["sharpes"]
+    avg = (sum(sh) / len(sh)) if sh else 0.0
+    best = max(sh) if sh else 0.0
+    n_done = len(scores[winner]["strategies_with_results"])
+
+    pres = [Post(
+        channel="leadership-summary",
+        text=(f":mega: *Friday presentation — Team {winner}* (this week's leader)\n"
+              f"• Lead: {info['lead']} ({info['lead_role']})\n"
+              f"• Strategies shipped backtests: *{n_done}*  ·  Avg Sharpe: *{avg:.2f}*  ·  Best: *{best:.2f}*\n"
+              f"• Channel: <#{info['channel']}>\n\n"
+              f"Highlights and one transferable technique posted in the team channel."),
+        username=f"{info['lead']} — {info['lead_role']}",
+        icon_emoji=info["lead_emoji"],
+    )]
+    # Also post the technique itself into the team channel
+    pres.append(Post(
+        channel=info["channel"],
+        text=(f":mega: *Friday share-out — {winner} wins this week*\n"
+              f"Technique we're sharing cross-team: "
+              + random.choice([
+                  "purged k-fold cross-validation (López de Prado ch. 7) — eliminates boundary leakage between train/test folds.",
+                  "feature engineering: volume-weighted realized vol scales signal confidence, +0.18 Sharpe consistently.",
+                  "regime-conditional sizing: bet only when HMM probability for trend-state > 0.7.",
+                  "ensemble weighting via Optuna on val — beats equal-weight by ~0.1 Sharpe.",
+                  "session-aware entries: trades only in 14:00-20:00 UTC for US equities cut overnight gap risk.",
+              ]) +
+              "\nDocumented in <#alpha-research> — other teams: take what's useful."),
+        username=f"{info['lead']} — {info['lead_role']}",
+        icon_emoji=info["lead_emoji"],
+    ))
+    return pres
+
+
+def cross_team_share_post() -> Post | None:
+    """A non-winning team comments on what they're borrowing from the leader."""
+    scores = team_scores()
+    has_runs = [t for t in TEAMS if scores[t]["sharpes"]]
+    if len(has_runs) < 2:
+        return None
+    ranked = sorted(
+        has_runs,
+        key=lambda t: -((sum(scores[t]["sharpes"]) / len(scores[t]["sharpes"]))),
+    )
+    learner_team = random.choice(ranked[1:])
+    winner_team = ranked[0]
+    info = TEAMS[learner_team]
+    return Post(
+        channel=info["channel"],
+        text=(f"Picked up something from Team *{winner_team}* this week — "
+              "applying their walk-forward purging pattern to our backtests. "
+              "If it lifts our avg Sharpe by Friday, we'll thread the diff."),
+        username=f"{info['lead']} — {info['lead_role']}",
+        icon_emoji=info["lead_emoji"],
+    )
+
+
 # ─── Discussion engine: agents reply to each other in threads ────────────────
 
 
@@ -923,14 +1200,55 @@ def main() -> int:
         return 1
     print(f"✅ Authed as {auth.get('user')} in {auth.get('team')} at {datetime.now(timezone.utc).isoformat()}")
 
+    # ── Team activity first (always runs): standups + scoreboard ────────────
+    team_posts: list[Post] = []
+    print("👥 Team activity")
+    for team_name in TEAMS:
+        sp = team_lead_standup_for(team_name)
+        if sp:
+            team_posts.append(sp)
+        # Roughly half the runs: a team member also posts
+        if random.random() < 0.55:
+            mp = team_member_observation_for(team_name)
+            if mp:
+                team_posts.append(mp)
+    # Leaderboard always
+    lb = team_leaderboard_post()
+    if lb:
+        team_posts.append(lb)
+    # Cross-team learning post (1 per run)
+    ct = cross_team_share_post()
+    if ct:
+        team_posts.append(ct)
+    # Friday presentation
+    team_posts.extend(friday_presentation_post())
+
     # Sample wave: 60-80% of agents do real work each run (skew so it varies)
     wave_size = random.randint(int(len(AGENTS) * 0.6), int(len(AGENTS) * 0.85))
     wave = random.sample(AGENTS, wave_size)
-    print(f"🎯 Wave: {wave_size}/{len(AGENTS)} agents will report")
+    print(f"🎯 Wave: {wave_size}/{len(AGENTS)} agents + {len(team_posts)} team posts")
 
     posted_ts: dict[str, str] = {}  # channel -> last_ts of a parent post in that channel
     posts_made = 0
     errors = 0
+
+    # Post team activity first
+    for p in team_posts:
+        r = post_to_slack(
+            token, channel=p.channel, text=p.text,
+            username=p.username, icon_emoji=p.icon_emoji,
+            thread_ts=p.thread_of,
+        )
+        if r.get("ok"):
+            posts_made += 1
+            ts = r.get("ts")
+            if ts and not p.thread_of:
+                posted_ts[p.channel] = ts
+            print(f"  ✓ TEAM {p.username[:36]} → #{p.channel}")
+        else:
+            errors += 1
+            print(f"  ✗ TEAM → #{p.channel}: {r.get('error')}")
+        time.sleep(0.7)
 
     for agent in wave:
         try:
