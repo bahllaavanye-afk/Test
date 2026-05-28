@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker, LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers, Globe, Coins, CandlestickChart } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker, LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers, Globe, Coins, CandlestickChart, BrainCircuit } from 'lucide-react'
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/comparison', icon: BarChart2, label: 'Comparison' },
   { to: '/backtest', icon: FlaskConical, label: 'Backtest' },
   { to: '/experiments', icon: Beaker, label: 'Experiments' },
+  { to: '/ml-insights', icon: BrainCircuit, label: 'ML Insights' },
   { to: '/analytics', icon: LineChart, label: 'Analytics' },
   { to: '/risk', icon: Shield, label: 'Risk' },
   { to: '/activity', icon: Activity, label: 'Activity' },
