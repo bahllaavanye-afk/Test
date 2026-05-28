@@ -99,16 +99,31 @@ export default function SystemMonitor() {
           </div>
           {top3.length > 0 && (
             <div>
-              <p className="text-xs text-[#888888] mb-2">Top 3 Strategies</p>
+              <p className="text-xs text-[#888888] mb-2">Top 3 Strategies (by UCB1 score)</p>
               <div className="space-y-1">
-                {top3.map((name: string, i: number) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-xs" style={{ color: ['#FFD700', '#C0C0C0', '#CD7F32'][i] }}>
-                      {['#1', '#2', '#3'][i]}
-                    </span>
-                    <span className="text-xs font-mono text-[#e8e8e8]">{name}</span>
-                  </div>
-                ))}
+                {top3.map((row: any, i: number) => {
+                  const label = typeof row === 'string'
+                    ? row
+                    : `${row.strategy}:${row.symbol}`
+                  const sharpe = typeof row === 'object' && row.best_sharpe != null
+                    ? row.best_sharpe.toFixed(2)
+                    : null
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ color: ['#FFD700', '#C0C0C0', '#CD7F32'][i] }}>
+                          {['#1', '#2', '#3'][i]}
+                        </span>
+                        <span className="text-xs font-mono text-[#e8e8e8]">{label}</span>
+                      </div>
+                      {sharpe != null && (
+                        <span className="text-[10px] font-mono text-[#888888]">
+                          Sharpe {sharpe}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
