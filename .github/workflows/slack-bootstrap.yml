@@ -19,6 +19,8 @@ jobs:
   bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
