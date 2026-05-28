@@ -44,10 +44,12 @@ Agent scheduling: `cron: "15 9,13,17,21 * * *"` UTC (4 waves/day).
 | ML-enhanced strategies | 7 |
 | Total strategies registered | 48 |
 | Test files | 27 |
-| Strategies without a unit test | ~24 (Aditi agent is auto-opening tracker issues) |
+| Unit tests passing | 258 (lightweight suite, ~8s) |
+| Strategies without a unit test | ~24 (Aditi agent auto-opens tracker issues) |
 | Backtest result JSONs in `experiments/results/` | 173 entries across N files |
-| Frontend pages | 19 |
+| Frontend pages | 20 (added MLInsights) |
 | Backend routes | 90 |
+| Frontend bundle (gzip) | 97 KB shared + per-page lazy chunks (2–8 KB each) |
 
 ## What to do next (in this order)
 

@@ -1108,6 +1108,58 @@ def ravi_iyer_ci() -> list[Post]:
     )]
 
 
+def kenji_deploy_readiness() -> list[Post]:
+    """DevOps — reads STATUS.md and reports deployment readiness to #leadership-summary."""
+    status_path = REPO_ROOT / "STATUS.md"
+    if not status_path.exists():
+        return []
+    content = status_path.read_text()
+
+    # Parse deployment status lines — look for ❌ / ✅ in the table
+    not_deployed = []
+    deployed = []
+    for line in content.splitlines():
+        if "❌" in line or "NOT DEPLOYED" in line or "schema not applied" in line:
+            # Extract component name
+            parts = [p.strip() for p in line.split("|") if p.strip()]
+            if parts:
+                not_deployed.append(parts[0].split("(")[0].strip())
+        elif "✅" in line and "|" in line:
+            parts = [p.strip() for p in line.split("|") if p.strip()]
+            if parts:
+                deployed.append(parts[0].split("(")[0].strip())
+
+    # Check if required secrets are set by probing GitHub Actions env vars
+    has_alpaca = bool(os.environ.get("ALPACA_API_KEY"))
+    has_slack = bool(os.environ.get("SLACK_BOT_TOKEN"))
+
+    text_lines = ["*Demo readiness report*"]
+    text_lines.append(f"\n*Infrastructure:*")
+    for item in deployed[:5]:
+        text_lines.append(f"  ✅ {item}")
+    for item in not_deployed[:5]:
+        text_lines.append(f"  ❌ {item}")
+
+    text_lines.append(f"\n*Repo secrets present this run:*")
+    text_lines.append(f"  {'✅' if has_alpaca else '❌'} ALPACA_API_KEY")
+    text_lines.append(f"  {'✅' if has_slack else '❌'} SLACK_BOT_TOKEN")
+
+    text_lines.append("\n*To go live (in order):*")
+    text_lines.append("1. Add 7 secrets at GitHub Settings → Secrets")
+    text_lines.append("2. Deploy backend → Render Blueprint")
+    text_lines.append("3. Deploy frontend → Vercel (root: `frontend/`)")
+    text_lines.append("4. Apply DB schema → trigger `migrate.yml` workflow")
+    text_lines.append("\n_After step 1: #pnl-daily shows live Alpaca paper P&L._")
+    text_lines.append("_After steps 2-4: strategies execute + dashboard goes live._")
+
+    return [Post(
+        channel="leadership-summary",
+        text="\n".join(text_lines),
+        username="Kenji Watanabe — Director of DevOps",
+        icon_emoji=":satellite_antenna:",
+    )]
+
+
 def karl_nystrom_question() -> list[Post]:
     """Junior IC — asks a real help question based on file in repo."""
     todos = find_todos()
@@ -1604,6 +1656,8 @@ AGENTS: list[Agent] = [
           ["squad-data"], sina_hassani_data, ["data"]),
     Agent("Kenji Watanabe", "Director of DevOps", ":satellite_antenna:",
           ["infra-alerts"], kenji_watanabe_devops, ["devops", "ci"]),
+    Agent("Kenji Watanabe", "Director of DevOps", ":satellite_antenna:",
+          ["leadership-summary"], kenji_deploy_readiness, ["deploy", "infra"]),
     Agent("Aditi Sharma", "Director of QA", ":mag:",
           ["squad-qa"], aditi_sharma_qa, ["qa", "test"]),
     Agent("Aditi Sharma", "Director of QA", ":mag:",
