@@ -8,7 +8,6 @@ interface SnapshotData {
   win_rate: number
   max_drawdown: number
   open_positions: number
-  // trend vs prior period
   total_pnl_trend?: number
   today_pnl_trend?: number
   sharpe_trend?: number
@@ -17,31 +16,13 @@ interface SnapshotData {
   open_positions_trend?: number
 }
 
-// ─── Mock / fallback ─────────────────────────────────────────────────────────
-const MOCK: SnapshotData = {
-  total_pnl: 52_610,
-  today_pnl: 1_430,
-  sharpe: 2.14,
-  win_rate: 0.69,
-  max_drawdown: -14.2,
-  open_positions: 18,
-  total_pnl_trend: 3200,
-  today_pnl_trend: 280,
-  sharpe_trend: 0.07,
-  win_rate_trend: 0.02,
-  max_drawdown_trend: 1.1,
-  open_positions_trend: -2,
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
 interface MetricCardProps {
   label: string
   value: string
   trend?: number
   trendLabel?: string
   color?: string
-  invertTrend?: boolean // for metrics where lower is better (drawdown)
+  invertTrend?: boolean
 }
 
 function MetricCard({ label, value, trend, trendLabel, color = '#f5a623', invertTrend = false }: MetricCardProps) {
@@ -69,18 +50,53 @@ function MetricCard({ label, value, trend, trendLabel, color = '#f5a623', invert
   )
 }
 
-// ─── Main component ────────────────────────────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 flex flex-col gap-2 min-w-0 animate-pulse">
+      <div className="h-2 w-16 bg-[#1e1e1e] rounded" />
+      <div className="h-7 w-24 bg-[#1e1e1e] rounded" />
+      <div className="h-2 w-20 bg-[#1e1e1e] rounded" />
+    </div>
+  )
+}
 
 export function PortfolioSnapshot() {
-  const { data, isError } = useQuery<SnapshotData>({
+  const { data, isLoading, isError, error } = useQuery<SnapshotData>({
     queryKey: ['portfolio', 'snapshot'],
-    queryFn: () => api.get('/portfolio/snapshot').then((r) => r.data),
+    queryFn: () => api.get('/analytics/portfolio/snapshot').then((r) => r.data),
     refetchInterval: 30_000,
-    retry: 1,
+    retry: 2,
   })
 
-  const d: SnapshotData = data ?? MOCK
+  if (isLoading) {
+    return (
+      <div className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-white">Portfolio Snapshot</h2>
+          <span className="text-[10px] text-[#555555] font-mono">loading…</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      </div>
+    )
+  }
 
+  if (isError || !data) {
+    return (
+      <div className="bg-[#0d0d0d] border border-[#ff1744]/30 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-white">Portfolio Snapshot</h2>
+          <span className="text-[10px] text-[#ff1744] font-mono">error</span>
+        </div>
+        <p className="text-xs text-[#ff1744]/80 font-mono">
+          {(error as Error)?.message ?? 'Failed to load portfolio data'}
+        </p>
+      </div>
+    )
+  }
+
+  const d = data
   const winRatePct = (d.win_rate > 1 ? d.win_rate : d.win_rate * 100).toFixed(1)
   const winRateTrendPct =
     d.win_rate_trend != null
@@ -143,9 +159,7 @@ export function PortfolioSnapshot() {
     <div className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-white">Portfolio Snapshot</h2>
-        <span className="text-[10px] text-[#555555] font-mono">
-          {isError ? 'mock data' : 'live · refreshes 30s'}
-        </span>
+        <span className="text-[10px] text-[#555555] font-mono">live · refreshes 30s</span>
       </div>
       <div className="grid grid-cols-3 gap-3">
         {cards.map((c) => (

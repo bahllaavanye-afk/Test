@@ -4,10 +4,23 @@ Scales to hundreds of concurrent strategy+symbol combinations.
 """
 from __future__ import annotations
 import asyncio
+import pandas as pd
+from datetime import datetime, timedelta, timezone
+
 from app.strategies import STRATEGY_REGISTRY
-from app.redis_client import get_redis
+from app.redis_client import price_cache
 from app.ws.manager import manager
 from app.utils.logging import logger
+
+
+def _broker_interval(strategy_cls) -> str:
+    """Map a strategy's tick_interval_seconds to an Alpaca timeframe string."""
+    secs = getattr(strategy_cls, "tick_interval_seconds", 3600)
+    if secs <= 300:
+        return "5m"
+    if secs <= 3600:
+        return "1h"
+    return "1d"
 
 
 class ContinuousStrategyRunner:
@@ -39,34 +52,55 @@ class ContinuousStrategyRunner:
         for task in self._tasks:
             task.cancel()
 
+    async def _get_ohlcv(self, symbol: str, strategy_cls) -> pd.DataFrame | None:
+        """Fetch OHLCV: try Redis cache first, fall back to broker REST call."""
+        interval = _broker_interval(strategy_cls)
+        exchange = "crypto" if "/" in symbol else "alpaca"
+
+        # Try Redis cache (written by price_feed.py)
+        cached = await price_cache.get_ohlcv(exchange, symbol, interval)
+        if cached and len(cached) >= 30:
+            df = pd.DataFrame(cached)
+            df.rename(columns={"ts": "timestamp"}, inplace=True)
+            for col in ("open", "high", "low", "close", "volume"):
+                if col in df.columns:
+                    df[col] = df[col].astype(float)
+            return df
+
+        # Fall back to broker REST
+        if self.broker is None:
+            return None
+        try:
+            end = datetime.now(timezone.utc)
+            limit = 500
+            bars = await self.broker.get_historical(symbol, interval, limit=limit)
+            if bars:
+                return pd.DataFrame(bars)
+        except Exception as e:
+            logger.warning("OHLCV fetch failed", symbol=symbol, error=str(e))
+        return None
+
     async def _run_loop(self, strategy_name: str, symbol: str, params: dict,
                         tick_interval: int, confidence_threshold: float) -> None:
-        cache = await get_redis()
         strategy_cls = STRATEGY_REGISTRY.get(strategy_name)
         if not strategy_cls:
             logger.error("Unknown strategy", name=strategy_name)
             return
 
-        strategy = strategy_cls(**params) if params else strategy_cls()
+        strategy = strategy_cls(params=params) if params else strategy_cls()
         logger.info("Strategy loop started", strategy=strategy_name, symbol=symbol)
 
         while self._running:
             try:
-                # Get OHLCV from Redis cache or broker
-                import pandas as pd
-                ohlcv = await cache.get_ohlcv(symbol)
-                if ohlcv:
-                    df = pd.DataFrame(ohlcv)
-                else:
-                    from datetime import datetime, timedelta, timezone
-                    end = datetime.now(timezone.utc)
-                    start = end - timedelta(days=90)
-                    bars = await self.broker.get_historical(symbol, "1h", start, end)
-                    df = pd.DataFrame(bars)
+                df = await self._get_ohlcv(symbol, strategy_cls)
 
                 if df is None or len(df) < 30:
                     await asyncio.sleep(tick_interval)
                     continue
+
+                # Standardize column name for close price
+                if "close" not in df.columns and "c" in df.columns:
+                    df = df.rename(columns={"c": "close", "o": "open", "h": "high", "l": "low", "v": "volume"})
 
                 signal = await strategy.analyze(df, symbol)
                 if signal and signal.confidence >= confidence_threshold:
@@ -82,12 +116,15 @@ class ContinuousStrategyRunner:
                     await manager.broadcast("alerts", alert)
                     logger.info("Signal generated", **alert)
 
-                    from app.notifications.slack import slack
-                    from app.notifications.tracker import tracker
-                    tracker.record("signal_fired", "signal",
-                                    f"{strategy_name} → {symbol} {signal.side} (conf={signal.confidence:.2f})")
-                    await slack.notify_signal(strategy_name, symbol, signal.side,
-                                                signal.confidence, signal.target_price)
+                    try:
+                        from app.notifications.slack import slack
+                        from app.notifications.tracker import tracker
+                        tracker.record("signal_fired", "signal",
+                                        f"{strategy_name} → {symbol} {signal.side} (conf={signal.confidence:.2f})")
+                        await slack.notify_signal(strategy_name, symbol, signal.side,
+                                                    signal.confidence, signal.target_price)
+                    except Exception as notify_err:
+                        logger.debug("Notification failed", error=str(notify_err))
 
                     # ── Submit order through risk-gated smart router ──────────
                     if self.broker is not None:

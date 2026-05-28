@@ -645,3 +645,102 @@ async def get_portfolio_greeks(
         "account_equity": round(account_equity, 2),
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/portfolio/snapshot")
+async def get_portfolio_snapshot(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Aggregate portfolio KPIs for the dashboard snapshot widget."""
+    from app.models.account import Account as AccountModel
+
+    # Get the user's first active account
+    acct_result = await db.execute(
+        select(AccountModel).where(AccountModel.user_id == current_user.id).limit(1)
+    )
+    account = acct_result.scalar_one_or_none()
+
+    today = datetime.now(timezone.utc).date()
+    yesterday = today - timedelta(days=1)
+
+    # All-time realized PnL
+    total_pnl_result = await db.execute(
+        select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
+            Trade.account_id == account.id if account else Trade.account_id.is_(None)
+        )
+    )
+    total_pnl = float(total_pnl_result.scalar_one())
+
+    # Today's realized PnL
+    today_pnl_result = await db.execute(
+        select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
+            Trade.closed_at >= datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+        )
+    )
+    today_pnl = float(today_pnl_result.scalar_one())
+
+    # Yesterday's realized PnL (for trend)
+    yesterday_pnl_result = await db.execute(
+        select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
+            Trade.closed_at >= datetime.combine(yesterday, datetime.min.time()).replace(tzinfo=timezone.utc),
+            Trade.closed_at < datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc),
+        )
+    )
+    yesterday_pnl = float(yesterday_pnl_result.scalar_one())
+
+    # Win rate: trades with positive PnL / total trades (last 90 days)
+    since_90 = datetime.now(timezone.utc) - timedelta(days=90)
+    wins_result = await db.execute(
+        select(
+            func.count(Trade.id).label("total"),
+            func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
+        ).where(Trade.closed_at >= since_90)
+    )
+    wins_row = wins_result.one()
+    total_trades = wins_row.total or 0
+    wins = int(wins_row.wins or 0)
+    win_rate = wins / total_trades if total_trades > 0 else 0.0
+
+    # Open positions count
+    open_pos_result = await db.execute(
+        select(func.count(Position.id)).where(
+            Position.account_id == account.id if account else Position.account_id.is_(None)
+        )
+    )
+    open_positions = int(open_pos_result.scalar_one() or 0)
+
+    # Sharpe ratio: annualized from last 252 daily PnL values
+    daily_pnl_result = await db.execute(
+        select(
+            func.date_trunc("day", Trade.closed_at).label("day"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+        )
+        .where(Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365))
+        .group_by(func.date_trunc("day", Trade.closed_at))
+        .order_by(func.date_trunc("day", Trade.closed_at))
+    )
+    daily_rows = daily_pnl_result.all()
+    sharpe = 0.0
+    max_drawdown = 0.0
+    if len(daily_rows) >= 5:
+        daily_pnls = [float(r.daily_pnl) for r in daily_rows]
+        s = pd.Series(daily_pnls)
+        mean = s.mean()
+        std = s.std()
+        sharpe = (mean / std * (252 ** 0.5)) if std > 0 else 0.0
+        # Max drawdown from cumulative PnL
+        cum = s.cumsum()
+        rolling_max = cum.cummax()
+        drawdown = (cum - rolling_max)
+        max_drawdown = float(drawdown.min()) if len(drawdown) > 0 else 0.0
+
+    return {
+        "total_pnl": round(total_pnl, 2),
+        "today_pnl": round(today_pnl, 2),
+        "today_pnl_trend": round(today_pnl - yesterday_pnl, 2),
+        "sharpe": round(sharpe, 4),
+        "win_rate": round(win_rate, 4),
+        "max_drawdown": round(max_drawdown, 2),
+        "open_positions": open_positions,
+    }
