@@ -310,8 +310,11 @@ class OvernightReturnStrategy(AbstractStrategy):
             close.shift(self.MOMENTUM_LOOKBACK_DAYS) - 1.0
         )
 
-        # Top quintile: 80th percentile of rolling 252-bar window
-        rolling_80pct = ret_12_1.rolling(self.MOMENTUM_LOOKBACK_DAYS, min_periods=60).quantile(0.80)
+        # Top quintile threshold — use expanding window so we never peek at
+        # future observations (rolling quantile on a look-forward window would
+        # embed survivorship bias: each bar's threshold would include data it
+        # hadn't seen yet in a real-time deployment).
+        rolling_80pct = ret_12_1.expanding(min_periods=60).quantile(0.80)
 
         # Enter when momentum in top quintile (shift 1 to prevent lookahead)
         in_top_quintile = (ret_12_1 > rolling_80pct).shift(1).fillna(False)

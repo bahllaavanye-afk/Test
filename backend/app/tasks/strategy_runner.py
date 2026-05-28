@@ -89,6 +89,30 @@ class ContinuousStrategyRunner:
                     await slack.notify_signal(strategy_name, symbol, signal.side,
                                                 signal.confidence, signal.target_price)
 
+                    # ── Submit order through risk-gated smart router ──────────
+                    if self.broker is not None:
+                        from app.brokers.base import OrderRequest
+                        from app.execution.smart_router import SmartOrderRouter
+                        router = SmartOrderRouter(
+                            broker=self.broker,
+                            risk_manager=self.risk_manager,
+                        )
+                        order_req = OrderRequest(
+                            symbol=symbol,
+                            quantity=signal.quantity or 1,
+                            side=signal.side,
+                            order_type=signal.order_type or "market",
+                            limit_price=signal.target_price,
+                            stop_loss=signal.stop_loss,
+                            take_profit=signal.take_profit,
+                            risk_bucket=strategy.risk_bucket,
+                        )
+                        result = await router.execute(order_req, signal_price=signal.target_price)
+                        if result:
+                            logger.info("Order submitted", strategy=strategy_name, symbol=symbol,
+                                        order_id=getattr(result, "order_id", "?"),
+                                        side=signal.side, qty=order_req.quantity)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:

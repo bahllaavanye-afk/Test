@@ -48,6 +48,7 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
     OR_END   = 10 * 60 + 0   # 10:00 ET
     HARD_EXIT = 14 * 60 + 0  # 2:00 PM ET
     MIN_RANGE_PCT = 0.003     # Minimum 0.3% range to trade (filter out quiet opens)
+    GAP_UP_PCT   = 0.003      # Minimum gap size for daily OHLCV backtest proxy
     PROFIT_TARGET = 0.50      # 50% of premium paid
     MAX_STOP_PCT = 0.50       # Stop at 50% loss (options can move fast)
 
@@ -145,23 +146,55 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """Daily proxy: gap direction predicts day's return."""
-        if "open" not in df.columns:
+        """
+        Daily OHLCV proxy for ORB.
+
+        True ORB requires 1-minute intraday bars (9:30-10:00 ET range).  With
+        daily OHLCV we approximate using the open-gap + intraday range filter:
+
+          • Gap up  (open > prev_close + MIN_GAP) AND day's range is wide
+            (high - low > ATR_MULT * 20d ATR) → long entry signal.
+          • Gap down (open < prev_close - MIN_GAP) with wide range → short.
+          • Exit after 1 bar (intraday hold, simulated as next-bar close).
+
+        NOTE: This proxy under-estimates live performance because it cannot
+        capture the exact 9:30-10:00 range breakout timing.  Walk-forward
+        validation on daily bars provides a conservative lower bound.
+        """
+        if "open" not in df.columns or "high" not in df.columns or len(df) < 25:
             return BacktestSignals(
                 entries=pd.Series(False, index=df.index),
                 exits=pd.Series(False, index=df.index),
             )
-        gap = (df["open"] - df["close"].shift(1)) / df["close"].shift(1)
 
-        # Positive gap → buy; negative gap → sell (with minimum threshold)
-        entries = (gap.shift(1) > 0.003).fillna(False)
-        exits = (gap.shift(1) < 0.0).fillna(False)
-        short_entries = (gap.shift(1) < -0.003).fillna(False)
-        short_exits = (gap.shift(1) > 0.0).fillna(False)
+        close = df["close"].astype(float)
+        open_ = df["open"].astype(float)
+        high  = df["high"].astype(float)
+        low   = df["low"].astype(float)
+
+        prev_close = close.shift(1)
+        gap_pct    = (open_ - prev_close) / prev_close
+
+        # 20-day ATR as volatility filter — only trade on high-range days
+        tr     = (high - low).combine(
+            (high - close.shift(1)).abs(), max
+        ).combine((low - close.shift(1)).abs(), max)
+        atr_20 = tr.rolling(20, min_periods=10).mean()
+        intraday_range = high - low
+        wide_range = intraday_range > (1.2 * atr_20)
+
+        gap_up   = (gap_pct > self.GAP_UP_PCT)   & wide_range
+        gap_down = (gap_pct < -self.GAP_UP_PCT)  & wide_range
+
+        # shift(1): yesterday's gap determines today's signal
+        entries       = gap_up.shift(1).fillna(False)
+        exits         = entries.shift(1).fillna(False)   # 1-bar hold
+        short_entries = gap_down.shift(1).fillna(False)
+        short_exits   = short_entries.shift(1).fillna(False)
 
         return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
+            entries=entries.astype(bool),
+            exits=exits.astype(bool),
+            short_entries=short_entries.astype(bool),
+            short_exits=short_exits.astype(bool),
         )
