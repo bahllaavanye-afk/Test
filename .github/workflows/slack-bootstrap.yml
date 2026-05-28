@@ -8,167 +8,21 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: read
-      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install httpx
-      - name: Create all channels + capture output
-        id: bootstrap
+      - name: Run bootstrap script
         env:
           SLACK_BOT_TOKEN: ${{ inputs.bot_token }}
-        run: |
-          set +e
-          cat > /tmp/bootstrap.py <<'PYEOF'
-          import os, sys, httpx, traceback
-
-          SLACK_API = "https://slack.com/api"
-
-          ENGINEERING_CHANNELS = [
-              ("engineering-standup",  False, "Daily standups from each squad (13:00 UTC)"),
-              ("alpha-research",       False, "New strategy proposals + paper reviews"),
-              ("pnl-daily",            False, "EOD P&L attribution by strategy"),
-              ("risk-alerts",          False, "VaR breaches, circuit breakers"),
-              ("incidents",            False, "P0/P1 incidents and postmortems"),
-              ("deploys",              False, "Deploy notifications"),
-              ("ci-failures",          False, "CI test failures (auto-routed)"),
-              ("ml-experiments",       False, "Training run results, model leaderboard"),
-              ("engineering",          False, "All engineers"),
-              ("announcements",        False, "Company-wide announcements (CEO only posts)"),
-              ("wins",                 False, "Celebrate shipped features and winning strategies"),
-              ("help",                 False, "Anyone can ask, anyone answers"),
-              ("squad-alpha-research", True,  "Alpha Research squad"),
-              ("squad-microstructure", True,  "Microstructure squad"),
-              ("squad-ml-modeling",    True,  "ML Modeling squad"),
-              ("squad-ml-infra",       True,  "ML Infrastructure squad"),
-              ("squad-backend",        True,  "Backend Platform squad"),
-              ("squad-frontend",       True,  "Frontend squad"),
-              ("squad-data",           True,  "Data Engineering squad"),
-              ("squad-execution",      True,  "Execution squad"),
-              ("squad-risk",           True,  "Risk Engineering squad"),
-              ("squad-security",       True,  "Security squad"),
-              ("squad-devops",         True,  "DevOps / SRE squad"),
-              ("squad-qa",             True,  "QA / Test Automation squad"),
-              ("squad-compliance",     True,  "Compliance Engineering"),
-              ("squad-finance-eng",    True,  "Finance Engineering"),
-              ("leadership",           True,  "VP+ only"),
-              ("leadership-summary",   True,  "Daily auto-summaries from each VP"),
-              ("board",                True,  "CEO + CFO + CTO + board observers"),
-              ("pm-coordination",      True,  "All PMs cross-coordinate"),
-          ]
-
-          out = []
-          def log(msg):
-              print(msg, flush=True)
-              out.append(msg)
-
-          try:
-              token = os.environ["SLACK_BOT_TOKEN"]
-              log(f"Token prefix: {token[:10]}... length={len(token)}")
-              if not token.startswith("xoxb-"):
-                  log(f"❌ FATAL: token must start with xoxb-")
-                  sys.exit(1)
-
-              client = httpx.Client(
-                  base_url=SLACK_API,
-                  headers={"Authorization": f"Bearer {token}",
-                           "Content-Type": "application/json; charset=utf-8"},
-                  timeout=20,
-              )
-
-              def call(method, payload=None):
-                  r = client.post(f"/{method}", json=payload or {})
-                  r.raise_for_status()
-                  d = r.json()
-                  if not d.get("ok"):
-                      raise RuntimeError(f"{method}: {d.get('error')} (response: {d})")
-                  return d
-
-              # 1. Auth check
-              auth = call("auth.test")
-              log(f"✅ Auth OK — bot user: {auth.get('user')}, team: {auth.get('team')}, url: {auth.get('url')}")
-
-              # 2. List existing channels
-              try:
-                  existing, cursor = [], ""
-                  while True:
-                      d = call("conversations.list", {
-                          "types": "public_channel,private_channel",
-                          "limit": 200,
-                          "cursor": cursor,
-                      })
-                      existing.extend(d.get("channels", []))
-                      cursor = d.get("response_metadata", {}).get("next_cursor", "")
-                      if not cursor: break
-                  existing_names = {c.get("name") for c in existing}
-                  log(f"📋 {len(existing)} existing channels found")
-              except Exception as e:
-                  log(f"⚠️ Cannot list channels (missing channels:read or groups:read scope?): {e}")
-                  existing_names = set()
-
-              # 3. Create each channel
-              created, skipped, errors = [], [], []
-              for name, is_private, topic in ENGINEERING_CHANNELS:
-                  if name in existing_names:
-                      skipped.append(name)
-                      log(f"  = #{name} (already exists)")
-                      continue
-                  try:
-                      d = call("conversations.create", {"name": name, "is_private": is_private})
-                      cid = d.get("channel", {}).get("id")
-                      vis = "private" if is_private else "public"
-                      log(f"  + #{name} ({vis}) id={cid}")
-                      created.append(name)
-                      if topic and cid:
-                          try:
-                              call("conversations.setTopic", {"channel": cid, "topic": topic})
-                          except Exception as te:
-                              log(f"    ! setTopic failed: {te}")
-                  except Exception as ce:
-                      log(f"  ! #{name} FAILED: {ce}")
-                      errors.append((name, str(ce)))
-
-              log(f"\nSUMMARY: created={len(created)} skipped={len(skipped)} errors={len(errors)}")
-
-              # Write output for next step
-              with open("/tmp/bootstrap_output.md", "w") as f:
-                  f.write("## Slack bootstrap result\n\n")
-                  f.write("```\n" + "\n".join(out) + "\n```\n")
-
-              if errors:
-                  log("\nERRORS DETAIL:")
-                  for n, e in errors:
-                      log(f"  - #{n}: {e}")
-                  sys.exit(1 if len(created) == 0 else 0)
-          except Exception as e:
-              log(f"\n❌ FATAL: {e}")
-              log(traceback.format_exc())
-              with open("/tmp/bootstrap_output.md", "w") as f:
-                  f.write("## Slack bootstrap FAILED\n\n```\n" + "\n".join(out) + "\n```\n")
-              sys.exit(1)
-          PYEOF
-          python /tmp/bootstrap.py
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
-
-      - name: Post output to CTO issue #2
-        if: always()
-        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ ! -f /tmp/bootstrap_output.md ]; then
-            echo "## Slack bootstrap — no output file generated" > /tmp/bootstrap_output.md
-          fi
-          BODY=$(cat /tmp/bootstrap_output.md | python3 -c "import sys, json; print(json.dumps(sys.stdin.read()))")
-          curl -sS -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/2/comments" \
-            -d "{\"body\": $BODY}"
-          echo "✓ Posted bootstrap result to issue #2"
+          GH_REPO: ${{ github.repository }}
+        run: python .github/scripts/slack_bootstrap.py
