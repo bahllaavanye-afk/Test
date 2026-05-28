@@ -5,8 +5,8 @@ const METRICS = [
   { label: 'Max Drawdown', value: '<15%', sub: 'historical' },
   { label: 'Win Rate', value: '~68%', sub: 'across strategies' },
   { label: 'Uptime', value: '24/7', sub: '365 days' },
-  { label: 'Strategies', value: '9', sub: 'live + paper' },
-  { label: 'ML Models', value: '5', sub: 'PyTorch' },
+  { label: 'Strategies', value: '48', sub: '41 manual + 7 ML' },
+  { label: 'ML Models', value: '7', sub: 'PyTorch + XGBoost' },
 ]
 
 const FEATURES = [
