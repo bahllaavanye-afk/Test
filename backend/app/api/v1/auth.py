@@ -61,7 +61,9 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    # Same brute-force protection as /login — prevents enumeration and abuse
+    _check_rate_limit(request.client.host if request.client else "unknown")
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")

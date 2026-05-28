@@ -23,18 +23,29 @@ from app.config import settings
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
+async def _user_account_ids(db: AsyncSession, user_id: str) -> list[str]:
+    """Return all account IDs owned by the given user. Used to scope queries."""
+    result = await db.execute(
+        select(Account.id).where(Account.user_id == user_id)
+    )
+    return [row[0] for row in result.all()]
+
+
 @router.get("/performance")
 async def get_performance(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Aggregate trade performance stats."""
+    """Aggregate trade performance stats — scoped to current user's accounts."""
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return {"total_trades": 0, "avg_pnl": 0.0, "total_pnl": 0.0}
     result = await db.execute(
         select(
             func.count(Trade.id).label("total_trades"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(Trade.realized_pnl).label("total_pnl"),
-        )
+        ).where(Trade.account_id.in_(account_ids))
     )
     row = result.one()
     return {
@@ -49,13 +60,20 @@ async def get_slippage_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Average slippage by execution algorithm."""
+    """Average slippage by execution algorithm — scoped to current user's orders."""
+    from app.models.order import Order as OrderModel
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
     result = await db.execute(
         select(
             SlippageRecord.execution_algo,
             func.avg(SlippageRecord.slippage_bps).label("avg_bps"),
             func.count(SlippageRecord.id).label("count"),
-        ).group_by(SlippageRecord.execution_algo)
+        )
+        .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
+        .where(OrderModel.account_id.in_(account_ids))
+        .group_by(SlippageRecord.execution_algo)
     )
     rows = result.all()
     return [{"algo": r.execution_algo, "avg_bps": round(float(r.avg_bps or 0), 2), "count": r.count} for r in rows]
@@ -66,7 +84,10 @@ async def get_pnl_attribution(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """P&L broken down by strategy — the #1 feature missing from open-source bots."""
+    """P&L broken down by strategy — scoped to current user's accounts."""
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
     result = await db.execute(
         select(
             Trade.strategy_name,
@@ -74,7 +95,10 @@ async def get_pnl_attribution(
             func.sum(Trade.realized_pnl).label("total_pnl"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
-        ).group_by(Trade.strategy_name).order_by(func.sum(Trade.realized_pnl).desc())
+        )
+        .where(Trade.account_id.in_(account_ids))
+        .group_by(Trade.strategy_name)
+        .order_by(func.sum(Trade.realized_pnl).desc())
     )
     rows = result.all()
     out = []
@@ -652,30 +676,30 @@ async def get_portfolio_snapshot(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Aggregate portfolio KPIs for the dashboard snapshot widget."""
-    from app.models.account import Account as AccountModel
-
-    # Get the user's first active account
-    acct_result = await db.execute(
-        select(AccountModel).where(AccountModel.user_id == current_user.id).limit(1)
-    )
-    account = acct_result.scalar_one_or_none()
+    """Aggregate portfolio KPIs for the dashboard snapshot widget — scoped to user."""
+    account_ids = await _user_account_ids(db, current_user.id)
 
     today = datetime.now(timezone.utc).date()
     yesterday = today - timedelta(days=1)
 
-    # All-time realized PnL
+    if not account_ids:
+        return {
+            "total_pnl": 0.0, "today_pnl": 0.0, "today_pnl_trend": 0.0,
+            "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "open_positions": 0,
+        }
+
+    # All-time realized PnL (scoped to user's accounts)
     total_pnl_result = await db.execute(
-        select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
-            Trade.account_id == account.id if account else Trade.account_id.is_(None)
-        )
+        select(func.coalesce(func.sum(Trade.realized_pnl), 0.0))
+        .where(Trade.account_id.in_(account_ids))
     )
     total_pnl = float(total_pnl_result.scalar_one())
 
     # Today's realized PnL
     today_pnl_result = await db.execute(
         select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
-            Trade.closed_at >= datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc),
         )
     )
     today_pnl = float(today_pnl_result.scalar_one())
@@ -683,40 +707,45 @@ async def get_portfolio_snapshot(
     # Yesterday's realized PnL (for trend)
     yesterday_pnl_result = await db.execute(
         select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
+            Trade.account_id.in_(account_ids),
             Trade.closed_at >= datetime.combine(yesterday, datetime.min.time()).replace(tzinfo=timezone.utc),
             Trade.closed_at < datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc),
         )
     )
     yesterday_pnl = float(yesterday_pnl_result.scalar_one())
 
-    # Win rate: trades with positive PnL / total trades (last 90 days)
+    # Win rate: positive trades / total trades (last 90 days)
     since_90 = datetime.now(timezone.utc) - timedelta(days=90)
     wins_result = await db.execute(
         select(
             func.count(Trade.id).label("total"),
             func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
-        ).where(Trade.closed_at >= since_90)
+        ).where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since_90,
+        )
     )
     wins_row = wins_result.one()
     total_trades = wins_row.total or 0
     wins = int(wins_row.wins or 0)
     win_rate = wins / total_trades if total_trades > 0 else 0.0
 
-    # Open positions count
+    # Open positions count (scoped to user)
     open_pos_result = await db.execute(
-        select(func.count(Position.id)).where(
-            Position.account_id == account.id if account else Position.account_id.is_(None)
-        )
+        select(func.count(Position.id)).where(Position.account_id.in_(account_ids))
     )
     open_positions = int(open_pos_result.scalar_one() or 0)
 
-    # Sharpe ratio: annualized from last 252 daily PnL values
+    # Sharpe ratio: annualized from last 252 daily PnL values (scoped)
     daily_pnl_result = await db.execute(
         select(
             func.date_trunc("day", Trade.closed_at).label("day"),
             func.sum(Trade.realized_pnl).label("daily_pnl"),
         )
-        .where(Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365))
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365),
+        )
         .group_by(func.date_trunc("day", Trade.closed_at))
         .order_by(func.date_trunc("day", Trade.closed_at))
     )

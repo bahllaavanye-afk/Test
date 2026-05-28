@@ -102,15 +102,29 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
     )
 
-    # CORS — restrict to Vercel frontend in production
-    # cors_origins is a list[str] property on the settings object
-    allowed_origins = settings.cors_origins if settings.cors_origins else ["*"]
+    # CORS — explicit allowlist only. Browsers reject `*` + credentials anyway,
+    # so the fallback to `*` was both insecure and broken. In dev we permit
+    # localhost; in any other mode the operator MUST set CORS_ORIGINS.
+    if settings.cors_origins:
+        allowed_origins = settings.cors_origins
+    elif settings.trading_mode in ("dev", "test"):
+        allowed_origins = [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+        ]
+    else:
+        logger.warning(
+            "CORS_ORIGINS not configured in non-dev mode — refusing all cross-origin requests"
+        )
+        allowed_origins = []
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
     )
 
     # REST API
