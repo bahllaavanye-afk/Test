@@ -6,7 +6,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.ml_model import MLModel
 from app.models.user import User
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 from datetime import datetime
 
 router = APIRouter(prefix="/ml", tags=["ml"])
@@ -22,8 +22,7 @@ class ModelOut(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/models", response_model=list[ModelOut])

@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.models.risk import RiskRule, RiskEvent
 from app.models.user import User
 from app.models.trade import Trade
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 import uuid
 from datetime import datetime, timezone
 
@@ -27,8 +27,7 @@ class RiskRuleOut(BaseModel):
     action: str
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/rules", response_model=list[RiskRuleOut])

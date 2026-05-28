@@ -39,7 +39,8 @@ def _count_loc(root: Path) -> dict:
                     comment_lines += 1
                 else:
                     code_lines += 1
-        except Exception:
+        except Exception as e:
+            logger.debug("code_quality: skip unreadable file", error=str(e))
             continue
 
     return {
@@ -93,8 +94,8 @@ class CodeQualityLoop:
             history.append(snapshot)
             history = history[-200:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("code_quality: failed to persist snapshot", error=str(e))
 
     async def run(self) -> None:
         self._running = True

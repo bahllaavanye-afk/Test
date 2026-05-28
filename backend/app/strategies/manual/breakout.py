@@ -37,7 +37,7 @@ class BreakoutStrategy(AbstractStrategy):
         vol_mean = vol_avg.iloc[-1] if len(volume) > 0 else 1
 
         if price > res + self.atr_mult * atr_val and vol_curr > self.vol_mult * vol_mean:
-            pct_break = (price - res) / res
+            pct_break = (price - res) / max(res, 1e-8)
             confidence = min(0.82, 0.55 + pct_break * 3)
             return Signal(symbol=symbol, side="buy", confidence=confidence,
                           strategy_name=self.name, strategy_type=self.strategy_type,

@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.models.comparison import ComparisonResult as ComparisonModel
 from app.models.user import User
 from app.comparison.benchmarks import get_benchmark_stats
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 from datetime import date
 
 router = APIRouter(prefix="/comparison", tags=["comparison"])
@@ -24,8 +24,7 @@ class ComparisonOut(BaseModel):
     spy_sharpe: float | None
     ml_improvement_pct: float | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @classmethod
     def from_model(cls, m) -> "ComparisonOut":

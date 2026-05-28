@@ -9,7 +9,7 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.utils.security import encrypt_secret, decrypt_secret
 from app.utils.logging import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -31,8 +31,7 @@ class AccountOut(BaseModel):
     mode: str
     extra_config: dict
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AccountEquityOut(BaseModel):

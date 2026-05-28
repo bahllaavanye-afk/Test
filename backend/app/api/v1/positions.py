@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.models.position import Position
 from app.models.user import User
 from app.models.account import Account
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 from datetime import datetime
 from app.utils.logging import logger
 
@@ -23,8 +23,7 @@ class PositionOut(BaseModel):
     unrealized_pnl: float | None
     side: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 def _alpaca_position_to_out(p: dict) -> dict:

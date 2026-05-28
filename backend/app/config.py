@@ -56,14 +56,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
-        if (
-            self.secret_key == "change-me-in-production-32-byte-hex"
-            and self.trading_mode not in ("development", "dev", "test", "paper")
-        ):
-            raise ValueError(
-                "SECRET_KEY must be set to a secure random value in non-dev modes. "
-                "Run: python -c \"import secrets; print(secrets.token_hex(32))\""
-            )
+        placeholder = "change-me-in-production-32-byte-hex"
+        test_placeholder = "test-secret-key-32-bytes-hex-xxxxx"
+        if self.secret_key in (placeholder, test_placeholder):
+            if self.trading_mode not in ("development", "dev", "test"):
+                raise ValueError(
+                    "SECRET_KEY must be set to a secure random 32-byte hex value. "
+                    "Run: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
+        elif len(self.secret_key) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters long.")
         return self
 
     @property

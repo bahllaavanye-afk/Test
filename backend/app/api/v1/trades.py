@@ -6,7 +6,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.trade import Trade
 from app.models.user import User
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 from datetime import datetime
 
 router = APIRouter(prefix="/trades", tags=["trades"])
@@ -23,8 +23,7 @@ class TradeOut(BaseModel):
     opened_at: datetime | None
     closed_at: datetime | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/", response_model=list[TradeOut])

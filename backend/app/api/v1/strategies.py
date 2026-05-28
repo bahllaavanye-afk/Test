@@ -7,7 +7,7 @@ from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ConfigDict
 import uuid
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
@@ -24,8 +24,7 @@ class StrategyOut(BaseModel):
     tick_interval_seconds: float
     confidence_threshold: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StrategyToggle(BaseModel):

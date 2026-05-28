@@ -8,7 +8,7 @@ from app.models.order import Order
 from app.models.user import User
 from app.models.account import Account
 from app.models.audit_log import AuditLog
-from pydantic import BaseModel, field_validator, Field, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field, model_validator
 from datetime import datetime, timezone
 import uuid
 from app.utils.logging import logger
@@ -62,8 +62,7 @@ class OrderOut(BaseModel):
     execution_algo: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderModify(BaseModel):

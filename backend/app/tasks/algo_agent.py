@@ -199,8 +199,8 @@ class AlgoAgent:
             existing.append(result)
             existing = existing[-500:]  # keep last 500
             results_file.write_text(json.dumps(existing, indent=2))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("AlgoAgent: failed to persist result", error=str(e))
 
     async def run(self) -> None:
         """Main loop — runs forever, selecting and testing candidates via UCB1."""
