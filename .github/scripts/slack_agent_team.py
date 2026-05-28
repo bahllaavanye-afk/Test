@@ -524,7 +524,7 @@ def maya_chen_eng_daily() -> list[Post]:
     return [Post(
         channel="engineering",
         text="\n".join(lines),
-        username="Maya Chen — VP Engineering",
+        username="VP Engineering",
         icon_emoji=":woman_office_worker:",
     )]
 
@@ -567,7 +567,7 @@ def aarav_patel_strategy_review() -> list[Post]:
     return [Post(
         channel="alpha-research",
         text=text,
-        username="Aarav Patel — Alpha Research Director",
+        username="Alpha Research Director",
         icon_emoji=":chart_with_upwards_trend:",
     )]
 
@@ -581,7 +581,7 @@ def linh_tran_ml_results() -> list[Post]:
             channel="ml-experiments",
             text=(":warning: No experiment results in `experiments/results/` yet. "
                   "First training run is queued — Kaggle T4, ETA ~25min."),
-            username="Linh Tran — ML Modeling Lead",
+            username="ML Modeling Lead",
             icon_emoji=":robot_face:",
         )]
     r = results[0]
@@ -593,7 +593,7 @@ def linh_tran_ml_results() -> list[Post]:
     return [Post(
         channel="ml-experiments",
         text=text,
-        username="Linh Tran — ML Modeling Lead",
+        username="ML Modeling Lead",
         icon_emoji=":robot_face:",
     )]
 
@@ -617,7 +617,7 @@ def diego_ramirez_execution() -> list[Post]:
         text=(f"Checked <{url}|`execution/{target.name}`> — {n_lines} LOC, {n_classes} classes.\n"
               f"Slippage tracker still emits bps per algo. Next: implement Almgren-Chriss "
               f"optimal liquidation curve for orders > $50k. PR open by Friday."),
-        username="Diego Ramírez — Execution Engineer",
+        username="Execution Engineer",
         icon_emoji=":zap:",
     )]
 
@@ -659,7 +659,7 @@ def jian_wu_risk() -> list[Post]:
     return [Post(
         channel="risk-alerts",
         text=body,
-        username="Jian Wu — Risk Engineer",
+        username="Risk Engineer",
         icon_emoji=":shield:",
     )]
 
@@ -700,7 +700,7 @@ def priya_subramanian_frontend() -> list[Post]:
               f"Pages: *{n_pages}* — {page_list}\n\n"
               f"Next: React.lazy() code-split on heavy pages (MLInsights, Experiments, BacktestLab). "
               f"Target: each lazy chunk <80 KB gzip."),
-        username="Priya Subramanian — Frontend Lead",
+        username="Frontend Lead",
         icon_emoji=":art:",
     )]
 
@@ -719,7 +719,7 @@ def anna_hoffmann_backend() -> list[Post]:
     return [Post(
         channel="squad-backend",
         text="\n".join(lines) + "\n\nAll passing import smoke. Re-running CI on PR #9.",
-        username="Anna Hoffmann — Backend Lead",
+        username="Backend Lead",
         icon_emoji=":gear:",
     )]
 
@@ -735,7 +735,7 @@ def sina_hassani_data() -> list[Post]:
               + ", ".join(f"`{b.stem}`" for b in brokers) +
               "\n\nOHLCV ingestion → Redis cache → strategy_runner. "
               "Lag p95 ~4s on Alpaca, ~1.5s on Binance WS."),
-        username="Sina Hassani — Data Engineer",
+        username="Data Engineer",
         icon_emoji=":file_cabinet:",
     )]
 
@@ -747,7 +747,7 @@ def kenji_watanabe_devops() -> list[Post]:
         return [Post(
             channel="infra-alerts",
             text=":green_heart: Infra check — no recent workflow runs to report. Standing by.",
-            username="Kenji Watanabe — Director of DevOps",
+            username="Director of DevOps",
             icon_emoji=":green_heart:",
         )]
     by_status: dict[str, int] = {}
@@ -761,7 +761,7 @@ def kenji_watanabe_devops() -> list[Post]:
         text=(f":satellite_antenna: Last 10 workflow runs — {counts}\n"
               f"Latest: `{last.get('name')}` → *{last.get('conclusion') or last.get('status')}* "
               f"on `{last.get('head_branch')}`"),
-        username="Kenji Watanabe — Director of DevOps",
+        username="Director of DevOps",
         icon_emoji=":satellite_antenna:",
     )]
 
@@ -804,7 +804,7 @@ def aditi_sharma_qa() -> list[Post]:
                 text=(f":red_circle: *Pytest failures detected*\n"
                       f"```\n{fail_detail[:600]}\n```\n"
                       f"Full log: check Actions tab for this run."),
-                username="Aditi Sharma — Director of QA",
+                username="Director of QA",
                 icon_emoji=":mag:",
             ))
 
@@ -843,7 +843,7 @@ def aditi_sharma_qa() -> list[Post]:
     posts.insert(0, Post(
         channel="squad-qa",
         text=text,
-        username="Aditi Sharma — Director of QA",
+        username="Director of QA",
         icon_emoji=":mag:",
     ))
     return posts
@@ -869,7 +869,7 @@ def cameron_park_security() -> list[Post]:
     return [Post(
         channel="security-alerts",
         text=text,
-        username="Cameron Park — Security Engineer",
+        username="Security Engineer",
         icon_emoji=":closed_lock_with_key:",
     )]
 
@@ -896,7 +896,7 @@ def sofia_karlsson_research() -> list[Post]:
     return [Post(
         channel="papers",
         text=text,
-        username="Sofia Karlsson — VP Research",
+        username="VP Research",
         icon_emoji=":books:",
     )]
 
@@ -916,7 +916,7 @@ def yuki_mori_options() -> list[Post]:
     return [Post(
         channel="desk-options",
         text=text,
-        username="Yuki Mori — Options Researcher",
+        username="Options Researcher",
         icon_emoji=":bar_chart:",
     )]
 
@@ -932,7 +932,7 @@ def hugo_bernardes_research() -> list[Post]:
             channel="alpha-research",
             text="Every manual strategy has at least one backtest run logged. :tada: "
                  "Now pushing the walk-forward (6-fold purged k-fold) on top 10 by Sharpe.",
-            username="Hugo Bernardes — Quant Researcher",
+            username="Quant Researcher",
             icon_emoji=":bar_chart:",
         )]
     sample = random.sample(untested, min(4, len(untested)))
@@ -942,7 +942,7 @@ def hugo_bernardes_research() -> list[Post]:
               f"*{len(untested)}/{len(strats)}*\n"
               f"Picking up next: " + ", ".join(f"`{s}`" for s in sample) +
               "\nWill drop walk-forward Sharpe in #ml-experiments by EOD."),
-        username="Hugo Bernardes — Quant Researcher",
+        username="Quant Researcher",
         icon_emoji=":mag_right:",
     )]
 
@@ -964,7 +964,7 @@ def tomas_lindqvist_rl() -> list[Post]:
         channel="pod-ml-rl",
         text="RL pod status — " + " · ".join(bits) +
              "\nReward = -slippage_bps - commission_bps. Spinning up training on Kaggle.",
-        username="Tomas Lindqvist — Research Scientist",
+        username="Research Scientist",
         icon_emoji=":brain:",
     )]
 
@@ -982,7 +982,7 @@ def lior_avraham_polymarket() -> list[Post]:
         text=(f"Polymarket strategies live: " + ", ".join(f"`{s}`" for s in poly) +
               "\nScanning for YES+NO < $0.97 plus cross-market correlation arb. "
               "Need to validate live order placement against py-clob-client."),
-        username="Lior Avraham — Polymarket Researcher",
+        username="Polymarket Researcher",
         icon_emoji=":vertical_traffic_light:",
     )]
 
@@ -1011,7 +1011,7 @@ def marcus_olufemi_risk() -> list[Post]:
     return [Post(
         channel="leadership-summary",
         text="\n".join(body_lines),
-        username="Marcus Olufemi — CRO",
+        username="Chief Risk Officer",
         icon_emoji=":shield:",
     )]
 
@@ -1030,7 +1030,7 @@ def wei_chang_finance() -> list[Post]:
               "• Domain: $12/yr → $1/mo\n"
               "\n*Total burn: ~$1/mo* · Runway: indefinite at this level.\n"
               "Reassess when first paying user or first AUM > $100k."),
-        username="Wei Chang — Finance Engineer",
+        username="Finance Engineer",
         icon_emoji=":moneybag:",
     )]
 
@@ -1047,7 +1047,7 @@ def helena_voss_compliance() -> list[Post]:
               f"• Retention: 7 years (Supabase logical backup)\n"
               f"• KYC: not started — gated on first live-capital allocation\n"
               f"\nNext: trading-license tracker doc + jurisdictional KYC matrix."),
-        username="Helena Voss — Compliance Engineer",
+        username="Compliance Engineer",
         icon_emoji=":scales:",
     )]
 
@@ -1064,7 +1064,7 @@ def aditi_open_prs() -> list[Post]:
         channel="ci-failures",
         text=(f"*Open PRs:* {len(prs)}\n" + "\n".join(bits) +
               "\nCI auto-runs on every push. Failures auto-route here."),
-        username="Aditi Sharma — Director of QA",
+        username="Director of QA",
         icon_emoji=":mag:",
     )]
 
@@ -1103,7 +1103,7 @@ def ravi_iyer_ci() -> list[Post]:
     return [Post(
         channel="engineering",
         text=text,
-        username="Ravi Iyer — ML Infra Engineer",
+        username="ML Infrastructure Engineer",
         icon_emoji=":wrench:",
     )]
 
@@ -1155,7 +1155,7 @@ def kenji_deploy_readiness() -> list[Post]:
     return [Post(
         channel="leadership-summary",
         text="\n".join(text_lines),
-        username="Kenji Watanabe — Director of DevOps",
+        username="Director of DevOps",
         icon_emoji=":satellite_antenna:",
     )]
 
@@ -1168,7 +1168,7 @@ def karl_nystrom_question() -> list[Post]:
             channel="help",
             text=("Newbie question: when I add a manual strategy, do I need to register it "
                   "anywhere besides dropping the file in `backend/app/strategies/manual/`?"),
-            username="Karl Nyström — Junior IC",
+            username="Junior Engineer",
             icon_emoji=":raised_hand:",
         )]
     f, ln, snippet = random.choice(todos)
@@ -1177,7 +1177,7 @@ def karl_nystrom_question() -> list[Post]:
         channel="help",
         text=(f"Saw a `TODO` here: <{url}|`{f}:{ln}`>\n```\n{snippet[:200]}\n```\n"
               f"Anyone know what the intent was? Happy to pick it up if it's small."),
-        username="Karl Nyström — Junior IC",
+        username="Junior Engineer",
         icon_emoji=":raised_hand:",
     )]
 
@@ -1379,7 +1379,7 @@ def trading_desk_macro_positions() -> list[Post]:
 
 
 def sara_kim_ml_research() -> list[Post]:
-    """Dr. Sara Kim — ML Research Lead. Posts SOTA model comparisons and ablation findings."""
+    """ML Research Lead. Posts SOTA model comparisons and ablation findings."""
     results_dir = REPO_ROOT / "experiments" / "results"
     configs_dir = REPO_ROOT / "experiments" / "configs"
 
@@ -1430,7 +1430,7 @@ def sara_kim_ml_research() -> list[Post]:
     return [Post(
         channel="ml-experiments",
         text="\n".join(lines),
-        username="Dr. Sara Kim — ML Research Lead",
+        username="ML Research Lead",
         icon_emoji=":microscope:",
     )]
 
@@ -1483,13 +1483,13 @@ def marcus_williams_dl_engineer() -> list[Post]:
     return [Post(
         channel="engineering",
         text="\n".join(lines),
-        username="Marcus Williams — DL Engineer",
+        username="Deep Learning Engineer",
         icon_emoji=":building_construction:",
     )]
 
 
 def priya_nair_feature_eng() -> list[Post]:
-    """Priya Nair — Feature Engineering Lead. Posts on indicators, wavelet analysis, MTF."""
+    """Feature Engineering Lead. Posts on indicators, wavelet analysis, MTF."""
     features_dir = REPO_ROOT / "backend" / "app" / "ml" / "features"
 
     feature_counts: dict[str, int] = {}
@@ -1525,7 +1525,7 @@ def priya_nair_feature_eng() -> list[Post]:
     return [Post(
         channel="alpha-research",
         text="\n".join(lines),
-        username="Priya Nair — Feature Engineering Lead",
+        username="Feature Engineering Lead",
         icon_emoji=":abacus:",
     )]
 
@@ -1582,7 +1582,7 @@ def alex_chen_quant_ml() -> list[Post]:
     return [Post(
         channel="alpha-research",
         text="\n".join(lines),
-        username="Alex Chen — Quant ML Researcher",
+        username="Quant ML Researcher",
         icon_emoji=":chart_with_upwards_trend:",
     )]
 
@@ -1599,7 +1599,7 @@ def laavanye_bahl_ceo() -> list[Post]:
               "3. No mock data. Better crash than fake.\n"
               "4. Show your work. Every strategy ships with config + backtest + paper trail.\n"
               "5. Modular. Zero cross-strategy coupling."),
-        username="Laavanye Bahl — CEO/Founder",
+        username="CEO / Founder",
         icon_emoji=":sparkles:",
     )]
 
@@ -1625,8 +1625,8 @@ TEAMS: dict[str, dict] = {
             "lorentzian_knn", "ensemble",
         },
         "members": [
-            ("Hugo Bernardes", "Quant Researcher", ":mag_right:"),
-            ("Karl Nyström", "Junior IC", ":raised_hand:"),
+            ("Quant Researcher", "Quant Researcher", ":mag_right:"),
+            ("Junior Engineer", "Junior IC", ":raised_hand:"),
         ],
     },
     "Crypto": {
@@ -1639,8 +1639,8 @@ TEAMS: dict[str, dict] = {
             "stablecoin_depeg_arb", "crypto_adaptive_trend",
         },
         "members": [
-            ("Tomas Lindqvist", "Research Scientist", ":brain:"),
-            ("Ravi Iyer", "ML Infra Engineer", ":wrench:"),
+            ("Research Scientist", "Research Scientist", ":brain:"),
+            ("ML Infrastructure Engineer", "ML Infra Engineer", ":wrench:"),
         ],
     },
     "Options": {
@@ -1652,7 +1652,7 @@ TEAMS: dict[str, dict] = {
             "options_pcr_reversal", "gamma_exposure", "dispersion_trading",
         },
         "members": [
-            ("Aarav Patel", "Alpha Research Director", ":chart_with_upwards_trend:"),
+            ("Alpha Research Director", "Alpha Research Director", ":chart_with_upwards_trend:"),
         ],
     },
     "Polymarket": {
@@ -1674,7 +1674,7 @@ TEAMS: dict[str, dict] = {
             "cross_asset_carry", "hmm_regime",
         },
         "members": [
-            ("Sofia Karlsson", "VP Research", ":books:"),
+            ("VP Research", "VP Research", ":books:"),
         ],
     },
 }
@@ -1888,7 +1888,7 @@ def maya_reply_to_eng(post_ts: str) -> Post:
     return Post(
         channel="engineering",
         text="Thanks. Anyone with an unblocked review queue, please pick a PR. Goal: PR median age < 24h.",
-        username="Maya Chen — VP Engineering",
+        username="VP Engineering",
         icon_emoji=":woman_office_worker:",
         thread_of=post_ts,
     )
@@ -1898,7 +1898,7 @@ def sofia_reply_to_alpha(post_ts: str) -> Post:
     return Post(
         channel="alpha-research",
         text="Reminder: walk-forward only. Drop the 6-fold purged k-fold result, not the single split.",
-        username="Sofia Karlsson — VP Research",
+        username="VP Research",
         icon_emoji=":books:",
         thread_of=post_ts,
     )
@@ -1910,7 +1910,7 @@ def hugo_reply_to_ml(post_ts: str) -> Post:
         text=("If the Sharpe is 0.0 across runs, that's almost certainly no trades fired — "
               "the signal threshold may be too tight, or the bar interval is wrong. "
               "Check `tick_interval_seconds` in the strategy class."),
-        username="Hugo Bernardes — Quant Researcher",
+        username="Quant Researcher",
         icon_emoji=":mag_right:",
         thread_of=post_ts,
     )
@@ -1920,7 +1920,7 @@ def aditi_reply_to_qa(post_ts: str) -> Post:
     return Post(
         channel="squad-qa",
         text="I'll open a tracking issue for each untested strategy and label `qa:missing-test`. PRs welcome.",
-        username="Aditi Sharma — Director of QA",
+        username="Director of QA",
         icon_emoji=":mag:",
         thread_of=post_ts,
     )
@@ -1930,62 +1930,62 @@ def aditi_reply_to_qa(post_ts: str) -> Post:
 
 
 AGENTS: list[Agent] = [
-    Agent("Maya Chen", "VP Engineering", ":woman_office_worker:",
+    Agent("VP Engineering", "VP Engineering", ":woman_office_worker:",
           ["engineering"], maya_chen_eng_daily, ["engineering", "eng-daily"]),
-    Agent("Aarav Patel", "Alpha Research Director", ":chart_with_upwards_trend:",
+    Agent("Alpha Research Director", "Alpha Research Director", ":chart_with_upwards_trend:",
           ["alpha-research"], aarav_patel_strategy_review, ["alpha", "strategy"]),
-    Agent("Linh Tran", "ML Modeling Lead", ":robot_face:",
+    Agent("ML Modeling Lead", "ML Modeling Lead", ":robot_face:",
           ["ml-experiments"], linh_tran_ml_results, ["ml", "experiment"]),
-    Agent("Diego Ramírez", "Execution Engineer", ":zap:",
+    Agent("Execution Engineer", "Execution Engineer", ":zap:",
           ["squad-execution"], diego_ramirez_execution, ["execution", "slippage"]),
-    Agent("Jian Wu", "Risk Engineer", ":shield:",
+    Agent("Risk Engineer", "Risk Engineer", ":shield:",
           ["risk-alerts"], jian_wu_risk, ["risk"]),
-    Agent("Priya Subramanian", "Frontend Lead", ":art:",
+    Agent("Frontend Lead", "Frontend Lead", ":art:",
           ["squad-frontend"], priya_subramanian_frontend, ["frontend"]),
-    Agent("Anna Hoffmann", "Backend Lead", ":gear:",
+    Agent("Backend Lead", "Backend Lead", ":gear:",
           ["squad-backend"], anna_hoffmann_backend, ["backend"]),
-    Agent("Sina Hassani", "Data Engineer", ":file_cabinet:",
+    Agent("Data Engineer", "Data Engineer", ":file_cabinet:",
           ["squad-data"], sina_hassani_data, ["data"]),
-    Agent("Kenji Watanabe", "Director of DevOps", ":satellite_antenna:",
+    Agent("Director of DevOps", "Director of DevOps", ":satellite_antenna:",
           ["infra-alerts"], kenji_watanabe_devops, ["devops", "ci"]),
-    Agent("Kenji Watanabe", "Director of DevOps", ":satellite_antenna:",
+    Agent("Director of DevOps", "Director of DevOps", ":satellite_antenna:",
           ["leadership-summary"], kenji_deploy_readiness, ["deploy", "infra"]),
-    Agent("Aditi Sharma", "Director of QA", ":mag:",
+    Agent("Director of QA", "Director of QA", ":mag:",
           ["squad-qa"], aditi_sharma_qa, ["qa", "test"]),
-    Agent("Aditi Sharma", "Director of QA", ":mag:",
+    Agent("Director of QA", "Director of QA", ":mag:",
           ["ci-failures"], aditi_open_prs, ["qa", "ci"]),
-    Agent("Cameron Park", "Security Engineer", ":closed_lock_with_key:",
+    Agent("Security Engineer", "Security Engineer", ":closed_lock_with_key:",
           ["security-alerts"], cameron_park_security, ["security"]),
-    Agent("Sofia Karlsson", "VP Research", ":books:",
+    Agent("VP Research", "VP Research", ":books:",
           ["papers"], sofia_karlsson_research, ["research", "papers"]),
-    Agent("Yuki Mori", "Options Researcher", ":bar_chart:",
+    Agent("Options Researcher", "Options Researcher", ":bar_chart:",
           ["desk-options"], yuki_mori_options, ["options"]),
-    Agent("Hugo Bernardes", "Quant Researcher", ":mag_right:",
+    Agent("Quant Researcher", "Quant Researcher", ":mag_right:",
           ["alpha-research"], hugo_bernardes_research, ["alpha", "research"]),
-    Agent("Tomas Lindqvist", "Research Scientist", ":brain:",
+    Agent("Research Scientist", "Research Scientist", ":brain:",
           ["pod-ml-rl"], tomas_lindqvist_rl, ["ml", "rl"]),
-    Agent("Lior Avraham", "Polymarket Researcher", ":vertical_traffic_light:",
+    Agent("Polymarket Researcher", "Polymarket Researcher", ":vertical_traffic_light:",
           ["desk-polymarket"], lior_avraham_polymarket, ["polymarket"]),
-    Agent("Marcus Olufemi", "CRO", ":shield:",
+    Agent("Chief Risk Officer", "CRO", ":shield:",
           ["leadership-summary"], marcus_olufemi_risk, ["risk", "leadership"]),
-    Agent("Wei Chang", "Finance Engineer", ":moneybag:",
+    Agent("Finance Engineer", "Finance Engineer", ":moneybag:",
           ["finance-ops"], wei_chang_finance, ["finance"]),
-    Agent("Helena Voss", "Compliance Engineer", ":scales:",
+    Agent("Compliance Engineer", "Compliance Engineer", ":scales:",
           ["legal-compliance"], helena_voss_compliance, ["compliance"]),
-    Agent("Karl Nyström", "Junior IC", ":raised_hand:",
+    Agent("Junior Engineer", "Junior IC", ":raised_hand:",
           ["help"], karl_nystrom_question, ["help", "newbie"]),
-    Agent("Laavanye Bahl", "CEO/Founder", ":sparkles:",
+    Agent("CEO / Founder", "CEO/Founder", ":sparkles:",
           ["announcements"], laavanye_bahl_ceo, ["ceo", "weekly"]),
-    Agent("Ravi Iyer", "ML Infra Engineer", ":wrench:",
+    Agent("ML Infrastructure Engineer", "ML Infra Engineer", ":wrench:",
           ["engineering"], ravi_iyer_ci, ["ci", "infra", "ml"]),
     # ── ML research team ─────────────────────────────────────────────────────
-    Agent("Dr. Sara Kim", "ML Research Lead", ":microscope:",
+    Agent("ML Research Lead", "ML Research Lead", ":microscope:",
           ["ml-experiments"], sara_kim_ml_research, ["ml", "research", "sota"]),
-    Agent("Marcus Williams", "DL Engineer", ":building_construction:",
+    Agent("Deep Learning Engineer", "DL Engineer", ":building_construction:",
           ["engineering"], marcus_williams_dl_engineer, ["ml", "architecture", "training"]),
-    Agent("Priya Nair", "Feature Engineering Lead", ":abacus:",
+    Agent("Feature Engineering Lead", "Feature Engineering Lead", ":abacus:",
           ["alpha-research"], priya_nair_feature_eng, ["features", "indicators", "mtf"]),
-    Agent("Alex Chen", "Quant ML Researcher", ":chart_with_upwards_trend:",
+    Agent("Quant ML Researcher", "Quant ML Researcher", ":chart_with_upwards_trend:",
           ["alpha-research"], alex_chen_quant_ml, ["ml", "ablation", "cross-asset"]),
     # ── Live trading-desk bots (read Alpaca paper account directly) ─────────
     Agent("PnL bot", "automated", ":bar_chart:",
