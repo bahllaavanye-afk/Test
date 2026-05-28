@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
@@ -238,25 +239,59 @@ def bundle_size_kb() -> int | None:
     return total // 1024
 
 
-def github_api(path: str) -> dict | list | None:
+def github_api(path: str, method: str = "GET", body: dict | None = None) -> dict | list | None:
     token = os.environ.get("GH_TOKEN", "")
     repo = os.environ.get("GH_REPO", "")
     if not token or not repo:
         return None
     url = f"https://api.github.com/repos/{repo}{path}"
+    data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
         url,
+        data=data,
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
             "X-GitHub-Api-Version": "2022-11-28",
         },
+        method=method,
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())
+            txt = resp.read()
+            return json.loads(txt) if txt else {}
     except Exception:
         return None
+
+
+def github_search_issue_by_title(title_contains: str) -> dict | None:
+    """Search open issues whose title contains the given fragment."""
+    token = os.environ.get("GH_TOKEN", "")
+    repo = os.environ.get("GH_REPO", "")
+    if not token or not repo:
+        return None
+    q = urllib.parse.quote(f"repo:{repo} is:issue is:open in:title \"{title_contains}\"")
+    url = f"https://api.github.com/search/issues?q={q}"
+    req = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            for item in data.get("items", []):
+                return item
+    except Exception:
+        return None
+    return None
+
+
+def github_create_issue(title: str, body: str, labels: list[str] | None = None) -> dict | None:
+    payload: dict = {"title": title, "body": body}
+    if labels:
+        payload["labels"] = labels
+    return github_api("/issues", method="POST", body=payload)
 
 
 def open_prs() -> list[dict]:
@@ -274,6 +309,60 @@ def latest_workflow_runs() -> list[dict]:
     if isinstance(data, dict):
         return data.get("workflow_runs", [])
     return []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Alpaca paper account — REAL trading data
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def alpaca_api(path: str) -> dict | list | None:
+    """Hit Alpaca paper API directly. Requires ALPACA_API_KEY + ALPACA_SECRET_KEY."""
+    key = os.environ.get("ALPACA_API_KEY", "").strip()
+    secret = os.environ.get("ALPACA_SECRET_KEY", "").strip()
+    if not key or not secret:
+        return None
+    base = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    url = f"{base}{path}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "APCA-API-KEY-ID": key,
+            "APCA-API-SECRET-KEY": secret,
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"error": f"http_{e.code}", "body": e.read().decode()[:200]}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
+def alpaca_account() -> dict | None:
+    data = alpaca_api("/v2/account")
+    if isinstance(data, dict) and not data.get("error"):
+        return data
+    return None
+
+
+def alpaca_positions() -> list[dict]:
+    data = alpaca_api("/v2/positions")
+    return data if isinstance(data, list) else []
+
+
+def alpaca_recent_orders(limit: int = 25) -> list[dict]:
+    data = alpaca_api(f"/v2/orders?status=all&limit={limit}&direction=desc")
+    return data if isinstance(data, list) else []
+
+
+def alpaca_clock() -> dict | None:
+    data = alpaca_api("/v2/clock")
+    if isinstance(data, dict) and not data.get("error"):
+        return data
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -440,7 +529,7 @@ def diego_ramirez_execution() -> list[Post]:
 
 
 def jian_wu_risk() -> list[Post]:
-    """Risk Engineer — read risk module + post status."""
+    """Risk Engineer — module check + real Alpaca position concentration."""
     p = REPO_ROOT / "backend" / "app" / "risk"
     if not p.exists():
         return []
@@ -453,12 +542,29 @@ def jian_wu_risk() -> list[Post]:
         f"{'✅' if has_corr else '❌'} correlation monitor",
         f"{'✅' if has_cb else '❌'} circuit breaker",
     ]
+    body = (f":shield: *Risk system check* — {len(files)} modules under `backend/app/risk/`\n"
+            + "\n".join(checks))
+
+    # Real account state
+    acct = alpaca_account()
+    positions = alpaca_positions() if acct else []
+    if acct:
+        equity = float(acct.get("equity", 0))
+        body += f"\n\n*Live Alpaca paper account:*\n• Equity: *${equity:,.2f}* · Cash: *${float(acct.get('cash', 0)):,.2f}*"
+        body += f"\n• Open positions: *{len(positions)}*"
+        if positions and equity > 0:
+            # Concentration check
+            largest = max(positions, key=lambda x: abs(float(x.get("market_value", 0))))
+            mv = float(largest.get("market_value", 0))
+            pct = abs(mv) / equity * 100
+            flag = "⚠ exceeds 12% limit" if pct > 12 else "within limits"
+            body += (f"\n• Largest position: `{largest.get('symbol')}` "
+                     f"${mv:,.2f} ({pct:.1f}% of NAV — {flag})")
+    else:
+        body += "\n\n_No Alpaca paper account state — set ALPACA_API_KEY in repo secrets._"
     return [Post(
         channel="risk-alerts",
-        text=(f":shield: *Risk system check* — {len(files)} modules under `backend/app/risk/`\n"
-              + "\n".join(checks) +
-              f"\n\nBucket allocation locked at 70/30 (arb / directional). "
-              f"No VaR breaches in current paper book. Daily Sharpe trail in <#pnl-daily>."),
+        text=body,
         username="Jian Wu — Risk Engineer",
         icon_emoji=":shield:",
     )]
@@ -544,16 +650,41 @@ def kenji_watanabe_devops() -> list[Post]:
 
 
 def aditi_sharma_qa() -> list[Post]:
-    """QA — test inventory + coverage gaps."""
+    """QA — test inventory + coverage gaps + auto-create tracking issues."""
     tcount = count_tests()
     no_test = find_strategy_with_no_test()
     text = f"QA roll-up — *{tcount}* test files in `backend/tests/`."
+    issues_created: list[str] = []
+
     if no_test:
+        # Auto-create one tracking issue per untested strategy (idempotent: skip if already open)
+        # Cap at 3 new issues per run to avoid noise.
+        for s in no_test[:3]:
+            title = f"[qa] Missing unit test: {s}"
+            existing = github_search_issue_by_title(f"Missing unit test: {s}")
+            if existing:
+                continue
+            body = (
+                f"`backend/app/strategies/manual/{s}.py` or `ml_enhanced/{s}.py` "
+                f"has no corresponding `backend/tests/unit/test_{s}.py`.\n\n"
+                f"Acceptance criteria:\n"
+                f"- Test file exists at `backend/tests/unit/test_{s}.py`\n"
+                f"- Covers `backtest_signals()` with a deterministic OHLCV fixture\n"
+                f"- Asserts no `.shift(0)` lookahead bias (use the template from `test_momentum.py`)\n"
+                f"- Asserts `analyze()` returns `None` on empty input rather than raising\n\n"
+                f"_Auto-created by Aditi Sharma QA agent — close when PR lands._"
+            )
+            result = github_create_issue(title, body, labels=["qa:missing-test", "good-first-issue"])
+            if result and result.get("number"):
+                issues_created.append(f"#{result['number']} `{s}`")
+
         sample = random.sample(no_test, min(5, len(no_test)))
-        text += (f"\n\n:warning: Strategies *without* a dedicated unit test "
-                 f"({len(no_test)}):\n• " + "\n• ".join(f"`{s}`" for s in sample))
+        text += (f"\n\n:warning: *{len(no_test)} strategies missing unit tests:*\n• "
+                 + "\n• ".join(f"`{s}`" for s in sample))
         if len(no_test) > 5:
-            text += f"\n…and {len(no_test) - 5} more. Adding to the QA backlog."
+            text += f"\n…and {len(no_test) - 5} more."
+        if issues_created:
+            text += "\n\n*Tracking issues opened this run:* " + " · ".join(issues_created)
     else:
         text += "\nEvery strategy has a unit test. :tada:"
     return [Post(
@@ -703,16 +834,29 @@ def lior_avraham_polymarket() -> list[Post]:
 
 
 def marcus_olufemi_risk() -> list[Post]:
-    """CRO — risk daily summary."""
+    """CRO — real paper equity + drawdown + risk gate state."""
+    acct = alpaca_account()
     has_audit = (REPO_ROOT / "backend" / "app" / "models" / "audit_log.py").exists()
+
+    body_lines = ["*Risk daily*"]
+    if acct:
+        equity = float(acct.get("equity", 0))
+        last_eq = float(acct.get("last_equity", equity))
+        day_pl = equity - last_eq
+        day_pl_pct = (day_pl / last_eq * 100) if last_eq > 0 else 0
+        body_lines.append(f"• Paper equity: *${equity:,.2f}* · Daily P&L: *{'+' if day_pl >= 0 else ''}${day_pl:,.2f}* ({day_pl_pct:+.2f}%)")
+        body_lines.append(f"• Buying power: ${float(acct.get('buying_power', 0)):,.2f} · Cash: ${float(acct.get('cash', 0)):,.2f}")
+        body_lines.append(f"• Day trades used: {acct.get('daytrade_count', 0)}/3 (PDT cap)")
+        body_lines.append(f"• Account status: `{acct.get('status', 'unknown')}` · Pattern day trader: {acct.get('pattern_day_trader', False)}")
+    else:
+        body_lines.append("• Paper account: not reachable (add ALPACA_API_KEY to repo secrets)")
+        body_lines.append("• Live capital: $0")
+    body_lines.append(f"• Audit log model: {'✅ wired' if has_audit else '❌ missing'}")
+    body_lines.append("• Bucket allocation: 70/30 (arb/directional)")
+    body_lines.append("\n_Live activation pending 2-week paper validation per strategy._")
     return [Post(
         channel="leadership-summary",
-        text=(f"*Risk daily*\n"
-              f"• Audit log model: {'✅ wired' if has_audit else '❌ missing'}\n"
-              f"• Bucket allocation: 70/30 (arb/directional)\n"
-              f"• Live capital: $0 — paper-trading gate not yet cleared\n"
-              f"• Outstanding sign-offs: 0\n\n"
-              f"_Live activation pending 2-week paper validation per strategy._"),
+        text="\n".join(body_lines),
         username="Marcus Olufemi — CRO",
         icon_emoji=":shield:",
     )]
@@ -790,6 +934,119 @@ def karl_nystrom_question() -> list[Post]:
               f"Anyone know what the intent was? Happy to pick it up if it's small."),
         username="Karl Nyström — Junior IC",
         icon_emoji=":raised_hand:",
+    )]
+
+
+def trading_desk_eod_pnl() -> list[Post]:
+    """Live P&L from Alpaca paper account — posts to #pnl-daily."""
+    acct = alpaca_account()
+    if not acct:
+        return [Post(
+            channel="pnl-daily",
+            text=(":warning: Cannot read live P&L — `ALPACA_API_KEY` not set in repo secrets. "
+                  "Add it at https://github.com/bahllaavanye-afk/Test/settings/secrets/actions "
+                  "and re-run to see real paper-trading numbers."),
+            username="PnL bot",
+            icon_emoji=":bar_chart:",
+        )]
+    positions = alpaca_positions()
+    orders = alpaca_recent_orders(limit=25)
+    clk = alpaca_clock() or {}
+    market_open = clk.get("is_open", False)
+
+    equity = float(acct.get("equity", 0))
+    last_eq = float(acct.get("last_equity", equity))
+    day_pl = equity - last_eq
+
+    # Filled orders in last 24h
+    filled_24h = [o for o in orders if o.get("status") == "filled"]
+    n_buys = sum(1 for o in filled_24h if o.get("side") == "buy")
+    n_sells = sum(1 for o in filled_24h if o.get("side") == "sell")
+
+    lines = ["*Live P&L (Alpaca paper)*",
+             f"• Market: {'🟢 OPEN' if market_open else '🔴 closed'}  ({clk.get('timestamp', '')[:19]})",
+             f"• Equity: *${equity:,.2f}* · Day Δ: *{'+' if day_pl >= 0 else ''}${day_pl:,.2f}*",
+             f"• Open positions: *{len(positions)}* · Fills (24h): *{len(filled_24h)}* ({n_buys} buy / {n_sells} sell)"]
+
+    if positions:
+        top = sorted(positions, key=lambda x: abs(float(x.get("unrealized_pl", 0))), reverse=True)[:5]
+        lines.append("\n*Top positions by unrealized P&L:*")
+        for p in top:
+            sym = p.get("symbol", "?")
+            qty = float(p.get("qty", 0))
+            mv = float(p.get("market_value", 0))
+            upl = float(p.get("unrealized_pl", 0))
+            upl_pct = float(p.get("unrealized_plpc", 0)) * 100
+            lines.append(f"  `{sym}` qty {qty:g} · MV ${mv:,.2f} · uPnL *{'+' if upl >= 0 else ''}${upl:,.2f}* ({upl_pct:+.2f}%)")
+    else:
+        lines.append("\n_No open positions._")
+
+    if filled_24h:
+        lines.append("\n*Recent fills (most recent first):*")
+        for o in filled_24h[:5]:
+            sym = o.get("symbol", "?")
+            side = o.get("side", "?")
+            qty = float(o.get("filled_qty", 0))
+            px = float(o.get("filled_avg_price", 0) or 0)
+            lines.append(f"  `{sym}` {side.upper()} {qty:g} @ ${px:.4f}")
+
+    return [Post(
+        channel="pnl-daily",
+        text="\n".join(lines),
+        username="PnL bot",
+        icon_emoji=":bar_chart:",
+    )]
+
+
+def trading_desk_equity_positions() -> list[Post]:
+    """Equity-only positions → #desk-equities."""
+    positions = alpaca_positions()
+    if not positions:
+        return []
+    # Equity = no "/" in symbol (crypto pairs use "/")
+    eq_pos = [p for p in positions if "/" not in p.get("symbol", "")]
+    if not eq_pos:
+        return []
+    lines = [f"*Equity desk — live positions ({len(eq_pos)})*"]
+    for p in eq_pos[:10]:
+        sym = p.get("symbol", "?")
+        qty = float(p.get("qty", 0))
+        avg = float(p.get("avg_entry_price", 0) or 0)
+        cur = float(p.get("current_price", 0) or 0)
+        upl_pct = float(p.get("unrealized_plpc", 0) or 0) * 100
+        lines.append(f"• `{sym}` qty {qty:g} · avg ${avg:.2f} · now ${cur:.2f} · *{upl_pct:+.2f}%*")
+    return [Post(
+        channel="desk-equities",
+        text="\n".join(lines),
+        username="Equity desk bot",
+        icon_emoji=":chart_with_upwards_trend:",
+    )]
+
+
+def trading_desk_crypto_positions() -> list[Post]:
+    """Crypto positions from Alpaca → #desk-crypto."""
+    positions = alpaca_positions()
+    crypto_pos = [p for p in positions if "/" in p.get("symbol", "") or p.get("asset_class") == "crypto"]
+    if not crypto_pos:
+        return [Post(
+            channel="desk-crypto",
+            text="*Crypto desk* — no open crypto positions on Alpaca paper. "
+                 "Universe primed: BTC/USD, ETH/USD, SOL/USD, DOGE/USD via Alpaca crypto endpoint.",
+            username="Crypto desk bot",
+            icon_emoji=":coin:",
+        )]
+    lines = [f"*Crypto desk — live positions ({len(crypto_pos)})*"]
+    for p in crypto_pos[:10]:
+        sym = p.get("symbol", "?")
+        qty = float(p.get("qty", 0))
+        upl = float(p.get("unrealized_pl", 0) or 0)
+        upl_pct = float(p.get("unrealized_plpc", 0) or 0) * 100
+        lines.append(f"• `{sym}` qty {qty:.6f} · uPnL ${upl:+,.2f} ({upl_pct:+.2f}%)")
+    return [Post(
+        channel="desk-crypto",
+        text="\n".join(lines),
+        username="Crypto desk bot",
+        icon_emoji=":coin:",
     )]
 
 
@@ -1180,6 +1437,13 @@ AGENTS: list[Agent] = [
           ["help"], karl_nystrom_question, ["help", "newbie"]),
     Agent("Laavanye Bahl", "CEO/Founder", ":sparkles:",
           ["announcements"], laavanye_bahl_ceo, ["ceo", "weekly"]),
+    # ── Live trading-desk bots (read Alpaca paper account directly) ─────────
+    Agent("PnL bot", "automated", ":bar_chart:",
+          ["pnl-daily"], trading_desk_eod_pnl, ["pnl", "trading"]),
+    Agent("Equity desk bot", "automated", ":chart_with_upwards_trend:",
+          ["desk-equities"], trading_desk_equity_positions, ["equities", "trading"]),
+    Agent("Crypto desk bot", "automated", ":coin:",
+          ["desk-crypto"], trading_desk_crypto_positions, ["crypto", "trading"]),
 ]
 
 

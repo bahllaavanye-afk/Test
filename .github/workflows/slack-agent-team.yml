@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      issues: read
+      issues: write          # QA agent auto-creates tracking issues for untested strategies
       pull-requests: read
       actions: read
     steps:
@@ -42,6 +42,10 @@ jobs:
           SLACK_BOT_TOKEN: ${{ inputs.bot_token || secrets.SLACK_BOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          # Alpaca paper-trading credentials — enables real account/P&L reporting
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
         run: |
           if [ -z "$SLACK_BOT_TOKEN" ]; then
             echo "⚠ No SLACK_BOT_TOKEN — set repo secret or pass via dispatch input. Skipping."
