@@ -41,13 +41,34 @@ from app.strategies.manual.stablecoin_depeg_arb import StablecoinDepegArbStrateg
 from app.strategies.manual.moc_auction_imbalance import MOCAuctionImbalanceStrategy
 from app.strategies.manual.options_pcr_reversal import OptionsPCRReversalStrategy
 from app.strategies.manual.time_series_momentum import TimeSeriesMomentumStrategy
-from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
-from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
-from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
-from app.strategies.ml_enhanced.ml_breakout import MLBreakoutStrategy
-from app.strategies.ml_enhanced.lorentzian_knn import LorentzianStrategy
-from app.strategies.ml_enhanced.ensemble import EnsembleStrategy
-from app.strategies.ml_enhanced.rl_trader import RLTraderStrategy
+
+# ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
+# xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
+# installed (CI, lightweight deploys), we skip the strategy gracefully instead
+# of failing the whole import chain.
+_OPTIONAL_ML_STRATEGIES: list[tuple[str, str, str]] = [
+    ("ml_momentum",       "app.strategies.ml_enhanced.ml_momentum",       "MLMomentumStrategy"),
+    ("ml_pca_arb",        "app.strategies.ml_enhanced.ml_pca_arb",        "MLPCAStatArbStrategy"),
+    ("ml_mean_reversion", "app.strategies.ml_enhanced.ml_mean_reversion", "MLMeanReversionStrategy"),
+    ("ml_breakout",       "app.strategies.ml_enhanced.ml_breakout",       "MLBreakoutStrategy"),
+    ("lorentzian_knn",    "app.strategies.ml_enhanced.lorentzian_knn",    "LorentzianStrategy"),
+    ("ensemble",          "app.strategies.ml_enhanced.ensemble",          "EnsembleStrategy"),
+    ("rl_trader",         "app.strategies.ml_enhanced.rl_trader",         "RLTraderStrategy"),
+]
+
+
+def _try_import_ml(module_path: str, class_name: str):
+    """Best-effort import of an ML strategy. Returns the class or None."""
+    try:
+        import importlib
+        mod = importlib.import_module(module_path)
+        return getattr(mod, class_name)
+    except ImportError as e:
+        import logging
+        logging.getLogger(__name__).info(
+            "ML strategy %s skipped (optional dep missing: %s)", class_name, e
+        )
+        return None
 
 STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "pairs_trading": PairsTradingStrategy,
@@ -90,14 +111,13 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "moc_auction_imbalance": MOCAuctionImbalanceStrategy,
     "options_pcr_reversal": OptionsPCRReversalStrategy,
     "time_series_momentum": TimeSeriesMomentumStrategy,
-    "ml_momentum": MLMomentumStrategy,
-    "ml_pca_arb": MLPCAStatArbStrategy,
-    "ml_mean_reversion": MLMeanReversionStrategy,
-    "ml_breakout": MLBreakoutStrategy,
-    "lorentzian_knn": LorentzianStrategy,
-    "ensemble": EnsembleStrategy,
-    "rl_trader": RLTraderStrategy,
 }
+
+# Best-effort load ML strategies; missing optional deps don't break the registry
+for _name, _path, _cls in _OPTIONAL_ML_STRATEGIES:
+    _strategy_cls = _try_import_ml(_path, _cls)
+    if _strategy_cls is not None:
+        STRATEGY_REGISTRY[_name] = _strategy_cls
 
 
 def get_strategy(name: str, params: dict | None = None) -> AbstractStrategy:

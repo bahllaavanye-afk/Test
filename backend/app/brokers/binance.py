@@ -3,10 +3,17 @@ Binance broker integration via CCXT async.
 Supports spot trading, real-time order book, and triangular arb scanning.
 """
 import asyncio
-import ccxt.async_support as ccxt
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
+
+try:
+    import ccxt.async_support as ccxt
+    CCXT_AVAILABLE = True
+except ImportError:
+    ccxt = None  # type: ignore
+    CCXT_AVAILABLE = False
+    logger.info("ccxt not installed — Binance broker disabled")
 
 
 INTERVAL_MAP = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
