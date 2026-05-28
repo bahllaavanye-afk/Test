@@ -36,6 +36,8 @@ jobs:
       # lightning, vectorbt, shap). Those are exercised in dedicated notebook/job
       # runs on GPU runners, not in unit-test CI.
       - name: Install runtime + test deps
+        # Note: pandas-ta omitted — the project uses a pure-pandas shim
+        # (app/ml/features/pandas_ta_compat.py), so the upstream package isn't needed.
         run: |
           uv pip install \
             'fastapi>=0.115.0' 'uvicorn[standard]>=0.32.0' 'websockets>=13.0' \
@@ -46,7 +48,7 @@ jobs:
             'python-jose[cryptography]>=3.3.0' 'passlib[bcrypt]>=1.7.4' \
             'cryptography>=43.0.0' 'bcrypt==4.0.1' \
             'numpy>=1.26.0' 'pandas>=2.2.0' 'scipy>=1.14.0' \
-            'scikit-learn>=1.5.0' 'statsmodels>=0.14.0' 'pandas-ta>=0.3.14b0' \
+            'scikit-learn>=1.5.0' 'statsmodels>=0.14.0' \
             'structlog>=24.4.0' 'tenacity>=9.0.0' 'python-dotenv>=1.0.1' \
             'aiohttp>=3.11.0' 'anyio>=4.7.0' 'apscheduler>=3.10.4' \
             'pytest>=8.3.0' 'pytest-asyncio>=0.24.0' 'pytest-xdist>=3.6.0' \
