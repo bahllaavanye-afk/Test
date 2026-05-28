@@ -1,0 +1,43 @@
+experiment:
+  name: "multiscale_transformer_btc"
+  model: "multiscale_transformer"
+  symbol: "BTC-USD"
+  interval: "1h"
+
+data:
+  train_start: "2018-01-01"
+  train_end: "2024-06-30"
+  val_start: "2023-01-01"
+  val_end: "2024-06-30"
+  test_start: "2024-07-01"
+  test_end: "2026-01-01"
+
+features:
+  technical: true
+  advanced: true
+  multi_timeframe: true
+  # base stream: seq=60, mid stream: seq=20, slow stream: seq=10
+  base_lookback: 60
+  mid_lookback: 20
+  slow_lookback: 10
+
+model_params:
+  d_model: 128
+  n_heads: 4
+  n_layers: 2
+  dropout: 0.2
+  n_macro: 3
+
+training:
+  epochs: 200
+  batch_size: 128
+  lr: 0.0003
+  optimizer: "adamw"
+  early_stopping_patience: 25
+  scheduler: "cosine"
+  weight_decay: 0.01
+
+macro_signals:
+  - "vix"
+  - "yield_curve_10y2y"
+  - "dxy"
