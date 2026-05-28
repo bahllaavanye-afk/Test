@@ -1,0 +1,33 @@
+name: Slack Webhook Verify
+
+# Run from the Actions tab → Slack Webhook Verify → Run workflow.
+# Pass any webhook URL; the workflow posts a test message and reports back.
+on:
+  workflow_dispatch:
+    inputs:
+      webhook_url:
+        description: "Full Slack incoming-webhook URL (https://hooks.slack.com/services/T.../B.../...)"
+        required: true
+        type: string
+      message:
+        description: "Optional custom message"
+        required: false
+        default: "✅ QuantEdge CTO bot — webhook verified. Channels ready for engineering team."
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Post to Slack
+        env:
+          WEBHOOK: ${{ inputs.webhook_url }}
+          MSG: ${{ inputs.message }}
+        run: |
+          HTTP=$(curl -sS -o /tmp/slack.out -w "%{http_code}" \
+            -X POST -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "$MSG" '{"text":$t}')" \
+            "$WEBHOOK")
+          echo "Slack responded with HTTP $HTTP"
+          echo "Body: $(cat /tmp/slack.out)"
+          [ "$HTTP" = "200" ] || exit 1
