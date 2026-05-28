@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../store/slices/authSlice'
+import { callLogout } from '../../api/client'
 import { selectTradingMode, setMode } from '../../store/slices/tradingModeSlice'
 import { LogOut, Activity } from 'lucide-react'
 
@@ -109,7 +110,11 @@ export default function TopBar() {
         <div className="flex items-center gap-3">
           <span className="text-[#f5a623] font-bold text-xs">QUANTEDGE</span>
           <button
-            onClick={() => dispatch(logout())}
+            onClick={async () => {
+              await callLogout()  // revoke refresh token on server
+              dispatch(logout())
+              window.location.href = '/login'
+            }}
             className="text-[#888888] hover:text-[#e8e8e8] transition-colors"
             title="Logout"
           >
