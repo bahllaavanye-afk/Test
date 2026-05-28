@@ -1,0 +1,67 @@
+name: Slack Bootstrap — create all 31 channels
+
+# Run from the Actions tab → Slack Bootstrap → Run workflow.
+# Paste your Bot User OAuth Token (xoxb-...) once; this creates all
+# 31 engineering-org channels in your workspace.
+#
+# Required Slack App OAuth scopes:
+#   channels:manage  channels:read  groups:write  groups:read
+#   chat:write       channels:join
+on:
+  workflow_dispatch:
+    inputs:
+      bot_token:
+        description: "Slack Bot User OAuth Token (xoxb-...). Rotate after this run."
+        required: true
+        type: string
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install httpx structlog
+      - name: Create all channels
+        env:
+          SLACK_BOT_TOKEN: ${{ inputs.bot_token }}
+        run: |
+          cat > /tmp/bootstrap.py <<'PYEOF'
+          import os, sys, json
+          sys.path.insert(0, "backend")
+          # Stub out logging dep since we don't have full backend installed
+          import types
+          structlog_stub = types.SimpleNamespace(get_logger=lambda *a, **k: types.SimpleNamespace(
+              info=print, warning=print, error=print, debug=lambda *a, **k: None))
+          sys.modules["structlog"] = structlog_stub
+
+          # Replace app.utils.logging.logger with a print-based stub
+          pkg = types.ModuleType("app"); pkg.__path__ = []
+          utils = types.ModuleType("app.utils"); utils.__path__ = []
+          logging_mod = types.ModuleType("app.utils.logging")
+          logging_mod.logger = types.SimpleNamespace(info=print, warning=print, error=print, debug=lambda *a, **k: None)
+          sys.modules["app"] = pkg
+          sys.modules["app.utils"] = utils
+          sys.modules["app.utils.logging"] = logging_mod
+
+          from backend.app.integrations.slack_bot import SlackBot
+          bot = SlackBot(token=os.environ["SLACK_BOT_TOKEN"])
+          info = bot.auth_test()
+          print(f"\n✅ Authenticated as bot '{info.get('user')}' in team '{info.get('team')}'")
+          print(f"   Bot user ID: {info.get('user_id')}\n")
+
+          print("🚀 Creating channels...\n")
+          result = bot.bootstrap_engineering_org()
+
+          print(f"\n✅ Created:        {len(result['created'])}")
+          for n in result["created"]: print(f"   + #{n}")
+          print(f"\n⏭  Already existed: {len(result['skipped_existing'])}")
+          for n in result["skipped_existing"]: print(f"   = #{n}")
+          if result["errors"]:
+              print(f"\n❌ Errors: {len(result['errors'])}")
+              for e in result["errors"]: print(f"   ! {e}")
+              sys.exit(1)
+          PYEOF
+          python /tmp/bootstrap.py
