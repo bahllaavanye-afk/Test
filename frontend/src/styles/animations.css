@@ -1,0 +1,205 @@
+/* ============================================================
+   QuantEdge — Animation Library
+   Bloomberg-meets-crypto-exchange premium dark interface
+   ============================================================ */
+
+/* ---------- CSS Custom Properties ---------- */
+:root {
+  --glow-green: #00ff88;
+  --glow-blue: #00d4ff;
+  --glow-amber: #ffb347;
+  --surface-0: #0a0d12;
+  --surface-1: #0f1318;
+  --surface-2: #151a21;
+}
+
+/* ---------- Keyframes ---------- */
+
+/* Diagonal gradient sweep — used for hero backgrounds & animated cards */
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Box-shadow pulse for live data indicators */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px 1px var(--glow-green);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 14px 4px var(--glow-green);
+    opacity: 0.8;
+  }
+}
+
+/* Subtle Y-axis float for background decorative elements */
+@keyframes particle-float {
+  0%, 100% {
+    transform: translateY(0px);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-18px);
+    opacity: 1;
+  }
+}
+
+/* Left-to-right scanning line */
+@keyframes data-stream {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+/* Number reveal — opacity + translateY */
+@keyframes counter-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading shimmer — linear-gradient sweep */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* 8s slow rotation for radial/donut charts */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Utility Classes ---------- */
+
+.animate-gradient {
+  background-size: 300% 300%;
+  animation: gradient-flow 4s ease infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-particle-float {
+  animation: particle-float 6s ease-in-out infinite;
+}
+
+.animate-data-stream {
+  animation: data-stream 2.5s linear infinite;
+}
+
+.animate-counter-up {
+  animation: counter-up 0.6s ease-out forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+/* Gradient text glow */
+.glow-text {
+  text-shadow:
+    0 0 10px var(--glow-green),
+    0 0 20px var(--glow-green),
+    0 0 40px var(--glow-green);
+}
+
+.glow-text-blue {
+  text-shadow:
+    0 0 10px var(--glow-blue),
+    0 0 20px var(--glow-blue),
+    0 0 40px var(--glow-blue);
+}
+
+.glow-text-amber {
+  text-shadow:
+    0 0 10px var(--glow-amber),
+    0 0 20px var(--glow-amber),
+    0 0 40px var(--glow-amber);
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Glassmorphism panel (slightly more opaque) */
+.glass-panel {
+  background: rgba(15, 19, 24, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Animated grid background */
+.animated-grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Glow ring variants */
+.glow-ring-green {
+  box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.25), 0 0 20px rgba(0, 255, 136, 0.08);
+}
+
+.glow-ring-blue {
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.25), 0 0 20px rgba(0, 212, 255, 0.08);
+}
+
+.glow-ring-amber {
+  box-shadow: 0 0 0 1px rgba(255, 179, 71, 0.25), 0 0 20px rgba(255, 179, 71, 0.08);
+}
