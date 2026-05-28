@@ -74,6 +74,10 @@ def slack_call(token: str, method: str, payload: dict) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             body = json.loads(resp.read())
+            # Capture the X-OAuth-Scopes header so we can show actual scopes
+            scopes = resp.headers.get("X-OAuth-Scopes", "")
+            if scopes:
+                body["_scopes"] = scopes
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code} from slack.{method}: {e.read().decode()}")
     if not body.get("ok"):
@@ -139,7 +143,31 @@ def main() -> int:
     try:
         info = slack_call(token, "auth.test", {})
         out(f"\n✅ Authenticated as bot '{info.get('user')}' in team '{info.get('team')}'")
-        out(f"   Bot user ID: {info.get('user_id')}\n")
+        out(f"   Bot user ID: {info.get('user_id')}")
+        out(f"   App ID:      {info.get('bot_id') or info.get('app_id', 'n/a')}")
+        out(f"   Token type:  {token[:5]}…{token[-4:]}  (length={len(token)})")
+        actual_scopes = info.get("_scopes", "(no X-OAuth-Scopes header)")
+        out(f"\n📋 Scopes Slack reports this token has:")
+        out(f"   {actual_scopes}\n")
+        # Hard fail if scopes are wrong — this gives clearer error than letting
+        # conversations.list fail later
+        required = {"channels:read", "channels:manage", "groups:read", "groups:write"}
+        have = set(s.strip() for s in actual_scopes.split(","))
+        missing = required - have
+        if missing:
+            out(f"❌ Token is missing required scopes: {sorted(missing)}")
+            out(f"   Token currently has: {sorted(have)}")
+            out("")
+            out("   → This means EITHER:")
+            out("     (a) You added scopes in the Slack app dashboard but didn't")
+            out("         click 'Reinstall to QuantEdge' (yellow banner at top)")
+            out("     (b) You did reinstall but pasted the OLD token. After reinstall,")
+            out("         go back to OAuth & Permissions and copy the *new* xoxb- token")
+            out("         that appears (it's a different string than before).")
+            out("     (c) You have two Slack apps in the workspace named similarly;")
+            out("         the one you added scopes to is not the one this token is from.")
+            _maybe_post(log.getvalue(), exit_code=1)
+            return 1
     except RuntimeError as e:
         out(f"❌ auth.test failed: {e}")
         _maybe_post(log.getvalue(), exit_code=1)
