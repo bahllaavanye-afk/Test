@@ -19,6 +19,8 @@ from app.strategies.manual.pead_sue import PEADStrategy
 from app.strategies.manual.skew_arb import SkewArbitrageStrategy
 from app.strategies.manual.gamma_exposure import GammaExposureStrategy
 from app.strategies.manual.kalman_pairs import KalmanPairsStrategy
+from app.strategies.manual.funding_rate_arb import FundingRateArbStrategy
+from app.strategies.manual.liquidation_cascade_fade import LiquidationCascadeFadeStrategy
 from app.strategies.manual.vrp_systematic import VRPSystematicStrategy
 from app.strategies.manual.hmm_regime import HMMRegimeStrategy
 from app.strategies.manual.opening_range_breakout import OpeningRangeBreakoutStrategy
@@ -32,6 +34,11 @@ from app.strategies.manual.residual_momentum import ResidualMomentumStrategy
 from app.strategies.manual.idio_vol_anomaly import IdiosyncraticVolAnomalyStrategy
 from app.strategies.manual.fifty_two_week_high import FiftyTwoWeekHighStrategy
 from app.strategies.manual.open_close_revert import OpenCloseRevertStrategy
+from app.strategies.manual.polymarket_sentiment_momentum import PolymarketSentimentMomentumStrategy
+from app.strategies.manual.intraday_fomc_momentum import IntradayFOMCMomentumStrategy
+from app.strategies.manual.crypto_adaptive_trend import CryptoAdaptiveTrendStrategy
+from app.strategies.manual.stablecoin_depeg_arb import StablecoinDepegArbStrategy
+from app.strategies.manual.moc_auction_imbalance import MOCAuctionImbalanceStrategy
 from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
 from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
@@ -59,6 +66,8 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "skew_arb": SkewArbitrageStrategy,
     "gamma_exposure": GammaExposureStrategy,
     "kalman_pairs": KalmanPairsStrategy,
+    "funding_rate_arb": FundingRateArbStrategy,
+    "liquidation_cascade_fade": LiquidationCascadeFadeStrategy,
     "vrp_systematic": VRPSystematicStrategy,
     "hmm_regime": HMMRegimeStrategy,
     "opening_range_breakout": OpeningRangeBreakoutStrategy,
@@ -72,6 +81,11 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "idio_vol_anomaly": IdiosyncraticVolAnomalyStrategy,
     "fifty_two_week_high": FiftyTwoWeekHighStrategy,
     "open_close_revert": OpenCloseRevertStrategy,
+    "polymarket_sentiment_momentum": PolymarketSentimentMomentumStrategy,
+    "intraday_fomc_momentum": IntradayFOMCMomentumStrategy,
+    "crypto_adaptive_trend": CryptoAdaptiveTrendStrategy,
+    "stablecoin_depeg_arb": StablecoinDepegArbStrategy,
+    "moc_auction_imbalance": MOCAuctionImbalanceStrategy,
     "ml_momentum": MLMomentumStrategy,
     "ml_pca_arb": MLPCAStatArbStrategy,
     "ml_mean_reversion": MLMeanReversionStrategy,
