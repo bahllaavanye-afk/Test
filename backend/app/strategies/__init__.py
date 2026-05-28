@@ -39,6 +39,7 @@ from app.strategies.manual.intraday_fomc_momentum import IntradayFOMCMomentumStr
 from app.strategies.manual.crypto_adaptive_trend import CryptoAdaptiveTrendStrategy
 from app.strategies.manual.stablecoin_depeg_arb import StablecoinDepegArbStrategy
 from app.strategies.manual.moc_auction_imbalance import MOCAuctionImbalanceStrategy
+from app.strategies.manual.options_pcr_reversal import OptionsPCRReversalStrategy
 from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
 from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
 from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
@@ -86,6 +87,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "crypto_adaptive_trend": CryptoAdaptiveTrendStrategy,
     "stablecoin_depeg_arb": StablecoinDepegArbStrategy,
     "moc_auction_imbalance": MOCAuctionImbalanceStrategy,
+    "options_pcr_reversal": OptionsPCRReversalStrategy,
     "ml_momentum": MLMomentumStrategy,
     "ml_pca_arb": MLPCAStatArbStrategy,
     "ml_mean_reversion": MLMeanReversionStrategy,
