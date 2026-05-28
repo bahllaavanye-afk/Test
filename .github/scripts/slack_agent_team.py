@@ -220,23 +220,108 @@ def find_strategy_with_no_test() -> list[str]:
     return [s for s in all_strats if s not in test_files]
 
 
-def bundle_size_kb() -> int | None:
-    """Estimate frontend bundle size from src code (rough proxy when no build present)."""
-    p = REPO_ROOT / "frontend" / "src"
-    if not p.exists():
+def real_bundle_sizes() -> dict | None:
+    """Return real gzipped bundle sizes from frontend/dist/assets/ (post-build)."""
+    import gzip as _gz
+    assets = REPO_ROOT / "frontend" / "dist" / "assets"
+    if not assets.exists():
         return None
-    total = 0
-    for f in p.rglob("*.tsx"):
-        try:
-            total += f.stat().st_size
-        except OSError:
-            pass
-    for f in p.rglob("*.ts"):
-        try:
-            total += f.stat().st_size
-        except OSError:
-            pass
-    return total // 1024
+    js_files = list(assets.glob("*.js"))
+    css_files = list(assets.glob("*.css"))
+    if not js_files and not css_files:
+        return None
+
+    def gz_size(path: Path) -> int:
+        return len(_gz.compress(path.read_bytes(), compresslevel=9))
+
+    js_raw = sum(f.stat().st_size for f in js_files)
+    js_gz = sum(gz_size(f) for f in js_files)
+    css_raw = sum(f.stat().st_size for f in css_files)
+    css_gz = sum(gz_size(f) for f in css_files)
+    return {
+        "js_raw_kb": js_raw // 1024,
+        "js_gz_kb": js_gz // 1024,
+        "css_raw_kb": css_raw // 1024,
+        "css_gz_kb": css_gz // 1024,
+        "total_gz_kb": (js_gz + css_gz) // 1024,
+        "js_chunks": len(js_files),
+        "css_chunks": len(css_files),
+    }
+
+
+_pytest_result_cache: dict | None = None
+
+
+def run_pytest_lightweight(timeout_secs: int = 90) -> dict:
+    """Run lightweight unit tests (no ML model deps) and parse results.
+    Cached — only runs once per script invocation even if called by multiple agents."""
+    global _pytest_result_cache
+    if _pytest_result_cache is not None:
+        return _pytest_result_cache
+    # Ignore tests that require PyTorch / heavy ML installs
+    heavy = [
+        "backend/tests/unit/test_ml_models.py",
+        "backend/tests/unit/test_a3c_lstm.py",
+    ]
+    ignore_flags: list[str] = []
+    for path in heavy:
+        ignore_flags += ["--ignore", path]
+    cmd = [
+        sys.executable, "-m", "pytest",
+        "backend/tests/unit/",
+        *ignore_flags,
+        "-q", "--tb=line", "--no-header",
+    ]
+    try:
+        r = subprocess.run(
+            cmd,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout_secs,
+        )
+        out = r.stdout + r.stderr
+        passed = failed = errors = 0
+        m = re.search(r"(\d+) passed", out)
+        if m:
+            passed = int(m.group(1))
+        m = re.search(r"(\d+) failed", out)
+        if m:
+            failed = int(m.group(1))
+        m = re.search(r"(\d+) error", out)
+        if m:
+            errors = int(m.group(1))
+        fail_lines = [l for l in out.split("\n") if l.startswith("FAILED ") or l.startswith("ERROR ")][:10]
+        # Duration from last line like "14 passed in 2.32s"
+        dur_m = re.search(r"in ([\d.]+)s", out)
+        duration = float(dur_m.group(1)) if dur_m else 0.0
+        result = {
+            "passed": passed,
+            "failed": failed,
+            "errors": errors,
+            "fail_lines": fail_lines,
+            "exit_code": r.returncode,
+            "duration": duration,
+            "timed_out": False,
+            "not_installed": False,
+        }
+        _pytest_result_cache = result
+        return result
+    except subprocess.TimeoutExpired:
+        result = {"passed": 0, "failed": 0, "errors": 0, "fail_lines": [],
+                  "exit_code": -1, "duration": timeout_secs, "timed_out": True, "not_installed": False}
+        _pytest_result_cache = result
+        return result
+    except FileNotFoundError:
+        result = {"passed": 0, "failed": 0, "errors": 0, "fail_lines": [],
+                  "exit_code": -2, "duration": 0.0, "timed_out": False, "not_installed": True}
+        _pytest_result_cache = result
+        return result
+    except Exception as e:
+        result = {"passed": 0, "failed": 0, "errors": 0, "fail_lines": [str(e)[:120]],
+                  "exit_code": -3, "duration": 0.0, "timed_out": False, "not_installed": False}
+        _pytest_result_cache = result
+        return result
 
 
 def github_api(path: str, method: str = "GET", body: dict | None = None) -> dict | list | None:
@@ -423,9 +508,18 @@ def maya_chen_eng_daily() -> list[Post]:
     # Strategies + tests state
     strategies = list_strategies()
     tcount = count_tests()
+    pytest_res = run_pytest_lightweight()
+    if pytest_res["not_installed"] or pytest_res["timed_out"]:
+        test_detail = f"test files: *{tcount}*"
+    else:
+        passed = pytest_res["passed"]
+        failed = pytest_res["failed"]
+        status_icon = "✅" if failed == 0 else "❌"
+        test_detail = (f"test files: *{tcount}* · pytest: {status_icon} *{passed} passed"
+                       + (f", {failed} failed" if failed else "") + "*")
     lines.append(f"\n📊 strategies live: *{len(strategies['manual']) + len(strategies['ml'])}* "
                  f"({len(strategies['manual'])} manual + {len(strategies['ml'])} ML) · "
-                 f"test files: *{tcount}*")
+                 f"{test_detail}")
 
     return [Post(
         channel="engineering",
@@ -571,18 +665,41 @@ def jian_wu_risk() -> list[Post]:
 
 
 def priya_subramanian_frontend() -> list[Post]:
-    """Frontend Lead — bundle size + page count."""
-    size = bundle_size_kb()
+    """Frontend Lead — real gzipped bundle size (from dist/) + page count."""
     pages = sorted((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
-    if size is None:
-        return []
     n_pages = len(pages)
+    sizes = real_bundle_sizes()
+
+    if sizes:
+        js_gz = sizes["js_gz_kb"]
+        css_gz = sizes["css_gz_kb"]
+        total_gz = sizes["total_gz_kb"]
+        js_raw = sizes["js_raw_kb"]
+        target_met = "✅" if total_gz < 300 else "⚠️"
+        size_line = (
+            f"*Real bundle (gzip):* JS {js_gz} KB + CSS {css_gz} KB = *{total_gz} KB total*  "
+            f"(raw: {js_raw} KB JS)  {target_met} target <300 KB"
+        )
+    else:
+        # No dist/ — fall back to source proxy
+        total = sum(
+            f.stat().st_size
+            for pat in ("*.tsx", "*.ts")
+            for f in (REPO_ROOT / "frontend" / "src").rglob(pat)
+            if f.exists()
+        )
+        size_line = f"*Source size (no dist/ build):* {total // 1024} KB — run `npm run build` for real gzip numbers"
+
+    page_list = ", ".join(f"`{p.stem}`" for p in pages[:10])
+    if n_pages > 10:
+        page_list += f" (+{n_pages-10} more)"
+
     return [Post(
         channel="squad-frontend",
-        text=(f"Frontend source: *{size} KB* across *{n_pages} pages*.\n"
-              f"Pages: " + ", ".join(f"`{p.stem}`" for p in pages[:10]) +
-              (f" (+{n_pages-10} more)" if n_pages > 10 else "") +
-              f"\n\nCode-split status: ⏳ in progress. Target bundle <300 KB gzipped."),
+        text=(f"{size_line}\n"
+              f"Pages: *{n_pages}* — {page_list}\n\n"
+              f"Next: React.lazy() code-split on heavy pages (MLInsights, Experiments, BacktestLab). "
+              f"Target: each lazy chunk <80 KB gzip."),
         username="Priya Subramanian — Frontend Lead",
         icon_emoji=":art:",
     )]
@@ -650,15 +767,50 @@ def kenji_watanabe_devops() -> list[Post]:
 
 
 def aditi_sharma_qa() -> list[Post]:
-    """QA — test inventory + coverage gaps + auto-create tracking issues."""
+    """QA — real pytest run + coverage gaps + auto-create tracking issues."""
+    # ── 1. Run real pytest (lightweight, no ML models) ─────────────────────
+    print("  [aditi_sharma_qa] running pytest…")
+    pytest_res = run_pytest_lightweight(timeout_secs=90)
     tcount = count_tests()
     no_test = find_strategy_with_no_test()
-    text = f"QA roll-up — *{tcount}* test files in `backend/tests/`."
-    issues_created: list[str] = []
+    posts: list[Post] = []
 
+    # Build pytest summary line
+    if pytest_res["not_installed"]:
+        pytest_line = (":warning: `pytest` not found in PATH — add `pip install pytest pytest-asyncio` "
+                       "to the workflow before the Run step.")
+    elif pytest_res["timed_out"]:
+        pytest_line = f":stopwatch: pytest timed out after {pytest_res['duration']:.0f}s."
+    else:
+        passed = pytest_res["passed"]
+        failed = pytest_res["failed"]
+        errs = pytest_res["errors"]
+        dur = pytest_res["duration"]
+        status_emoji = ":white_check_mark:" if (failed == 0 and errs == 0) else ":red_circle:"
+        pytest_line = (f"{status_emoji} *pytest:* {passed} passed"
+                       + (f", *{failed} failed*" if failed else "")
+                       + (f", *{errs} errors*" if errs else "")
+                       + f" in {dur:.1f}s  _(unit suite, no ML models)_")
+
+    text = (f"QA roll-up — *{tcount}* test files in `backend/tests/`\n"
+            f"{pytest_line}")
+
+    # ── 2. Post failures to #ci-failures if any ────────────────────────────
+    if not pytest_res["not_installed"] and not pytest_res["timed_out"]:
+        if pytest_res["failed"] > 0 or pytest_res["errors"] > 0:
+            fail_detail = "\n".join(pytest_res["fail_lines"]) or "see workflow logs"
+            posts.append(Post(
+                channel="ci-failures",
+                text=(f":red_circle: *Pytest failures detected*\n"
+                      f"```\n{fail_detail[:600]}\n```\n"
+                      f"Full log: check Actions tab for this run."),
+                username="Aditi Sharma — Director of QA",
+                icon_emoji=":mag:",
+            ))
+
+    # ── 3. Coverage gap tracking — auto-create GitHub issues ───────────────
+    issues_created: list[str] = []
     if no_test:
-        # Auto-create one tracking issue per untested strategy (idempotent: skip if already open)
-        # Cap at 3 new issues per run to avoid noise.
         for s in no_test[:3]:
             title = f"[qa] Missing unit test: {s}"
             existing = github_search_issue_by_title(f"Missing unit test: {s}")
@@ -668,10 +820,10 @@ def aditi_sharma_qa() -> list[Post]:
                 f"`backend/app/strategies/manual/{s}.py` or `ml_enhanced/{s}.py` "
                 f"has no corresponding `backend/tests/unit/test_{s}.py`.\n\n"
                 f"Acceptance criteria:\n"
-                f"- Test file exists at `backend/tests/unit/test_{s}.py`\n"
+                f"- Test file at `backend/tests/unit/test_{s}.py`\n"
                 f"- Covers `backtest_signals()` with a deterministic OHLCV fixture\n"
-                f"- Asserts no `.shift(0)` lookahead bias (use the template from `test_momentum.py`)\n"
-                f"- Asserts `analyze()` returns `None` on empty input rather than raising\n\n"
+                f"- Asserts no `.shift(0)` lookahead bias (template: `test_momentum.py`)\n"
+                f"- Asserts `analyze()` returns `None` on empty input, not raises\n\n"
                 f"_Auto-created by Aditi Sharma QA agent — close when PR lands._"
             )
             result = github_create_issue(title, body, labels=["qa:missing-test", "good-first-issue"])
@@ -686,13 +838,15 @@ def aditi_sharma_qa() -> list[Post]:
         if issues_created:
             text += "\n\n*Tracking issues opened this run:* " + " · ".join(issues_created)
     else:
-        text += "\nEvery strategy has a unit test. :tada:"
-    return [Post(
+        text += "\n\nEvery strategy has a unit test. :tada:"
+
+    posts.insert(0, Post(
         channel="squad-qa",
         text=text,
         username="Aditi Sharma — Director of QA",
         icon_emoji=":mag:",
-    )]
+    ))
+    return posts
 
 
 def cameron_park_security() -> list[Post]:
@@ -912,6 +1066,45 @@ def aditi_open_prs() -> list[Post]:
               "\nCI auto-runs on every push. Failures auto-route here."),
         username="Aditi Sharma — Director of QA",
         icon_emoji=":mag:",
+    )]
+
+
+def ravi_iyer_ci() -> list[Post]:
+    """ML Infra / CI agent — run pytest and post detailed CI health to #engineering."""
+    print("  [ravi_iyer_ci] running pytest for CI health check…")
+    res = run_pytest_lightweight(timeout_secs=90)
+    runs = latest_workflow_runs()
+    recent_run_line = ""
+    if runs:
+        last = runs[0]
+        conclusion = last.get("conclusion") or last.get("status") or "?"
+        c_emoji = ":white_check_mark:" if conclusion == "success" else (":red_circle:" if conclusion == "failure" else ":hourglass:")
+        recent_run_line = (f"\n\nLatest Actions run: `{last.get('name')}` "
+                           f"→ {c_emoji} *{conclusion}* on `{last.get('head_branch')}`")
+
+    if res["not_installed"]:
+        text = (":warning: *CI health* — pytest not in PATH on this runner. "
+                "Add `pip install pytest pytest-asyncio` to workflow setup step.")
+    elif res["timed_out"]:
+        text = f":stopwatch: *CI health* — pytest timed out after {res['duration']:.0f}s. Check for hanging fixtures."
+    else:
+        passed = res["passed"]
+        failed = res["failed"]
+        errs = res["errors"]
+        dur = res["duration"]
+        if failed == 0 and errs == 0:
+            status = f":white_check_mark: *All {passed} tests pass* ({dur:.1f}s)"
+        else:
+            status = f":red_circle: *{failed} failed, {errs} errors* out of {passed + failed + errs} tests ({dur:.1f}s)"
+        text = f"*CI health check — unit suite*\n{status}{recent_run_line}"
+        if res["fail_lines"]:
+            detail = "\n".join(res["fail_lines"][:5])
+            text += f"\n\n*Failing tests:*\n```\n{detail}\n```"
+    return [Post(
+        channel="engineering",
+        text=text,
+        username="Ravi Iyer — ML Infra Engineer",
+        icon_emoji=":wrench:",
     )]
 
 
@@ -1437,6 +1630,8 @@ AGENTS: list[Agent] = [
           ["help"], karl_nystrom_question, ["help", "newbie"]),
     Agent("Laavanye Bahl", "CEO/Founder", ":sparkles:",
           ["announcements"], laavanye_bahl_ceo, ["ceo", "weekly"]),
+    Agent("Ravi Iyer", "ML Infra Engineer", ":wrench:",
+          ["engineering"], ravi_iyer_ci, ["ci", "infra", "ml"]),
     # ── Live trading-desk bots (read Alpaca paper account directly) ─────────
     Agent("PnL bot", "automated", ":bar_chart:",
           ["pnl-daily"], trading_desk_eod_pnl, ["pnl", "trading"]),

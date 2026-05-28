@@ -25,7 +25,7 @@ concurrency:
 jobs:
   agents:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
       issues: write          # QA agent auto-creates tracking issues for untested strategies
@@ -37,6 +37,20 @@ jobs:
           fetch-depth: 0   # agents read full git log
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+      - name: Install lightweight test dependencies
+        # Only the packages needed for unit tests (no ML models, no brokers).
+        # This enables Aditi + Ravi agents to run real pytest and report live pass/fail.
+        run: |
+          pip install --quiet \
+            pytest pytest-asyncio pytest-cov \
+            httpx aiosqlite \
+            fastapi uvicorn pydantic pydantic-settings \
+            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
+            sqlalchemy[asyncio] alembic \
+            pandas numpy scipy statsmodels scikit-learn \
+            pandas-ta \
+            structlog tenacity python-dotenv anyio apscheduler \
+            redis
       - name: Run agent team
         env:
           SLACK_BOT_TOKEN: ${{ inputs.bot_token || secrets.SLACK_BOT_TOKEN }}
