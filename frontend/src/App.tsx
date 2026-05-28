@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import AppShell from './components/layout/AppShell'
+import { ErrorBoundary } from './components/ErrorBoundary'
 // Public pages — eagerly loaded (smallest possible initial bundle)
 import Login from './pages/Login'
 import Landing from './pages/Landing'
@@ -46,6 +47,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/landing" element={<Landing />} />
@@ -72,5 +74,6 @@ export default function App() {
         </Route>
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   )
 }
