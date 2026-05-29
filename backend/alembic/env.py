@@ -5,7 +5,7 @@ from sqlalchemy import pool, create_engine
 from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
 from alembic import context
 from app.models.base import Base
-from app.models import account, order, position, trade, strategy, backtest, experiment, ml_model, market_data, risk, slippage, comparison, user
+from app.models import account, order, position, trade, strategy, backtest, experiment, ml_model, market_data, risk, slippage, comparison, user, model_release, inference_log  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

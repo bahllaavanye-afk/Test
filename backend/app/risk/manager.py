@@ -30,12 +30,16 @@ class RiskManager:
         max_drawdown_pct: float = 0.10,
         arb_drawdown_pct: float = 0.05,
         max_cluster_pct: float = 0.30,
+        initial_equity: float = 100_000.0,
     ):
         self.max_position_pct = max_position_pct
         self.max_drawdown_pct = max_drawdown_pct
         self.max_cluster_pct = max_cluster_pct
 
-        self._equity: float = 0.0
+        # Seed with a conservative default so orders are not blocked during broker
+        # cold-start. update_equity() replaces this with the real broker value.
+        self._equity: float = initial_equity
+        self._equity_confirmed: bool = False   # True once a real broker snapshot arrives
         self._positions: dict[str, float] = {}   # symbol → market value USD
         self._returns_history: pd.DataFrame = pd.DataFrame()
         self._clusters: dict[str, list[str]] = {}
@@ -49,6 +53,7 @@ class RiskManager:
 
     def update_equity(self, equity: float) -> None:
         self._equity = equity
+        self._equity_confirmed = True
         self.global_breaker.update(equity)
 
     def update_positions(self, positions: list[dict]) -> None:
@@ -67,8 +72,11 @@ class RiskManager:
         if request.risk_bucket == "arbitrage" and self.arb_breaker.is_halted:
             return RiskDecision(False, f"Arb circuit breaker halted: {self.arb_breaker.halt_reasons[-1]}")
 
+        if not self._equity_confirmed:
+            logger.warning("risk.manager: using estimated equity — broker snapshot not yet received",
+                           estimated_equity=self._equity)
         if self._equity <= 0:
-            return RiskDecision(False, "equity not yet initialized — orders halted until account snapshot loaded")
+            return RiskDecision(False, "equity is zero or negative — orders halted")
 
         # Position size cap
         estimated_value = request.quantity * (request.limit_price or 100)
