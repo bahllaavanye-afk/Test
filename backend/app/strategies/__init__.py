@@ -53,6 +53,7 @@ from app.strategies.manual.token_unlock_fade import TokenUnlockFade
 from app.strategies.manual.poly_late_resolution import PolymarketLateResolution
 from app.strategies.manual.poly_market_maker import PolymarketMarketMaker
 from app.strategies.manual.poly_calibration_arb import PolymarketCalibrationArb
+from app.strategies.manual.multi_factor_equity import MultiFactorEquity
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
 # xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
@@ -135,6 +136,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "poly_late_resolution": PolymarketLateResolution,
     "poly_market_maker": PolymarketMarketMaker,
     "poly_calibration_arb": PolymarketCalibrationArb,
+    "multi_factor_equity": MultiFactorEquity,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry
