@@ -9,10 +9,18 @@ on:
       - ".github/workflows/auto-launch.yml"
   workflow_dispatch:
 
+env:
+  # Shared across all steps — paper trading only, no real money
+  SECRET_KEY:        d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
+  DATABASE_URL:      ""
+  REDIS_URL:         ""
+  TRADING_MODE:      paper
+  PYTHONPATH:        ${{ github.workspace }}/backend
+
 jobs:
   bootstrap-and-launch:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +31,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      # ── Install all dependencies once ──────────────────────────────────────
+      - name: Install all dependencies
+        run: |
+          pip install --quiet \
+            pytest pytest-asyncio pytest-cov httpx aiosqlite \
+            fastapi uvicorn pydantic pydantic-settings \
+            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
+            sqlalchemy[asyncio] alembic redis apscheduler \
+            pandas numpy scipy statsmodels scikit-learn \
+            structlog tenacity python-dotenv anyio \
+            alpaca-py requests
 
       # ── Step 1: Bootstrap Slack channels ───────────────────────────────────
       - name: Bootstrap Slack channels (31 channels)
@@ -36,162 +56,106 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
           python - <<'EOF'
-          import json, os, urllib.request, urllib.error
+          import json, os, urllib.request
 
           TOKEN = os.environ["SLACK_BOT_TOKEN"]
 
-          def slack(method, payload=None, *, post=False):
-              url = f"https://slack.com/api/{method}"
-              data = json.dumps(payload or {}).encode()
-              req = urllib.request.Request(
-                  url, data=data if post else None,
-                  headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
-                  method="POST" if post else "GET",
-              )
-              if not post:
-                  url += "?" + "&".join(f"{k}={v}" for k, v in (payload or {}).items())
-                  req = urllib.request.Request(url,
-                      headers={"Authorization": f"Bearer {TOKEN}"},
-                      method="GET")
+          def slack_get(method, params=None):
+              url = "https://slack.com/api/" + method
+              if params:
+                  url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
+              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {TOKEN}"})
               with urllib.request.urlopen(req, timeout=10) as r:
                   return json.loads(r.read())
 
-          # Get admin user (the token owner = workspace admin)
-          me = slack("auth.test")
+          def slack_post(method, payload):
+              url = "https://slack.com/api/" + method
+              data = json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data, method="POST",
+                  headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"})
+              with urllib.request.urlopen(req, timeout=10) as r:
+                  return json.loads(r.read())
+
+          me = slack_get("auth.test")
           admin_id = me.get("user_id")
           print(f"Admin user ID: {admin_id}")
 
-          # List all channels (public + private)
-          channels = []
-          cursor = ""
+          channels, cursor = [], ""
           while True:
               params = {"limit": "200", "types": "public_channel,private_channel"}
               if cursor:
                   params["cursor"] = cursor
-              resp = slack("conversations.list", params)
+              resp = slack_get("conversations.list", params)
               channels.extend(resp.get("channels", []))
               cursor = resp.get("response_metadata", {}).get("next_cursor", "")
               if not cursor:
                   break
 
           print(f"Found {len(channels)} channels")
-
-          # Add admin to each channel
           ok = 0
           for ch in channels:
-              cid = ch["id"]
-              name = ch["name"]
               try:
-                  r = slack("conversations.invite",
-                            {"channel": cid, "users": admin_id}, post=True)
+                  r = slack_post("conversations.invite", {"channel": ch["id"], "users": admin_id})
                   if r.get("ok") or r.get("error") in ("already_in_channel", "cant_invite_self"):
                       ok += 1
-                      print(f"  ✓ #{name}")
+                      print(f"  ✓ #{ch['name']}")
                   else:
-                      print(f"  ✗ #{name}: {r.get('error')}")
+                      print(f"  ✗ #{ch['name']}: {r.get('error')}")
               except Exception as e:
-                  print(f"  ✗ #{name}: {e}")
-
-          print(f"\nAdded admin to {ok}/{len(channels)} channels")
+                  print(f"  ✗ #{ch['name']}: {e}")
+          print(f"\nAdmin added to {ok}/{len(channels)} channels")
           EOF
 
-      # ── Step 3: Run agent team (posts standup to Slack) ────────────────────
-      - name: Install agent team dependencies
-        run: |
-          pip install --quiet \
-            pytest pytest-asyncio pytest-cov httpx aiosqlite \
-            fastapi uvicorn pydantic pydantic-settings \
-            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
-            sqlalchemy[asyncio] alembic pandas numpy scipy statsmodels \
-            scikit-learn structlog tenacity python-dotenv anyio apscheduler redis
-
-      - name: Run Slack agent team
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          DATABASE_URL: ""
-          REDIS_URL: ""
-          PYTHONPATH: ${{ github.workspace }}/backend
-        run: python .github/scripts/slack_agent_team.py
-
-      # ── Step 4: Place paper trades on all desks ────────────────────────────
-      - name: Install trading dependencies
-        run: |
-          pip install --quiet \
-            pandas numpy scipy statsmodels scikit-learn \
-            fastapi pydantic pydantic-settings \
-            python-dotenv structlog tenacity anyio \
-            alpaca-py
-
-      - name: Run desk order placer (all desks)
-        env:
-          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
-          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
-          TRADING_MODE:      paper
-          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
-          DATABASE_URL:      ""
-          REDIS_URL:         ""
-          PYTHONPATH:        ${{ github.workspace }}/backend
-        run: python .github/scripts/desk_order_placer.py
-
-      # ── Step 5: Slack channel kickoff (fill channels with team chatter) ────
-      - name: Slack kickoff — fill channels with team chatter
+      # ── Step 3: Slack kickoff — fill channels with team chatter ───────────
+      - name: Slack kickoff
+        continue-on-error: true
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: python .github/scripts/slack_kickoff.py
 
-      # ── Step 6: Strategy health ranking ───────────────────────────────────
-      - name: Install ranker dependencies
-        run: |
-          pip install --quiet \
-            pandas numpy scipy statsmodels scikit-learn \
-            python-dotenv structlog tenacity anyio
-
-      - name: Run strategy health ranker
+      # ── Step 4: Agent team standup ─────────────────────────────────────────
+      - name: Run Slack agent team
+        continue-on-error: true
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SECRET_KEY:      ${{ secrets.SECRET_KEY }}
-          DATABASE_URL:    ""
-          REDIS_URL:       ""
-          PYTHONPATH:      ${{ github.workspace }}/backend
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:           ${{ github.repository }}
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python .github/scripts/slack_agent_team.py
+
+      # ── Step 5: Strategy health ranking ───────────────────────────────────
+      - name: Strategy health ranker
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         run: python .github/scripts/strategy_ranker.py
 
-      # ── Step 7: Run ML experiments (backtest all strategies) ──────────────
-      - name: Install experiment dependencies
-        run: |
-          pip install --quiet \
-            pandas numpy scipy statsmodels scikit-learn \
-            fastapi pydantic pydantic-settings \
-            python-dotenv structlog tenacity anyio alpaca-py
-
-      - name: Run ML experiments
+      # ── Step 6: Desk order placer (all desks) ─────────────────────────────
+      - name: Run desk order placer (all desks)
+        continue-on-error: true
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
-          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
-          DATABASE_URL:      ""
-          REDIS_URL:         ""
-          PYTHONPATH:        ${{ github.workspace }}/backend
+        run: python .github/scripts/desk_order_placer.py
+
+      # ── Step 7: ML experiments ─────────────────────────────────────────────
+      - name: Run ML experiments
+        continue-on-error: true
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
         run: python .github/scripts/run_experiments.py
 
-      # ── Step 8: Daily P&L attribution report ──────────────────────────────
-      - name: Install P&L report dependencies
-        run: pip install --quiet pandas numpy requests python-dotenv structlog alpaca-py
-
-      - name: Run daily P&L report
+      # ── Step 8: Daily P&L report ───────────────────────────────────────────
+      - name: Daily P&L report
+        continue-on-error: true
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
-          TRADING_MODE:      paper
-          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
-          DATABASE_URL:      ""
-          REDIS_URL:         ""
-          PYTHONPATH:        ${{ github.workspace }}/backend
         run: python .github/scripts/daily_pnl_report.py
