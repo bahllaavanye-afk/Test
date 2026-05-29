@@ -43,6 +43,16 @@ from app.strategies.manual.options_pcr_reversal import OptionsPCRReversalStrateg
 from app.strategies.manual.time_series_momentum import TimeSeriesMomentumStrategy
 from app.strategies.manual.cross_sectional_momentum import CrossSectionalMomentumStrategy
 from app.strategies.manual.vwap_reversion import VWAPReversionStrategy
+from app.strategies.manual.basis_carry import BasisCarryStrategy
+from app.strategies.manual.btc_eth_stat_arb import BTCETHStatArb
+from app.strategies.manual.intraday_seasonality import IntradaySeasonality
+from app.strategies.manual.avellaneda_stoikov_mm import AvellanedaStoikovMM
+from app.strategies.manual.funding_settlement_timer import FundingSettlementTimer
+from app.strategies.manual.mvrv_zscore_timing import MVRVZScoreTimingStrategy
+from app.strategies.manual.token_unlock_fade import TokenUnlockFade
+from app.strategies.manual.poly_late_resolution import PolymarketLateResolution
+from app.strategies.manual.poly_market_maker import PolymarketMarketMaker
+from app.strategies.manual.poly_calibration_arb import PolymarketCalibrationArb
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
 # xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
@@ -115,6 +125,16 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "time_series_momentum": TimeSeriesMomentumStrategy,
     "cross_sectional_momentum": CrossSectionalMomentumStrategy,
     "vwap_reversion": VWAPReversionStrategy,
+    "basis_carry": BasisCarryStrategy,
+    "btc_eth_stat_arb": BTCETHStatArb,
+    "intraday_seasonality": IntradaySeasonality,
+    "avellaneda_stoikov_mm": AvellanedaStoikovMM,
+    "funding_settlement_timer": FundingSettlementTimer,
+    "mvrv_zscore_timing": MVRVZScoreTimingStrategy,
+    "token_unlock_fade": TokenUnlockFade,
+    "poly_late_resolution": PolymarketLateResolution,
+    "poly_market_maker": PolymarketMarketMaker,
+    "poly_calibration_arb": PolymarketCalibrationArb,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry
