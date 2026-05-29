@@ -12,8 +12,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from scipy.optimize import linprog, minimize
+import structlog
 
 from app.risk.hrp import HRPOptimizer  # re-export for convenience
+
+logger = structlog.get_logger()
 
 __all__ = ["HRPOptimizer", "CVaROptimizer", "optimize_portfolio"]
 

@@ -19,6 +19,7 @@ from app.models.account import Account
 from app.models.position import Position
 from app.models.order import Order
 from app.config import settings
+from app.utils.logging import logger
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -175,8 +176,8 @@ async def _fetch_alpaca_bars(symbols: list[str], days: int) -> dict[str, list[fl
             bars_map = data.get("bars", {})
             for sym, bars in bars_map.items():
                 prices[sym] = [float(b["c"]) for b in bars]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("_fetch_alpaca_bars failed", error=str(exc))
     return prices
 
 
@@ -286,8 +287,8 @@ async def _fetch_latest_price(symbol: str) -> Optional[float]:
                 ask = float(quote.get("ap", 0))
                 if ask > 0:
                     return (bid + ask) / 2.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_fetch_latest_price failed", symbol=symbol, error=str(exc))
     return None
 
 
@@ -501,8 +502,8 @@ async def _fetch_options_snapshots_for_symbols(symbols: list[str]) -> dict[str, 
                 if resp.status_code == 200:
                     data = resp.json()
                     results.update(data.get("snapshots") or {})
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("options snapshots batch failed", error=str(exc))
     return results
 
 
@@ -528,8 +529,8 @@ async def _get_account_equity_for_user(
                 from app.brokers.alpaca_orders import get_alpaca_account
                 data = await get_alpaca_account(acct)
                 total_equity += float(data.get("equity", 0))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("account equity fetch failed", account_id=acct.id, error=str(exc))
     return total_equity
 
 
@@ -1020,8 +1021,8 @@ async def get_tearsheet(
                 float((spy_rets.mean() - rf_daily) / spy_std * math.sqrt(252)) if spy_std > 0 else 0.0, 4
             )
             benchmark_return_spy = round(spy_total * 100, 2)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("SPY benchmark fetch failed in tearsheet", error=str(exc))
 
     return {
         "period_days": days,

@@ -21,6 +21,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.inference_log import InferenceLog
 from app.models.model_release import ModelRelease
 from app.models.user import User
+from app.utils.logging import logger
 
 router = APIRouter(prefix="/releases", tags=["releases"])
 
@@ -490,8 +491,8 @@ async def promote_to_champion(
         get_serving_layer().invalidate_model(release_id)
         if old_champion:
             get_serving_layer().invalidate_model(old_champion.id)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("serving cache invalidation failed", release_id=release_id, error=str(exc))
 
     return _release_out(release)
 

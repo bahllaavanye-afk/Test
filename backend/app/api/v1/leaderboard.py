@@ -13,6 +13,7 @@ from app.models.backtest import BacktestResult, BacktestRun
 from app.models.strategy import Strategy
 from app.models.trade import Trade
 from app.models.user import User
+from app.utils.logging import logger
 
 router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
 
@@ -132,8 +133,8 @@ async def _best_forward_result(
         row = res.scalar_one_or_none()
         if row is not None:
             return row
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("walk_forward backtest lookup failed", strategy=strategy_name, error=str(exc))
 
     # Fallback: check interval field for walk_forward marker
     q2 = (

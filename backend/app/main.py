@@ -1,5 +1,6 @@
 """FastAPI app factory with lifespan, CORS, routers, and background tasks."""
 from __future__ import annotations
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -45,7 +46,6 @@ async def lifespan(app: FastAPI):
 
     # Start AlgoAgent (UCB1 exploration/exploitation)
     from app.tasks.algo_agent import AlgoAgent
-    import asyncio
     algo_agent = AlgoAgent(interval_seconds=300)
     app.state.algo_agent = algo_agent
 

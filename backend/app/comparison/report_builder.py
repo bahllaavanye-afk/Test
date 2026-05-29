@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
+from html import escape as _h
 from typing import Optional
 
 from app.comparison.engine import ComparisonResult
@@ -171,7 +172,7 @@ class ReportBuilder:
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>QuantEdge Comparison Report — {report.strategy_name} / {report.symbol}</title>
+  <title>QuantEdge Comparison Report — {_h(report.strategy_name)} / {_h(report.symbol)}</title>
   <style>
     body {{
       background: #0d1117;
@@ -208,12 +209,12 @@ class ReportBuilder:
 <body>
   <h1>QuantEdge Comparison Report</h1>
   <div class="meta">
-    Strategy: <strong>{report.strategy_name}</strong> &nbsp;|&nbsp;
-    Symbol: <strong>{report.symbol}</strong> &nbsp;|&nbsp;
-    Interval: <strong>{report.interval}</strong> &nbsp;|&nbsp;
-    Period: <strong>{report.period}</strong><br>
-    Generated: {report.generated_at} &nbsp;|&nbsp;
-    Winner: <span class="winner-badge">{report.winner}</span>
+    Strategy: <strong>{_h(report.strategy_name)}</strong> &nbsp;|&nbsp;
+    Symbol: <strong>{_h(report.symbol)}</strong> &nbsp;|&nbsp;
+    Interval: <strong>{_h(report.interval)}</strong> &nbsp;|&nbsp;
+    Period: <strong>{_h(report.period)}</strong><br>
+    Generated: {_h(str(report.generated_at))} &nbsp;|&nbsp;
+    Winner: <span class="winner-badge">{_h(report.winner)}</span>
   </div>
 
   <div class="section">
@@ -229,7 +230,7 @@ class ReportBuilder:
           <th>Metric</th>
           <th>Manual</th>
           <th>ML-Enhanced</th>
-          {''.join(f'<th>{report.benchmarks[k].name}</th>' for k in report.benchmarks)}
+          {''.join(f'<th>{_h(report.benchmarks[k].name)}</th>' for k in report.benchmarks)}
         </tr>
       </thead>
       <tbody>

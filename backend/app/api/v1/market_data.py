@@ -7,6 +7,7 @@ import asyncio
 import httpx
 import math
 from datetime import datetime, timezone, timedelta
+from app.utils.logging import logger
 
 router = APIRouter(prefix="/market-data", tags=["market_data"])
 
@@ -225,8 +226,8 @@ async def get_quotes_batch(
                         "timestamp": ts,
                     })
                 return result
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("quotes_batch fetch failed", error=str(exc))
 
     return []
 
