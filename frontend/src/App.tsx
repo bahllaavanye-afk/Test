@@ -29,6 +29,7 @@ const MacroSignals = lazy(() => import('./pages/MacroSignals'))
 const Polymarket = lazy(() => import('./pages/Polymarket'))
 const MLInsights = lazy(() => import('./pages/MLInsights'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
+const Releases = lazy(() => import('./pages/Releases'))
 
 function PageLoader() {
   return (
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="polymarket" element={<Polymarket />} />
           <Route path="ml-insights" element={<MLInsights />} />
           <Route path="pipeline" element={<Pipeline />} />
+          <Route path="releases" element={<Releases />} />
         </Route>
       </Routes>
     </Suspense>

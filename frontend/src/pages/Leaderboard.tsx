@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp, Activity, DollarSign, Award } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp, Activity, DollarSign, Award, SlidersHorizontal, X } from 'lucide-react'
 import api from '../api/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -231,6 +231,32 @@ function getVal(entry: LeaderboardEntry, col: SortKey): number {
   }
 }
 
+// ─── Column filter definitions ────────────────────────────────────────────────
+
+interface ColFilter {
+  key: SortKey
+  label: string
+  op: '>=' | '<='
+  value: number
+}
+
+const PRESET_FILTERS: ColFilter[] = [
+  { key: 'bt.sharpe',  label: 'Sharpe ≥ 1.5',   op: '>=', value: 1.5  },
+  { key: 'bt.sharpe',  label: 'Sharpe ≥ 2.0',   op: '>=', value: 2.0  },
+  { key: 'bt.winrate', label: 'Win% ≥ 55%',      op: '>=', value: 0.55 },
+  { key: 'bt.winrate', label: 'Win% ≥ 60%',      op: '>=', value: 0.60 },
+  { key: 'bt.maxdd',   label: 'MaxDD ≤ −10%',    op: '<=', value: -0.10},
+  { key: 'bt.maxdd',   label: 'MaxDD ≤ −15%',    op: '<=', value: -0.15},
+  { key: 'bt.calmar',  label: 'Calmar ≥ 1.0',    op: '>=', value: 1.0  },
+  { key: 'bt.pf',      label: 'Profit Factor ≥ 1.5', op: '>=', value: 1.5 },
+]
+
+function applyColFilter(entry: LeaderboardEntry, f: ColFilter): boolean {
+  const v = getVal(entry, f.key)
+  if (v === -Infinity || v === Infinity) return false
+  return f.op === '>=' ? v >= f.value : v <= f.value
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 type FilterType = 'all' | 'ml' | 'rule' | 'equity' | 'crypto' | 'enabled'
@@ -239,6 +265,8 @@ export default function Leaderboard() {
   const [sortBy, setSortBy] = useState<SortKey>('bt.sharpe')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filter, setFilter] = useState<FilterType>('all')
+  const [colFilters, setColFilters] = useState<ColFilter[]>([])
+  const [showFilters, setShowFilters] = useState(false)
 
   const { data: entries = [], isLoading, isError } = useQuery<LeaderboardEntry[]>({
     queryKey: ['leaderboard'],
@@ -261,16 +289,24 @@ export default function Leaderboard() {
     }
   }
 
+  function toggleColFilter(f: ColFilter) {
+    setColFilters(prev => {
+      const exists = prev.some(p => p.label === f.label)
+      return exists ? prev.filter(p => p.label !== f.label) : [...prev, f]
+    })
+  }
+
   const filtered = useMemo(() => {
     return entries.filter(e => {
+      // Type / market filters
       if (filter === 'ml') return e.strategy_type === 'ml_enhanced'
       if (filter === 'rule') return e.strategy_type !== 'ml_enhanced'
       if (filter === 'equity') return e.market_type === 'equity'
       if (filter === 'crypto') return e.market_type === 'crypto'
       if (filter === 'enabled') return e.is_enabled
       return true
-    })
-  }, [entries, filter])
+    }).filter(e => colFilters.every(f => applyColFilter(e, f)))
+  }, [entries, filter, colFilters])
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -316,6 +352,50 @@ export default function Leaderboard() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Column value filters */}
+      <div className="flex items-start gap-2 flex-wrap">
+        <button
+          onClick={() => setShowFilters(v => !v)}
+          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors"
+          style={{
+            background: showFilters ? '#f5a62320' : 'transparent',
+            color: showFilters ? '#f5a623' : '#888',
+            borderColor: showFilters ? '#f5a62344' : '#1e1e1e',
+          }}>
+          <SlidersHorizontal size={12} />
+          Column Filters
+          {colFilters.length > 0 && (
+            <span className="ml-1 px-1 rounded text-[9px] font-bold bg-[#f5a623] text-black">{colFilters.length}</span>
+          )}
+        </button>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_FILTERS.map(f => {
+              const active = colFilters.some(c => c.label === f.label)
+              return (
+                <button key={f.label} onClick={() => toggleColFilter(f)}
+                  className="text-[10px] px-2 py-1 rounded transition-colors"
+                  style={{
+                    background: active ? '#f5a62320' : '#111111',
+                    color: active ? '#f5a623' : '#888',
+                    border: `1px solid ${active ? '#f5a62344' : '#1e1e1e'}`,
+                  }}>
+                  {f.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {colFilters.length > 0 && (
+          <button onClick={() => setColFilters([])}
+            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded text-[#ff1744] border border-[#ff174433] hover:bg-[#ff174410] transition-colors">
+            <X size={10} /> Clear filters
+          </button>
+        )}
       </div>
 
       {/* Summary KPIs */}
