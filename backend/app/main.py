@@ -81,7 +81,15 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: research_scientist.run(), "research_scientist")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: modeling_engineer.run(), "modeling_engineer")))
 
+    # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
+    from app.tasks.regime_monitor import RegimeMonitor
+    regime_monitor = RegimeMonitor()
+    regime_monitor.start()
+    app.state.regime_monitor = regime_monitor
+
     yield
+
+    regime_monitor.stop()
 
     for task in getattr(app.state, "bg_tasks", []):
         task.cancel()

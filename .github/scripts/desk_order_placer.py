@@ -57,15 +57,23 @@ DESKS: list[DeskConfig] = [
         name="Equities",
         slack_channel="#desk-equities",
         symbols=["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "JPM"],
-        strategy_names=["momentum", "mean_reversion", "breakout", "rsi_macd", "supertrend"],
+        strategy_names=[
+            "momentum", "mean_reversion", "breakout", "rsi_macd", "supertrend",
+            "cross_sectional_momentum", "opening_range_breakout", "vwap_reversion",
+            "residual_momentum", "idio_vol_anomaly",
+        ],
         notional_usd=500.0,
         confidence_min=0.60,
     ),
     DeskConfig(
         name="Crypto",
         slack_channel="#desk-crypto",
-        symbols=["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "DOGE/USD"],
-        strategy_names=["crypto_adaptive_trend", "mean_reversion", "breakout"],
+        symbols=["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD"],
+        strategy_names=[
+            "crypto_adaptive_trend", "mean_reversion", "breakout",
+            "basis_carry", "btc_eth_stat_arb", "mvrv_zscore_timing",
+            "intraday_seasonality", "funding_rate_arb",
+        ],
         notional_usd=300.0,
         confidence_min=0.65,
     ),
@@ -73,7 +81,10 @@ DESKS: list[DeskConfig] = [
         name="Options",
         slack_channel="#desk-options",
         symbols=["SPY", "QQQ", "AAPL", "TSLA", "NVDA"],
-        strategy_names=["vix_mean_reversion", "gamma_exposure", "skew_arb"],
+        strategy_names=[
+            "vix_mean_reversion", "gamma_exposure", "skew_arb",
+            "vrp_systematic", "dispersion_trading", "vol_term_structure",
+        ],
         notional_usd=400.0,
         confidence_min=0.65,
     ),
@@ -81,7 +92,10 @@ DESKS: list[DeskConfig] = [
         name="Polymarket",
         slack_channel="#desk-polymarket",
         symbols=["SPY"],   # proxy for market regime
-        strategy_names=["polymarket_sentiment_momentum"],
+        strategy_names=[
+            "polymarket_sentiment_momentum", "poly_binary_arb",
+            "poly_calibration_arb", "poly_late_resolution",
+        ],
         notional_usd=100.0,
         confidence_min=0.70,
     ),
@@ -89,9 +103,23 @@ DESKS: list[DeskConfig] = [
         name="Macro/FX",
         slack_channel="#desk-fx-rates",
         symbols=["GLD", "TLT", "UUP", "EWJ", "EEM"],
-        strategy_names=["cross_asset_carry", "sector_rotation", "time_series_momentum"],
+        strategy_names=[
+            "cross_asset_carry", "sector_rotation", "time_series_momentum",
+            "intraday_fomc_momentum", "pead_sue", "multi_factor_equity",
+        ],
         notional_usd=400.0,
         confidence_min=0.60,
+    ),
+    DeskConfig(
+        name="StatArb",
+        slack_channel="#desk-stat-arb",
+        symbols=["SPY", "QQQ", "IWM", "GLD", "TLT"],
+        strategy_names=[
+            "pairs_trading", "pca_stat_arb", "kalman_pairs",
+            "triangular_arb", "stablecoin_depeg_arb",
+        ],
+        notional_usd=600.0,
+        confidence_min=0.62,
     ),
 ]
 
