@@ -1,4 +1,4 @@
-name: Auto Launch — bootstrap Slack, add admin, start trading
+name: Auto Launch — bootstrap Slack, add admin, all desk tasks
 
 # Runs automatically on push to the dev branch.
 # Idempotent: safe to re-run (channel creation skips existing channels).
@@ -138,3 +138,60 @@ jobs:
           REDIS_URL:         ""
           PYTHONPATH:        ${{ github.workspace }}/backend
         run: python .github/scripts/desk_order_placer.py
+
+      # ── Step 5: Slack channel kickoff (fill channels with team chatter) ────
+      - name: Slack kickoff — fill channels with team chatter
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/slack_kickoff.py
+
+      # ── Step 6: Strategy health ranking ───────────────────────────────────
+      - name: Install ranker dependencies
+        run: |
+          pip install --quiet \
+            pandas numpy scipy statsmodels scikit-learn \
+            python-dotenv structlog tenacity anyio
+
+      - name: Run strategy health ranker
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SECRET_KEY:      ${{ secrets.SECRET_KEY }}
+          DATABASE_URL:    ""
+          REDIS_URL:       ""
+          PYTHONPATH:      ${{ github.workspace }}/backend
+        run: python .github/scripts/strategy_ranker.py
+
+      # ── Step 7: Run ML experiments (backtest all strategies) ──────────────
+      - name: Install experiment dependencies
+        run: |
+          pip install --quiet \
+            pandas numpy scipy statsmodels scikit-learn \
+            fastapi pydantic pydantic-settings \
+            python-dotenv structlog tenacity anyio alpaca-py
+
+      - name: Run ML experiments
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
+          DATABASE_URL:      ""
+          REDIS_URL:         ""
+          PYTHONPATH:        ${{ github.workspace }}/backend
+        run: python .github/scripts/run_experiments.py
+
+      # ── Step 8: Daily P&L attribution report ──────────────────────────────
+      - name: Install P&L report dependencies
+        run: pip install --quiet pandas numpy requests python-dotenv structlog alpaca-py
+
+      - name: Run daily P&L report
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          TRADING_MODE:      paper
+          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
+          DATABASE_URL:      ""
+          REDIS_URL:         ""
+          PYTHONPATH:        ${{ github.workspace }}/backend
+        run: python .github/scripts/daily_pnl_report.py
