@@ -37,15 +37,27 @@ STRATEGY_REGIME_MAP: dict[str, list[int]] = {
 DEFAULT_REGIMES = [0, 1, 2]
 
 
+_regime_cache: dict[str, object] = {"value": None, "ts": 0.0}
+_REGIME_CACHE_TTL = 30.0  # seconds — avoids Redis round-trip on every strategy tick
+
+
 async def get_current_regime(redis_client) -> int | None:
-    """Read current market regime (0=bear, 1=sideways, 2=bull) from Redis key 'market:regime'."""
+    """Read current market regime (0=bear, 1=sideways, 2=bull) from Redis key 'market:regime'.
+    Cached for 30 s to reduce Redis round-trips across concurrent strategy loops.
+    """
+    import time
+    now = time.monotonic()
+    if now - _regime_cache["ts"] < _REGIME_CACHE_TTL:
+        return _regime_cache["value"]  # type: ignore[return-value]
     try:
         raw = await redis_client.get("market:regime")
-        if raw is not None:
-            return int(raw)
+        val = int(raw) if raw is not None else None
+        _regime_cache["value"] = val
+        _regime_cache["ts"] = now
+        return val
     except Exception as exc:
         logger.debug("Failed to read market regime from Redis", error=str(exc))
-    return None
+    return _regime_cache["value"]  # type: ignore[return-value]
 
 
 def _broker_interval(strategy_cls) -> str:

@@ -20,7 +20,7 @@ env:
 jobs:
   bootstrap-and-launch:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +32,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      # ── Install all dependencies once ──────────────────────────────────────
+      # ── Pip cache — cuts install from ~90s to ~5s on warm runs ────────────
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-quant-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-quant-
+
+      # ── Install all dependencies once ─────────────────────────────────────
       - name: Install all dependencies
         run: |
           pip install --quiet \
@@ -42,15 +51,15 @@ jobs:
             sqlalchemy[asyncio] alembic redis apscheduler \
             pandas numpy scipy statsmodels scikit-learn \
             structlog tenacity python-dotenv anyio \
-            alpaca-py requests
+            alpaca-py requests yfinance
 
-      # ── Step 1: Bootstrap Slack channels ───────────────────────────────────
+      # ── Step 1: Bootstrap Slack channels ──────────────────────────────────
       - name: Bootstrap Slack channels (31 channels)
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: python .github/scripts/slack_bootstrap.py
 
-      # ── Step 2: Add workspace admin to all channels ────────────────────────
+      # ── Step 2: Add workspace admin to all channels ───────────────────────
       - name: Add admin to all channels
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -113,7 +122,7 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: python .github/scripts/slack_kickoff.py
 
-      # ── Step 4: Agent team standup ─────────────────────────────────────────
+      # ── Step 4: Agent team standup ────────────────────────────────────────
       - name: Run Slack agent team
         continue-on-error: true
         env:
@@ -124,7 +133,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         run: python .github/scripts/slack_agent_team.py
 
-      # ── Step 5: Strategy health ranking ───────────────────────────────────
+      # ── Step 5: Strategy health ranking ──────────────────────────────────
       - name: Strategy health ranker
         continue-on-error: true
         env:
@@ -133,8 +142,8 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         run: python .github/scripts/strategy_ranker.py
 
-      # ── Step 6: Desk order placer (all desks) ─────────────────────────────
-      - name: Run desk order placer (all desks)
+      # ── Step 6: Desk order placer (all 6 desks in parallel) ──────────────
+      - name: Run all desks in parallel
         continue-on-error: true
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
@@ -142,7 +151,7 @@ jobs:
           SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
         run: python .github/scripts/desk_order_placer.py
 
-      # ── Step 7: ML experiments ─────────────────────────────────────────────
+      # ── Step 7: ML experiments (all 34 strategies) ───────────────────────
       - name: Run ML experiments
         continue-on-error: true
         env:
@@ -151,7 +160,7 @@ jobs:
           SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
         run: python .github/scripts/run_experiments.py
 
-      # ── Step 8: Daily P&L report ───────────────────────────────────────────
+      # ── Step 8: Daily P&L report ──────────────────────────────────────────
       - name: Daily P&L report
         continue-on-error: true
         env:

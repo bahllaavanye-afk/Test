@@ -358,21 +358,36 @@ def main() -> None:
             n_configs = len(EXPERIMENT_CONFIGS)
             tracker.set_output(n_strategies=n_configs, filter=STRATEGY_FILTER or "all")
 
-        # ── Stage 3: backtesting ──────────────────────────────────────────────
+        # ── Stage 3: backtesting (parallel via ThreadPoolExecutor) ───────────
         with tracker.stage(Stage.BACKTESTING, "Run backtest signals", channel="#ml-experiments"):
-            for cfg in EXPERIMENT_CONFIGS:
+            import concurrent.futures as _cf
+            MAX_WORKERS = min(8, len(EXPERIMENT_CONFIGS))
+
+            def _run_cfg(cfg):
                 name, module_path, class_name, symbol, interval, train_start, test_start, test_end, params = cfg
-                try:
-                    result = _run_one(name, module_path, class_name, symbol, interval,
+                return name, _run_one(name, module_path, class_name, symbol, interval,
                                       train_start, test_start, test_end, params)
-                    if result:
-                        path = _save_result(result)
-                        print(f"  → saved {path.name}", flush=True)
-                        successes.append(result)
-                except Exception as exc:
-                    failures.append(f"{name}: {exc}")
-                    print(f"  ✗ UNHANDLED: {exc}", flush=True)
-                    traceback.print_exc()
+
+            filtered = [
+                cfg for cfg in EXPERIMENT_CONFIGS
+                if (not STRATEGY_FILTER or STRATEGY_FILTER in cfg[0])
+                and (not SYMBOL_FILTER or SYMBOL_FILTER.upper() in cfg[3])
+            ]
+
+            with _cf.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                futures = {pool.submit(_run_cfg, cfg): cfg for cfg in filtered}
+                for fut in _cf.as_completed(futures):
+                    cfg = futures[fut]
+                    name = cfg[0]
+                    try:
+                        _, result = fut.result()
+                        if result:
+                            path = _save_result(result)
+                            print(f"  → saved {path.name}", flush=True)
+                            successes.append(result)
+                    except Exception as exc:
+                        failures.append(f"{name}: {exc}")
+                        print(f"  ✗ UNHANDLED {name}: {exc}", flush=True)
             tracker.set_output(
                 succeeded=len(successes),
                 failed=len(failures),

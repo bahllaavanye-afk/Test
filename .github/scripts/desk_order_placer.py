@@ -381,12 +381,17 @@ async def main() -> None:
             if DESK_FILTER and not active_desks:
                 raise RuntimeError(f"no desk matches filter '{DESK_FILTER}'")
 
-            # Pre-fetch bars for all unique symbols across all active desks
+            # Pre-fetch bars for all unique symbols concurrently
             all_symbols = list({s for desk in active_desks for s in desk.symbols})
             bars_cache: dict[str, object] = {}
-            for sym in all_symbols:
-                df = await _get_bars(sym)
-                if df is not None and len(df) >= 50:
+            results = await asyncio.gather(
+                *[_get_bars(sym) for sym in all_symbols],
+                return_exceptions=True,
+            )
+            for sym, df in zip(all_symbols, results):
+                if isinstance(df, Exception) or df is None:
+                    continue
+                if len(df) >= 50:
                     bars_cache[sym] = df
                     bars_fetched += 1
                     symbols_fetched.append(sym)
