@@ -45,11 +45,7 @@ services:
       - key: REDIS_URL
         sync: false
       - key: SECRET_KEY
-        fromService:
-          name: quantedge-api
-          type: web
-          property: envVarValue
-          envVarKey: SECRET_KEY
+        sync: false   # Set in Render dashboard to the same value as quantedge-api SECRET_KEY
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_SECRET_KEY
