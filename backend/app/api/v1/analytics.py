@@ -773,3 +773,103 @@ async def get_portfolio_snapshot(
         "max_drawdown": round(max_drawdown, 2),
         "open_positions": open_positions,
     }
+
+
+@router.get("/equity-curve")
+async def get_equity_curve(
+    days: int = Query(365, ge=30, le=730, description="Lookback window in days"),
+    initial_equity: float = Query(100_000.0, ge=1_000, description="Baseline equity to build curve from"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Daily cumulative equity curve built from realized trade P&L.
+
+    Returns [{date, equity}] sorted ascending. The curve starts at
+    initial_equity and adds each day's realized P&L going forward.
+    Returns an empty list when there are no closed trades.
+    """
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    result = await db.execute(
+        select(
+            func.date_trunc("day", Trade.closed_at).label("day"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("day", Trade.closed_at))
+        .order_by(func.date_trunc("day", Trade.closed_at))
+    )
+    rows = result.all()
+    if not rows:
+        return []
+
+    equity = initial_equity
+    curve = []
+    for row in rows:
+        equity += float(row.daily_pnl)
+        day = row.day
+        curve.append({
+            "date": day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)[:10],
+            "equity": round(equity, 2),
+        })
+    return curve
+
+
+@router.get("/monthly-returns")
+async def get_monthly_returns(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Monthly realized P&L as a percentage of a $100k baseline.
+
+    Returns [{month: "Jan 2024", ret: 2.3}] for the last 24 months,
+    sorted oldest-first. Used to populate the monthly return heatmap.
+    Returns an empty list when there are no closed trades.
+    """
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
+
+    since = datetime.now(timezone.utc) - timedelta(days=730)
+
+    result = await db.execute(
+        select(
+            func.date_trunc("month", Trade.closed_at).label("month"),
+            func.sum(Trade.realized_pnl).label("monthly_pnl"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("month", Trade.closed_at))
+        .order_by(func.date_trunc("month", Trade.closed_at))
+    )
+    rows = result.all()
+    if not rows:
+        return []
+
+    # Build running equity to compute return % relative to start-of-month equity
+    baseline = 100_000.0
+    running_equity = baseline
+    out = []
+    for row in rows:
+        monthly_pnl = float(row.monthly_pnl)
+        ret_pct = round(monthly_pnl / max(running_equity, 1) * 100, 2)
+        running_equity += monthly_pnl
+        month = row.month
+        out.append({
+            "month": month.strftime("%b %Y") if hasattr(month, "strftime") else str(month)[:7],
+            "ret": ret_pct,
+        })
+    return out

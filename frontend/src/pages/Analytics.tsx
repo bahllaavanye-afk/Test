@@ -181,8 +181,42 @@ export default function Analytics() {
           <h1 className="text-xl font-bold text-white">Analytics</h1>
           <p className="text-xs text-[#888888] mt-0.5">Institutional performance metrics · walk-forward validated</p>
         </div>
-        <div className="text-xs text-[#555555] font-mono">
-          Updated {new Date().toLocaleTimeString()}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[#555555] font-mono">Updated {new Date().toLocaleTimeString()}</span>
+          <button
+            onClick={() => {
+              const rows = [
+                ['Strategy', 'Total P&L', 'Win Rate', 'Trade Count'],
+                ...attribution.map((a: any) => [
+                  a.strategy_name ?? a.strategy ?? '—',
+                  (a.total_pnl ?? 0).toFixed(2),
+                  ((a.win_rate ?? 0) * 100).toFixed(1) + '%',
+                  a.trade_count ?? 0,
+                ]),
+              ]
+              const csv = rows.map(r => r.join(',')).join('\n')
+              const blob = new Blob([csv], { type: 'text/csv' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `quantedge-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+              a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#1e1e1e] text-[#888888] hover:text-white hover:border-[#333] text-xs transition-colors"
+            title="Export attribution as CSV"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#1e1e1e] text-[#888888] hover:text-white hover:border-[#333] text-xs transition-colors"
+            title="Print / Save as PDF"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            PDF
+          </button>
         </div>
       </div>
 
