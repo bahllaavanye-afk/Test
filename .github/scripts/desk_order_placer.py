@@ -351,7 +351,7 @@ async def main() -> None:
         print("ERROR: ALPACA_API_KEY / ALPACA_SECRET_KEY not set", flush=True)
         sys.exit(1)
 
-    async with PipelineTracker("desk_trading") as tracker:
+    with PipelineTracker("desk_trading") as tracker:
 
         # ── Stage 1: Market Status ────────────────────────────────────────────
         is_open = False
