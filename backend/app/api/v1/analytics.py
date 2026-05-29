@@ -207,7 +207,8 @@ async def get_correlation_matrix(
                 select(Position.symbol).where(Position.account_id.in_(account_ids)).distinct()
             )
             symbols = [row[0] for row in pos_result.all()]
-    except Exception:
+    except Exception as exc:
+        logger.warning("correlation matrix: failed to fetch position symbols", error=str(exc))
         symbols = []
 
     if not symbols:

@@ -29,8 +29,8 @@ def test_large_order_picks_rl_or_twap():
     router = SmartOrderRouter(DummyBroker())
     req = _req(quantity=200, limit_price=100)  # 200 * 100 = $20k > $10k
     algo = router._select_algorithm(req)
-    # rl_exec is preferred when RL agent is importable, twap otherwise
-    assert algo in ("rl_exec", "twap")
+    # almgren_chriss for mid-size orders, rl_exec/twap for very large
+    assert algo in ("rl_exec", "twap", "almgren_chriss")
 
 
 def test_limit_order_picks_limit_first():

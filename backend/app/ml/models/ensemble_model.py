@@ -7,7 +7,10 @@ import numpy as np
 import json
 from pathlib import Path
 from sklearn.metrics import roc_auc_score, accuracy_score
+import structlog
 from app.ml.models.base_model import AbstractModel, EvalMetrics
+
+logger = structlog.get_logger()
 
 
 class EnsembleModel(AbstractModel):
@@ -69,8 +72,8 @@ class EnsembleModel(AbstractModel):
                     gnn_pred = self._gnn_model.predict(returns_df, node_features)
                     predictions["_gnn"] = gnn_pred
                     self.weights["_gnn"] = self.gnn_weight
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("GNN prediction failed in ensemble", error=str(exc))
 
         if not predictions:
             return np.full(1, 0.5)
@@ -198,8 +201,8 @@ class EnsembleModel(AbstractModel):
                     w = np.maximum(result.x, 0.0)
                     w = w / w.sum()
                     all_weights.append(w)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Weight optimization fold failed", error=str(exc))
 
         if not all_weights:
             return {k: 1.0 / len(model_names) for k in model_names}

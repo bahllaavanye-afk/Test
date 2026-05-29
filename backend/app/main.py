@@ -189,6 +189,14 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' wss:; "
+            "frame-ancestors 'none';"
+        )
         # Only set HSTS in production (not dev/test where HTTP is used)
         if settings.trading_mode not in ("dev", "paper"):
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"

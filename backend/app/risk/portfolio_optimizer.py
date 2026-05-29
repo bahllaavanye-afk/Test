@@ -129,8 +129,8 @@ class CVaROptimizer:
                 for i, sym in enumerate(symbols_clean):
                     out[sym] = float(w[i])
                 return out
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("CVaROptimizer.optimize failed, falling back to equal weight", error=str(exc))
 
         return pd.Series(1.0 / n, index=symbols)
 

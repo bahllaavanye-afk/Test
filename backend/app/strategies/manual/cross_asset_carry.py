@@ -42,6 +42,16 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DATA_BASE = "https://data.alpaca.markets"
 
+# Item 10: FRED free API endpoint for 10Y-2Y yield curve spread
+# No API key required — the CSV endpoint is completely public
+_FRED_T10Y2Y = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10Y2Y"
+
+# yfinance tickers for commodity front/second contract spread proxies
+_COMMODITY_TICKERS = {
+    "oil": ("CL=F", "CLH26.NYM"),   # WTI front vs deferred (proxy)
+    "gold": ("GC=F", "GCM26.CMX"),  # Gold front vs deferred
+}
+
 
 # ETF universe — each leg and its role in the carry signal
 HIGH_EQUITY_CARRY = ["SCHD", "VYM"]
@@ -77,6 +87,12 @@ class CrossAssetCarryStrategy(AbstractStrategy):
 
     # Lookback for trailing return
     LOOKBACK_DAYS = 252   # ~12 months
+
+    # Item 10: weights for the extended composite signal
+    RATES_CARRY_WEIGHT     = 0.20
+    COMMODITY_CARRY_WEIGHT = 0.10
+    EQUITY_CARRY_WEIGHT    = 0.40
+    BOND_CARRY_WEIGHT      = 0.30
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)

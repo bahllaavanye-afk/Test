@@ -152,8 +152,8 @@ async def get_quote(
                     "timestamp": ts,
                     "source": "alpaca",
                 }
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("quote fetch (stocks) failed", symbol=sym_upper, error=str(exc))
 
     # Fallback: try latest bar price from Alpaca
     try:
@@ -171,8 +171,8 @@ async def get_quote(
                 "timestamp": bars[-1]["time"],
                 "source": "alpaca_bars",
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("quote fetch (bars fallback) failed", symbol=sym_upper, error=str(exc))
 
     return {
         "symbol": sym_upper,
@@ -319,8 +319,8 @@ async def _compute_iv_rank(symbol: str) -> dict:
                 if ivs:
                     current_iv = sum(ivs) / len(ivs)
                     source = "alpaca_options"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("IV rank options fetch failed", symbol=sym_upper, error=str(exc))
 
     # Fall back to HV × 1.1 proxy
     if current_iv is None or current_iv <= 0:

@@ -29,6 +29,9 @@ import httpx
 from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.ml.features.sentiment import SECFilingSentiment
+
+_sec_sentiment = SECFilingSentiment()
 
 
 class PEADStrategy(AbstractStrategy):
@@ -120,6 +123,19 @@ class PEADStrategy(AbstractStrategy):
             sue = earnings_data["sue"]
             if abs(sue) < 0.05:
                 return None
+
+            # Item 3: Check management tone from SEC filings when FinBERT available
+            if _sec_sentiment._available:
+                tone = _sec_sentiment.get_management_tone(symbol)
+                if tone is not None:
+                    # Require SUE > 2.0 (normalized) AND positive management tone > 0.2
+                    sue_normalized = sue / abs(sue) * min(abs(sue) / 0.20 * 2, 10.0)
+                    if sue > 0 and (sue_normalized < 2.0 or tone <= 0.2):
+                        return None
+                    # For shorts, bearish tone (tone < -0.2) is required
+                    if sue < 0 and (sue_normalized > -2.0 or tone >= -0.2):
+                        return None
+
             side = "buy" if sue > 0 else "sell"
             confidence = min(abs(sue) / 0.20, 1.0)
             return Signal(

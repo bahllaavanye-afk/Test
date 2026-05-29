@@ -93,8 +93,8 @@ def train_with_lightning(
                 tracking_uri=mlflow_uri,
                 run_name=experiment_name,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("MLflow logger init failed — proceeding without tracking", error=str(exc))
 
     lightning_module = TradingLightningModule(model, lr=lr)
     checkpoint_cb = ModelCheckpoint(
