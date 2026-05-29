@@ -28,25 +28,3 @@ services:
     healthCheckPath: /health
     autoDeploy: true
 
-  - type: worker
-    name: quantedge-worker
-    env: python
-    region: oregon
-    plan: free
-    buildCommand: pip install uv && uv pip install --system -e . && alembic upgrade head
-    startCommand: python -m app.tasks.scheduler
-    envVars:
-      - key: TRADING_MODE
-        value: paper
-      - key: ALPACA_BASE_URL
-        value: "https://paper-api.alpaca.markets"
-      - key: DATABASE_URL
-        sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: SECRET_KEY
-        sync: false   # Set in Render dashboard to the same value as quantedge-api SECRET_KEY
-      - key: ALPACA_API_KEY
-        sync: false
-      - key: ALPACA_SECRET_KEY
-        sync: false
