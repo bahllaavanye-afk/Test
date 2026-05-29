@@ -260,42 +260,14 @@ def _post_slack(message: str) -> None:
         print(f"  ⚠ Slack post failed: {exc}", flush=True)
 
 
-def main() -> None:
-    print(f"QuantEdge Experiment Runner — {datetime.utcnow().isoformat()}Z", flush=True)
-    print(f"STRATEGY_FILTER={STRATEGY_FILTER or '(all)'}  SYMBOL_FILTER={SYMBOL_FILTER or '(default)'}", flush=True)
-
-    successes: list[dict] = []
-    failures:  list[str]  = []
-
-    for cfg in EXPERIMENT_CONFIGS:
-        name, module_path, class_name, symbol, interval, train_start, test_start, test_end, params = cfg
-        try:
-            result = _run_one(name, module_path, class_name, symbol, interval,
-                              train_start, test_start, test_end, params)
-            if result:
-                path = _save_result(result)
-                print(f"  → saved {path.name}", flush=True)
-                successes.append(result)
-        except Exception as exc:
-            failures.append(f"{name}: {exc}")
-            print(f"  ✗ UNHANDLED: {exc}", flush=True)
-            traceback.print_exc()
-
-    # ── Summary ──────────────────────────────────────────────────────────────
-    print(f"\n{'═'*60}", flush=True)
-    print(f"Completed: {len(successes)} succeeded, {len(failures)} failed", flush=True)
-
-    if not successes and not STRATEGY_FILTER:
-        print("WARNING: no experiment results — check yfinance connectivity", flush=True)
-
-    # Build Slack report — rich advanced metrics
+def _post_slack_summary(successes: list[dict], failures: list[str]) -> None:
+    """Build and post the full advanced-metrics Slack summary."""
     lines = [f"*QuantEdge ML Experiments* — {date.today().isoformat()}"]
     lines.append(f"✅ {len(successes)} backtests completed  |  ❌ {len(failures)} failed")
     lines.append("")
 
-    # Sort by Sharpe descending
     successes.sort(key=lambda r: r["results"].get("sharpe", 0), reverse=True)
-    lines.append("*Top results by Sharpe (full advanced metrics):*")
+    lines.append("*Top results by Sharpe (advanced metrics):*")
     for r in successes[:10]:
         exp = r["experiment"]
         res = r["results"]
@@ -310,40 +282,91 @@ def main() -> None:
         pf      = res.get("profit_factor", 0)
         cvar    = res.get("cvar_95", 0)
         emoji   = "🟢" if sharpe > 1.5 else ("🟡" if sharpe > 0.7 else "🔴")
-        line    = (
+        line = (
             f"{emoji} `{exp['strategy']}/{exp['symbol']}`\n"
-            f"  Sharpe={sharpe:+.3f}  Sortino={sortino:+.3f}  Calmar={calmar:+.3f}  Omega={omega:.1f}\n"
+            f"  Sharpe={sharpe:+.3f}  Sortino={sortino:+.3f}  Calmar={calmar:+.3f}  Ω={omega:.1f}\n"
             f"  MDD={mdd:+.1%}  CVaR95={cvar:+.2%}  Ret={ret:+.1%}"
         )
         if alpha != 0:
             line += f"  α={alpha:+.3f}"
         if wr > 0:
-            line += f"\n  WinRate={wr:.1%}  ProfitFactor={pf:.2f}"
+            line += f"\n  WinRate={wr:.1%}  PF={pf:.2f}"
         lines.append(line)
 
     if failures:
-        lines.append("")
-        lines.append("*Failures:*")
-        for f in failures[:5]:
-            lines.append(f"• {f}")
+        lines += ["", "*Failures:*"] + [f"• {f}" for f in failures[:5]]
 
-    # Cross-strategy aggregate stats
     if len(successes) >= 3:
-        sharpes  = [r["results"].get("sharpe", 0) for r in successes]
-        caldmars = [r["results"].get("calmar", 0) for r in successes]
-        mdds     = [r["results"].get("max_drawdown", 0) for r in successes]
-        omegas   = [r["results"].get("omega", 0) for r in successes if r["results"].get("omega", 0) < 1000]
+        sharpes = [r["results"].get("sharpe", 0) for r in successes]
+        calmars = [r["results"].get("calmar", 0) for r in successes]
+        mdds    = [r["results"].get("max_drawdown", 0) for r in successes]
+        omegas  = [r["results"].get("omega", 0) for r in successes if r["results"].get("omega", 0) < 1000]
         lines += [
-            "",
-            f"*Aggregate across {len(successes)} strategies:*",
-            f"  Median Sharpe: `{float(np.median(sharpes)):+.3f}`  |  "
-            f"Best Calmar: `{max(caldmars):+.3f}`  |  "
-            f"Worst MDD: `{min(mdds):+.1%}`",
-            f"  Strategies beating Sharpe 1.0: `{sum(1 for s in sharpes if s > 1.0)}`  |  "
-            f"Avg Omega: `{float(np.mean(omegas)):.2f}`" if omegas else "",
+            "", f"*Aggregate ({len(successes)} strategies):*",
+            f"  Median Sharpe `{float(np.median(sharpes)):+.3f}`  "
+            f"Best Calmar `{max(calmars):+.3f}`  Worst MDD `{min(mdds):+.1%}`",
+            (f"  Beat Sharpe>1.0: `{sum(1 for s in sharpes if s > 1.0)}`  "
+             f"Avg Omega: `{float(np.mean(omegas)):.2f}`") if omegas else "",
         ]
 
     _post_slack("\n".join(lines))
+
+
+def main() -> None:
+    print(f"QuantEdge Experiment Runner — {datetime.utcnow().isoformat()}Z", flush=True)
+    print(f"STRATEGY_FILTER={STRATEGY_FILTER or '(all)'}  SYMBOL_FILTER={SYMBOL_FILTER or '(default)'}", flush=True)
+
+    # Import pipeline tracker (lives in same scripts dir)
+    import sys as _sys
+    _sys.path.insert(0, str(REPO_ROOT / ".github" / "scripts"))
+    from pipeline_tracker import PipelineTracker, Stage, Status
+
+    successes: list[dict] = []
+    failures:  list[str]  = []
+
+    with PipelineTracker("ml_experiments") as tracker:
+
+        # ── Stage 1: data fetch (prefetch SPY for benchmark) ─────────────────
+        with tracker.stage(Stage.DATA_FETCH, "Fetch benchmark data", channel="#squad-data"):
+            spy = _fetch_spy_returns("2020-01-01", "2026-01-01")
+            tracker.set_output(spy_bars=len(spy) if spy is not None else 0)
+
+        # ── Stage 2: cache check ──────────────────────────────────────────────
+        with tracker.stage(Stage.CACHE_CHECK, "Cache & data status", channel="#squad-data"):
+            n_configs = len(EXPERIMENT_CONFIGS)
+            tracker.set_output(n_strategies=n_configs, filter=STRATEGY_FILTER or "all")
+
+        # ── Stage 3: backtesting ──────────────────────────────────────────────
+        with tracker.stage(Stage.BACKTESTING, "Run backtest signals", channel="#ml-experiments"):
+            for cfg in EXPERIMENT_CONFIGS:
+                name, module_path, class_name, symbol, interval, train_start, test_start, test_end, params = cfg
+                try:
+                    result = _run_one(name, module_path, class_name, symbol, interval,
+                                      train_start, test_start, test_end, params)
+                    if result:
+                        path = _save_result(result)
+                        print(f"  → saved {path.name}", flush=True)
+                        successes.append(result)
+                except Exception as exc:
+                    failures.append(f"{name}: {exc}")
+                    print(f"  ✗ UNHANDLED: {exc}", flush=True)
+                    traceback.print_exc()
+            tracker.set_output(
+                succeeded=len(successes),
+                failed=len(failures),
+                best_sharpe=max((r["results"].get("sharpe", 0) for r in successes), default=0),
+            )
+
+        # ── Stage 4: evaluation / Slack report ───────────────────────────────
+        with tracker.stage(Stage.EVALUATION, "Compute metrics & post report", channel="#ml-experiments"):
+            _post_slack_summary(successes, failures)
+            tracker.set_output(n_results=len(successes))
+
+    # ── Terminal summary ──────────────────────────────────────────────────────
+    print(f"\n{'═'*60}", flush=True)
+    print(f"Completed: {len(successes)} succeeded, {len(failures)} failed", flush=True)
+    if not successes and not STRATEGY_FILTER:
+        print("WARNING: no experiment results — check yfinance connectivity", flush=True)
 
 
 if __name__ == "__main__":

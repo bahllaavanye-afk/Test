@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from app.ml.features.technical import add_technical_features
 from app.ml.features.advanced_indicators import add_advanced_features, ADVANCED_FEATURE_COLS
+from app.ml.features.wavelet_features import add_wavelet_features, WAVELET_FEATURE_COLS
 from app.ml.features.multi_timeframe import add_multi_timeframe_features, MTF_FEATURE_COLS
 from app.ml.features.normalization import FeatureScaler
 
@@ -34,8 +35,8 @@ _BASE_FEATURE_COLS = [
     "adx",
 ]
 
-# Extended feature list: base 27 + advanced indicators + multi-timeframe
-FEATURE_COLS = _BASE_FEATURE_COLS + ADVANCED_FEATURE_COLS + MTF_FEATURE_COLS
+# Extended feature list: base 27 + advanced + wavelet + multi-timeframe
+FEATURE_COLS = _BASE_FEATURE_COLS + ADVANCED_FEATURE_COLS + WAVELET_FEATURE_COLS + MTF_FEATURE_COLS
 
 
 def engineer_features(df: pd.DataFrame, normalize: bool = False, scaler: FeatureScaler | None = None) -> pd.DataFrame:
@@ -53,6 +54,10 @@ def engineer_features(df: pd.DataFrame, normalize: bool = False, scaler: Feature
     df = df.copy()
     df = add_technical_features(df)
     df = add_advanced_features(df)
+    try:
+        df = add_wavelet_features(df)
+    except Exception as _wv_err:
+        print(f"[engineer] wavelet features skipped: {_wv_err}", flush=True)
     df = add_multi_timeframe_features(df)
 
     # Determine which feature cols are actually present (MTF cols depend on TF availability)

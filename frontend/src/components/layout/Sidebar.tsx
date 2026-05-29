@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker, LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers, Globe, Coins, CandlestickChart, BrainCircuit } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker, LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers, Globe, Coins, CandlestickChart, BrainCircuit, GitBranch } from 'lucide-react'
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -20,6 +20,7 @@ const NAV = [
   { to: '/options', icon: Layers, label: 'Options & Macro' },
   { to: '/macro', icon: Globe, label: 'Macro & Sentiment' },
   { to: '/polymarket', icon: Coins, label: 'Polymarket' },
+  { to: '/pipeline', icon: GitBranch, label: 'Pipeline' },
 ]
 
 export default function Sidebar() {

@@ -19,6 +19,20 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import NamedTuple
 
+sys.path.insert(0, str(Path(__file__).parent))
+from pipeline_tracker import (
+    PipelineTracker,
+    Stage,
+)
+
+MARKET_STATUS    = Stage.MARKET_STATUS
+DATA_FETCH       = Stage.DATA_FETCH
+SIGNAL_GENERATION = Stage.SIGNAL_GENERATION
+RISK_CHECK       = Stage.RISK_CHECK
+ORDER_EXECUTION  = Stage.ORDER_EXECUTION
+FILL_TRACKING    = Stage.FILL_TRACKING
+PNL_SNAPSHOT     = Stage.PNL_SNAPSHOT
+
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
@@ -309,56 +323,161 @@ async def main() -> None:
         print("ERROR: ALPACA_API_KEY / ALPACA_SECRET_KEY not set", flush=True)
         sys.exit(1)
 
-    account = await _get_account()
-    if account is None:
-        print("ERROR: could not reach Alpaca paper account", flush=True)
-        sys.exit(1)
+    async with PipelineTracker("desk_trading") as tracker:
 
-    equity   = float(account.get("equity",        0))
-    cash     = float(account.get("cash",          0))
-    buying   = float(account.get("buying_power",  0))
-    print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  buying_power=${buying:.2f}", flush=True)
+        # ── Stage 1: Market Status ────────────────────────────────────────────
+        is_open = False
+        with tracker.stage(MARKET_STATUS, "Check market status"):
+            try:
+                clock = await _alpaca_get("/v2/clock")
+                is_open = bool(clock.get("is_open", False))
+            except Exception:
+                is_open = True  # assume open if check fails; let subsequent calls error out
+            tracker.set_output(is_open=is_open)
 
-    all_orders: list[dict] = []
-    desk_summaries: list[str] = []
+        # ── Stage 2: Data Fetch (account + bars) ─────────────────────────────
+        account = None
+        bars_fetched = 0
+        symbols_fetched: list[str] = []
+        with tracker.stage(DATA_FETCH, "Fetch account and market bars"):
+            account = await _get_account()
+            if account is None:
+                raise RuntimeError("could not reach Alpaca paper account")
 
-    active_desks = [d for d in DESKS if not DESK_FILTER or DESK_FILTER in d.name.lower()]
-    if DESK_FILTER and not active_desks:
-        print(f"ERROR: no desk matches filter '{DESK_FILTER}'", flush=True)
-        sys.exit(1)
+            equity = float(account.get("equity",       0))
+            cash   = float(account.get("cash",         0))
+            buying = float(account.get("buying_power", 0))
+            print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  buying_power=${buying:.2f}", flush=True)
 
-    for desk in active_desks:
-        try:
-            desk_orders = await run_desk(desk, account)
-            all_orders.extend(desk_orders)
+            active_desks = [d for d in DESKS if not DESK_FILTER or DESK_FILTER in d.name.lower()]
+            if DESK_FILTER and not active_desks:
+                raise RuntimeError(f"no desk matches filter '{DESK_FILTER}'")
 
-            # Post per-desk summary
-            if desk_orders:
-                lines = [f"*{desk.name} Desk* — {len(desk_orders)} order(s) placed"]
-                for o in desk_orders:
-                    emoji = "🟢" if o["side"] == "buy" else "🔴"
-                    lines.append(
-                        f"{emoji} `{o['strategy']}/{o['symbol']}` "
-                        f"{o['side'].upper()} ${o['notional']:.0f} "
-                        f"conf={o['confidence']:.0%}  id=`{o['order_id'][:8]}…`"
+            # Pre-fetch bars for all unique symbols across all active desks
+            all_symbols = list({s for desk in active_desks for s in desk.symbols})
+            bars_cache: dict[str, object] = {}
+            for sym in all_symbols:
+                df = await _get_bars(sym)
+                if df is not None and len(df) >= 50:
+                    bars_cache[sym] = df
+                    bars_fetched += 1
+                    symbols_fetched.append(sym)
+            tracker.set_output(bars_fetched=bars_fetched, symbols=symbols_fetched)
+
+        # ── Stage 3: Signal Generation ────────────────────────────────────────
+        raw_signals: list[dict] = []
+        with tracker.stage(SIGNAL_GENERATION, "Generate trading signals"):
+            for desk in active_desks:
+                strategies = []
+                for sname in desk.strategy_names:
+                    s = _load_strategy(sname)
+                    if s is not None:
+                        strategies.append(s)
+
+                for symbol in desk.symbols:
+                    df = bars_cache.get(symbol)
+                    if df is None:
+                        continue
+                    for strategy in strategies:
+                        try:
+                            signal = await strategy.analyze(df, symbol)
+                        except Exception as exc:
+                            print(f"  ⚠ {strategy.name}/{symbol} analyze() error: {exc}", flush=True)
+                            continue
+                        if signal is not None:
+                            conf = getattr(signal, "confidence", 1.0) or 1.0
+                            raw_signals.append({
+                                "desk":       desk,
+                                "strategy":   strategy,
+                                "symbol":     symbol,
+                                "signal":     signal,
+                                "confidence": conf,
+                            })
+            tracker.set_output(signals_generated=len(raw_signals))
+
+        # ── Stage 4: Risk Check ───────────────────────────────────────────────
+        approved_signals: list[dict] = []
+        with tracker.stage(RISK_CHECK, "Apply confidence threshold filter"):
+            for item in raw_signals:
+                desk = item["desk"]
+                conf = item["confidence"]
+                if conf < desk.confidence_min:
+                    print(
+                        f"  · {item['strategy'].name}/{item['symbol']} signal={item['signal'].side} "
+                        f"conf={conf:.2f} < threshold={desk.confidence_min:.2f} — skipped",
+                        flush=True,
                     )
-                _post_slack(desk.slack_channel, "\n".join(lines))
-                desk_summaries.append(f"✅ *{desk.name}*: {len(desk_orders)} orders")
-            else:
-                desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
+                else:
+                    approved_signals.append(item)
+            filtered = len(raw_signals) - len(approved_signals)
+            tracker.set_output(passed=len(approved_signals), filtered=filtered)
 
-        except Exception as exc:
-            msg = f"✗ *{desk.name}*: desk runner crashed — {exc}"
-            print(f"  UNHANDLED: {msg}", flush=True)
-            traceback.print_exc()
-            desk_summaries.append(msg)
+        # ── Stage 5: Order Execution ──────────────────────────────────────────
+        all_orders: list[dict] = []
+        desk_summaries: list[str] = []
+        total_notional = 0.0
+        with tracker.stage(ORDER_EXECUTION, "Place orders"):
+            # Group approved signals by desk so we can still post per-desk summaries
+            desk_orders_map: dict[str, list[dict]] = {}
+            for item in approved_signals:
+                desk     = item["desk"]
+                symbol   = item["symbol"]
+                strategy = item["strategy"]
+                signal   = item["signal"]
+                conf     = item["confidence"]
 
-    # Global summary → #pnl-daily
-    now_str  = datetime.now(timezone.utc).strftime("%H:%M UTC")
-    summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}\n"
-    summary += "\n".join(desk_summaries)
-    summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
-    _post_slack("#pnl-daily", summary)
+                print(
+                    f"  ► {strategy.name}/{symbol} signal={signal.side.upper()} "
+                    f"conf={conf:.2f} — placing ${desk.notional_usd:.0f} order",
+                    flush=True,
+                )
+                order = await _place_order(symbol, signal.side, desk.notional_usd)
+                if order and order.get("id"):
+                    print(f"    ✓ order {order['id']} submitted ({order.get('status', '?')})", flush=True)
+                    record = {
+                        "desk":       desk.name,
+                        "strategy":   strategy.name,
+                        "symbol":     symbol,
+                        "side":       signal.side,
+                        "notional":   desk.notional_usd,
+                        "confidence": conf,
+                        "order_id":   order["id"],
+                        "status":     order.get("status", "?"),
+                        "ts":         datetime.now(timezone.utc).isoformat(),
+                    }
+                    all_orders.append(record)
+                    total_notional += desk.notional_usd
+                    desk_orders_map.setdefault(desk.name, []).append(record)
+                else:
+                    print(f"    ✗ order placement returned no ID", flush=True)
+
+            # Post per-desk Slack summaries
+            for desk in active_desks:
+                desk_order_list = desk_orders_map.get(desk.name, [])
+                if desk_order_list:
+                    lines = [f"*{desk.name} Desk* — {len(desk_order_list)} order(s) placed"]
+                    for o in desk_order_list:
+                        emoji = "🟢" if o["side"] == "buy" else "🔴"
+                        lines.append(
+                            f"{emoji} `{o['strategy']}/{o['symbol']}` "
+                            f"{o['side'].upper()} ${o['notional']:.0f} "
+                            f"conf={o['confidence']:.0%}  id=`{o['order_id'][:8]}…`"
+                        )
+                    _post_slack(desk.slack_channel, "\n".join(lines))
+                    desk_summaries.append(f"✅ *{desk.name}*: {len(desk_order_list)} orders")
+                else:
+                    desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
+
+            tracker.set_output(orders_placed=len(all_orders), total_notional=round(total_notional, 2))
+
+        # ── Stage 6: PnL Snapshot / Slack Summary ────────────────────────────
+        with tracker.stage(PNL_SNAPSHOT, "Post PnL snapshot to Slack"):
+            now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+            summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}\n"
+            summary += "\n".join(desk_summaries)
+            summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
+            _post_slack("#pnl-daily", summary)
+            tracker.set_output(desks_run=len(active_desks), total_orders=len(all_orders))
 
     print(f"\n{'═'*60}", flush=True)
     print(f"Done. {len(all_orders)} orders placed across {len(DESKS)} desks.", flush=True)
