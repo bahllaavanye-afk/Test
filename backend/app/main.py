@@ -139,6 +139,48 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "ok", "mode": settings.trading_mode}
 
+    @app.get("/health/detailed")
+    async def health_detailed():
+        """Comprehensive system health — DB, Redis, scheduler, and background tasks."""
+        import time
+        from app.database import AsyncSessionLocal
+
+        checks: dict[str, dict] = {}
+
+        # Database
+        try:
+            t0 = time.perf_counter()
+            async with AsyncSessionLocal() as session:
+                await session.execute(__import__("sqlalchemy").text("SELECT 1"))
+            checks["database"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
+        except Exception as e:
+            checks["database"] = {"ok": False, "error": str(e)[:120]}
+
+        # Redis
+        try:
+            from app.redis_client import get_redis
+            t0 = time.perf_counter()
+            redis = get_redis()
+            await redis.ping()
+            checks["redis"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
+        except Exception as e:
+            checks["redis"] = {"ok": False, "error": str(e)[:120]}
+
+        # Scheduler
+        sched = getattr(app.state, "scheduler", None)
+        checks["scheduler"] = {"ok": sched is not None and sched.running if sched else False}
+
+        # AlgoAgent
+        agent = getattr(app.state, "algo_agent", None)
+        checks["algo_agent"] = {"ok": agent is not None}
+
+        all_ok = all(v.get("ok", False) for v in checks.values())
+        return {
+            "status": "ok" if all_ok else "degraded",
+            "mode": settings.trading_mode,
+            "checks": checks,
+        }
+
     # Security headers on every response
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
