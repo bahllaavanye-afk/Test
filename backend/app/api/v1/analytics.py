@@ -873,3 +873,181 @@ async def get_monthly_returns(
             "ret": ret_pct,
         })
     return out
+
+
+@router.get("/tearsheet")
+async def get_tearsheet(
+    days: int = Query(365, ge=90, le=730, description="Lookback window in days"),
+    initial_equity: float = Query(100_000.0, ge=1_000, description="Baseline equity"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fund-style tearsheet metrics for investor pitch.
+
+    Computes full performance analytics from Trade records:
+      - Sharpe, Sortino, Calmar, Omega ratio, Ulcer Index
+      - Total return, annualised return, max drawdown
+      - Win rate, profit factor, avg win/loss
+      - Benchmark comparison vs SPY (via yfinance)
+      - Monthly returns heatmap data
+      - Equity curve and drawdown curve
+
+    Returns 404 when no trade data exists (no mock data).
+    """
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        raise HTTPException(status_code=404, detail="No accounts found")
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Fetch daily P&L
+    result = await db.execute(
+        select(
+            func.date_trunc("day", Trade.closed_at).label("day"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+            func.count(Trade.id).label("n_trades"),
+            func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("n_wins"),
+            func.avg(case((Trade.realized_pnl > 0, Trade.realized_pnl), else_=None)).label("avg_win"),
+            func.avg(case((Trade.realized_pnl <= 0, Trade.realized_pnl), else_=None)).label("avg_loss"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("day", Trade.closed_at))
+        .order_by(func.date_trunc("day", Trade.closed_at))
+    )
+    rows = result.all()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No trade data found in the requested period")
+
+    # Build daily series
+    daily_pnls = [float(r.daily_pnl) for r in rows]
+    n_trades_total = sum(r.n_trades for r in rows)
+    n_wins_total = sum(r.n_wins for r in rows)
+    avg_win = float(next((r.avg_win for r in rows if r.avg_win is not None), 0) or 0)
+    avg_loss = float(next((r.avg_loss for r in rows if r.avg_loss is not None), 0) or 0)
+
+    s = pd.Series(daily_pnls)
+    rf_daily = 0.05 / 252
+
+    # Equity curve
+    equity = initial_equity
+    equity_curve = []
+    drawdown_curve = []
+    peak = initial_equity
+    for i, (row, pnl) in enumerate(zip(rows, daily_pnls)):
+        equity += pnl
+        if equity > peak:
+            peak = equity
+        dd_pct = round((equity - peak) / peak * 100, 4) if peak > 0 else 0.0
+        day = row.day
+        day_str = day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)[:10]
+        equity_curve.append({"date": day_str, "equity": round(equity, 2)})
+        drawdown_curve.append({"date": day_str, "drawdown_pct": dd_pct})
+
+    # Performance metrics
+    total_return = (equity - initial_equity) / initial_equity
+    n_years = days / 365.0
+    annualized_return = (1.0 + total_return) ** (1.0 / max(n_years, 0.01)) - 1.0
+    max_dd = min(d["drawdown_pct"] for d in drawdown_curve) if drawdown_curve else 0.0
+
+    daily_returns = s / initial_equity
+    mean_ret = daily_returns.mean()
+    std_ret = daily_returns.std()
+    sharpe = float((mean_ret - rf_daily) / std_ret * math.sqrt(252)) if std_ret > 0 else 0.0
+
+    downside_rets = daily_returns[daily_returns < rf_daily]
+    downside_std = float(downside_rets.std()) if len(downside_rets) > 0 else 0.0
+    sortino = float((mean_ret - rf_daily) / downside_std * math.sqrt(252)) if downside_std > 0 else 0.0
+
+    calmar = float(annualized_return / abs(max_dd / 100.0)) if max_dd < 0 else 0.0
+
+    # Omega ratio
+    gains = daily_returns[daily_returns > rf_daily].sum()
+    losses = abs(daily_returns[daily_returns <= rf_daily].sum())
+    omega = float(gains / losses) if losses > 0 else float(gains > 0) * 999.0
+
+    # Ulcer index
+    drawdowns_pct = pd.Series([d["drawdown_pct"] for d in drawdown_curve])
+    ulcer = float(math.sqrt((drawdowns_pct ** 2).mean())) if len(drawdowns_pct) > 0 else 0.0
+
+    win_rate = n_wins_total / max(n_trades_total, 1)
+    profit_factor = abs(avg_win * n_wins_total / (avg_loss * max(n_trades_total - n_wins_total, 1))) if avg_loss != 0 else 0.0
+
+    # Monthly returns
+    monthly_result = await db.execute(
+        select(
+            func.date_trunc("month", Trade.closed_at).label("month"),
+            func.sum(Trade.realized_pnl).label("monthly_pnl"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("month", Trade.closed_at))
+        .order_by(func.date_trunc("month", Trade.closed_at))
+    )
+    monthly_rows = monthly_result.all()
+    running_eq = initial_equity
+    monthly_returns = []
+    for row in monthly_rows:
+        mpnl = float(row.monthly_pnl)
+        ret_pct = round(mpnl / max(running_eq, 1) * 100, 2)
+        running_eq += mpnl
+        month = row.month
+        monthly_returns.append({
+            "month": month.strftime("%b %Y") if hasattr(month, "strftime") else str(month)[:7],
+            "ret": ret_pct,
+        })
+
+    # Benchmark SPY via yfinance (best-effort, non-blocking)
+    benchmark_sharpe_spy = None
+    benchmark_return_spy = None
+    try:
+        import yfinance as yf
+        spy = yf.download("SPY", period=f"{days}d", interval="1d", auto_adjust=True, progress=False)
+        if spy is not None and len(spy) > 10:
+            spy_close = spy["Close"].squeeze()
+            spy_rets = spy_close.pct_change().dropna()
+            spy_total = float(spy_close.iloc[-1] / spy_close.iloc[0] - 1)
+            spy_std = spy_rets.std()
+            benchmark_sharpe_spy = round(
+                float((spy_rets.mean() - rf_daily) / spy_std * math.sqrt(252)) if spy_std > 0 else 0.0, 4
+            )
+            benchmark_return_spy = round(spy_total * 100, 2)
+    except Exception:
+        pass
+
+    return {
+        "period_days": days,
+        "n_trading_days": len(rows),
+        "n_trades": n_trades_total,
+        # Core metrics
+        "sharpe": round(sharpe, 4),
+        "sortino": round(sortino, 4),
+        "calmar": round(calmar, 4),
+        "omega_ratio": round(omega, 4),
+        "ulcer_index": round(ulcer, 4),
+        # Returns
+        "total_return_pct": round(total_return * 100, 2),
+        "annualized_return_pct": round(annualized_return * 100, 2),
+        "max_drawdown_pct": round(max_dd, 2),
+        # Trade stats
+        "win_rate": round(win_rate, 4),
+        "profit_factor": round(profit_factor, 4),
+        "avg_win_pct": round(avg_win / initial_equity * 100, 4),
+        "avg_loss_pct": round(avg_loss / initial_equity * 100, 4),
+        # Benchmark
+        "benchmark_sharpe_spy": benchmark_sharpe_spy,
+        "benchmark_return_spy": benchmark_return_spy,
+        # Time series
+        "monthly_returns": monthly_returns,
+        "equity_curve": equity_curve,
+        "drawdown_curve": drawdown_curve,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }

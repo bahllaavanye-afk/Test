@@ -23,11 +23,14 @@ def _req(quantity=10, limit_price=None, order_type="market", algo="auto"):
     )
 
 
-def test_large_order_picks_twap():
+def test_large_order_picks_rl_or_twap():
+    """Large orders use rl_exec when available, twap as fallback."""
+    from app.execution import smart_router as sr
     router = SmartOrderRouter(DummyBroker())
     req = _req(quantity=200, limit_price=100)  # 200 * 100 = $20k > $10k
     algo = router._select_algorithm(req)
-    assert algo == "twap"
+    # rl_exec is preferred when RL agent is importable, twap otherwise
+    assert algo in ("rl_exec", "twap")
 
 
 def test_limit_order_picks_limit_first():

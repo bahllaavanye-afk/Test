@@ -41,6 +41,8 @@ from app.strategies.manual.stablecoin_depeg_arb import StablecoinDepegArbStrateg
 from app.strategies.manual.moc_auction_imbalance import MOCAuctionImbalanceStrategy
 from app.strategies.manual.options_pcr_reversal import OptionsPCRReversalStrategy
 from app.strategies.manual.time_series_momentum import TimeSeriesMomentumStrategy
+from app.strategies.manual.cross_sectional_momentum import CrossSectionalMomentumStrategy
+from app.strategies.manual.vwap_reversion import VWAPReversionStrategy
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
 # xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
@@ -111,6 +113,8 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "moc_auction_imbalance": MOCAuctionImbalanceStrategy,
     "options_pcr_reversal": OptionsPCRReversalStrategy,
     "time_series_momentum": TimeSeriesMomentumStrategy,
+    "cross_sectional_momentum": CrossSectionalMomentumStrategy,
+    "vwap_reversion": VWAPReversionStrategy,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry

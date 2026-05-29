@@ -3,6 +3,132 @@ import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
 import CorrelationMatrix from '../components/analytics/CorrelationMatrix'
 
+// ─── Tearsheet sub-components ────────────────────────────────────────────────
+
+function TearsheetMetric({ label, value, color = '#f5a623', sub }: { label: string; value: string; color?: string; sub?: string }) {
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded p-3 text-center">
+      <p className="text-[10px] text-[#555] uppercase tracking-wider">{label}</p>
+      <p className="text-lg font-black mt-1" style={{ color }}>{value}</p>
+      {sub && <p className="text-[10px] text-[#444] mt-0.5">{sub}</p>}
+    </div>
+  )
+}
+
+function BenchmarkRow({ label, sharpe, ret, color }: { label: string; sharpe: number | null; ret: number | null; color: string }) {
+  return (
+    <tr className="border-b border-[#1a1a1a] last:border-0">
+      <td className="py-2 pr-4 text-xs text-[#e8e8e8]">{label}</td>
+      <td className="py-2 pr-4 text-right text-xs font-mono" style={{ color: sharpe != null ? (sharpe >= 1.5 ? '#00c853' : sharpe >= 0.5 ? '#f5a623' : '#ff1744') : '#555' }}>
+        {sharpe != null ? sharpe.toFixed(2) : '—'}
+      </td>
+      <td className="py-2 text-right text-xs font-mono" style={{ color: ret != null ? (ret >= 0 ? '#00c853' : '#ff1744') : '#555' }}>
+        {ret != null ? `${ret >= 0 ? '+' : ''}${ret.toFixed(1)}%` : '—'}
+      </td>
+    </tr>
+  )
+}
+
+function DrawdownCurve({ points }: { points: { date: string; drawdown_pct: number }[] }) {
+  if (!points || points.length < 2) return null
+  const W = 600, H = 80
+  const PAD = { top: 8, right: 8, bottom: 16, left: 40 }
+  const innerW = W - PAD.left - PAD.right
+  const innerH = H - PAD.top - PAD.bottom
+  const values = points.map(p => p.drawdown_pct)
+  const minV = Math.min(...values) * 1.05
+  const maxV = 0
+  const N = values.length
+  const scaleX = (i: number) => PAD.left + (i / (N - 1)) * innerW
+  const scaleY = (v: number) => PAD.top + ((maxV - v) / (maxV - minV)) * innerH
+  const lineD = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ')
+  const fillD = `${lineD} L${scaleX(N - 1).toFixed(1)},${scaleY(0).toFixed(1)} L${PAD.left},${scaleY(0).toFixed(1)} Z`
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="ddFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ff1744" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#ff1744" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <line x1={PAD.left} y1={scaleY(0)} x2={PAD.left + innerW} y2={scaleY(0)} stroke="#1e1e1e" strokeWidth="1" />
+      {[minV / 2, minV].map((v, i) => (
+        <text key={i} x={PAD.left - 4} y={scaleY(v) + 4} textAnchor="end" fontSize="8" fill="#555">{v.toFixed(1)}%</text>
+      ))}
+      <path d={fillD} fill="url(#ddFill)" />
+      <path d={lineD} fill="none" stroke="#ff1744" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function TearsheetSection({ data }: { data: any }) {
+  const ts = data
+  const stratSharpe: number = ts.sharpe ?? 0
+  const benchSharpe: number | null = ts.benchmark_sharpe_spy ?? null
+  const benchReturn: number | null = ts.benchmark_return_spy ?? null
+
+  return (
+    <div className="space-y-4">
+      {/* Core metrics */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+        <TearsheetMetric label="Sharpe" value={ts.sharpe?.toFixed(2) ?? '—'} color={ts.sharpe >= 1.5 ? '#00c853' : ts.sharpe >= 0.5 ? '#f5a623' : '#ff1744'} />
+        <TearsheetMetric label="Sortino" value={ts.sortino?.toFixed(2) ?? '—'} color="#f5a623" />
+        <TearsheetMetric label="Calmar" value={ts.calmar?.toFixed(2) ?? '—'} color="#f5a623" />
+        <TearsheetMetric label="Omega" value={ts.omega_ratio?.toFixed(2) ?? '—'} color="#2979ff" />
+        <TearsheetMetric label="Ulcer Index" value={ts.ulcer_index?.toFixed(2) ?? '—'} color="#888" sub="lower=better" />
+        <TearsheetMetric label="Max DD" value={ts.max_drawdown_pct != null ? `${ts.max_drawdown_pct.toFixed(1)}%` : '—'} color="#ff1744" />
+      </div>
+
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+        <TearsheetMetric label="Total Return" value={ts.total_return_pct != null ? `${ts.total_return_pct >= 0 ? '+' : ''}${ts.total_return_pct.toFixed(1)}%` : '—'} color={ts.total_return_pct >= 0 ? '#00c853' : '#ff1744'} />
+        <TearsheetMetric label="Ann. Return" value={ts.annualized_return_pct != null ? `${ts.annualized_return_pct >= 0 ? '+' : ''}${ts.annualized_return_pct.toFixed(1)}%` : '—'} color={ts.annualized_return_pct >= 0 ? '#00c853' : '#ff1744'} />
+        <TearsheetMetric label="Win Rate" value={ts.win_rate != null ? `${(ts.win_rate * 100).toFixed(0)}%` : '—'} color="#00c853" />
+        <TearsheetMetric label="Profit Factor" value={ts.profit_factor?.toFixed(2) ?? '—'} color="#f5a623" />
+        <TearsheetMetric label="Avg Win" value={ts.avg_win_pct != null ? `+${ts.avg_win_pct.toFixed(2)}%` : '—'} color="#00c853" />
+        <TearsheetMetric label="Avg Loss" value={ts.avg_loss_pct != null ? `${ts.avg_loss_pct.toFixed(2)}%` : '—'} color="#ff1744" />
+      </div>
+
+      {/* Drawdown curve */}
+      {ts.drawdown_curve?.length > 1 && (
+        <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded p-3">
+          <p className="text-xs text-[#555] mb-2 uppercase tracking-wider">Drawdown Curve</p>
+          <DrawdownCurve points={ts.drawdown_curve} />
+        </div>
+      )}
+
+      {/* Benchmark comparison */}
+      <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded p-3">
+        <p className="text-xs text-[#555] mb-3 uppercase tracking-wider">Benchmark Comparison</p>
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="text-[#555] border-b border-[#1e1e1e]">
+              <th className="text-left pb-1.5 pr-4">Strategy / Index</th>
+              <th className="text-right pb-1.5 pr-4">Sharpe</th>
+              <th className="text-right pb-1.5">Return</th>
+            </tr>
+          </thead>
+          <tbody>
+            <BenchmarkRow
+              label="QuantEdge (this period)"
+              sharpe={ts.sharpe ?? null}
+              ret={ts.total_return_pct ?? null}
+              color="#f5a623"
+            />
+            <BenchmarkRow label="SPY (S&P 500)" sharpe={benchSharpe} ret={benchReturn} color="#2979ff" />
+          </tbody>
+        </table>
+        {benchSharpe != null && (
+          <p className="text-[10px] text-[#555] mt-2">
+            {stratSharpe > benchSharpe
+              ? `QuantEdge outperforms SPY by +${(stratSharpe - benchSharpe).toFixed(2)} Sharpe`
+              : `SPY outperforms by ${(benchSharpe - stratSharpe).toFixed(2)} Sharpe this period`}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Components ─────────────────────────────────────────────────────────────
 
 function MetricCard({
@@ -123,6 +249,15 @@ function EquityCurveFromPoints({ points }: { points: { date: string; equity: num
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function Analytics() {
+  const [activeTab, setActiveTab] = useState<'analytics' | 'tearsheet'>('analytics')
+
+  const { data: tearsheetRaw, isError: tearsheetError, isLoading: tearsheetLoading } = useQuery({
+    queryKey: ['tearsheet'],
+    queryFn: () => api.get('/analytics/tearsheet?days=365').then(r => r.data),
+    enabled: activeTab === 'tearsheet',
+    retry: false,
+  })
+
   const { data: perf, isError: perfError } = useQuery({
     queryKey: ['performance'],
     queryFn: () => api.get('/analytics/performance').then(r => r.data),
@@ -178,7 +313,20 @@ export default function Analytics() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Analytics</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-white">Analytics</h1>
+            <div className="flex bg-[#111111] border border-[#1e1e1e] rounded-lg p-0.5">
+              {(['analytics', 'tearsheet'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-all capitalize ${activeTab === tab ? 'bg-[#f5a623] text-black' : 'text-[#888888] hover:text-white'}`}
+                >
+                  {tab === 'tearsheet' ? 'Investor Tearsheet' : tab}
+                </button>
+              ))}
+            </div>
+          </div>
           <p className="text-xs text-[#888888] mt-0.5">Institutional performance metrics · walk-forward validated</p>
         </div>
         <div className="flex items-center gap-2">
@@ -537,11 +685,45 @@ export default function Analytics() {
         )}
       </div>
 
+      {/* Tearsheet tab content */}
+      {activeTab === 'tearsheet' && (
+        <div className="bg-[#111111] border border-[#f5a623]/30 rounded-lg p-5">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-sm font-bold text-white">Investor Tearsheet</h2>
+              <p className="text-xs text-[#888888] mt-0.5">Fund-style performance report · last 365 days</p>
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#f5a623]/40 text-[#f5a623] hover:bg-[#f5a623]/10 text-xs transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Export PDF
+            </button>
+          </div>
+          {tearsheetLoading ? (
+            <div className="flex items-center justify-center py-12 text-[#555]">
+              <div className="w-5 h-5 border-2 border-[#f5a623]/30 border-t-[#f5a623] rounded-full animate-spin mr-2" />
+              Computing tearsheet metrics...
+            </div>
+          ) : tearsheetError ? (
+            <div className="flex items-center justify-center py-12 text-center space-y-2">
+              <div>
+                <p className="text-sm text-[#888888]">No trade data available for tearsheet</p>
+                <p className="text-xs text-[#555] mt-1">Execute trades via paper or live trading to generate this report.</p>
+              </div>
+            </div>
+          ) : tearsheetRaw ? (
+            <TearsheetSection data={tearsheetRaw} />
+          ) : null}
+        </div>
+      )}
+
       {/* Correlation Matrix */}
-      <CorrelationMatrix days={30} />
+      {activeTab === 'analytics' && <CorrelationMatrix days={30} />}
 
       {/* Risk & architecture notes */}
-      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+      {activeTab === 'analytics' && <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
         <h2 className="text-sm font-semibold text-white mb-3">Risk Architecture</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-[#888888]">
           <div className="space-y-1.5">
@@ -557,7 +739,7 @@ export default function Analytics() {
             <p className="flex items-start gap-1.5"><span className="text-[#f5a623] shrink-0">•</span> AES-256 encrypted broker credentials</p>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
