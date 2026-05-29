@@ -26,6 +26,8 @@ services:
         sync: false   # Set in Render dashboard
       - key: ALPACA_SECRET_KEY
         sync: false   # Set in Render dashboard
+      - key: SLACK_BOT_TOKEN
+        sync: false   # Set in Render dashboard: xoxb-...
     healthCheckPath: /health
     autoDeploy: true
 

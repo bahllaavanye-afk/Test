@@ -46,7 +46,8 @@ class Settings(BaseSettings):
     arb_bucket_pct: float = 0.70         # 70% capital to arbitrage bucket
     ml_bucket_pct: float = 0.30          # 30% capital to ML bucket
 
-    # Slack webhooks (optional, each channel separately)
+    # Slack — bot token (preferred) or webhooks per channel
+    slack_bot_token: str = ""          # xoxb-... (chat:write + chat:write.public scopes)
     slack_webhook_default: str = ""
     slack_webhook_orders: str = ""
     slack_webhook_signals: str = ""
