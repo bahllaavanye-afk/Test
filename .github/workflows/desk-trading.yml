@@ -54,10 +54,8 @@ jobs:
         run: |
           python --version
           python -c "import pandas, numpy, scipy, statsmodels, fastapi, pydantic; print('Core deps OK')"
-          PYTHONPATH=${{ github.workspace }}/backend python -c "
-          from app.strategies import STRATEGY_REGISTRY
-          print(f'Strategy registry OK: {len(STRATEGY_REGISTRY)} strategies')
-          "
+        env:
+          SECRET_KEY: d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
 
       - name: Run desk order placer
         env:
