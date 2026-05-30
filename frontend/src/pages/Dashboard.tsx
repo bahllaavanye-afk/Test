@@ -6,6 +6,7 @@ import { RegimeIndicator } from '../components/risk/RegimeIndicator'
 import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
 import LiveChartPlaceholder from '../components/charts/MockCandlestickChart'
 import NewsSentimentPanel from '../components/trading/NewsSentimentPanel'
+import TradeMarkerChart from '../components/charts/TradeMarkerChart'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -65,11 +66,15 @@ function ConfirmLiveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCa
   )
 }
 
+// Top 5 symbols for the "Recent Trades" section
+const TRADE_SYMBOLS = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA']
+
 export default function Dashboard() {
   const dispatch = useDispatch()
   const mode = useSelector(selectTradingMode)
   const [showLiveModal, setShowLiveModal] = useState(false)
   const [chartSymbol, setChartSymbol] = useState('NYSE:SPY')
+  const [tradeSymbol, setTradeSymbol] = useState('SPY')
 
   const { data: perf } = useQuery({ queryKey: ['performance'], queryFn: () => api.get('/analytics/performance').then(r => r.data), refetchInterval: 30_000 })
   const { data: positions } = useQuery({ queryKey: ['positions'], queryFn: () => api.get('/positions/').then(r => r.data), refetchInterval: 10_000 })
@@ -287,6 +292,29 @@ export default function Dashboard() {
       {/* ── Market News ── */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden max-h-64 overflow-y-auto">
         <NewsSentimentPanel symbols={['SPY', 'QQQ', 'AAPL', 'NVDA', 'META']} />
+      </div>
+
+      {/* ── Recent Trades (candlestick + buy/sell markers) ── */}
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs text-[#888888] uppercase tracking-wider">Recent Trades</h3>
+          <div className="flex gap-1.5">
+            {TRADE_SYMBOLS.map(sym => (
+              <button
+                key={sym}
+                onClick={() => setTradeSymbol(sym)}
+                className="text-xs px-2.5 py-1 rounded transition-colors"
+                style={{
+                  background: tradeSymbol === sym ? '#f5a623' : '#1e1e1e',
+                  color: tradeSymbol === sym ? '#000' : '#888',
+                }}
+              >
+                {sym}
+              </button>
+            ))}
+          </div>
+        </div>
+        <TradeMarkerChart symbol={tradeSymbol} height={360} />
       </div>
 
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>

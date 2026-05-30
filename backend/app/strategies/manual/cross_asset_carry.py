@@ -38,19 +38,10 @@ import numpy as np
 import pandas as pd
 
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DATA_BASE = "https://data.alpaca.markets"
-
-# Item 10: FRED free API endpoint for 10Y-2Y yield curve spread
-# No API key required — the CSV endpoint is completely public
-_FRED_T10Y2Y = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10Y2Y"
-
-# yfinance tickers for commodity front/second contract spread proxies
-_COMMODITY_TICKERS = {
-    "oil": ("CL=F", "CLH26.NYM"),   # WTI front vs deferred (proxy)
-    "gold": ("GC=F", "GCM26.CMX"),  # Gold front vs deferred
-}
 
 
 # ETF universe — each leg and its role in the carry signal
@@ -88,20 +79,8 @@ class CrossAssetCarryStrategy(AbstractStrategy):
     # Lookback for trailing return
     LOOKBACK_DAYS = 252   # ~12 months
 
-    # Item 10: weights for the extended composite signal
-    RATES_CARRY_WEIGHT     = 0.20
-    COMMODITY_CARRY_WEIGHT = 0.10
-    EQUITY_CARRY_WEIGHT    = 0.40
-    BOND_CARRY_WEIGHT      = 0.30
-
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-
-    def _headers(self) -> dict:
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
 
     async def _fetch_12m_return(self, symbol: str) -> float | None:
         """Fetch daily bars and compute trailing 12-month total return."""
@@ -116,7 +95,7 @@ class CrossAssetCarryStrategy(AbstractStrategy):
                         "limit": self.LOOKBACK_DAYS + 30,
                         "feed": "iex",
                     },
-                    headers=self._headers(),
+                    headers=alpaca_headers(),
                 )
             if resp.status_code != 200:
                 return None
@@ -138,83 +117,21 @@ class CrossAssetCarryStrategy(AbstractStrategy):
         std  = np.std(series_vals)
         return float((value - mean) / max(std, 1e-8))
 
-    async def _fetch_rates_carry(self) -> float | None:
-        """
-        Item 10: Fetch 10Y-2Y yield curve spread from FRED (free, no key).
-        Endpoint: https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10Y2Y
-
-        Returns the most recent T10Y2Y spread (in percentage points).
-        Negative spread = inverted curve → near-term yield support for equities.
-        """
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    _FRED_T10Y2Y,
-                    headers={"User-Agent": "QuantEdge research@quantedge.io"},
-                )
-            if resp.status_code != 200:
-                return None
-            # CSV format: DATE,T10Y2Y\n2020-01-01,0.xx
-            lines = resp.text.strip().splitlines()
-            # Last non-missing value
-            for line in reversed(lines[1:]):  # skip header
-                parts = line.split(",")
-                if len(parts) == 2 and parts[1] not in ("", ".", "ND"):
-                    return float(parts[1])
-        except Exception:
-            pass
-        return None
-
-    def _fetch_commodity_roll_yield(self) -> float | None:
-        """
-        Item 10: Estimate commodity roll yield using yfinance front/second month spread.
-
-        Roll yield = -(F2 - F1) / F1  (negative contango = cost, positive backwardation = yield)
-        Uses oil as primary signal. Returns normalized roll yield.
-        """
-        try:
-            import yfinance as yf
-            # Use WTI front-month vs proxy for second month
-            # GLD is spot gold ETF; USO tracks front-month oil futures
-            front = yf.Ticker("USO").history(period="5d")
-            proxy_second = yf.Ticker("UCO").history(period="5d")  # 2x oil, used as proxy
-
-            if front.empty or proxy_second.empty:
-                return None
-
-            # Simple approximation: USO rolling discount vs UCO annualized decay
-            uso_ret = float(front["Close"].iloc[-1] / front["Close"].iloc[0] - 1)
-            uco_ret = float(proxy_second["Close"].iloc[-1] / proxy_second["Close"].iloc[0] - 1)
-            # Approximate roll yield = excess return of front over leveraged proxy / 2
-            roll_yield = uso_ret - uco_ret / 2.0
-            return float(roll_yield)
-        except Exception:
-            return None
-
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         """
-        Compute carry signal across equity, bond, rates, and commodity ETFs.
+        Compute carry signal across equity and bond ETFs.
         Signal is issued for the 'carry_basket' (treated as a synthetic symbol).
         The actual executor will decompose into individual ETF legs.
-
-        Item 10: Extended with:
-          - Rates carry: FRED 10Y-2Y yield curve slope
-          - Commodity roll yield: front/second futures spread from yfinance
         """
         import asyncio
 
-        # Fetch 12-month returns for all ETFs concurrently (plus FRED rates)
-        etf_rets, rates_carry, commodity_roll = await asyncio.gather(
-            asyncio.gather(
-                *[self._fetch_12m_return(sym) for sym in ALL_ETF_UNIVERSE],
-                return_exceptions=True,
-            ),
-            self._fetch_rates_carry(),
-            asyncio.get_event_loop().run_in_executor(None, self._fetch_commodity_roll_yield),
+        # Fetch 12-month returns for all ETFs concurrently
+        returns = await asyncio.gather(
+            *[self._fetch_12m_return(sym) for sym in ALL_ETF_UNIVERSE],
+            return_exceptions=True,
         )
-
         ret_map: dict[str, float] = {}
-        for sym, ret in zip(ALL_ETF_UNIVERSE, etf_rets):
+        for sym, ret in zip(ALL_ETF_UNIVERSE, returns):
             if isinstance(ret, float) and ret is not None:
                 ret_map[sym] = ret
 
@@ -230,31 +147,15 @@ class CrossAssetCarryStrategy(AbstractStrategy):
         # Bond carry spread: TLT - SHY (duration premium)
         bond_carry_raw = float(ret_map["TLT"] - ret_map["SHY"])
 
-        # Item 10: Rates carry — yield curve slope signal
-        # Inverted curve (T10Y2Y < 0): near-term yield support → positive carry signal for SPY
-        rates_carry_raw: float = 0.0
-        if rates_carry is not None:
-            # Inverted = spread < 0 → long equities (recession priced in, rates supportive)
-            # Steep = spread > 2 → positive carry for bonds
-            rates_carry_raw = float(-np.tanh(rates_carry * 0.5))  # invert: negative spread = bullish
+        # Normalize each signal to [-1, +1] range
+        # We use tanh normalization: tanh maps any real to (-1, 1) smoothly
+        equity_carry_norm = float(np.tanh(equity_carry_raw * 5.0))
+        bond_carry_norm   = float(np.tanh(bond_carry_raw   * 5.0))
 
-        # Item 10: Commodity roll yield signal
-        commodity_carry_raw: float = 0.0
-        if commodity_roll is not None:
-            commodity_carry_raw = float(np.tanh(commodity_roll * 10.0))
-
-        # Normalize each signal to [-1, +1] range using tanh
-        equity_carry_norm    = float(np.tanh(equity_carry_raw * 5.0))
-        bond_carry_norm      = float(np.tanh(bond_carry_raw   * 5.0))
-        rates_carry_norm     = float(np.tanh(rates_carry_raw  * 2.0))
-        commodity_carry_norm = float(np.tanh(commodity_carry_raw))
-
-        # Item 10: Extended composite carry signal
+        # Combined carry signal
         combined = (
-            self.EQUITY_CARRY_WEIGHT    * equity_carry_norm
-            + self.BOND_CARRY_WEIGHT    * bond_carry_norm
-            + self.RATES_CARRY_WEIGHT   * rates_carry_norm
-            + self.COMMODITY_CARRY_WEIGHT * commodity_carry_norm
+            self.EQUITY_CARRY_WEIGHT * equity_carry_norm +
+            self.BOND_CARRY_WEIGHT   * bond_carry_norm
         )
 
         if abs(combined) < self.ENTRY_THRESHOLD:
@@ -263,11 +164,12 @@ class CrossAssetCarryStrategy(AbstractStrategy):
         side       = "buy" if combined > 0 else "sell"
         confidence = min(abs(combined), 1.0)
 
-        # Determine which ETF to trade
+        # Determine which ETF to trade (signal issued for the triggering symbol)
+        # Prefer to trade the most liquid ETF in the appropriate leg
         if side == "buy":
-            trade_symbol = "SCHD"
+            trade_symbol = "SCHD"   # long high-carry equity
         else:
-            trade_symbol = "ARKK"
+            trade_symbol = "ARKK"   # short low-carry equity (or TLT short if bond-driven)
 
         # Override with provided symbol if it's in the universe
         if symbol in ALL_ETF_UNIVERSE:
@@ -281,25 +183,19 @@ class CrossAssetCarryStrategy(AbstractStrategy):
             strategy_type=self.strategy_type,
             risk_bucket=self.risk_bucket,
             metadata={
-                "equity_carry_spread":    round(equity_carry_raw, 4),
-                "bond_carry_spread":      round(bond_carry_raw,   4),
-                "rates_carry_t10y2y":     round(rates_carry, 4) if rates_carry is not None else None,
-                "commodity_roll_yield":   round(commodity_roll, 4) if commodity_roll is not None else None,
-                "equity_carry_norm":      round(equity_carry_norm, 4),
-                "bond_carry_norm":        round(bond_carry_norm, 4),
-                "rates_carry_norm":       round(rates_carry_norm, 4),
-                "commodity_carry_norm":   round(commodity_carry_norm, 4),
-                "combined_carry":         round(combined, 4),
+                "equity_carry_spread": round(equity_carry_raw, 4),
+                "bond_carry_spread":   round(bond_carry_raw,   4),
+                "equity_carry_norm":   round(equity_carry_norm, 4),
+                "bond_carry_norm":     round(bond_carry_norm,   4),
+                "combined_carry":      round(combined, 4),
                 "schd_12m":  round(ret_map.get("SCHD", 0), 4),
                 "arkk_12m":  round(ret_map.get("ARKK", 0), 4),
                 "tlt_12m":   round(ret_map.get("TLT",  0), 4),
                 "shy_12m":   round(ret_map.get("SHY",  0), 4),
-                "academic_ref": "Koijen et al. (2018) JFE Carry + FRED rates + commodity roll",
+                "academic_ref": "Koijen et al. (2018) JFE Carry",
                 "portfolio_weights": {
-                    "equity_carry":    self.EQUITY_CARRY_WEIGHT,
-                    "bond_carry":      self.BOND_CARRY_WEIGHT,
-                    "rates_carry":     self.RATES_CARRY_WEIGHT,
-                    "commodity_carry": self.COMMODITY_CARRY_WEIGHT,
+                    "equity_carry": self.EQUITY_CARRY_WEIGHT,
+                    "bond_carry":   self.BOND_CARRY_WEIGHT,
                 },
             },
         )

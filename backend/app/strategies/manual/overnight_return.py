@@ -31,6 +31,7 @@ import numpy as np
 import pandas as pd
 
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 ET = ZoneInfo("America/New_York")
@@ -81,12 +82,6 @@ class OvernightReturnStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    def _headers(self) -> dict:
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     def _in_buy_window(self, now_et: datetime) -> bool:
         h, m = now_et.hour, now_et.minute
         return (
@@ -114,7 +109,7 @@ class OvernightReturnStrategy(AbstractStrategy):
                         "limit": days + 30,
                         "feed": "iex",
                     },
-                    headers=self._headers(),
+                    headers=alpaca_headers(),
                 )
             if resp.status_code != 200:
                 return pd.Series(dtype=float, name=symbol)
@@ -136,7 +131,7 @@ class OvernightReturnStrategy(AbstractStrategy):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
                     f"{_DATA_BASE}/v2/stocks/{symbol}/quotes/latest",
-                    headers=self._headers(),
+                    headers=alpaca_headers(),
                 )
             if resp.status_code == 200:
                 q = resp.json().get("quote", {})
@@ -179,7 +174,7 @@ class OvernightReturnStrategy(AbstractStrategy):
                 resp = await client.get(
                     f"{_DATA_BASE}/v2/stocks/{symbol}/bars",
                     params={"timeframe": "1Day", "start": start, "limit": 35, "feed": "iex"},
-                    headers=self._headers(),
+                    headers=alpaca_headers(),
                 )
             if resp.status_code != 200:
                 return False

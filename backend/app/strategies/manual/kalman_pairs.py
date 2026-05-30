@@ -28,6 +28,7 @@ import asyncio
 from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 
 
 def kalman_filter_regression(y: np.ndarray, x: np.ndarray,
@@ -110,19 +111,13 @@ class KalmanPairsStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    def _headers(self):
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _fetch_bars(self, symbol: str, days: int = 252) -> pd.Series:
         start = (date.today() - timedelta(days=days)).isoformat()
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 f"{self._DATA_BASE}/v2/stocks/{symbol}/bars",
                 params={"timeframe": "1Day", "start": start, "limit": days},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return pd.Series(dtype=float)

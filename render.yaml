@@ -12,8 +12,19 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install uv && uv pip install --system -e .
-    startCommand: python -c "from alembic.config import Config; from alembic import command; c=Config('alembic.ini'); command.upgrade(c,'head')" && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    buildCommand: >-
+      pip install uv &&
+      uv pip install --system
+        --extra-index-url https://download.pytorch.org/whl/cpu
+        -e ".[test]"
+    startCommand: >-
+      python -c "
+        from alembic.config import Config;
+        from alembic import command;
+        c = Config('alembic.ini');
+        command.upgrade(c, 'head')
+      " &&
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
     envVars:
       - key: TRADING_MODE
         value: paper
@@ -28,14 +39,14 @@ services:
           name: quantedge-db
           property: connectionString
       - key: REDIS_URL
-        value: ""         # Optional — leave blank to run without cache (no Upstash needed)
+        value: ""         # Optional — leave blank to run without cache
       - key: SECRET_KEY
         generateValue: true
       - key: ALPACA_API_KEY
-        sync: false       # Add in Render dashboard after deploy (paper trading key)
+        sync: false       # Set in Render dashboard (paper trading key)
       - key: ALPACA_SECRET_KEY
-        sync: false       # Add in Render dashboard after deploy
+        sync: false       # Set in Render dashboard
       - key: SLACK_BOT_TOKEN
-        sync: false       # Add in Render dashboard after deploy (optional)
+        sync: false       # Set in Render dashboard (optional, for notifications)
     healthCheckPath: /health
     autoDeploy: true

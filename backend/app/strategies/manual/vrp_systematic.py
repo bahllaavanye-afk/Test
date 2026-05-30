@@ -34,12 +34,7 @@ import httpx
 from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
-
-try:
-    import yfinance as yf
-    _YF_AVAILABLE = True
-except ImportError:
-    _YF_AVAILABLE = False
+from app.brokers.alpaca_headers import alpaca_headers
 
 
 class VRPSystematicStrategy(AbstractStrategy):
@@ -64,12 +59,6 @@ class VRPSystematicStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    def _headers(self):
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _get_realized_vol(self, symbol: str) -> float | None:
         """Compute 20-day annualized realized volatility from daily closes."""
         start = (date.today() - timedelta(days=40)).isoformat()
@@ -77,7 +66,7 @@ class VRPSystematicStrategy(AbstractStrategy):
             resp = await client.get(
                 f"{self._DATA_BASE}/v2/stocks/{symbol}/bars",
                 params={"timeframe": "1Day", "start": start, "limit": 30},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return None
@@ -101,7 +90,7 @@ class VRPSystematicStrategy(AbstractStrategy):
                     "expiration_date_lte": (date.today() + timedelta(days=45)).isoformat(),
                     "limit": 100,
                 },
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
             if contracts_resp.status_code != 200:
                 return None
@@ -117,7 +106,7 @@ class VRPSystematicStrategy(AbstractStrategy):
             snap_resp = await client.get(
                 f"{self._ALPACA_BASE}/v2/options/snapshots",
                 params={"symbols": atm_sym, "feed": "indicative"},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if snap_resp.status_code != 200:
             return None
@@ -126,43 +115,6 @@ class VRPSystematicStrategy(AbstractStrategy):
         iv = snap.get("impliedVolatility")
         return float(iv) if iv is not None else None
 
-    def _get_vix_vrp(self) -> dict | None:
-        """
-        Item 9: Compute VRP using free yfinance data.
-        VRP = 30-day implied vol (VIX/√12 as 30-day proxy) minus
-              30-day realized vol of SPY.
-
-        Signal:
-          VRP > 4 vol points → SELL (short variance, collect premium)
-          VRP < -2 vol points → BUY (long variance, buy protection)
-        """
-        if not _YF_AVAILABLE:
-            return None
-        try:
-            # VIX is the 30-calendar-day IV for SPX (approximately = SPY IV)
-            vix_data = yf.Ticker("^VIX").history(period="5d")
-            if vix_data.empty:
-                return None
-            vix_level = float(vix_data["Close"].iloc[-1])
-            iv_30d = vix_level / 100.0  # convert percentage to decimal
-
-            # SPY 30-day realized vol
-            spy_data = yf.Ticker("SPY").history(period="60d")
-            if len(spy_data) < 22:
-                return None
-            spy_log_rets = np.log(spy_data["Close"] / spy_data["Close"].shift(1)).dropna()
-            rv_30d = float(spy_log_rets.iloc[-22:].std() * np.sqrt(252))
-
-            vrp_vol_pts = (iv_30d - rv_30d) * 100  # in vol-point units (e.g. 4 = 4 pp)
-            return {
-                "iv_30d": iv_30d,
-                "rv_30d": rv_30d,
-                "vrp_vol_pts": vrp_vol_pts,
-                "vix_level": vix_level,
-            }
-        except Exception:
-            return None
-
     async def analyze(self, data: pd.DataFrame, symbol: str = "SPY") -> Signal | None:
         if symbol not in self.UNIVERSE:
             return None
@@ -170,64 +122,6 @@ class VRPSystematicStrategy(AbstractStrategy):
             return None
         spot = float(data["close"].iloc[-1])
 
-        # Item 9: Try free VIX-based VRP first (no API key needed)
-        import asyncio
-        loop = asyncio.get_event_loop()
-        vix_vrp = await loop.run_in_executor(None, self._get_vix_vrp)
-
-        if vix_vrp is not None:
-            vrp_pts = vix_vrp["vrp_vol_pts"]
-            iv_30d = vix_vrp["iv_30d"]
-            rv_30d = vix_vrp["rv_30d"]
-
-            if vrp_pts > 4.0:
-                # Short variance: implied > realized by >4 vol points
-                confidence = min((vrp_pts - 4.0) / 6.0, 1.0)
-                return Signal(
-                    symbol=symbol,
-                    side="sell",
-                    confidence=confidence,
-                    strategy_name=self.name,
-                    strategy_type=self.strategy_type,
-                    risk_bucket=self.risk_bucket,
-                    metadata={
-                        "strategy": "vrp_systematic",
-                        "vrp_method": "vix_proxy",
-                        "implied_vol_30d": round(iv_30d, 4),
-                        "realized_vol_30d": round(rv_30d, 4),
-                        "vrp_vol_pts": round(vrp_pts, 2),
-                        "vix_level": round(vix_vrp["vix_level"], 2),
-                        "signal": "short_variance",
-                        "order_type": "straddle",
-                        "target_dte": self.TARGET_DTE,
-                        "profit_target_pct": self.PROFIT_TARGET,
-                        "stop_mult": self.STOP_MULT,
-                    },
-                )
-            elif vrp_pts < -2.0:
-                # Long variance: realized > implied → buy protection
-                confidence = min((abs(vrp_pts) - 2.0) / 4.0, 1.0)
-                return Signal(
-                    symbol=symbol,
-                    side="buy",
-                    confidence=confidence,
-                    strategy_name=self.name,
-                    strategy_type=self.strategy_type,
-                    risk_bucket=self.risk_bucket,
-                    metadata={
-                        "strategy": "vrp_systematic",
-                        "vrp_method": "vix_proxy",
-                        "implied_vol_30d": round(iv_30d, 4),
-                        "realized_vol_30d": round(rv_30d, 4),
-                        "vrp_vol_pts": round(vrp_pts, 2),
-                        "vix_level": round(vix_vrp["vix_level"], 2),
-                        "signal": "long_variance_protection",
-                        "order_type": "straddle",
-                    },
-                )
-            return None  # VRP in neutral zone, no trade
-
-        # Fallback: use Alpaca options data (original implementation)
         rv = await self._get_realized_vol(symbol)
         iv = await self._get_implied_vol(symbol, spot)
 
@@ -251,7 +145,6 @@ class VRPSystematicStrategy(AbstractStrategy):
             risk_bucket=self.risk_bucket,
             metadata={
                 "strategy": "vrp_systematic",
-                "vrp_method": "alpaca_options",
                 "implied_vol": round(iv, 4),
                 "realized_vol": round(rv, 4),
                 "iv_rv_ratio": round(iv_rv_ratio, 3),

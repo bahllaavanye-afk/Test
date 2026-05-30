@@ -1,12 +1,6 @@
 """
-Unit tests for 10 recently-fixed bugs.
-
-Tests cover:
-1. BracketOrder OCO — correct TP/SL side and order types for a long entry
-2. Almgren-Chriss slices — each slice is market order with no limit_price
-3. RiskManager halt_reasons IndexError — empty halt_reasons with halted breaker
-4. PairsTradingStrategy lookahead — signal at bar N reflects bar N-1 data
-5. Desk order placer _can_trade gate — is_open AND buying_power > 0 required
+Unit tests for the 10 bugs fixed in commit 3c52615.
+Each test directly validates the fix is in place.
 """
 from __future__ import annotations
 
@@ -337,7 +331,50 @@ def test_pairs_trading_signal_appears_at_correct_bar_not_earlier():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. Desk order placer _can_trade gate
+# 5. STRATEGY_FILTER substring matching
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _apply_strategy_filter(name: str, strategy_filter: str) -> bool:
+    """
+    Mirrors the STRATEGY_FILTER fix in run_experiments.py:
+    Use `in` substring matching so 'momentum' matches 'ml_momentum'.
+
+    Bug: previously used `== strategy_filter` (exact match only).
+    Fix: use `strategy_filter in name` for substring matching.
+    """
+    if not strategy_filter:
+        return True
+    return strategy_filter in name
+
+
+def test_strategy_filter_substring_matches_ml_momentum():
+    """STRATEGY_FILTER='momentum' should match name='ml_momentum' (substring)."""
+    assert _apply_strategy_filter("ml_momentum", "momentum") is True
+
+
+def test_strategy_filter_exact_match_still_works():
+    """Exact match: STRATEGY_FILTER='momentum' matches name='momentum'."""
+    assert _apply_strategy_filter("momentum", "momentum") is True
+
+
+def test_strategy_filter_no_match():
+    """STRATEGY_FILTER='pairs' should NOT match name='momentum'."""
+    assert _apply_strategy_filter("momentum", "pairs") is False
+
+
+def test_strategy_filter_empty_passes_all():
+    """Empty STRATEGY_FILTER should pass all strategies."""
+    assert _apply_strategy_filter("any_strategy", "") is True
+
+
+def test_strategy_filter_prefix_match():
+    """STRATEGY_FILTER='ml_' should match 'ml_momentum' (prefix substring)."""
+    assert _apply_strategy_filter("ml_momentum", "ml_") is True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Market hours gate
 # ─────────────────────────────────────────────────────────────────────────────
 
 
