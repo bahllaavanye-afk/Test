@@ -42,13 +42,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet \
+          pip install \
             pandas numpy scipy statsmodels scikit-learn \
             fastapi pydantic pydantic-settings \
             python-dotenv structlog tenacity anyio \
             python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
             sqlalchemy[asyncio] httpx aiosqlite \
             alpaca-py requests yfinance
+
+      - name: Verify Python environment
+        run: |
+          python --version
+          python -c "import pandas, numpy, scipy, statsmodels, fastapi, pydantic; print('Core deps OK')"
+          PYTHONPATH=${{ github.workspace }}/backend python -c "
+          from app.strategies import STRATEGY_REGISTRY
+          print(f'Strategy registry OK: {len(STRATEGY_REGISTRY)} strategies')
+          "
 
       - name: Run desk order placer
         env:
