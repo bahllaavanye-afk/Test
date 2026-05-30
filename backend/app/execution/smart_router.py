@@ -91,7 +91,15 @@ class SmartOrderRouter:
         return result
 
     def _select_algorithm(self, request: OrderRequest) -> str:
-        estimated_usd = request.quantity * (request.limit_price or 100)
+        # Use signal_price if available (set on OrderRequest.metadata), then limit_price,
+        # then stop_price, then fall back to $50 (mid-range ETF proxy, less wrong than $100)
+        ref_price = (
+            request.limit_price
+            or request.stop_price
+            or (request.__dict__.get("metadata") or {}).get("signal_price")
+            or 50.0
+        )
+        estimated_usd = request.quantity * ref_price
 
         if request.execution_algo and request.execution_algo not in ("auto", ""):
             return request.execution_algo   # explicit user/strategy override

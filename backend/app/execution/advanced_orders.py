@@ -100,8 +100,11 @@ class OCOOrder:
             try:
                 sa = await self.broker.get_order(ra.broker_order_id)
                 sb = await self.broker.get_order(rb.broker_order_id)
-            except Exception:
-                break
+            except Exception as exc:
+                logger.warning("OCO poll failed — retrying", error=str(exc))
+                await asyncio.sleep(self.poll_seconds)
+                elapsed += self.poll_seconds
+                continue
             if sa.get("status") in ("filled", "closed"):
                 await self.broker.cancel_order(rb.broker_order_id)
                 logger.info("OCO: order A filled, B cancelled")
