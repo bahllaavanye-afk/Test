@@ -129,7 +129,8 @@ ALPACA_PAPER_BASE    = "https://paper-api.alpaca.markets"
 ALPACA_DATA_BASE     = "https://data.alpaca.markets"
 
 
-async def _alpaca_get(path: str, params: dict | None = None, data_api: bool = False) -> dict:
+def _alpaca_get_sync(path: str, params: dict | None = None, data_api: bool = False) -> dict:
+    """Blocking urllib call — run via asyncio.to_thread to avoid blocking event loop."""
     import urllib.request, urllib.parse
     base = ALPACA_DATA_BASE if data_api else ALPACA_PAPER_BASE
     url  = base + path
@@ -139,11 +140,15 @@ async def _alpaca_get(path: str, params: dict | None = None, data_api: bool = Fa
         "APCA-API-KEY-ID":     ALPACA_API_KEY,
         "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY,
     })
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=8) as resp:   # 8s per call
         return json.loads(resp.read())
 
 
-async def _alpaca_post(path: str, body: dict) -> dict:
+async def _alpaca_get(path: str, params: dict | None = None, data_api: bool = False) -> dict:
+    return await asyncio.to_thread(_alpaca_get_sync, path, params, data_api)
+
+
+def _alpaca_post_sync(path: str, body: dict) -> dict:
     import urllib.request
     url     = ALPACA_PAPER_BASE + path
     payload = json.dumps(body).encode()
@@ -152,8 +157,12 @@ async def _alpaca_post(path: str, body: dict) -> dict:
         "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY,
         "Content-Type":        "application/json",
     })
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=8) as resp:
         return json.loads(resp.read())
+
+
+async def _alpaca_post(path: str, body: dict) -> dict:
+    return await asyncio.to_thread(_alpaca_post_sync, path, body)
 
 
 async def _get_account() -> dict | None:
@@ -367,15 +376,21 @@ async def main() -> None:
         account = None
         bars_fetched = 0
         symbols_fetched: list[str] = []
+        equity = 0.0
+        cash   = 0.0
+        buying = 0.0
         with tracker.stage(DATA_FETCH, "Fetch account and market bars"):
             account = await _get_account()
             if account is None:
-                raise RuntimeError("could not reach Alpaca paper account")
-
-            equity = float(account.get("equity",       0))
-            cash   = float(account.get("cash",         0))
-            buying = float(account.get("buying_power", 0))
-            print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  buying_power=${buying:.2f}", flush=True)
+                # Account fetch failed (API unreachable or bad credentials).
+                # Still run signal generation; order placement will be skipped.
+                print("  ⚠ Account unavailable — running in signal-only mode (no orders placed)", flush=True)
+                account = {"equity": 0, "cash": 0, "buying_power": 0}
+            else:
+                equity = float(account.get("equity",       0))
+                cash   = float(account.get("cash",         0))
+                buying = float(account.get("buying_power", 0))
+                print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  buying_power=${buying:.2f}", flush=True)
 
             active_desks = [d for d in DESKS if not DESK_FILTER or DESK_FILTER in d.name.lower()]
             if DESK_FILTER and not active_desks:
@@ -449,7 +464,11 @@ async def main() -> None:
         all_orders: list[dict] = []
         desk_summaries: list[str] = []
         total_notional = 0.0
+        _can_trade = float(account.get("buying_power", 0)) > 0
         with tracker.stage(ORDER_EXECUTION, "Place orders"):
+            if not _can_trade:
+                print("  ⚠ Skipping order placement (no buying power / account unavailable)", flush=True)
+                tracker.set_output(orders_placed=0, reason="account_unavailable")
             # Group approved signals by desk so we can still post per-desk summaries
             desk_orders_map: dict[str, list[dict]] = {}
             for item in approved_signals:
@@ -459,6 +478,13 @@ async def main() -> None:
                 signal   = item["signal"]
                 conf     = item["confidence"]
 
+                if not _can_trade:
+                    print(
+                        f"  · {strategy.name}/{symbol} signal={signal.side.upper()} "
+                        f"conf={conf:.2f} — logged (no account)",
+                        flush=True,
+                    )
+                    continue
                 print(
                     f"  ► {strategy.name}/{symbol} signal={signal.side.upper()} "
                     f"conf={conf:.2f} — placing ${desk.notional_usd:.0f} order",
