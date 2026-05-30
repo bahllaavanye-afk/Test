@@ -4,9 +4,12 @@ services:
     env: python
     region: oregon
     plan: free
-    buildCommand: pip install uv && uv pip install --system -e . && alembic upgrade head
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    # Migrations run in start.sh (NOT here) so a bad DATABASE_URL doesn't fail the build
+    buildCommand: pip install -e "." || (pip install uv && uv pip install --system -e .)
+    startCommand: bash start.sh
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - key: TRADING_MODE
         value: paper
       - key: DEBUG
@@ -16,15 +19,20 @@ services:
       - key: ALLOWED_ORIGINS
         value: "https://quantedge.vercel.app,http://localhost:5173"
       - key: DATABASE_URL
-        sync: false   # Set in Render dashboard: asyncpg Supabase URL
+        sync: false   # REQUIRED: Set in Render → Environment
+                      # Use Supabase POOLER URL (port 6543, NOT port 5432):
+                      # postgres://postgres.PROJECT:PASS@aws-0-REGION.pooler.supabase.com:6543/postgres
+      - key: ALEMBIC_DATABASE_URL
+        sync: false   # Optional: sync psycopg2 URL for migrations
+                      # If blank, start.sh derives it from DATABASE_URL automatically
       - key: REDIS_URL
-        sync: false   # Set in Render dashboard: rediss://default:<token>@...upstash.io:6379
+        sync: false   # Optional: Upstash Redis URL
       - key: SECRET_KEY
         generateValue: true
       - key: ALPACA_API_KEY
-        sync: false   # Set in Render dashboard
+        sync: false
       - key: ALPACA_SECRET_KEY
-        sync: false   # Set in Render dashboard
+        sync: false
     healthCheckPath: /health
     autoDeploy: true
 
@@ -33,7 +41,7 @@ services:
     env: python
     region: oregon
     plan: free
-    buildCommand: pip install uv && uv pip install --system -e . && alembic upgrade head
+    buildCommand: pip install -e "." || (pip install uv && uv pip install --system -e .)
     startCommand: python -m app.tasks.scheduler
     envVars:
       - key: TRADING_MODE
