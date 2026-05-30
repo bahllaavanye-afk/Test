@@ -261,7 +261,14 @@ def _save_result(result: dict) -> Path:
 
 def _post_slack(message: str) -> None:
     if not SLACK_BOT_TOKEN:
-        print("  (no SLACK_BOT_TOKEN — skipping Slack post)", flush=True)
+        print("", flush=True)
+        print("╔══════════════════════════════════════════════════════════════════╗", flush=True)
+        print("║  ⚠  SLACK SILENT — experiment results were NOT posted to Slack  ║", flush=True)
+        print("║                                                                  ║", flush=True)
+        print("║  Add SLACK_BOT_TOKEN to repo secrets:                           ║", flush=True)
+        print("║  Settings → Secrets and variables → Actions → New secret        ║", flush=True)
+        print("╚══════════════════════════════════════════════════════════════════╝", flush=True)
+        print("", flush=True)
         return
     try:
         import urllib.request, urllib.parse

@@ -61,7 +61,14 @@ jobs:
           ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
         run: |
           if [ -z "$SLACK_BOT_TOKEN" ]; then
-            echo "⚠ No SLACK_BOT_TOKEN — set repo secret or pass via dispatch input. Skipping."
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════════╗"
+            echo "║  ⚠  SLACK SILENT — agents ran but NO messages were posted       ║"
+            echo "║                                                                  ║"
+            echo "║  Add SLACK_BOT_TOKEN to repo secrets:                           ║"
+            echo "║  Settings → Secrets and variables → Actions → New secret        ║"
+            echo "╚══════════════════════════════════════════════════════════════════╝"
+            echo ""
             exit 0
           fi
           python .github/scripts/slack_agent_team.py

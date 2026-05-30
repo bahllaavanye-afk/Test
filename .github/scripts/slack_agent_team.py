@@ -2047,8 +2047,17 @@ AGENTS: list[Agent] = [
 def main() -> int:
     token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     if not token.startswith("xoxb-"):
-        print("❌ SLACK_BOT_TOKEN missing or not xoxb-")
-        return 1
+        print("")
+        print("╔══════════════════════════════════════════════════════════════════╗")
+        print("║  ⚠  SLACK SILENT — agents ran but NO messages were posted       ║")
+        print("║                                                                  ║")
+        print("║  SLACK_BOT_TOKEN is missing or invalid (must start with xoxb-)  ║")
+        print("║                                                                  ║")
+        print("║  Add SLACK_BOT_TOKEN to repo secrets:                           ║")
+        print("║  Settings → Secrets and variables → Actions → New secret        ║")
+        print("╚══════════════════════════════════════════════════════════════════╝")
+        print("")
+        return 0
 
     auth = slack_call(token, "auth.test", {})
     if not auth.get("ok"):

@@ -83,6 +83,18 @@ def _try_import_ml(module_path: str, class_name: str):
         )
         return None
 
+# ── Options strategy group ────────────────────────────────────────────────────
+# Convenience list for enabling/disabling all options strategies as a group.
+# Mirrors the "Options" desk in desk_order_placer.py.
+OPTIONS_STRATEGIES: list[str] = [
+    "skew_arb",
+    "vrp_systematic",
+    "gamma_exposure",
+    "options_pcr_reversal",
+    "dispersion_trading",
+    "vol_term_structure",
+]
+
 STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "pairs_trading": PairsTradingStrategy,
     "momentum": MomentumStrategy,
