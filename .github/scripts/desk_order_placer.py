@@ -1,5 +1,6 @@
 """
 Desk Order Placer — runs every 15 minutes during market hours.
+Version: 2.0 — 6 desks, 59 strategies, real paper orders via Alpaca.
 
 For each asset-class desk, fetches live OHLCV from Alpaca paper API,
 runs the relevant strategies' analyze(), and places real paper orders
