@@ -50,11 +50,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if [ -z "$SLACK_BOT_TOKEN" ]; then
-            echo "::error::SLACK_BOT_TOKEN not set — add to repo Secrets"
-            exit 1
+            echo "::warning::SLACK_BOT_TOKEN not set — Slack notifications skipped (add to repo Secrets to enable)"
+            exit 0
           fi
           if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "::error::ANTHROPIC_API_KEY not set — add to repo Secrets"
-            exit 1
+            echo "::warning::ANTHROPIC_API_KEY not set — AI insights skipped (add to repo Secrets to enable)"
+            exit 0
           fi
           python .github/scripts/claude_slack_bot.py proactive
