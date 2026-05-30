@@ -466,9 +466,12 @@ async def main() -> None:
         all_orders: list[dict] = []
         desk_summaries: list[str] = []
         total_notional = 0.0
-        _can_trade = float(account.get("buying_power", 0)) > 0
+        _can_trade = is_open and float(account.get("buying_power", 0)) > 0
         with tracker.stage(ORDER_EXECUTION, "Place orders"):
-            if not _can_trade:
+            if not is_open:
+                print("  ⚠ Market is closed — skipping order placement", flush=True)
+                tracker.set_output(orders_placed=0, reason="market_closed")
+            elif not _can_trade:
                 print("  ⚠ Skipping order placement (no buying power / account unavailable)", flush=True)
                 tracker.set_output(orders_placed=0, reason="account_unavailable")
             # Group approved signals by desk so we can still post per-desk summaries
@@ -553,5 +556,4 @@ if __name__ == "__main__":
         print(f"\nFATAL ERROR: {type(exc).__name__}: {exc}", flush=True)
         import traceback
         traceback.print_exc()
-        # Exit 0 so CI stays green — order placement errors are operational, not code errors
-        sys.exit(0)
+        sys.exit(1)

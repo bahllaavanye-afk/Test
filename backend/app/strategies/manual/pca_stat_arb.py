@@ -162,7 +162,8 @@ class PCAStatArbStrategy(AbstractStrategy):
         if len(prices) < self.lookback + 10:
             return None
 
-        s_scores = self._compute_s_scores(prices, end_idx=len(prices))
+        # Exclude current bar from PCA estimation to avoid lookahead bias
+        s_scores = self._compute_s_scores(prices, end_idx=len(prices) - 1)
         s = s_scores.get(symbol, float("nan"))
         if np.isnan(s):
             return None

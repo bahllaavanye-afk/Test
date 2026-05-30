@@ -67,10 +67,12 @@ class RiskManager:
     async def check_order(self, request: OrderRequest) -> RiskDecision:
         """Gate every order through risk checks. Returns RiskDecision."""
         if self.global_breaker.is_halted:
-            return RiskDecision(False, f"Global circuit breaker halted: {self.global_breaker.halt_reasons[-1]}")
+            reason = self.global_breaker.halt_reasons[-1] if self.global_breaker.halt_reasons else "unknown"
+            return RiskDecision(False, f"Global circuit breaker halted: {reason}")
 
         if request.risk_bucket == "arbitrage" and self.arb_breaker.is_halted:
-            return RiskDecision(False, f"Arb circuit breaker halted: {self.arb_breaker.halt_reasons[-1]}")
+            reason = self.arb_breaker.halt_reasons[-1] if self.arb_breaker.halt_reasons else "unknown"
+            return RiskDecision(False, f"Arb circuit breaker halted: {reason}")
 
         if not self._equity_confirmed:
             logger.warning("risk.manager: using estimated equity — broker snapshot not yet received",

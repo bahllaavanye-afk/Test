@@ -176,7 +176,7 @@ def _import_strategy(module_path: str, class_name: str, params: dict):
 def _run_one(name: str, module_path: str, class_name: str, symbol: str,
              interval: str, train_start: str, test_start: str, test_end: str,
              params: dict) -> dict:
-    if STRATEGY_FILTER and name != STRATEGY_FILTER:
+    if STRATEGY_FILTER and STRATEGY_FILTER not in name:
         return {}
     effective_symbol = SYMBOL_FILTER if SYMBOL_FILTER else symbol
 

@@ -129,8 +129,10 @@ class SmartOrderRouter:
         for i, slice_qty in enumerate(trades):
             if slice_qty < 1e-6:
                 continue
+            # Use market slices — adding "limit" without a price causes broker rejection.
+            # AC's alpha comes from the optimal schedule, not from limit orders.
             slice_req = OrderRequest(
-                **{**request.__dict__, "quantity": float(slice_qty), "order_type": "limit"}
+                **{**request.__dict__, "quantity": float(slice_qty), "order_type": "market", "limit_price": None}
             )
             try:
                 result = await self.broker.place_order(slice_req)
