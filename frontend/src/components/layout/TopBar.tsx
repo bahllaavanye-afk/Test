@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../store/slices/authSlice'
 import { callLogout } from '../../api/client'
@@ -81,6 +81,26 @@ export default function TopBar() {
   const mode = useSelector(selectTradingMode)
   const [showModal, setShowModal] = useState(false)
   const isLive = mode === 'live'
+  const [clock, setClock] = useState('')
+  const [isMarketOpen, setIsMarketOpen] = useState(false)
+
+  useEffect(() => {
+    function tick() {
+      const now = new Date()
+      const utc = now.toUTCString().slice(17, 25) // HH:MM:SS
+      setClock(utc)
+      // NYSE market hours: 14:30-21:00 UTC (Mon-Fri)
+      const day = now.getUTCDay()
+      const hour = now.getUTCHours()
+      const minute = now.getUTCMinutes()
+      const totalMinutes = hour * 60 + minute
+      const isWeekday = day >= 1 && day <= 5
+      setIsMarketOpen(isWeekday && totalMinutes >= 870 && totalMinutes < 1260) // 14:30-21:00
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <>
@@ -113,6 +133,15 @@ export default function TopBar() {
           </button>
           {/* Data feed live badge */}
           <LiveIndicator label="DATA FEED" color="#00ff88" />
+          <span style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:'var(--muted)',letterSpacing:'0.08em'}}>
+            UTC {clock}
+          </span>
+          <span
+            className={isMarketOpen ? 'badge-green' : 'badge-muted'}
+            style={{fontSize:9,letterSpacing:'0.1em'}}
+          >
+            NYSE {isMarketOpen ? 'OPEN' : 'CLOSED'}
+          </span>
         </div>
         <div className="flex items-center gap-3">
           <span

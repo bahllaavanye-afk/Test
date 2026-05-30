@@ -21,12 +21,12 @@ function biasColor(bias: string | undefined): string {
   return '#f5a623'
 }
 
-function MetricCard({ label, value, sub, color = '#f5a623' }: { label: string; value: string; sub?: string; color?: string }) {
+function MetricCard({ label, value, sub, color = 'var(--accent)', glowClass = '' }: { label: string; value: string; sub?: string; color?: string; glowClass?: string }) {
   return (
-    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 transition-all duration-200 hover:border-[#2e2e2e] hover:bg-[#151515]">
-      <p className="text-[#888888] text-xs uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-bold mt-1 transition-colors" style={{ color }}>{value}</p>
-      {sub && <p className="text-[#888888] text-xs mt-1">{sub}</p>}
+    <div className={`kpi-card ${glowClass}`}>
+      <p className="section-header" style={{marginBottom:8}}>{label}</p>
+      <p className="mono-num" style={{fontSize:22,fontWeight:700,color,lineHeight:1}}>{value}</p>
+      {sub && <p style={{fontSize:10,color:'var(--muted)',marginTop:4}}>{sub}</p>}
     </div>
   )
 }
@@ -135,10 +135,10 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Total P&L" value={perf ? `$${totalPnl.toFixed(2)}` : '—'} sub={perf ? `${perf.total_trades ?? 0} trades` : 'Connect Alpaca to see P&L'} color={perf ? (totalPnl >= 0 ? '#00c853' : '#ff1744') : '#555555'} />
-        <MetricCard label="Open Positions" value={Array.isArray(positions) ? String(positions.length) : '—'} sub="live positions" color="#2979ff" />
-        <MetricCard label="Active Strategies" value={String(activeCount)} sub="running 24/7" color="#f5a623" />
-        <MetricCard label="Target Sharpe" value=">2.0" sub="vs SPY 0.47" color="#9C27B0" />
+        <MetricCard label="Total P&L" value={perf ? `$${totalPnl.toFixed(2)}` : '—'} sub={perf ? `${perf.total_trades ?? 0} trades` : 'Connect Alpaca to see P&L'} color={perf ? (totalPnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)'} glowClass={perf ? (totalPnl >= 0 ? 'glow-green' : 'glow-red') : ''} />
+        <MetricCard label="Open Positions" value={Array.isArray(positions) ? String(positions.length) : '—'} sub="live positions" color="var(--blue)" glowClass="glow-blue" />
+        <MetricCard label="Active Strategies" value={String(activeCount)} sub="running 24/7" color="var(--accent)" glowClass="glow-accent" />
+        <MetricCard label="Target Sharpe" value=">2.0" sub="vs SPY 0.47" color="var(--purple)" />
       </div>
 
       <RegimeIndicator />
@@ -149,7 +149,11 @@ export default function Dashboard() {
             {CHART_SYMBOLS.map(s => (
               <button key={s} onClick={() => setChartSymbol(s)}
                 className="text-xs px-2 py-1 rounded transition-colors"
-                style={{ background: chartSymbol === s ? '#f5a623' : '#1e1e1e', color: chartSymbol === s ? '#000' : '#888' }}>
+                style={{
+                  background: chartSymbol === s ? 'var(--accent-dim)' : 'var(--surface2)',
+                  border: `1px solid ${chartSymbol === s ? 'rgba(245,166,35,0.4)' : 'var(--border)'}`,
+                  color: chartSymbol === s ? 'var(--accent)' : 'var(--muted)',
+                }}>
                 {s.split(':')[1]}
               </button>
             ))}
@@ -158,8 +162,8 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-3">
-          <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
-            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Account Summary</h3>
+          <div className="kpi-card">
+            <p className="section-header" style={{marginBottom:12}}>Account Summary</p>
             {noAccountConnected ? (
               <div className="text-center py-4 space-y-2">
                 <p className="text-xs text-[#888888]">No account connected</p>
@@ -187,10 +191,10 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
-            <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">
+          <div className="kpi-card">
+            <p className="section-header" style={{marginBottom:12}}>
               Agent Team ({agentList.length > 0 ? agentList.length : '---'})
-            </h3>
+            </p>
             {agentList.length === 0 ? (
               <p className="text-xs text-[#555]">No agent status. Start the backend to see agent health.</p>
             ) : (
@@ -223,8 +227,8 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
-          <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Macro Signals</h3>
+        <div className="kpi-card">
+          <p className="section-header" style={{marginBottom:12}}>Macro Signals</p>
           {!macro ? (
             <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />)}</div>
           ) : (
@@ -259,8 +263,8 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 hover:border-[#2e2e2e] transition-colors">
-          <h3 className="text-xs text-[#888888] uppercase tracking-wider mb-3">Reddit Buzz (WSB)</h3>
+        <div className="kpi-card">
+          <p className="section-header" style={{marginBottom:12}}>Reddit Buzz (WSB)</p>
           {!sentiment ? (
             <div className="space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />)}</div>
           ) : sentiment.error ? (
@@ -290,14 +294,14 @@ export default function Dashboard() {
       </div>
 
       {/* ── Market News ── */}
-      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+      <div className="kpi-card overflow-hidden max-h-64 overflow-y-auto">
         <NewsSentimentPanel symbols={['SPY', 'QQQ', 'AAPL', 'NVDA', 'META']} />
       </div>
 
       {/* ── Recent Trades (candlestick + buy/sell markers) ── */}
-      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+      <div className="kpi-card">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs text-[#888888] uppercase tracking-wider">Recent Trades</h3>
+          <p className="section-header" style={{marginBottom:0}}>Recent Trades</p>
           <div className="flex gap-1.5">
             {TRADE_SYMBOLS.map(sym => (
               <button
@@ -305,8 +309,9 @@ export default function Dashboard() {
                 onClick={() => setTradeSymbol(sym)}
                 className="text-xs px-2.5 py-1 rounded transition-colors"
                 style={{
-                  background: tradeSymbol === sym ? '#f5a623' : '#1e1e1e',
-                  color: tradeSymbol === sym ? '#000' : '#888',
+                  background: tradeSymbol === sym ? 'var(--accent-dim)' : 'var(--surface2)',
+                  border: `1px solid ${tradeSymbol === sym ? 'rgba(245,166,35,0.4)' : 'var(--border)'}`,
+                  color: tradeSymbol === sym ? 'var(--accent)' : 'var(--muted)',
                 }}
               >
                 {sym}
