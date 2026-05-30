@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     slack_webhook_experiments: str = ""
     slack_webhook_system: str = ""
 
+    # Google OAuth (optional — set to enable Google login)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
         placeholder = "change-me-in-production-32-byte-hex"

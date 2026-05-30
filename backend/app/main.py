@@ -37,8 +37,18 @@ async def lifespan(app: FastAPI):
     logger.info("QuantEdge starting up", mode=settings.trading_mode)
 
     # Create tables (managed by Alembic in production; this covers dev/test)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    for attempt in range(5):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            break
+        except Exception as e:
+            if attempt == 4:
+                logger.error(f"DB not reachable after 5 attempts: {e}. Continuing without create_all.")
+            else:
+                wait_secs = 2 ** attempt
+                logger.warning(f"DB connection attempt {attempt + 1} failed: {e}. Retrying in {wait_secs}s")
+                await asyncio.sleep(wait_secs)
 
     # Start background scheduler
     scheduler = start_scheduler(db_session_factory=None)

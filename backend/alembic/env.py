@@ -56,7 +56,8 @@ def do_run_migrations(connection):
 
 async def run_async_migrations() -> None:
     url = _async_url or config.get_section(context.config.config_ini_section, {}).get("sqlalchemy.url", "")
-    connectable = create_async_engine(url, poolclass=pool.NullPool)
+    connect_args = {"command_timeout": 30} if "postgresql" in url else {}
+    connectable = create_async_engine(url, poolclass=pool.NullPool, connect_args=connect_args)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

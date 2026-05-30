@@ -4,10 +4,12 @@ from datetime import datetime, timezone
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.utils.security import (
@@ -163,3 +165,93 @@ async def logout(body: LogoutRequest):
             await revoke_jti(jti, ttl)
     except Exception:
         pass  # expired/malformed tokens are already invalid — no need to raise
+
+
+# ── Google OAuth ──────────────────────────────────────────────────────────────
+
+@router.get("/google")
+async def google_oauth_start():
+    """Redirect to Google OAuth consent screen."""
+    if not settings.google_client_id:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    import urllib.parse
+    params = {
+        "client_id": settings.google_client_id,
+        "redirect_uri": settings.google_redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account",
+    }
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url=url)
+
+
+@router.get("/google/callback")
+async def google_oauth_callback(
+    code: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Handle Google OAuth callback — create/login user and return tokens."""
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    import httpx
+
+    # Exchange code for tokens
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "redirect_uri": settings.google_redirect_uri,
+                "grant_type": "authorization_code",
+            },
+        )
+    if token_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Failed to exchange Google auth code")
+
+    token_data = token_resp.json()
+
+    # Get user info
+    async with httpx.AsyncClient() as client:
+        user_resp = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {token_data['access_token']}"},
+        )
+    if user_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Failed to get Google user info")
+
+    google_user = user_resp.json()
+    email = google_user.get("email", "").lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email")
+
+    # Find or create user
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        user = User(
+            id=str(uuid.uuid4()),
+            email=email,
+            # Random unusable password — Google users authenticate via OAuth only
+            hashed_password=hash_password(str(uuid.uuid4())),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+
+    # Redirect to frontend with tokens in query params (SPA handles them)
+    frontend_url = settings.cors_origins[0].strip()
+    redirect_url = (
+        f"{frontend_url}/auth/google/callback"
+        f"?access_token={access_token}&refresh_token={refresh_token}"
+    )
+    return RedirectResponse(url=redirect_url)

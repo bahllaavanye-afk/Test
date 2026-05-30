@@ -12,7 +12,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install uv && uv pip install --system --extra-index-url https://download.pytorch.org/whl/cpu -e ".[ml]"
+    buildCommand: pip install -e ".[ml]" --extra-index-url https://download.pytorch.org/whl/cpu
     startCommand: bash start.sh
     envVars:
       - key: PYTHON_VERSION
@@ -39,5 +39,11 @@ services:
         sync: false
       - key: SLACK_BOT_TOKEN
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: "https://quantedge-api.onrender.com/api/v1/auth/google/callback"
     healthCheckPath: /health
     autoDeploy: true
