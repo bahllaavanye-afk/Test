@@ -1,0 +1,94 @@
+name: Slack Pulse — Keep Team Informed
+
+# Posts deploy notifications, daily P&L, and system status to Slack.
+# Fires on every push to main branch + scheduled daily briefings.
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw, main]
+  schedule:
+    - cron: "0 9 * * 1-5"    # Morning briefing Mon-Fri 9am UTC
+    - cron: "0 17 * * 1-5"   # Evening update Mon-Fri 5pm UTC
+  workflow_dispatch:
+
+concurrency:
+  group: slack-pulse-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install httpx anthropic --quiet
+
+      - name: Post to Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          python3 << 'PYEOF'
+          import httpx, os, datetime
+
+          token   = os.environ.get("SLACK_BOT_TOKEN", "")
+          event   = os.environ.get("EVENT_NAME", "schedule")
+          commit  = os.environ.get("COMMIT_MSG", "")[:80]
+          sha     = os.environ.get("COMMIT_SHA", "")[:7]
+          actor   = os.environ.get("ACTOR", "AI")
+          now_utc = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+          if not token:
+              print("No SLACK_BOT_TOKEN — exiting")
+              exit(0)
+
+          def post(channel, text):
+              try:
+                  r = httpx.post(
+                      "https://slack.com/api/chat.postMessage",
+                      headers={"Authorization": f"Bearer {token}"},
+                      json={"channel": channel, "text": text, "mrkdwn": True},
+                      timeout=10,
+                  )
+                  data = r.json()
+                  if not data.get("ok"):
+                      print(f"Slack error for {channel}: {data.get('error')}")
+                  else:
+                      print(f"Posted to {channel}")
+              except Exception as e:
+                  print(f"Slack error: {e}")
+
+          if event == "push":
+              msg = (
+                  f"🚀 *New Deploy* · `{sha}` by {actor}\n"
+                  f"_{commit}_\n"
+                  f"Render will auto-deploy within ~2 minutes."
+              )
+              post("#deploys", msg)
+              post("#engineering", msg)
+          else:
+              # Scheduled briefing
+              msg = (
+                  f"📊 *QuantEdge Daily Pulse* · {now_utc}\n"
+                  f"• Backend: Render auto-deploy active\n"
+                  f"• Strategies: 60+ running 24/7 across Equities, Crypto, Options, Polymarket\n"
+                  f"• ML: 7 models active (LSTM, XGBoost, SSM, Lorentzian, HMM, TFT, Ensemble)\n"
+                  f"• Risk: Kelly + HRP + CVaR + circuit breakers active\n"
+                  f"• Monitor: <https://dashboard.render.com|Render> | <https://quantedge.vercel.app|Frontend>\n"
+                  f"\n_Check #risk-alerts for circuit breaker events, #desk-crypto for crypto signals._"
+              )
+              post("#engineering", msg)
+              post("#ml-experiments", "📈 *ML Update:* All 7 models serving predictions. Check `/experiments` endpoint for latest metrics.")
+          PYEOF

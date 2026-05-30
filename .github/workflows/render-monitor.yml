@@ -1,0 +1,51 @@
+name: Render Health Monitor & Auto-Fix
+
+# Checks Render deployment every 15 minutes.
+# On failure: fetches logs, Claude diagnoses, Claude auto-fixes and re-deploys.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      force_check:
+        description: "Force health check"
+        required: false
+        default: "true"
+
+concurrency:
+  group: render-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor-and-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install httpx anthropic --quiet
+
+      - name: Check Render status & auto-fix failures
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GIT_AUTHOR_NAME: "QuantEdge-AI[bot]"
+          GIT_AUTHOR_EMAIL: "ai@quantedge.io"
+          GIT_COMMITTER_NAME: "QuantEdge-AI[bot]"
+          GIT_COMMITTER_EMAIL: "ai@quantedge.io"
+        run: |
+          python .github/scripts/render_auto_fix.py

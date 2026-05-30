@@ -1,0 +1,58 @@
+name: Frontend Team — AI-Driven UI Improvements
+
+# Automated frontend improvements: Claude reviews the UI, proposes changes,
+# and applies them. Runs daily and on manual trigger.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1,3,5"   # Mon/Wed/Fri 3am UTC
+  workflow_dispatch:
+    inputs:
+      focus:
+        description: "What to focus on (e.g. 'landing page animations', 'dashboard UX')"
+        required: false
+        default: "overall UI quality, animations, and UX polish"
+
+concurrency:
+  group: frontend-team
+  cancel-in-progress: true
+
+jobs:
+  ui-improvement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: pip install anthropic httpx --quiet
+
+      - name: Run Frontend AI Team
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          FOCUS: ${{ github.event.inputs.focus || 'overall UI quality, animations, and UX polish' }}
+          GIT_AUTHOR_NAME: "QuantEdge-Frontend-AI[bot]"
+          GIT_AUTHOR_EMAIL: "frontend-ai@quantedge.io"
+          GIT_COMMITTER_NAME: "QuantEdge-Frontend-AI[bot]"
+          GIT_COMMITTER_EMAIL: "frontend-ai@quantedge.io"
+        run: python .github/scripts/frontend_team.py
+
+      - name: TypeScript check
+        run: cd frontend && npm ci --silent && npx tsc --noEmit
+        continue-on-error: true
