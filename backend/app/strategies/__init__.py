@@ -54,6 +54,7 @@ from app.strategies.manual.poly_late_resolution import PolymarketLateResolution
 from app.strategies.manual.poly_market_maker import PolymarketMarketMaker
 from app.strategies.manual.poly_calibration_arb import PolymarketCalibrationArb
 from app.strategies.manual.multi_factor_equity import MultiFactorEquity
+from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrategy
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
 # xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
@@ -93,6 +94,7 @@ OPTIONS_STRATEGIES: list[str] = [
     "options_pcr_reversal",
     "dispersion_trading",
     "vol_term_structure",
+    "credit_spread_income",
 ]
 
 STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
@@ -149,6 +151,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "poly_market_maker": PolymarketMarketMaker,
     "poly_calibration_arb": PolymarketCalibrationArb,
     "multi_factor_equity": MultiFactorEquity,
+    "credit_spread_income": CreditSpreadIncomeStrategy,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry

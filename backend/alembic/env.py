@@ -15,14 +15,30 @@ target_metadata = Base.metadata
 
 # Read DB URL from environment (overrides alembic.ini)
 _db_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL", "")
-# Alembic offline needs sync driver; convert asyncpg → psycopg2 if needed
-_sync_url = _db_url.replace("+asyncpg", "+psycopg2").replace("+aiosqlite", "")
-# Alembic online needs async driver; convert psycopg2 → asyncpg if needed
-_async_url = _db_url.replace("+psycopg2", "+asyncpg")
-if _async_url.startswith("postgresql://"):
-    _async_url = _async_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-if _async_url.startswith("sqlite:///"):
-    _async_url = _async_url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+
+# Normalise the raw URL — Render/Supabase use postgres://, SQLAlchemy needs full scheme
+def _to_async(url: str) -> str:
+    """Convert any postgres URL variant to postgresql+asyncpg://"""
+    if url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + url[len("postgresql://"):]
+    if url.startswith("sqlite:///"):
+        return "sqlite+aiosqlite:///" + url[len("sqlite:///"):]
+    return url.replace("+psycopg2", "+asyncpg")
+
+def _to_sync(url: str) -> str:
+    """Convert any postgres URL variant to postgresql+psycopg2://"""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg2://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg2://" + url[len("postgresql://"):]
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("+asyncpg", "+psycopg2")
+    return url.replace("+asyncpg", "+psycopg2").replace("+aiosqlite", "")
+
+_async_url = _to_async(_db_url)
+_sync_url  = _to_sync(_db_url)
 
 
 def run_migrations_offline() -> None:

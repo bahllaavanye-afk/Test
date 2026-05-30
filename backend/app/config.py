@@ -18,9 +18,22 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
-    # Database
+    # Database — accepts postgres://, postgresql://, or postgresql+asyncpg://
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/quantedge"
     alembic_database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/quantedge"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalise_database_url(cls, values: dict) -> dict:
+        """Render and Supabase provide postgres:// — SQLAlchemy async needs postgresql+asyncpg://."""
+        url = values.get("database_url", "")
+        if isinstance(url, str):
+            if url.startswith("postgres://"):
+                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+            elif url.startswith("postgresql://"):
+                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+            values["database_url"] = url
+        return values
 
     # Redis (Upstash)
     redis_url: str = "redis://localhost:6379"

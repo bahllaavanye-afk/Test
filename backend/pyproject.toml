@@ -45,8 +45,9 @@ dependencies = [
     "statsmodels>=0.14.0",
     "scikit-learn>=1.5.0",
 
-    # ML inference (needed for ml_enhanced strategies at runtime)
-    "torch>=2.5.0",
+    # ML inference — in [ml] optional group so Render free tier skips the 800MB torch wheel
+    # Install with: pip install -e ".[ml]"  (GPU notebooks, local dev)
+    # Render installs: pip install -e "."   (no torch = ML strategies degrade gracefully)
     "xgboost>=2.1.0",
     "lightgbm>=4.5.0",
 
@@ -62,8 +63,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# ML runtime — torch for inference; install on GPU servers/notebooks but NOT on Render free tier
+ml = [
+    "torch>=2.5.0",
+]
+
 # Training — heavy packages only needed on GPU notebooks/workers, NOT on the API server
 train = [
+    "torch>=2.5.0",
     "optuna>=4.1.0",
     "shap>=0.46.0",
     "stable-baselines3>=2.4.0",
