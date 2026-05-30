@@ -1,3 +1,10 @@
+databases:
+  - name: quantedge-db
+    plan: free
+    region: oregon
+    databaseName: quantedge
+    user: quantedge
+
 services:
   - type: web
     name: quantedge-api
@@ -5,8 +12,8 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install uv && uv pip install --system -e . && alembic upgrade head
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    buildCommand: pip install uv && uv pip install --system -e .
+    startCommand: python -c "from alembic.config import Config; from alembic import command; c=Config('alembic.ini'); command.upgrade(c,'head')" && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
     envVars:
       - key: TRADING_MODE
         value: paper
@@ -17,17 +24,18 @@ services:
       - key: ALLOWED_ORIGINS
         value: "https://quantedge.vercel.app,http://localhost:5173"
       - key: DATABASE_URL
-        sync: false   # Set in Render dashboard: asyncpg Supabase URL
+        fromDatabase:
+          name: quantedge-db
+          property: connectionString
       - key: REDIS_URL
-        sync: false   # Set in Render dashboard: rediss://default:<token>@...upstash.io:6379
+        value: ""         # Optional — leave blank to run without cache (no Upstash needed)
       - key: SECRET_KEY
         generateValue: true
       - key: ALPACA_API_KEY
-        sync: false   # Set in Render dashboard
+        sync: false       # Add in Render dashboard after deploy (paper trading key)
       - key: ALPACA_SECRET_KEY
-        sync: false   # Set in Render dashboard
+        sync: false       # Add in Render dashboard after deploy
       - key: SLACK_BOT_TOKEN
-        sync: false   # Set in Render dashboard: xoxb-...
+        sync: false       # Add in Render dashboard after deploy (optional)
     healthCheckPath: /health
     autoDeploy: true
-
