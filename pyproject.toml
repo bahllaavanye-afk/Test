@@ -1,0 +1,83 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Root pyproject.toml — exists so Render's dashboard buildCommand
+# (`pip install uv && uv pip install --system -e .`) works from the
+# repo root (/opt/render/project/src) without needing rootDir.
+# backend/pyproject.toml remains authoritative; deps are kept in sync.
+
+[project]
+name = "quantedge"
+version = "0.1.0"
+description = "QuantEdge institutional trading platform"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "websockets>=13.0",
+    "python-multipart>=0.0.12",
+    "slowapi>=0.1.9",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "psycopg2-binary>=2.9.10",
+
+    # Cache
+    "redis>=5.2.0",
+    "httpx>=0.27.2",
+
+    # Config & security
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "cryptography>=43.0.0",
+
+    # Brokers
+    "alpaca-py>=0.35.0",
+    "ccxt>=4.4.0",
+    "py-clob-client>=0.18.0",
+
+    # Data
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "pandas-ta>=0.3.14b0",
+    "yfinance>=0.2.50",
+    "scipy>=1.14.0",
+    "statsmodels>=0.14.0",
+    "scikit-learn>=1.5.0",
+    "torch>=2.5.0",
+    "xgboost>=2.1.0",
+    "lightgbm>=4.5.0",
+
+    # Scheduling & utilities
+    "apscheduler>=3.10.4",
+    "structlog>=24.4.0",
+    "tenacity>=9.0.0",
+    "python-dotenv>=1.0.1",
+    "aiohttp>=3.11.0",
+    "anyio>=4.7.0",
+]
+
+[project.optional-dependencies]
+ml = ["torch>=2.5.0"]
+train = [
+    "torch>=2.5.0",
+    "optuna>=4.1.0",
+    "shap>=0.46.0",
+    "stable-baselines3>=2.4.0",
+    "gymnasium>=1.0.0",
+    "lightning>=2.2.0",
+    "mlflow>=2.10.0",
+]
+
+[tool.hatch.build.targets.wheel]
+# Include the app package from backend/ so `import app` works after install
+packages = ["backend/app"]
+
+[tool.hatch.build.targets.wheel.sources]
+"backend/app" = "app"

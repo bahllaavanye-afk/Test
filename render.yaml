@@ -12,9 +12,11 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install uv && uv pip install --system -e "."
+    buildCommand: pip install uv && uv pip install --system --extra-index-url https://download.pytorch.org/whl/cpu -e ".[ml]"
     startCommand: bash start.sh
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - key: TRADING_MODE
         value: paper
       - key: DEBUG
