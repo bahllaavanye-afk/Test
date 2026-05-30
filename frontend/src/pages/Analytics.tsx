@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
 import CorrelationMatrix from '../components/analytics/CorrelationMatrix'
+import LWEquityCurve, { TradeMarker } from '../components/charts/LWEquityCurve'
 
 // ─── Tearsheet sub-components ────────────────────────────────────────────────
 
@@ -284,6 +285,12 @@ export default function Analytics() {
     queryFn: () => api.get('/analytics/equity-curve').then(r => r.data),
   })
 
+  const { data: tradesRaw } = useQuery({
+    queryKey: ['trades-markers'],
+    queryFn: () => api.get('/trades/?limit=500').then(r => r.data),
+    refetchInterval: 60_000,
+  })
+
   const { data: strategiesRaw, isError: strategiesError } = useQuery({
     queryKey: ['strategies'],
     queryFn: () => api.get('/strategies/').then(r => r.data),
@@ -302,6 +309,27 @@ export default function Analytics() {
   const monthlyReturns: { month: string; ret: number }[] = Array.isArray(monthlyRaw) ? monthlyRaw : []
   const equityCurvePoints: { date: string; equity: number }[] = Array.isArray(equityCurveRaw) ? equityCurveRaw : []
   const strategies: any[] = Array.isArray(strategiesRaw) ? strategiesRaw : []
+
+  // Convert equity curve points to { time, value } for LWEquityCurve
+  const lwCurveData = equityCurvePoints
+    .filter(p => p.date && p.equity != null)
+    .map(p => ({
+      time: Math.floor(new Date(p.date).getTime() / 1000),
+      value: p.equity,
+    }))
+    .filter(p => !isNaN(p.time))
+
+  // Convert trade records to markers
+  const tradesRaw2: any[] = Array.isArray(tradesRaw) ? tradesRaw : []
+  const tradeMarkers: TradeMarker[] = tradesRaw2
+    .filter(t => t.opened_at && (t.side === 'buy' || t.side === 'sell'))
+    .map(t => ({
+      time: Math.floor(new Date(t.opened_at).getTime() / 1000),
+      side: t.side as 'buy' | 'sell',
+      price: t.entry_price ?? 0,
+      size: t.quantity ?? 0,
+    }))
+    .filter(t => !isNaN(t.time))
 
   const maxPnl = attribution.length > 0 ? Math.max(...attribution.map(s => Math.abs(s.total_pnl))) : 0
   const marketBps = slippage.find(s => s.algo === 'market' || s.execution_algo === 'market')?.avg_bps ?? null
@@ -434,12 +462,20 @@ export default function Analytics() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-semibold text-white">Equity Curve</h2>
-            <p className="text-xs text-[#888888] mt-0.5">Starting capital · amber = equity · red shading = drawdown periods</p>
+            <p className="text-xs text-[#888888] mt-0.5">Starting capital · amber = equity · markers = trade fills</p>
           </div>
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5">
               <div className="w-6 h-0.5 bg-[#f5a623]" />
               <span className="text-[#888888]">Equity</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span style={{ color: '#00c853', fontSize: 14 }}>▲</span>
+              <span className="text-[#888888]">Buy</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span style={{ color: '#ff1744', fontSize: 14 }}>▼</span>
+              <span className="text-[#888888]">Sell</span>
             </div>
           </div>
         </div>
@@ -448,7 +484,7 @@ export default function Analytics() {
             <p className="text-sm text-[#ff1744]">Failed to load equity curve data.</p>
           </div>
         ) : (
-          <EquityCurveFromPoints points={equityCurvePoints} />
+          <LWEquityCurve data={lwCurveData} markers={tradeMarkers} height={280} />
         )}
       </div>
 

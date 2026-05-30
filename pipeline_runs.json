@@ -1,5 +1,73 @@
 [
   {
+    "run_id": "local-1780161595",
+    "pipeline": "ml_experiments",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T17:19:55.945976+00:00",
+    "completed_at": "2026-05-30T17:19:57.141110+00:00",
+    "status": "success",
+    "stages": [
+      {
+        "name": "data_fetch",
+        "label": "Fetch benchmark data",
+        "status": "success",
+        "started_at": "2026-05-30T17:19:55.947714+00:00",
+        "completed_at": "2026-05-30T17:19:56.288795+00:00",
+        "duration_s": 0.34,
+        "output": {
+          "spy_bars": 0
+        },
+        "error": null,
+        "channel": "#squad-data"
+      },
+      {
+        "name": "cache_check",
+        "label": "Cache & data status",
+        "status": "success",
+        "started_at": "2026-05-30T17:19:56.289741+00:00",
+        "completed_at": "2026-05-30T17:19:56.291443+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "n_strategies": 34,
+          "filter": "all"
+        },
+        "error": null,
+        "channel": "#squad-data"
+      },
+      {
+        "name": "backtesting",
+        "label": "Run backtest signals",
+        "status": "success",
+        "started_at": "2026-05-30T17:19:56.292322+00:00",
+        "completed_at": "2026-05-30T17:19:57.137294+00:00",
+        "duration_s": 0.84,
+        "output": {
+          "succeeded": 0,
+          "failed": 0,
+          "best_sharpe": 0
+        },
+        "error": null,
+        "channel": "#ml-experiments"
+      },
+      {
+        "name": "evaluation",
+        "label": "Compute metrics & post report",
+        "status": "success",
+        "started_at": "2026-05-30T17:19:57.138255+00:00",
+        "completed_at": "2026-05-30T17:19:57.140065+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "n_results": 0
+        },
+        "error": null,
+        "channel": "#ml-experiments"
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780161595"
+  },
+  {
     "run_id": "local-1780158383",
     "pipeline": "desk_trading",
     "desk": null,
