@@ -1,0 +1,658 @@
+[
+  {
+    "run_id": "local-1780158383",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:26:23.817082+00:00",
+    "completed_at": "2026-05-30T16:26:28.525517+00:00",
+    "status": "success",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:26:23.818242+00:00",
+        "completed_at": "2026-05-30T16:26:23.885167+00:00",
+        "duration_s": 0.07,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-05-30T16:26:23.886204+00:00",
+        "completed_at": "2026-05-30T16:26:25.047236+00:00",
+        "duration_s": 1.16,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "success",
+        "started_at": "2026-05-30T16:26:25.048454+00:00",
+        "completed_at": "2026-05-30T16:26:28.513362+00:00",
+        "duration_s": 3.46,
+        "output": {
+          "signals_generated": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "risk_check",
+        "label": "Apply confidence threshold filter",
+        "status": "success",
+        "started_at": "2026-05-30T16:26:28.514518+00:00",
+        "completed_at": "2026-05-30T16:26:28.516787+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "passed": 0,
+          "filtered": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "order_execution",
+        "label": "Place orders",
+        "status": "success",
+        "started_at": "2026-05-30T16:26:28.517928+00:00",
+        "completed_at": "2026-05-30T16:26:28.521102+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "orders_placed": 0,
+          "reason": "account_unavailable",
+          "total_notional": 0.0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "pnl_snapshot",
+        "label": "Post PnL snapshot to Slack",
+        "status": "success",
+        "started_at": "2026-05-30T16:26:28.522213+00:00",
+        "completed_at": "2026-05-30T16:26:28.524396+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "desks_run": 6,
+          "total_orders": 0
+        },
+        "error": null,
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780158383"
+  },
+  {
+    "run_id": "local-1780157839",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:17:19.926245+00:00",
+    "completed_at": "2026-05-30T16:17:24.528516+00:00",
+    "status": "success",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:17:19.927215+00:00",
+        "completed_at": "2026-05-30T16:17:19.976396+00:00",
+        "duration_s": 0.05,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-05-30T16:17:19.977248+00:00",
+        "completed_at": "2026-05-30T16:17:21.289021+00:00",
+        "duration_s": 1.31,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "success",
+        "started_at": "2026-05-30T16:17:21.290077+00:00",
+        "completed_at": "2026-05-30T16:17:24.517712+00:00",
+        "duration_s": 3.23,
+        "output": {
+          "signals_generated": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "risk_check",
+        "label": "Apply confidence threshold filter",
+        "status": "success",
+        "started_at": "2026-05-30T16:17:24.518736+00:00",
+        "completed_at": "2026-05-30T16:17:24.520837+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "passed": 0,
+          "filtered": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "order_execution",
+        "label": "Place orders",
+        "status": "success",
+        "started_at": "2026-05-30T16:17:24.521782+00:00",
+        "completed_at": "2026-05-30T16:17:24.524570+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "orders_placed": 0,
+          "reason": "account_unavailable",
+          "total_notional": 0.0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "pnl_snapshot",
+        "label": "Post PnL snapshot to Slack",
+        "status": "success",
+        "started_at": "2026-05-30T16:17:24.525575+00:00",
+        "completed_at": "2026-05-30T16:17:24.527543+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "desks_run": 6,
+          "total_orders": 0
+        },
+        "error": null,
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157839"
+  },
+  {
+    "run_id": "local-1780157813",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:16:53.037327+00:00",
+    "completed_at": "2026-05-30T16:16:57.361869+00:00",
+    "status": "success",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:16:53.038207+00:00",
+        "completed_at": "2026-05-30T16:16:53.105771+00:00",
+        "duration_s": 0.07,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-05-30T16:16:53.106514+00:00",
+        "completed_at": "2026-05-30T16:16:54.106199+00:00",
+        "duration_s": 1.0,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "success",
+        "started_at": "2026-05-30T16:16:54.107087+00:00",
+        "completed_at": "2026-05-30T16:16:57.351784+00:00",
+        "duration_s": 3.24,
+        "output": {
+          "signals_generated": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "risk_check",
+        "label": "Apply confidence threshold filter",
+        "status": "success",
+        "started_at": "2026-05-30T16:16:57.352749+00:00",
+        "completed_at": "2026-05-30T16:16:57.354583+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "passed": 0,
+          "filtered": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "order_execution",
+        "label": "Place orders",
+        "status": "success",
+        "started_at": "2026-05-30T16:16:57.355571+00:00",
+        "completed_at": "2026-05-30T16:16:57.358144+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "orders_placed": 0,
+          "reason": "account_unavailable",
+          "total_notional": 0.0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "pnl_snapshot",
+        "label": "Post PnL snapshot to Slack",
+        "status": "success",
+        "started_at": "2026-05-30T16:16:57.359021+00:00",
+        "completed_at": "2026-05-30T16:16:57.360866+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "desks_run": 6,
+          "total_orders": 0
+        },
+        "error": null,
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157813"
+  },
+  {
+    "run_id": "local-1780157596",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:13:16.300845+00:00",
+    "completed_at": "2026-05-30T16:13:21.241368+00:00",
+    "status": "success",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:13:16.301735+00:00",
+        "completed_at": "2026-05-30T16:13:16.353770+00:00",
+        "duration_s": 0.05,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-05-30T16:13:16.354459+00:00",
+        "completed_at": "2026-05-30T16:13:17.389807+00:00",
+        "duration_s": 1.04,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "success",
+        "started_at": "2026-05-30T16:13:17.390601+00:00",
+        "completed_at": "2026-05-30T16:13:21.230896+00:00",
+        "duration_s": 3.84,
+        "output": {
+          "signals_generated": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "risk_check",
+        "label": "Apply confidence threshold filter",
+        "status": "success",
+        "started_at": "2026-05-30T16:13:21.231838+00:00",
+        "completed_at": "2026-05-30T16:13:21.233663+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "passed": 0,
+          "filtered": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "order_execution",
+        "label": "Place orders",
+        "status": "success",
+        "started_at": "2026-05-30T16:13:21.234735+00:00",
+        "completed_at": "2026-05-30T16:13:21.237301+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "orders_placed": 0,
+          "reason": "account_unavailable",
+          "total_notional": 0.0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "pnl_snapshot",
+        "label": "Post PnL snapshot to Slack",
+        "status": "success",
+        "started_at": "2026-05-30T16:13:21.238217+00:00",
+        "completed_at": "2026-05-30T16:13:21.240476+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "desks_run": 6,
+          "total_orders": 0
+        },
+        "error": null,
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157596"
+  },
+  {
+    "run_id": "local-1780157561",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:12:41.851114+00:00",
+    "completed_at": "2026-05-30T16:12:47.569108+00:00",
+    "status": "failed",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:12:41.851817+00:00",
+        "completed_at": "2026-05-30T16:12:41.907125+00:00",
+        "duration_s": 0.06,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-05-30T16:12:41.907853+00:00",
+        "completed_at": "2026-05-30T16:12:42.871878+00:00",
+        "duration_s": 0.96,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "success",
+        "started_at": "2026-05-30T16:12:42.872426+00:00",
+        "completed_at": "2026-05-30T16:12:47.561170+00:00",
+        "duration_s": 4.69,
+        "output": {
+          "signals_generated": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "risk_check",
+        "label": "Apply confidence threshold filter",
+        "status": "success",
+        "started_at": "2026-05-30T16:12:47.561961+00:00",
+        "completed_at": "2026-05-30T16:12:47.563464+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "passed": 0,
+          "filtered": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "order_execution",
+        "label": "Place orders",
+        "status": "success",
+        "started_at": "2026-05-30T16:12:47.564097+00:00",
+        "completed_at": "2026-05-30T16:12:47.566093+00:00",
+        "duration_s": 0.0,
+        "output": {
+          "orders_placed": 0,
+          "reason": "account_unavailable",
+          "total_notional": 0.0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "pnl_snapshot",
+        "label": "Post PnL snapshot to Slack",
+        "status": "failed",
+        "started_at": "2026-05-30T16:12:47.566741+00:00",
+        "completed_at": "2026-05-30T16:12:47.567575+00:00",
+        "duration_s": 0.0,
+        "output": {},
+        "error": "UnboundLocalError: cannot access local variable 'equity' where it is not associated with a value",
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157561"
+  },
+  {
+    "run_id": "local-1780157552",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:12:32.890467+00:00",
+    "completed_at": "2026-05-30T16:12:34.093797+00:00",
+    "status": "failed",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:12:32.891057+00:00",
+        "completed_at": "2026-05-30T16:12:32.940433+00:00",
+        "duration_s": 0.05,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "failed",
+        "started_at": "2026-05-30T16:12:32.941014+00:00",
+        "completed_at": "2026-05-30T16:12:34.093158+00:00",
+        "duration_s": 1.15,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": "BrokenPipeError: [Errno 32] Broken pipe",
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157552"
+  },
+  {
+    "run_id": "local-1780157468",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:11:08.986994+00:00",
+    "completed_at": null,
+    "status": "running",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:11:08.987540+00:00",
+        "completed_at": "2026-05-30T16:11:09.036825+00:00",
+        "duration_s": 0.05,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-05-30T16:11:09.037268+00:00",
+        "completed_at": "2026-05-30T16:11:10.301963+00:00",
+        "duration_s": 1.26,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "running",
+        "started_at": "2026-05-30T16:11:10.302548+00:00",
+        "completed_at": null,
+        "duration_s": null,
+        "output": {},
+        "error": null,
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157468"
+  },
+  {
+    "run_id": "local-1780157403",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:10:03.527775+00:00",
+    "completed_at": null,
+    "status": "running",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:10:03.528392+00:00",
+        "completed_at": "2026-05-30T16:10:03.591515+00:00",
+        "duration_s": 0.06,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-05-30T16:10:03.592004+00:00",
+        "completed_at": "2026-05-30T16:10:11.885809+00:00",
+        "duration_s": 8.29,
+        "output": {
+          "bars_fetched": 0,
+          "symbols": []
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "running",
+        "started_at": "2026-05-30T16:10:11.886320+00:00",
+        "completed_at": null,
+        "duration_s": null,
+        "output": {},
+        "error": null,
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157403"
+  },
+  {
+    "run_id": "local-1780157314",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-05-30T16:08:34.222387+00:00",
+    "completed_at": "2026-05-30T16:08:34.356491+00:00",
+    "status": "failed",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-05-30T16:08:34.222976+00:00",
+        "completed_at": "2026-05-30T16:08:34.299537+00:00",
+        "duration_s": 0.08,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "failed",
+        "started_at": "2026-05-30T16:08:34.300012+00:00",
+        "completed_at": "2026-05-30T16:08:34.353831+00:00",
+        "duration_s": 0.05,
+        "output": {},
+        "error": "RuntimeError: could not reach Alpaca paper account",
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1780157314"
+  }
+]
