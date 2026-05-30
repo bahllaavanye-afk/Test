@@ -1,0 +1,53 @@
+name: Claude AI Slack Bot
+
+# Posts proactive AI insights 4x/day to all desks.
+# Every employee can trigger insights by running this workflow manually
+# (eventually wire to Slack Events API for real-time @mention support).
+
+on:
+  schedule:
+    - cron: "0 9,13,17,21 * * *"   # 4x daily (9am, 1pm, 5pm, 9pm UTC)
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Slack channel to post to (leave empty for all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: claude-slack-bot
+  cancel-in-progress: true
+
+jobs:
+  insights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: pip install anthropic httpx
+
+      - name: Post Claude insights to Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "::error::SLACK_BOT_TOKEN not set — add to repo Secrets"
+            exit 1
+          fi
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY not set — add to repo Secrets"
+            exit 1
+          fi
+          python .github/scripts/claude_slack_bot.py proactive

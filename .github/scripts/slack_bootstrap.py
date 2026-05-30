@@ -226,7 +226,20 @@ def main() -> int:
         _maybe_post(log.getvalue(), exit_code=1)
         return 1
 
+    # Resolve admin user ID (SLACK_ADMIN_USER_ID env var or lookup by email)
+    admin_user_id = os.environ.get("SLACK_ADMIN_USER_ID", "").strip()
+    admin_email = os.environ.get("SLACK_ADMIN_EMAIL", "bahl.laavanye@gmail.com").strip()
+    if not admin_user_id and admin_email:
+        try:
+            r = slack_call(token, "users.lookupByEmail", {"email": admin_email})
+            admin_user_id = r.get("user", {}).get("id", "")
+            if admin_user_id:
+                out(f"✅ Admin user resolved: {admin_user_id} ({admin_email})")
+        except RuntimeError:
+            out(f"⚠  Could not resolve admin by email {admin_email} — skipping admin invites")
+
     created, skipped, errors = [], [], []
+    all_channel_ids: list[str] = []
 
     out("🚀 Creating channels...\n")
     for spec in CHANNELS:
@@ -251,6 +264,8 @@ def main() -> int:
                 except RuntimeError as te:
                     out(f"   ⚠ setTopic failed for #{name}: {te}")
             created.append(name)
+            if ch_id:
+                all_channel_ids.append(ch_id)
             out(f"   + #{name}")
         except RuntimeError as e:
             err_str = str(e)
@@ -260,6 +275,28 @@ def main() -> int:
             else:
                 errors.append({"channel": name, "error": err_str})
                 out(f"   ✗ #{name}: {err_str}")
+
+    # Invite admin to all channels (new + existing)
+    if admin_user_id:
+        # Collect all channel IDs (both newly created and pre-existing)
+        for ch_name, ch_id_map in [(c, existing.get(c)) for c in skipped]:
+            if ch_id_map:
+                all_channel_ids.append(ch_id_map)
+        out(f"\n👑 Inviting admin {admin_user_id} to {len(all_channel_ids)} channels...")
+        invite_ok, invite_fail = 0, 0
+        for ch_id in all_channel_ids:
+            try:
+                slack_call(token, "conversations.invite", {
+                    "channel": ch_id,
+                    "users": admin_user_id,
+                })
+                invite_ok += 1
+            except RuntimeError as e:
+                if "already_in_channel" in str(e):
+                    invite_ok += 1
+                else:
+                    invite_fail += 1
+        out(f"   ✅ Invited to {invite_ok} channels, {invite_fail} failures")
 
     out(f"\n{'='*60}")
     out(f"✅ Created:          {len(created)}")

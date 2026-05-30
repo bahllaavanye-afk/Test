@@ -45,7 +45,6 @@ dependencies = [
     # Data
     "pandas>=2.2.0",
     "numpy>=1.26.0",
-    "pandas-ta>=0.3.14b0",
     "yfinance>=0.2.50",
     "scipy>=1.14.0",
     "statsmodels>=0.14.0",
