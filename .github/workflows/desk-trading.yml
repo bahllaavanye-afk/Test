@@ -1,6 +1,12 @@
 name: Desk Trading (Paper Orders)
 
 on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - ".github/workflows/desk-trading.yml"
+      - ".github/scripts/desk_order_placer.py"
+      - ".github/scripts/pipeline_tracker.py"
   schedule:
     # Every 15 minutes, Mon–Fri, 09:30–22:00 UTC (covers US market hours + pre/post)
     - cron: "*/15 9-22 * * 1-5"
