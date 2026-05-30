@@ -1,0 +1,55 @@
+name: Backend AI Engineering Team
+
+# Reviews backend code for bugs, security, and performance issues.
+# Auto-fixes safe configuration files and reports to Slack.
+
+on:
+  schedule:
+    - cron: "0 2 * * 2,4"    # Tuesday and Thursday at 2am UTC
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - "backend/app/**/*.py"
+      - "backend/pyproject.toml"
+      - "render.yaml"
+  workflow_dispatch:
+    inputs:
+      focus:
+        description: "What to focus the audit on"
+        required: false
+        default: "bugs, security, performance, correctness"
+
+concurrency:
+  group: backend-team
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install httpx anthropic --quiet
+
+      - name: Configure git
+        run: |
+          git config user.name "QuantEdge-AI[bot]"
+          git config user.email "ai@quantedge.io"
+
+      - name: Run backend team audit
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          FOCUS: ${{ github.event.inputs.focus || 'bugs, security, performance, correctness' }}
+        run: python .github/scripts/backend_team.py

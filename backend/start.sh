@@ -33,6 +33,11 @@ if echo "${DATABASE_URL}" | grep -qE 'db\.[a-z]+\.supabase\.co'; then
   exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1
 fi
 
+# ── Ensure Alembic uses the correct (sync) database URL ──────────────────────
+# ALEMBIC_DATABASE_URL takes priority; env.py falls back to DATABASE_URL and
+# converts async prefixes to psycopg2 automatically.
+export ALEMBIC_DATABASE_URL="${ALEMBIC_DATABASE_URL:-${DATABASE_URL}}"
+
 # ── Run Alembic migrations ────────────────────────────────────────────────────
 echo "Running database migrations..."
 MIGRATION_OK=0

@@ -35,7 +35,7 @@ def _fit_regime(returns: np.ndarray) -> int:
     if n < 60:
         return 1  # insufficient data → sideways
 
-    vol_20 = pd.Series(returns).rolling(20).std().fillna(method="bfill").values
+    vol_20 = pd.Series(returns).rolling(20).std().bfill().values
     features = np.column_stack([returns, vol_20])
 
     if _HMM_AVAILABLE:

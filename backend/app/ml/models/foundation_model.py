@@ -7,9 +7,15 @@ Install: pip install chronos-forecasting
 """
 from __future__ import annotations
 import numpy as np
-import torch
 from typing import Literal
 from app.utils.logging import logger
+
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
 
 try:
     from chronos import ChronosPipeline

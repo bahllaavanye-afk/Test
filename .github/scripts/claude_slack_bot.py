@@ -116,13 +116,36 @@ def _post(channel: str, text: str, thread_ts: str | None = None) -> dict:
     payload: dict = {"channel": channel, "text": text, "mrkdwn": True}
     if thread_ts:
         payload["thread_ts"] = thread_ts
-    r = httpx.post(
-        f"{SLACK_API}/chat.postMessage",
-        headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-        json=payload,
-        timeout=10,
-    )
-    return r.json()
+    try:
+        r = httpx.post(
+            f"{SLACK_API}/chat.postMessage",
+            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
+            json=payload,
+            timeout=10,
+        )
+        result = r.json()
+        if not result.get("ok"):
+            error_code = result.get("error", "unknown_error")
+            print(f"  Slack API error posting to {channel}: {error_code}", flush=True)
+            # Fallback: try #general if specific channel fails
+            if channel != "#general" and error_code in ("channel_not_found", "not_in_channel", "is_archived"):
+                print(f"  Falling back to #general...", flush=True)
+                fallback_payload = {**payload, "channel": "#general",
+                                    "text": f"[intended for {channel}]\n{text}"}
+                fr = httpx.post(
+                    f"{SLACK_API}/chat.postMessage",
+                    headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
+                    json=fallback_payload,
+                    timeout=10,
+                )
+                return fr.json()
+        return result
+    except httpx.TimeoutException:
+        print(f"  Slack API timeout posting to {channel}", flush=True)
+        return {"ok": False, "error": "timeout"}
+    except Exception as exc:
+        print(f"  Slack API exception posting to {channel}: {exc}", flush=True)
+        return {"ok": False, "error": str(exc)}
 
 
 def _get_channel_history(channel: str, limit: int = 5) -> list[dict]:
@@ -195,8 +218,11 @@ def run_proactive_insights() -> None:
     for question, channel in prompts:
         print(f"  Posting to {channel}: {question[:60]}...", flush=True)
         answer = _ask_claude(question)
-        _post(channel, f"*🤖 QuantEdge-AI insight:*\n{answer}")
-        print(f"  ✓ Posted", flush=True)
+        result = _post(channel, f"*QuantEdge-AI insight:*\n{answer}")
+        if result.get("ok"):
+            print(f"  Posted successfully (ts={result.get('ts')})", flush=True)
+        else:
+            print(f"  Post failed: {result.get('error', 'unknown')}", flush=True)
 
 
 def handle_mention(event: dict) -> None:

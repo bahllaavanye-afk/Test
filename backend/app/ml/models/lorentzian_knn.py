@@ -10,8 +10,14 @@ compresses extreme differences, preventing rare events from dominating.
 Features used (same as original TV indicator):
   RSI(14), CCI(20), ADX(20), EMA delta (fast vs slow), SMA delta
 """
-import torch
-import torch.nn as nn
+try:
+    import torch
+    import torch.nn as nn
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
 import numpy as np
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta

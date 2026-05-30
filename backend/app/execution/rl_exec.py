@@ -30,9 +30,17 @@ import time
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
+    F = None      # type: ignore[assignment]
 
 from app.utils.logging import logger
 

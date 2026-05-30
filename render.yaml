@@ -12,7 +12,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install -e ".[ml]" --extra-index-url https://download.pytorch.org/whl/cpu
+    buildCommand: pip install -e "." && pip install "torch>=2.5.0" --index-url https://download.pytorch.org/whl/cpu --no-deps || echo "torch not available — ML strategies will degrade gracefully"
     startCommand: bash start.sh
     envVars:
       - key: PYTHON_VERSION

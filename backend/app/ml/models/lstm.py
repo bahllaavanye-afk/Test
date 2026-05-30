@@ -8,8 +8,14 @@ Architecture:
   → LayerNorm → Linear(256→64) → GELU → Dropout(0.3)
   → Linear(64→1) → Sigmoid  [binary classification]
 """
-import torch
-import torch.nn as nn
+try:
+    import torch
+    import torch.nn as nn
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
 import numpy as np
 from sklearn.metrics import roc_auc_score
 from app.ml.models.base_model import AbstractModel, EvalMetrics

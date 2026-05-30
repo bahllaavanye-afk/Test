@@ -7,6 +7,13 @@ name: Claude AI Slack Bot
 on:
   schedule:
     - cron: "0 9,13,17,21 * * *"   # 4x daily (9am, 1pm, 5pm, 9pm UTC)
+  push:
+    branches:
+      - claude/advanced-trading-bot-d5Lmw
+      - main
+    paths:
+      - ".github/scripts/claude_slack_bot.py"
+      - ".github/workflows/claude-slack-bot.yml"
   workflow_dispatch:
     inputs:
       channel:

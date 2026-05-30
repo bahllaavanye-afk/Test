@@ -161,6 +161,7 @@ def create_app() -> FastAPI:
     async def health_detailed():
         """Comprehensive system health — DB, Redis, scheduler, and background tasks."""
         import time
+        import importlib.util
         from app.database import AsyncSessionLocal
 
         checks: dict[str, dict] = {}
@@ -177,10 +178,13 @@ def create_app() -> FastAPI:
         # Redis
         try:
             from app.redis_client import get_redis
-            t0 = time.perf_counter()
             redis = get_redis()
-            await redis.ping()
-            checks["redis"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
+            if redis is None:
+                checks["redis"] = {"ok": True, "note": "disabled (REDIS_URL not set)"}
+            else:
+                t0 = time.perf_counter()
+                await redis.ping()
+                checks["redis"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
         except Exception as e:
             checks["redis"] = {"ok": False, "error": str(e)[:120]}
 
@@ -192,9 +196,29 @@ def create_app() -> FastAPI:
         agent = getattr(app.state, "algo_agent", None)
         checks["algo_agent"] = {"ok": agent is not None}
 
-        all_ok = all(v.get("ok", False) for v in checks.values())
+        # Background tasks (count running)
+        bg_tasks = getattr(app.state, "bg_tasks", [])
+        running_tasks = sum(1 for t in bg_tasks if not t.done())
+        checks["background_tasks"] = {"ok": running_tasks > 0, "running": running_tasks, "total": len(bg_tasks)}
+
+        # ML availability
+        torch_available = importlib.util.find_spec("torch") is not None
+        checks["torch"] = {"ok": True, "available": torch_available, "note": "optional — ML strategies degrade gracefully if absent"}
+
+        # Strategy registry
+        try:
+            from app.strategies import STRATEGY_REGISTRY
+            checks["strategies"] = {"ok": True, "count": len(STRATEGY_REGISTRY)}
+        except Exception as e:
+            checks["strategies"] = {"ok": False, "error": str(e)[:120]}
+
+        # Non-critical checks don't make status degraded
+        non_critical = {"redis", "torch"}
+        critical_checks = {k: v for k, v in checks.items() if k not in non_critical}
+        all_ok = all(v.get("ok", False) for v in critical_checks.values())
         return {
             "status": "ok" if all_ok else "degraded",
+            "version": "2.0.0",
             "mode": settings.trading_mode,
             "checks": checks,
         }

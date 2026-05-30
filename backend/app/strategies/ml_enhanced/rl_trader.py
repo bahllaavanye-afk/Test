@@ -7,7 +7,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import torch
+
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

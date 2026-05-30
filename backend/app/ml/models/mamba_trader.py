@@ -37,10 +37,20 @@ from __future__ import annotations
 
 import math
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torch.utils.data import DataLoader, TensorDataset
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
+    F = None      # type: ignore[assignment]
+    DataLoader = None   # type: ignore[assignment]
+    TensorDataset = None  # type: ignore[assignment]
 
 try:
     from sklearn.metrics import roc_auc_score
