@@ -26,10 +26,11 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install fastapi 'uvicorn[standard]' sqlalchemy asyncpg aiosqlite alembic \
-            'pydantic[email]' python-jose[cryptography] passlib bcrypt==4.0.1 \
+            'pydantic[email]' pydantic-settings \
+            python-jose[cryptography] passlib bcrypt==4.0.1 \
             httpx pytest pytest-asyncio pytest-cov aiohttp redis python-dotenv \
-            numpy pandas scipy scikit-learn statsmodels structlog \
-            cryptography apscheduler websockets pytz python-dateutil
+            numpy pandas scipy scikit-learn statsmodels structlog tenacity \
+            cryptography apscheduler websockets pytz python-dateutil slowapi
 
       - name: Run unit tests
         shell: bash
