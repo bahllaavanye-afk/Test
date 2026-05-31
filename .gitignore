@@ -74,3 +74,7 @@ pipeline_runs.json
 employee_dashboard.png
 paper_trade_proof.png
 paper_trade_proof.txt
+
+# App screenshots (contact sheet + per-page shots; CI writes to /tmp)
+app_screenshots_*.png
+app_screenshots_contact_sheet.png

@@ -1,0 +1,74 @@
+name: App Screenshots
+
+# Boots the real frontend (vite preview) + backend (uvicorn), drives a headless
+# Chromium across every page route, captures full-page screenshots, runs a
+# "what's broken" heuristic (blank pages, console errors, failed requests), and
+# posts a contact-sheet image to #app-screenshots on Slack.
+
+on:
+  schedule:
+    # Every 6 hours, around the clock.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: app-screenshots
+  cancel-in-progress: false
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Install Playwright + Pillow
+        run: |
+          pip install playwright pillow
+          python -m playwright install --with-deps chromium
+
+      - name: Install backend dependencies
+        run: |
+          pip install fastapi uvicorn pydantic pydantic-settings "sqlalchemy[asyncio]" \
+            aiosqlite httpx "python-jose[cryptography]" "passlib[bcrypt]" slowapi \
+            structlog tenacity python-dotenv pandas numpy
+
+      - name: Capture screenshots and post to Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SECRET_KEY: d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
+          DATABASE_URL: sqlite+aiosqlite:///./dev.db
+          TRADING_MODE: paper
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python .github/scripts/app_screenshots.py
+
+      - name: Upload screenshots artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-screenshots
+          path: /tmp/app_screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 14

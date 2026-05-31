@@ -122,6 +122,57 @@ DESKS: list[DeskConfig] = [
         notional_usd=600.0,
         confidence_min=0.62,
     ),
+    # ── Commodities desk: traded via liquid ETF proxies (Alpaca has no futures) ──
+    DeskConfig(
+        name="Commodities",
+        slack_channel="#desk-commodities",
+        # GLD=gold, SLV=silver, USO=WTI oil, UNG=natgas, DBA=agriculture,
+        # DBB=base metals, CPER=copper, DBC=broad commodity basket
+        symbols=["GLD", "SLV", "USO", "UNG", "DBA", "DBB", "CPER", "DBC"],
+        strategy_names=[
+            "time_series_momentum", "breakout", "supertrend",
+            "cross_asset_carry", "mean_reversion",
+        ],
+        notional_usd=400.0,
+        confidence_min=0.60,
+    ),
+    # ── Futures desk: index/rate/commodity FUTURES via their ETF proxies ─────────
+    DeskConfig(
+        name="Futures",
+        slack_channel="#desk-futures",
+        # ES→SPY, NQ→QQQ, RTY→IWM, YM→DIA, ZN→IEF(10Y), ZB→TLT(30Y),
+        # CL→USO(oil), GC→GLD(gold) — continuous-trend proxies
+        symbols=["SPY", "QQQ", "IWM", "DIA", "IEF", "TLT", "USO", "GLD"],
+        strategy_names=[
+            "time_series_momentum", "cross_sectional_momentum",
+            "breakout", "supertrend", "vwap_reversion",
+        ],
+        notional_usd=500.0,
+        confidence_min=0.60,
+    ),
+    # ── Rates desk: US Treasury curve via duration ETFs ──────────────────────────
+    DeskConfig(
+        name="Rates",
+        slack_channel="#desk-rates",
+        # SHY=1-3Y, IEI=3-7Y, IEF=7-10Y, TLT=20Y+, TIP=inflation, LQD=IG credit,
+        # HYG=high yield — curve + credit spread plays
+        symbols=["SHY", "IEI", "IEF", "TLT", "TIP", "LQD", "HYG"],
+        strategy_names=[
+            "cross_asset_carry", "basis_carry", "time_series_momentum",
+            "mean_reversion",
+        ],
+        notional_usd=500.0,
+        confidence_min=0.60,
+    ),
+    # ── Kalshi desk: CFTC-regulated US prediction market (scan-only, like Poly) ──
+    DeskConfig(
+        name="Kalshi",
+        slack_channel="#desk-kalshi",
+        symbols=[],   # scanned via Kalshi public API, not Alpaca bars
+        strategy_names=[],
+        notional_usd=50.0,
+        confidence_min=0.70,
+    ),
 ]
 
 # ── Alpaca REST client (direct HTTP, no SDK dependency) ───────────────────────
@@ -426,6 +477,94 @@ async def scan_polymarket(desk: DeskConfig) -> list[dict]:
     return signals
 
 
+# ── Kalshi real scan (CFTC-regulated US prediction market, public API, 24/7) ────
+
+# Kalshi is the regulated US cousin of Polymarket: a CFTC-licensed designated
+# contract market for event contracts. Its public trade API needs no auth for
+# read-only market data. YES+NO prices are in cents (0-100). A YES+NO sum below
+# ~98c is a binary-arb edge (same logic as Polymarket, but on a regulated venue).
+KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
+
+
+def _kalshi_get_sync(path: str, params: dict | None = None) -> object:
+    import urllib.request, urllib.parse
+    url = KALSHI_BASE + path
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+async def scan_kalshi(desk: DeskConfig) -> list[dict]:
+    """
+    Real Kalshi scan via the public market-data API (no auth, 24/7).
+    Finds binary-arb edges (YES_ask + NO_ask < 100c - fee buffer) on liquid
+    open markets. Scan-only unless KALSHI_API_KEY is set for live order placement.
+    """
+    print(f"\n{'─'*60}", flush=True)
+    print(f"  DESK: {desk.name} (Kalshi regulated-market scan — 24/7)", flush=True)
+    signals: list[dict] = []
+    try:
+        data = await asyncio.to_thread(
+            _kalshi_get_sync, "/markets",
+            {"status": "open", "limit": 100},
+        )
+    except Exception as exc:
+        print(f"  ✗ Kalshi fetch failed: {exc}", flush=True)
+        _post_slack(desk.slack_channel,
+                    f"⚠ *{desk.name}*: Kalshi API unreachable ({type(exc).__name__}) — no action")
+        return []
+
+    markets = data.get("markets", []) if isinstance(data, dict) else []
+    scanned = 0
+    for m in markets:
+        try:
+            # Kalshi prices are in cents (1-99). yes_ask / no_ask are best asks.
+            yes_ask = m.get("yes_ask")
+            no_ask = m.get("no_ask")
+            if yes_ask is None or no_ask is None:
+                continue
+            yes_c, no_c = float(yes_ask), float(no_ask)
+            if yes_c <= 0 or no_c <= 0:
+                continue
+            scanned += 1
+            total = yes_c + no_c  # cents
+            volume = float(m.get("volume", 0) or 0)
+            # Buy both sides < 98c → locked edge after ~2c fee buffer
+            if 0 < total < 98 and volume > 0:
+                edge = (100.0 - total)
+                signals.append({
+                    "desk": desk.name,
+                    "strategy": "kalshi_binary_arb",
+                    "market": (m.get("title") or m.get("ticker", "?"))[:80],
+                    "yes_c": yes_c, "no_c": no_c,
+                    "edge_cents": round(edge, 1),
+                    "volume": volume,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                })
+        except Exception:
+            continue
+
+    print(f"  scanned {scanned} open Kalshi markets — {len(signals)} arb signal(s)", flush=True)
+
+    if signals:
+        top = sorted(signals, key=lambda s: -s["edge_cents"])[:5]
+        lines = [f"*{desk.name} Desk* — {len(signals)} binary-arb signal(s) (regulated, 24/7)"]
+        for s in top:
+            lines.append(
+                f"🎯 `{s['market']}` YES={s['yes_c']:.0f}c+NO={s['no_c']:.0f}c "
+                f"→ *{s['edge_cents']:.0f}c* edge (vol={s['volume']:,.0f})"
+            )
+        if not os.environ.get("KALSHI_API_KEY"):
+            lines.append("_⚠ KALSHI_API_KEY not set — scan-only, no orders placed_")
+        _post_slack(desk.slack_channel, "\n".join(lines))
+    else:
+        _post_slack(desk.slack_channel,
+                    f"💤 *{desk.name}*: scanned {scanned} markets, no arb edge ≥2c right now")
+    return signals
+
+
 # ── Slack helper ──────────────────────────────────────────────────────────────
 
 def _post_slack(channel: str, message: str) -> None:
@@ -487,7 +626,8 @@ async def main() -> None:
             raise RuntimeError(f"no desk matches filter '{DESK_FILTER}'")
         # Polymarket trades on its own venue (CLOB), not Alpaca — handle separately.
         poly_desks   = [d for d in active_desks if d.name == "Polymarket"]
-        alpaca_desks = [d for d in active_desks if d.name != "Polymarket"]
+        kalshi_desks = [d for d in active_desks if d.name == "Kalshi"]
+        alpaca_desks = [d for d in active_desks if d.name not in ("Polymarket", "Kalshi")]
 
         with tracker.stage(DATA_FETCH, "Fetch account and market bars"):
             fetched_account = await _get_account()
@@ -517,10 +657,12 @@ async def main() -> None:
                     symbols_fetched.append(sym)
             tracker.set_output(bars_fetched=bars_fetched, symbols=symbols_fetched)
 
-        # ── Stage 2b: Polymarket scan (24/7, independent of stock clock) ──────
+        # ── Stage 2b: Prediction-market scans (24/7, independent of stock clock) ──
         poly_signals: list[dict] = []
         for desk in poly_desks:
             poly_signals.extend(await scan_polymarket(desk))
+        for desk in kalshi_desks:
+            poly_signals.extend(await scan_kalshi(desk))
 
         # ── Stage 3: Signal Generation (Alpaca desks) ─────────────────────────
         raw_signals: list[dict] = []
@@ -642,8 +784,8 @@ async def main() -> None:
                 else:
                     desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
 
-            # Polymarket desk summary (scan-based, already posted to its own channel)
-            for desk in poly_desks:
+            # Prediction-market desk summaries (scan-based, posted to own channels)
+            for desk in poly_desks + kalshi_desks:
                 n = len([s for s in poly_signals if s["desk"] == desk.name])
                 desk_summaries.append(
                     f"{'🎯' if n else '💤'} *{desk.name}*: {n} arb signal(s) (24/7 scan)"
@@ -662,6 +804,10 @@ async def main() -> None:
 
         # ── Persist this run for future analysis (append-only JSONL) ──────────
         _persist_desk_run(account, all_orders, poly_signals, raw_signals)
+
+    print(f"\n{'═'*60}", flush=True)
+    print(f"Done. {len(all_orders)} orders placed across {len(DESKS)} desks "
+          f"({len(poly_signals)} prediction-market arb signals).", flush=True)
 
 
 def _persist_desk_run(account: dict, orders: list[dict], poly_signals: list[dict],
@@ -697,9 +843,7 @@ def _persist_desk_run(account: dict, orders: list[dict], poly_signals: list[dict
         print(f"  💾 persisted desk run → experiments/results/desk_runs.jsonl", flush=True)
     except Exception as exc:
         print(f"  ⚠ failed to persist desk run: {exc}", flush=True)
-
-    print(f"\n{'═'*60}", flush=True)
-    print(f"Done. {len(all_orders)} orders placed across {len(DESKS)} desks.", flush=True)
+    print(f"  💾 desk run complete", flush=True)
 
 
 if __name__ == "__main__":
