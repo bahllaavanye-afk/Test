@@ -2,6 +2,9 @@
 # QuantEdge startup — Render free tier
 # Does NOT use set -e so a failed migration doesn't kill the server.
 
+# Always run from the directory containing this script (backend/).
+cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" || true
+
 echo "=== QuantEdge startup @ $(date -u '+%Y-%m-%d %H:%M UTC') ==="
 echo "DATABASE_URL prefix : ${DATABASE_URL:0:50}..."
 echo "PORT                : ${PORT:-8000}"

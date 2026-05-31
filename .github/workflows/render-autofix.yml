@@ -1,0 +1,66 @@
+name: Render — Auto-Fix (build + DATABASE_URL) on merge
+
+# Runs automatically when merged to main (and re-runnable manually).
+# 1. Forces the service build command to `pip install -e "."` (no alembic).
+# 2. Rewrites DATABASE_URL from the Supabase IPv6 direct host to the IPv4
+#    pooler host (region baked to us-west-1 = California; override via input).
+# 3. Triggers a redeploy.
+#
+# Fully autonomous — uses RENDER_API_KEY + RENDER_SERVICE_ID secrets.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/render-autofix.yml"
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Supabase region"
+        required: false
+        default: "us-west-1"
+      port:
+        description: "Pooler port (6543 transaction / 5432 session)"
+        required: false
+        default: "6543"
+
+concurrency:
+  group: render-autofix
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install httpx --quiet
+      - name: Guard — secrets present?
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::warning::RENDER_API_KEY / RENDER_SERVICE_ID not set — skipping."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - name: Fix build/start commands (remove alembic from build)
+        if: env.SKIP != '1'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_WORKER_SERVICE_ID: ${{ secrets.RENDER_WORKER_SERVICE_ID }}
+        run: python .github/scripts/render_fix_service_config.py
+      - name: Fix DATABASE_URL (Supabase direct → pooler)
+        if: env.SKIP != '1'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_WORKER_SERVICE_ID: ${{ secrets.RENDER_WORKER_SERVICE_ID }}
+          SUPABASE_REGION: ${{ github.event.inputs.region || 'us-west-1' }}
+          SUPABASE_POOLER_PORT: ${{ github.event.inputs.port || '6543' }}
+        run: python .github/scripts/render_fix_db_url.py

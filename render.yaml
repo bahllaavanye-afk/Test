@@ -11,9 +11,8 @@ services:
     env: python
     region: oregon
     plan: free
-    rootDir: backend
-    buildCommand: pip install -e "." && pip install "torch>=2.5.0" --index-url https://download.pytorch.org/whl/cpu --no-deps || echo "torch not available — ML strategies will degrade gracefully"
-    startCommand: bash start.sh
+    buildCommand: cd backend && pip install -e "." && pip install "torch>=2.5.0" --index-url https://download.pytorch.org/whl/cpu --no-deps || echo "torch not available — ML strategies will degrade gracefully"
+    startCommand: bash backend/start.sh
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
