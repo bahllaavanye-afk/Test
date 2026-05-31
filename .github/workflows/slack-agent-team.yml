@@ -73,15 +73,82 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
-          # Multi-agent cascade: Groq → GitHub Models → Gemini → Claude Haiku
-          # Groq: free 500K tok/day (Llama 3.3 70B) — handles most requests
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          # Gemini Flash: free 1500 req/day, 1M context window — long-context tasks
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          # Cerebras: free 1M tokens/day (Qwen3 32B) — bulk analysis fallback
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          # Claude Haiku: final paid fallback — Claude Sonnet is NEVER called here
+          # ── Shared primary keys (fallback pool) ──────────────────────────
+          # ALLOW_PAID_APIS=False in code — Anthropic key present but NEVER called.
+          # Zero-spend policy enforced at the code level, not just here.
+          GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY:  ${{ secrets.CEREBRAS_API_KEY }}
+          GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # ── Shared backup pools (extra accounts, same provider) ───────────
+          GROQ_API_KEY_BACKUP_1: ${{ secrets.GROQ_API_KEY_BACKUP_1 }}
+          GROQ_API_KEY_BACKUP_2: ${{ secrets.GROQ_API_KEY_BACKUP_2 }}
+          GROQ_API_KEY_BACKUP_3: ${{ secrets.GROQ_API_KEY_BACKUP_3 }}
+          GROQ_API_KEY_BACKUP_4: ${{ secrets.GROQ_API_KEY_BACKUP_4 }}
+          GROQ_API_KEY_BACKUP_5: ${{ secrets.GROQ_API_KEY_BACKUP_5 }}
+          CEREBRAS_API_KEY_BACKUP_1: ${{ secrets.CEREBRAS_API_KEY_BACKUP_1 }}
+          CEREBRAS_API_KEY_BACKUP_2: ${{ secrets.CEREBRAS_API_KEY_BACKUP_2 }}
+          CEREBRAS_API_KEY_BACKUP_3: ${{ secrets.CEREBRAS_API_KEY_BACKUP_3 }}
+          GEMINI_API_KEY_BACKUP_1: ${{ secrets.GEMINI_API_KEY_BACKUP_1 }}
+          GEMINI_API_KEY_BACKUP_2: ${{ secrets.GEMINI_API_KEY_BACKUP_2 }}
+          GEMINI_API_KEY_BACKUP_3: ${{ secrets.GEMINI_API_KEY_BACKUP_3 }}
+          OPENROUTER_API_KEY_BACKUP_1: ${{ secrets.OPENROUTER_API_KEY_BACKUP_1 }}
+          OPENROUTER_API_KEY_BACKUP_2: ${{ secrets.OPENROUTER_API_KEY_BACKUP_2 }}
+          # ── Per-employee dedicated keys (each employee = independent rate limit) ──
+          # Create free accounts at: groq.com | cloud.cerebras.ai | ai.google.dev | openrouter.ai
+          GROQ_API_KEY_MAYA:   ${{ secrets.GROQ_API_KEY_MAYA }}
+          GROQ_API_KEY_AARAV:  ${{ secrets.GROQ_API_KEY_AARAV }}
+          GROQ_API_KEY_LINH:   ${{ secrets.GROQ_API_KEY_LINH }}
+          GROQ_API_KEY_JIAN:   ${{ secrets.GROQ_API_KEY_JIAN }}
+          GROQ_API_KEY_ANNA:   ${{ secrets.GROQ_API_KEY_ANNA }}
+          GROQ_API_KEY_ADITI:  ${{ secrets.GROQ_API_KEY_ADITI }}
+          GROQ_API_KEY_KENJI:  ${{ secrets.GROQ_API_KEY_KENJI }}
+          GROQ_API_KEY_DIEGO:  ${{ secrets.GROQ_API_KEY_DIEGO }}
+          GROQ_API_KEY_LIOR:   ${{ secrets.GROQ_API_KEY_LIOR }}
+          GROQ_API_KEY_SARA:   ${{ secrets.GROQ_API_KEY_SARA }}
+          GROQ_API_KEY_SOFIA:  ${{ secrets.GROQ_API_KEY_SOFIA }}
+          GROQ_API_KEY_HUGO:   ${{ secrets.GROQ_API_KEY_HUGO }}
+          GROQ_API_KEY_MARCUS: ${{ secrets.GROQ_API_KEY_MARCUS }}
+          CEREBRAS_API_KEY_MAYA:   ${{ secrets.CEREBRAS_API_KEY_MAYA }}
+          CEREBRAS_API_KEY_AARAV:  ${{ secrets.CEREBRAS_API_KEY_AARAV }}
+          CEREBRAS_API_KEY_LINH:   ${{ secrets.CEREBRAS_API_KEY_LINH }}
+          CEREBRAS_API_KEY_JIAN:   ${{ secrets.CEREBRAS_API_KEY_JIAN }}
+          CEREBRAS_API_KEY_ANNA:   ${{ secrets.CEREBRAS_API_KEY_ANNA }}
+          CEREBRAS_API_KEY_ADITI:  ${{ secrets.CEREBRAS_API_KEY_ADITI }}
+          CEREBRAS_API_KEY_KENJI:  ${{ secrets.CEREBRAS_API_KEY_KENJI }}
+          CEREBRAS_API_KEY_DIEGO:  ${{ secrets.CEREBRAS_API_KEY_DIEGO }}
+          CEREBRAS_API_KEY_LIOR:   ${{ secrets.CEREBRAS_API_KEY_LIOR }}
+          CEREBRAS_API_KEY_SARA:   ${{ secrets.CEREBRAS_API_KEY_SARA }}
+          CEREBRAS_API_KEY_SOFIA:  ${{ secrets.CEREBRAS_API_KEY_SOFIA }}
+          CEREBRAS_API_KEY_HUGO:   ${{ secrets.CEREBRAS_API_KEY_HUGO }}
+          CEREBRAS_API_KEY_MARCUS: ${{ secrets.CEREBRAS_API_KEY_MARCUS }}
+          GEMINI_API_KEY_MAYA:   ${{ secrets.GEMINI_API_KEY_MAYA }}
+          GEMINI_API_KEY_AARAV:  ${{ secrets.GEMINI_API_KEY_AARAV }}
+          GEMINI_API_KEY_LINH:   ${{ secrets.GEMINI_API_KEY_LINH }}
+          GEMINI_API_KEY_JIAN:   ${{ secrets.GEMINI_API_KEY_JIAN }}
+          GEMINI_API_KEY_ANNA:   ${{ secrets.GEMINI_API_KEY_ANNA }}
+          GEMINI_API_KEY_ADITI:  ${{ secrets.GEMINI_API_KEY_ADITI }}
+          GEMINI_API_KEY_KENJI:  ${{ secrets.GEMINI_API_KEY_KENJI }}
+          GEMINI_API_KEY_DIEGO:  ${{ secrets.GEMINI_API_KEY_DIEGO }}
+          GEMINI_API_KEY_LIOR:   ${{ secrets.GEMINI_API_KEY_LIOR }}
+          GEMINI_API_KEY_SARA:   ${{ secrets.GEMINI_API_KEY_SARA }}
+          GEMINI_API_KEY_SOFIA:  ${{ secrets.GEMINI_API_KEY_SOFIA }}
+          GEMINI_API_KEY_HUGO:   ${{ secrets.GEMINI_API_KEY_HUGO }}
+          GEMINI_API_KEY_MARCUS: ${{ secrets.GEMINI_API_KEY_MARCUS }}
+          OPENROUTER_API_KEY_MAYA:   ${{ secrets.OPENROUTER_API_KEY_MAYA }}
+          OPENROUTER_API_KEY_AARAV:  ${{ secrets.OPENROUTER_API_KEY_AARAV }}
+          OPENROUTER_API_KEY_LINH:   ${{ secrets.OPENROUTER_API_KEY_LINH }}
+          OPENROUTER_API_KEY_JIAN:   ${{ secrets.OPENROUTER_API_KEY_JIAN }}
+          OPENROUTER_API_KEY_ANNA:   ${{ secrets.OPENROUTER_API_KEY_ANNA }}
+          OPENROUTER_API_KEY_ADITI:  ${{ secrets.OPENROUTER_API_KEY_ADITI }}
+          OPENROUTER_API_KEY_KENJI:  ${{ secrets.OPENROUTER_API_KEY_KENJI }}
+          OPENROUTER_API_KEY_DIEGO:  ${{ secrets.OPENROUTER_API_KEY_DIEGO }}
+          OPENROUTER_API_KEY_LIOR:   ${{ secrets.OPENROUTER_API_KEY_LIOR }}
+          OPENROUTER_API_KEY_SARA:   ${{ secrets.OPENROUTER_API_KEY_SARA }}
+          OPENROUTER_API_KEY_SOFIA:  ${{ secrets.OPENROUTER_API_KEY_SOFIA }}
+          OPENROUTER_API_KEY_HUGO:   ${{ secrets.OPENROUTER_API_KEY_HUGO }}
+          OPENROUTER_API_KEY_MARCUS: ${{ secrets.OPENROUTER_API_KEY_MARCUS }}
         run: |
           if [ -z "$SLACK_BOT_TOKEN" ]; then
             echo ""

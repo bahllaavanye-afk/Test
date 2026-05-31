@@ -102,6 +102,75 @@ _QUANT_SYSTEM = (
     "Do NOT say you are an AI or mention your model name."
 )
 
+# ── Cost policy — absolutely no paid API calls ────────────────────────────────
+# Changing this to True requires an explicit code review approval.
+ALLOW_PAID_APIS: bool = False
+
+# Hard per-call token cap — prevents runaway generation on any provider
+MAX_TOKENS_PER_CALL: int = 500
+
+# Per-employee call budget per workflow run — free tiers are generous but finite
+MAX_CALLS_PER_EMPLOYEE_PER_RUN: int = 6
+
+# Runtime counter — reset each process start (i.e. each GitHub Actions run)
+_run_call_counts: dict[str, int] = {}
+
+# ── IP protection — sanitize before sending to any external LLM ───────────────
+# These patterns are NEVER sent outside the repo boundary.
+import re as _re
+_STRIP_PATTERNS: list[tuple[str, str]] = [
+    # API keys / tokens (any long alphanumeric secret)
+    (r'(?i)(api[_-]?key|secret|token|password|bearer)\s*[=:]\s*\S+', '[REDACTED_CREDENTIAL]'),
+    # Alpaca / broker key formats
+    (r'\bPK[A-Z0-9]{18,}\b', '[REDACTED_ALPACA_KEY]'),
+    (r'\bxoxb-[0-9A-Za-z-]+\b', '[REDACTED_SLACK_TOKEN]'),
+    # Private keys / wallet addresses
+    (r'0x[0-9a-fA-F]{40,}', '[REDACTED_ADDRESS]'),
+    # IP addresses
+    (r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[REDACTED_IP]'),
+    # Full file paths that expose internal structure
+    (r'/home/[^\s]+', '[REDACTED_PATH]'),
+    (r'/root/[^\s]+', '[REDACTED_PATH]'),
+]
+
+def _sanitize(text: str) -> str:
+    """Strip credentials and internal paths before sending to any external LLM."""
+    for pattern, replacement in _STRIP_PATTERNS:
+        text = _re.sub(pattern, replacement, text)
+    return text
+
+# ── Per-employee key routing ──────────────────────────────────────────────────
+# Each employee has their own free-tier API keys from their own accounts.
+# Secret naming: GROQ_API_KEY_MAYA, CEREBRAS_API_KEY_AARAV, etc.
+# Backup pool:   GROQ_API_KEY_BACKUP_1 … GROQ_API_KEY_BACKUP_5
+# This gives each employee independent rate-limit pools — N employees = N×limit.
+
+_EMPLOYEES = [
+    "maya", "aarav", "linh", "jian", "anna",
+    "aditi", "kenji", "diego", "lior", "sara",
+    "sofia", "hugo", "marcus",
+]
+
+def _employee_keys(employee: str, provider: str) -> list[str]:
+    """Return all API keys for (employee, provider): dedicated + backup + shared."""
+    emp = employee.split("_")[0].upper()   # 'maya_chen' → 'MAYA'
+    prov = provider.upper()
+    keys: list[str] = []
+    # 1. Employee's dedicated key
+    k = os.environ.get(f"{prov}_API_KEY_{emp}", "").strip()
+    if k:
+        keys.append(k)
+    # 2. Shared backup pool (GROQ_API_KEY_BACKUP_1 … _5)
+    for i in range(1, 6):
+        k = os.environ.get(f"{prov}_API_KEY_BACKUP_{i}", "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    # 3. Shared primary key (the single key everyone falls back to)
+    k = os.environ.get(f"{prov}_API_KEY", "").strip()
+    if k and k not in keys:
+        keys.append(k)
+    return keys
+
 
 def call_groq(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
     """Groq API — Llama 3.3 70B, free tier 14 400 req/day, ~500 tok/sec."""
@@ -222,14 +291,53 @@ def call_cerebras(system_prompt: str, user_message: str, max_tokens: int = 600) 
         return None
 
 
+def call_openrouter(system_prompt: str, user_message: str, max_tokens: int = 500) -> str | None:
+    """OpenRouter — free tier: 50 req/day per account, 20 RPM. Llama 3.3 70B free."""
+    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        return None
+    payload = {
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+    }
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/bahllaavanye-afk/Test",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"  [openrouter] {e}")
+        return None
+
+
 def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Claude Haiku — highest quality fallback. Used when free agents unavailable."""
+    """
+    Claude Haiku — BLOCKED by default (ALLOW_PAID_APIS = False).
+    Only reachable if a human explicitly sets ALLOW_PAID_APIS = True in a code review.
+    This function exists so the import chain doesn't break, not to be called.
+    """
+    if not ALLOW_PAID_APIS:
+        print("  [POLICY] Paid API blocked — ALLOW_PAID_APIS=False. Skipping Claude.")
+        return None
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return None
     payload = {
         "model": "claude-haiku-4-5-20251001",
-        "max_tokens": max_tokens,
+        "max_tokens": min(max_tokens, MAX_TOKENS_PER_CALL),
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_message}],
     }
@@ -252,28 +360,149 @@ def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) ->
         return None
 
 
+def _try_openai_compat(endpoint: str, api_key: str, model: str,
+                        system_prompt: str, user_message: str,
+                        max_tokens: int, extra_headers: dict | None = None) -> str | None:
+    """Generic OpenAI-compatible POST — used for multi-key provider rotation."""
+    payload = {
+        "model": model,
+        "max_tokens": min(max_tokens, MAX_TOKENS_PER_CALL),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    if extra_headers:
+        headers.update(extra_headers)
+    req = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode(),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=22) as resp:
+            data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+
+
+def call_employee_agent(
+    employee: str,
+    user_message: str,
+    system_prompt: str = _QUANT_SYSTEM,
+    max_tokens: int = 500,
+) -> str | None:
+    """
+    Each employee has their OWN free API keys — independent rate-limit pools.
+    Tries dedicated employee key first, then backup pool, then shared primary key.
+    NEVER calls any paid API. Returns None (skips post) if all free tiers exhausted.
+
+    Secret naming in GitHub:
+      GROQ_API_KEY_MAYA       — Maya's dedicated Groq account
+      CEREBRAS_API_KEY_AARAV  — Aarav's dedicated Cerebras account
+      GEMINI_API_KEY_LINH     — Linh's dedicated Gemini account
+      OPENROUTER_API_KEY_JIAN — Jian's dedicated OpenRouter account
+      GROQ_API_KEY_BACKUP_1   — shared backup pool (accounts 1-5)
+    """
+    if ALLOW_PAID_APIS:
+        raise RuntimeError("ALLOW_PAID_APIS must stay False — zero spend policy")
+
+    # Enforce per-run call budget
+    emp_key = employee.split("_")[0].lower()
+    _run_call_counts[emp_key] = _run_call_counts.get(emp_key, 0)
+    if _run_call_counts[emp_key] >= MAX_CALLS_PER_EMPLOYEE_PER_RUN:
+        print(f"  [{emp_key}] call budget exhausted ({MAX_CALLS_PER_EMPLOYEE_PER_RUN}/run) — skipping")
+        return None
+    _run_call_counts[emp_key] += 1
+
+    # IP guard — never leak credentials or internal paths to external providers
+    safe_message = _sanitize(user_message)
+    safe_system  = _sanitize(system_prompt)
+    cap = min(max_tokens, MAX_TOKENS_PER_CALL)
+
+    # Provider cascade — all free, each employee has dedicated keys
+    providers = [
+        ("groq",      "https://api.groq.com/openai/v1/chat/completions",        "llama-3.3-70b-versatile", None),
+        ("cerebras",  "https://api.cerebras.ai/v1/chat/completions",             "qwen-3-32b",              None),
+        ("openrouter","https://openrouter.ai/api/v1/chat/completions",           "meta-llama/llama-3.3-70b-instruct:free",
+                      {"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"}),
+        ("gemini",    None, None, None),   # special handler below
+    ]
+
+    for prov, endpoint, model, extra_hdrs in providers:
+        for key in _employee_keys(emp_key, prov):
+            if prov == "gemini":
+                result = call_gemini(safe_system, safe_message, cap)
+            else:
+                result = _try_openai_compat(endpoint, key, model, safe_system, safe_message, cap, extra_hdrs)
+            if result and len(result.strip()) > 20:
+                print(f"  [{emp_key}/{prov}] ✓ {len(result)} chars")
+                return result.strip()
+
+    print(f"  [{emp_key}] ⚠ all free tiers exhausted — no paid fallback (policy)")
+    return None
+
+
 def call_best_agent(
     user_message: str,
     system_prompt: str = _QUANT_SYSTEM,
     max_tokens: int = 500,
 ) -> str | None:
     """
-    Cascade: free agents first, Claude Haiku as final fallback.
-    Groq (500K tok/day) → Cerebras (1M tok/day) → GitHub Models (free in Actions)
-    → Gemini Flash (1500 req/day, 1M context) → Claude Haiku (paid).
-    Claude Sonnet is NEVER called here — reserved for human orchestration only.
+    Shared cascade for non-employee calls (inbox, commands, incident posts).
+    100% free — Groq → Cerebras → GitHub Models → OpenRouter → Gemini.
+    Paid APIs are NEVER called regardless of ANTHROPIC_API_KEY presence.
+    Rotates through all available keys (shared + backup pool) per provider.
     """
-    for fn, label in [
-        (lambda: call_groq(system_prompt, user_message, max_tokens),         "groq"),
-        (lambda: call_cerebras(system_prompt, user_message, max_tokens),      "cerebras"),
-        (lambda: call_github_models(system_prompt, user_message, max_tokens), "github-models"),
-        (lambda: call_gemini(system_prompt, user_message, max_tokens),        "gemini"),
-        (lambda: call_claude(system_prompt, user_message, max_tokens),        "claude-haiku"),
-    ]:
-        result = fn()
-        if result and len(result.strip()) > 20:
-            print(f"  [agent/{label}] ✓ {len(result)} chars")
-            return result.strip()
+    cap = min(max_tokens, MAX_TOKENS_PER_CALL)
+    safe_msg = _sanitize(user_message)
+    safe_sys = _sanitize(system_prompt)
+
+    # Groq — try all available keys (shared + backup pool)
+    for key in _employee_keys("shared", "groq"):
+        r = _try_openai_compat(
+            "https://api.groq.com/openai/v1/chat/completions",
+            key, "llama-3.3-70b-versatile", safe_sys, safe_msg, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/groq] ✓ {len(r)} chars")
+            return r.strip()
+
+    # Cerebras — 1M tok/day per key
+    for key in _employee_keys("shared", "cerebras"):
+        r = _try_openai_compat(
+            "https://api.cerebras.ai/v1/chat/completions",
+            key, "qwen-3-32b", safe_sys, safe_msg, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/cerebras] ✓ {len(r)} chars")
+            return r.strip()
+
+    # GitHub Models — free in Actions (no extra key needed)
+    r = call_github_models(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [agent/github-models] ✓ {len(r)} chars")
+        return r.strip()
+
+    # OpenRouter — 50 req/day free per key
+    for key in _employee_keys("shared", "openrouter"):
+        r = _try_openai_compat(
+            "https://openrouter.ai/api/v1/chat/completions",
+            key, "meta-llama/llama-3.3-70b-instruct:free", safe_sys, safe_msg, cap,
+            {"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"})
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/openrouter] ✓ {len(r)} chars")
+            return r.strip()
+
+    # Gemini — 1500 req/day
+    r = call_gemini(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [agent/gemini] ✓ {len(r)} chars")
+        return r.strip()
+
+    # Hard stop — never pay
+    print("  [agent] ⚠ all 5 free providers exhausted — returning None (zero-spend policy)")
     return None
 
 

@@ -49,6 +49,24 @@ _QUANT_SYSTEM = (
     "Fix the code issue described. Output ONLY the corrected Python code, no explanation."
 )
 
+# ── Cost policy ───────────────────────────────────────────────────────────────
+ALLOW_PAID_APIS: bool = False   # Never change to True — zero-spend policy
+MAX_TOKENS_PER_AI_CALL: int = 600   # Hard cap per call regardless of provider
+
+# ── IP sanitization — strip credentials/paths before external LLM calls ───────
+_SANITIZE_PATTERNS = [
+    (re.compile(r'(?i)(api[_-]?key|secret|token|password)\s*[=:]\s*\S+'), '[REDACTED]'),
+    (re.compile(r'\bPK[A-Z0-9]{18,}\b'), '[REDACTED_KEY]'),
+    (re.compile(r'\bxoxb-[0-9A-Za-z-]+\b'), '[REDACTED_SLACK]'),
+    (re.compile(r'0x[0-9a-fA-F]{40,}'), '[REDACTED_ADDR]'),
+    (re.compile(r'/(?:home|root)/[^\s]+'), '[REDACTED_PATH]'),
+]
+
+def _sanitize(text: str) -> str:
+    for pat, repl in _SANITIZE_PATTERNS:
+        text = pat.sub(repl, text)
+    return text
+
 # ── Slack helpers ─────────────────────────────────────────────────────────────
 
 def _slack(method: str, payload: dict) -> dict:
@@ -119,47 +137,78 @@ def _call_openai_compat(url: str, key: str, model: str,
         return None
 
 
+def _all_keys_for(provider_env: str) -> list[str]:
+    """Return all keys for a provider: primary + up to 5 backup accounts."""
+    keys: list[str] = []
+    k = os.environ.get(provider_env, "").strip()
+    if k:
+        keys.append(k)
+    base = provider_env.replace("_API_KEY", "")
+    for i in range(1, 6):
+        k = os.environ.get(f"{base}_API_KEY_BACKUP_{i}", "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
 def ai_fix(prompt: str) -> str | None:
-    """Try free agents first, then Claude Haiku."""
-    # 1. Groq — Llama 3.3 70B (free 14k req/day)
-    key = os.environ.get("GROQ_API_KEY", "")
-    if key:
+    """
+    Free-only AI cascade for self-healing fixes. ALLOW_PAID_APIS=False enforced.
+    Sanitizes code snippets before sending — no credentials or internal paths leaked.
+    Rotates through all available keys (primary + backup pool) per provider.
+    """
+    if ALLOW_PAID_APIS:
+        raise RuntimeError("ALLOW_PAID_APIS must be False — zero-spend policy")
+
+    safe_prompt = _sanitize(prompt)
+    cap = MAX_TOKENS_PER_AI_CALL
+
+    # 1. Groq — Llama 3.3 70B, rotate all keys
+    for key in _all_keys_for("GROQ_API_KEY"):
         r = _call_openai_compat(
             "https://api.groq.com/openai/v1/chat/completions",
-            key, "llama-3.3-70b-versatile", _QUANT_SYSTEM, prompt)
+            key, "llama-3.3-70b-versatile", _QUANT_SYSTEM, safe_prompt, cap)
         if r and len(r.strip()) > 20:
             print("  [ai/groq] ✓")
             return r.strip()
 
-    # 2. Cerebras — Qwen3 32B (free 1M tokens/day, 2600 tok/sec)
-    ck = os.environ.get("CEREBRAS_API_KEY", "")
-    if ck:
+    # 2. Cerebras — Qwen3 32B, 1M tok/day per key
+    for key in _all_keys_for("CEREBRAS_API_KEY"):
         r = _call_openai_compat(
             "https://api.cerebras.ai/v1/chat/completions",
-            ck, "qwen-3-32b", _QUANT_SYSTEM, prompt)
+            key, "qwen-3-32b", _QUANT_SYSTEM, safe_prompt, cap)
         if r and len(r.strip()) > 20:
             print("  [ai/cerebras] ✓")
             return r.strip()
 
-    # 3. GitHub Models — GPT-4o-mini (free in Actions)
+    # 3. GitHub Models — free via GITHUB_TOKEN (already in Actions env)
     gh = os.environ.get("GH_TOKEN", "")
     if gh:
         r = _call_openai_compat(
             "https://models.inference.ai.azure.com/chat/completions",
-            gh, "gpt-4o-mini", _QUANT_SYSTEM, prompt)
+            gh, "gpt-4o-mini", _QUANT_SYSTEM, safe_prompt, cap)
         if r and len(r.strip()) > 20:
             print("  [ai/github-models] ✓")
             return r.strip()
 
-    # 4. Gemini 2.0 Flash (free 1500 req/day)
-    gk = os.environ.get("GEMINI_API_KEY", "")
-    if gk:
+    # 4. OpenRouter — free 50 req/day per key
+    for key in _all_keys_for("OPENROUTER_API_KEY"):
+        r = _call_openai_compat(
+            "https://openrouter.ai/api/v1/chat/completions",
+            key, "meta-llama/llama-3.3-70b-instruct:free", _QUANT_SYSTEM, safe_prompt, cap)
+        if r and len(r.strip()) > 20:
+            print("  [ai/openrouter] ✓")
+            return r.strip()
+
+    # 5. Gemini Flash — 1500 req/day per key
+    for gk in _all_keys_for("GEMINI_API_KEY"):
         payload = {
-            "contents": [{"parts": [{"text": f"{_QUANT_SYSTEM}\n\n{prompt}"}]}],
-            "generationConfig": {"maxOutputTokens": 800},
+            "contents": [{"parts": [{"text": f"{_QUANT_SYSTEM}\n\n{safe_prompt}"}]}],
+            "generationConfig": {"maxOutputTokens": cap},
         }
         req = urllib.request.Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gk}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-2.0-flash:generateContent?key={gk}",
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"}, method="POST")
         try:
@@ -170,27 +219,8 @@ def ai_fix(prompt: str) -> str | None:
         except Exception:
             pass
 
-    # 5. Claude Haiku — final paid fallback
-    ak = os.environ.get("ANTHROPIC_API_KEY", "")
-    if ak:
-        payload2 = {
-            "model": "claude-haiku-4-5-20251001", "max_tokens": 800,
-            "system": _QUANT_SYSTEM,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        req2 = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=json.dumps(payload2).encode(),
-            headers={"x-api-key": ak, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"}, method="POST")
-        try:
-            with urllib.request.urlopen(req2, timeout=30) as rr:
-                r = json.loads(rr.read()).get("content", [{}])[0].get("text", "")
-                print("  [ai/claude-haiku] ✓")
-                return r.strip()
-        except Exception:
-            pass
-
+    # Hard stop — never pay, even if ANTHROPIC_API_KEY is present
+    print("  [ai] ⚠ all 5 free providers exhausted — no paid fallback (zero-spend policy)")
     return None
 
 
