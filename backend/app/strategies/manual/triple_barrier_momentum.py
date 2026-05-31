@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DATA_BASE = "https://data.alpaca.markets"
@@ -130,12 +131,6 @@ class TripleBarrierMomentumStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    def _headers(self) -> dict:
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _fetch_ohlc(self, symbol: str, days: int = 90) -> pd.DataFrame:
         start = (date.today() - timedelta(days=days + 10)).isoformat()
         try:
@@ -148,7 +143,7 @@ class TripleBarrierMomentumStrategy(AbstractStrategy):
                         "limit": days + 10,
                         "feed": "iex",
                     },
-                    headers=self._headers(),
+                    headers=alpaca_headers(),
                 )
             if resp.status_code != 200:
                 return pd.DataFrame()

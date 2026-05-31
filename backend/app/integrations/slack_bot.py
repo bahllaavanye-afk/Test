@@ -9,9 +9,14 @@ Authenticates with a Bot Token (xoxb-...). Required OAuth scopes:
   groups:read       list private channels
   users:read        list workspace users (for invites)
   channels:join     auto-join created public channels
+  im:write          DM users
 
 Env vars:
   SLACK_BOT_TOKEN   xoxb-...
+  SLACK_TEAM_ID     (optional) limit operations to one team if multi-team
+
+The full 27-channel bootstrap function `bootstrap_engineering_org()` creates
+the entire team's channel structure in one call.
 """
 from __future__ import annotations
 
@@ -21,11 +26,15 @@ from typing import Any
 
 import httpx
 
+from app.utils.logging import logger
+
 
 SLACK_API = "https://slack.com/api"
 
 
+# Full channel spec — created by bootstrap_engineering_org()
 ENGINEERING_CHANNELS: list[dict] = [
+    # Tier 1 — engineering operations (public)
     {"name": "engineering-standup",  "is_private": False, "topic": "Daily standups from each squad (13:00 UTC)"},
     {"name": "alpha-research",       "is_private": False, "topic": "New strategy proposals + paper reviews"},
     {"name": "pnl-daily",            "is_private": False, "topic": "EOD P&L attribution by strategy"},
@@ -34,10 +43,14 @@ ENGINEERING_CHANNELS: list[dict] = [
     {"name": "deploys",              "is_private": False, "topic": "Deploy notifications"},
     {"name": "ci-failures",          "is_private": False, "topic": "CI test failures (auto-routed)"},
     {"name": "ml-experiments",       "is_private": False, "topic": "Training run results, model leaderboard"},
+
+    # Tier 1.5 — public general
     {"name": "engineering",          "is_private": False, "topic": "All engineers"},
     {"name": "announcements",        "is_private": False, "topic": "Company-wide announcements (CEO only posts)"},
     {"name": "wins",                 "is_private": False, "topic": "Celebrate shipped features and winning strategies"},
     {"name": "help",                 "is_private": False, "topic": "Anyone can ask, anyone answers"},
+
+    # Tier 2 — squad channels (private)
     {"name": "squad-alpha-research", "is_private": True,  "topic": "Alpha Research squad"},
     {"name": "squad-microstructure", "is_private": True,  "topic": "Microstructure squad"},
     {"name": "squad-ml-modeling",    "is_private": True,  "topic": "ML Modeling squad"},
@@ -52,6 +65,8 @@ ENGINEERING_CHANNELS: list[dict] = [
     {"name": "squad-qa",             "is_private": True,  "topic": "QA / Test Automation squad"},
     {"name": "squad-compliance",     "is_private": True,  "topic": "Compliance Engineering"},
     {"name": "squad-finance-eng",    "is_private": True,  "topic": "Finance Engineering"},
+
+    # Tier 3 — leadership (private)
     {"name": "leadership",           "is_private": True,  "topic": "VP+ only"},
     {"name": "leadership-summary",   "is_private": True,  "topic": "Daily auto-summaries from each VP"},
     {"name": "board",                "is_private": True,  "topic": "CEO + CFO + CTO + board observers"},
@@ -62,6 +77,7 @@ ENGINEERING_CHANNELS: list[dict] = [
 @dataclass
 class SlackBot:
     token: str
+    _client: httpx.Client | None = None
 
     def __post_init__(self):
         if not self.token.startswith("xoxb-"):
@@ -80,8 +96,10 @@ class SlackBot:
         r.raise_for_status()
         data = r.json()
         if not data.get("ok"):
-            raise RuntimeError(f"slack.{method} failed: {data.get('error', 'unknown')} - {data}")
+            raise RuntimeError(f"slack.{method} failed: {data.get('error', 'unknown')} — {data}")
         return data
+
+    # ── Auth / introspection ────────────────────────────────────────────────
 
     def auth_test(self) -> dict:
         return self._call("auth.test")
@@ -105,9 +123,13 @@ class SlackBot:
                 return c.get("id")
         return None
 
+    # ── Channel management ─────────────────────────────────────────────────
+
     def create_channel(self, name: str, is_private: bool = False, topic: str = "") -> dict:
+        """Create a channel. Returns existing channel if name already taken."""
         existing = self.find_channel_id(name)
         if existing:
+            logger.info("slack: channel exists, skipping create", name=name, id=existing)
             return {"id": existing, "name": name, "already_existed": True}
 
         try:
@@ -122,11 +144,12 @@ class SlackBot:
         if topic and ch.get("id"):
             try:
                 self._call("conversations.setTopic", {"channel": ch["id"], "topic": topic})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("slack: setTopic failed", channel=name, error=str(e))
         return {"id": ch.get("id"), "name": ch.get("name"), "already_existed": False}
 
     def post(self, channel: str, text: str, *, blocks: list[dict] | None = None) -> dict:
+        """Post by channel name or ID."""
         cid = channel if channel.startswith(("C", "G")) else self.find_channel_id(channel)
         if not cid:
             raise ValueError(f"channel '{channel}' not found")
@@ -135,7 +158,17 @@ class SlackBot:
             payload["blocks"] = blocks
         return self._call("chat.postMessage", payload)
 
+    def invite_users(self, channel: str, user_ids: list[str]) -> dict:
+        cid = channel if channel.startswith(("C", "G")) else self.find_channel_id(channel)
+        if not cid:
+            raise ValueError(f"channel '{channel}' not found")
+        return self._call("conversations.invite", {"channel": cid, "users": ",".join(user_ids)})
+
+    # ── Bootstrap ──────────────────────────────────────────────────────────
+
     def bootstrap_engineering_org(self) -> dict:
+        """Create all 31 channels in ENGINEERING_CHANNELS. Idempotent."""
+        # Cache existing channels once to avoid N lookups
         existing = self.list_channels(include_private=True)
         existing_names = {c.get("name") for c in existing}
 
@@ -149,6 +182,7 @@ class SlackBot:
                 created.append(result["name"])
             except Exception as e:
                 errors.append({"channel": spec["name"], "error": str(e)})
+                logger.warning("slack bootstrap: channel create failed", name=spec["name"], error=str(e))
 
         return {
             "created": created,
@@ -156,3 +190,10 @@ class SlackBot:
             "errors": errors,
             "total_attempted": len(ENGINEERING_CHANNELS),
         }
+
+
+def from_env() -> SlackBot | None:
+    token = os.getenv("SLACK_BOT_TOKEN", "").strip()
+    if not token:
+        return None
+    return SlackBot(token=token)

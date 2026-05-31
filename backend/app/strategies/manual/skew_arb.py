@@ -31,6 +31,7 @@ import httpx
 from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 
 
 class SkewArbitrageStrategy(AbstractStrategy):
@@ -50,12 +51,6 @@ class SkewArbitrageStrategy(AbstractStrategy):
     _ALPACA_BASE = "https://paper-api.alpaca.markets"
     _DATA_BASE = "https://data.alpaca.markets"
 
-    def _headers(self):
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _get_skew(self, symbol: str) -> dict | None:
         """Get current skew: IV difference between 25Δ put and 25Δ call."""
         today = date.today()
@@ -71,7 +66,7 @@ class SkewArbitrageStrategy(AbstractStrategy):
                     "expiration_date_lte": exp_max,
                     "limit": 200,
                 },
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
             if contracts_resp.status_code != 200:
                 return None
@@ -83,7 +78,7 @@ class SkewArbitrageStrategy(AbstractStrategy):
             snap_resp = await client.get(
                 f"{self._ALPACA_BASE}/v2/options/snapshots",
                 params={"symbols": ",".join(syms[:50]), "feed": "indicative"},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if snap_resp.status_code != 200:
             return None

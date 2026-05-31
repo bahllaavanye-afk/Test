@@ -1,26 +1,47 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import AppShell from './components/layout/AppShell'
+import { ErrorBoundary } from './components/ErrorBoundary'
+// Public pages — eagerly loaded (smallest possible initial bundle)
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import EquityTrading from './pages/EquityTrading'
-import CryptoTrading from './pages/CryptoTrading'
-import Comparison from './pages/Comparison'
-import BacktestLab from './pages/BacktestLab'
-import Experiments from './pages/Experiments'
-import Analytics from './pages/Analytics'
-import RiskManager from './pages/RiskManager'
-import Activity from './pages/Activity'
-import Leaderboard from './pages/Leaderboard'
-import PnL from './pages/PnL'
-import Archive from './pages/Archive'
-import SystemMonitor from './pages/SystemMonitor'
-import OptionsFlow from './pages/OptionsFlow'
-import Options from './pages/Options'
-import MacroSignals from './pages/MacroSignals'
-import Polymarket from './pages/Polymarket'
 import Landing from './pages/Landing'
+import GoogleCallback from './pages/GoogleCallback'
 import { selectIsAuthenticated } from './store/slices/authSlice'
+
+// All protected pages — lazy-loaded so each becomes a separate Vite chunk.
+// Users only download the chunk for the page they actually visit.
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const EquityTrading = lazy(() => import('./pages/EquityTrading'))
+const CryptoTrading = lazy(() => import('./pages/CryptoTrading'))
+const Comparison = lazy(() => import('./pages/Comparison'))
+const BacktestLab = lazy(() => import('./pages/BacktestLab'))
+const Experiments = lazy(() => import('./pages/Experiments'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const RiskManager = lazy(() => import('./pages/RiskManager'))
+const Activity = lazy(() => import('./pages/Activity'))
+const Leaderboard = lazy(() => import('./pages/Leaderboard'))
+const PnL = lazy(() => import('./pages/PnL'))
+const Archive = lazy(() => import('./pages/Archive'))
+const SystemMonitor = lazy(() => import('./pages/SystemMonitor'))
+const OptionsFlow = lazy(() => import('./pages/OptionsFlow'))
+const Options = lazy(() => import('./pages/Options'))
+const MacroSignals = lazy(() => import('./pages/MacroSignals'))
+const Polymarket = lazy(() => import('./pages/Polymarket'))
+const MLInsights = lazy(() => import('./pages/MLInsights'))
+const Pipeline = lazy(() => import('./pages/Pipeline'))
+const Releases = lazy(() => import('./pages/Releases'))
+
+function PageLoader() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '100%', color: '#555', fontFamily: 'JetBrains Mono, monospace', fontSize: 13,
+    }}>
+      Loading…
+    </div>
+  )
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuth = useSelector(selectIsAuthenticated)
@@ -29,28 +50,36 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/landing" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
-        <Route index element={<Dashboard />} />
-        <Route path="equity" element={<EquityTrading />} />
-        <Route path="crypto" element={<CryptoTrading />} />
-        <Route path="comparison" element={<Comparison />} />
-        <Route path="backtest" element={<BacktestLab />} />
-        <Route path="experiments" element={<Experiments />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="risk" element={<RiskManager />} />
-        <Route path="activity" element={<Activity />} />
-        <Route path="leaderboard" element={<Leaderboard />} />
-        <Route path="pnl" element={<PnL />} />
-        <Route path="archive" element={<Archive />} />
-        <Route path="system" element={<SystemMonitor />} />
-        <Route path="options" element={<OptionsFlow />} />
-        <Route path="options-chain" element={<Options />} />
-        <Route path="macro" element={<MacroSignals />} />
-        <Route path="polymarket" element={<Polymarket />} />
-      </Route>
-    </Routes>
+    <ErrorBoundary>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/landing" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/auth/google/callback" element={<GoogleCallback />} />
+        <Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
+          <Route index element={<Dashboard />} />
+          <Route path="equity" element={<EquityTrading />} />
+          <Route path="crypto" element={<CryptoTrading />} />
+          <Route path="comparison" element={<Comparison />} />
+          <Route path="backtest" element={<BacktestLab />} />
+          <Route path="experiments" element={<Experiments />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="risk" element={<RiskManager />} />
+          <Route path="activity" element={<Activity />} />
+          <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="pnl" element={<PnL />} />
+          <Route path="archive" element={<Archive />} />
+          <Route path="system" element={<SystemMonitor />} />
+          <Route path="options" element={<OptionsFlow />} />
+          <Route path="options-chain" element={<Options />} />
+          <Route path="macro" element={<MacroSignals />} />
+          <Route path="polymarket" element={<Polymarket />} />
+          <Route path="ml-insights" element={<MLInsights />} />
+          <Route path="pipeline" element={<Pipeline />} />
+          <Route path="releases" element={<Releases />} />
+        </Route>
+      </Routes>
+    </Suspense>
+    </ErrorBoundary>
   )
 }

@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DATA_BASE = "https://data.alpaca.markets"
@@ -81,12 +82,6 @@ class CrossAssetCarryStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    def _headers(self) -> dict:
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _fetch_12m_return(self, symbol: str) -> float | None:
         """Fetch daily bars and compute trailing 12-month total return."""
         start = (date.today() - timedelta(days=self.LOOKBACK_DAYS + 30)).isoformat()
@@ -100,7 +95,7 @@ class CrossAssetCarryStrategy(AbstractStrategy):
                         "limit": self.LOOKBACK_DAYS + 30,
                         "feed": "iex",
                     },
-                    headers=self._headers(),
+                    headers=alpaca_headers(),
                 )
             if resp.status_code != 200:
                 return None

@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../store/slices/authSlice'
+import { callLogout } from '../../api/client'
 import { selectTradingMode, setMode } from '../../store/slices/tradingModeSlice'
 import { LogOut, Activity } from 'lucide-react'
+import { LiveIndicator } from '../ui/LiveIndicator'
 
 function ModeModal({ mode, onClose }: { mode: 'paper' | 'live'; onClose: () => void }) {
   const dispatch = useDispatch()
@@ -79,37 +81,81 @@ export default function TopBar() {
   const mode = useSelector(selectTradingMode)
   const [showModal, setShowModal] = useState(false)
   const isLive = mode === 'live'
+  const [clock, setClock] = useState('')
+  const [isMarketOpen, setIsMarketOpen] = useState(false)
+
+  useEffect(() => {
+    function tick() {
+      const now = new Date()
+      const utc = now.toUTCString().slice(17, 25) // HH:MM:SS
+      setClock(utc)
+      // NYSE market hours: 14:30-21:00 UTC (Mon-Fri)
+      const day = now.getUTCDay()
+      const hour = now.getUTCHours()
+      const minute = now.getUTCMinutes()
+      const totalMinutes = hour * 60 + minute
+      const isWeekday = day >= 1 && day <= 5
+      setIsMarketOpen(isWeekday && totalMinutes >= 870 && totalMinutes < 1260) // 14:30-21:00
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <>
       {showModal && <ModeModal mode={mode} onClose={() => setShowModal(false)} />}
-      <header className="h-10 bg-[#111111] border-b border-[#1e1e1e] flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-          <Activity size={14} className="text-[#00c853]" />
+      <header className="relative h-10 glass-panel border-b border-white/[0.06] flex items-center justify-between px-4 z-10">
+        {/* Animated gradient border on bottom */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-px animate-gradient"
+          style={{
+            backgroundImage: 'linear-gradient(90deg, transparent, #00ff88, #00d4ff, #6366f1, #00d4ff, #00ff88, transparent)',
+            backgroundSize: '300% 100%',
+          }}
+        />
+        <div className="flex items-center gap-3">
+          <Activity size={14} className="text-[#00ff88]" />
+          {/* Trading mode badge */}
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 group transition-all duration-200"
+            className="flex items-center group transition-all duration-200"
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{
-                background: isLive ? '#ff1744' : '#f5a623',
-                boxShadow: isLive ? '0 0 5px #ff1744' : 'none',
-                animation: isLive ? 'topbar-pulse 1.2s infinite' : 'none',
-              }}
-            />
-            <span
-              className="text-xs font-bold group-hover:underline"
-              style={{ color: isLive ? '#ff1744' : '#f5a623' }}
-            >
-              {isLive ? 'LIVE' : 'PAPER'}
-            </span>
+            {isLive ? (
+              <LiveIndicator label="LIVE" color="#ff1744" />
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[#f5a623]/30 bg-[#f5a623]/10 text-[10px] font-bold tracking-widest font-mono text-[#f5a623] group-hover:border-[#f5a623]/60 transition-colors"
+              >
+                PAPER
+              </span>
+            )}
           </button>
+          {/* Data feed live badge */}
+          <LiveIndicator label="DATA FEED" color="#00ff88" />
+          <span style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:'var(--muted)',letterSpacing:'0.08em'}}>
+            UTC {clock}
+          </span>
+          <span
+            className={isMarketOpen ? 'badge-green' : 'badge-muted'}
+            style={{fontSize:9,letterSpacing:'0.1em'}}
+          >
+            NYSE {isMarketOpen ? 'OPEN' : 'CLOSED'}
+          </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[#f5a623] font-bold text-xs">QUANTEDGE</span>
+          <span
+            className="font-bold text-xs text-transparent bg-clip-text"
+            style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
+          >
+            QUANTEDGE
+          </span>
           <button
-            onClick={() => dispatch(logout())}
+            onClick={async () => {
+              await callLogout()  // revoke refresh token on server
+              dispatch(logout())
+              window.location.href = '/login'
+            }}
             className="text-[#888888] hover:text-[#e8e8e8] transition-colors"
             title="Logout"
           >

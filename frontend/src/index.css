@@ -2,20 +2,191 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
 :root {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --border: #1e1e1e;
-  --text: #e8e8e8;
-  --muted: #888888;
+  --bg: #070709;
+  --surface: #0e0e12;
+  --surface2: #141418;
+  --border: #1c1c24;
+  --border2: #252530;
+  --text: #e2e2f0;
+  --muted: #6b6b80;
   --accent: #f5a623;
-  --green: #00c853;
+  --accent-dim: rgba(245,166,35,0.12);
+  --green: #00e676;
+  --green-dim: rgba(0,230,118,0.12);
   --red: #ff1744;
-  --blue: #2979ff;
+  --red-dim: rgba(255,23,68,0.12);
+  --blue: #448aff;
+  --blue-dim: rgba(68,138,255,0.10);
+  --purple: #b388ff;
 }
 
+/* ── Reset ── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; }
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: var(--surface); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Body: animated mesh background ── */
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 15% 40%, rgba(0,230,118,0.025) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 15%, rgba(245,166,35,0.025) 0%, transparent 55%),
+    radial-gradient(ellipse at 60% 85%, rgba(68,138,255,0.02) 0%, transparent 55%);
+  color: var(--text);
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Subtle CRT scanline overlay ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.06) 3px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Glass card ── */
+.glass-card {
+  background: rgba(14,14,18,0.85);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ── Glow utilities ── */
+.glow-green  { box-shadow: 0 0 10px var(--green-dim),  0 0 30px rgba(0,230,118,0.08); }
+.glow-red    { box-shadow: 0 0 10px var(--red-dim),    0 0 30px rgba(255,23,68,0.08); }
+.glow-accent { box-shadow: 0 0 10px var(--accent-dim), 0 0 30px rgba(245,166,35,0.08); }
+.glow-blue   { box-shadow: 0 0 10px var(--blue-dim),   0 0 30px rgba(68,138,255,0.08); }
+
+.glow-border-green  { border-color: rgba(0,230,118,0.4) !important;  box-shadow: 0 0 8px rgba(0,230,118,0.2); }
+.glow-border-red    { border-color: rgba(255,23,68,0.4) !important;  box-shadow: 0 0 8px rgba(255,23,68,0.2); }
+.glow-border-accent { border-color: rgba(245,166,35,0.4) !important; box-shadow: 0 0 8px rgba(245,166,35,0.2); }
+
+/* ── Number tick animations ── */
+@keyframes tick-up   { 0% { color: var(--green); } 100% { color: inherit; } }
+@keyframes tick-down { 0% { color: var(--red);   } 100% { color: inherit; } }
+.tick-up   { animation: tick-up   0.5s ease-out; }
+.tick-down { animation: tick-down 0.5s ease-out; }
+
+/* ── Pulse dot (market open indicator) ── */
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--green); }
+  50%       { opacity: 0.5; box-shadow: 0 0 10px var(--green), 0 0 20px rgba(0,230,118,0.3); }
+}
+@keyframes pulse-red {
+  0%, 100% { opacity: 0.8; }
+  50%       { opacity: 0.4; }
+}
+.pulse-green { animation: pulse-green 2s ease-in-out infinite; }
+.pulse-red   { animation: pulse-red   2s ease-in-out infinite; }
+
+/* ── Terminal cursor ── */
+@keyframes blink { 50% { opacity: 0; } }
+.cursor::after { content: '▌'; animation: blink 1s step-end infinite; color: var(--green); }
+
+/* ── Section header accent line ── */
+.section-header {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border2) 0%, transparent 100%);
+}
+
+/* ── KPI card ── */
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, transparent 60%);
+  pointer-events: none;
+}
+.kpi-card:hover { border-color: var(--border2); }
+
+/* ── Gradient mesh for hero / landing ── */
+.mesh-bg {
+  background:
+    radial-gradient(ellipse at 20% 30%, rgba(0,230,118,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 10%, rgba(245,166,35,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(68,138,255,0.04) 0%, transparent 50%),
+    var(--bg);
+}
+
+/* ── Pill badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  border: 1px solid;
+}
+.badge-green  { color: var(--green);  background: var(--green-dim);  border-color: rgba(0,230,118,0.2); }
+.badge-red    { color: var(--red);    background: var(--red-dim);    border-color: rgba(255,23,68,0.2); }
+.badge-accent { color: var(--accent); background: var(--accent-dim); border-color: rgba(245,166,35,0.2); }
+.badge-muted  { color: var(--muted);  background: rgba(107,107,128,0.12); border-color: rgba(107,107,128,0.2); }
+
+/* ── Mono number display ── */
+.mono-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Table ── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  padding: 6px 10px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(28,28,36,0.6);
+  font-size: 12px;
+}
+.data-table tr:hover td { background: rgba(255,255,255,0.02); }
+.data-table tr:last-child td { border-bottom: none; }

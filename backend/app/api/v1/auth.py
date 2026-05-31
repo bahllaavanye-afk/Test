@@ -4,16 +4,19 @@ from datetime import datetime, timezone
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.utils.security import (
     create_access_token, create_refresh_token, decode_token,
     hash_password, verify_password,
 )
+from app.utils.token_blocklist import revoke_jti, is_revoked
 from app.utils.exceptions import UnauthorizedError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -61,7 +64,9 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    # Same brute-force protection as /login — prevents enumeration and abuse
+    _check_rate_limit(request.client.host if request.client else "unknown")
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -115,14 +120,138 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
         if payload.get("type") != "refresh":
             raise UnauthorizedError()
         user_id = payload.get("sub")
+        jti = payload.get("jti")
     except Exception:
         raise UnauthorizedError("Invalid refresh token")
+
+    # Reject revoked tokens (logout / rotation)
+    if jti and await is_revoked(jti):
+        raise UnauthorizedError("Refresh token has been revoked")
 
     result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
     user = result.scalar_one_or_none()
     if not user:
         raise UnauthorizedError()
+
+    # Rotate: revoke the consumed token before issuing a new pair
+    if jti:
+        import time
+        exp = payload.get("exp", 0)
+        ttl = max(1, int(exp - time.time()))
+        await revoke_jti(jti, ttl)
+
     return TokenResponse(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
     )
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/logout", status_code=204)
+async def logout(body: LogoutRequest):
+    """Revoke the given refresh token. The client must discard the access token too."""
+    try:
+        payload = decode_token(body.refresh_token)
+        if payload.get("type") != "refresh":
+            return  # silently accept invalid type — token is already useless
+        jti = payload.get("jti")
+        if jti:
+            import time
+            exp = payload.get("exp", 0)
+            ttl = max(1, int(exp - time.time()))
+            await revoke_jti(jti, ttl)
+    except Exception:
+        pass  # expired/malformed tokens are already invalid — no need to raise
+
+
+# ── Google OAuth ──────────────────────────────────────────────────────────────
+
+@router.get("/google")
+async def google_oauth_start():
+    """Redirect to Google OAuth consent screen."""
+    if not settings.google_client_id:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    import urllib.parse
+    params = {
+        "client_id": settings.google_client_id,
+        "redirect_uri": settings.google_redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account",
+    }
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url=url)
+
+
+@router.get("/google/callback")
+async def google_oauth_callback(
+    code: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Handle Google OAuth callback — create/login user and return tokens."""
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    import httpx
+
+    # Exchange code for tokens
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "redirect_uri": settings.google_redirect_uri,
+                "grant_type": "authorization_code",
+            },
+        )
+    if token_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Failed to exchange Google auth code")
+
+    token_data = token_resp.json()
+
+    # Get user info
+    async with httpx.AsyncClient() as client:
+        user_resp = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {token_data['access_token']}"},
+        )
+    if user_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Failed to get Google user info")
+
+    google_user = user_resp.json()
+    email = google_user.get("email", "").lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email")
+
+    # Find or create user
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        user = User(
+            id=str(uuid.uuid4()),
+            email=email,
+            # Random unusable password — Google users authenticate via OAuth only
+            hashed_password=hash_password(str(uuid.uuid4())),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+
+    # Redirect to frontend with tokens in query params (SPA handles them)
+    frontend_url = settings.cors_origins[0].strip()
+    redirect_url = (
+        f"{frontend_url}/auth/google/callback"
+        f"?access_token={access_token}&refresh_token={refresh_token}"
+    )
+    return RedirectResponse(url=redirect_url)

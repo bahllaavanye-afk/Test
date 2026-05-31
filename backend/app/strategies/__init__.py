@@ -39,13 +39,77 @@ from app.strategies.manual.intraday_fomc_momentum import IntradayFOMCMomentumStr
 from app.strategies.manual.crypto_adaptive_trend import CryptoAdaptiveTrendStrategy
 from app.strategies.manual.stablecoin_depeg_arb import StablecoinDepegArbStrategy
 from app.strategies.manual.moc_auction_imbalance import MOCAuctionImbalanceStrategy
-from app.strategies.ml_enhanced.ml_momentum import MLMomentumStrategy
-from app.strategies.ml_enhanced.ml_pca_arb import MLPCAStatArbStrategy
-from app.strategies.ml_enhanced.ml_mean_reversion import MLMeanReversionStrategy
-from app.strategies.ml_enhanced.ml_breakout import MLBreakoutStrategy
-from app.strategies.ml_enhanced.lorentzian_knn import LorentzianStrategy
-from app.strategies.ml_enhanced.ensemble import EnsembleStrategy
-from app.strategies.ml_enhanced.rl_trader import RLTraderStrategy
+from app.strategies.manual.options_pcr_reversal import OptionsPCRReversalStrategy
+from app.strategies.manual.time_series_momentum import TimeSeriesMomentumStrategy
+from app.strategies.manual.cross_sectional_momentum import CrossSectionalMomentumStrategy
+from app.strategies.manual.vwap_reversion import VWAPReversionStrategy
+from app.strategies.manual.basis_carry import BasisCarryStrategy
+from app.strategies.manual.btc_eth_stat_arb import BTCETHStatArb
+from app.strategies.manual.intraday_seasonality import IntradaySeasonality
+from app.strategies.manual.avellaneda_stoikov_mm import AvellanedaStoikovMM
+from app.strategies.manual.funding_settlement_timer import FundingSettlementTimer
+from app.strategies.manual.mvrv_zscore_timing import MVRVZScoreTimingStrategy
+from app.strategies.manual.token_unlock_fade import TokenUnlockFade
+from app.strategies.manual.poly_late_resolution import PolymarketLateResolution
+from app.strategies.manual.poly_market_maker import PolymarketMarketMaker
+from app.strategies.manual.poly_calibration_arb import PolymarketCalibrationArb
+from app.strategies.manual.multi_factor_equity import MultiFactorEquity
+from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrategy
+from app.strategies.manual.options_strategies import (
+    CoveredCallStrategy,
+    CashSecuredPutStrategy,
+    IronCondorStrategy,
+    LongCallMomentum,
+    EarningsIVCrushStrategy,
+    WheelStrategy,
+)
+
+# ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
+# xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
+# installed (CI, lightweight deploys), we skip the strategy gracefully instead
+# of failing the whole import chain.
+_OPTIONAL_ML_STRATEGIES: list[tuple[str, str, str]] = [
+    ("ml_momentum",       "app.strategies.ml_enhanced.ml_momentum",       "MLMomentumStrategy"),
+    ("ml_pca_arb",        "app.strategies.ml_enhanced.ml_pca_arb",        "MLPCAStatArbStrategy"),
+    ("ml_mean_reversion", "app.strategies.ml_enhanced.ml_mean_reversion", "MLMeanReversionStrategy"),
+    ("ml_breakout",       "app.strategies.ml_enhanced.ml_breakout",       "MLBreakoutStrategy"),
+    ("lorentzian_knn",    "app.strategies.ml_enhanced.lorentzian_knn",    "LorentzianStrategy"),
+    ("ensemble",          "app.strategies.ml_enhanced.ensemble",          "EnsembleStrategy"),
+    ("rl_trader",         "app.strategies.ml_enhanced.rl_trader",         "RLTraderStrategy"),
+]
+
+
+def _try_import_ml(module_path: str, class_name: str):
+    """Best-effort import of an ML strategy. Returns the class or None.
+
+    Catches ImportError (missing optional dep like torch) and AttributeError
+    (e.g. `class X(nn.Module)` where nn is None because torch wasn't installed).
+    Either way, the strategy is skipped gracefully instead of breaking the
+    whole registry import on lightweight deploys (Render free tier, CI).
+    """
+    try:
+        import importlib
+        mod = importlib.import_module(module_path)
+        return getattr(mod, class_name)
+    except (ImportError, AttributeError) as e:
+        import logging
+        logging.getLogger(__name__).info(
+            "ML strategy %s skipped (optional dep missing: %s)", class_name, e
+        )
+        return None
+
+# ── Options strategy group ────────────────────────────────────────────────────
+# Convenience list for enabling/disabling all options strategies as a group.
+# Mirrors the "Options" desk in desk_order_placer.py.
+OPTIONS_STRATEGIES: list[str] = [
+    "skew_arb",
+    "vrp_systematic",
+    "gamma_exposure",
+    "options_pcr_reversal",
+    "dispersion_trading",
+    "vol_term_structure",
+    "credit_spread_income",
+]
 
 STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "pairs_trading": PairsTradingStrategy,
@@ -86,14 +150,35 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "crypto_adaptive_trend": CryptoAdaptiveTrendStrategy,
     "stablecoin_depeg_arb": StablecoinDepegArbStrategy,
     "moc_auction_imbalance": MOCAuctionImbalanceStrategy,
-    "ml_momentum": MLMomentumStrategy,
-    "ml_pca_arb": MLPCAStatArbStrategy,
-    "ml_mean_reversion": MLMeanReversionStrategy,
-    "ml_breakout": MLBreakoutStrategy,
-    "lorentzian_knn": LorentzianStrategy,
-    "ensemble": EnsembleStrategy,
-    "rl_trader": RLTraderStrategy,
+    "options_pcr_reversal": OptionsPCRReversalStrategy,
+    "time_series_momentum": TimeSeriesMomentumStrategy,
+    "cross_sectional_momentum": CrossSectionalMomentumStrategy,
+    "vwap_reversion": VWAPReversionStrategy,
+    "basis_carry": BasisCarryStrategy,
+    "btc_eth_stat_arb": BTCETHStatArb,
+    "intraday_seasonality": IntradaySeasonality,
+    "avellaneda_stoikov_mm": AvellanedaStoikovMM,
+    "funding_settlement_timer": FundingSettlementTimer,
+    "mvrv_zscore_timing": MVRVZScoreTimingStrategy,
+    "token_unlock_fade": TokenUnlockFade,
+    "poly_late_resolution": PolymarketLateResolution,
+    "poly_market_maker": PolymarketMarketMaker,
+    "poly_calibration_arb": PolymarketCalibrationArb,
+    "multi_factor_equity": MultiFactorEquity,
+    "credit_spread_income": CreditSpreadIncomeStrategy,
+    "covered_call": CoveredCallStrategy,
+    "cash_secured_put": CashSecuredPutStrategy,
+    "iron_condor": IronCondorStrategy,
+    "long_call_momentum": LongCallMomentum,
+    "earnings_iv_crush": EarningsIVCrushStrategy,
+    "wheel": WheelStrategy,
 }
+
+# Best-effort load ML strategies; missing optional deps don't break the registry
+for _name, _path, _cls in _OPTIONAL_ML_STRATEGIES:
+    _strategy_cls = _try_import_ml(_path, _cls)
+    if _strategy_cls is not None:
+        STRATEGY_REGISTRY[_name] = _strategy_cls
 
 
 def get_strategy(name: str, params: dict | None = None) -> AbstractStrategy:

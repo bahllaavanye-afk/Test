@@ -7,7 +7,10 @@ import numpy as np
 import json
 from pathlib import Path
 from sklearn.metrics import roc_auc_score, accuracy_score
+import structlog
 from app.ml.models.base_model import AbstractModel, EvalMetrics
+
+logger = structlog.get_logger()
 
 
 class EnsembleModel(AbstractModel):
@@ -69,8 +72,8 @@ class EnsembleModel(AbstractModel):
                     gnn_pred = self._gnn_model.predict(returns_df, node_features)
                     predictions["_gnn"] = gnn_pred
                     self.weights["_gnn"] = self.gnn_weight
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("GNN prediction failed in ensemble", error=str(exc))
 
         if not predictions:
             return np.full(1, 0.5)
@@ -123,6 +126,94 @@ class EnsembleModel(AbstractModel):
         except ValueError:
             auc = 0.5
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
+
+    def optimize_weights_walk_forward(
+        self,
+        returns_by_model: dict[str, "pd.Series"],
+        actual_returns: "pd.Series",
+        n_splits: int = 5,
+    ) -> dict[str, float]:
+        """
+        Walk-forward ensemble weight optimization.
+
+        Uses scipy SLSQP to find weights that maximise Sharpe on each fold,
+        then returns the average weights across folds.
+
+        Args:
+            returns_by_model: dict of model_name → predicted-return pd.Series (same index)
+            actual_returns:   actual forward returns pd.Series (same index as above)
+            n_splits:         number of walk-forward folds
+
+        Returns:
+            dict of model_name → optimal weight, summing to 1.
+        """
+        import pandas as pd
+        import numpy as np
+        from scipy.optimize import minimize
+
+        model_names = list(returns_by_model.keys())
+        if len(model_names) < 2:
+            return {k: 1.0 / max(len(model_names), 1) for k in model_names}
+
+        # Align all series to common index
+        pred_df = pd.DataFrame(returns_by_model).dropna()
+        actual = actual_returns.reindex(pred_df.index).dropna()
+        pred_df = pred_df.loc[actual.index]
+
+        n = len(pred_df)
+        if n < n_splits * 10:
+            return {k: 1.0 / len(model_names) for k in model_names}
+
+        fold_size = n // n_splits
+        all_weights = []
+
+        def neg_sharpe(w: np.ndarray, preds: np.ndarray, actual_arr: np.ndarray) -> float:
+            portfolio_ret = preds @ w
+            excess = portfolio_ret - actual_arr
+            std = excess.std()
+            if std < 1e-8:
+                return 0.0
+            return -(excess.mean() / std * np.sqrt(252))
+
+        for fold in range(n_splits):
+            train_end = (fold + 1) * fold_size
+            if train_end > n:
+                break
+            preds = pred_df.values[:train_end]
+            act = actual.values[:train_end]
+
+            n_models = len(model_names)
+            w0 = np.ones(n_models) / n_models
+            bounds = [(0.0, 1.0)] * n_models
+            constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+
+            try:
+                result = minimize(
+                    neg_sharpe,
+                    w0,
+                    args=(preds, act),
+                    method="SLSQP",
+                    bounds=bounds,
+                    constraints=constraints,
+                    options={"maxiter": 200, "ftol": 1e-8},
+                )
+                if result.success:
+                    w = np.maximum(result.x, 0.0)
+                    w = w / w.sum()
+                    all_weights.append(w)
+            except Exception as exc:
+                logger.debug("Weight optimization fold failed", error=str(exc))
+
+        if not all_weights:
+            return {k: 1.0 / len(model_names) for k in model_names}
+
+        avg_weights = np.mean(all_weights, axis=0)
+        avg_weights = np.maximum(avg_weights, 0.0)
+        avg_weights = avg_weights / avg_weights.sum()
+
+        result_weights = {name: float(avg_weights[i]) for i, name in enumerate(model_names)}
+        self.weights.update(result_weights)
+        return result_weights
 
     def save(self, path: str, metadata: dict | None = None) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)

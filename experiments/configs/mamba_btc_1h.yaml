@@ -1,0 +1,50 @@
+experiment:
+  name: "mamba_btc_1h_v1"
+  model: "mamba_trader"
+  symbol: "BTC/USDT"
+  exchange: "binance"
+  interval: "1h"
+
+data:
+  train_start: "2021-01-01"
+  train_end: "2023-12-31"
+  val_start: "2024-01-01"
+  val_end: "2024-09-30"
+  test_start: "2024-10-01"
+  test_end: "2025-04-30"
+
+features:
+  technical: true
+  advanced: true
+  wavelet: true
+  multi_timeframe: true
+  lookback: 96
+
+model_params:
+  d_model: 128
+  n_layers: 6
+  dropout: 0.15
+  d_state: 16
+  d_conv: 4
+  expand: 2
+  seq_len: 96
+  n_features: 132
+
+training:
+  epochs: 100
+  batch_size: 256
+  lr: 0.0008
+  optimizer: "adamw"
+  scheduler: "cosine"
+  early_stopping_patience: 12
+
+strategy:
+  name: "ml_momentum"
+  confidence_threshold: 0.63
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null
+  run_id: null
+  trained_at: null

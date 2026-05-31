@@ -138,7 +138,5 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
             target_price=current_price,
             stop_loss=current_price * (0.85 if side == "buy" else 1.15),
             take_profit=None,
-            order_type="market",
-            quantity=None,
-            metadata={"composite_signal": round(sized_signal, 4), "rv_21d": round(rv_21, 4)},
+            metadata={"composite_signal": round(sized_signal, 4), "rv_21d": round(rv_21, 4), "order_type": "market"},
         )

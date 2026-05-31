@@ -19,8 +19,17 @@ from app.models.account import Account
 from app.models.position import Position
 from app.models.order import Order
 from app.config import settings
+from app.utils.logging import logger
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+async def _user_account_ids(db: AsyncSession, user_id: str) -> list[str]:
+    """Return all account IDs owned by the given user. Used to scope queries."""
+    result = await db.execute(
+        select(Account.id).where(Account.user_id == user_id)
+    )
+    return [row[0] for row in result.all()]
 
 
 @router.get("/performance")
@@ -28,13 +37,16 @@ async def get_performance(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Aggregate trade performance stats."""
+    """Aggregate trade performance stats — scoped to current user's accounts."""
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return {"total_trades": 0, "avg_pnl": 0.0, "total_pnl": 0.0}
     result = await db.execute(
         select(
             func.count(Trade.id).label("total_trades"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(Trade.realized_pnl).label("total_pnl"),
-        )
+        ).where(Trade.account_id.in_(account_ids))
     )
     row = result.one()
     return {
@@ -49,13 +61,20 @@ async def get_slippage_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Average slippage by execution algorithm."""
+    """Average slippage by execution algorithm — scoped to current user's orders."""
+    from app.models.order import Order as OrderModel
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
     result = await db.execute(
         select(
             SlippageRecord.execution_algo,
             func.avg(SlippageRecord.slippage_bps).label("avg_bps"),
             func.count(SlippageRecord.id).label("count"),
-        ).group_by(SlippageRecord.execution_algo)
+        )
+        .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
+        .where(OrderModel.account_id.in_(account_ids))
+        .group_by(SlippageRecord.execution_algo)
     )
     rows = result.all()
     return [{"algo": r.execution_algo, "avg_bps": round(float(r.avg_bps or 0), 2), "count": r.count} for r in rows]
@@ -66,7 +85,10 @@ async def get_pnl_attribution(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """P&L broken down by strategy — the #1 feature missing from open-source bots."""
+    """P&L broken down by strategy — scoped to current user's accounts."""
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
     result = await db.execute(
         select(
             Trade.strategy_name,
@@ -74,7 +96,10 @@ async def get_pnl_attribution(
             func.sum(Trade.realized_pnl).label("total_pnl"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
-        ).group_by(Trade.strategy_name).order_by(func.sum(Trade.realized_pnl).desc())
+        )
+        .where(Trade.account_id.in_(account_ids))
+        .group_by(Trade.strategy_name)
+        .order_by(func.sum(Trade.realized_pnl).desc())
     )
     rows = result.all()
     out = []
@@ -151,8 +176,8 @@ async def _fetch_alpaca_bars(symbols: list[str], days: int) -> dict[str, list[fl
             bars_map = data.get("bars", {})
             for sym, bars in bars_map.items():
                 prices[sym] = [float(b["c"]) for b in bars]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("_fetch_alpaca_bars failed", error=str(exc))
     return prices
 
 
@@ -182,7 +207,8 @@ async def get_correlation_matrix(
                 select(Position.symbol).where(Position.account_id.in_(account_ids)).distinct()
             )
             symbols = [row[0] for row in pos_result.all()]
-    except Exception:
+    except Exception as exc:
+        logger.warning("correlation matrix: failed to fetch position symbols", error=str(exc))
         symbols = []
 
     if not symbols:
@@ -262,8 +288,8 @@ async def _fetch_latest_price(symbol: str) -> Optional[float]:
                 ask = float(quote.get("ap", 0))
                 if ask > 0:
                     return (bid + ask) / 2.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_fetch_latest_price failed", symbol=symbol, error=str(exc))
     return None
 
 
@@ -477,8 +503,8 @@ async def _fetch_options_snapshots_for_symbols(symbols: list[str]) -> dict[str, 
                 if resp.status_code == 200:
                     data = resp.json()
                     results.update(data.get("snapshots") or {})
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("options snapshots batch failed", error=str(exc))
     return results
 
 
@@ -504,8 +530,8 @@ async def _get_account_equity_for_user(
                 from app.brokers.alpaca_orders import get_alpaca_account
                 data = await get_alpaca_account(acct)
                 total_equity += float(data.get("equity", 0))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("account equity fetch failed", account_id=acct.id, error=str(exc))
     return total_equity
 
 
@@ -652,30 +678,30 @@ async def get_portfolio_snapshot(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Aggregate portfolio KPIs for the dashboard snapshot widget."""
-    from app.models.account import Account as AccountModel
-
-    # Get the user's first active account
-    acct_result = await db.execute(
-        select(AccountModel).where(AccountModel.user_id == current_user.id).limit(1)
-    )
-    account = acct_result.scalar_one_or_none()
+    """Aggregate portfolio KPIs for the dashboard snapshot widget — scoped to user."""
+    account_ids = await _user_account_ids(db, current_user.id)
 
     today = datetime.now(timezone.utc).date()
     yesterday = today - timedelta(days=1)
 
-    # All-time realized PnL
+    if not account_ids:
+        return {
+            "total_pnl": 0.0, "today_pnl": 0.0, "today_pnl_trend": 0.0,
+            "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "open_positions": 0,
+        }
+
+    # All-time realized PnL (scoped to user's accounts)
     total_pnl_result = await db.execute(
-        select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
-            Trade.account_id == account.id if account else Trade.account_id.is_(None)
-        )
+        select(func.coalesce(func.sum(Trade.realized_pnl), 0.0))
+        .where(Trade.account_id.in_(account_ids))
     )
     total_pnl = float(total_pnl_result.scalar_one())
 
     # Today's realized PnL
     today_pnl_result = await db.execute(
         select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
-            Trade.closed_at >= datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc),
         )
     )
     today_pnl = float(today_pnl_result.scalar_one())
@@ -683,40 +709,45 @@ async def get_portfolio_snapshot(
     # Yesterday's realized PnL (for trend)
     yesterday_pnl_result = await db.execute(
         select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
+            Trade.account_id.in_(account_ids),
             Trade.closed_at >= datetime.combine(yesterday, datetime.min.time()).replace(tzinfo=timezone.utc),
             Trade.closed_at < datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc),
         )
     )
     yesterday_pnl = float(yesterday_pnl_result.scalar_one())
 
-    # Win rate: trades with positive PnL / total trades (last 90 days)
+    # Win rate: positive trades / total trades (last 90 days)
     since_90 = datetime.now(timezone.utc) - timedelta(days=90)
     wins_result = await db.execute(
         select(
             func.count(Trade.id).label("total"),
             func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
-        ).where(Trade.closed_at >= since_90)
+        ).where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since_90,
+        )
     )
     wins_row = wins_result.one()
     total_trades = wins_row.total or 0
     wins = int(wins_row.wins or 0)
     win_rate = wins / total_trades if total_trades > 0 else 0.0
 
-    # Open positions count
+    # Open positions count (scoped to user)
     open_pos_result = await db.execute(
-        select(func.count(Position.id)).where(
-            Position.account_id == account.id if account else Position.account_id.is_(None)
-        )
+        select(func.count(Position.id)).where(Position.account_id.in_(account_ids))
     )
     open_positions = int(open_pos_result.scalar_one() or 0)
 
-    # Sharpe ratio: annualized from last 252 daily PnL values
+    # Sharpe ratio: annualized from last 252 daily PnL values (scoped)
     daily_pnl_result = await db.execute(
         select(
             func.date_trunc("day", Trade.closed_at).label("day"),
             func.sum(Trade.realized_pnl).label("daily_pnl"),
         )
-        .where(Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365))
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365),
+        )
         .group_by(func.date_trunc("day", Trade.closed_at))
         .order_by(func.date_trunc("day", Trade.closed_at))
     )
@@ -743,4 +774,282 @@ async def get_portfolio_snapshot(
         "win_rate": round(win_rate, 4),
         "max_drawdown": round(max_drawdown, 2),
         "open_positions": open_positions,
+    }
+
+
+@router.get("/equity-curve")
+async def get_equity_curve(
+    days: int = Query(365, ge=30, le=730, description="Lookback window in days"),
+    initial_equity: float = Query(100_000.0, ge=1_000, description="Baseline equity to build curve from"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Daily cumulative equity curve built from realized trade P&L.
+
+    Returns [{date, equity}] sorted ascending. The curve starts at
+    initial_equity and adds each day's realized P&L going forward.
+    Returns an empty list when there are no closed trades.
+    """
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    result = await db.execute(
+        select(
+            func.date_trunc("day", Trade.closed_at).label("day"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("day", Trade.closed_at))
+        .order_by(func.date_trunc("day", Trade.closed_at))
+    )
+    rows = result.all()
+    if not rows:
+        return []
+
+    equity = initial_equity
+    curve = []
+    for row in rows:
+        equity += float(row.daily_pnl)
+        day = row.day
+        curve.append({
+            "date": day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)[:10],
+            "equity": round(equity, 2),
+        })
+    return curve
+
+
+@router.get("/monthly-returns")
+async def get_monthly_returns(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Monthly realized P&L as a percentage of a $100k baseline.
+
+    Returns [{month: "Jan 2024", ret: 2.3}] for the last 24 months,
+    sorted oldest-first. Used to populate the monthly return heatmap.
+    Returns an empty list when there are no closed trades.
+    """
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return []
+
+    since = datetime.now(timezone.utc) - timedelta(days=730)
+
+    result = await db.execute(
+        select(
+            func.date_trunc("month", Trade.closed_at).label("month"),
+            func.sum(Trade.realized_pnl).label("monthly_pnl"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("month", Trade.closed_at))
+        .order_by(func.date_trunc("month", Trade.closed_at))
+    )
+    rows = result.all()
+    if not rows:
+        return []
+
+    # Build running equity to compute return % relative to start-of-month equity
+    baseline = 100_000.0
+    running_equity = baseline
+    out = []
+    for row in rows:
+        monthly_pnl = float(row.monthly_pnl)
+        ret_pct = round(monthly_pnl / max(running_equity, 1) * 100, 2)
+        running_equity += monthly_pnl
+        month = row.month
+        out.append({
+            "month": month.strftime("%b %Y") if hasattr(month, "strftime") else str(month)[:7],
+            "ret": ret_pct,
+        })
+    return out
+
+
+@router.get("/tearsheet")
+async def get_tearsheet(
+    days: int = Query(365, ge=90, le=730, description="Lookback window in days"),
+    initial_equity: float = Query(100_000.0, ge=1_000, description="Baseline equity"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fund-style tearsheet metrics for investor pitch.
+
+    Computes full performance analytics from Trade records:
+      - Sharpe, Sortino, Calmar, Omega ratio, Ulcer Index
+      - Total return, annualised return, max drawdown
+      - Win rate, profit factor, avg win/loss
+      - Benchmark comparison vs SPY (via yfinance)
+      - Monthly returns heatmap data
+      - Equity curve and drawdown curve
+
+    Returns 404 when no trade data exists (no mock data).
+    """
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        raise HTTPException(status_code=404, detail="No accounts found")
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Fetch daily P&L
+    result = await db.execute(
+        select(
+            func.date_trunc("day", Trade.closed_at).label("day"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+            func.count(Trade.id).label("n_trades"),
+            func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("n_wins"),
+            func.avg(case((Trade.realized_pnl > 0, Trade.realized_pnl), else_=None)).label("avg_win"),
+            func.avg(case((Trade.realized_pnl <= 0, Trade.realized_pnl), else_=None)).label("avg_loss"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("day", Trade.closed_at))
+        .order_by(func.date_trunc("day", Trade.closed_at))
+    )
+    rows = result.all()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No trade data found in the requested period")
+
+    # Build daily series
+    daily_pnls = [float(r.daily_pnl) for r in rows]
+    n_trades_total = sum(r.n_trades for r in rows)
+    n_wins_total = sum(r.n_wins for r in rows)
+    avg_win = float(next((r.avg_win for r in rows if r.avg_win is not None), 0) or 0)
+    avg_loss = float(next((r.avg_loss for r in rows if r.avg_loss is not None), 0) or 0)
+
+    s = pd.Series(daily_pnls)
+    rf_daily = 0.05 / 252
+
+    # Equity curve
+    equity = initial_equity
+    equity_curve = []
+    drawdown_curve = []
+    peak = initial_equity
+    for i, (row, pnl) in enumerate(zip(rows, daily_pnls)):
+        equity += pnl
+        if equity > peak:
+            peak = equity
+        dd_pct = round((equity - peak) / peak * 100, 4) if peak > 0 else 0.0
+        day = row.day
+        day_str = day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)[:10]
+        equity_curve.append({"date": day_str, "equity": round(equity, 2)})
+        drawdown_curve.append({"date": day_str, "drawdown_pct": dd_pct})
+
+    # Performance metrics
+    total_return = (equity - initial_equity) / initial_equity
+    n_years = days / 365.0
+    annualized_return = (1.0 + total_return) ** (1.0 / max(n_years, 0.01)) - 1.0
+    max_dd = min(d["drawdown_pct"] for d in drawdown_curve) if drawdown_curve else 0.0
+
+    daily_returns = s / initial_equity
+    mean_ret = daily_returns.mean()
+    std_ret = daily_returns.std()
+    sharpe = float((mean_ret - rf_daily) / std_ret * math.sqrt(252)) if std_ret > 0 else 0.0
+
+    downside_rets = daily_returns[daily_returns < rf_daily]
+    downside_std = float(downside_rets.std()) if len(downside_rets) > 0 else 0.0
+    sortino = float((mean_ret - rf_daily) / downside_std * math.sqrt(252)) if downside_std > 0 else 0.0
+
+    calmar = float(annualized_return / abs(max_dd / 100.0)) if max_dd < 0 else 0.0
+
+    # Omega ratio
+    gains = daily_returns[daily_returns > rf_daily].sum()
+    losses = abs(daily_returns[daily_returns <= rf_daily].sum())
+    omega = float(gains / losses) if losses > 0 else float(gains > 0) * 999.0
+
+    # Ulcer index
+    drawdowns_pct = pd.Series([d["drawdown_pct"] for d in drawdown_curve])
+    ulcer = float(math.sqrt((drawdowns_pct ** 2).mean())) if len(drawdowns_pct) > 0 else 0.0
+
+    win_rate = n_wins_total / max(n_trades_total, 1)
+    profit_factor = abs(avg_win * n_wins_total / (avg_loss * max(n_trades_total - n_wins_total, 1))) if avg_loss != 0 else 0.0
+
+    # Monthly returns
+    monthly_result = await db.execute(
+        select(
+            func.date_trunc("month", Trade.closed_at).label("month"),
+            func.sum(Trade.realized_pnl).label("monthly_pnl"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("month", Trade.closed_at))
+        .order_by(func.date_trunc("month", Trade.closed_at))
+    )
+    monthly_rows = monthly_result.all()
+    running_eq = initial_equity
+    monthly_returns = []
+    for row in monthly_rows:
+        mpnl = float(row.monthly_pnl)
+        ret_pct = round(mpnl / max(running_eq, 1) * 100, 2)
+        running_eq += mpnl
+        month = row.month
+        monthly_returns.append({
+            "month": month.strftime("%b %Y") if hasattr(month, "strftime") else str(month)[:7],
+            "ret": ret_pct,
+        })
+
+    # Benchmark SPY via yfinance (best-effort, non-blocking)
+    benchmark_sharpe_spy = None
+    benchmark_return_spy = None
+    try:
+        import yfinance as yf
+        spy = yf.download("SPY", period=f"{days}d", interval="1d", auto_adjust=True, progress=False)
+        if spy is not None and len(spy) > 10:
+            spy_close = spy["Close"].squeeze()
+            spy_rets = spy_close.pct_change().dropna()
+            spy_total = float(spy_close.iloc[-1] / spy_close.iloc[0] - 1)
+            spy_std = spy_rets.std()
+            benchmark_sharpe_spy = round(
+                float((spy_rets.mean() - rf_daily) / spy_std * math.sqrt(252)) if spy_std > 0 else 0.0, 4
+            )
+            benchmark_return_spy = round(spy_total * 100, 2)
+    except Exception as exc:
+        logger.warning("SPY benchmark fetch failed in tearsheet", error=str(exc))
+
+    return {
+        "period_days": days,
+        "n_trading_days": len(rows),
+        "n_trades": n_trades_total,
+        # Core metrics
+        "sharpe": round(sharpe, 4),
+        "sortino": round(sortino, 4),
+        "calmar": round(calmar, 4),
+        "omega_ratio": round(omega, 4),
+        "ulcer_index": round(ulcer, 4),
+        # Returns
+        "total_return_pct": round(total_return * 100, 2),
+        "annualized_return_pct": round(annualized_return * 100, 2),
+        "max_drawdown_pct": round(max_dd, 2),
+        # Trade stats
+        "win_rate": round(win_rate, 4),
+        "profit_factor": round(profit_factor, 4),
+        "avg_win_pct": round(avg_win / initial_equity * 100, 4),
+        "avg_loss_pct": round(avg_loss / initial_equity * 100, 4),
+        # Benchmark
+        "benchmark_sharpe_spy": benchmark_sharpe_spy,
+        "benchmark_return_spy": benchmark_return_spy,
+        # Time series
+        "monthly_returns": monthly_returns,
+        "equity_curve": equity_curve,
+        "drawdown_curve": drawdown_curve,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
     }

@@ -1,11 +1,11 @@
 name: Third-Party Health Monitor
 
-# Runs from the default branch (main). Checks all external services QuantEdge
-# depends on and posts outages to #infra-alerts.
+# Checks all external services QuantEdge depends on.
+# Posts outages to #infra-alerts immediately, clears on recovery.
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # Every 30 minutes
+    - cron: "*/30 * * * *"    # Every 30 minutes
   workflow_dispatch:
     inputs:
       post_digest:
@@ -39,4 +39,4 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           POST_DIGEST: ${{ github.event.inputs.post_digest || 'false' }}
         run: python .github/scripts/third_party_monitor.py
-        continue-on-error: true
+        continue-on-error: true   # Don't fail the workflow when a service is down

@@ -1,0 +1,72 @@
+name: Desk Trading (Paper Orders)
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - ".github/workflows/desk-trading.yml"
+      - ".github/scripts/desk_order_placer.py"
+      - ".github/scripts/pipeline_tracker.py"
+  schedule:
+    # Every 15 minutes, Mon–Fri, 09:30–22:00 UTC (covers US market hours + pre/post)
+    - cron: "*/15 9-22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      desk:
+        description: "Specific desk to run (leave empty for all)"
+        required: false
+        default: ""
+
+jobs:
+  place-orders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-desk-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-desk-
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            pandas numpy scipy statsmodels scikit-learn \
+            fastapi pydantic pydantic-settings \
+            python-dotenv structlog tenacity anyio \
+            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
+            sqlalchemy[asyncio] httpx aiosqlite \
+            alpaca-py requests yfinance
+
+      - name: Verify Python environment
+        run: |
+          python --version
+          python -c "import pandas, numpy, scipy, statsmodels, fastapi, pydantic; print('Core deps OK')"
+        env:
+          SECRET_KEY: d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
+
+      - name: Run desk order placer
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          DESK_FILTER:       ${{ github.event.inputs.desk }}
+          TRADING_MODE:      paper
+          # Hardcoded paper-trading key — not a production secret
+          SECRET_KEY:        d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
+          DATABASE_URL:      ""
+          REDIS_URL:         ""
+          PYTHONPATH:        ${{ github.workspace }}/backend
+        run: python .github/scripts/desk_order_placer.py

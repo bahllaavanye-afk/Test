@@ -6,7 +6,8 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.backtest import BacktestRun
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict, ConfigDict
+from app.backtest.stress_test import STRESS_SCENARIOS
+from pydantic import BaseModel, ConfigDict
 from datetime import date, datetime, timezone
 import uuid
 
@@ -83,3 +84,20 @@ async def trigger_backtest(
     await db.commit()
     await db.refresh(run)
     return BacktestOut.from_run(run)
+
+
+@router.get("/scenarios")
+async def list_stress_scenarios(
+    current_user: User = Depends(get_current_user),
+):
+    """Return all built-in historical stress-test scenarios."""
+    return [
+        {
+            "id": s.name,
+            "label": s.label,
+            "start": s.start.isoformat(),
+            "end": s.end.isoformat(),
+            "description": s.description,
+        }
+        for s in STRESS_SCENARIOS
+    ]

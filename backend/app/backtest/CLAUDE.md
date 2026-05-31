@@ -6,10 +6,11 @@ You ensure every strategy's backtest is rigorous, free of look-ahead bias, and w
 ## Owned Files (safe to modify)
 ```
 backend/app/backtest/
-  engine.py           # VectorBT wrapper + run orchestration
+  engine.py           # Vectorised engine: open fills, volume-adaptive slippage
   metrics.py          # Full performance metrics suite
   walk_forward.py     # Rolling train/test windows
   monte_carlo.py      # Bootstrap simulation for robustness
+  stress_test.py      # Historical crisis overlay (GFC, COVID, rate-hikes, etc.)
 backend/experiments/
   debug/
     debug_feature_leak.py   # Detect look-ahead bias
@@ -52,18 +53,52 @@ signal = rsi.shift(1) > 70
 
 Run `python experiments/debug/debug_feature_leak.py --strategy <name>` to verify.
 
-## Standard Metrics Suite (`metrics.py`)
-| Metric                | Target          |
-|-----------------------|-----------------|
-| Sharpe Ratio          | > 1.0 OOS       |
-| Sortino Ratio         | > 1.5           |
-| Calmar Ratio          | > 0.5           |
-| Max Drawdown          | < 20%           |
-| Win Rate              | > 50%           |
-| Profit Factor         | > 1.5           |
-| Average Trade         | > 0.3%          |
-| Annualised Return     | > 15%           |
-| Benchmark Alpha       | > 3% vs SPY     |
+## Standard Metrics Suite (`engine.py`)
+| Metric                | Target          | Notes |
+|-----------------------|-----------------|-------|
+| Sharpe Ratio          | > 1.0 OOS       | rf=5% annualised |
+| Sortino Ratio         | > 1.5           | downside dev only |
+| Calmar Ratio          | > 0.5           | ann_return / max_dd |
+| Omega Ratio           | > 1.5           | gains/losses above rf |
+| Ulcer Index           | < 5             | RMS drawdown — penalises prolonged underwater |
+| Max Drawdown          | < 20%           | |
+| Win Rate              | > 50%           | |
+| Profit Factor         | > 1.5           | |
+| Expectancy            | > 0.3%/trade    | avg_win×win_rate − avg_loss×loss_rate |
+| Annualised Return     | > 15%           | |
+| Benchmark Alpha       | > 3% vs SPY     | |
+
+## Engine Execution Realism
+The engine models realistic fill assumptions:
+
+```python
+# Open-price fills (default)
+run_backtest(signals, prices, opens=opens, fill_at_open=True)
+
+# Volume-adaptive slippage (Kyle sqrt model)
+# slippage = base * sqrt(trade_size / daily_volume_usd)
+run_backtest(signals, prices, volume=volume)
+```
+
+This means:
+- **Flat % slippage is the floor** — slippage scales up for large trades
+- **Fills happen at the open**, not the signal-bar close, so no bar-close lookahead
+
+## Stress Testing (`stress_test.py`)
+Overlay any strategy on 7 built-in crisis windows:
+
+```python
+from app.backtest.stress_test import run_stress_tests, stress_summary
+
+results = run_stress_tests(signals, prices, opens=opens, volume=volume)
+summary = stress_summary(results)
+# → {"gfc": {"total_return_pct": -12.4, "max_drawdown_pct": -18.1, ...}, ...}
+```
+
+Available scenarios: GFC 2008, Euro Crisis 2011, China Flash 2015,
+Vol Spike Feb-2018, COVID Crash 2020, Rate Hikes 2022, SVB Crisis 2023.
+
+REST access: `GET /api/v1/backtests/scenarios`
 
 ## Running a Backtest
 ```bash

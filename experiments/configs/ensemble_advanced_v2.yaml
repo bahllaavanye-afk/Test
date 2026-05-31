@@ -1,0 +1,54 @@
+experiment:
+  name: "ensemble_advanced_v2"
+  model: "ensemble"
+  symbol: "SPY"
+  interval: "1d"
+
+data:
+  train_start: "2015-01-01"
+  train_end: "2024-06-30"
+  val_start: "2023-01-01"
+  val_end: "2024-06-30"
+  test_start: "2024-07-01"
+  test_end: "2026-01-01"
+
+features:
+  technical: true
+  advanced: true
+  multi_timeframe: true
+  lookback: 64
+
+ensemble:
+  components:
+    - patch_tst
+    - multiscale_transformer
+    - xgboost
+    - lorentzian_knn
+  optimize_weights: true
+  weight_optimization: "sharpe"   # optimize for Sharpe ratio
+  min_component_weight: 0.05
+  rebalance_frequency: "monthly"
+
+component_params:
+  patch_tst:
+    seq_len: 64
+    patch_len: 16
+    d_model: 128
+    n_layers: 3
+  multiscale_transformer:
+    d_model: 128
+    n_layers: 2
+  xgboost:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+  lorentzian_knn:
+    k: 8
+    neighbors_count: 8
+
+training:
+  epochs: 150
+  batch_size: 128
+  lr: 0.0005
+  optimizer: "adamw"
+  early_stopping_patience: 20

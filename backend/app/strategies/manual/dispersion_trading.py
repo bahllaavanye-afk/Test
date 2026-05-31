@@ -35,6 +35,7 @@ import asyncio
 from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 
 
 class DispersionTradingStrategy(AbstractStrategy):
@@ -56,19 +57,13 @@ class DispersionTradingStrategy(AbstractStrategy):
     _DATA_BASE = "https://data.alpaca.markets"
     _ALPACA_BASE = "https://paper-api.alpaca.markets"
 
-    def _headers(self):
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _fetch_hv(self, symbol: str, days: int = 30) -> float | None:
         start = (date.today() - timedelta(days=days + 10)).isoformat()
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
                 f"{self._DATA_BASE}/v2/stocks/{symbol}/bars",
                 params={"timeframe": "1Day", "start": start, "limit": days + 5},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return None
@@ -89,7 +84,7 @@ class DispersionTradingStrategy(AbstractStrategy):
             quote_resp = await client.get(
                 f"{self._DATA_BASE}/v2/stocks/{symbol}/bars",
                 params={"timeframe": "1Day", "limit": 1},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
             if quote_resp.status_code != 200:
                 return None
@@ -107,7 +102,7 @@ class DispersionTradingStrategy(AbstractStrategy):
                     "expiration_date_lte": exp_max,
                     "limit": 100,
                 },
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
             if contracts_resp.status_code != 200:
                 return None
@@ -123,7 +118,7 @@ class DispersionTradingStrategy(AbstractStrategy):
             snap_resp = await client.get(
                 f"{self._ALPACA_BASE}/v2/options/snapshots",
                 params={"symbols": atm_sym, "feed": "indicative"},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if snap_resp.status_code != 200:
             return None
@@ -158,7 +153,7 @@ class DispersionTradingStrategy(AbstractStrategy):
             resp = await client.get(
                 f"{self._DATA_BASE}/v2/stocks/{symbol}/bars",
                 params={"timeframe": "1Day", "start": start, "limit": 40},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return None

@@ -21,10 +21,10 @@ try:
     import torch.nn.functional as F
     _TORCH_AVAILABLE = True
 except ImportError:
-    torch = None  # type: ignore
-    nn = None  # type: ignore
-    F = None  # type: ignore
     _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
+    F = None      # type: ignore[assignment]
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 

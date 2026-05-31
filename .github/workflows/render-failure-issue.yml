@@ -1,15 +1,13 @@
 name: Render Failure → GitHub Issue Bridge
 
-# Runs from the DEFAULT branch (main) so the cron schedule fires.
-# When a Render deploy fails, fetches the logs and creates/updates a GitHub
-# Issue so Claude can read the failure directly (no manual copy-paste).
-# On recovery, auto-closes the issue.
+# When a Render deploy fails, creates/updates a GitHub Issue with the full logs.
+# Claude (via MCP) can read the issue and auto-fix without the user copy-pasting.
 
 on:
   schedule:
     - cron: "*/10 * * * *"   # Every 10 minutes
   workflow_dispatch:
-  repository_dispatch:
+  repository_dispatch:       # External trigger (Render webhook)
     types: [render-deploy-failed]
 
 concurrency:

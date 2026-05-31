@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import api from '../api/client'
 import PortfolioGreeks from '../components/options/PortfolioGreeks'
+import OptionsPCRPanel from '../components/strategies/OptionsPCRPanel'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

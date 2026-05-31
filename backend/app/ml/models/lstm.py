@@ -13,9 +13,9 @@ try:
     import torch.nn as nn
     _TORCH_AVAILABLE = True
 except ImportError:
-    torch = None  # type: ignore
-    nn = None  # type: ignore
     _TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
 import numpy as np
 from sklearn.metrics import roc_auc_score
 from app.ml.models.base_model import AbstractModel, EvalMetrics

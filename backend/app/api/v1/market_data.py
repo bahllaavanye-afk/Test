@@ -1,4 +1,4 @@
-"""Market data endpoints: quotes, historical OHLCV, news, earnings, IV Rank."""
+"""Market data endpoints: quotes, historical OHLCV, news, earnings, IV Rank, PCR."""
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -7,6 +7,7 @@ import asyncio
 import httpx
 import math
 from datetime import datetime, timezone, timedelta
+from app.utils.logging import logger
 
 router = APIRouter(prefix="/market-data", tags=["market_data"])
 
@@ -151,8 +152,8 @@ async def get_quote(
                     "timestamp": ts,
                     "source": "alpaca",
                 }
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("quote fetch (stocks) failed", symbol=sym_upper, error=str(exc))
 
     # Fallback: try latest bar price from Alpaca
     try:
@@ -170,8 +171,8 @@ async def get_quote(
                 "timestamp": bars[-1]["time"],
                 "source": "alpaca_bars",
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("quote fetch (bars fallback) failed", symbol=sym_upper, error=str(exc))
 
     return {
         "symbol": sym_upper,
@@ -225,8 +226,8 @@ async def get_quotes_batch(
                         "timestamp": ts,
                     })
                 return result
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("quotes_batch fetch failed", error=str(exc))
 
     return []
 
@@ -318,8 +319,8 @@ async def _compute_iv_rank(symbol: str) -> dict:
                 if ivs:
                     current_iv = sum(ivs) / len(ivs)
                     source = "alpaca_options"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("IV rank options fetch failed", symbol=sym_upper, error=str(exc))
 
     # Fall back to HV × 1.1 proxy
     if current_iv is None or current_iv <= 0:
@@ -508,3 +509,149 @@ async def get_earnings(
         return {"earnings": [], "data_source": "unavailable", "reason": "timeout"}
     except Exception as exc:
         return {"earnings": [], "data_source": "unavailable", "reason": str(exc)}
+
+
+# ─── Put/Call Ratio (PCR) ─────────────────────────────────────────────────────
+
+@router.get("/pcr")
+async def get_pcr(
+    symbol: str = Query("SPY", description="Underlying symbol, e.g. SPY, QQQ, AAPL"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Compute the live Put/Call Ratio for the given symbol using Alpaca options
+    snapshots. Returns PCR value, directional signal, and confidence score.
+
+    PCR > 1.2  → bullish (contrarian — excessive bearishness signals reversal)
+    PCR 0.8-1.2 → neutral
+    PCR < 0.8  → bearish (contrarian — excessive bullishness signals reversal)
+
+    Implements the same logic as OptionsPCRReversalStrategy._fetch_pcr().
+    """
+    sym_upper = symbol.upper()
+
+    PCR_HIGH = 1.20
+    PCR_LOW  = 0.80  # wider neutral band than strategy's 0.55 for the dashboard
+
+    if not (settings.alpaca_api_key and settings.alpaca_secret_key):
+        return {
+            "symbol": sym_upper,
+            "pcr": None,
+            "put_volume": None,
+            "call_volume": None,
+            "signal": "unavailable",
+            "confidence": None,
+            "regime": "unavailable",
+            "source": "no_credentials",
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    headers = {
+        "APCA-API-KEY-ID": settings.alpaca_api_key,
+        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{ALPACA_DATA_URL}/v1beta1/options/snapshots/{sym_upper}",
+                headers=headers,
+                params={"feed": "indicative"},
+            )
+            if resp.status_code != 200:
+                return {
+                    "symbol": sym_upper,
+                    "pcr": None,
+                    "put_volume": None,
+                    "call_volume": None,
+                    "signal": "unavailable",
+                    "confidence": None,
+                    "regime": "unavailable",
+                    "source": f"alpaca_error_{resp.status_code}",
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+            data = resp.json()
+            snapshots = data.get("snapshots", {})
+
+            put_vol = 0.0
+            call_vol = 0.0
+            for occ_sym, snap in snapshots.items():
+                if len(occ_sym) < 16:
+                    continue
+                cp_flag = occ_sym[-9]
+                daily = snap.get("dailyBar") or snap.get("minuteBar") or {}
+                vol = float(daily.get("v") or 0)
+                if cp_flag == "P":
+                    put_vol += vol
+                elif cp_flag == "C":
+                    call_vol += vol
+
+            if call_vol < 1:
+                return {
+                    "symbol": sym_upper,
+                    "pcr": None,
+                    "put_volume": put_vol,
+                    "call_volume": call_vol,
+                    "signal": "unavailable",
+                    "confidence": None,
+                    "regime": "unavailable",
+                    "source": "no_call_volume",
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+            pcr = round(put_vol / call_vol, 4)
+
+            # Determine signal and confidence
+            if pcr >= PCR_HIGH:
+                signal = "buy"
+                regime = "bullish"
+                confidence = round(min(0.90, 0.55 + (pcr - PCR_HIGH) * 0.5), 4)
+            elif pcr <= PCR_LOW:
+                signal = "sell"
+                regime = "bearish"
+                confidence = round(min(0.90, 0.55 + (PCR_LOW - pcr) * 0.8), 4)
+            else:
+                signal = "neutral"
+                regime = "neutral"
+                confidence = round(0.30 + abs(pcr - 1.0) * 0.2, 4)
+
+            return {
+                "symbol": sym_upper,
+                "pcr": pcr,
+                "put_volume": put_vol,
+                "call_volume": call_vol,
+                "signal": signal,
+                "confidence": confidence,
+                "regime": regime,
+                "pcr_high_threshold": PCR_HIGH,
+                "pcr_low_threshold": PCR_LOW,
+                "source": "alpaca_options",
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+    except httpx.TimeoutException:
+        return {
+            "symbol": sym_upper,
+            "pcr": None,
+            "put_volume": None,
+            "call_volume": None,
+            "signal": "unavailable",
+            "confidence": None,
+            "regime": "unavailable",
+            "source": "timeout",
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:
+        logger.warning("PCR endpoint failed", symbol=sym_upper, error=str(exc))
+        return {
+            "symbol": sym_upper,
+            "pcr": None,
+            "put_volume": None,
+            "call_volume": None,
+            "signal": "unavailable",
+            "confidence": None,
+            "regime": "unavailable",
+            "source": str(exc),
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }

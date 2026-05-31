@@ -1,5 +1,6 @@
 """FastAPI app factory with lifespan, CORS, routers, and background tasks."""
 from __future__ import annotations
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -36,8 +37,18 @@ async def lifespan(app: FastAPI):
     logger.info("QuantEdge starting up", mode=settings.trading_mode)
 
     # Create tables (managed by Alembic in production; this covers dev/test)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    for attempt in range(5):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            break
+        except Exception as e:
+            if attempt == 4:
+                logger.error(f"DB not reachable after 5 attempts: {e}. Continuing without create_all.")
+            else:
+                wait_secs = 2 ** attempt
+                logger.warning(f"DB connection attempt {attempt + 1} failed: {e}. Retrying in {wait_secs}s")
+                await asyncio.sleep(wait_secs)
 
     # Start background scheduler
     scheduler = start_scheduler(db_session_factory=None)
@@ -45,7 +56,6 @@ async def lifespan(app: FastAPI):
 
     # Start AlgoAgent (UCB1 exploration/exploitation)
     from app.tasks.algo_agent import AlgoAgent
-    import asyncio
     algo_agent = AlgoAgent(interval_seconds=300)
     app.state.algo_agent = algo_agent
 
@@ -81,7 +91,15 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: research_scientist.run(), "research_scientist")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: modeling_engineer.run(), "modeling_engineer")))
 
+    # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
+    from app.tasks.regime_monitor import RegimeMonitor
+    regime_monitor = RegimeMonitor()
+    regime_monitor.start()
+    app.state.regime_monitor = regime_monitor
+
     yield
+
+    regime_monitor.stop()
 
     for task in getattr(app.state, "bg_tasks", []):
         task.cancel()
@@ -102,15 +120,29 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
     )
 
-    # CORS — restrict to Vercel frontend in production
-    # cors_origins is a list[str] property on the settings object
-    allowed_origins = settings.cors_origins if settings.cors_origins else ["*"]
+    # CORS — explicit allowlist only. Browsers reject `*` + credentials anyway,
+    # so the fallback to `*` was both insecure and broken. In dev we permit
+    # localhost; in any other mode the operator MUST set CORS_ORIGINS.
+    if settings.cors_origins:
+        allowed_origins = settings.cors_origins
+    elif settings.trading_mode in ("dev", "test"):
+        allowed_origins = [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+        ]
+    else:
+        logger.warning(
+            "CORS_ORIGINS not configured in non-dev mode — refusing all cross-origin requests"
+        )
+        allowed_origins = []
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
     )
 
     # REST API
@@ -125,6 +157,72 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "ok", "mode": settings.trading_mode}
 
+    @app.get("/health/detailed")
+    async def health_detailed():
+        """Comprehensive system health — DB, Redis, scheduler, and background tasks."""
+        import time
+        import importlib.util
+        from app.database import AsyncSessionLocal
+
+        checks: dict[str, dict] = {}
+
+        # Database
+        try:
+            t0 = time.perf_counter()
+            async with AsyncSessionLocal() as session:
+                await session.execute(__import__("sqlalchemy").text("SELECT 1"))
+            checks["database"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
+        except Exception as e:
+            checks["database"] = {"ok": False, "error": str(e)[:120]}
+
+        # Redis
+        try:
+            from app.redis_client import get_redis
+            redis = get_redis()
+            if redis is None:
+                checks["redis"] = {"ok": True, "note": "disabled (REDIS_URL not set)"}
+            else:
+                t0 = time.perf_counter()
+                await redis.ping()
+                checks["redis"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
+        except Exception as e:
+            checks["redis"] = {"ok": False, "error": str(e)[:120]}
+
+        # Scheduler
+        sched = getattr(app.state, "scheduler", None)
+        checks["scheduler"] = {"ok": sched is not None and sched.running if sched else False}
+
+        # AlgoAgent
+        agent = getattr(app.state, "algo_agent", None)
+        checks["algo_agent"] = {"ok": agent is not None}
+
+        # Background tasks (count running)
+        bg_tasks = getattr(app.state, "bg_tasks", [])
+        running_tasks = sum(1 for t in bg_tasks if not t.done())
+        checks["background_tasks"] = {"ok": running_tasks > 0, "running": running_tasks, "total": len(bg_tasks)}
+
+        # ML availability
+        torch_available = importlib.util.find_spec("torch") is not None
+        checks["torch"] = {"ok": True, "available": torch_available, "note": "optional — ML strategies degrade gracefully if absent"}
+
+        # Strategy registry
+        try:
+            from app.strategies import STRATEGY_REGISTRY
+            checks["strategies"] = {"ok": True, "count": len(STRATEGY_REGISTRY)}
+        except Exception as e:
+            checks["strategies"] = {"ok": False, "error": str(e)[:120]}
+
+        # Non-critical checks don't make status degraded
+        non_critical = {"redis", "torch"}
+        critical_checks = {k: v for k, v in checks.items() if k not in non_critical}
+        all_ok = all(v.get("ok", False) for v in critical_checks.values())
+        return {
+            "status": "ok" if all_ok else "degraded",
+            "version": "2.0.0",
+            "mode": settings.trading_mode,
+            "checks": checks,
+        }
+
     # Security headers on every response
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -133,6 +231,14 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' wss:; "
+            "frame-ancestors 'none';"
+        )
         # Only set HSTS in production (not dev/test where HTTP is used)
         if settings.trading_mode not in ("dev", "paper"):
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"

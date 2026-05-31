@@ -144,8 +144,8 @@ class SelfImprover:
             history.append(entry)
             history = history[-300:]
             RESULTS_FILE.write_text(json.dumps(history, indent=2))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("self_improver persist failed", error=str(exc))
 
     def get_best_params(self, strategy: str, symbol: str) -> dict | None:
         return self._best_params.get(f"{strategy}:{symbol}")

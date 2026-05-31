@@ -34,6 +34,7 @@ import httpx
 from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 
 
 class VRPSystematicStrategy(AbstractStrategy):
@@ -58,12 +59,6 @@ class VRPSystematicStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    def _headers(self):
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _get_realized_vol(self, symbol: str) -> float | None:
         """Compute 20-day annualized realized volatility from daily closes."""
         start = (date.today() - timedelta(days=40)).isoformat()
@@ -71,7 +66,7 @@ class VRPSystematicStrategy(AbstractStrategy):
             resp = await client.get(
                 f"{self._DATA_BASE}/v2/stocks/{symbol}/bars",
                 params={"timeframe": "1Day", "start": start, "limit": 30},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return None
@@ -95,7 +90,7 @@ class VRPSystematicStrategy(AbstractStrategy):
                     "expiration_date_lte": (date.today() + timedelta(days=45)).isoformat(),
                     "limit": 100,
                 },
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
             if contracts_resp.status_code != 200:
                 return None
@@ -111,7 +106,7 @@ class VRPSystematicStrategy(AbstractStrategy):
             snap_resp = await client.get(
                 f"{self._ALPACA_BASE}/v2/options/snapshots",
                 params={"symbols": atm_sym, "feed": "indicative"},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if snap_resp.status_code != 200:
             return None

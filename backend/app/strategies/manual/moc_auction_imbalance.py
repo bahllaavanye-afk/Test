@@ -164,7 +164,5 @@ class MOCAuctionImbalanceStrategy(AbstractStrategy):
             target_price=current_price,
             stop_loss=current_price * (1 - stop_pct if side == "buy" else 1 + stop_pct),
             take_profit=None,
-            order_type="moc",   # Alpaca market-on-close order type
-            quantity=None,
-            metadata={"imbalance_z": round(current_z, 3), "atr_ratio": round(current_tr / max(current_atr, 1), 2)},
+            metadata={"imbalance_z": round(current_z, 3), "atr_ratio": round(current_tr / max(current_atr, 1), 2), "order_type": "moc"},
         )

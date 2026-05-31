@@ -8,9 +8,56 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 
 from app.strategies import STRATEGY_REGISTRY
-from app.redis_client import price_cache
+from app.redis_client import price_cache, get_redis
 from app.ws.manager import manager
 from app.utils.logging import logger
+
+
+# ── Item 4: Regime-Conditional Strategy Activation Matrix ───────────────────
+# Regimes: 0=bear, 1=sideways, 2=bull (from HMM regime detector stored in Redis)
+# Source: research into 2 Sigma / Renaissance regime-conditional allocation
+STRATEGY_REGIME_MAP: dict[str, list[int]] = {
+    "momentum":                 [2],        # bull only
+    "cross_sectional_momentum": [2],        # bull only
+    "mean_reversion":           [1],        # sideways only
+    "vwap_reversion":           [1],        # sideways only
+    "rsi_macd":                 [1, 2],     # sideways + bull
+    "breakout":                 [2],        # bull only
+    "supertrend":               [2],        # bull only
+    "pairs_trading":            [0, 1, 2],  # all regimes (market-neutral)
+    "btc_eth_stat_arb":         [0, 1, 2],  # all regimes
+    "triangular_arb":           [0, 1, 2],  # all regimes
+    "poly_binary_arb":          [0, 1, 2],  # all regimes
+    "funding_rate_arb":         [0, 1, 2],  # all regimes
+    "basis_carry":              [0, 1, 2],  # all regimes
+    "vix_mean_reversion":       [0, 1],     # bear + sideways
+    "liquidation_cascade_fade": [0],        # bear only
+    "hmm_regime":               [0, 1, 2],  # always active (meta-strategy)
+}
+DEFAULT_REGIMES = [0, 1, 2]
+
+
+_regime_cache: dict[str, object] = {"value": None, "ts": 0.0}
+_REGIME_CACHE_TTL = 30.0  # seconds — avoids Redis round-trip on every strategy tick
+
+
+async def get_current_regime(redis_client) -> int | None:
+    """Read current market regime (0=bear, 1=sideways, 2=bull) from Redis key 'market:regime'.
+    Cached for 30 s to reduce Redis round-trips across concurrent strategy loops.
+    """
+    import time
+    now = time.monotonic()
+    if now - _regime_cache["ts"] < _REGIME_CACHE_TTL:
+        return _regime_cache["value"]  # type: ignore[return-value]
+    try:
+        raw = await redis_client.get("market:regime")
+        val = int(raw) if raw is not None else None
+        _regime_cache["value"] = val
+        _regime_cache["ts"] = now
+        return val
+    except Exception as exc:
+        logger.debug("Failed to read market regime from Redis", error=str(exc))
+    return _regime_cache["value"]  # type: ignore[return-value]
 
 
 def _broker_interval(strategy_cls) -> str:
@@ -90,8 +137,24 @@ class ContinuousStrategyRunner:
         strategy = strategy_cls(params=params) if params else strategy_cls()
         logger.info("Strategy loop started", strategy=strategy_name, symbol=symbol)
 
+        # Shared Redis client for regime checks
+        _redis = get_redis()
+
         while self._running:
             try:
+                # ── Item 4: Skip strategies in hostile regimes ──────────────
+                current_regime = await get_current_regime(_redis)
+                allowed_regimes = STRATEGY_REGIME_MAP.get(strategy_name, DEFAULT_REGIMES)
+                if current_regime is not None and current_regime not in allowed_regimes:
+                    logger.debug(
+                        "Strategy skipped: hostile regime",
+                        strategy=strategy_name,
+                        regime=current_regime,
+                        allowed=allowed_regimes,
+                    )
+                    await asyncio.sleep(tick_interval)
+                    continue
+
                 df = await self._get_ohlcv(symbol, strategy_cls)
 
                 if df is None or len(df) < 30:
@@ -136,9 +199,9 @@ class ContinuousStrategyRunner:
                         )
                         order_req = OrderRequest(
                             symbol=symbol,
-                            quantity=signal.quantity or 1,
+                            quantity=signal.metadata.get("quantity", 1),
                             side=signal.side,
-                            order_type=signal.order_type or "market",
+                            order_type=signal.metadata.get("order_type", "market"),
                             limit_price=signal.target_price,
                             stop_loss=signal.stop_loss,
                             take_profit=signal.take_profit,

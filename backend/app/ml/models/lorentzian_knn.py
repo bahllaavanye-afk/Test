@@ -15,10 +15,9 @@ try:
     import torch.nn as nn
     _TORCH_AVAILABLE = True
 except ImportError:
-    torch = None  # type: ignore
-    nn = None  # type: ignore
     _TORCH_AVAILABLE = False
-
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
 import numpy as np
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta

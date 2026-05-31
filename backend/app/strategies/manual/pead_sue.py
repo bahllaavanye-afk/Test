@@ -29,6 +29,7 @@ import httpx
 from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 
 
 class PEADStrategy(AbstractStrategy):
@@ -45,12 +46,6 @@ class PEADStrategy(AbstractStrategy):
     _DATA_BASE = "https://data.alpaca.markets"
     _ALPACA_BASE = "https://paper-api.alpaca.markets"
 
-    def _headers(self):
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _get_earnings_gap(self, symbol: str, days_lookback: int = 5) -> dict | None:
         """
         Detect recent earnings by looking for unusual overnight gaps.
@@ -61,7 +56,7 @@ class PEADStrategy(AbstractStrategy):
             resp = await client.get(
                 f"{self._DATA_BASE}/v2/stocks/{symbol}/bars",
                 params={"timeframe": "1Day", "start": start, "limit": days_lookback + 3},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return None
@@ -96,7 +91,7 @@ class PEADStrategy(AbstractStrategy):
             resp = await client.get(
                 f"https://data.alpaca.markets/v1beta1/corporate-actions",
                 params={"types": "earnings", "symbols": symbol, "limit": 5},
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return None

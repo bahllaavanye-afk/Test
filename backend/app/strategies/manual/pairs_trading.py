@@ -129,7 +129,8 @@ class PairsTradingStrategy(AbstractStrategy):
             spread_std = spread_window.std()
             if spread_std < 1e-9:
                 continue
-            spread_i = price_a.iloc[i] - hedge * price_b.iloc[i]
+            # Use last bar of the window (iloc[i-1]) to avoid lookahead into bar i
+            spread_i = price_a.iloc[i - 1] - hedge * price_b.iloc[i - 1]
             z = (spread_i - spread_mean) / spread_std
             if z < -self.entry_z:
                 signals.iloc[i] = 1

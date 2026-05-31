@@ -1,0 +1,32 @@
+experiment:
+  name: ensemble_2comp
+  model: ensemble
+  symbol: SPY
+  interval: 1d
+data:
+  train_start: '2015-01-01'
+  train_end: '2024-06-30'
+  val_start: '2023-01-01'
+  val_end: '2024-06-30'
+  test_start: '2024-07-01'
+  test_end: '2026-01-01'
+features:
+  technical: true
+  advanced: true
+  multi_timeframe: true
+  lookback: 64
+ensemble:
+  components:
+  - patch_tst
+  - xgboost
+  optimize_weights: true
+  weight_optimization: sharpe
+  min_component_weight: 0.05
+training:
+  epochs: 100
+  batch_size: 128
+  lr: 0.0005
+  optimizer: adamw
+  early_stopping_patience: 15
+ablation_group: ensemble
+ablation_var: components=patch_tst+xgboost

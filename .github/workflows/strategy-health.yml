@@ -1,0 +1,67 @@
+name: Strategy Health Ranking
+
+on:
+  schedule:
+    # 22:00 UTC weekdays — after market close + P&L report
+    - cron: "0 22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: "Run for a single strategy (leave empty for all)"
+        required: false
+        default: ""
+      min_sharpe:
+        description: "Flag strategies below this Sharpe"
+        required: false
+        default: "0.7"
+
+permissions:
+  contents: write
+
+jobs:
+  rank-strategies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet \
+            pandas numpy scipy statsmodels scikit-learn \
+            yfinance requests \
+            fastapi pydantic pydantic-settings \
+            python-dotenv structlog tenacity anyio \
+            sqlalchemy aiosqlite
+
+      - name: Run strategy ranker
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STRATEGY:        ${{ github.event.inputs.strategy || '' }}
+          MIN_SHARPE_PAPER: ${{ github.event.inputs.min_sharpe || '0.7' }}
+          # Minimal env so backend strategy imports work
+          SECRET_KEY:   "ci-placeholder-not-for-production"
+          DATABASE_URL: "sqlite+aiosqlite:///./tmp_rank.db"
+          REDIS_URL:    ""
+          TRADING_MODE: "paper"
+          ALPACA_API_KEY: "ci"
+          ALPACA_SECRET_KEY: "ci"
+          PYTHONPATH: "backend"
+        run: python .github/scripts/strategy_ranker.py
+
+      - name: Commit ranking artifact
+        run: |
+          git config user.name  "QuantEdge Bot"
+          git config user.email "bot@quantedge.ai"
+          git add experiments/results/strategy_ranking_*.json || true
+          git diff --cached --quiet || git commit -m "chore: strategy health ranking $(date -u +%Y-%m-%d)"
+          git push origin claude/advanced-trading-bot-d5Lmw || true

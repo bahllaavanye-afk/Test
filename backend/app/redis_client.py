@@ -1,29 +1,25 @@
-"""Redis client with graceful no-op behavior when REDIS_URL is empty.
-
-For the Render free tier and CI environments where Redis isn't configured,
-this module returns a stub PriceCache that no-ops all operations rather than
-crashing at import time.
 """
-from __future__ import annotations
+Redis client with no-op fallback when REDIS_URL is empty.
 
+If REDIS_URL is not set, all cache operations silently return None/no-op.
+This lets the app run on Render/local without a Redis instance — strategies
+and the API still work; only real-time price caching and pub/sub are skipped.
+"""
 import json
 from typing import Any
 
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.utils.logging import logger
 
 _pool: aioredis.ConnectionPool | None = None
-
-
-def _redis_enabled() -> bool:
-    """Redis is enabled only when REDIS_URL is set to a valid scheme."""
-    url = (settings.redis_url or "").strip()
-    return bool(url) and url.startswith(("redis://", "rediss://", "unix://"))
+_redis_disabled = not settings.redis_url or settings.redis_url.strip() == ""
 
 
 def get_pool() -> aioredis.ConnectionPool | None:
-    """Return the connection pool, or None when Redis isn't configured."""
+    if _redis_disabled:
+        return None
     global _pool
     if not _redis_enabled():
         return None
@@ -37,69 +33,100 @@ def get_pool() -> aioredis.ConnectionPool | None:
 
 
 def get_redis() -> aioredis.Redis | None:
-    """Return a Redis client, or None when REDIS_URL isn't configured."""
     pool = get_pool()
     if pool is None:
         return None
     return aioredis.Redis(connection_pool=pool)
 
 
-class _NoopPriceCache:
-    """No-op fallback used when Redis isn't configured.
-
-    All writes are dropped silently; reads return None. This lets the API
-    server run on Render's free tier without a Redis instance.
-    """
-
-    enabled = False
-
-    async def set_price(self, *_, **__) -> None: ...
-    async def get_price(self, *_, **__) -> None: return None
-    async def set_ohlcv(self, *_, **__) -> None: ...
-    async def get_ohlcv(self, *_, **__) -> None: return None
-    async def set_arb_opportunity(self, *_, **__) -> None: ...
-    async def publish(self, *_, **__) -> None: ...
-    async def cache_prediction(self, *_, **__) -> None: ...
-
-
 class PriceCache:
-    """Fast price read/write via Redis. TTL-based to stay fresh."""
+    """Redis price cache. No-ops gracefully when Redis is unavailable."""
 
-    enabled = True
-
-    def __init__(self) -> None:
-        client = get_redis()
-        if client is None:
-            raise RuntimeError("PriceCache requires REDIS_URL to be set")
-        self.r = client
+    def __init__(self):
+        self._r: aioredis.Redis | None = get_redis()
 
     async def set_price(self, exchange: str, symbol: str, data: dict, ttl: int = 5) -> None:
+        if self._r is None:
+            return
         key = f"price:{exchange}:{symbol}"
-        await self.r.setex(key, ttl, json.dumps(data))
+        try:
+            await self._r.setex(key, ttl, json.dumps(data))
+        except Exception as exc:
+            logger.warning("redis.set_price failed", key=key, error=str(exc))
 
     async def get_price(self, exchange: str, symbol: str) -> dict | None:
+        if self._r is None:
+            return None
         key = f"price:{exchange}:{symbol}"
-        raw = await self.r.get(key)
-        return json.loads(raw) if raw else None
+        try:
+            raw = await self._r.get(key)
+            return json.loads(raw) if raw else None
+        except Exception as exc:
+            logger.warning("redis.get_price failed", key=key, error=str(exc))
+            return None
 
     async def set_ohlcv(self, exchange: str, symbol: str, interval: str, data: list, ttl: int = 60) -> None:
+        if self._r is None:
+            return
         key = f"ohlcv:{exchange}:{symbol}:{interval}"
-        await self.r.setex(key, ttl, json.dumps(data))
+        try:
+            await self._r.setex(key, ttl, json.dumps(data))
+        except Exception as exc:
+            logger.warning("redis.set_ohlcv failed", key=key, error=str(exc))
 
     async def get_ohlcv(self, exchange: str, symbol: str, interval: str) -> list | None:
+        if self._r is None:
+            return None
         key = f"ohlcv:{exchange}:{symbol}:{interval}"
-        raw = await self.r.get(key)
-        return json.loads(raw) if raw else None
+        try:
+            raw = await self._r.get(key)
+            return json.loads(raw) if raw else None
+        except Exception as exc:
+            logger.warning("redis.get_ohlcv failed", key=key, error=str(exc))
+            return None
 
     async def set_arb_opportunity(self, key: str, data: dict, ttl: int = 2) -> None:
-        await self.r.setex(f"arb:{key}", ttl, json.dumps(data))
+        if self._r is None:
+            return
+        redis_key = f"arb:{key}"
+        try:
+            await self._r.setex(redis_key, ttl, json.dumps(data))
+        except Exception as exc:
+            logger.warning("redis.set_arb failed", key=redis_key, error=str(exc))
 
     async def publish(self, channel: str, message: Any) -> None:
-        await self.r.publish(channel, json.dumps(message))
+        if self._r is None:
+            return
+        try:
+            await self._r.publish(channel, json.dumps(message))
+        except Exception as exc:
+            logger.warning("redis.publish failed", channel=channel, error=str(exc))
 
     async def cache_prediction(self, symbol: str, model_id: str, data: dict, ttl: int = 60) -> None:
+        if self._r is None:
+            return
         key = f"ml:prediction:{symbol}:{model_id}"
-        await self.r.setex(key, ttl, json.dumps(data))
+        try:
+            await self._r.setex(key, ttl, json.dumps(data))
+        except Exception as exc:
+            logger.warning("redis.cache_prediction failed", key=key, error=str(exc))
+
+    async def get(self, key: str) -> str | None:
+        if self._r is None:
+            return None
+        try:
+            return await self._r.get(key)
+        except Exception as exc:
+            logger.warning("redis.get failed", key=key, error=str(exc))
+            return None
+
+    async def set(self, key: str, value: str, ttl: int = 300) -> None:
+        if self._r is None:
+            return
+        try:
+            await self._r.setex(key, ttl, value)
+        except Exception as exc:
+            logger.warning("redis.set failed", key=key, error=str(exc))
 
 
 # Module-level singleton — falls back to the no-op cache when Redis is disabled

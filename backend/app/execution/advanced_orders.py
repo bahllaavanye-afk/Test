@@ -46,7 +46,8 @@ class BracketOrder:
             sl_price = fill_price * (1 + config.stop_loss_pct)
             tp_side = "buy"
 
-        # 3. Submit OCO (TP limit + SL stop)
+        sl_side = tp_side  # same side: both TP and SL close the position
+        # 3. Submit TP limit + SL stop as OCO pair so only one fills
         tp_req = OrderRequest(
             account_id=config.entry.account_id,
             symbol=config.entry.symbol,
@@ -62,7 +63,7 @@ class BracketOrder:
         sl_req = OrderRequest(
             account_id=config.entry.account_id,
             symbol=config.entry.symbol,
-            side=tp_side,
+            side=sl_side,
             order_type="stop",
             quantity=entry_result.filled_qty,
             limit_price=None,
@@ -72,14 +73,14 @@ class BracketOrder:
             risk_bucket=config.entry.risk_bucket,
         )
 
-        tp_result = await self.broker.place_order(tp_req)
-        sl_result = await self.broker.place_order(sl_req)
+        oco = OCOOrder(self.broker)
+        oco_result = await oco.execute(tp_req, sl_req)
         logger.info("Bracket OCO submitted",
                     symbol=config.entry.symbol, entry=fill_price,
-                    tp=tp_price, sl=sl_price)
+                    tp=tp_price, sl=sl_price,
+                    oco_order_id=oco_result.broker_order_id if oco_result else None)
 
-        # Return entry result; caller may poll for OCO resolution
-        return entry_result
+        return oco_result or entry_result
 
 
 class OCOOrder:
@@ -99,8 +100,11 @@ class OCOOrder:
             try:
                 sa = await self.broker.get_order(ra.broker_order_id)
                 sb = await self.broker.get_order(rb.broker_order_id)
-            except Exception:
-                break
+            except Exception as exc:
+                logger.warning("OCO poll failed — retrying", error=str(exc))
+                await asyncio.sleep(self.poll_seconds)
+                elapsed += self.poll_seconds
+                continue
             if sa.get("status") in ("filled", "closed"):
                 await self.broker.cancel_order(rb.broker_order_id)
                 logger.info("OCO: order A filled, B cancelled")

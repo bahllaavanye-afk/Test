@@ -23,6 +23,10 @@ from app.config import settings
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
 
+# Alpaca enforces 200 requests/minute. Cap concurrent calls at 10 to stay
+# well within that limit even under heavy multi-symbol strategy runners.
+_ALPACA_CONCURRENCY = 10
+
 try:
     from alpaca.trading.client import TradingClient
     from alpaca.trading.requests import (
@@ -66,9 +70,16 @@ class AlpacaBroker(AbstractBroker):
         if not ALPACA_AVAILABLE:
             raise ImportError("alpaca-py required: pip install alpaca-py")
         self.paper = paper
-        self.trading   = TradingClient(api_key, secret_key, paper=paper)
+        self.trading     = TradingClient(api_key, secret_key, paper=paper)
         self.stock_data  = StockHistoricalDataClient(api_key, secret_key)
         self.crypto_data = CryptoHistoricalDataClient(api_key, secret_key)
+        # Rate limiter: max _ALPACA_CONCURRENCY simultaneous API calls
+        self._limiter = asyncio.Semaphore(_ALPACA_CONCURRENCY)
+
+    async def _call(self, fn, *args, **kwargs):
+        """Throttled wrapper around blocking SDK calls."""
+        async with self._limiter:
+            return await asyncio.to_thread(fn, *args, **kwargs)
 
     # ── Orders ────────────────────────────────────────────────────────────────
 
@@ -104,7 +115,7 @@ class AlpacaBroker(AbstractBroker):
                     side=side, time_in_force=tif,
                 )
 
-            order = await asyncio.to_thread(self.trading.submit_order, order_data=req)
+            order = await self._call(self.trading.submit_order, order_data=req)
             return OrderResult(
                 broker_order_id=str(order.id),
                 status=str(order.status),
@@ -119,15 +130,14 @@ class AlpacaBroker(AbstractBroker):
 
     async def cancel_order(self, broker_order_id: str) -> bool:
         try:
-            await asyncio.to_thread(self.trading.cancel_order_by_id,
-                                    order_id=broker_order_id)
+            await self._call(self.trading.cancel_order_by_id,
+                             order_id=broker_order_id)
             return True
         except Exception:
             return False
 
     async def get_order(self, broker_order_id: str) -> dict:
-        order = await asyncio.to_thread(self.trading.get_order_by_id,
-                                        broker_order_id)
+        order = await self._call(self.trading.get_order_by_id, broker_order_id)
         return {
             "id": str(order.id),
             "status": str(order.status),
@@ -137,7 +147,7 @@ class AlpacaBroker(AbstractBroker):
     # ── Account / positions ───────────────────────────────────────────────────
 
     async def get_positions(self) -> list[dict]:
-        positions = await asyncio.to_thread(self.trading.get_all_positions)
+        positions = await self._call(self.trading.get_all_positions)
         return [
             {
                 "symbol": p.symbol,
@@ -151,7 +161,7 @@ class AlpacaBroker(AbstractBroker):
         ]
 
     async def get_account(self) -> dict:
-        acct = await asyncio.to_thread(self.trading.get_account)
+        acct = await self._call(self.trading.get_account)
         return {
             "equity": float(acct.equity),
             "cash": float(acct.cash),
@@ -165,11 +175,11 @@ class AlpacaBroker(AbstractBroker):
         try:
             if _is_crypto(symbol):
                 req = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
-                quotes = await asyncio.to_thread(self.crypto_data.get_crypto_latest_quote, req)
+                quotes = await self._call(self.crypto_data.get_crypto_latest_quote, req)
                 q = quotes[symbol]
             else:
                 req = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-                quotes = await asyncio.to_thread(self.stock_data.get_stock_latest_quote, req)
+                quotes = await self._call(self.stock_data.get_stock_latest_quote, req)
                 q = quotes[symbol]
             return QuoteResult(
                 symbol=symbol,
@@ -191,10 +201,10 @@ class AlpacaBroker(AbstractBroker):
         try:
             if _is_crypto(symbol):
                 req = CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
-                bars_resp = await asyncio.to_thread(self.crypto_data.get_crypto_bars, req)
+                bars_resp = await self._call(self.crypto_data.get_crypto_bars, req)
             else:
                 req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
-                bars_resp = await asyncio.to_thread(self.stock_data.get_stock_bars, req)
+                bars_resp = await self._call(self.stock_data.get_stock_bars, req)
 
             return [
                 {

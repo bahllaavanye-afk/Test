@@ -22,12 +22,7 @@ try:
 except ImportError:
     HAS_SHAP = False
 
-try:
-    import torch
-    _TORCH_AVAILABLE = True
-except ImportError:
-    torch = None  # type: ignore
-    _TORCH_AVAILABLE = False
+import torch
 
 
 @dataclass

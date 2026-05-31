@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import uuid
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
@@ -27,7 +28,13 @@ def create_access_token(subject: str | Any, expires_delta: timedelta | None = No
 
 def create_refresh_token(subject: str | Any) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
-    return jwt.encode({"sub": str(subject), "exp": expire, "type": "refresh"}, settings.secret_key, algorithm=settings.algorithm)
+    payload = {
+        "sub": str(subject),
+        "exp": expire,
+        "type": "refresh",
+        "jti": str(uuid.uuid4()),  # unique ID enables per-token revocation
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
 def decode_token(token: str) -> dict:

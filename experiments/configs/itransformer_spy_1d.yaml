@@ -1,0 +1,48 @@
+experiment:
+  name: "itransformer_spy_1d_v1"
+  model: "itransformer"
+  symbol: "SPY"
+  exchange: "alpaca"
+  interval: "1d"
+
+data:
+  train_start: "2015-01-01"
+  train_end: "2023-06-30"
+  val_start: "2023-07-01"
+  val_end: "2024-06-30"
+  test_start: "2024-07-01"
+  test_end: "2025-04-30"
+
+features:
+  technical: true
+  advanced: true
+  wavelet: true
+  multi_timeframe: true
+  lookback: 64
+
+model_params:
+  d_model: 128
+  n_heads: 8
+  n_layers: 4
+  dropout: 0.1
+  seq_len: 64
+  n_features: 132
+
+training:
+  epochs: 80
+  batch_size: 128
+  lr: 0.0005
+  optimizer: "adamw"
+  scheduler: "cosine"
+  early_stopping_patience: 10
+
+strategy:
+  name: "ml_momentum"
+  confidence_threshold: 0.62
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null
+  run_id: null
+  trained_at: null

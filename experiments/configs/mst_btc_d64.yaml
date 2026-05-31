@@ -1,0 +1,32 @@
+experiment:
+  name: mst_btc_d64
+  model: multiscale_transformer
+  symbol: BTC-USD
+  interval: 1h
+data:
+  train_start: '2019-01-01'
+  train_end: '2024-06-30'
+  val_start: '2023-01-01'
+  val_end: '2024-06-30'
+  test_start: '2024-07-01'
+  test_end: '2026-01-01'
+features:
+  technical: true
+  advanced: true
+  multi_timeframe: true
+  lookback: 60
+model_params:
+  d_model: 64
+  n_heads: 4
+  n_layers: 2
+  dropout: 0.2
+  n_streams: 3
+training:
+  epochs: 150
+  batch_size: 128
+  lr: 0.0005
+  optimizer: adamw
+  early_stopping_patience: 20
+  scheduler: cosine
+ablation_group: multiscale_transformer
+ablation_var: d_model=64,n_layers=2,n_streams=3

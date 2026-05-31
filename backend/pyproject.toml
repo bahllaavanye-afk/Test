@@ -2,6 +2,9 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
 [project]
 name = "quantedge-backend"
 version = "0.1.0"
@@ -18,8 +21,8 @@ dependencies = [
     # Database
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30.0",
-    "alembic>=1.14.0",
     "psycopg2-binary>=2.9.10",
+    "alembic>=1.14.0",
 
     # Redis (Upstash REST-compatible)
     "redis>=5.2.0",
@@ -37,34 +40,19 @@ dependencies = [
     "ccxt>=4.4.0",
     "py-clob-client>=0.18.0",
 
-    # Data & ML
+    # Data & market analysis (needed by strategies at runtime)
     "pandas>=2.2.0",
     "numpy>=1.26.0",
-    "pandas-ta>=0.3.14b0",
     "yfinance>=0.2.50",
     "scipy>=1.14.0",
     "statsmodels>=0.14.0",
+    "scikit-learn>=1.5.0",
 
-    # ML & deep learning
-    "torch>=2.5.0",
+    # ML inference — in [ml] optional group so Render free tier skips the 800MB torch wheel
+    # Install with: pip install -e ".[ml]"  (GPU notebooks, local dev)
+    # Render installs: pip install -e "."   (no torch = ML strategies degrade gracefully)
     "xgboost>=2.1.0",
     "lightgbm>=4.5.0",
-    "scikit-learn>=1.5.0",
-    "optuna>=4.1.0",
-    "shap>=0.46.0",
-    "stable-baselines3>=2.4.0",
-    "gymnasium>=1.0.0",
-
-    # Experiment tracking & distributed training
-    "lightning>=2.2.0",
-    "mlflow>=2.10.0",
-    "ray[tune]>=2.9.0",
-
-    # Async SQLite (for tests)
-    "aiosqlite>=0.19.0",
-
-    # Backtesting
-    "vectorbt>=0.26.2",
 
     # Scheduling
     "apscheduler>=3.10.4",
@@ -78,13 +66,48 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# ML runtime — torch for inference; install on GPU servers/notebooks but NOT on Render free tier
+ml = [
+    "torch>=2.5.0",
+]
+
+# Training — heavy packages only needed on GPU notebooks/workers, NOT on the API server
+train = [
+    "torch>=2.5.0",
+    "optuna>=4.1.0",
+    "shap>=0.46.0",
+    "stable-baselines3>=2.4.0",
+    "gymnasium>=1.0.0",
+    "lightning>=2.2.0",
+    "mlflow>=2.10.0",
+    "ray[tune]>=2.9.0",
+]
+
+# Backtesting CLI (vectorbt is huge; only needed when running ./scripts/backtest.sh)
+backtest = [
+    "vectorbt>=0.26.2",
+]
+
+# Development / CI
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
     "httpx>=0.27.2",
+    "aiosqlite>=0.19.0",
+    "psycopg2-binary>=2.9.10",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+]
+
+# Test (subset of dev, for CI that doesn't need type checking)
+test = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.27.2",
+    "aiosqlite>=0.19.0",
+    "psycopg2-binary>=2.9.10",
 ]
 
 [tool.pytest.ini_options]

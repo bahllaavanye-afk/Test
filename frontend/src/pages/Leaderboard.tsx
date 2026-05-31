@@ -1,312 +1,616 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp, Activity, DollarSign, Award, SlidersHorizontal, X } from 'lucide-react'
 import api from '../api/client'
 
-function FlatSparkline({ width = 80, height = 32 }: { width?: number; height?: number }) {
-  return (
-    <svg width={width} height={height} style={{ overflow: 'visible' }}>
-      <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#333" strokeWidth="1.5" strokeDasharray="3,3" />
-    </svg>
-  )
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface MetricsBlock {
+  total_return: number | null
+  annualized_return: number | null
+  sharpe_ratio: number | null
+  sortino_ratio: number | null
+  calmar_ratio: number | null
+  max_drawdown: number | null
+  win_rate: number | null
+  profit_factor: number | null
+  total_trades: number | null
+  avg_trade_pnl: number | null
+  last_updated: string | null
 }
 
-function RealSparkline({ values, color, height = 32, width = 80 }: { values: number[]; color: string; height?: number; width?: number }) {
-  if (!values || values.length < 2) return <FlatSparkline width={width} height={height} />
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
-  const step = width / (values.length - 1)
-  const points = values.map((v, i) => {
-    const x = i * step
-    const y = height - ((v - min) / range) * (height - 4) - 2
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  })
-  const pathD = `M ${points.join(' L ')}`
-  const fillD = `M 0,${height} L ${pathD.slice(2)} L ${((values.length - 1) * step).toFixed(1)},${height} Z`
-  return (
-    <svg width={width} height={height} style={{ overflow: 'visible' }}>
-      <defs>
-        <linearGradient id={`grad-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={fillD} fill={`url(#grad-${color.replace('#', '')})`} />
-      <path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+interface LeaderboardEntry {
+  id: string
+  name: string
+  display_name: string | null
+  market_type: string
+  strategy_type: string
+  risk_bucket: string
+  is_enabled: boolean
+  symbols: string[]
+  backtest: MetricsBlock | null
+  paper: MetricsBlock | null
+  live: MetricsBlock | null
+  forward_test: MetricsBlock | null
+  vs_spy_sharpe: number | null
+  ml_improvement_pct: number | null
+  rank: number
 }
+
+interface LeaderboardSummary {
+  total_strategies: number
+  running_count: number
+  avg_sharpe: number | null
+  best_strategy: string | null
+  total_paper_pnl: number
+  total_live_pnl: number
+}
+
+// ─── Formatting helpers ───────────────────────────────────────────────────────
+
+const pct = (v: number | null | undefined, decimals = 1): string =>
+  v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(decimals)}%`
+
+const num = (v: number | null | undefined, decimals = 2): string =>
+  v == null ? '—' : v.toFixed(decimals)
+
+const dollar = (v: number | null | undefined): string => {
+  if (v == null) return '—'
+  const abs = Math.abs(v)
+  const sign = v >= 0 ? '+' : '-'
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`
+  return `${sign}$${abs.toFixed(0)}`
+}
+
+const int = (v: number | null | undefined): string =>
+  v == null ? '—' : v.toLocaleString()
+
+// ─── Color helpers ────────────────────────────────────────────────────────────
+
+const sharpeColor = (v: number | null): string => {
+  if (v == null) return '#555555'
+  if (v >= 2.0) return '#00ff88'
+  if (v >= 1.5) return '#00c853'
+  if (v >= 1.0) return '#f5a623'
+  return '#ff1744'
+}
+
+const winRateColor = (v: number | null): string => {
+  if (v == null) return '#555555'
+  if (v >= 0.6) return '#00c853'
+  if (v >= 0.5) return '#f5a623'
+  return '#ff1744'
+}
+
+const drawdownColor = (v: number | null): string => {
+  if (v == null) return '#555555'
+  const abs = Math.abs(v)
+  if (abs <= 0.05) return '#00c853'
+  if (abs <= 0.15) return '#f5a623'
+  return '#ff1744'
+}
+
+const returnColor = (v: number | null): string => {
+  if (v == null) return '#555555'
+  return v >= 0 ? '#00c853' : '#ff1744'
+}
+
+// ─── Small components ─────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: string }) {
-  const isML = type === 'ml' || type === 'ML'
+  const isML = type === 'ml_enhanced'
   return (
-    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide"
-      style={{ background: isML ? '#9C27B022' : '#2196F322', color: isML ? '#CE93D8' : '#64B5F6', border: `1px solid ${isML ? '#9C27B0' : '#2196F3'}44` }}>
+    <span className="text-[9px] font-bold px-1 py-0.5 rounded uppercase tracking-wider flex-shrink-0"
+      style={{
+        background: isML ? '#7c3aed22' : '#1d4ed822',
+        color: isML ? '#a78bfa' : '#60a5fa',
+        border: `1px solid ${isML ? '#7c3aed44' : '#1d4ed844'}`,
+      }}>
       {isML ? 'ML' : 'RULE'}
     </span>
   )
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function MarketBadge({ market }: { market: string }) {
+  const config: Record<string, { color: string; label: string }> = {
+    equity:     { color: '#2196F3', label: 'EQ' },
+    crypto:     { color: '#f59e0b', label: 'CRYPTO' },
+    polymarket: { color: '#8b5cf6', label: 'POLY' },
+  }
+  const c = config[market] ?? { color: '#555', label: market.toUpperCase().slice(0, 5) }
   return (
-    <button onClick={() => onChange(!checked)}
-      className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
-      style={{ background: checked ? '#00c853' : '#1e1e1e', border: `1px solid ${checked ? '#00c853' : '#333'}` }}>
-      <span className="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform duration-200"
-        style={{ transform: checked ? 'translateX(18px)' : 'translateX(2px)', boxShadow: '0 1px 3px rgba(0,0,0,0.5)' }} />
-    </button>
+    <span className="text-[9px] font-bold px-1 py-0.5 rounded uppercase tracking-wider flex-shrink-0"
+      style={{ background: `${c.color}18`, color: c.color, border: `1px solid ${c.color}33` }}>
+      {c.label}
+    </span>
   )
 }
 
-function BotCard({ strategy, index, toggled, onToggle }: { strategy: any; index: number; toggled: boolean; onToggle: (id: string, val: boolean) => void }) {
-  const isRunning = toggled
-  const sharpe: number | null = strategy.sharpe_ratio ?? null
-  const winRate: number | null = strategy.win_rate != null ? (strategy.win_rate > 1 ? strategy.win_rate : strategy.win_rate * 100) : null
-  const totalPnl: number | null = strategy.total_pnl ?? null
-  const pnlColor = totalPnl != null ? (totalPnl >= 0 ? '#00c853' : '#ff1744') : '#555555'
-  const equityCurve: number[] = Array.isArray(strategy.equity_curve) ? strategy.equity_curve : []
-  const stratType: string = strategy.type ?? 'rule'
-  const lastSignal: string | null = strategy.last_signal ?? null
-
+function StatusDot({ enabled }: { enabled: boolean }) {
   return (
-    <div className="group bg-[#111111] border border-[#1e1e1e] rounded-xl p-4 flex flex-col gap-3 cursor-pointer transition-all duration-200 hover:border-[#2e2e2e] hover:bg-[#141414] hover:shadow-lg hover:shadow-black/40 hover:-translate-y-0.5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{ background: isRunning ? '#00c853' : '#444', boxShadow: isRunning ? '0 0 5px #00c85380' : 'none' }} />
-            <h3 className="text-sm font-bold text-[#e8e8e8] truncate">{strategy.name ?? `Strategy #${index + 1}`}</h3>
-          </div>
-          <div className="flex items-center gap-1.5 ml-4">
-            <TypeBadge type={stratType} />
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-              style={{ background: isRunning ? '#00c85318' : '#1e1e1e', color: isRunning ? '#00c853' : '#555' }}>
-              {isRunning ? 'RUNNING' : 'STOPPED'}
-            </span>
-          </div>
-        </div>
-        <Toggle checked={isRunning} onChange={v => onToggle(String(strategy.id ?? index), v)} />
+    <span className="flex items-center gap-1">
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+        style={{
+          background: enabled ? '#00c853' : '#333',
+          boxShadow: enabled ? '0 0 5px #00c85380' : 'none',
+        }} />
+      <span className="text-[10px] font-medium" style={{ color: enabled ? '#00c853' : '#444' }}>
+        {enabled ? 'ON' : 'OFF'}
+      </span>
+    </span>
+  )
+}
+
+function Cell({ value, color, bold = false }: { value: string; color?: string; bold?: boolean }) {
+  return (
+    <td className="px-3 py-2.5 text-xs font-mono whitespace-nowrap"
+      style={{ color: color ?? '#888888', fontWeight: bold ? 700 : 400 }}>
+      {value}
+    </td>
+  )
+}
+
+function SortHeader({
+  label, col, sortBy, sortDir, onClick
+}: {
+  label: string
+  col: string
+  sortBy: string
+  sortDir: 'asc' | 'desc'
+  onClick: (col: string) => void
+}) {
+  const active = sortBy === col
+  return (
+    <th
+      className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap"
+      style={{ color: active ? '#f5a623' : '#555555' }}
+      onClick={() => onClick(col)}>
+      <span className="flex items-center gap-1">
+        {label}
+        {active
+          ? (sortDir === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)
+          : <ChevronsUpDown size={10} className="opacity-30" />}
+      </span>
+    </th>
+  )
+}
+
+function SummaryKPI({ icon: Icon, label, value, color = '#e8e8e8' }: {
+  icon: React.ElementType, label: string, value: string, color?: string
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5">
+        <Icon size={12} className="text-[#555]" />
+        <span className="text-[10px] text-[#555] uppercase tracking-wider">{label}</span>
       </div>
-      <div className="flex items-end justify-between gap-2">
-        <div className="flex-1">
-          <RealSparkline values={equityCurve} color={pnlColor} height={36} width={120} />
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-[#888888]">Total P&L</p>
-          {totalPnl != null ? (
-            <p className="text-base font-bold font-mono" style={{ color: pnlColor }}>
-              {totalPnl >= 0 ? '+' : ''}${Math.abs(totalPnl).toFixed(0)}
-            </p>
-          ) : <p className="text-xs text-[#555]">No data yet</p>}
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-2 border-t border-[#1e1e1e] pt-3">
-        <div className="text-center">
-          <p className="text-[10px] text-[#555] uppercase mb-0.5">Sharpe</p>
-          {sharpe != null ? (
-            <p className="text-sm font-bold font-mono" style={{ color: sharpe >= 1.5 ? '#00c853' : sharpe >= 1.0 ? '#f5a623' : '#ff1744' }}>{sharpe.toFixed(2)}</p>
-          ) : <p className="text-xs text-[#555]">No backtest data yet</p>}
-        </div>
-        <div className="text-center border-x border-[#1e1e1e]">
-          <p className="text-[10px] text-[#555] uppercase mb-0.5">Win Rate</p>
-          {winRate != null ? (
-            <p className="text-sm font-bold font-mono" style={{ color: winRate >= 55 ? '#00c853' : winRate >= 45 ? '#f5a623' : '#ff1744' }}>{winRate.toFixed(1)}%</p>
-          ) : <p className="text-xs text-[#555]">—</p>}
-        </div>
-        <div className="text-center">
-          <p className="text-[10px] text-[#555] uppercase mb-0.5">Symbol</p>
-          <p className="text-sm font-bold font-mono text-[#f5a623]">{strategy.symbol ?? '—'}</p>
-        </div>
-      </div>
-      {lastSignal && (
-        <div className="flex items-center gap-2 bg-[#0a0a0a] rounded-lg px-3 py-1.5 border border-[#1e1e1e]">
-          <span className="text-[10px] text-[#555] uppercase flex-shrink-0">Last Signal</span>
-          <span className="text-xs font-mono text-[#888888] truncate">{lastSignal}</span>
-        </div>
-      )}
+      <span className="text-base font-bold font-mono" style={{ color }}>{value}</span>
     </div>
   )
 }
 
+// ─── Column group header ──────────────────────────────────────────────────────
+
+function ColGroup({ label, span, color }: { label: string; span: number; color: string }) {
+  return (
+    <th colSpan={span}
+      className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-center border-b"
+      style={{ color, borderColor: `${color}33`, background: `${color}08` }}>
+      {label}
+    </th>
+  )
+}
+
+// ─── Sort logic helpers ───────────────────────────────────────────────────────
+
+type SortKey = string
+
+function getVal(entry: LeaderboardEntry, col: SortKey): number {
+  const [section, field] = col.split('.')
+  const block: MetricsBlock | null =
+    section === 'bt' ? entry.backtest :
+    section === 'paper' ? entry.paper :
+    section === 'live' ? entry.live :
+    section === 'ft' ? entry.forward_test : null
+
+  if (!block) return -Infinity
+
+  switch (field) {
+    case 'return':  return block.total_return ?? -Infinity
+    case 'ann_ret': return block.annualized_return ?? -Infinity
+    case 'sharpe':  return block.sharpe_ratio ?? -Infinity
+    case 'sortino': return block.sortino_ratio ?? -Infinity
+    case 'calmar':  return block.calmar_ratio ?? -Infinity
+    case 'maxdd':   return block.max_drawdown ?? Infinity   // lower is worse
+    case 'winrate': return block.win_rate ?? -Infinity
+    case 'pf':      return block.profit_factor ?? -Infinity
+    case 'trades':  return block.total_trades ?? -Infinity
+    case 'avgpnl':  return block.avg_trade_pnl ?? -Infinity
+    default: return -Infinity
+  }
+}
+
+// ─── Column filter definitions ────────────────────────────────────────────────
+
+interface ColFilter {
+  key: SortKey
+  label: string
+  op: '>=' | '<='
+  value: number
+}
+
+const PRESET_FILTERS: ColFilter[] = [
+  { key: 'bt.sharpe',  label: 'Sharpe ≥ 1.5',   op: '>=', value: 1.5  },
+  { key: 'bt.sharpe',  label: 'Sharpe ≥ 2.0',   op: '>=', value: 2.0  },
+  { key: 'bt.winrate', label: 'Win% ≥ 55%',      op: '>=', value: 0.55 },
+  { key: 'bt.winrate', label: 'Win% ≥ 60%',      op: '>=', value: 0.60 },
+  { key: 'bt.maxdd',   label: 'MaxDD ≤ −10%',    op: '<=', value: -0.10},
+  { key: 'bt.maxdd',   label: 'MaxDD ≤ −15%',    op: '<=', value: -0.15},
+  { key: 'bt.calmar',  label: 'Calmar ≥ 1.0',    op: '>=', value: 1.0  },
+  { key: 'bt.pf',      label: 'Profit Factor ≥ 1.5', op: '>=', value: 1.5 },
+]
+
+function applyColFilter(entry: LeaderboardEntry, f: ColFilter): boolean {
+  const v = getVal(entry, f.key)
+  if (v === -Infinity || v === Infinity) return false
+  return f.op === '>=' ? v >= f.value : v <= f.value
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+type FilterType = 'all' | 'ml' | 'rule' | 'equity' | 'crypto' | 'enabled'
+
 export default function Leaderboard() {
-  const [toggleMap, setToggleMap] = useState<Record<string, boolean>>({})
-  const [filterType, setFilterType] = useState<'all' | 'ml' | 'rule'>('all')
-  const [filterStatus, setFilterStatus] = useState<'all' | 'running' | 'stopped'>('all')
-  const [sortBy, setSortBy] = useState<'sharpe' | 'pnl' | 'winrate'>('sharpe')
+  const [sortBy, setSortBy] = useState<SortKey>('bt.sharpe')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [filter, setFilter] = useState<FilterType>('all')
+  const [colFilters, setColFilters] = useState<ColFilter[]>([])
+  const [showFilters, setShowFilters] = useState(false)
 
-  const { data: strategies, isLoading, isError } = useQuery({
-    queryKey: ['strategies'],
-    queryFn: () => api.get('/strategies/').then(r => r.data),
-    refetchInterval: 15000,
+  const { data: entries = [], isLoading, isError } = useQuery<LeaderboardEntry[]>({
+    queryKey: ['leaderboard'],
+    queryFn: () => api.get('/leaderboard/').then(r => r.data),
+    refetchInterval: 30_000,
   })
 
-  const { data: agentStatus } = useQuery({
-    queryKey: ['agents-status'],
-    queryFn: () => api.get('/agents/status').then(r => r.data),
-    refetchInterval: 10000,
+  const { data: summary } = useQuery<LeaderboardSummary>({
+    queryKey: ['leaderboard-summary'],
+    queryFn: () => api.get('/leaderboard/summary').then(r => r.data),
+    refetchInterval: 30_000,
   })
 
-  const { data: history } = useQuery({
-    queryKey: ['improvements-history'],
-    queryFn: () => api.get('/improvements/history').then(r => r.data),
-    refetchInterval: 30000,
-  })
-
-  function handleToggle(id: string, val: boolean) {
-    setToggleMap(prev => ({ ...prev, [id]: val }))
+  function handleSort(col: SortKey) {
+    if (sortBy === col) {
+      setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSortBy(col)
+      setSortDir('desc')
+    }
   }
 
-  const rawList: any[] = Array.isArray(strategies) ? strategies : []
+  function toggleColFilter(f: ColFilter) {
+    setColFilters(prev => {
+      const exists = prev.some(p => p.label === f.label)
+      return exists ? prev.filter(p => p.label !== f.label) : [...prev, f]
+    })
+  }
 
-  const filtered = rawList.filter(s => {
-    const id = String(s.id ?? rawList.indexOf(s))
-    const isRunning = id in toggleMap ? toggleMap[id] : (s.is_active || s.is_enabled || false)
-    if (filterStatus === 'running' && !isRunning) return false
-    if (filterStatus === 'stopped' && isRunning) return false
-    const t: string = s.type ?? 'rule'
-    if (filterType === 'ml' && t !== 'ml' && t !== 'ML') return false
-    if (filterType === 'rule' && (t === 'ml' || t === 'ML')) return false
-    return true
-  })
+  const filtered = useMemo(() => {
+    return entries.filter(e => {
+      // Type / market filters
+      if (filter === 'ml') return e.strategy_type === 'ml_enhanced'
+      if (filter === 'rule') return e.strategy_type !== 'ml_enhanced'
+      if (filter === 'equity') return e.market_type === 'equity'
+      if (filter === 'crypto') return e.market_type === 'crypto'
+      if (filter === 'enabled') return e.is_enabled
+      return true
+    }).filter(e => colFilters.every(f => applyColFilter(e, f)))
+  }, [entries, filter, colFilters])
 
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === 'sharpe') return (b.sharpe_ratio ?? -Infinity) - (a.sharpe_ratio ?? -Infinity)
-    if (sortBy === 'pnl') return Math.abs(b.total_pnl ?? 0) - Math.abs(a.total_pnl ?? 0)
-    return (b.win_rate ?? 0) - (a.win_rate ?? 0)
-  })
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'rank') {
+        return sortDir === 'asc' ? a.rank - b.rank : b.rank - a.rank
+      }
+      const va = getVal(a, sortBy)
+      const vb = getVal(b, sortBy)
+      // For maxdd: asc means less drawdown first (better)
+      if (sortBy.endsWith('.maxdd')) {
+        return sortDir === 'asc' ? (va - vb) : (vb - va)
+      }
+      return sortDir === 'desc' ? (vb - va) : (va - vb)
+    })
+  }, [filtered, sortBy, sortDir])
 
-  const runningCount = rawList.filter((s, i) => {
-    const id = String(s.id ?? i)
-    return id in toggleMap ? toggleMap[id] : (s.is_active || s.is_enabled || false)
-  }).length
-
-  const recent: any[] = Array.isArray(history) ? history.slice(0, 8) : []
+  const FILTERS: { key: FilterType; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'ml', label: 'ML Enhanced' },
+    { key: 'rule', label: 'Rule-Based' },
+    { key: 'equity', label: 'Equity' },
+    { key: 'crypto', label: 'Crypto' },
+    { key: 'enabled', label: 'Active Only' },
+  ]
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-lg font-bold text-[#e8e8e8]">Bot Cards</h1>
-          <p className="text-xs text-[#555] mt-0.5">{rawList.length} strategies — {runningCount} running</p>
+          <h1 className="text-lg font-bold text-[#e8e8e8]">Strategy Leaderboard</h1>
+          <p className="text-xs text-[#555] mt-0.5">Backtest · Paper · Live · Forward Test — all modes compared</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-[#111111] border border-[#1e1e1e] rounded-lg p-1">
-            {(['sharpe', 'pnl', 'winrate'] as const).map(s => (
-              <button key={s} onClick={() => setSortBy(s)} className="text-xs px-2 py-1 rounded transition-colors"
-                style={{ background: sortBy === s ? '#f5a623' : 'transparent', color: sortBy === s ? '#000' : '#888' }}>
-                {s === 'sharpe' ? 'Sharpe' : s === 'pnl' ? 'P&L' : 'Win%'}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1 bg-[#111111] border border-[#1e1e1e] rounded-lg p-1">
-            {(['all', 'ml', 'rule'] as const).map(f => (
-              <button key={f} onClick={() => setFilterType(f)} className="text-xs px-2 py-1 rounded transition-colors capitalize"
-                style={{ background: filterType === f ? '#2196F3' : 'transparent', color: filterType === f ? '#fff' : '#888' }}>
-                {f === 'all' ? 'All' : f === 'ml' ? 'ML' : 'Rule'}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1 bg-[#111111] border border-[#1e1e1e] rounded-lg p-1">
-            {(['all', 'running', 'stopped'] as const).map(f => (
-              <button key={f} onClick={() => setFilterStatus(f)} className="text-xs px-2 py-1 rounded transition-colors capitalize"
-                style={{ background: filterStatus === f ? '#00c853' : 'transparent', color: filterStatus === f ? '#000' : '#888' }}>
-                {f}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-1 bg-[#111111] border border-[#1e1e1e] rounded-lg p-1 flex-wrap">
+          {FILTERS.map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className="text-xs px-2.5 py-1 rounded transition-colors whitespace-nowrap"
+              style={{
+                background: filter === f.key ? '#f5a623' : 'transparent',
+                color: filter === f.key ? '#000' : '#888',
+              }}>
+              {f.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-4 py-3 flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full"
-            style={{ background: agentStatus?.running ? '#00c853' : '#ff1744', boxShadow: agentStatus?.running ? '0 0 6px #00c853' : 'none' }} />
-          <span className="text-xs font-bold" style={{ color: agentStatus?.running ? '#00c853' : '#ff1744' }}>
-            AlgoAgent {agentStatus?.running ? 'ACTIVE' : 'IDLE'}
-          </span>
-        </div>
-        <div className="h-4 w-px bg-[#1e1e1e]" />
-        <div><span className="text-xs text-[#555]">Total Runs </span><span className="text-sm font-bold text-[#f5a623]">{agentStatus?.total_runs ?? 0}</span></div>
-        <div><span className="text-xs text-[#555]">Candidates </span><span className="text-sm font-bold text-[#2196f3]">{agentStatus?.candidates ?? 0}</span></div>
-        <div className="ml-auto text-xs text-[#444]">Refreshes every 15s</div>
+      {/* Column value filters */}
+      <div className="flex items-start gap-2 flex-wrap">
+        <button
+          onClick={() => setShowFilters(v => !v)}
+          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors"
+          style={{
+            background: showFilters ? '#f5a62320' : 'transparent',
+            color: showFilters ? '#f5a623' : '#888',
+            borderColor: showFilters ? '#f5a62344' : '#1e1e1e',
+          }}>
+          <SlidersHorizontal size={12} />
+          Column Filters
+          {colFilters.length > 0 && (
+            <span className="ml-1 px-1 rounded text-[9px] font-bold bg-[#f5a623] text-black">{colFilters.length}</span>
+          )}
+        </button>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_FILTERS.map(f => {
+              const active = colFilters.some(c => c.label === f.label)
+              return (
+                <button key={f.label} onClick={() => toggleColFilter(f)}
+                  className="text-[10px] px-2 py-1 rounded transition-colors"
+                  style={{
+                    background: active ? '#f5a62320' : '#111111',
+                    color: active ? '#f5a623' : '#888',
+                    border: `1px solid ${active ? '#f5a62344' : '#1e1e1e'}`,
+                  }}>
+                  {f.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {colFilters.length > 0 && (
+          <button onClick={() => setColFilters([])}
+            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded text-[#ff1744] border border-[#ff174433] hover:bg-[#ff174410] transition-colors">
+            <X size={10} /> Clear filters
+          </button>
+        )}
       </div>
 
+      {/* Summary KPIs */}
+      {summary && (
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-5 py-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <SummaryKPI icon={Activity} label="Strategies" value={String(summary.total_strategies)} />
+          <SummaryKPI icon={Activity} label="Active" value={String(summary.running_count)} color="#00c853" />
+          <SummaryKPI
+            icon={TrendingUp}
+            label="Avg Sharpe"
+            value={summary.avg_sharpe == null ? '—' : summary.avg_sharpe.toFixed(2)}
+            color={sharpeColor(summary.avg_sharpe)}
+          />
+          <SummaryKPI
+            icon={Award}
+            label="Best Strategy"
+            value={summary.best_strategy ?? '—'}
+            color="#f5a623"
+          />
+          <SummaryKPI
+            icon={DollarSign}
+            label="Paper P&L"
+            value={dollar(summary.total_paper_pnl)}
+            color={returnColor(summary.total_paper_pnl)}
+          />
+          <SummaryKPI
+            icon={DollarSign}
+            label="Live P&L"
+            value={dollar(summary.total_live_pnl)}
+            color={returnColor(summary.total_live_pnl)}
+          />
+        </div>
+      )}
+
+      {/* Table */}
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-4 space-y-3 animate-pulse">
-              <div className="h-4 bg-[#1e1e1e] rounded w-3/4" />
-              <div className="h-9 bg-[#1e1e1e] rounded" />
-              <div className="grid grid-cols-3 gap-2">
-                <div className="h-8 bg-[#1e1e1e] rounded" /><div className="h-8 bg-[#1e1e1e] rounded" /><div className="h-8 bg-[#1e1e1e] rounded" />
-              </div>
+            <div key={i} className="flex gap-4 px-4 py-3 border-b border-[#1e1e1e] animate-pulse">
+              <div className="w-6 h-4 bg-[#1e1e1e] rounded flex-shrink-0" />
+              <div className="w-40 h-4 bg-[#1e1e1e] rounded" />
+              <div className="w-12 h-4 bg-[#1e1e1e] rounded" />
+              <div className="w-12 h-4 bg-[#1e1e1e] rounded" />
+              <div className="w-16 h-4 bg-[#1e1e1e] rounded" />
+              <div className="w-12 h-4 bg-[#1e1e1e] rounded" />
+              <div className="w-12 h-4 bg-[#1e1e1e] rounded" />
             </div>
           ))}
         </div>
       ) : isError ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ff1744" strokeWidth="1.5">
+        <div className="flex flex-col items-center justify-center py-20 space-y-3 bg-[#111111] border border-[#1e1e1e] rounded-lg">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff1744" strokeWidth="1.5">
             <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
           </svg>
-          <p className="text-sm text-[#ff1744]">Failed to load strategies</p>
-          <p className="text-xs text-[#555]">Check that the backend API is running at /api/v1/strategies/</p>
+          <p className="text-sm text-[#ff1744] font-medium">Failed to load leaderboard</p>
+          <p className="text-xs text-[#555]">Check that the backend is running at <code className="text-[#888]">/api/v1/leaderboard/</code></p>
         </div>
-      ) : rawList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-[#111111] border border-[#1e1e1e] rounded-xl">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5">
+      ) : entries.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 space-y-3 bg-[#111111] border border-[#1e1e1e] rounded-lg">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="1.5">
             <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/>
           </svg>
-          <p className="text-sm text-[#888888] font-medium">No strategies yet</p>
-          <p className="text-xs text-[#555] max-w-xs">Strategies will appear here once registered with the backend. Add API keys in Settings and run a backtest to get started.</p>
+          <p className="text-sm text-[#555]">No strategies yet</p>
+          <p className="text-xs text-[#444] max-w-xs text-center">
+            Run a backtest or enable a strategy to see it appear here.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {sorted.map((s, i) => {
-            const id = String(s.id ?? i)
-            const defaultOn = s.is_active || s.is_enabled || false
-            const toggled = id in toggleMap ? toggleMap[id] : defaultOn
-            return <BotCard key={id} strategy={s} index={rawList.indexOf(s)} toggled={toggled} onToggle={handleToggle} />
-          })}
-          {sorted.length === 0 && rawList.length > 0 && (
-            <div className="col-span-full text-center py-16 text-[#444] text-sm">No strategies match the current filter.</div>
-          )}
-        </div>
-      )}
-
-      {recent.length > 0 && (
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
-          <div className="p-3 border-b border-[#1e1e1e] flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Recent Improvements</h2>
-            <span className="text-xs text-[#555]">Last {recent.length} upgrades</span>
-          </div>
-          <table className="w-full">
-            <thead className="bg-[#0a0a0a]">
-              <tr className="text-xs text-[#555]">
-                {['Time', 'Strategy', 'Sharpe Change', 'Params'].map(h => <th key={h} className="text-left px-4 py-2.5">{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {recent.map((h: any, i: number) => (
-                <tr key={i} className="border-t border-[#1e1e1e] hover:bg-[#0d0d0d] transition-colors">
-                  <td className="px-4 py-2.5 text-xs text-[#555] whitespace-nowrap">{h.timestamp ? new Date(h.timestamp).toLocaleString() : '—'}</td>
-                  <td className="px-4 py-2.5 text-xs font-mono text-[#e8e8e8]">{h.strategy ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-xs">
-                    <span className="text-[#555]">{h.old_sharpe?.toFixed(3) ?? '—'}</span>
-                    <span className="text-[#333] mx-1">to</span>
-                    <span className="text-[#00c853] font-bold">{h.new_sharpe?.toFixed(3) ?? '—'}</span>
-                    {h.old_sharpe != null && h.new_sharpe != null && (
-                      <span className="ml-1.5 text-[#00c853] text-[10px]">(+{(h.new_sharpe - h.old_sharpe).toFixed(3)})</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-[#555]">
-                    {Array.isArray(h.params_changed) ? h.params_changed.join(', ')
-                      : typeof h.params_changed === 'object' && h.params_changed ? Object.keys(h.params_changed).join(', ')
-                      : h.params_changed ?? '—'}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left" style={{ minWidth: 1100 }}>
+              <thead>
+                {/* Column group row */}
+                <tr className="border-b border-[#1e1e1e]">
+                  <th colSpan={4} className="px-3 py-1.5 text-[9px] text-[#333] uppercase tracking-widest border-b border-[#1e1e1e]">
+                    Strategy
+                  </th>
+                  <ColGroup label="Backtest" span={9} color="#2196F3" />
+                  <ColGroup label="Paper Trading" span={4} color="#00c853" />
+                  <ColGroup label="Live Trading" span={4} color="#f5a623" />
+                  <ColGroup label="Forward Test" span={3} color="#9c27b0" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+                {/* Column header row */}
+                <tr className="bg-[#0a0a0a] border-b border-[#1e1e1e]">
+                  {/* Strategy identity cols */}
+                  <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[#555] w-10">#</th>
+                  <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[#555]">Strategy</th>
+                  <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[#555]">Market</th>
+                  <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[#555]">Status</th>
+                  {/* Backtest cols */}
+                  <SortHeader label="Return" col="bt.return" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Ann Ret" col="bt.ann_ret" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Sharpe" col="bt.sharpe" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Sortino" col="bt.sortino" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Calmar" col="bt.calmar" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Max DD" col="bt.maxdd" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Win%" col="bt.winrate" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="P.Factor" col="bt.pf" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Trades" col="bt.trades" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  {/* Paper cols */}
+                  <SortHeader label="P&L" col="paper.return" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Win%" col="paper.winrate" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="P.Factor" col="paper.pf" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Trades" col="paper.trades" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  {/* Live cols */}
+                  <SortHeader label="P&L" col="live.return" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Win%" col="live.winrate" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="P.Factor" col="live.pf" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Trades" col="live.trades" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  {/* Forward test cols */}
+                  <SortHeader label="Sharpe" col="ft.sharpe" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Return" col="ft.return" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                  <SortHeader label="Max DD" col="ft.maxdd" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} />
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.length === 0 ? (
+                  <tr>
+                    <td colSpan={24} className="px-4 py-10 text-center text-xs text-[#444]">
+                      No strategies match the current filter.
+                    </td>
+                  </tr>
+                ) : sorted.map((entry) => {
+                  const bt = entry.backtest
+                  const paper = entry.paper
+                  const live = entry.live
+                  const ft = entry.forward_test
+
+                  return (
+                    <tr key={entry.id}
+                      className="border-b border-[#1a1a1a] hover:bg-[#131313] transition-colors">
+                      {/* Rank */}
+                      <td className="px-3 py-2.5 text-xs font-mono text-[#555] w-10">
+                        {entry.rank}
+                      </td>
+                      {/* Strategy name */}
+                      <td className="px-3 py-2.5 max-w-[180px]">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <TypeBadge type={entry.strategy_type} />
+                            <span className="text-xs font-medium text-[#e8e8e8] truncate">
+                              {entry.display_name ?? entry.name}
+                            </span>
+                          </div>
+                          {entry.symbols.length > 0 && (
+                            <span className="text-[10px] text-[#444] font-mono truncate pl-0.5">
+                              {entry.symbols.slice(0, 3).join(' · ')}
+                              {entry.symbols.length > 3 && ` +${entry.symbols.length - 3}`}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      {/* Market */}
+                      <td className="px-3 py-2.5">
+                        <MarketBadge market={entry.market_type} />
+                      </td>
+                      {/* Status */}
+                      <td className="px-3 py-2.5">
+                        <StatusDot enabled={entry.is_enabled} />
+                      </td>
+
+                      {/* ── Backtest ───────────────────────────────── */}
+                      <Cell value={pct(bt?.total_return)} color={returnColor(bt?.total_return ?? null)} />
+                      <Cell value={pct(bt?.annualized_return)} color={returnColor(bt?.annualized_return ?? null)} />
+                      <Cell value={num(bt?.sharpe_ratio)} color={sharpeColor(bt?.sharpe_ratio ?? null)} bold />
+                      <Cell value={num(bt?.sortino_ratio)} color={sharpeColor(bt?.sortino_ratio ?? null)} />
+                      <Cell value={num(bt?.calmar_ratio)} color={sharpeColor(bt?.calmar_ratio ?? null)} />
+                      <Cell value={pct(bt?.max_drawdown)} color={drawdownColor(bt?.max_drawdown ?? null)} />
+                      <Cell value={bt?.win_rate == null ? '—' : `${(bt.win_rate * 100).toFixed(1)}%`} color={winRateColor(bt?.win_rate ?? null)} />
+                      <Cell value={num(bt?.profit_factor)} color={bt?.profit_factor != null && bt.profit_factor > 1 ? '#00c853' : '#ff1744'} />
+                      <Cell value={int(bt?.total_trades)} />
+
+                      {/* ── Paper ─────────────────────────────────── */}
+                      <Cell value={dollar(paper?.total_return)} color={returnColor(paper?.total_return ?? null)} />
+                      <Cell value={paper?.win_rate == null ? '—' : `${(paper.win_rate * 100).toFixed(1)}%`} color={winRateColor(paper?.win_rate ?? null)} />
+                      <Cell value={num(paper?.profit_factor)} color={paper?.profit_factor != null && paper.profit_factor > 1 ? '#00c853' : '#555'} />
+                      <Cell value={int(paper?.total_trades)} />
+
+                      {/* ── Live ──────────────────────────────────── */}
+                      <Cell value={dollar(live?.total_return)} color={returnColor(live?.total_return ?? null)} />
+                      <Cell value={live?.win_rate == null ? '—' : `${(live.win_rate * 100).toFixed(1)}%`} color={winRateColor(live?.win_rate ?? null)} />
+                      <Cell value={num(live?.profit_factor)} color={live?.profit_factor != null && live.profit_factor > 1 ? '#00c853' : '#555'} />
+                      <Cell value={int(live?.total_trades)} />
+
+                      {/* ── Forward Test ───────────────────────────── */}
+                      <Cell value={num(ft?.sharpe_ratio)} color={sharpeColor(ft?.sharpe_ratio ?? null)} />
+                      <Cell value={pct(ft?.total_return)} color={returnColor(ft?.total_return ?? null)} />
+                      <Cell value={pct(ft?.max_drawdown)} color={drawdownColor(ft?.max_drawdown ?? null)} />
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 py-2.5 border-t border-[#1e1e1e] flex items-center justify-between">
+            <span className="text-[10px] text-[#444]">
+              {sorted.length} of {entries.length} strategies · refreshes every 30s
+            </span>
+            <div className="flex items-center gap-3 text-[10px] text-[#444]">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-[#2196F3]/30 border border-[#2196F3]/40" /> Backtest
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-[#00c853]/20 border border-[#00c853]/40" /> Paper
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-[#f5a623]/20 border border-[#f5a623]/40" /> Live
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-[#9c27b0]/20 border border-[#9c27b0]/40" /> Forward Test
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>

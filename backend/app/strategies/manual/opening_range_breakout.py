@@ -31,6 +31,7 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.brokers.alpaca_headers import alpaca_headers
 
 
 ET = ZoneInfo("America/New_York")
@@ -57,12 +58,6 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    def _headers(self):
-        return {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
-        }
-
     async def _fetch_intraday_bars(self, symbol: str) -> pd.DataFrame:
         """Fetch today's 1-minute bars."""
         today = date.today().isoformat()
@@ -76,7 +71,7 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
                     "limit": 400,
                     "feed": "iex",
                 },
-                headers=self._headers(),
+                headers=alpaca_headers(),
             )
         if resp.status_code != 200:
             return pd.DataFrame()

@@ -1,0 +1,74 @@
+name: Slack Agent Team — real engineering work, real reports
+
+# Each run wakes 6-15 agents. Each agent reads actual repo state — git log,
+# strategy files, test counts, backtest JSONs, open PRs, workflow runs —
+# and posts findings to relevant channels with their own identity (custom
+# username + emoji avatar). Some agents reply in threads to others.
+#
+# Two ways to run:
+#   1) Scheduled: 4x/day (09:15, 13:15, 17:15, 21:15 UTC). Needs SLACK_BOT_TOKEN secret.
+#   2) Manual:    Actions tab → this workflow → Run workflow, paste a token.
+on:
+  schedule:
+    - cron: "15 9,13,17,21 * * *"
+  workflow_dispatch:
+    inputs:
+      bot_token:
+        description: "Slack Bot User OAuth Token (xoxb-...). Leave blank to use repo secret SLACK_BOT_TOKEN."
+        required: false
+        type: string
+
+concurrency:
+  group: slack-agent-team
+  cancel-in-progress: false
+
+jobs:
+  agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write          # QA agent auto-creates tracking issues for untested strategies
+      pull-requests: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # agents read full git log
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install lightweight test dependencies
+        # Only the packages needed for unit tests (no ML models, no brokers).
+        # This enables Aditi + Ravi agents to run real pytest and report live pass/fail.
+        run: |
+          pip install --quiet \
+            pytest pytest-asyncio pytest-cov \
+            httpx aiosqlite \
+            fastapi uvicorn pydantic pydantic-settings \
+            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
+            sqlalchemy[asyncio] alembic \
+            pandas numpy scipy statsmodels scikit-learn \
+            structlog tenacity python-dotenv anyio apscheduler \
+            redis
+      - name: Run agent team
+        env:
+          SLACK_BOT_TOKEN: ${{ inputs.bot_token || secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # Alpaca paper-trading credentials — enables real account/P&L reporting
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════════╗"
+            echo "║  ⚠  SLACK SILENT — agents ran but NO messages were posted       ║"
+            echo "║                                                                  ║"
+            echo "║  Add SLACK_BOT_TOKEN to repo secrets:                           ║"
+            echo "║  Settings → Secrets and variables → Actions → New secret        ║"
+            echo "╚══════════════════════════════════════════════════════════════════╝"
+            echo ""
+            exit 0
+          fi
+          python .github/scripts/slack_agent_team.py
