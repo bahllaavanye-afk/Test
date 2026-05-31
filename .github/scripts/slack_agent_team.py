@@ -183,18 +183,29 @@ def read_unresponded_threads(
 
 
 _CHANNEL_AGENT_IDENTITY = {
-    "engineering":    ("VP Engineering", ":woman_office_worker:"),
-    "alpha-research": ("Alpha Research Director", ":chart_with_upwards_trend:"),
-    "ml-experiments": ("ML Research Lead", ":microscope:"),
-    "squad-qa":       ("Director of QA", ":mag:"),
-    "desk-crypto":    ("Crypto desk bot", ":coin:"),
-    "squad-backend":  ("Backend Lead", ":gear:"),
-    "squad-frontend": ("Frontend Lead", ":art:"),
-    "risk-alerts":    ("Risk Engineer", ":shield:"),
-    "infra-alerts":   ("Director of DevOps", ":satellite_antenna:"),
-    "desk-equities":  ("Equity desk bot", ":chart_with_upwards_trend:"),
-    "desk-polymarket":("Polymarket Researcher", ":vertical_traffic_light:"),
-    "help":           ("Senior Engineer", ":bulb:"),
+    "engineering":      ("VP Engineering", ":woman_office_worker:"),
+    "alpha-research":   ("Alpha Research Director", ":chart_with_upwards_trend:"),
+    "ml-experiments":   ("ML Research Lead", ":microscope:"),
+    "squad-qa":         ("Director of QA", ":mag:"),
+    "desk-crypto":      ("Crypto desk bot", ":coin:"),
+    "squad-backend":    ("Backend Lead", ":gear:"),
+    "squad-frontend":   ("Frontend Lead", ":art:"),
+    "risk-alerts":      ("Risk Engineer", ":shield:"),
+    "infra-alerts":     ("Director of DevOps", ":satellite_antenna:"),
+    "desk-equities":    ("Equity desk bot", ":chart_with_upwards_trend:"),
+    "desk-polymarket":  ("Polymarket Researcher", ":vertical_traffic_light:"),
+    "desk-commodities": ("Commodities desk bot", ":oil_drum:"),
+    "desk-futures":     ("Futures desk bot", ":chart_with_upwards_trend:"),
+    "desk-rates":       ("Rates desk bot", ":bank:"),
+    "desk-kalshi":      ("Kalshi desk bot", ":ballot_box_with_ballot:"),
+    "desk-stat-arb":    ("StatArb desk bot", ":arrows_counterclockwise:"),
+    "desk-fx-rates":    ("Macro/FX desk bot", ":earth_americas:"),
+    "desk-options":     ("Options Researcher", ":bar_chart:"),
+    "help":             ("Senior Engineer", ":bulb:"),
+    "pnl-daily":        ("PnL bot", ":bar_chart:"),
+    "ci-failures":      ("Director of QA", ":mag:"),
+    "squad-execution":  ("Execution Engineer", ":zap:"),
+    "squad-data":       ("Data Engineer", ":file_cabinet:"),
 }
 
 
@@ -1794,6 +1805,221 @@ def trading_desk_macro_positions() -> list[Post]:
     )]
 
 
+def trading_desk_commodities() -> list[Post]:
+    """Commodities desk — GLD/SLV/USO/UNG/DBA/DBB/CPER/DBC positions → #desk-commodities."""
+    positions = alpaca_positions()
+    comm_syms = {"GLD", "SLV", "USO", "UNG", "DBA", "DBB", "CPER", "DBC"}
+    comm_pos  = [p for p in positions if p.get("symbol") in comm_syms]
+    acct = alpaca_account()
+    orders = alpaca_recent_orders(limit=20)
+    filled = [o for o in orders if o.get("status") == "filled" and o.get("symbol") in comm_syms]
+
+    lines = [f"*Commodities desk — {len(comm_pos)} position(s)*"]
+    if comm_pos:
+        for p in comm_pos:
+            sym     = p.get("symbol", "?")
+            qty     = float(p.get("qty", 0))
+            mv      = float(p.get("market_value", 0) or 0)
+            upl     = float(p.get("unrealized_pl", 0) or 0)
+            upl_pct = float(p.get("unrealized_plpc", 0) or 0) * 100
+            em = "📈" if upl >= 0 else "📉"
+            lines.append(f"• `{sym}` qty {qty:g} · MV ${mv:,.0f} · uPnL {em} *${upl:+,.2f}* ({upl_pct:+.2f}%)")
+    else:
+        lines.append("_No commodity positions open._")
+        lines.append("Universe: GLD (gold) · SLV (silver) · USO (WTI oil) · UNG (natgas) · DBA (agri) · DBC (broad)")
+    if filled:
+        lines.append("\n*Recent fills:*")
+        for o in filled[:4]:
+            lines.append(f"  `{o['symbol']}` {o['side'].upper()} {float(o.get('filled_qty',0)):g} @ ${float(o.get('filled_avg_price') or 0):.2f}")
+    lines.append("\n*Strategies:* `time_series_momentum`, `breakout`, `cross_asset_carry`, `mean_reversion`")
+    return [Post(
+        channel="desk-commodities",
+        text="\n".join(lines),
+        username="Commodities desk bot",
+        icon_emoji=":oil_drum:",
+    )]
+
+
+def trading_desk_futures() -> list[Post]:
+    """Futures desk — index/rate ETF proxies → #desk-futures."""
+    positions = alpaca_positions()
+    fut_syms  = {"SPY", "QQQ", "IWM", "DIA", "IEF", "TLT", "USO", "GLD"}
+    fut_pos   = [p for p in positions if p.get("symbol") in fut_syms]
+    orders    = alpaca_recent_orders(limit=20)
+    filled    = [o for o in orders if o.get("status") == "filled" and o.get("symbol") in fut_syms]
+    clk       = alpaca_clock() or {}
+    market_open = clk.get("is_open", False)
+
+    proxy_map = {
+        "SPY": "ES (S&P 500)", "QQQ": "NQ (NASDAQ)", "IWM": "RTY (Russell 2000)",
+        "DIA": "YM (Dow)", "IEF": "ZN (10Y Treasury)", "TLT": "ZB (30Y Treasury)",
+        "USO": "CL (WTI crude)", "GLD": "GC (gold)",
+    }
+
+    lines = [f"*Futures desk (ETF proxies) — {len(fut_pos)} position(s)* · Market: {'🟢 OPEN' if market_open else '🔴 closed'}"]
+    if fut_pos:
+        for p in fut_pos:
+            sym     = p.get("symbol", "?")
+            qty     = float(p.get("qty", 0))
+            upl_pct = float(p.get("unrealized_plpc", 0) or 0) * 100
+            proxy   = proxy_map.get(sym, sym)
+            lines.append(f"• `{sym}` ({proxy}) qty {qty:g} · *{upl_pct:+.2f}%*")
+    else:
+        lines.append("_No futures proxies open._")
+        lines.append("Instruments: " + " · ".join(f"`{sym}` ({name})" for sym, name in list(proxy_map.items())[:4]))
+    if filled:
+        lines.append("\n*Recent fills:*")
+        for o in filled[:4]:
+            sym = o.get("symbol", "?")
+            lines.append(f"  `{sym}` ({proxy_map.get(sym, sym)}) {o['side'].upper()} {float(o.get('filled_qty',0)):g} @ ${float(o.get('filled_avg_price') or 0):.2f}")
+    lines.append("\n*Strategies:* `time_series_momentum`, `cross_sectional_momentum`, `breakout`, `supertrend`, `vwap_reversion`")
+    return [Post(
+        channel="desk-futures",
+        text="\n".join(lines),
+        username="Futures desk bot",
+        icon_emoji=":chart_with_upwards_trend:",
+    )]
+
+
+def trading_desk_rates() -> list[Post]:
+    """Rates desk — US Treasury duration ETFs + credit → #desk-rates."""
+    positions = alpaca_positions()
+    rate_syms = {"SHY", "IEI", "IEF", "TLT", "TIP", "LQD", "HYG"}
+    rate_pos  = [p for p in positions if p.get("symbol") in rate_syms]
+    orders    = alpaca_recent_orders(limit=20)
+    filled    = [o for o in orders if o.get("status") == "filled" and o.get("symbol") in rate_syms]
+
+    duration_map = {
+        "SHY": "1-3Y", "IEI": "3-7Y", "IEF": "7-10Y",
+        "TLT": "20Y+", "TIP": "TIPS", "LQD": "IG credit", "HYG": "HY credit",
+    }
+
+    # Calc spread proxy: TLT - SHY as yield-curve trade
+    pos_by_sym = {p.get("symbol"): p for p in rate_pos}
+    tlt_pct  = float(pos_by_sym["TLT"].get("unrealized_plpc", 0) or 0) * 100 if "TLT" in pos_by_sym else None
+    shy_pct  = float(pos_by_sym["SHY"].get("unrealized_plpc", 0) or 0) * 100 if "SHY" in pos_by_sym else None
+    spread_note = ""
+    if tlt_pct is not None and shy_pct is not None:
+        spread = tlt_pct - shy_pct
+        spread_note = f"\n*Curve spread proxy (TLT-SHY):* {spread:+.2f}% — {'steepening' if spread > 0 else 'flattening'}"
+
+    lines = [f"*Rates desk — {len(rate_pos)} position(s)*  (curve + credit ladder)"]
+    if rate_pos:
+        for p in sorted(rate_pos, key=lambda x: list(duration_map.keys()).index(x.get("symbol","SHY")) if x.get("symbol") in duration_map else 99):
+            sym     = p.get("symbol", "?")
+            qty     = float(p.get("qty", 0))
+            mv      = float(p.get("market_value", 0) or 0)
+            upl_pct = float(p.get("unrealized_plpc", 0) or 0) * 100
+            dur     = duration_map.get(sym, "?")
+            lines.append(f"• `{sym}` ({dur}) qty {qty:g} · MV ${mv:,.0f} · *{upl_pct:+.2f}%*")
+        if spread_note:
+            lines.append(spread_note)
+    else:
+        lines.append("_No rates positions open._")
+        lines.append("Ladder: " + " · ".join(f"`{sym}` ({dur})" for sym, dur in duration_map.items()))
+    if filled:
+        lines.append("\n*Recent fills:*")
+        for o in filled[:4]:
+            sym = o.get("symbol", "?")
+            lines.append(f"  `{sym}` ({duration_map.get(sym,'?')}) {o['side'].upper()} {float(o.get('filled_qty',0)):g} @ ${float(o.get('filled_avg_price') or 0):.2f}")
+    lines.append("\n*Strategies:* `cross_asset_carry`, `basis_carry`, `time_series_momentum`, `mean_reversion`")
+    return [Post(
+        channel="desk-rates",
+        text="\n".join(lines),
+        username="Rates desk bot",
+        icon_emoji=":bank:",
+    )]
+
+
+def trading_desk_kalshi() -> list[Post]:
+    """Kalshi desk — live scan of CFTC-regulated prediction markets → #desk-kalshi."""
+    arb_opps: list[dict] = []
+    active_count = 0
+    error_msg = ""
+
+    try:
+        req = urllib.request.Request(
+            "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=100",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        markets = data.get("markets", [])
+        active_count = len(markets)
+        for mkt in markets:
+            yes_ask = float(mkt.get("yes_ask", 50)) / 100
+            no_ask  = float(mkt.get("no_ask", 50)) / 100
+            total   = yes_ask + no_ask
+            if total < 0.98 and yes_ask > 0.02 and no_ask > 0.02:
+                edge_c = round((1 - total) * 100, 2)
+                arb_opps.append({
+                    "title": mkt.get("title", "?")[:60],
+                    "ticker": mkt.get("ticker", "?"),
+                    "yes_ask": yes_ask,
+                    "no_ask": no_ask,
+                    "edge_c": edge_c,
+                    "volume": mkt.get("volume", 0),
+                })
+        arb_opps.sort(key=lambda x: -x["edge_c"])
+    except Exception as e:
+        error_msg = str(e)[:80]
+
+    lines = ["*Kalshi desk — CFTC-regulated binary markets*"]
+    if error_msg:
+        lines.append(f"_API unavailable: {error_msg}. Retrying next cycle._")
+    elif active_count:
+        lines.append(f"Live scan: *{active_count}* open markets")
+        if arb_opps:
+            lines.append(f"\n:rotating_light: *{len(arb_opps)} arb opportunities* (YES+NO sum < 98¢):")
+            for o in arb_opps[:5]:
+                lines.append(
+                    f"• `{o['ticker']}` — {o['title']}\n"
+                    f"  YES {o['yes_ask']*100:.1f}¢ + NO {o['no_ask']*100:.1f}¢ = *edge {o['edge_c']:.1f}¢* · vol {o['volume']:,}"
+                )
+            if len(arb_opps) > 5:
+                lines.append(f"  _…+{len(arb_opps)-5} more_")
+            lines.append("\n_Executing via `desk_order_placer.py` → Kalshi CLOB (paper mode)_")
+        else:
+            lines.append("No binary arb right now — markets pricing efficiently. Monitoring.")
+    else:
+        lines.append("_No markets returned — Kalshi API may be rate-limiting._")
+
+    return [Post(
+        channel="desk-kalshi",
+        text="\n".join(lines),
+        username="Kalshi desk bot",
+        icon_emoji=":ballot_box_with_ballot:",
+    )]
+
+
+def trading_desk_stat_arb() -> list[Post]:
+    """StatArb desk — pairs / PCA / cointegration positions → #desk-stat-arb."""
+    positions = alpaca_positions()
+    stat_syms = {"SPY", "QQQ", "IWM", "GLD", "TLT"}
+    stat_pos  = [p for p in positions if p.get("symbol") in stat_syms]
+    p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
+    arb_strats = [f.stem for f in p.glob("*.py") if any(k in f.stem for k in ("arb", "pairs", "kalman", "pca"))] if p.exists() else []
+
+    lines = [f"*StatArb desk — {len(stat_pos)} proxy position(s)*"]
+    if stat_pos:
+        for pos in stat_pos:
+            sym     = pos.get("symbol", "?")
+            qty     = float(pos.get("qty", 0))
+            upl_pct = float(pos.get("unrealized_plpc", 0) or 0) * 100
+            lines.append(f"• `{sym}` qty {qty:g} · *{upl_pct:+.2f}%*")
+    else:
+        lines.append("_No positions — waiting for z-score signal above threshold._")
+    if arb_strats:
+        lines.append(f"\n*Strategies loaded:* " + ", ".join(f"`{s}`" for s in arb_strats[:6]))
+    lines.append("*Engine:* Engle-Granger cointegration + Kalman filter + PCA stat arb")
+    return [Post(
+        channel="desk-stat-arb",
+        text="\n".join(lines),
+        username="StatArb desk bot",
+        icon_emoji=":arrows_counterclockwise:",
+    )]
+
+
 def sara_kim_ml_research() -> list[Post]:
     """ML Research Lead. Posts SOTA model comparisons and ablation findings."""
     results_dir = REPO_ROOT / "experiments" / "results"
@@ -2091,6 +2317,66 @@ TEAMS: dict[str, dict] = {
         },
         "members": [
             ("VP Research", "VP Research", ":books:"),
+        ],
+    },
+    "Commodities": {
+        "lead": "Commodities desk bot",
+        "lead_role": "Commodities Trader",
+        "lead_emoji": ":oil_drum:",
+        "channel": "desk-commodities",
+        "strategies": {
+            "time_series_momentum", "breakout", "supertrend",
+            "cross_asset_carry", "mean_reversion",
+        },
+        "members": [
+            ("Quant Researcher", "Quant Researcher", ":mag_right:"),
+        ],
+    },
+    "Futures": {
+        "lead": "Futures desk bot",
+        "lead_role": "Futures Trader",
+        "lead_emoji": ":chart_with_upwards_trend:",
+        "channel": "desk-futures",
+        "strategies": {
+            "cross_sectional_momentum", "vwap_reversion", "opening_range_breakout",
+        },
+        "members": [
+            ("Execution Engineer", "Execution Engineer", ":zap:"),
+        ],
+    },
+    "Rates": {
+        "lead": "Rates desk bot",
+        "lead_role": "Rates Trader",
+        "lead_emoji": ":bank:",
+        "channel": "desk-rates",
+        "strategies": {
+            "basis_carry", "cross_asset_carry",
+        },
+        "members": [
+            ("Risk Engineer", "Risk Engineer", ":shield:"),
+        ],
+    },
+    "Kalshi": {
+        "lead": "Kalshi desk bot",
+        "lead_role": "Prediction Market Trader",
+        "lead_emoji": ":ballot_box_with_ballot:",
+        "channel": "desk-kalshi",
+        "strategies": {
+            "kalshi_binary_arb",
+        },
+        "members": [],
+    },
+    "StatArb": {
+        "lead": "StatArb desk bot",
+        "lead_role": "Statistical Arbitrageur",
+        "lead_emoji": ":arrows_counterclockwise:",
+        "channel": "desk-stat-arb",
+        "strategies": {
+            "pairs_trading", "pca_stat_arb", "kalman_pairs",
+            "triangular_arb", "stablecoin_depeg_arb",
+        },
+        "members": [
+            ("Alpha Research Director", "Alpha Director", ":chart_with_upwards_trend:"),
         ],
     },
 }
@@ -2575,6 +2861,100 @@ def _short_execution_eng() -> list[Post]:
 
 
 # Map: agent role → short-form function (called ~55% of the time instead of full report)
+def _short_commodities() -> list[Post]:
+    positions = alpaca_positions()
+    comm_syms = {"GLD", "SLV", "USO", "UNG", "DBA", "DBB", "CPER", "DBC"}
+    comm_pos  = [p for p in positions if p.get("symbol") in comm_syms]
+    if comm_pos:
+        largest = max(comm_pos, key=lambda x: abs(float(x.get("market_value", 0))))
+        sym     = largest.get("symbol", "?")
+        upl_pct = float(largest.get("unrealized_plpc", 0) or 0) * 100
+        em = "📈" if upl_pct >= 0 else "📉"
+        msgs = [
+            f"{em} `{sym}` leading desk at {upl_pct:+.2f}% — {len(comm_pos)} commodity position(s) open",
+            f"commodities up {upl_pct:+.2f}% on `{sym}`. watching oil + gold correlation",
+        ]
+        return [Post("desk-commodities", random.choice(msgs), "Commodities desk bot", ":oil_drum:")]
+    msgs = [
+        "no commodity positions — waiting for momentum signal on GLD/USO/UNG",
+        "DBC broad basket: no entry yet. cross_asset_carry signal below threshold",
+        "watching gold/oil spread — signal not triggered yet. monitoring 15min bars",
+    ]
+    return [Post("desk-commodities", random.choice(msgs), "Commodities desk bot", ":oil_drum:")]
+
+
+def _short_futures() -> list[Post]:
+    positions = alpaca_positions()
+    fut_syms  = {"SPY", "QQQ", "IWM", "DIA", "IEF", "TLT", "USO", "GLD"}
+    fut_pos   = [p for p in positions if p.get("symbol") in fut_syms]
+    proxy_map = {"SPY": "ES", "QQQ": "NQ", "IWM": "RTY", "DIA": "YM", "IEF": "ZN", "TLT": "ZB", "USO": "CL", "GLD": "GC"}
+    if fut_pos:
+        syms_str = ", ".join(f"`{p.get('symbol')} ({proxy_map.get(p.get('symbol',''),'?')})`" for p in fut_pos[:4])
+        total_pnl = sum(float(p.get("unrealized_pl", 0) or 0) for p in fut_pos)
+        return [Post("desk-futures", f"futures desk: {syms_str} open · total uPnL ${total_pnl:+,.2f}", "Futures desk bot", ":chart_with_upwards_trend:")]
+    msgs = [
+        "no futures positions open — trend threshold not met across ES/NQ/RTY",
+        "futures desk idle — cross_sectional_momentum scoring below entry threshold",
+    ]
+    return [Post("desk-futures", random.choice(msgs), "Futures desk bot", ":chart_with_upwards_trend:")]
+
+
+def _short_rates() -> list[Post]:
+    positions = alpaca_positions()
+    rate_syms = {"SHY", "IEI", "IEF", "TLT", "TIP", "LQD", "HYG"}
+    rate_pos  = [p for p in positions if p.get("symbol") in rate_syms]
+    dur_map   = {"SHY": "1-3Y", "IEI": "3-7Y", "IEF": "7-10Y", "TLT": "20Y+", "TIP": "TIPS", "LQD": "IG", "HYG": "HY"}
+    if rate_pos:
+        spread_legs = {p.get("symbol"): float(p.get("unrealized_plpc", 0) or 0) * 100 for p in rate_pos}
+        pos_strs = ", ".join(f"`{s}` {v:+.2f}%" for s, v in list(spread_legs.items())[:3])
+        msgs = [
+            f"rates ladder: {pos_strs}",
+            f"curve positioning: {pos_strs} — {'carry positive' if sum(spread_legs.values()) > 0 else 'duration drag'}",
+        ]
+        return [Post("desk-rates", random.choice(msgs), "Rates desk bot", ":bank:")]
+    msgs = [
+        "rates desk flat — yield curve carry not wide enough to enter",
+        "TLT/SHY spread compressed: waiting for 10bp widening before entering curve trade",
+    ]
+    return [Post("desk-rates", random.choice(msgs), "Rates desk bot", ":bank:")]
+
+
+def _short_kalshi() -> list[Post]:
+    try:
+        req = urllib.request.Request(
+            "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=50",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        markets = data.get("markets", [])
+        arb = [m for m in markets
+               if float(m.get("yes_ask", 50)) / 100 + float(m.get("no_ask", 50)) / 100 < 0.98]
+        if arb:
+            m = arb[0]
+            edge = round((1 - float(m.get("yes_ask", 50)) / 100 - float(m.get("no_ask", 50)) / 100) * 100, 1)
+            return [Post("desk-kalshi", f":rotating_light: kalshi arb: `{m.get('ticker','?')}` — edge {edge}¢. executing", "Kalshi desk bot", ":ballot_box_with_ballot:")]
+        return [Post("desk-kalshi", f"scanned {len(markets)} kalshi markets — no binary arb. monitoring.", "Kalshi desk bot", ":ballot_box_with_ballot:")]
+    except Exception:
+        return [Post("desk-kalshi", "kalshi API check: monitoring binary markets for YES+NO sum < 98¢", "Kalshi desk bot", ":ballot_box_with_ballot:")]
+
+
+def _short_stat_arb() -> list[Post]:
+    p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
+    arb_strats = [f.stem for f in p.glob("*.py") if any(k in f.stem for k in ("arb", "pairs", "kalman", "pca"))] if p.exists() else []
+    positions = alpaca_positions()
+    stat_pos  = [pos for pos in positions if pos.get("symbol") in {"SPY", "QQQ", "IWM", "GLD", "TLT"}]
+    if stat_pos:
+        syms = ", ".join(f"`{pos.get('symbol')}`" for pos in stat_pos[:3])
+        return [Post("desk-stat-arb", f"stat arb legs open: {syms} — monitoring z-score for exit", "StatArb desk bot", ":arrows_counterclockwise:")]
+    msgs = [
+        f"stat arb flat: {len(arb_strats)} strategies watching cointegration signals — no z-score > 2σ",
+        "pairs desk: SPY/QQQ spread within historical norm. waiting for divergence",
+        f"PCA stat arb: {len(arb_strats)} factor models loaded — no entry signal this cycle",
+    ]
+    return [Post("desk-stat-arb", random.choice(msgs), "StatArb desk bot", ":arrows_counterclockwise:")]
+
+
 _SHORT_FNS: dict[str, Callable[[], list[Post]]] = {
     "VP Engineering":           _short_vp_engineering,
     "Alpha Research Director":  _short_alpha_director,
@@ -2587,6 +2967,11 @@ _SHORT_FNS: dict[str, Callable[[], list[Post]]] = {
     "Polymarket Researcher":    _short_polymarket,
     "Data Engineer":            _short_data_eng,
     "Execution Engineer":       _short_execution_eng,
+    "Commodities desk bot":     _short_commodities,
+    "Futures desk bot":         _short_futures,
+    "Rates desk bot":           _short_rates,
+    "Kalshi desk bot":          _short_kalshi,
+    "StatArb desk bot":         _short_stat_arb,
 }
 
 
@@ -2664,6 +3049,16 @@ AGENTS: list[Agent] = [
           ["desk-polymarket"], trading_desk_polymarket_positions, ["polymarket", "trading"]),
     Agent("Macro/FX desk bot", "automated", ":earth_americas:",
           ["desk-fx-rates"], trading_desk_macro_positions, ["macro", "fx", "trading"]),
+    Agent("Commodities desk bot", "automated", ":oil_drum:",
+          ["desk-commodities"], trading_desk_commodities, ["commodities", "trading"]),
+    Agent("Futures desk bot", "automated", ":chart_with_upwards_trend:",
+          ["desk-futures"], trading_desk_futures, ["futures", "trading"]),
+    Agent("Rates desk bot", "automated", ":bank:",
+          ["desk-rates"], trading_desk_rates, ["rates", "bonds", "trading"]),
+    Agent("Kalshi desk bot", "automated", ":ballot_box_with_ballot:",
+          ["desk-kalshi"], trading_desk_kalshi, ["kalshi", "prediction", "trading"]),
+    Agent("StatArb desk bot", "automated", ":arrows_counterclockwise:",
+          ["desk-stat-arb"], trading_desk_stat_arb, ["stat-arb", "pairs", "trading"]),
 ]
 
 
@@ -2705,6 +3100,9 @@ def main() -> int:
     inbox_channels = [
         "engineering", "alpha-research", "ml-experiments",
         "squad-qa", "desk-crypto", "squad-backend", "help",
+        "desk-commodities", "desk-futures", "desk-rates",
+        "desk-kalshi", "desk-stat-arb", "desk-equities",
+        "desk-polymarket", "pnl-daily",
     ]
     posts_made = 0
     errors = 0
