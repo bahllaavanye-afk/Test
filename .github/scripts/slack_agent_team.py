@@ -1298,6 +1298,48 @@ def post_api_usage_report(token: str, state: dict, run_posts: int = 0) -> None:
     print(f"  [api-usage] posted to #agent-api-usage")
 
 
+
+def post_governance_report(token: str, state: dict) -> None:
+    """Post daily CTO governance report to #cto-audit."""
+    ch_id = get_channel_id(token, "cto-audit")
+    if not ch_id:
+        return
+    gov = state.get("governance", {})
+    today = _today()
+    audit = [e for e in gov.get("audit_log", []) if today in e.get("ts", "")]
+
+    quality_rejects = [e for e in audit if e["event"] == "quality_gate_reject"]
+    security_hits   = [e for e in audit if e["event"] == "security_gate_hit"]
+    algo_flags      = [e for e in audit if e["event"] == "algo_block"]
+    paused          = gov.get("paused_engineers", {})
+    paused_today    = [k for k, v in paused.items() if v == today]
+
+    lines = [
+        f"*:cop: CTO Governance Report — {today}*",
+        "",
+        f"*Quality Gate* — {len(quality_rejects)} rejection(s) today",
+    ]
+    for e in quality_rejects[-5:]:
+        lines.append(f"  • {e['engineer']} → #{e['channel']}: {e['snippet'][:80]}")
+    lines += [
+        "",
+        f"*Security Gate* — {len(security_hits)} hit(s) today",
+        f"*Algo Change Flags* — {len(algo_flags)} protected-path event(s)",
+        "",
+        f"*CTO Controls*",
+        f"  ALLOW_PAID_APIS = `{ALLOW_PAID_APIS}`  ✅",
+        f"  freeze_algos    = `{gov.get('freeze_algos', False)}`",
+        f"  paused today    : {', '.join(paused_today) if paused_today else 'none'}",
+    ]
+
+    text = "\n".join(lines)
+    slack_call(token, "chat.postMessage", {
+        "channel": ch_id,
+        "text": text,
+        "username": "CTO Oversight Bot",
+        "icon_emoji": ":cop:",
+    })
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Slash-command handler — employees type /command in threads, bot responds
 # ─────────────────────────────────────────────────────────────────────────────
@@ -5491,6 +5533,9 @@ def main() -> int:
         state["last_commit_sha"] = latest_commits[0].get("sha", "")
     save_state(state)
     print(f"💾 State saved: {len(state['posted_hashes'])} hashes, {len(state['replied_to'])} replied threads")
+
+    # Post governance report to #cto-audit
+    post_governance_report(token, state)
 
     # Post API usage dashboard to #agent-api-usage
     post_api_usage_report(token, state, run_posts=posts_made)
