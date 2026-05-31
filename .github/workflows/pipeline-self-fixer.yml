@@ -1,0 +1,85 @@
+name: Pipeline Self-Fixer
+
+# Fires whenever ANY other workflow finishes in failure. Captures the failed
+# run's logs, runs static repairs (collapsed YAML, empty workflow files,
+# branch-ref pins, non-compiling scripts), classifies the runtime error, posts
+# a diagnosis to #ci-failures, and opens an auto-fix PR if it changed anything.
+#
+# This is the self-healing loop for the whole application's CI.
+
+on:
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "A failed run ID to diagnose (optional)"
+        required: false
+        default: ""
+
+concurrency:
+  group: pipeline-self-fixer
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  diagnose-and-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    # Only run on failures (or manual dispatch). Never react to itself.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.name != 'Pipeline Self-Fixer')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so empty-file restore can find old blobs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pyyaml
+        run: pip install pyyaml
+
+      - name: Diagnose and repair
+        id: fix
+        env:
+          GH_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:          ${{ github.repository }}
+          RUN_ID:           ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
+          FAILED_WORKFLOW:  ${{ github.event.workflow_run.name || 'manual' }}
+          SLACK_BOT_TOKEN:  ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/pipeline_self_fixer.py
+
+      - name: Open auto-fix PR
+        if: steps.fix.outputs.made_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          BRANCH="ci-autofix/${{ github.event.workflow_run.id || github.run_id }}"
+          git config user.name  "quantedge-self-fixer[bot]"
+          git config user.email "self-fixer@quantedge.local"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "ci: auto-fix pipeline failure in '${{ github.event.workflow_run.name || 'manual' }}'
+
+          Automated repair by pipeline-self-fixer.
+          Diagnosis: ${{ steps.fix.outputs.diagnosis }}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "ci: auto-fix for failed '${{ github.event.workflow_run.name || 'manual' }}'" \
+            --body "Opened automatically by the Pipeline Self-Fixer after a failed run.
+
+          **Diagnosis:** ${{ steps.fix.outputs.diagnosis }}
+
+          Review the diff before merging." \
+            --base main --head "$BRANCH" || echo "PR may already exist"

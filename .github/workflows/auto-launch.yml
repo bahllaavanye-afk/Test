@@ -1,0 +1,169 @@
+name: Auto Launch — bootstrap Slack, add admin, all desk tasks
+
+# Runs automatically on push to the dev branch.
+# Idempotent: safe to re-run (channel creation skips existing channels).
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/auto-launch.yml"
+  workflow_dispatch:
+
+env:
+  # Shared across all steps — paper trading only, no real money
+  SECRET_KEY:        d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
+  DATABASE_URL:      ""
+  REDIS_URL:         ""
+  TRADING_MODE:      paper
+  PYTHONPATH:        ${{ github.workspace }}/backend
+
+jobs:
+  bootstrap-and-launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── Pip cache — cuts install from ~90s to ~5s on warm runs ────────────
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-quant-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-quant-
+
+      # ── Install all dependencies once ─────────────────────────────────────
+      - name: Install all dependencies
+        run: |
+          pip install --quiet \
+            pytest pytest-asyncio pytest-cov httpx aiosqlite \
+            fastapi uvicorn pydantic pydantic-settings \
+            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
+            sqlalchemy[asyncio] alembic redis apscheduler \
+            pandas numpy scipy statsmodels scikit-learn \
+            structlog tenacity python-dotenv anyio \
+            alpaca-py requests yfinance
+
+      # ── Step 1: Bootstrap Slack channels ──────────────────────────────────
+      - name: Bootstrap Slack channels (31 channels)
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/slack_bootstrap.py
+
+      # ── Step 2: Add workspace admin to all channels ───────────────────────
+      - name: Add admin to all channels
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import json, os, urllib.request
+
+          TOKEN = os.environ["SLACK_BOT_TOKEN"]
+
+          def slack_get(method, params=None):
+              url = "https://slack.com/api/" + method
+              if params:
+                  url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
+              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {TOKEN}"})
+              with urllib.request.urlopen(req, timeout=10) as r:
+                  return json.loads(r.read())
+
+          def slack_post(method, payload):
+              url = "https://slack.com/api/" + method
+              data = json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data, method="POST",
+                  headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"})
+              with urllib.request.urlopen(req, timeout=10) as r:
+                  return json.loads(r.read())
+
+          me = slack_get("auth.test")
+          admin_id = me.get("user_id")
+          print(f"Admin user ID: {admin_id}")
+
+          channels, cursor = [], ""
+          while True:
+              params = {"limit": "200", "types": "public_channel,private_channel"}
+              if cursor:
+                  params["cursor"] = cursor
+              resp = slack_get("conversations.list", params)
+              channels.extend(resp.get("channels", []))
+              cursor = resp.get("response_metadata", {}).get("next_cursor", "")
+              if not cursor:
+                  break
+
+          print(f"Found {len(channels)} channels")
+          ok = 0
+          for ch in channels:
+              try:
+                  r = slack_post("conversations.invite", {"channel": ch["id"], "users": admin_id})
+                  if r.get("ok") or r.get("error") in ("already_in_channel", "cant_invite_self"):
+                      ok += 1
+                      print(f"  ✓ #{ch['name']}")
+                  else:
+                      print(f"  ✗ #{ch['name']}: {r.get('error')}")
+              except Exception as e:
+                  print(f"  ✗ #{ch['name']}: {e}")
+          print(f"\nAdmin added to {ok}/{len(channels)} channels")
+          EOF
+
+      # ── Step 3: Slack kickoff — fill channels with team chatter ───────────
+      - name: Slack kickoff
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/slack_kickoff.py
+
+      # ── Step 4: Agent team standup ────────────────────────────────────────
+      - name: Run Slack agent team
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:           ${{ github.repository }}
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python .github/scripts/slack_agent_team.py
+
+      # ── Step 5: Strategy health ranking ──────────────────────────────────
+      - name: Strategy health ranker
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python .github/scripts/strategy_ranker.py
+
+      # ── Step 6: Desk order placer (all 6 desks in parallel) ──────────────
+      - name: Run all desks in parallel
+        continue-on-error: true
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/desk_order_placer.py
+
+      # ── Step 7: ML experiments (all 34 strategies) ───────────────────────
+      - name: Run ML experiments
+        continue-on-error: true
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/run_experiments.py
+
+      # ── Step 8: Daily P&L report ──────────────────────────────────────────
+      - name: Daily P&L report
+        continue-on-error: true
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/daily_pnl_report.py
