@@ -11,6 +11,7 @@ import pandas as pd
 from app.utils.logging import logger
 
 ARTIFACTS_DIR = Path(__file__).parents[3] / "models_artifacts"
+ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> dict:
