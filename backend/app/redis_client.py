@@ -7,7 +7,9 @@ and the API still work; only real-time price caching and pub/sub are skipped.
 """
 import json
 from typing import Any
+
 import redis.asyncio as aioredis
+
 from app.config import settings
 from app.utils.logging import logger
 
@@ -19,6 +21,8 @@ def get_pool() -> aioredis.ConnectionPool | None:
     if _redis_disabled:
         return None
     global _pool
+    if not _redis_enabled():
+        return None
     if _pool is None:
         _pool = aioredis.ConnectionPool.from_url(
             settings.redis_url,
@@ -125,4 +129,8 @@ class PriceCache:
             logger.warning("redis.set failed", key=key, error=str(exc))
 
 
-price_cache = PriceCache()
+# Module-level singleton — falls back to the no-op cache when Redis is disabled
+if _redis_enabled():
+    price_cache: PriceCache | _NoopPriceCache = PriceCache()
+else:
+    price_cache = _NoopPriceCache()

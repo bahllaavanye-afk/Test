@@ -13,7 +13,19 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+# Resolve sync URL (psycopg2) — alembic needs a synchronous driver
+_raw = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL", "")
+
+
+def _to_sync_url(url: str) -> str:
+    """Convert any postgres URL variant to a psycopg2 sync URL."""
+    url = url.replace("+asyncpg", "").replace("+aiosqlite", "")
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url
+
+
+_sync_url = _to_sync_url(_raw) if _raw else ""
 
 # Read DB URL from environment — prefer explicit ALEMBIC_DATABASE_URL, fall back to DATABASE_URL
 _raw_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL", "")
