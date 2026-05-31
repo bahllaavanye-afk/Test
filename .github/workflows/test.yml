@@ -8,6 +8,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: backend
@@ -30,12 +34,43 @@ jobs:
             python-jose[cryptography] passlib bcrypt==4.0.1 \
             httpx pytest pytest-asyncio pytest-cov aiohttp redis python-dotenv \
             numpy pandas scipy scikit-learn statsmodels structlog tenacity \
-            cryptography apscheduler websockets pytz python-dateutil slowapi
+            cryptography apscheduler websockets pytz python-dateutil slowapi \
+            python-multipart anyio
+
+      - name: Debug — environment check
+        env:
+          SECRET_KEY: "test-secret-key-32-bytes-exactly!!"
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: ""
+          TRADING_MODE: "paper"
+          ALPACA_API_KEY: "test"
+          ALPACA_SECRET_KEY: "test"
+        run: |
+          {
+            echo "## CI environment"
+            echo "### Python"
+            python --version
+            echo "### app.main import"
+            echo '```'
+            python -c "from app.main import app; print(f'OK: {len(app.routes)} routes')" 2>&1 || echo "IMPORT FAILED"
+            echo '```'
+            echo "### Installed packages"
+            echo '```'
+            pip list --format=columns | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run unit tests
         shell: bash
+        env:
+          SECRET_KEY: "test-secret-key-32-bytes-exactly!!"
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: ""
+          TRADING_MODE: "paper"
+          ALPACA_API_KEY: "test"
+          ALPACA_SECRET_KEY: "test"
         run: |
-          set -eo pipefail
+          set +e
           pytest tests/unit/ -x -v \
             --ignore=tests/unit/test_features.py \
             --ignore=tests/unit/test_strategies.py \
@@ -44,14 +79,18 @@ jobs:
             --ignore=tests/unit/test_smart_router.py \
             --ignore=tests/unit/test_a3c_lstm.py \
             --ignore=tests/unit/test_ml_models.py \
-            --tb=short
-        env:
-          SECRET_KEY: "test-secret-key-32-bytes-exactly!!"
-          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
-          REDIS_URL: ""
-          TRADING_MODE: "paper"
-          ALPACA_API_KEY: "test"
-          ALPACA_SECRET_KEY: "test"
+            --tb=long --color=no \
+            2>&1 | tee /tmp/pytest.log
+          EXIT=${PIPESTATUS[0]}
+          {
+            echo "## pytest output (last 120 lines)"
+            echo '```'
+            tail -120 /tmp/pytest.log
+            echo '```'
+            echo ""
+            echo "Exit code: $EXIT"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $EXIT
 
       - name: Upload coverage
         if: always()
@@ -59,3 +98,4 @@ jobs:
         with:
           name: test-results
           path: backend/.coverage
+          if-no-files-found: ignore
