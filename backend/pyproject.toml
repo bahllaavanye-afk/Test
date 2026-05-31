@@ -88,6 +88,13 @@ backtest = [
     "vectorbt>=0.26.2",
 ]
 
+# Google Docs/Sheets/Slides integration (work docs). Optional — the integration
+# module no-ops when these aren't installed. Install with: pip install -e ".[docs]"
+docs = [
+    "google-api-python-client>=2.150.0",
+    "google-auth>=2.35.0",
+]
+
 # Development / CI
 dev = [
     "pytest>=8.3.0",
