@@ -138,16 +138,27 @@ def _call_openai_compat(url: str, key: str, model: str,
 
 
 def _all_keys_for(provider_env: str) -> list[str]:
-    """Return all keys for a provider: primary + up to 5 backup accounts."""
+    """Return all keys for a provider across all naming conventions.
+
+    Checks in order:
+      GROQ_API_KEY            — primary
+      GROQ_API_KEY_2 … _10   — numbered accounts (GROQ_API_KEY_3 etc.)
+      GROQ_API_KEY_BACKUP_1…5 — backup pool
+    """
     keys: list[str] = []
-    k = os.environ.get(provider_env, "").strip()
-    if k:
-        keys.append(k)
-    base = provider_env.replace("_API_KEY", "")
-    for i in range(1, 6):
-        k = os.environ.get(f"{base}_API_KEY_BACKUP_{i}", "").strip()
+
+    def _add(k: str) -> None:
+        k = k.strip()
         if k and k not in keys:
             keys.append(k)
+
+    _add(os.environ.get(provider_env, ""))                         # primary
+    base = provider_env.replace("_API_KEY", "")
+    for i in range(2, 11):                                         # _2 … _10
+        _add(os.environ.get(f"{base}_API_KEY_{i}", ""))
+    for i in range(1, 6):                                          # _BACKUP_1 … _5
+        _add(os.environ.get(f"{base}_API_KEY_BACKUP_{i}", ""))
+
     return keys
 
 

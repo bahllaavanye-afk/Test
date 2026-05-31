@@ -151,24 +151,98 @@ _EMPLOYEES = [
     "sofia", "hugo", "marcus",
 ]
 
+# ── Groq account assignment — 3 accounts, 13 employees distributed evenly ────
+# Each account handles its own employees in parallel — no sharing, no cascading
+# between Groq accounts. This gives 3× RPD and 3× token budget from Groq alone.
+#
+# Account 1 → GROQ_API_KEY      (~333 req/day budget, 167K tok/day budget)
+# Account 2 → GROQ_API_KEY_2    (~333 req/day budget, 167K tok/day budget)
+# Account 3 → GROQ_API_KEY_3    (~333 req/day budget, 167K tok/day budget)
+# Combined  → 3 × 1000 RPD  =  3 000 req/day  |  3 × 500K tok = 1.5M tok/day
+#
+# If an employee's assigned Groq account is exhausted for the day, the cascade
+# falls through to Cerebras/GitHub Models/OpenRouter/Gemini — never another Groq account.
+# This prevents any single Groq account from being overloaded by other employees' quota.
+
+_GROQ_ACCOUNT: dict[str, str] = {
+    # Account 1 — GROQ_API_KEY  (4 employees)
+    "maya":   "GROQ_API_KEY",
+    "aarav":  "GROQ_API_KEY",
+    "linh":   "GROQ_API_KEY",
+    "jian":   "GROQ_API_KEY",
+    # Account 2 — GROQ_API_KEY_2  (4 employees)
+    "anna":   "GROQ_API_KEY_2",
+    "aditi":  "GROQ_API_KEY_2",
+    "kenji":  "GROQ_API_KEY_2",
+    "diego":  "GROQ_API_KEY_2",
+    # Account 3 — GROQ_API_KEY_3  (5 employees)
+    "lior":   "GROQ_API_KEY_3",
+    "sara":   "GROQ_API_KEY_3",
+    "sofia":  "GROQ_API_KEY_3",
+    "hugo":   "GROQ_API_KEY_3",
+    "marcus": "GROQ_API_KEY_3",
+}
+
+# For shared/non-employee calls (inbox, commands, incidents), rotate across
+# all 3 accounts round-robin using a simple counter per process run.
+_shared_groq_counter: int = 0
+_GROQ_SHARED_ACCOUNTS = ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]
+
+
+def _groq_key_for(employee: str) -> str | None:
+    """Return the one Groq account assigned to this employee. None if key not set."""
+    emp = employee.split("_")[0].lower()
+    env_var = _GROQ_ACCOUNT.get(emp, "GROQ_API_KEY")
+    return os.environ.get(env_var, "").strip() or None
+
+
+def _groq_key_shared() -> str | None:
+    """Round-robin across all 3 Groq accounts for shared (non-employee) calls."""
+    global _shared_groq_counter
+    for _ in range(len(_GROQ_SHARED_ACCOUNTS)):
+        env_var = _GROQ_SHARED_ACCOUNTS[_shared_groq_counter % len(_GROQ_SHARED_ACCOUNTS)]
+        _shared_groq_counter += 1
+        key = os.environ.get(env_var, "").strip()
+        if key:
+            return key
+    return None
+
+
 def _employee_keys(employee: str, provider: str) -> list[str]:
-    """Return all API keys for (employee, provider): dedicated + backup + shared."""
-    emp = employee.split("_")[0].upper()   # 'maya_chen' → 'MAYA'
+    """Return API keys for (employee, provider) in priority order.
+
+    For Groq: returns ONLY the employee's assigned account key — prevents one
+    employee from consuming another account's daily budget.
+
+    For all other providers (Cerebras, Gemini, OpenRouter): tries employee-
+    dedicated key (CEREBRAS_API_KEY_MAYA) then numbered pool (_2, _3 …) then
+    shared primary — these providers all have separate per-account limits.
+
+    Secret naming supported (all checked automatically):
+      GROQ_API_KEY / GROQ_API_KEY_2 / GROQ_API_KEY_3   — 3 Groq accounts
+      CEREBRAS_API_KEY_MAYA                              — employee dedicated
+      CEREBRAS_API_KEY_2 … _10                          — numbered pool
+      CEREBRAS_API_KEY                                   — shared primary
+    """
+    emp = employee.split("_")[0].lower()
     prov = provider.upper()
     keys: list[str] = []
-    # 1. Employee's dedicated key
-    k = os.environ.get(f"{prov}_API_KEY_{emp}", "").strip()
-    if k:
-        keys.append(k)
-    # 2. Shared backup pool (GROQ_API_KEY_BACKUP_1 … _5)
-    for i in range(1, 6):
-        k = os.environ.get(f"{prov}_API_KEY_BACKUP_{i}", "").strip()
+
+    def _add(k: str) -> None:
+        k = (k or "").strip()
         if k and k not in keys:
             keys.append(k)
-    # 3. Shared primary key (the single key everyone falls back to)
-    k = os.environ.get(f"{prov}_API_KEY", "").strip()
-    if k and k not in keys:
-        keys.append(k)
+
+    if prov == "GROQ":
+        # One account per employee — no cross-contamination of quotas
+        _add(_groq_key_for(emp))
+        return keys
+
+    # All other providers: dedicated → numbered pool → shared primary
+    _add(os.environ.get(f"{prov}_API_KEY_{emp.upper()}", ""))   # e.g. CEREBRAS_API_KEY_MAYA
+    for i in range(2, 11):
+        _add(os.environ.get(f"{prov}_API_KEY_{i}", ""))          # e.g. CEREBRAS_API_KEY_2
+    _add(os.environ.get(f"{prov}_API_KEY", ""))                  # e.g. CEREBRAS_API_KEY
     return keys
 
 
@@ -423,24 +497,46 @@ def call_employee_agent(
     safe_system  = _sanitize(system_prompt)
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
 
-    # Provider cascade — all free, each employee has dedicated keys
-    providers = [
-        ("groq",      "https://api.groq.com/openai/v1/chat/completions",        "llama-3.3-70b-versatile", None),
-        ("cerebras",  "https://api.cerebras.ai/v1/chat/completions",             "qwen-3-32b",              None),
-        ("openrouter","https://openrouter.ai/api/v1/chat/completions",           "meta-llama/llama-3.3-70b-instruct:free",
-                      {"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"}),
-        ("gemini",    None, None, None),   # special handler below
-    ]
+    # 1. Groq — employee's assigned account (one of 3 accounts, ~333 req/day each)
+    groq_key = _groq_key_for(emp_key)
+    if groq_key:
+        r = _try_openai_compat(
+            "https://api.groq.com/openai/v1/chat/completions",
+            groq_key, "llama-3.3-70b-versatile", safe_system, safe_message, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [{emp_key}/groq] ✓ {len(r)} chars")
+            return r.strip()
 
-    for prov, endpoint, model, extra_hdrs in providers:
-        for key in _employee_keys(emp_key, prov):
-            if prov == "gemini":
-                result = call_gemini(safe_system, safe_message, cap)
-            else:
-                result = _try_openai_compat(endpoint, key, model, safe_system, safe_message, cap, extra_hdrs)
-            if result and len(result.strip()) > 20:
-                print(f"  [{emp_key}/{prov}] ✓ {len(result)} chars")
-                return result.strip()
+    # 2. Cerebras — 1M tok/day, employee-dedicated or shared key
+    for key in _employee_keys(emp_key, "cerebras"):
+        r = _try_openai_compat(
+            "https://api.cerebras.ai/v1/chat/completions",
+            key, "qwen-3-32b", safe_system, safe_message, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [{emp_key}/cerebras] ✓ {len(r)} chars")
+            return r.strip()
+
+    # 3. GitHub Models — free via GITHUB_TOKEN, no extra key needed
+    r = call_github_models(safe_system, safe_message, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [{emp_key}/github-models] ✓ {len(r)} chars")
+        return r.strip()
+
+    # 4. OpenRouter — 50 req/day free
+    for key in _employee_keys(emp_key, "openrouter"):
+        r = _try_openai_compat(
+            "https://openrouter.ai/api/v1/chat/completions",
+            key, "meta-llama/llama-3.3-70b-instruct:free", safe_system, safe_message, cap,
+            {"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"})
+        if r and len(r.strip()) > 20:
+            print(f"  [{emp_key}/openrouter] ✓ {len(r)} chars")
+            return r.strip()
+
+    # 5. Gemini Flash — 1500 req/day, massive token budget
+    r = call_gemini(safe_system, safe_message, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [{emp_key}/gemini] ✓ {len(r)} chars")
+        return r.strip()
 
     print(f"  [{emp_key}] ⚠ all free tiers exhausted — no paid fallback (policy)")
     return None
@@ -453,16 +549,16 @@ def call_best_agent(
 ) -> str | None:
     """
     Shared cascade for non-employee calls (inbox, commands, incident posts).
-    100% free — Groq → Cerebras → GitHub Models → OpenRouter → Gemini.
-    Paid APIs are NEVER called regardless of ANTHROPIC_API_KEY presence.
-    Rotates through all available keys (shared + backup pool) per provider.
+    Groq: round-robins across all 3 accounts so no single account absorbs shared load.
+    100% free — zero-spend policy enforced.
     """
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
     safe_msg = _sanitize(user_message)
     safe_sys = _sanitize(system_prompt)
 
-    # Groq — try all available keys (shared + backup pool)
-    for key in _employee_keys("shared", "groq"):
+    # Groq — round-robin across all 3 accounts for shared calls
+    key = _groq_key_shared()
+    if key:
         r = _try_openai_compat(
             "https://api.groq.com/openai/v1/chat/completions",
             key, "llama-3.3-70b-versatile", safe_sys, safe_msg, cap)
@@ -470,7 +566,7 @@ def call_best_agent(
             print(f"  [agent/groq] ✓ {len(r)} chars")
             return r.strip()
 
-    # Cerebras — 1M tok/day per key
+    # Cerebras — 1M tok/day, try all keys
     for key in _employee_keys("shared", "cerebras"):
         r = _try_openai_compat(
             "https://api.cerebras.ai/v1/chat/completions",
@@ -479,7 +575,7 @@ def call_best_agent(
             print(f"  [agent/cerebras] ✓ {len(r)} chars")
             return r.strip()
 
-    # GitHub Models — free in Actions (no extra key needed)
+    # GitHub Models — free in Actions
     r = call_github_models(safe_sys, safe_msg, cap)
     if r and len(r.strip()) > 20:
         print(f"  [agent/github-models] ✓ {len(r)} chars")
@@ -502,7 +598,7 @@ def call_best_agent(
         return r.strip()
 
     # Hard stop — never pay
-    print("  [agent] ⚠ all 5 free providers exhausted — returning None (zero-spend policy)")
+    print("  [agent] ⚠ all free providers exhausted — returning None (zero-spend policy)")
     return None
 
 
