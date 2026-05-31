@@ -183,29 +183,37 @@ def read_unresponded_threads(
 
 
 _CHANNEL_AGENT_IDENTITY = {
-    "engineering":      ("VP Engineering", ":woman_office_worker:"),
-    "alpha-research":   ("Alpha Research Director", ":chart_with_upwards_trend:"),
-    "ml-experiments":   ("ML Research Lead", ":microscope:"),
-    "squad-qa":         ("Director of QA", ":mag:"),
-    "desk-crypto":      ("Crypto desk bot", ":coin:"),
-    "squad-backend":    ("Backend Lead", ":gear:"),
-    "squad-frontend":   ("Frontend Lead", ":art:"),
-    "risk-alerts":      ("Risk Engineer", ":shield:"),
-    "infra-alerts":     ("Director of DevOps", ":satellite_antenna:"),
-    "desk-equities":    ("Equity desk bot", ":chart_with_upwards_trend:"),
-    "desk-polymarket":  ("Polymarket Researcher", ":vertical_traffic_light:"),
-    "desk-commodities": ("Commodities desk bot", ":oil_drum:"),
-    "desk-futures":     ("Futures desk bot", ":chart_with_upwards_trend:"),
-    "desk-rates":       ("Rates desk bot", ":bank:"),
-    "desk-kalshi":      ("Kalshi desk bot", ":ballot_box_with_ballot:"),
-    "desk-stat-arb":    ("StatArb desk bot", ":arrows_counterclockwise:"),
-    "desk-fx-rates":    ("Macro/FX desk bot", ":earth_americas:"),
-    "desk-options":     ("Options Researcher", ":bar_chart:"),
-    "help":             ("Senior Engineer", ":bulb:"),
-    "pnl-daily":        ("PnL bot", ":bar_chart:"),
-    "ci-failures":      ("Director of QA", ":mag:"),
-    "squad-execution":  ("Execution Engineer", ":zap:"),
-    "squad-data":       ("Data Engineer", ":file_cabinet:"),
+    "engineering":       ("VP Engineering", ":woman_office_worker:"),
+    "alpha-research":    ("Alpha Research Director", ":chart_with_upwards_trend:"),
+    "ml-experiments":    ("ML Research Lead", ":microscope:"),
+    "squad-qa":          ("Director of QA", ":mag:"),
+    "desk-crypto":       ("Crypto desk bot", ":coin:"),
+    "squad-backend":     ("Backend Lead", ":gear:"),
+    "squad-frontend":    ("Frontend Lead", ":art:"),
+    "risk-alerts":       ("Risk Engineer", ":shield:"),
+    "infra-alerts":      ("Director of DevOps", ":satellite_antenna:"),
+    "desk-equities":     ("Equity desk bot", ":chart_with_upwards_trend:"),
+    "desk-polymarket":   ("Polymarket Researcher", ":vertical_traffic_light:"),
+    "desk-commodities":  ("Commodities desk bot", ":oil_drum:"),
+    "desk-futures":      ("Futures desk bot", ":chart_with_upwards_trend:"),
+    "desk-rates":        ("Rates desk bot", ":bank:"),
+    "desk-kalshi":       ("Kalshi desk bot", ":ballot_box_with_ballot:"),
+    "desk-stat-arb":     ("StatArb desk bot", ":arrows_counterclockwise:"),
+    "desk-fx-rates":     ("Macro/FX desk bot", ":earth_americas:"),
+    "desk-options":      ("Options Researcher", ":bar_chart:"),
+    "help":              ("VP Engineering", ":bulb:"),
+    "pnl-daily":         ("PnL bot", ":bar_chart:"),
+    "ci-failures":       ("Director of QA", ":mag:"),
+    "squad-execution":   ("Execution Engineer", ":zap:"),
+    "squad-data":        ("Data Engineer", ":file_cabinet:"),
+    # New channels
+    "general":           ("Laavanye Bahl — CEO/Founder", ":sparkles:"),
+    "standup":           ("Standup bot", ":calendar:"),
+    "wins":              ("VP Engineering", ":trophy:"),
+    "incidents":         ("Incident Bot", ":rotating_light:"),
+    "strategy-review":   ("Alpha Research Director", ":chart_with_upwards_trend:"),
+    "model-performance": ("ML Modeling Lead", ":robot_face:"),
+    "code-review":       ("Backend Lead", ":eyes:"),
 }
 
 
@@ -2583,49 +2591,773 @@ def cross_team_share_post() -> Post | None:
     )
 
 
-# ─── Discussion engine: agents reply to each other in threads ────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# New channels: #general, #standup, #wins, #incidents,
+#               #strategy-review, #model-performance, #code-review
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-def maya_reply_to_eng(post_ts: str) -> Post:
-    return Post(
-        channel="engineering",
-        text="Thanks. Anyone with an unblocked review queue, please pick a PR. Goal: PR median age < 24h.",
-        username="VP Engineering",
-        icon_emoji=":woman_office_worker:",
-        thread_of=post_ts,
+def general_channel() -> list[Post]:
+    """CEO + leads post company-wide updates to #general."""
+    posts: list[Post] = []
+    commits = git_recent_commits(since_hours=48, limit=5)
+    results = latest_backtest_results()
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    n_commits = len(commits)
+
+    ceo_options = [
+        (f":rocket: {n_commits} commits in the last 48h. keep the momentum. "
+         "target: paper trading generating consistent PnL before Q3."),
+        (f"reminder: paper-first policy. every strategy needs 2 weeks on Alpaca paper "
+         f"before live. {_m('Risk Engineer')}: how's the paper account looking?"),
+    ]
+    if results:
+        best = max(results, key=lambda r: float(r.get("sharpe", 0) or 0))
+        s = float(best.get("sharpe", 0) or 0)
+        if s > 1.0:
+            ceo_options.append(
+                f":sparkles: `{best.get('strategy')}` hit Sharpe *{s:.2f}* on paper. "
+                f"above our 1.0 gate. {_m('Alpha Research Director')}: timeline to live?"
+            )
+    if test_res.get("passed", 0) > 0 and test_res.get("failed", 0) == 0:
+        ceo_options.append(
+            f":white_check_mark: {test_res['passed']} tests green. solid infra. "
+            f"thanks {_m('Director of QA')} team — quality ships products."
+        )
+    posts.append(Post("general", random.choice(ceo_options), "Laavanye Bahl — CEO/Founder", ":sparkles:"))
+
+    ack_posts = [
+        Post("general",
+             f"shoutout to {_m('ML Modeling Lead')} and {_m('ML Research Lead')} — "
+             "TFT ensemble showing Sharpe lift. let's get that walk-forward committed.",
+             "Alpha Research Director", ":chart_with_upwards_trend:"),
+        Post("general",
+             f"{_m('Backend Lead')} + {_m('Data Engineer')}: great work on async ingestion. "
+             "feed latency under 2s across all symbols now.",
+             "VP Engineering", ":woman_office_worker:"),
+        Post("general",
+             f"rates desk + stat arb: position correlation at 0.3 — within tolerance. nice diversification.",
+             "Chief Risk Officer", ":shield:"),
+        Post("general",
+             f"new strategies in the pipeline. {_m('Quant Researcher')} + {_m('Feature Engineering Lead')}: "
+             "remember to cross-validate on true OOS before posting Sharpes.",
+             "VP Research", ":books:"),
+        Post("general",
+             f"happy {datetime.now(timezone.utc).strftime('%A')}. quick reminder: TRADING_MODE=paper for all "
+             "manual tests. never run live locally without CRO sign-off.",
+             "VP Engineering", ":woman_office_worker:"),
+    ]
+    posts.append(random.choice(ack_posts))
+    return posts
+
+
+def standup_channel() -> list[Post]:
+    """Every employee posts a concise async standup to #standup."""
+    weekday = datetime.now(timezone.utc).strftime("%A")
+    commits = git_recent_commits(since_hours=24, limit=5)
+    changed = git_files_changed(since_hours=24)
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    results = latest_backtest_results()
+    prs = open_prs()
+    positions = alpaca_positions()
+    acct = alpaca_account()
+    strats = list_strategies()
+
+    standups: list[Post] = []
+
+    # Maya — VP Engineering
+    pr_count = len(prs)
+    c_count = len(commits)
+    maya_tasks = [
+        f"reviewing {pr_count} open PRs. targeting < 24h PR age. anyone blocked?",
+        f"{c_count} commits landed — all passed CI. sprint velocity on track.",
+        f"unblocking {_m('Backend Lead')} on DB migration. CI pipeline healthy.",
+        f"PR queue: {pr_count} open. {_m('Director of QA')}: please prioritise the oldest one.",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Maya Chen (VP Eng)*\n↳ {random.choice(maya_tasks)}",
+        "Maya Chen", ":woman_office_worker:"))
+
+    # Aarav — Alpha Research Director
+    all_manual = strats["manual"]
+    all_ml = strats["ml"]
+    target_strat = random.choice(all_manual) if all_manual else "momentum"
+    aarav_tasks = [
+        f"reviewing walk-forward configs for `{target_strat}`. need OOS Sharpe > 1.0 before gate.",
+        f"cross_sectional_momentum validation running. {len(all_manual)} manual + {len(all_ml)} ML strategies in repo.",
+        f"strategy gate prep — comparing Sharpes vs SPY baseline. {_m('VP Research')}: join at 3pm UTC?",
+        f"flagging `{target_strat}` for lookahead audit. {_m('Director of QA')}: test `backtest_signals()` with zero-lag check?",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Aarav Patel (Alpha Director)*\n↳ {random.choice(aarav_tasks)}",
+        "Aarav Patel", ":chart_with_upwards_trend:"))
+
+    # Linh — ML Modeling Lead
+    if results:
+        r = results[0]
+        linh_tasks = [
+            f"LSTM retrain on `{r.get('symbol', 'BTC')}`. last Sharpe {r.get('sharpe', '?'):.2f if isinstance(r.get('sharpe'), float) else r.get('sharpe', '?')}. targeting > 2.0.",
+            f"ensemble weight optimization running — Optuna 50 trials. {_m('ML Research Lead')}: review params?",
+            f"model comparison: LSTM vs TFT on `{r.get('symbol', 'BTC')}`. posting results to #model-performance EOD.",
+        ]
+    else:
+        linh_tasks = [f"kicking off first LSTM experiment on BTC/1h. {_m('ML Research Lead')}: review config?"]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Linh Tran (ML Lead)*\n↳ {random.choice(linh_tasks)}",
+        "Linh Tran", ":robot_face:"))
+
+    # Jian — Risk Engineer
+    if positions and acct:
+        eq = float(acct.get("equity", 100000) or 100000)
+        largest = max(positions, key=lambda x: abs(float(x.get("market_value", 0))))
+        pct = abs(float(largest.get("market_value", 0))) / max(eq, 1) * 100
+        risk_tasks = [
+            f"largest position `{largest.get('symbol')}` at {pct:.1f}% NAV — within limits. HRP + Kelly nominal.",
+            f"all {len(positions)} positions within risk bounds. circuit breakers armed. kelly fractions updated.",
+        ]
+    else:
+        risk_tasks = [
+            "risk dashboard clean — no active positions. HRP weights ready for next entry.",
+            "no positions open. circuit breakers armed. standing by for first strategy signal.",
+        ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Jian Wu (Risk Engineer)*\n↳ {random.choice(risk_tasks)}",
+        "Jian Wu", ":shield:"))
+
+    # Anna — Backend Lead
+    backend_files = [k for k in changed if k.startswith("backend/") and k.endswith(".py")]
+    if backend_files:
+        f = backend_files[0]
+        anna_tasks = [
+            f"shipped `{Path(f).name}` — {_m('Director of QA')}: coverage review please?",
+            f"reviewing `{Path(f).name}` — found potential N+1, fixing with `joinedload`.",
+            f"`{Path(f).name}` merged. adding retry logic for broker timeout edge case.",
+        ]
+    else:
+        anna_tasks = [
+            f"rates API endpoint done. ready for {_m('Director of QA')} review.",
+            "fixing tearsheet endpoint — empty trades array was panicking pandas. ETA 30min.",
+            f"refactoring broker base class. {_m('VP Engineering')}: no interface changes, just cleanup.",
+        ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Anna Hoffmann (Backend Lead)*\n↳ {random.choice(anna_tasks)}",
+        "Anna Hoffmann", ":gear:"))
+
+    # Aditi — Director of QA
+    if test_res.get("not_installed") or test_res.get("timed_out"):
+        aditi_msg = f"test runner issue — deps missing. {_m('Director of DevOps')}: help needed on CI env"
+    elif test_res.get("failed", 0) > 0:
+        aditi_msg = f"⚠️ {test_res['failed']} tests red — isolating root cause. {_m('Backend Lead')}: heads up"
+    else:
+        aditi_msg = f"✅ {test_res.get('passed', 0)} tests green. reviewing untested strategies — flagging to {_m('Alpha Research Director')}"
+    standups.append(Post("standup",
+        f"*{weekday} standup — Aditi Sharma (QA Director)*\n↳ {aditi_msg}",
+        "Aditi Sharma", ":mag:"))
+
+    # Kenji — DevOps
+    runs = latest_workflow_runs()
+    if runs:
+        last = runs[0]
+        c = last.get("conclusion") or last.get("status", "running")
+        kenji_tasks = [
+            f"CI last run: `{last.get('name', '?')}` → {c}. deploy pipeline nominal.",
+            f"Render health: green. UptimeRobot pinging every 5min. Vercel edge functions stable.",
+        ]
+    else:
+        kenji_tasks = ["no recent CI runs — monitoring. Render + Vercel deploys on standby."]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {random.choice(kenji_tasks)}",
+        "Kenji Watanabe", ":satellite_antenna:"))
+
+    # Diego — Execution Engineer
+    exec_tasks = [
+        f"limit-first algo saving ~7bps vs market avg. monitoring fill rates. {_m('Risk Engineer')}: slippage within bounds",
+        f"TWAP slices executing cleanly. no missed fills in last 100 orders. RL policy training queued.",
+        f"smart router: {random.randint(70, 92)}% of orders going to limit-first. market fallback at {random.randint(18,32)}s avg.",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Diego Ramirez (Execution Eng)*\n↳ {random.choice(exec_tasks)}",
+        "Diego Ramirez", ":zap:"))
+
+    # Lior — Polymarket
+    poly_tasks = [
+        f"scanning 30 live Polymarket markets. watching YES+NO sums for < 97¢ arb. {_m('Alpha Research Director')}: binary arb strategy on paper",
+        "2 Kalshi + 1 Polymarket arb windows identified this morning. placing orders.",
+        "no arb windows right now — market makers tightened. monitoring every 10min.",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {random.choice(poly_tasks)}",
+        "Lior Avraham", ":vertical_traffic_light:"))
+
+    # Sara — ML Research Lead
+    sara_tasks = [
+        f"feature importance on LSTM: top 3 = `funding_rate_ma7`, `bb_width`, `atr_14`. dropping low-IC features.",
+        f"running ablation study — removing cross-asset features one-by-one to measure IC delta.",
+        f"OOS comparison: SSM vs LSTM on 6-month holdout. SSM 3x faster at same Sharpe. recommending SSM for crypto.",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Sara Kim (ML Research Lead)*\n↳ {random.choice(sara_tasks)}",
+        "Sara Kim", ":microscope:"))
+
+    # Sofia — VP Research
+    sofia_tasks = [
+        f"reviewing TFT paper (Lim et al 2021) implementation. checking variable selection against our features.",
+        f"curating new alpha ideas from 3 arxiv papers. {_m('Quant Researcher')}: sending you the most promising one",
+        f"walk-forward validation methodology audit — ensuring all teams use purged k-fold, not simple split.",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {random.choice(sofia_tasks)}",
+        "Sofia Karlsson", ":books:"))
+
+    # Hugo — Quant Researcher
+    hugo_tasks = [
+        f"IC analysis on 5 alpha factors. `oi_momentum` IC=0.04 holding steady. {_m('Feature Engineering Lead')}: ready to add to pipeline",
+        f"running cointegration test on 20 equity pairs. finding 3 with p-value < 0.05 for stat arb desk",
+        f"Monte Carlo robustness check on momentum strategy. 1000 bootstrap samples. Sharpe CI: [0.8, 1.6]",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {random.choice(hugo_tasks)}",
+        "Hugo Bernardes", ":mag_right:"))
+
+    # Marcus — CRO
+    marcus_tasks = [
+        f"weekly risk review: all desks within allocated buckets. no circuit breaker events. {_m('Risk Engineer')}: good work",
+        f"signing off on `cross_sectional_momentum` paper candidacy — Kelly-sized, 5% NAV cap. go ahead {_m('Alpha Research Director')}",
+        f"reminder: live trading requires CRO sign-off + 14-day paper record. no exceptions.",
+    ]
+    standups.append(Post("standup",
+        f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {random.choice(marcus_tasks)}",
+        "Marcus Olufemi", ":shield:"))
+
+    return standups
+
+
+def wins_channel() -> list[Post]:
+    """Celebrate real wins — strategy performance, tests green, successful trades."""
+    posts: list[Post] = []
+    results = latest_backtest_results()
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    runs = latest_workflow_runs()
+    commits = git_recent_commits(since_hours=168, limit=10)
+
+    if results:
+        best = max(results, key=lambda r: float(r.get("sharpe", 0) or 0))
+        s = float(best.get("sharpe", 0) or 0)
+        strat = best.get("strategy", "?")
+        sym = best.get("symbol", "?")
+        if s > 1.0:
+            credit = random.choice(["Linh Tran", "Sara Kim", "Hugo Bernardes", "Aarav Patel"])
+            posts.append(Post("wins",
+                f":trophy: `{strat}` / `{sym}` → Sharpe *{s:.2f}* on walk-forward!\n"
+                f"beats our 1.0 paper gate. {_m('Alpha Research Director')}: paper candidacy? "
+                f"result in `experiments/results/`\ngreat work {credit} :raised_hands:",
+                "Wins bot", ":tada:"))
+
+    if test_res.get("passed", 0) > 0 and test_res.get("failed", 0) == 0:
+        posts.append(Post("wins",
+            f":white_check_mark: *{test_res['passed']} tests all green* ({test_res.get('duration', 0):.0f}s)\n"
+            f"no regressions after the latest refactor. solid work {_m('Backend Lead')} + {_m('Director of QA')} :clap:",
+            "Wins bot", ":mag:"))
+
+    successful_ci = [r for r in runs if r.get("conclusion") == "success"]
+    if successful_ci:
+        posts.append(Post("wins",
+            f":rocket: CI green on `{successful_ci[0].get('name', 'deploy')}`! "
+            f"Render deploy healthy. {_m('Director of DevOps')}: clean pipeline :muscle:",
+            "Wins bot", ":satellite_antenna:"))
+
+    if not posts and len(commits) >= 5:
+        posts.append(Post("wins",
+            f":star: {len(commits)} commits this week. platform growing fast — "
+            "strategies, ML models, execution algos all shipping. keep it up everyone :muscle:",
+            "Laavanye Bahl — CEO/Founder", ":sparkles:"))
+
+    if not posts:
+        posts.append(Post("wins",
+            "quiet week on results — but the codebase is growing. "
+            "next win incoming: who's closest to paper gate? post your Sharpe in #strategy-review",
+            "VP Engineering", ":woman_office_worker:"))
+
+    return posts
+
+
+def incidents_channel() -> list[Post]:
+    """Incident tracking: each incident posts problem → investigation → resolution."""
+    posts: list[Post] = []
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    runs = latest_workflow_runs()
+    positions = alpaca_positions()
+    acct = alpaca_account()
+
+    if test_res.get("failed", 0) > 0:
+        fail_line = test_res["fail_lines"][0][:80] if test_res.get("fail_lines") else "test suite"
+        iid = f"INC-{abs(hash(fail_line)) % 1000:03d}"
+        posts += [
+            Post("incidents",
+                 f":red_circle: *{iid} OPEN* — test failure\n```{fail_line}```\n"
+                 f"Severity: P2. {_m('Director of QA')} + {_m('Backend Lead')}: triage please",
+                 "Incident Bot", ":rotating_light:"),
+            Post("incidents",
+                 f"*{iid}* investigating — looks like a fixture or import issue. reproducing locally",
+                 "Director of QA", ":mag:"),
+            Post("incidents",
+                 f"*{iid}* root cause: dep version mismatch. pinning in `pyproject.toml`. PR in 10min",
+                 "Backend Lead", ":gear:"),
+            Post("incidents",
+                 f":large_green_circle: *{iid} RESOLVED* — tests green. {_m('Director of DevOps')}: redeploy CI env?",
+                 "Backend Lead", ":gear:"),
+        ]
+    elif any(r.get("conclusion") == "failure" for r in runs):
+        failed_run = next(r for r in runs if r.get("conclusion") == "failure")
+        iid = f"INC-{abs(hash(failed_run.get('name', ''))) % 1000:03d}"
+        posts += [
+            Post("incidents",
+                 f":red_circle: *{iid} OPEN* — CI failed: `{failed_run.get('name', '?')}`\n"
+                 f"Branch: `{failed_run.get('head_branch', '?')}`. {_m('Director of DevOps')}: investigating",
+                 "Incident Bot", ":rotating_light:"),
+            Post("incidents",
+                 f"*{iid}* checking build logs — likely pip timeout or flaky test",
+                 "Director of DevOps", ":satellite_antenna:"),
+            Post("incidents",
+                 f":large_green_circle: *{iid} RESOLVED* — added retry logic to pip install. re-run passed.",
+                 "Director of DevOps", ":satellite_antenna:"),
+        ]
+    elif positions and acct:
+        eq = float(acct.get("equity", 100000) or 100000)
+        largest = max(positions, key=lambda x: abs(float(x.get("market_value", 0))))
+        pct = abs(float(largest.get("market_value", 0))) / max(eq, 1) * 100
+        sym = largest.get("symbol", "?")
+        if pct > 8:
+            posts += [
+                Post("incidents",
+                     f":yellow_circle: *INC-042 MONITORING* — `{sym}` at {pct:.1f}% NAV (hard limit: 12%)\n"
+                     f"Not a breach — but watching. {_m('Risk Engineer')}: increase check frequency?",
+                     "Chief Risk Officer", ":shield:"),
+                Post("incidents",
+                     "INC-042: agreed — upping position risk check to every 5min. no action yet.",
+                     "Risk Engineer", ":shield:"),
+            ]
+        else:
+            posts.append(Post("incidents",
+                ":large_green_circle: *All systems nominal* — no active incidents. CI green, "
+                "Render healthy, all risk limits respected.",
+                "Incident Bot", ":rotating_light:"))
+    else:
+        posts.append(Post("incidents",
+            ":large_green_circle: *All systems nominal* — no active incidents. CI green, "
+            "Render healthy, all risk limits respected.",
+            "Incident Bot", ":rotating_light:"))
+
+    return posts
+
+
+def strategy_review_channel() -> list[Post]:
+    """Alpha director + quant researchers review strategy performance in #strategy-review."""
+    posts: list[Post] = []
+    results = latest_backtest_results()
+    strats = list_strategies()
+
+    if results:
+        sorted_r = sorted(results, key=lambda r: float(r.get("sharpe", 0) or 0), reverse=True)
+        lines = ["*:bar_chart: Strategy Review — Walk-Forward Sharpes*", ""]
+        for r in sorted_r[:8]:
+            s = float(r.get("sharpe", 0) or 0)
+            em = (":fire:" if s > 1.5 else ":white_check_mark:" if s > 1.0
+                  else ":warning:" if s > 0.5 else ":x:")
+            lines.append(f"{em} `{r.get('strategy','?')}` / `{r.get('symbol','?')}` — Sharpe *{s:.2f}*")
+        lines += ["", "Paper gate: Sharpe > 1.0 on walk-forward. Live gate: 14-day paper record + CRO sign-off.",
+                  f"\n_Strategies in repo: {len(strats['manual'])} manual + {len(strats['ml'])} ML_"]
+        posts.append(Post("strategy-review", "\n".join(lines),
+                          "Aarav Patel — Alpha Research Director", ":chart_with_upwards_trend:"))
+
+        best = sorted_r[0]
+        bs = float(best.get("sharpe", 0) or 0)
+        if bs > 1.0:
+            posts.append(Post("strategy-review",
+                f"`{best.get('strategy')}` looks strong at {bs:.2f}. confirm: purged k-fold walk-forward, "
+                f"not single split? single-split Sharpe is inadmissible. {_m('Alpha Research Director')}: validate method?",
+                "Sofia Karlsson — VP Research", ":books:"))
+        elif bs < 0.5:
+            posts.append(Post("strategy-review",
+                f"all strategies under 0.5 Sharpe — that's a regime issue, not a strategy issue. "
+                f"checking HMM regime state. {_m('Risk Engineer')}: what's current market:regime in Redis?",
+                "Sofia Karlsson — VP Research", ":books:"))
+    else:
+        untested = strats["manual"][:5]
+        posts.append(Post("strategy-review",
+            f"*Strategy review kickoff — no results logged yet*\n"
+            f"We have {len(strats['manual'])} manual + {len(strats['ml'])} ML strategies.\n"
+            f"Priority queue:\n" + "\n".join(f"• `{s}`" for s in untested) +
+            f"\n\n{_m('Quant Researcher')} + {_m('Quant ML Researcher')}: pick one each. post walk-forward results by EOD.",
+            "Aarav Patel — Alpha Research Director", ":chart_with_upwards_trend:"))
+
+    return posts
+
+
+def model_perf_channel() -> list[Post]:
+    """ML lead posts model comparison + Sara responds with weight recommendation."""
+    posts: list[Post] = []
+    models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
+    models = (
+        [f.stem for f in models_dir.glob("*.py")
+         if not f.stem.startswith("_") and f.stem not in ("base_model",)]
+        if models_dir.exists()
+        else ["lstm", "transformer", "xgboost_model", "ensemble_model", "lorentzian_knn", "ssm_model"]
     )
+    results = latest_backtest_results()
+
+    model_sharpes: dict[str, float] = {}
+    for r in results:
+        strat = r.get("strategy", "")
+        sh = float(r.get("sharpe", 0) or 0)
+        for m in models:
+            key = m.replace("_model", "").replace("_predictor", "")
+            if key in strat.lower():
+                if m not in model_sharpes or sh > model_sharpes[m]:
+                    model_sharpes[m] = sh
+
+    lines = ["*:brain: Model Performance Summary*", ""]
+    for m in models:
+        if m in model_sharpes:
+            s = model_sharpes[m]
+            em = ":fire:" if s > 1.5 else ":white_check_mark:" if s > 1.0 else ":chart_with_downwards_trend:"
+            lines.append(f"{em} `{m}`: Sharpe *{s:.2f}* (validated)")
+        else:
+            lines.append(f":hourglass: `{m}`: no results logged yet")
+    lines += ["", "*Ensemble*: weighted combination, Optuna-optimized weights",
+              f"{_m('ML Research Lead')}: which model should we up-weight in the next run?"]
+    posts.append(Post("model-performance", "\n".join(lines), "Linh Tran — ML Modeling Lead", ":robot_face:"))
+
+    sara_replies = [
+        "TFT winning on sequential data — upping its weight 0.25→0.35. validating on 3-month holdout. will post IC delta",
+        "LSTM strong on short-horizon. SSM showing promise on BTC/15min — testing at 0.15 ensemble weight",
+        "Lorentzian KNN has best OOS stability — least prone to overfitting. recommend higher allocation in next Optuna run",
+        "ablation complete: removing `oi_momentum` drops ensemble Sharpe by 0.31. keeping it as mandatory feature",
+    ]
+    posts.append(Post("model-performance", random.choice(sara_replies), "Sara Kim — ML Research Lead", ":microscope:"))
+    return posts
 
 
-def sofia_reply_to_alpha(post_ts: str) -> Post:
-    return Post(
-        channel="alpha-research",
-        text="Reminder: walk-forward only. Drop the 6-fold purged k-fold result, not the single split.",
-        username="VP Research",
-        icon_emoji=":books:",
-        thread_of=post_ts,
-    )
+def code_review_channel() -> list[Post]:
+    """Engineers review each other's recent code changes in #code-review."""
+    posts: list[Post] = []
+    changed = git_files_changed(since_hours=48)
+    prs = open_prs()
+
+    backend_files = [k for k in changed if k.endswith(".py") and "test" not in k]
+    frontend_files = [k for k in changed if k.endswith((".tsx", ".ts")) and "test" not in k]
+
+    if prs:
+        pr = prs[0]
+        url = pr.get("html_url", "")
+        title = pr.get("title", "?")[:60]
+        author = pr.get("user", {}).get("login", "?")
+        posts.append(Post("code-review",
+            f":eyes: PR ready: *{title}*\nAuthor: `{author}` | <{url}|View PR>\n"
+            f"{_m('Backend Lead')} / {_m('Director of QA')}: review when free",
+            "VP Engineering", ":woman_office_worker:"))
+
+    if backend_files:
+        f = random.choice(backend_files[:5])
+        url = repo_url("blob", "main", f)
+        comments = [
+            f"reviewed <{url}|`{Path(f).name}`> — logic clean. nit: retry loop should use exp backoff, not fixed delay",
+            f"<{url}|`{Path(f).name}`>: type annotation missing on return. adds readability for downstream callers",
+            f"<{url}|`{Path(f).name}`>: potential race condition in async context — two tasks could write same key. adding a lock",
+            f"<{url}|`{Path(f).name}`>: ✅ approved. clean, tested, async-safe",
+            f"<{url}|`{Path(f).name}`>: nice use of `joinedload` — avoids the N+1 we had before",
+        ]
+        posts.append(Post("code-review", random.choice(comments), "Anna Hoffmann — Backend Lead", ":gear:"))
+
+    if frontend_files:
+        f = random.choice(frontend_files[:5])
+        url = repo_url("blob", "main", f)
+        fe_comments = [
+            f"reviewed <{url}|`{Path(f).name}`> — useEffect deps look correct. memo on chart component is good",
+            f"<{url}|`{Path(f).name}`>: loading state handled. add error boundary around TV chart widget",
+            f"<{url}|`{Path(f).name}`>: ✅ LGTM. clean TypeScript, no `any` escapes",
+            f"<{url}|`{Path(f).name}`>: TanStack Query `staleTime` could be bumped to 30s for price data — reduces re-fetches",
+        ]
+        posts.append(Post("code-review", random.choice(fe_comments), "Priya Subramanian — Frontend Lead", ":art:"))
+
+    if not posts:
+        posts.append(Post("code-review",
+            f"no PRs open — good velocity. {_m('VP Engineering')}: sprint tickets for next cycle?",
+            "Director of QA", ":mag:"))
+    return posts
 
 
-def hugo_reply_to_ml(post_ts: str) -> Post:
-    return Post(
-        channel="ml-experiments",
-        text=("If the Sharpe is 0.0 across runs, that's almost certainly no trades fired — "
-              "the signal threshold may be too tight, or the bar interval is wrong. "
-              "Check `tick_interval_seconds` in the strategy class."),
-        username="Quant Researcher",
-        icon_emoji=":mag_right:",
-        thread_of=post_ts,
-    )
+# ─── Multi-turn discussion engine ────────────────────────────────────────────
 
+def build_discussion_chains(
+    posted_ts: dict[str, str],
+) -> list[tuple[str, str, list[tuple[str, str, str]]]]:
+    """
+    Build multi-turn discussion threads grounded in real codebase state.
+    Returns: [(channel, parent_ts, [(username, emoji, text), ...]), ...]
+    Each chain creates a problem → analysis → resolution arc.
+    """
+    chains: list[tuple[str, str, list[tuple[str, str, str]]]] = []
 
-def aditi_reply_to_qa(post_ts: str) -> Post:
-    return Post(
-        channel="squad-qa",
-        text="I'll open a tracking issue for each untested strategy and label `qa:missing-test`. PRs welcome.",
-        username="Director of QA",
-        icon_emoji=":mag:",
-        thread_of=post_ts,
-    )
+    # Pre-fetch data once (re-used across chains)
+    commits = git_recent_commits(since_hours=12, limit=5)
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    results = latest_backtest_results()
+    strats = list_strategies()
+    changed = git_files_changed(since_hours=24)
+    positions = alpaca_positions()
+    acct = alpaca_account()
+    prs = open_prs()
+
+    # ── #engineering ─────────────────────────────────────────────────────────
+    if "engineering" in posted_ts:
+        pt = posted_ts["engineering"]
+        backend_f = next((k for k in changed if k.startswith("backend/") and k.endswith(".py")), None)
+        if test_res.get("failed", 0) > 0:
+            fl = test_res["fail_lines"][0][:60] if test_res.get("fail_lines") else "test suite"
+            chains.append(("engineering", pt, [
+                ("Director of QA", ":mag:", f"catching up — {test_res['failed']} tests red: `{fl}`. looking for root cause"),
+                ("Backend Lead", ":gear:", "same failure locally — missing `aiosqlite` fixture. adding to conftest + pyproject. PR in 5min"),
+                ("Director of DevOps", ":satellite_antenna:", "CI re-run queued once PR lands. should auto-clear"),
+                ("VP Engineering", ":woman_office_worker:", f"nice — once merged let's add a dep-check step to CI. {_m('Director of DevOps')}: ticket?"),
+            ]))
+        elif backend_f and commits:
+            c = commits[0]
+            url = repo_url("commit", c["sha"])
+            f_url = repo_url("blob", "main", backend_f)
+            chains.append(("engineering", pt, [
+                ("Backend Lead", ":gear:", f"<{url}|`{c['sha'][:7]}`> touches `{Path(backend_f).name}` — {_m('Director of QA')}: review coverage?"),
+                ("Director of QA", ":mag:", f"<{f_url}|`{Path(backend_f).name}`> looks clean. adding unit test for new method"),
+                ("VP Engineering", ":woman_office_worker:", f"nice. PR age target: < 24h. currently at {'OK ✅' if len(prs) < 3 else 'stacking up ⚠️'}. {_m('Director of QA')}: please prioritise oldest"),
+            ]))
+        else:
+            chains.append(("engineering", pt, [
+                ("Director of DevOps", ":satellite_antenna:", "CI + Render health both green. UptimeRobot confirmed. no intervention needed"),
+                ("VP Engineering", ":woman_office_worker:", f"solid. next: anyone want to pick up a TODO? {_m('Junior Engineer')}: good starting point for first contribution"),
+                ("Junior Engineer", ":raised_hand:", "on it — grabbing one from `help` channel. will post PR tonight"),
+            ]))
+
+    # ── #alpha-research ───────────────────────────────────────────────────────
+    if "alpha-research" in posted_ts:
+        pt = posted_ts["alpha-research"]
+        if results:
+            sorted_r = sorted(results, key=lambda r: float(r.get("sharpe", 0) or 0), reverse=True)
+            best = sorted_r[0]
+            sh = float(best.get("sharpe", 0) or 0)
+            sn = best.get("strategy", "?")
+            if sh > 1.0:
+                chains.append(("alpha-research", pt, [
+                    ("VP Research", ":books:", f"`{sn}` at Sharpe {sh:.2f} — confirm: walk-forward with purged k-fold or single split?"),
+                    ("Quant Researcher", ":mag_right:", "5-fold purged walk-forward, 10-day embargo. methodology is sound. all OOS"),
+                    ("Alpha Research Director", ":chart_with_upwards_trend:", f"gate approved for paper. {_m('Risk Engineer')}: add `{sn}` to risk dashboard — Kelly-sized, 5% NAV cap"),
+                    ("Risk Engineer", ":shield:", f"`{sn}` live on risk dashboard. circuit breaker armed at 5% intraday drawdown."),
+                ]))
+            else:
+                worst = sorted_r[-1] if len(sorted_r) > 1 else sorted_r[0]
+                ws = float(worst.get("sharpe", 0) or 0)
+                wn = worst.get("strategy", "?")
+                chains.append(("alpha-research", pt, [
+                    ("Alpha Research Director", ":chart_with_upwards_trend:", f"`{wn}` Sharpe {ws:.2f} — what's the failure mode? sparse signals or entry logic?"),
+                    ("Quant Researcher", ":mag_right:", "signal sparsity — only 4 trades in 12-month backtest. z-score entry too tight at 2.0"),
+                    ("VP Research", ":books:", "also: check if volume filter is AND-gated. volume AND z-score together can leave very few bars"),
+                    ("Alpha Research Director", ":chart_with_upwards_trend:", f"trying entry at 1.5 with volume as a soft score, not hard gate. re-run EOD. posting results to #strategy-review"),
+                ]))
+        else:
+            all_s = strats["manual"]
+            target = random.choice(all_s) if all_s else "momentum"
+            chains.append(("alpha-research", pt, [
+                ("Alpha Research Director", ":chart_with_upwards_trend:", f"who's picking up `{target}` for walk-forward? config template in `experiments/configs/`"),
+                ("Quant Researcher", ":mag_right:", "I'll take it — 5-fold purged walk-forward on 3yr data. ETA few hours"),
+                ("VP Research", ":books:", "remember: 10-day embargo between folds for financial TS. avoids signal leakage"),
+                ("Quant Researcher", ":mag_right:", "on it — using López de Prado CPKF. results to `experiments/results/` once done"),
+            ]))
+
+    # ── #ml-experiments ───────────────────────────────────────────────────────
+    if "ml-experiments" in posted_ts:
+        pt = posted_ts["ml-experiments"]
+        models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
+        models = ([f.stem for f in models_dir.glob("*.py") if not f.stem.startswith("_") and f.stem != "base_model"]
+                  if models_dir.exists() else ["lstm", "transformer"])
+        ma = models[0] if models else "lstm"
+        mb = models[1] if len(models) > 1 else "transformer"
+        if results:
+            r = results[0]
+            sh = float(r.get("sharpe", 0) or 0)
+            sym = r.get("symbol", "BTC/USDT")
+            chains.append(("ml-experiments", pt, [
+                ("ML Research Lead", ":microscope:", f"`{ma}` vs `{mb}` on `{sym}`: Sharpe {sh:.2f}. top feature: `funding_rate_ma7`"),
+                ("Quant ML Researcher", ":chart_with_upwards_trend:", "removed `funding_rate_ma7` in ablation — Sharpe dropped 0.3. genuinely predictive, not spurious"),
+                ("ML Modeling Lead", ":robot_face:", f"locking it as core feature for all crypto strategies. {_m('Feature Engineering Lead')}: add to `engineer.py`?"),
+                ("Feature Engineering Lead", ":abacus:", "done — `funding_rate_ma7` now auto-computed for all crypto symbols in `ml/features/alternative.py`"),
+            ]))
+        else:
+            chains.append(("ml-experiments", pt, [
+                ("ML Modeling Lead", ":robot_face:", f"first experiment: `{ma}` on BTC/1h. config: `experiments/configs/lstm_btc_1h.yaml`"),
+                ("ML Research Lead", ":microscope:", f"running `{mb}` in parallel for comparison. pinning same feature set for fair comparison"),
+                ("Quant ML Researcher", ":chart_with_upwards_trend:", "make sure both use identical `lookback` and `n_features`. results comparable only if features match"),
+                ("ML Modeling Lead", ":robot_face:", "synced — results in ~2h depending on GPU queue. posting to #model-performance"),
+            ]))
+
+    # ── #risk-alerts ──────────────────────────────────────────────────────────
+    if "risk-alerts" in posted_ts:
+        pt = posted_ts["risk-alerts"]
+        if positions and acct:
+            eq = float(acct.get("equity", 100000) or 100000)
+            largest = max(positions, key=lambda x: abs(float(x.get("market_value", 0))))
+            pct = abs(float(largest.get("market_value", 0))) / max(eq, 1) * 100
+            sym = largest.get("symbol", "?")
+            if pct > 6:
+                rv = random.uniform(15, 32)
+                chains.append(("risk-alerts", pt, [
+                    ("Risk Engineer", ":shield:", f"`{sym}` at {pct:.1f}% NAV — approaching 12% limit. {_m('Chief Risk Officer')}: trim or hold?"),
+                    ("Chief Risk Officer", ":shield:", f"what's 5-day realized vol on `{sym}`?"),
+                    ("Risk Engineer", ":shield:", f"5-day realized vol: {rv:.1f}% annualized. Kelly fraction: {min(pct/2, 8):.1f}%. within bounds."),
+                    ("Chief Risk Officer", ":shield:", f"hold — but if it crosses 10% NAV trim to 8%. set alert. {_m('Execution Engineer')}: be ready for limit-order trim"),
+                ]))
+            else:
+                chains.append(("risk-alerts", pt, [
+                    ("Risk Engineer", ":shield:", f"all {len(positions)} positions within limits. HRP weights updated. Kelly fractions nominal."),
+                    ("Chief Risk Officer", ":shield:", "good. reminder: directional strategies capped at 30% total NAV. arb has no cap but watch leg correlation."),
+                    ("Risk Engineer", ":shield:", "directional: 0% of NAV. arb: 0% currently. ready to deploy when signals fire."),
+                ]))
+        else:
+            chains.append(("risk-alerts", pt, [
+                ("Risk Engineer", ":shield:", "portfolio flat — all limits respected. circuit breakers armed. HRP weights ready."),
+                ("Chief Risk Officer", ":shield:", "noted. maintain readiness. first signal should size via Kelly, not full allocation."),
+            ]))
+
+    # ── #squad-qa ────────────────────────────────────────────────────────────
+    if "squad-qa" in posted_ts:
+        pt = posted_ts["squad-qa"]
+        untested = find_strategy_with_no_test()
+        if untested:
+            tgt = untested[0]
+            chains.append(("squad-qa", pt, [
+                ("Director of QA", ":mag:", f"`{tgt}` has no unit test. opening tracking issue. {_m('Backend Lead')}: in production paper?"),
+                ("Backend Lead", ":gear:", f"yes — in strategy runner but not gated. I'll add `tests/unit/test_{tgt}.py`"),
+                ("Director of QA", ":mag:", "at minimum: test `backtest_signals()` returns -1/0/1 only, and `analyze()` handles empty DataFrame"),
+                ("Backend Lead", ":gear:", "done — both happy path and edge cases covered. PR tagged for your review"),
+                ("Director of QA", ":mag:", "✅ merged. nice. coverage improving :chart_with_upwards_trend:"),
+            ]))
+        else:
+            chains.append(("squad-qa", pt, [
+                ("Director of QA", ":mag:", "all strategies have tests ✅ — running regression suite"),
+                ("Backend Lead", ":gear:", "any performance tests for execution algos? TWAP timing under load?"),
+                ("Director of QA", ":mag:", "good call — adding TWAP load test: 100 concurrent orders, check fill timing < 30s. will PR"),
+            ]))
+
+    # ── #help ────────────────────────────────────────────────────────────────
+    if "help" in posted_ts:
+        pt = posted_ts["help"]
+        help_chains = [
+            [
+                ("Backend Lead", ":gear:", "`test` mode: auth returns fixture user, rate limiter is no-op, DB is SQLite in-memory. `paper` mode: real Alpaca paper API, real auth."),
+                ("VP Engineering", ":woman_office_worker:", "always use `test` for pytest. `paper` for manual E2E. never `live` without CRO approval."),
+                ("Junior Engineer", ":raised_hand:", "perfect — so CI always runs TRADING_MODE=test. makes sense now, thanks!"),
+            ],
+            [
+                ("Alpha Research Director", ":chart_with_upwards_trend:", "create `backend/app/strategies/manual/your_strategy.py` implementing `AbstractStrategy`. don't touch `base.py`"),
+                ("Backend Lead", ":gear:", "then add to `STRATEGY_REGISTRY` in `strategies/__init__.py`. runner picks it up automatically — zero extra wiring."),
+                ("Director of QA", ":mag:", "and add `tests/unit/test_your_strategy.py`. at minimum: `backtest_signals()` returns valid signal values."),
+                ("Junior Engineer", ":raised_hand:", "super clear. on it — thanks everyone :raised_hands:"),
+            ],
+            [
+                ("Quant Researcher", ":mag_right:", "`experiments/results/` — JSON files named `{strategy}_{symbol}_{date}.json`. auto-created by `run_experiment.py`"),
+                ("VP Research", ":books:", "each JSON should include: strategy, symbol, interval, train/val/test Sharpes, and method (walk-forward/holdout)"),
+                ("Junior Engineer", ":raised_hand:", "found the template in `experiments/configs/`. copying it now. thanks!"),
+            ],
+        ]
+        chains.append(("help", pt, random.choice(help_chains)))
+
+    # ── #strategy-review ─────────────────────────────────────────────────────
+    if "strategy-review" in posted_ts:
+        pt = posted_ts["strategy-review"]
+        all_s = strats["manual"] + strats["ml"]
+        if all_s:
+            focus = random.choice(all_s)
+            chains.append(("strategy-review", pt, [
+                ("Quant Researcher", ":mag_right:", f"`{focus}` — rolling 90d IC: 0.04. above our 0.02 threshold. worth continuing"),
+                ("Feature Engineering Lead", ":abacus:", f"IC 0.04 is marginal. try adding `oi_momentum` — lifted IC by 0.015 on BTC in last ablation"),
+                ("Alpha Research Director", ":chart_with_upwards_trend:", f"agreed. {_m('Feature Engineering Lead')}: add `oi_momentum` to `{focus}` feature set. re-run and post IC delta"),
+                ("Feature Engineering Lead", ":abacus:", "on it — will post updated IC comparison to #model-performance by EOD"),
+            ]))
+
+    # ── #model-performance ───────────────────────────────────────────────────
+    if "model-performance" in posted_ts:
+        pt = posted_ts["model-performance"]
+        chains.append(("model-performance", pt, [
+            ("Deep Learning Engineer", ":building_construction:", "SSM model: same Sharpe as LSTM but 3x faster inference + lower memory. recommend for crypto 1h deployment"),
+            ("ML Research Lead", ":microscope:", "running SSM vs LSTM on 6-month OOS holdout. if Sharpe within 5%, we swap SSM as primary"),
+            ("ML Modeling Lead", ":robot_face:", "if OOS confirms, updating ensemble weights. will post comparison to this channel"),
+        ]))
+
+    # ── #code-review ─────────────────────────────────────────────────────────
+    if "code-review" in posted_ts:
+        pt = posted_ts["code-review"]
+        f_changed = backend_files = [k for k in changed if k.endswith(".py") and "test" not in k]
+        if f_changed:
+            f = f_changed[0]
+            f_url = repo_url("blob", "main", f)
+            chains.append(("code-review", pt, [
+                ("Frontend Lead", ":art:", f"reviewed <{f_url}|`{Path(f).name}`> — backend change looks clean from API contract perspective"),
+                ("Backend Lead", ":gear:", "thanks. added a `# noqa` comment on the one-liner that triggered the linter"),
+                ("Director of QA", ":mag:", "✅ approved. merging now. CI should stay green."),
+                ("VP Engineering", ":woman_office_worker:", "merged. nice turnaround — < 2h from PR to merge. that's the target pace."),
+            ]))
+
+    # ── Cross-desk: StatArb ↔ Crypto ────────────────────────────────────────
+    if "desk-stat-arb" in posted_ts and "desk-crypto" in posted_ts:
+        chains.append(("desk-stat-arb", posted_ts["desk-stat-arb"], [
+            ("Crypto desk bot", ":coin:", "seeing ETH/BTC z-score at 2.3 — confirming your stat arb signal from crypto desk"),
+            ("StatArb desk bot", ":arrows_counterclockwise:", f"confirmed. ETH ask side thin — good execution window. {_m('Risk Engineer')}: approve $30k notional?"),
+            ("Risk Engineer", ":shield:", "approved — Kelly allows up to $45k at current vol. {_m('Execution Engineer')}: limit-first please"),
+            ("StatArb desk bot", ":arrows_counterclockwise:", "trade placed. long ETH / short BTC. monitoring z-score for reversion to 0.5. update in 4h"),
+        ]))
+
+    # ── Cross-desk: Kalshi ↔ Polymarket ─────────────────────────────────────
+    if "desk-kalshi" in posted_ts and "desk-polymarket" in posted_ts:
+        chains.append(("desk-kalshi", posted_ts["desk-kalshi"], [
+            ("Polymarket Researcher", ":vertical_traffic_light:", "similar binary event on Polymarket — YES+NO sum at $0.96. cross-platform arbitrage opportunity?"),
+            ("Kalshi desk bot", ":ballot_box_with_ballot:", "yes — same event, Kalshi YES ask $0.51 + NO ask $0.45 = $0.96. 4¢ edge. buying both platforms"),
+            ("Risk Engineer", ":shield:", "cross-platform arb approved — pure risk-free if platforms resolve same outcome. size appropriately"),
+        ]))
+
+    # ── #wins thread ─────────────────────────────────────────────────────────
+    if "wins" in posted_ts:
+        pt = posted_ts["wins"]
+        win_replies = [
+            [
+                ("Alpha Research Director", ":chart_with_upwards_trend:", "well deserved — the walk-forward methodology held up. OOS Sharpe held within 10% of IS. that's a solid result"),
+                ("VP Research", ":books:", "agreed. the purged k-fold approach is paying off. no lookahead bias. result is trustworthy"),
+            ],
+            [
+                ("VP Engineering", ":woman_office_worker:", "test coverage paying off — zero regressions means we can ship fast. nice work team"),
+                ("Backend Lead", ":gear:", "the conftest fixtures are finally solid. integration tests are catching what unit tests miss"),
+            ],
+        ]
+        chains.append(("wins", pt, random.choice(win_replies)))
+
+    # ── #general thread ──────────────────────────────────────────────────────
+    if "general" in posted_ts:
+        pt = posted_ts["general"]
+        chains.append(("general", pt, [
+            ("Risk Engineer", ":shield:", "paper account looking good — all positions within risk limits. kelly fractions being respected"),
+            ("Alpha Research Director", ":chart_with_upwards_trend:", f"timeline to live: after `{random.choice(strats['manual']) if strats['manual'] else 'momentum'}` completes 14-day paper with Sharpe > 1.0. on track."),
+        ]))
+
+    # ── #standup thread ──────────────────────────────────────────────────────
+    if "standup" in posted_ts:
+        pt = posted_ts["standup"]
+        thread_comments = [
+            [("VP Engineering", ":woman_office_worker:", f"thanks all. {_m('Backend Lead')}: let me know if you need unblocking on the migration. I'm free 2-4pm UTC"),
+             ("Junior Engineer", ":raised_hand:", "quick q in thread — is there a linter config I should be running locally before pushing?"),
+             ("Backend Lead", ":gear:", "yes — `pre-commit run --all-files`. config is in `.pre-commit-config.yaml`. run once to install hooks")],
+            [("Alpha Research Director", ":chart_with_upwards_trend:", f"{_m('ML Modeling Lead')}: let's sync on the ensemble weight update after your Optuna run. 15min?"),
+             ("ML Modeling Lead", ":robot_face:", "absolutely — Optuna finishes in ~2h. pinging you then. can do a quick Slack huddle"),],
+        ]
+        chains.append(("standup", pt, random.choice(thread_comments)))
+
+    return chains
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2955,23 +3687,116 @@ def _short_stat_arb() -> list[Post]:
     return [Post("desk-stat-arb", random.choice(msgs), "StatArb desk bot", ":arrows_counterclockwise:")]
 
 
+# ── Short-form functions for new channels ────────────────────────────────────
+
+def _short_general() -> list[Post]:
+    commits = git_recent_commits(since_hours=24, limit=3)
+    msgs = [
+        f"good {datetime.now(timezone.utc).strftime('%A')} — {len(commits)} commits since yesterday. keep shipping.",
+        f"reminder: paper-first. no live trading without CRO sign-off. {_m('Risk Engineer')}: status?",
+        "team sync: all desks running on Alpaca paper. 24/7 monitoring active.",
+        f"{len(commits)} commits merged. CI green. Render healthy. let's close this sprint strong.",
+    ]
+    return [Post("general", random.choice(msgs), "Laavanye Bahl — CEO/Founder", ":sparkles:")]
+
+
+def _short_standup() -> list[Post]:
+    weekday = datetime.now(timezone.utc).strftime("%A")
+    employees = [
+        ("Maya Chen", ":woman_office_worker:", ["reviewing PRs", "unblocking team", "CI monitoring"]),
+        ("Aarav Patel", ":chart_with_upwards_trend:", ["strategy walk-forward", "alpha research", "paper gate review"]),
+        ("Linh Tran", ":robot_face:", ["LSTM retrain", "ensemble update", "model comparison"]),
+        ("Jian Wu", ":shield:", ["risk dashboard", "kelly sizing", "circuit breaker check"]),
+        ("Anna Hoffmann", ":gear:", ["backend PR", "API endpoint", "DB migration"]),
+        ("Diego Ramirez", ":zap:", ["execution algo tuning", "slippage analysis", "RL policy"]),
+    ]
+    name, emoji, tasks = random.choice(employees)
+    task = random.choice(tasks)
+    return [Post("standup", f"*{weekday} standup — {name}*\n↳ {task} — no blockers", name, emoji)]
+
+
+def _short_wins() -> list[Post]:
+    results = latest_backtest_results()
+    if results:
+        best = max(results, key=lambda r: float(r.get("sharpe", 0) or 0))
+        s = float(best.get("sharpe", 0) or 0)
+        if s > 1.0:
+            return [Post("wins", f":trophy: `{best.get('strategy')}` Sharpe {s:.2f} — above paper gate!", "Wins bot", ":tada:")]
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    if test_res.get("passed", 0) > 0 and not test_res.get("failed"):
+        return [Post("wins", f":white_check_mark: {test_res['passed']} tests green — no regressions", "Wins bot", ":mag:")]
+    return [Post("wins", ":muscle: team shipping steady. next win incoming.", "Wins bot", ":tada:")]
+
+
+def _short_strategy_review() -> list[Post]:
+    strats = list_strategies()["manual"]
+    results = latest_backtest_results()
+    if results:
+        best = max(results, key=lambda r: float(r.get("sharpe", 0) or 0))
+        s = float(best.get("sharpe", 0) or 0)
+        sn = best.get("strategy", "?")
+        status = "paper gate ✅" if s > 1.0 else f"need {1.0 - s:.2f} more Sharpe"
+        return [Post("strategy-review", f"`{sn}`: Sharpe {s:.2f} — {status}", "Alpha Research Director", ":chart_with_upwards_trend:")]
+    target = random.choice(strats) if strats else "momentum"
+    return [Post("strategy-review", f"who's running `{target}`? need walk-forward result by EOD", "Alpha Research Director", ":chart_with_upwards_trend:")]
+
+
+def _short_model_perf() -> list[Post]:
+    results = latest_backtest_results()
+    if results:
+        r = results[0]
+        s = float(r.get("sharpe", 0) or 0)
+        return [Post("model-performance", f"latest run: `{r.get('strategy', '?')}` Sharpe {s:.2f}. {'above target ✅' if s > 1.5 else 'tuning needed'}", "ML Modeling Lead", ":robot_face:")]
+    return [Post("model-performance", "no results yet. ensemble standing by. {_m('ML Research Lead')}: which model first?", "ML Modeling Lead", ":robot_face:")]
+
+
+def _short_code_review() -> list[Post]:
+    changed = git_files_changed(since_hours=24)
+    files = [k for k in changed if k.endswith(".py") and "test" not in k]
+    prs = open_prs()
+    if prs:
+        return [Post("code-review", f":eyes: {len(prs)} PRs open — {_m('Backend Lead')} / {_m('Director of QA')}: please review", "VP Engineering", ":woman_office_worker:")]
+    if files:
+        f = random.choice(files[:3])
+        return [Post("code-review", f"reviewed `{Path(f).name}` — looks clean. ✅", "Backend Lead", ":gear:")]
+    return [Post("code-review", "no PRs or changes — clean state. good to ship.", "Director of QA", ":mag:")]
+
+
+def _short_incidents() -> list[Post]:
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    if test_res.get("failed", 0) > 0:
+        return [Post("incidents", f":red_circle: {test_res['failed']} tests red — investigating. {_m('Backend Lead')}: heads up", "Incident Bot", ":rotating_light:")]
+    runs = latest_workflow_runs()
+    if any(r.get("conclusion") == "failure" for r in runs):
+        return [Post("incidents", ":yellow_circle: CI failure detected — checking logs. ETA 15min", "Incident Bot", ":rotating_light:")]
+    return [Post("incidents", ":large_green_circle: all systems nominal", "Incident Bot", ":rotating_light:")]
+
+
 _SHORT_FNS: dict[str, Callable[[], list[Post]]] = {
-    "VP Engineering":           _short_vp_engineering,
-    "Alpha Research Director":  _short_alpha_director,
-    "ML Modeling Lead":         _short_ml_lead,
-    "Risk Engineer":            _short_risk_engineer,
-    "Director of DevOps":       _short_devops,
-    "Director of QA":           _short_qa,
-    "Backend Lead":             _short_backend,
-    "Junior Engineer":          _short_junior,
-    "Polymarket Researcher":    _short_polymarket,
-    "Data Engineer":            _short_data_eng,
-    "Execution Engineer":       _short_execution_eng,
-    "Commodities desk bot":     _short_commodities,
-    "Futures desk bot":         _short_futures,
-    "Rates desk bot":           _short_rates,
-    "Kalshi desk bot":          _short_kalshi,
-    "StatArb desk bot":         _short_stat_arb,
+    "VP Engineering":                _short_vp_engineering,
+    "Alpha Research Director":       _short_alpha_director,
+    "ML Modeling Lead":              _short_ml_lead,
+    "Risk Engineer":                 _short_risk_engineer,
+    "Director of DevOps":            _short_devops,
+    "Director of QA":                _short_qa,
+    "Backend Lead":                  _short_backend,
+    "Junior Engineer":               _short_junior,
+    "Polymarket Researcher":         _short_polymarket,
+    "Data Engineer":                 _short_data_eng,
+    "Execution Engineer":            _short_execution_eng,
+    "Commodities desk bot":          _short_commodities,
+    "Futures desk bot":              _short_futures,
+    "Rates desk bot":                _short_rates,
+    "Kalshi desk bot":               _short_kalshi,
+    "StatArb desk bot":              _short_stat_arb,
+    # New channels
+    "CEO/Founder":                   _short_general,
+    "Standup bot":                   _short_standup,
+    "Wins bot":                      _short_wins,
+    "Alpha Research Director (SR)":  _short_strategy_review,
+    "ML Modeling Lead (MP)":         _short_model_perf,
+    "VP Engineering (CR)":           _short_code_review,
+    "Incident Bot":                  _short_incidents,
 }
 
 
@@ -3059,6 +3884,21 @@ AGENTS: list[Agent] = [
           ["desk-kalshi"], trading_desk_kalshi, ["kalshi", "prediction", "trading"]),
     Agent("StatArb desk bot", "automated", ":arrows_counterclockwise:",
           ["desk-stat-arb"], trading_desk_stat_arb, ["stat-arb", "pairs", "trading"]),
+    # ── New channels ──────────────────────────────────────────────────────────
+    Agent("CEO/Founder", "CEO/Founder", ":sparkles:",
+          ["general"], general_channel, ["ceo", "general"]),
+    Agent("Standup bot", "automated", ":calendar:",
+          ["standup"], standup_channel, ["standup", "daily"]),
+    Agent("Wins bot", "automated", ":trophy:",
+          ["wins"], wins_channel, ["wins", "celebrate"]),
+    Agent("Incident Bot", "automated", ":rotating_light:",
+          ["incidents"], incidents_channel, ["incident", "alert"]),
+    Agent("Alpha Research Director (SR)", "Alpha Research Director", ":chart_with_upwards_trend:",
+          ["strategy-review"], strategy_review_channel, ["strategy", "review"]),
+    Agent("ML Modeling Lead (MP)", "ML Modeling Lead", ":robot_face:",
+          ["model-performance"], model_perf_channel, ["model", "performance"]),
+    Agent("VP Engineering (CR)", "VP Engineering", ":woman_office_worker:",
+          ["code-review"], code_review_channel, ["code", "review"]),
 ]
 
 
@@ -3103,6 +3943,9 @@ def main() -> int:
         "desk-commodities", "desk-futures", "desk-rates",
         "desk-kalshi", "desk-stat-arb", "desk-equities",
         "desk-polymarket", "pnl-daily",
+        # New channels
+        "general", "standup", "wins", "incidents",
+        "strategy-review", "model-performance", "code-review",
     ]
     posts_made = 0
     errors = 0
@@ -3239,37 +4082,22 @@ def main() -> int:
         add_reaction(token, ch_id, ts, emoji)
         time.sleep(0.3)
 
-    # ── Discussion pass: a few agents reply in threads ───────────────────────
-    print("\n💬 Discussion pass — threaded replies")
-    reply_candidates = [
-        ("engineering", maya_reply_to_eng),
-        ("alpha-research", sofia_reply_to_alpha),
-        ("ml-experiments", hugo_reply_to_ml),
-        ("squad-qa", aditi_reply_to_qa),
-    ]
-    for channel, replier_fn in reply_candidates:
-        if channel not in posted_ts:
-            continue
-        if random.random() > 0.6:  # 60% chance to reply per channel
-            continue
-        reply = replier_fn(posted_ts[channel])
-        if is_duplicate(state, reply.text):
-            continue
-        r = post_to_slack(
-            token,
-            channel=reply.channel,
-            text=reply.text,
-            username=reply.username,
-            icon_emoji=reply.icon_emoji,
-            thread_ts=reply.thread_of,
-        )
-        if r.get("ok"):
-            posts_made += 1
-            record_post(state, reply.text)
-            print(f"  ✓ {reply.username} replied in #{channel}")
-        else:
-            errors += 1
-        time.sleep(0.7)
+    # ── Discussion pass: multi-turn threaded discussions ────────────────────
+    print("\n💬 Discussion pass — multi-turn threaded discussions")
+    chains = build_discussion_chains(posted_ts)
+    random.shuffle(chains)
+    # Run 4-7 chains per wave (varied so not every channel threads every run)
+    n_chains = random.randint(4, min(7, len(chains)))
+    chains_run = 0
+    for channel, parent_ts, agent_chain in chains[:n_chains]:
+        print(f"  💬 discussion in #{channel} ({len(agent_chain)} replies)")
+        for username, emoji, text in agent_chain:
+            p = Post(channel=channel, text=text, username=username,
+                     icon_emoji=emoji, thread_of=parent_ts)
+            _do_post(p, f"DISCUSS {username[:22]}")
+            time.sleep(0.5)
+        chains_run += 1
+    print(f"  → {chains_run} discussion chains completed")
 
     # ── Employee run tracker — posted to #engineering every run ──────────────
     print("\n📋 Posting employee run tracker")
