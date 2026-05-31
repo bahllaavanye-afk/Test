@@ -242,6 +242,49 @@ def classify(log: str) -> list[str]:
     return out
 
 
+# Failures that are NOT code bugs — re-running the same commit will often pass.
+TRANSIENT = re.compile(
+    r"could not connect|Connection (refused|reset|aborted)|getaddrinfo|"
+    r"Temporary failure in name resolution|timed out|TimeoutError|"
+    r"read timed out|502 Bad Gateway|503 Service|504 Gateway|"
+    r"429|rate.?limit|Too Many Requests|"
+    r"The runner has received a shutdown signal|"
+    r"Failed to download action|ECONNRESET|EAI_AGAIN",
+    re.IGNORECASE,
+)
+
+
+def is_transient(log: str) -> bool:
+    """True if the failure looks like infra/network flakiness, not a code bug."""
+    if not log:
+        return False
+    # If there's a Python traceback pointing at our own code, it's a real bug.
+    if re.search(r'File "[^"]*\.github/scripts/|File "[^"]*backend/app/', log):
+        return False
+    return bool(TRANSIENT.search(log))
+
+
+def rerun_failed_run(run_id: str) -> bool:
+    """Ask GitHub to re-run only the failed jobs of a run. Returns True on success."""
+    token = os.environ.get("GH_TOKEN", "")
+    repo = os.environ.get("GH_REPO", "")
+    if not token or not repo or not run_id:
+        return False
+    url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/rerun-failed-jobs"
+    req = urllib.request.Request(url, data=b"{}", method="POST", headers={
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status in (201, 200)
+    except Exception as exc:
+        print(f"  rerun request failed: {exc}", flush=True)
+        return False
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Slack
 # ─────────────────────────────────────────────────────────────────────────────
@@ -294,6 +337,23 @@ def main() -> int:
     # ── Log classification ───────────────────────────────────────────────────
     diagnoses = classify(log) if log else []
 
+    # ── Decide on auto-retrigger for transient (non-code) failures ───────────
+    # Guard against infinite loops: only re-run if this run hasn't been retried
+    # too many times (the workflow passes RUN_ATTEMPT).
+    attempt = int(os.environ.get("RUN_ATTEMPT", "1") or "1")
+    MAX_RETRIES = 2
+    reran = False
+    rerun_reason = ""
+    if (not repairs) and run_id and is_transient(log) and attempt <= MAX_RETRIES:
+        if rerun_failed_run(run_id):
+            reran = True
+            rerun_reason = f"transient failure (attempt {attempt}/{MAX_RETRIES}) — re-ran failed jobs"
+            print(f"  ↻ {rerun_reason}", flush=True)
+        else:
+            print("  re-run request did not succeed", flush=True)
+    elif is_transient(log) and attempt > MAX_RETRIES:
+        rerun_reason = f"transient but already retried {attempt-1}x — escalating to humans"
+
     # ── Build report ─────────────────────────────────────────────────────────
     lines = [f":rotating_light: *Pipeline Self-Fixer* — workflow `{wf_name}` failed"]
     if run_id:
@@ -301,11 +361,15 @@ def main() -> int:
         lines.append(f"<https://github.com/{repo}/actions/runs/{run_id}|view failed run →>")
 
     if repairs:
-        lines.append("\n*Auto-repairs applied:*")
+        lines.append("\n*Auto-repairs applied (opening PR):*")
         for kind, files in repairs.items():
             lines.append(f"  • {kind}: {', '.join(files)}")
+    elif reran:
+        lines.append(f"\n:arrows_counterclockwise: *Auto-retriggered:* {rerun_reason}")
+    elif rerun_reason:
+        lines.append(f"\n:warning: {rerun_reason}")
     else:
-        lines.append("\n_No static repairs were needed._")
+        lines.append("\n_No static repairs were needed; failure looks like a real code/config bug._")
 
     if diagnoses:
         lines.append("\n*Log diagnosis:*")
@@ -327,6 +391,7 @@ def main() -> int:
     if gh_out:
         with open(gh_out, "a") as fh:
             fh.write(f"made_changes={'true' if made_changes else 'false'}\n")
+            fh.write(f"reran={'true' if reran else 'false'}\n")
             fh.write(f"diagnosis={'; '.join(diagnoses)[:300] or 'no signature matched'}\n")
 
     return 0

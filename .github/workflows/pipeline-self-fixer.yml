@@ -25,7 +25,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
-  actions: read
+  actions: write   # needed to re-run failed jobs on transient failures
 
 jobs:
   diagnose-and-fix:
@@ -55,6 +55,7 @@ jobs:
           GH_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
           GH_REPO:          ${{ github.repository }}
           RUN_ID:           ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
+          RUN_ATTEMPT:      ${{ github.event.workflow_run.run_attempt || 1 }}
           FAILED_WORKFLOW:  ${{ github.event.workflow_run.name || 'manual' }}
           SLACK_BOT_TOKEN:  ${{ secrets.SLACK_BOT_TOKEN }}
         run: python .github/scripts/pipeline_self_fixer.py
