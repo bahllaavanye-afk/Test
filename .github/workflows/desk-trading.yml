@@ -8,8 +8,9 @@ on:
       - ".github/scripts/desk_order_placer.py"
       - ".github/scripts/pipeline_tracker.py"
   schedule:
-    # Every 15 minutes, Mon–Fri, 09:30–22:00 UTC (covers US market hours + pre/post)
-    - cron: "*/15 9-22 * * 1-5"
+    # 24/7 every 15 min — crypto + Polymarket desks trade around the clock.
+    # The equities/options desks self-gate on the US market clock inside the script.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       desk:
@@ -17,18 +18,28 @@ on:
         required: false
         default: ""
 
+concurrency:
+  group: desk-trading
+  cancel-in-progress: false
+
 jobs:
   place-orders:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - uses: actions/setup-python@v5          python-version: "3.11"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Cache pip packages
-        uses: actions/cache@v4          path: ~/.cache/pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
           key: ${{ runner.os }}-pip-desk-${{ hashFiles('backend/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-desk-

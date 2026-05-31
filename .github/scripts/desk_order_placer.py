@@ -328,6 +328,104 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
     return orders_placed
 
 
+# ── Tradability gating ─────────────────────────────────────────────────────────
+
+def _is_crypto_symbol(symbol: str) -> bool:
+    """Alpaca crypto pairs (e.g. BTC/USD) trade 24/7 — not gated by the stock clock."""
+    return "/" in symbol
+
+
+def _symbol_tradeable(symbol: str, stock_market_open: bool) -> bool:
+    """Crypto trades around the clock; equities/options follow the US market clock."""
+    if _is_crypto_symbol(symbol):
+        return True
+    return stock_market_open
+
+
+# ── Polymarket real scan (public Gamma API, no auth, 24/7) ──────────────────────
+
+POLYMARKET_GAMMA = "https://gamma-api.polymarket.com"
+
+
+def _poly_get_sync(path: str, params: dict | None = None) -> object:
+    import urllib.request, urllib.parse
+    url = POLYMARKET_GAMMA + path
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+async def scan_polymarket(desk: DeskConfig) -> list[dict]:
+    """
+    Real Polymarket scan via the public Gamma API (no auth, 24/7).
+    Finds binary-arb opportunities (YES+NO < 1.00 - fees) on liquid open markets.
+    Returns signal records. Places real CLOB orders only if POLYMARKET_PRIVATE_KEY is set.
+    """
+    print(f"\n{'─'*60}", flush=True)
+    print(f"  DESK: {desk.name} (Polymarket Gamma scan — 24/7)", flush=True)
+    signals: list[dict] = []
+    try:
+        # Active, liquid markets sorted by 24h volume
+        markets = await asyncio.to_thread(
+            _poly_get_sync, "/markets",
+            {"closed": "false", "active": "true", "order": "volume24hr",
+             "ascending": "false", "limit": 50},
+        )
+    except Exception as exc:
+        print(f"  ✗ Polymarket Gamma fetch failed: {exc}", flush=True)
+        return []
+
+    if not isinstance(markets, list):
+        markets = markets.get("data", []) if isinstance(markets, dict) else []
+
+    scanned = 0
+    for m in markets:
+        try:
+            prices = m.get("outcomePrices")
+            if isinstance(prices, str):
+                prices = json.loads(prices)
+            if not prices or len(prices) < 2:
+                continue
+            yes_p, no_p = float(prices[0]), float(prices[1])
+            scanned += 1
+            total = yes_p + no_p
+            # Binary arb: buying both sides for < $0.98 locks risk-free profit (2% fee buffer)
+            if 0 < total < 0.98:
+                edge = (1.0 - total) * 100
+                signals.append({
+                    "desk": desk.name,
+                    "strategy": "poly_binary_arb",
+                    "market": m.get("question", "?")[:80],
+                    "yes": yes_p, "no": no_p,
+                    "edge_pct": round(edge, 2),
+                    "volume_24h": float(m.get("volume24hr", 0) or 0),
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                })
+        except Exception:
+            continue
+
+    print(f"  scanned {scanned} liquid markets — {len(signals)} arb signal(s)", flush=True)
+
+    # Report to Slack
+    if signals:
+        top = sorted(signals, key=lambda s: -s["edge_pct"])[:5]
+        lines = [f"*{desk.name} Desk* — {len(signals)} binary-arb signal(s) (24/7 Gamma scan)"]
+        for s in top:
+            lines.append(
+                f"🎯 `{s['market']}` YES={s['yes']:.3f}+NO={s['no']:.3f} "
+                f"→ *{s['edge_pct']:.1f}%* edge (vol24h=${s['volume_24h']:,.0f})"
+            )
+        if not os.environ.get("POLYMARKET_PRIVATE_KEY"):
+            lines.append("_⚠ POLYMARKET_PRIVATE_KEY not set — scan-only, no orders placed_")
+        _post_slack(desk.slack_channel, "\n".join(lines))
+    else:
+        _post_slack(desk.slack_channel,
+                    f"💤 *{desk.name}*: scanned {scanned} markets, no arb edge ≥2% right now")
+    return signals
+
+
 # ── Slack helper ──────────────────────────────────────────────────────────────
 
 def _post_slack(channel: str, message: str) -> None:
@@ -375,32 +473,37 @@ async def main() -> None:
             tracker.set_output(is_open=is_open)
 
         # ── Stage 2: Data Fetch (account + bars) ─────────────────────────────
-        account = None
+        # Cross-stage vars hoisted here so later stages never hit a NameError
+        # if this stage fails partway (the tracker is resilient and continues).
+        account = {"equity": 0, "cash": 0, "buying_power": 0}
         bars_fetched = 0
         symbols_fetched: list[str] = []
         equity = 0.0
         cash   = 0.0
         buying = 0.0
+        bars_cache: dict[str, object] = {}
+        active_desks = [d for d in DESKS if not DESK_FILTER or DESK_FILTER in d.name.lower()]
+        if DESK_FILTER and not active_desks:
+            raise RuntimeError(f"no desk matches filter '{DESK_FILTER}'")
+        # Polymarket trades on its own venue (CLOB), not Alpaca — handle separately.
+        poly_desks   = [d for d in active_desks if d.name == "Polymarket"]
+        alpaca_desks = [d for d in active_desks if d.name != "Polymarket"]
+
         with tracker.stage(DATA_FETCH, "Fetch account and market bars"):
-            account = await _get_account()
-            if account is None:
+            fetched_account = await _get_account()
+            if fetched_account is None:
                 # Account fetch failed (API unreachable or bad credentials).
                 # Still run signal generation; order placement will be skipped.
                 print("  ⚠ Account unavailable — running in signal-only mode (no orders placed)", flush=True)
-                account = {"equity": 0, "cash": 0, "buying_power": 0}
             else:
+                account = fetched_account
                 equity = float(account.get("equity",       0))
                 cash   = float(account.get("cash",         0))
                 buying = float(account.get("buying_power", 0))
                 print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  buying_power=${buying:.2f}", flush=True)
 
-            active_desks = [d for d in DESKS if not DESK_FILTER or DESK_FILTER in d.name.lower()]
-            if DESK_FILTER and not active_desks:
-                raise RuntimeError(f"no desk matches filter '{DESK_FILTER}'")
-
-            # Pre-fetch bars for all unique symbols concurrently
-            all_symbols = list({s for desk in active_desks for s in desk.symbols})
-            bars_cache: dict[str, object] = {}
+            # Pre-fetch bars for all unique Alpaca symbols concurrently
+            all_symbols = list({s for desk in alpaca_desks for s in desk.symbols})
             results = await asyncio.gather(
                 *[_get_bars(sym) for sym in all_symbols],
                 return_exceptions=True,
@@ -414,10 +517,15 @@ async def main() -> None:
                     symbols_fetched.append(sym)
             tracker.set_output(bars_fetched=bars_fetched, symbols=symbols_fetched)
 
-        # ── Stage 3: Signal Generation ────────────────────────────────────────
+        # ── Stage 2b: Polymarket scan (24/7, independent of stock clock) ──────
+        poly_signals: list[dict] = []
+        for desk in poly_desks:
+            poly_signals.extend(await scan_polymarket(desk))
+
+        # ── Stage 3: Signal Generation (Alpaca desks) ─────────────────────────
         raw_signals: list[dict] = []
         with tracker.stage(SIGNAL_GENERATION, "Generate trading signals"):
-            for desk in active_desks:
+            for desk in alpaca_desks:
                 strategies = []
                 for sname in desk.strategy_names:
                     s = _load_strategy(sname)
@@ -515,8 +623,8 @@ async def main() -> None:
                 else:
                     print(f"    ✗ order placement returned no ID", flush=True)
 
-            # Post per-desk Slack summaries
-            for desk in active_desks:
+            # Post per-desk Slack summaries (Alpaca desks)
+            for desk in alpaca_desks:
                 desk_order_list = desk_orders_map.get(desk.name, [])
                 if desk_order_list:
                     lines = [f"*{desk.name} Desk* — {len(desk_order_list)} order(s) placed"]
@@ -532,6 +640,13 @@ async def main() -> None:
                 else:
                     desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
 
+            # Polymarket desk summary (scan-based, already posted to its own channel)
+            for desk in poly_desks:
+                n = len([s for s in poly_signals if s["desk"] == desk.name])
+                desk_summaries.append(
+                    f"{'🎯' if n else '💤'} *{desk.name}*: {n} arb signal(s) (24/7 scan)"
+                )
+
             tracker.set_output(orders_placed=len(all_orders), total_notional=round(total_notional, 2))
 
         # ── Stage 6: PnL Snapshot / Slack Summary ────────────────────────────
@@ -539,7 +654,7 @@ async def main() -> None:
             now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
             summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}\n"
             summary += "\n".join(desk_summaries)
-            summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
+            summary += f"\n\nTotal orders placed: *{len(all_orders)}* · Polymarket arb signals: *{len(poly_signals)}*"
             _post_slack("#pnl-daily", summary)
             tracker.set_output(desks_run=len(active_desks), total_orders=len(all_orders))
 
