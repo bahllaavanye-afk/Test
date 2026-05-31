@@ -27,12 +27,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install httpx anthropic --quiet
+        run: pip install httpx --quiet
 
       - name: Post to Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           COMMIT_SHA: ${{ github.sha }}
