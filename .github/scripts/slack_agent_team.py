@@ -9,8 +9,11 @@ Agents reply to each other in threads when the topic matches their domain,
 creating realistic engineering discussion.
 
 Required env:
-    SLACK_BOT_TOKEN   xoxb-... with: chat:write, chat:write.customize,
-                      channels:join, channels:read, groups:read
+    SLACK_BOT_TOKEN   xoxb-... with: chat:write, chat:write.public,
+                      chat:write.customize (optional but recommended),
+                      channels:read (optional), groups:read (optional)
+    The bot works with ONLY chat:write + chat:write.public — the rest are
+    optional enhancements (customize = custom names, read = faster lookups).
     GH_TOKEN          optional — GITHUB_TOKEN for reading issues/PRs
     GH_REPO           owner/repo (e.g. bahllaavanye-afk/QuantEdge)
 
@@ -63,11 +66,13 @@ def slack_call(token: str, method: str, payload: dict) -> dict:
 
 
 _channels_cache: dict[str, dict] = {}
+_list_attempted = False
 
 
 def get_channel_id(token: str, name: str) -> str | None:
-    global _channels_cache
-    if not _channels_cache:
+    global _channels_cache, _list_attempted
+    if not _list_attempted:
+        _list_attempted = True
         cursor = ""
         while True:
             payload: dict = {"types": "public_channel,private_channel", "limit": 200}
@@ -75,6 +80,7 @@ def get_channel_id(token: str, name: str) -> str | None:
                 payload["cursor"] = cursor
             data = slack_call(token, "conversations.list", payload)
             if not data.get("ok"):
+                print(f"  [slack] conversations.list failed: {data.get('error')} — will post by name")
                 break
             for ch in data.get("channels", []):
                 _channels_cache[ch["name"]] = ch
@@ -83,6 +89,31 @@ def get_channel_id(token: str, name: str) -> str | None:
                 break
     ch = _channels_cache.get(name)
     return ch["id"] if ch else None
+
+
+def _post_raw(token: str, channel_ref: str, text: str, username: str, icon_emoji: str, thread_ts: str | None) -> dict:
+    """Post to Slack using channel_ref (can be ID or #name). Falls back to plain write if customize fails."""
+    payload: dict = {
+        "channel": channel_ref,
+        "text": text,
+        "username": username,
+        "icon_emoji": icon_emoji,
+        "mrkdwn": True,
+    }
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    result = slack_call(token, "chat.postMessage", payload)
+
+    # Fallback: chat:write.customize scope missing → retry without custom identity
+    if not result.get("ok") and result.get("error") in (
+        "not_allowed_token_type", "missing_scope",
+    ):
+        print(f"  [slack] {result.get('error')} — retrying without custom username/icon")
+        fallback: dict = {"channel": channel_ref, "text": f"*[{username}]* {text}", "mrkdwn": True}
+        if thread_ts:
+            fallback["thread_ts"] = thread_ts
+        result = slack_call(token, "chat.postMessage", fallback)
+    return result
 
 
 def post_to_slack(
@@ -95,37 +126,20 @@ def post_to_slack(
     thread_ts: str | None = None,
 ) -> dict:
     ch_id = get_channel_id(token, channel)
-    if not ch_id:
-        print(f"  [slack] channel not found: {channel} — run bootstrap first")
-        return {"ok": False, "error": f"channel_not_found:{channel}"}
-    # Auto-join public channels (cheap if already in)
-    ch = _channels_cache.get(channel, {})
-    if not ch.get("is_private", False):
-        slack_call(token, "conversations.join", {"channel": ch_id})
 
-    payload: dict = {
-        "channel": ch_id,
-        "text": text,
-        "username": username,
-        "icon_emoji": icon_emoji,
-        "mrkdwn": True,
-    }
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    result = slack_call(token, "chat.postMessage", payload)
-
-    # Fallback: chat:write.customize scope missing → retry as plain bot message
-    if not result.get("ok") and result.get("error") in (
-        "not_allowed_token_type", "missing_scope", "invalid_auth"
-    ):
-        print(f"  [slack] {result.get('error')} — retrying without custom username/icon")
-        fallback: dict = {"channel": ch_id, "text": f"*[{username}]* {text}", "mrkdwn": True}
-        if thread_ts:
-            fallback["thread_ts"] = thread_ts
-        result = slack_call(token, "chat.postMessage", fallback)
+    if ch_id:
+        # Auto-join public channels (cheap if already a member)
+        ch = _channels_cache.get(channel, {})
+        if not ch.get("is_private", False):
+            slack_call(token, "conversations.join", {"channel": ch_id})
+        result = _post_raw(token, ch_id, text, username, icon_emoji, thread_ts)
+    else:
+        # No channel ID — try posting by name directly (#channel-name)
+        name_ref = f"#{channel}" if not channel.startswith("#") else channel
+        result = _post_raw(token, name_ref, text, username, icon_emoji, thread_ts)
 
     if not result.get("ok"):
-        print(f"  [slack] post failed to {channel}: {result.get('error')}")
+        print(f"  [slack] post failed to #{channel}: {result.get('error')}")
     return result
 
 
