@@ -1,0 +1,40 @@
+name: QuantEdge Key Validator
+
+# Run manually or on schedule every Sunday 8 AM UTC.
+# Tests every API key and posts pass/fail report to #agent-api-usage on Slack.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 0"   # Every Sunday 8:00 AM UTC
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate all API keys
+        env:
+          SLACK_BOT_TOKEN:    ${{ secrets.SLACK_BOT_TOKEN }}
+          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_1:     ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2:     ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3:     ${{ secrets.GROQ_API_KEY_3 }}
+          CEREBRAS_API_KEY:   ${{ secrets.CEREBRAS_API_KEY }}
+          SAMBANOVA_API_KEY:  ${{ secrets.SAMBANOVA_API_KEY }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1:   ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2:   ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3:   ${{ secrets.GEMINI_API_KEY_3 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/validate_keys.py
