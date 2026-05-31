@@ -1,0 +1,54 @@
+name: Employee Dashboard
+
+# Renders the employee performance dashboard (pipelines, desks, agents,
+# contributors) and posts the screenshot to #employee-dashboard on Slack.
+# Tells you at a glance which employee is DOWN vs doing good work.
+
+on:
+  schedule:
+    # Every 3 hours, around the clock
+    - cron: "5 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Slack channel for the dashboard (default: employee-dashboard)"
+        required: false
+        default: "employee-dashboard"
+
+concurrency:
+  group: employee-dashboard
+  cancel-in-progress: false
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full git log for contributor activity
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install matplotlib pillow
+
+      - name: Render and post dashboard
+        env:
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:           ${{ github.repository }}
+          DASHBOARD_CHANNEL: ${{ github.event.inputs.channel || 'employee-dashboard' }}
+        run: python .github/scripts/employee_dashboard.py
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: employee-dashboard
+          path: employee_dashboard.png
+          retention-days: 14

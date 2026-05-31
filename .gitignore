@@ -71,3 +71,4 @@ backend/seed_comparisons.py
 .claude/
 experiments/results/desk_runs.jsonl
 pipeline_runs.json
+employee_dashboard.png
