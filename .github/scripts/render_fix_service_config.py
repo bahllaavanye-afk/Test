@@ -33,8 +33,8 @@ API_KEY    = os.environ.get("RENDER_API_KEY", "")
 WEB_ID     = os.environ.get("RENDER_SERVICE_ID", "").strip()
 WORKER_ID  = os.environ.get("RENDER_WORKER_SERVICE_ID", "").strip()
 
-SAFE_BUILD = 'pip install -e "." || (pip install uv && uv pip install --system -e .)'
-WEB_START  = "bash start.sh"
+SAFE_BUILD = 'cd backend && pip install -e "." || (pip install uv && uv pip install --system -e .)'
+WEB_START  = "bash backend/start.sh"
 
 
 def headers() -> dict:
