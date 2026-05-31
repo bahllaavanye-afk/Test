@@ -10,9 +10,7 @@ name: Render — Auto-Fix (build + DATABASE_URL) on merge
 
 on:
   push:
-    branches: [main]
-    paths:
-      - ".github/workflows/render-autofix.yml"
+    branches: [main]   # every push to main → redeploy with latest code
   workflow_dispatch:
     inputs:
       region:

@@ -7,12 +7,8 @@ name: Render — Fix Build Command (remove alembic from build)
 
 on:
   workflow_dispatch:
-  # Also run automatically whenever the render config changes on main
   push:
-    branches: [main]
-    paths:
-      - ".github/scripts/render_fix_service_config.py"
-      - ".github/workflows/render-fix-build.yml"
+    branches: [main]   # every push triggers a build command refresh + redeploy
 
 jobs:
   fix-build:
