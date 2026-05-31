@@ -107,10 +107,17 @@ def create_sequences(df: pd.DataFrame, seq_len: int = 60, target_col: str = "tar
         if targets is not None:
             y.append(targets[i])
 
-    import torch
-    X_tensor = torch.tensor(np.array(X), dtype=torch.float32)
-    y_tensor = torch.tensor(np.array(y), dtype=torch.float32) if targets is not None else None
-    return X_tensor, y_tensor
+    try:
+        import torch
+        X_out = torch.tensor(np.array(X), dtype=torch.float32)
+        y_out = torch.tensor(np.array(y), dtype=torch.float32) if targets is not None else None
+    except ImportError:
+        # torch not installed (CI / Render free tier) — return numpy arrays.
+        # Both torch tensors and numpy arrays expose .shape, so downstream
+        # shape checks and array-accepting loaders still work.
+        X_out = np.array(X, dtype=np.float32)
+        y_out = np.array(y, dtype=np.float32) if targets is not None else None
+    return X_out, y_out
 
 
 def add_labels(df: pd.DataFrame, horizon: int = 1, threshold: float = 0.002) -> pd.DataFrame:
