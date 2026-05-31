@@ -26,7 +26,7 @@ import anthropic
 import httpx
 
 REPO_ROOT    = Path(__file__).parent.parent
-BRANCH       = "claude/advanced-trading-bot-d5Lmw"
+BRANCH       = os.environ.get("GITHUB_REF_NAME", os.environ.get("GITHUB_HEAD_REF", "main"))
 SLACK_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
 API_KEY      = os.environ.get("ANTHROPIC_API_KEY", "")
 FOCUS        = os.environ.get("FOCUS", "bugs, security, performance, correctness")

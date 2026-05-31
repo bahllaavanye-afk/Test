@@ -68,7 +68,7 @@ jobs:
         if: env.SKIP != '1'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_ADMIN_EMAIL: ${{ secrets.SLACK_ADMIN_EMAIL || 'bahl.laavanye@gmail.com' }}
+          SLACK_ADMIN_EMAIL: ${{ secrets.SLACK_ADMIN_EMAIL }}
           SLACK_ADMIN_USER_ID: ${{ secrets.SLACK_ADMIN_USER_ID }}
         run: python .github/scripts/slack_bootstrap.py || echo "bootstrap had non-fatal errors"
 

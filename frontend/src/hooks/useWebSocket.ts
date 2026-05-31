@@ -12,7 +12,10 @@ export function useWebSocket(path: string, enabled = true) {
 
   const connect = useCallback(() => {
     if (!enabled || !mounted.current) return
-    const url = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}${path}`
+    const wsBase = import.meta.env.VITE_WS_URL ||
+      import.meta.env.VITE_API_URL?.replace('https://', 'wss://').replace('http://', 'ws://') ||
+      'ws://localhost:8000'
+    const url = `${wsBase}${path}`
     ws.current = new WebSocket(url)
 
     ws.current.onopen = () => {
