@@ -143,10 +143,10 @@ def log_budget(state: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Response cache — 2-hour TTL — avoids redundant LLM calls when nothing changed
+# Response cache — 4-hour TTL — avoids redundant LLM calls when nothing changed
 # ─────────────────────────────────────────────────────────────────────────────
 
-_CACHE_TTL_SECONDS = 7_200   # 2 hours
+_CACHE_TTL_SECONDS = 14_400   # 4 hours
 
 
 def cached_call(state: dict, cache_key: str, call_fn, ttl: int = _CACHE_TTL_SECONDS) -> str | None:
@@ -184,11 +184,41 @@ def current_git_sha() -> str:
 
 
 def repo_changed(state: dict) -> bool:
-    """Return True if HEAD changed since last run. Updates state."""
+    """Return True if HEAD changed since last run. Updates state.
+
+    Grace period: if the last commit is older than 4 hours AND the SHA has not
+    changed, set state["skip_wave"] = True so the caller can skip ALL agent
+    posts for this run (prevents redundant posts on weekends / quiet periods).
+    """
     sha = current_git_sha()
     last = state.get("last_commit_sha", "")
+    changed = sha != last
     state["last_commit_sha"] = sha
-    return sha != last
+
+    if not changed:
+        # Check age of last commit to decide whether to suppress the whole wave
+        try:
+            raw_ts = subprocess.check_output(
+                ["git", "log", "-1", "--format=%ct"],
+                stderr=subprocess.DEVNULL, text=True,
+            ).strip()
+            last_commit_age = time.time() - int(raw_ts)
+        except Exception:
+            last_commit_age = 0
+
+        grace_seconds = 4 * 3600  # 4 hours
+        if last_commit_age > grace_seconds:
+            state["skip_wave"] = True
+            print(
+                f"  [repo_changed] last commit is {last_commit_age/3600:.1f}h old "
+                f"and SHA unchanged — setting skip_wave=True"
+            )
+        else:
+            state["skip_wave"] = False
+    else:
+        state["skip_wave"] = False
+
+    return changed
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -5024,6 +5054,14 @@ def main() -> int:
     sha = current_git_sha()
     print(f"📌 HEAD: {sha} — {'changed since last run' if changed else 'no new commits'}")
 
+    # Grace-period check: if the repo has been quiet for >4 hours, skip the whole
+    # agent wave to prevent redundant posts on weekends and quiet periods.
+    if state.get("skip_wave"):
+        print("⏭ Grace period active — last commit >4h old, SHA unchanged. Skipping agent wave.")
+        state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
+        save_state(state)
+        return 0
+
     # ── Auto-create channels ──────────────────────────────────────────────────
     print("\n📺 Ensuring all channels exist")
     ensure_channels_exist(token)
@@ -5407,9 +5445,69 @@ def quick_main() -> int:
     return 0
 
 
+def _get_repo_context() -> str:
+    """Return a brief text summary of the repo state for use in precompute prompts."""
+    commits = git_recent_commits(since_hours=48, limit=5)
+    strats = list_strategies()
+    n_strats = len(strats["manual"]) + len(strats["ml"])
+    n_tests = count_tests()
+    commit_lines = "\n".join(f"- {c['msg']}" for c in commits[:5]) if commits else "- (no recent commits)"
+    return (
+        f"Recent commits (48h):\n{commit_lines}\n"
+        f"Strategies registered: {n_strats} "
+        f"({len(strats['manual'])} manual + {len(strats['ml'])} ML)\n"
+        f"Test files: {n_tests}"
+    )
+
+
+def precompute_main() -> int:
+    """
+    Off-peak pre-computation: runs at 2 AM UTC.
+    Pre-generates LLM responses for the most common agent prompts
+    and stores them in the response cache (state["response_cache"]).
+    Peak-hour runs then use cached_call() and skip live API calls.
+    Returns 0 on success.
+    """
+    state = load_state()
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+
+    # Pre-compute the most expensive analyses: git summary, test results, open issues
+    repo_context = _get_repo_context()
+
+    precompute_tasks = [
+        ("daily_market_brief",    f"Generate a one-paragraph quantitative market brief for QuantEdge traders covering macro conditions. Today: {_today()}. Context: {repo_context[:500]}"),
+        ("daily_strategy_health", f"Summarize which of these QuantEdge strategies are likely performing best given current market conditions: momentum, mean_reversion, pairs_trading, breakout, triangular_arb, poly_binary_arb. Context: {repo_context[:500]}"),
+        ("daily_ml_status",       f"Write a short ML model health update for a quant trading platform. Models: LSTM, XGBoost, Lorentzian KNN, Ensemble. Context: {repo_context[:500]}"),
+    ]
+
+    cached = 0
+    for cache_key, prompt in precompute_tasks:
+        full_key = f"precompute_{cache_key}_{_today()}"
+        if full_key in state.get("response_cache", {}):
+            print(f"  [precompute] {cache_key} already cached — skipping")
+            continue
+        result = call_best_agent(prompt, max_tokens=300)
+        if result:
+            if "response_cache" not in state:
+                state["response_cache"] = {}
+            state["response_cache"][full_key] = {
+                "result": result,
+                "ts": time.time(),
+                "ttl": 14400,  # 4 hours
+            }
+            cached += 1
+            print(f"  [precompute] {cache_key} cached ✓")
+
+    save_state(state)
+    print(f"[precompute] Done — {cached} items pre-cached for peak hours")
+    return 0
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
     if mode == "quick":
         sys.exit(quick_main())
+    elif mode == "precompute":
+        sys.exit(precompute_main())
     else:
         sys.exit(main())
