@@ -32,7 +32,7 @@ you pick up where the last left off using:
 
 ```
 1. List open issues by priority:
-   GET /repos/bahllaavanye-afk/Test/issues?state=open&labels=priority:p0
+   GET /repos/bahllaavanye-afk/QuantEdge/issues?state=open&labels=priority:p0
 2. For each P0 issue:
    a. Identify the owning role from the role: label
    b. Open that engineer's CLAUDE.md to remember their scope and constraints
@@ -62,7 +62,7 @@ When you have a Notion workspace, do this **once**:
    NOTION_TOKEN=secret_xxx...
    NOTION_TASKS_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    GITHUB_TOKEN=ghp_xxx...                  # PAT with repo scope
-   GITHUB_REPO=bahllaavanye-afk/Test
+   GITHUB_REPO=bahllaavanye-afk/QuantEdge
    ```
 6. Trigger first sync:
    ```

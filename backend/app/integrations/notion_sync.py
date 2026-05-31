@@ -5,7 +5,7 @@ Configure via env vars:
   NOTION_TOKEN          — Internal integration token (https://www.notion.so/my-integrations)
   NOTION_TASKS_DB_ID    — Database ID for the Engineering Tasks DB
   GITHUB_TOKEN          — PAT with `repo` scope
-  GITHUB_REPO           — "owner/name", e.g. "bahllaavanye-afk/Test"
+  GITHUB_REPO           — "owner/name", e.g. "bahllaavanye-afk/QuantEdge"
 
 Activate by setting all four. When NOTION_TOKEN is unset, sync is skipped
 silently so non-Notion users see no errors.

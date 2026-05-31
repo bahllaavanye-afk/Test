@@ -64,7 +64,7 @@ Agent scheduling: `cron: "15 9,13,17,21 * * *"` UTC (4 waves/day).
 
 ## What to do next (in this order)
 
-1. **Add 7 secrets** at https://github.com/bahllaavanye-afk/Test/settings/secrets/actions
+1. **Add 7 secrets** at https://github.com/bahllaavanye-afk/QuantEdge/settings/secrets/actions
    - `SLACK_BOT_TOKEN` — your `xoxb-…` (lets agent team run on schedule)
    - `ALPACA_API_KEY` — `PKYZZEPIFF25TUFHQVAA522VWN`
    - `ALPACA_SECRET_KEY` — `9BkJdQkLbaZR99uBM1Xwv5Z7VWapPZkq57YSqas2SkoG`

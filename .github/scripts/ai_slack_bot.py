@@ -20,7 +20,7 @@ Requires env vars:
   SLACK_BOT_TOKEN     — xoxb-... (chat:write, app_mentions:read, channels:history)
   ANTHROPIC_API_KEY   — for QuantEdge AI API calls
   GH_TOKEN            — to read repo files / experiment results
-  GH_REPO             — e.g. bahllaavanye-afk/Test
+  GH_REPO             — e.g. bahllaavanye-afk/QuantEdge
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ import httpx
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 GH_TOKEN = os.environ.get("GH_TOKEN", "")
-GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
+GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/QuantEdge")
 REPO_ROOT = Path(__file__).parent.parent.parent
 
 SLACK_API = "https://slack.com/api"

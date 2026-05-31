@@ -54,7 +54,7 @@ SCRIPTS: dict[str, list[tuple[str, str]]] = {
         ("Sofia Karlsson — VP Research",
          "Reminder: every alpha needs walk-forward validation BEFORE we merge. No in-sample-only results in `comparison_results`."),
         ("Hugo Bernardes — Quant Researcher",
-         "Draft: <https://github.com/bahllaavanye-afk/Test/blob/main/experiments/configs/lstm_btc_1h.yaml|TSMOM multi-asset config>. WIP, will PR by Friday."),
+         "Draft: <https://github.com/bahllaavanye-afk/QuantEdge/blob/main/experiments/configs/lstm_btc_1h.yaml|TSMOM multi-asset config>. WIP, will PR by Friday."),
     ],
     "pnl-daily": [
         ("CTO bot — automated",
@@ -90,7 +90,7 @@ SCRIPTS: dict[str, list[tuple[str, str]]] = {
     ],
     "ci-failures": [
         ("CI bot — automated",
-         ":x: *CI failed* on `claude/advanced-trading-bot-d5Lmw` — commit `542bf1d`\nJob: bootstrap\nReason: Slack scope missing (`missing_scope`, needed `channels:read,groups:read`)\n<https://github.com/bahllaavanye-afk/Test/actions/runs/26572364509|View run>"),
+         ":x: *CI failed* on `claude/advanced-trading-bot-d5Lmw` — commit `542bf1d`\nJob: bootstrap\nReason: Slack scope missing (`missing_scope`, needed `channels:read,groups:read`)\n<https://github.com/bahllaavanye-afk/QuantEdge/actions/runs/26572364509|View run>"),
         ("Aditi Sharma — Director of QA",
          "Not a code bug — Slack app needed scopes. Resolved at 11:48 with reinstall + new bot token. Tracking in #squad-security."),
     ],

@@ -12,7 +12,7 @@ Required env:
     SLACK_BOT_TOKEN   xoxb-... with: chat:write, chat:write.customize,
                       channels:join, channels:read, groups:read
     GH_TOKEN          optional — GITHUB_TOKEN for reading issues/PRs
-    GH_REPO           owner/repo (e.g. bahllaavanye-afk/Test)
+    GH_REPO           owner/repo (e.g. bahllaavanye-afk/QuantEdge)
 
 Designed to run on a schedule (every 1-3 hours). Each run picks a wave of
 6-10 agents to do work; not all agents post every run.
@@ -476,7 +476,7 @@ class Agent:
 
 
 def repo_url(*parts: str) -> str:
-    repo = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
+    repo = os.environ.get("GH_REPO", "bahllaavanye-afk/QuantEdge")
     base = f"https://github.com/{repo}"
     if not parts:
         return base
@@ -1189,7 +1189,7 @@ def trading_desk_eod_pnl() -> list[Post]:
         return [Post(
             channel="pnl-daily",
             text=(":warning: Cannot read live P&L — `ALPACA_API_KEY` not set in repo secrets. "
-                  "Add it at https://github.com/bahllaavanye-afk/Test/settings/secrets/actions "
+                  "Add it at https://github.com/bahllaavanye-afk/QuantEdge/settings/secrets/actions "
                   "and re-run to see real paper-trading numbers."),
             username="PnL bot",
             icon_emoji=":bar_chart:",

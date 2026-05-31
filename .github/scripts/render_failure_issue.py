@@ -30,7 +30,7 @@ RENDER_API        = "https://api.render.com/v1"
 RENDER_API_KEY    = os.environ.get("RENDER_API_KEY", "")
 RENDER_SERVICE_ID = os.environ.get("RENDER_SERVICE_ID", "")
 GH_TOKEN          = os.environ.get("GITHUB_TOKEN", "")
-GH_REPO           = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
+GH_REPO           = os.environ.get("GH_REPO", "bahllaavanye-afk/QuantEdge")
 SLACK_TOKEN       = os.environ.get("SLACK_BOT_TOKEN", "")
 
 ISSUE_TITLE_PREFIX = "🔴 Render Deploy Failure"
@@ -165,7 +165,7 @@ def main() -> None:
         print("RENDER_API_KEY not set — add it as a GitHub Secret:")
         print("  1. Render Dashboard → Account Settings → API Keys → Create API Key")
         print("  2. Copy key (rnd_...)")
-        print("  3. github.com/bahllaavanye-afk/Test → Settings → Secrets → New repository secret")
+        print("  3. github.com/bahllaavanye-afk/QuantEdge → Settings → Secrets → New repository secret")
         print("     Name: RENDER_API_KEY")
         print("     Value: rnd_...")
         sys.exit(0)  # graceful exit so the workflow doesn't show as failed
