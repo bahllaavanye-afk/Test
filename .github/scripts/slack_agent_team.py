@@ -60,6 +60,24 @@ def load_state() -> dict:
         }
 
 
+def _init_governance(state: dict) -> None:
+    """Ensure governance keys exist in state (idempotent)."""
+    gov = state.setdefault("governance", {})
+    gov.setdefault("freeze_algos", False)
+    gov.setdefault("paused_engineers", {})
+    gov.setdefault("cto_user_ids", [])
+    gov.setdefault("audit_log", [])
+    today = _today()
+    quotas = gov.setdefault("engineer_quotas", {})
+    for emp in _EMPLOYEES:
+        q = quotas.setdefault(emp, {})
+        if q.get("date") != today:
+            q["calls"] = MAX_CALLS_PER_EMPLOYEE_PER_RUN
+            q["slack_posts"] = 8
+            q["tokens"] = MAX_TOKENS_PER_CALL * MAX_CALLS_PER_EMPLOYEE_PER_RUN
+            q["date"] = today
+
+
 def save_state(state: dict) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     state["posted_hashes"] = state.get("posted_hashes", [])[-1000:]
@@ -101,6 +119,7 @@ _DAILY_SOFT_LIMITS: dict[str, int] = {
     "GEMINI_API_KEY_2": 1_200,
     "GEMINI_API_KEY_3": 1_200,
     "CEREBRAS_API_KEY": 800_000, # real: 1M tok/day
+    "SAMBANOVA_API_KEY": 15_000_000,  # 20M/day hard limit, use 75%
 }
 
 
@@ -400,6 +419,25 @@ _GROQ_ACCOUNT: dict[str, str] = {
     "marcus": "GROQ_API_KEY_3",
 }
 
+# Each employee group gets the same-numbered Gemini account as their Groq account.
+# Group 1 (GROQ_API_KEY_1) → GEMINI_API_KEY_1, etc.
+# This isolates quota completely — Group 2 Gemini burnout never affects Group 1.
+_GEMINI_ACCOUNT: dict[str, str] = {
+    "maya":   "GEMINI_API_KEY_1",
+    "aarav":  "GEMINI_API_KEY_1",
+    "linh":   "GEMINI_API_KEY_1",
+    "jian":   "GEMINI_API_KEY_1",
+    "anna":   "GEMINI_API_KEY_2",
+    "aditi":  "GEMINI_API_KEY_2",
+    "kenji":  "GEMINI_API_KEY_2",
+    "diego":  "GEMINI_API_KEY_2",
+    "lior":   "GEMINI_API_KEY_3",
+    "sara":   "GEMINI_API_KEY_3",
+    "sofia":  "GEMINI_API_KEY_3",
+    "hugo":   "GEMINI_API_KEY_3",
+    "marcus": "GEMINI_API_KEY_3",
+}
+
 # For shared calls, rotate across all 3 accounts round-robin.
 # Both GROQ_API_KEY_1 and GROQ_API_KEY are checked — whichever is set wins.
 _shared_groq_counter: int = 0
@@ -418,6 +456,19 @@ def _groq_key_for(employee: str) -> str | None:
     # Alias: GROQ_API_KEY_1 ↔ GROQ_API_KEY (same account, either naming works)
     if env_var == "GROQ_API_KEY_1":
         return os.environ.get("GROQ_API_KEY", "").strip() or None
+    return None
+
+
+def _gemini_key_for(employee: str) -> str | None:
+    """Returns the Gemini API key assigned to this employee's department group."""
+    emp = employee.split("_")[0].lower()
+    env_var = _GEMINI_ACCOUNT.get(emp, "GEMINI_API_KEY_1")
+    key = os.environ.get(env_var, "").strip()
+    if key:
+        return key
+    # Fallback: try plain GEMINI_API_KEY if _1 is the assigned one
+    if env_var == "GEMINI_API_KEY_1":
+        return os.environ.get("GEMINI_API_KEY", "").strip() or None
     return None
 
 
@@ -521,7 +572,7 @@ def call_gemini(system_prompt: str, user_message: str, max_tokens: int = 600,
         if state and not budget_ok(state, env_var, estimated_tokens=1):
             continue   # this key's daily request budget exhausted
         url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"gemini-2.0-flash:generateContent?key={key}")
+               f"gemini-2.5-flash:generateContent?key={key}")
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode(),
@@ -709,6 +760,7 @@ def call_employee_agent(
     user_message: str,
     system_prompt: str = _QUANT_SYSTEM,
     max_tokens: int = 500,
+    state: dict | None = None,
 ) -> str | None:
     """
     Each employee has their OWN free API keys — independent rate-limit pools.
@@ -725,8 +777,15 @@ def call_employee_agent(
     if ALLOW_PAID_APIS:
         raise RuntimeError("ALLOW_PAID_APIS must stay False — zero spend policy")
 
-    # Enforce per-run call budget
+    # Governance: check if engineer is paused for today
     emp_key = employee.split("_")[0].lower()
+    gov = state.get("governance", {}) if state else {}
+    paused = gov.get("paused_engineers", {})
+    if emp_key in paused and paused[emp_key] == _today():
+        print(f"  [{emp_key}] PAUSED by CTO for today — skipping")
+        return None
+
+    # Enforce per-run call budget
     _run_call_counts[emp_key] = _run_call_counts.get(emp_key, 0)
     if _run_call_counts[emp_key] >= MAX_CALLS_PER_EMPLOYEE_PER_RUN:
         print(f"  [{emp_key}] call budget exhausted ({MAX_CALLS_PER_EMPLOYEE_PER_RUN}/run) — skipping")
@@ -757,13 +816,22 @@ def call_employee_agent(
             print(f"  [{emp_key}/cerebras] ✓ {len(r)} chars")
             return r.strip()
 
-    # 3. GitHub Models — free via GITHUB_TOKEN, no extra key needed
+    # 3. SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
+    for key in _employee_keys(emp_key, "sambanova"):
+        r = _try_openai_compat(
+            "https://api.sambanova.ai/v1/chat/completions",
+            key, "Meta-Llama-3.3-70B-Instruct", safe_system, safe_message, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [{emp_key}/sambanova] ✓ {len(r)} chars")
+            return r.strip()
+
+    # 4. GitHub Models — free via GITHUB_TOKEN, no extra key needed
     r = call_github_models(safe_system, safe_message, cap)
     if r and len(r.strip()) > 20:
         print(f"  [{emp_key}/github-models] ✓ {len(r)} chars")
         return r.strip()
 
-    # 4. OpenRouter — 50 req/day free
+    # 5. OpenRouter — 50 req/day free
     for key in _employee_keys(emp_key, "openrouter"):
         r = _try_openai_compat(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -773,11 +841,14 @@ def call_employee_agent(
             print(f"  [{emp_key}/openrouter] ✓ {len(r)} chars")
             return r.strip()
 
-    # 5. Gemini Flash — 1500 req/day, massive token budget
-    r = call_gemini(safe_system, safe_message, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [{emp_key}/gemini] ✓ {len(r)} chars")
-        return r.strip()
+    # 6. Gemini Flash — 1500 req/day, massive token budget
+    # 5. Gemini — employee's assigned account (group-isolated quota)
+    gemini_key = _gemini_key_for(emp_key)
+    if gemini_key:
+        r = call_gemini_with_key(gemini_key, safe_system, safe_message, cap, state)
+        if r and len(r.strip()) > 20:
+            print(f"  [{emp_key}/gemini] ✓ {len(r)} chars")
+            return r.strip()
 
     print(f"  [{emp_key}] ⚠ all free tiers exhausted — no paid fallback (policy)")
     return None
@@ -814,6 +885,15 @@ def call_best_agent(
             key, "qwen-3-32b", safe_sys, safe_msg, cap)
         if r and len(r.strip()) > 20:
             print(f"  [agent/cerebras] ✓ {len(r)} chars")
+            return r.strip()
+
+    # SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
+    for key in _employee_keys("shared", "sambanova"):
+        r = _try_openai_compat(
+            "https://api.sambanova.ai/v1/chat/completions",
+            key, "Meta-Llama-3.3-70B-Instruct", safe_sys, safe_msg, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/sambanova] ✓ {len(r)} chars")
             return r.strip()
 
     # GitHub Models — free in Actions
@@ -1027,6 +1107,7 @@ REQUIRED_CHANNELS = [
     "announcements", "leadership-summary", "papers", "pod-ml-rl",
     "security-alerts", "finance-ops", "legal-compliance",
     "agent-api-usage",   # real-time dashboard: provider usage, employee assignments, paid-API audit
+    "cto-audit",
 ]
 
 
@@ -1162,6 +1243,19 @@ def post_api_usage_report(token: str, state: dict, run_posts: int = 0) -> None:
         "_GitHub Models (GPT-4o-mini via GITHUB_TOKEN) + OpenRouter not shown — "
         "usage tracked by provider, not here._",
     ]
+
+    # Department group table
+    dept_lines = [
+        "",
+        "*Department Accounts (3 Groq + 3 Gemini, isolated quotas)*",
+        "```",
+        "Group 1 (maya/aarav/linh/jian)    → GROQ_API_KEY_1 + GEMINI_API_KEY_1",
+        "Group 2 (anna/aditi/kenji/diego)  → GROQ_API_KEY_2 + GEMINI_API_KEY_2",
+        "Group 3 (lior/sara/sofia/hugo/marcus) → GROQ_API_KEY_3 + GEMINI_API_KEY_3",
+        "Shared   (cerebras/sambanova/gh-models) → all groups",
+        "```",
+    ]
+    lines += dept_lines
 
     text = "\n".join(lines)
     slack_post(token, "agent-api-usage", text,
@@ -1491,6 +1585,43 @@ def _post_raw(token: str, channel_ref: str, text: str, username: str, icon_emoji
             fallback["thread_ts"] = thread_ts
         result = slack_call(token, "chat.postMessage", fallback)
     return result
+
+
+_QUALITY_KEYWORDS = {
+    "strategy", "backtest", "sharpe", "alpha", "signal", "risk",
+    "model", "lstm", "python", "fastapi", "pytest", "deploy",
+    "commit", "pr", "trading", "position", "drawdown", "kelly",
+    "groq", "gemini", "token", "latency", "execution", "broker",
+    "alpaca", "binance", "volatility", "correlation", "factor",
+    "feature", "indicator", "ml", "inference", "ci", "pipeline",
+    "sambanova", "cerebras", "openrouter", "quantedge", "backtest",
+    "equity", "crypto", "polymarket", "momentum", "arbitrage",
+}
+
+def _quality_gate(text: str, channel: str, engineer: str, state: dict) -> bool:
+    """
+    Returns True if post is on-topic (allow posting).
+    Returns False if off-topic (block post, log to audit).
+    Short messages (<60 chars) are always allowed.
+    """
+    if len(text.strip()) < 60:
+        return True
+    lower = text.lower()
+    if any(kw in lower for kw in _QUALITY_KEYWORDS):
+        return True
+    # Off-topic — log to audit
+    gov = state.setdefault("governance", {})
+    gov.setdefault("audit_log", []).append({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "event": "quality_gate_reject",
+        "engineer": engineer,
+        "channel": channel,
+        "detail": "no quant finance keywords found",
+        "snippet": text[:120],
+    })
+    gov["audit_log"] = gov["audit_log"][-500:]
+    print(f"  [quality-gate] BLOCKED {engineer}→#{channel}: no quant keywords")
+    return False
 
 
 def post_to_slack(
@@ -5045,6 +5176,7 @@ def main() -> int:
 
     # Load run state for dedup + thread tracking + token budget
     state = load_state()
+    _init_governance(state)
     print(f"📋 State: {len(state['posted_hashes'])} known hashes, "
           f"{len(state.get('response_cache', {}))} cached responses")
     log_budget(state)   # print token usage across all providers for this day
@@ -5361,6 +5493,7 @@ def quick_main() -> int:
     print(f"⚡ Quick mode | event={event_name} | {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
 
     state = load_state()
+    _init_governance(state)
     ensure_channels_exist(token)
 
     posts_made = errors = 0
