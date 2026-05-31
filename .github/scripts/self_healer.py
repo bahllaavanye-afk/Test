@@ -152,9 +152,9 @@ def _all_keys_for(provider_env: str) -> list[str]:
         if k and k not in keys:
             keys.append(k)
 
-    _add(os.environ.get(provider_env, ""))                         # primary
+    _add(os.environ.get(provider_env, ""))                         # plain primary
     base = provider_env.replace("_API_KEY", "")
-    for i in range(2, 11):                                         # _2 … _10
+    for i in range(1, 11):                                         # _1 … _10 (covers _1 alias)
         _add(os.environ.get(f"{base}_API_KEY_{i}", ""))
     for i in range(1, 6):                                          # _BACKUP_1 … _5
         _add(os.environ.get(f"{base}_API_KEY_BACKUP_{i}", ""))

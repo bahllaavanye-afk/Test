@@ -90,10 +90,14 @@ def is_duplicate(state: dict, text: str) -> bool:
 # Daily soft limits per provider key — stay below these to never hit hard caps.
 # Set at 80% of the real limit so there's always a 20% safety margin.
 _DAILY_SOFT_LIMITS: dict[str, int] = {
-    "GROQ_API_KEY":   400_000,   # real: 500K tok/day
+    # Groq — 3 accounts, both _1 and plain naming supported
+    "GROQ_API_KEY_1": 400_000,   # real: 500K tok/day
+    "GROQ_API_KEY":   400_000,   # alias for account 1
     "GROQ_API_KEY_2": 400_000,
     "GROQ_API_KEY_3": 400_000,
-    "GEMINI_API_KEY":   1_200,   # real: 1500 req/day (tracked as requests, not tokens)
+    # Gemini — 3 accounts, tracked as requests (1500 req/day real limit)
+    "GEMINI_API_KEY_1": 1_200,   # real: 1500 req/day
+    "GEMINI_API_KEY":   1_200,   # alias for account 1
     "GEMINI_API_KEY_2": 1_200,
     "GEMINI_API_KEY_3": 1_200,
     "CEREBRAS_API_KEY": 800_000, # real: 1M tok/day
@@ -348,11 +352,11 @@ _EMPLOYEES = [
 # This prevents any single Groq account from being overloaded by other employees' quota.
 
 _GROQ_ACCOUNT: dict[str, str] = {
-    # Account 1 — GROQ_API_KEY  (4 employees)
-    "maya":   "GROQ_API_KEY",
-    "aarav":  "GROQ_API_KEY",
-    "linh":   "GROQ_API_KEY",
-    "jian":   "GROQ_API_KEY",
+    # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (4 employees)
+    "maya":   "GROQ_API_KEY_1",
+    "aarav":  "GROQ_API_KEY_1",
+    "linh":   "GROQ_API_KEY_1",
+    "jian":   "GROQ_API_KEY_1",
     # Account 2 — GROQ_API_KEY_2  (4 employees)
     "anna":   "GROQ_API_KEY_2",
     "aditi":  "GROQ_API_KEY_2",
@@ -366,17 +370,25 @@ _GROQ_ACCOUNT: dict[str, str] = {
     "marcus": "GROQ_API_KEY_3",
 }
 
-# For shared/non-employee calls (inbox, commands, incidents), rotate across
-# all 3 accounts round-robin using a simple counter per process run.
+# For shared calls, rotate across all 3 accounts round-robin.
+# Both GROQ_API_KEY_1 and GROQ_API_KEY are checked — whichever is set wins.
 _shared_groq_counter: int = 0
-_GROQ_SHARED_ACCOUNTS = ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]
+_GROQ_SHARED_ACCOUNTS = ["GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]
 
 
 def _groq_key_for(employee: str) -> str | None:
-    """Return the one Groq account assigned to this employee. None if key not set."""
+    """Return the Groq key for this employee's assigned account.
+    Checks _1 suffix first (GROQ_API_KEY_1), then plain (GROQ_API_KEY) as alias.
+    """
     emp = employee.split("_")[0].lower()
-    env_var = _GROQ_ACCOUNT.get(emp, "GROQ_API_KEY")
-    return os.environ.get(env_var, "").strip() or None
+    env_var = _GROQ_ACCOUNT.get(emp, "GROQ_API_KEY_1")
+    key = os.environ.get(env_var, "").strip()
+    if key:
+        return key
+    # Alias: GROQ_API_KEY_1 ↔ GROQ_API_KEY (same account, either naming works)
+    if env_var == "GROQ_API_KEY_1":
+        return os.environ.get("GROQ_API_KEY", "").strip() or None
+    return None
 
 
 def _groq_key_shared() -> str | None:
@@ -421,11 +433,11 @@ def _employee_keys(employee: str, provider: str) -> list[str]:
         _add(_groq_key_for(emp))
         return keys
 
-    # All other providers: dedicated → numbered pool → shared primary
+    # All other providers: dedicated → numbered pool (_1 through _10) → plain primary
     _add(os.environ.get(f"{prov}_API_KEY_{emp.upper()}", ""))   # e.g. CEREBRAS_API_KEY_MAYA
-    for i in range(2, 11):
-        _add(os.environ.get(f"{prov}_API_KEY_{i}", ""))          # e.g. CEREBRAS_API_KEY_2
-    _add(os.environ.get(f"{prov}_API_KEY", ""))                  # e.g. CEREBRAS_API_KEY
+    for i in range(1, 11):                                       # _1 … _10 (includes _1 alias)
+        _add(os.environ.get(f"{prov}_API_KEY_{i}", ""))
+    _add(os.environ.get(f"{prov}_API_KEY", ""))                  # plain primary
     return keys
 
 
@@ -472,7 +484,7 @@ def call_gemini(system_prompt: str, user_message: str, max_tokens: int = 600,
         "generationConfig": {"maxOutputTokens": min(max_tokens, MAX_TOKENS_PER_CALL),
                              "temperature": 0.4},
     }
-    for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
+    for env_var in ["GEMINI_API_KEY_1", "GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
         key = os.environ.get(env_var, "").strip()
         if not key:
             continue
@@ -600,7 +612,10 @@ def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) ->
     This function exists so the import chain doesn't break, not to be called.
     """
     if not ALLOW_PAID_APIS:
-        print("  [POLICY] Paid API blocked — ALLOW_PAID_APIS=False. Skipping Claude.")
+        import traceback
+        caller = traceback.extract_stack()[-2]
+        _PAID_CALLS_BLOCKED.append(f"{caller.filename.split('/')[-1]}:{caller.lineno} @ {_today()}")
+        print("  [POLICY] Paid API blocked — ALLOW_PAID_APIS=False. Logged to #agent-api-usage.")
         return None
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
@@ -981,6 +996,7 @@ REQUIRED_CHANNELS = [
     "incidents", "strategy-review", "model-performance", "code-review",
     "announcements", "leadership-summary", "papers", "pod-ml-rl",
     "security-alerts", "finance-ops", "legal-compliance",
+    "agent-api-usage",   # real-time dashboard: provider usage, employee assignments, paid-API audit
 ]
 
 
@@ -1009,6 +1025,118 @@ def ensure_channels_exist(token: str) -> None:
         else:
             print(f"    ⚠ #{name}: {result.get('error', 'unknown error')}")
         time.sleep(0.3)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# #agent-api-usage channel — real-time dashboard posted after every run
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PAID_CALLS_BLOCKED: list[str] = []   # populated by call_claude() each time it's invoked
+
+
+def _bar(used: int, limit: int, width: int = 12) -> str:
+    """ASCII progress bar: ████░░░░ 45%"""
+    pct = min(used / limit, 1.0) if limit else 0
+    filled = round(pct * width)
+    bar = "█" * filled + "░" * (width - filled)
+    return f"`{bar}` {pct*100:.0f}%"
+
+
+def _status_emoji(used: int, limit: int) -> str:
+    pct = used / limit if limit else 0
+    if pct >= 0.90:
+        return ":red_circle:"
+    if pct >= 0.60:
+        return ":large_yellow_circle:"
+    return ":large_green_circle:"
+
+
+def post_api_usage_report(token: str, state: dict, run_posts: int = 0) -> None:
+    """
+    Post a full API usage dashboard to #agent-api-usage after every run.
+
+    Shows:
+    • Token/request usage vs daily soft limit per provider key
+    • Which employees are assigned to which Groq account
+    • Explicit ALLOW_PAID_APIS=False confirmation + count of blocked attempts
+    • Total free capacity remaining across all providers
+    """
+    today = _today()
+    budget = state.get("token_budget", {})
+
+    def _used(key: str) -> int:
+        b = budget.get(key, {})
+        return b.get("used", 0) if b.get("date") == today else 0
+
+    from datetime import datetime, timezone
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines: list[str] = [
+        f"*:robot_face: Agent API Usage Dashboard — {now_str}*",
+        f"Run produced *{run_posts}* Slack posts   |   "
+        f"Response cache: *{len(state.get('response_cache', {}))}* entries",
+        "",
+        "*Provider Budget (daily soft limits — 80% of real cap)*",
+        "```",
+        f"{'Provider':<22} {'Used':>10}  {'Limit':>10}  {'Bar':>16}",
+        "─" * 64,
+    ]
+
+    provider_rows = [
+        ("GROQ_API_KEY_1",   "GROQ_API_KEY",   400_000, "tok"),
+        ("GROQ_API_KEY_2",   None,              400_000, "tok"),
+        ("GROQ_API_KEY_3",   None,              400_000, "tok"),
+        ("GEMINI_API_KEY_1", "GEMINI_API_KEY",  1_200,   "req"),
+        ("GEMINI_API_KEY_2", None,              1_200,   "req"),
+        ("GEMINI_API_KEY_3", None,              1_200,   "req"),
+        ("CEREBRAS_API_KEY", None,              800_000, "tok"),
+    ]
+
+    total_remaining = 0
+    for env_var, alias, limit, unit in provider_rows:
+        used = _used(env_var)
+        if used == 0 and alias:
+            used = _used(alias)        # check alias (GROQ_API_KEY ↔ GROQ_API_KEY_1)
+        key_set = bool(os.environ.get(env_var, "") or (alias and os.environ.get(alias or "", "")))
+        remaining = limit - used
+        total_remaining += max(remaining, 0)
+        status = "NOT SET" if not key_set else f"{used:>8,} / {limit:,} {unit}"
+        bar = _bar(used, limit) if key_set else "`──────────────` —"
+        lines.append(f"{env_var:<22} {status:<24} {bar}")
+
+    lines += [
+        "```",
+        "",
+        "*Employee → Groq Account Assignment*",
+        "```",
+        "Account 1 (GROQ_API_KEY_1) → maya, aarav, linh, jian",
+        "Account 2 (GROQ_API_KEY_2) → anna, aditi, kenji, diego",
+        "Account 3 (GROQ_API_KEY_3) → lior, sara, sofia, hugo, marcus",
+        "Shared calls               → round-robin across all 3",
+        "```",
+        "",
+        "*:lock: Paid API Policy*",
+        f"```ALLOW_PAID_APIS = {ALLOW_PAID_APIS}```",
+    ]
+
+    if _PAID_CALLS_BLOCKED:
+        lines.append(f":warning: Paid calls attempted (and blocked): *{len(_PAID_CALLS_BLOCKED)}*")
+        for blocked in _PAID_CALLS_BLOCKED[-5:]:
+            lines.append(f"  • {blocked}")
+    else:
+        lines.append(":white_check_mark: Zero paid API calls attempted or made this run")
+
+    lines += [
+        "",
+        f":bank: *Total free capacity remaining today: ~{total_remaining:,} tokens/requests*",
+        "_GitHub Models (GPT-4o-mini via GITHUB_TOKEN) + OpenRouter not shown — "
+        "usage tracked by provider, not here._",
+    ]
+
+    text = "\n".join(lines)
+    slack_post(token, "agent-api-usage", text,
+               username="API Monitor", emoji=":bar_chart:")
+    print(f"  [api-usage] posted to #agent-api-usage")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -5159,6 +5287,9 @@ def main() -> int:
     save_state(state)
     print(f"💾 State saved: {len(state['posted_hashes'])} hashes, {len(state['replied_to'])} replied threads")
 
+    # Post API usage dashboard to #agent-api-usage
+    post_api_usage_report(token, state, run_posts=posts_made)
+
     print(f"\n✅ Posted {posts_made} messages, {errors} errors")
     return 0
 
@@ -5268,6 +5399,10 @@ def quick_main() -> int:
 
     state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
     save_state(state)
+
+    # Post usage snapshot to #agent-api-usage on every quick run too
+    post_api_usage_report(token, state, run_posts=posts_made)
+
     print(f"⚡ Quick done: {posts_made} posts, {errors} errors")
     return 0
 

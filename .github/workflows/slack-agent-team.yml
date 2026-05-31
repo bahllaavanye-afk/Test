@@ -81,10 +81,11 @@ jobs:
           GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # ── Numbered extra accounts (GROQ_API_KEY_2, _3, _4 …) ──────────
-          # Add as many as you have free accounts — code auto-detects up to _10
+          # ── Numbered accounts (_1 is an alias for the primary, _2 _3 are separate) ──
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
           GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
           GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
           GROQ_API_KEY_4: ${{ secrets.GROQ_API_KEY_4 }}
           GROQ_API_KEY_5: ${{ secrets.GROQ_API_KEY_5 }}
           GROQ_API_KEY_6: ${{ secrets.GROQ_API_KEY_6 }}

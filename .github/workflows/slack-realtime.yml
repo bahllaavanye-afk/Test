@@ -58,8 +58,10 @@ jobs:
           # 3 Gemini accounts rotate automatically (1500 req/day each = 4500 combined)
           GEMINI_API_KEY_2:  ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3:  ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY_1:    ${{ secrets.GROQ_API_KEY_1 }}
           GROQ_API_KEY_2:    ${{ secrets.GROQ_API_KEY_2 }}
           GROQ_API_KEY_3:    ${{ secrets.GROQ_API_KEY_3 }}
+          GEMINI_API_KEY_1:  ${{ secrets.GEMINI_API_KEY_1 }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
