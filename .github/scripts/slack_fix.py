@@ -108,7 +108,7 @@ def main():
                 f"🤖 *QuantEdge-AI is live!*\n"
                 f"Bot @{bot_name} is connected and monitoring all systems.\n"
                 f"Post errors here or in <#risk-alerts> for auto-diagnosis.\n"
-                f"_To trigger insights: run the 'Claude AI Slack Bot' workflow from GitHub Actions._"
+                f"_To trigger insights: run the 'QuantEdge AI Slack Bot' workflow from GitHub Actions._"
             ),
             "mrkdwn": True,
         })

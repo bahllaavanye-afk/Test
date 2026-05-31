@@ -1,7 +1,7 @@
 name: Render Failure → GitHub Issue Bridge
 
 # When a Render deploy fails, creates/updates a GitHub Issue with the full logs.
-# Claude (via MCP) can read the issue and auto-fix without the user copy-pasting.
+# QuantEdge AI (via MCP) can read the issue and auto-fix without the user copy-pasting.
 
 on:
   schedule:

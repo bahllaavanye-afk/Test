@@ -2,7 +2,7 @@
 Render Failure → GitHub Issue Bridge
 
 When a Render deploy fails, this creates/updates a GitHub Issue with the
-full error logs. Claude (via the existing pull_request_read MCP tools)
+full error logs. QuantEdge AI (via the existing pull_request_read MCP tools)
 can then read the issue directly without the user copy-pasting errors.
 
 Triggered by:
@@ -114,7 +114,7 @@ def find_or_create_issue(deploy_id: str, status: str, logs: str, commit_msg: str
         "",
         "## How to fix",
         "",
-        "Claude Code will read this issue automatically and propose a fix.",
+        "QuantEdge AI will read this issue automatically and propose a fix.",
         "If the error mentions `Network is unreachable` and an IPv6 address, the fix is:",
         "1. Go to Supabase Dashboard → Settings → Database → Connection pooling",
         "2. Copy the Transaction mode URL (port 6543)",
@@ -140,7 +140,7 @@ def find_or_create_issue(deploy_id: str, status: str, logs: str, commit_msg: str
         })
         if new_issue:
             print(f"Created issue #{new_issue['number']}: {new_issue['html_url']}")
-            slack(f"🔴 *Render deploy failed* — Issue created: {new_issue['html_url']}\nClaude will auto-fix shortly.")
+            slack(f"🔴 *Render deploy failed* — Issue created: {new_issue['html_url']}\nQuantEdge AI will auto-fix shortly.")
         return new_issue
 
 

@@ -1,6 +1,6 @@
 # Agent Workflow System — Operating Manual
 
-> Engineering org = 92 autonomous Claude agents.
+> Engineering org = 92 autonomous AI agents.
 > Each agent reads its CLAUDE.md role file, picks a task from Notion or GitHub Issues,
 > writes code, commits, and reports out to Slack + Google Docs.
 

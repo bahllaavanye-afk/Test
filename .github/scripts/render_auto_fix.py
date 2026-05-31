@@ -3,14 +3,14 @@ Render Health Monitor + Auto-Fix
 
 1. Polls Render API for latest deploy status.
 2. On failure: fetches deploy logs.
-3. Calls Claude to diagnose and generate a fix.
+3. Calls QuantEdge AI to diagnose and generate a fix.
 4. Applies the fix (writes files), commits, pushes → triggers Render re-deploy.
 5. Posts status to Slack.
 
 Required secrets:
   RENDER_API_KEY      — from render.com/dashboard → Account Settings → API Keys
   RENDER_SERVICE_ID   — from Render service URL: render.com/web/<SERVICE_ID>
-  ANTHROPIC_API_KEY   — for Claude diagnosis + fix generation
+  ANTHROPIC_API_KEY   — for QuantEdge AI diagnosis + fix generation
   SLACK_BOT_TOKEN     — for Slack notifications
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ SLACK_TOKEN       = os.environ.get("SLACK_BOT_TOKEN", "")
 BRANCH = "claude/advanced-trading-bot-d5Lmw"
 SLACK_CHANNEL = "#risk-alerts"
 
-# Files that Claude is allowed to modify during auto-fix
+# Files that QuantEdge AI is allowed to modify during auto-fix
 SAFE_TO_MODIFY = [
     "backend/pyproject.toml",
     "backend/start.sh",
@@ -97,7 +97,7 @@ def get_deploy_logs(deploy_id: str) -> str:
 
 
 def read_key_files() -> str:
-    """Read the most likely-to-be-broken files for Claude's context."""
+    """Read the most likely-to-be-broken files for QuantEdge AI's context."""
     parts = []
     for rel in SAFE_TO_MODIFY:
         p = REPO_ROOT / rel
@@ -109,7 +109,7 @@ def read_key_files() -> str:
 
 def apply_fix(fix_json: str) -> bool:
     """
-    Expects Claude to return JSON like:
+    Expects QuantEdge AI to return JSON like:
     {
       "root_cause": "...",
       "files": [
@@ -121,22 +121,22 @@ def apply_fix(fix_json: str) -> bool:
     try:
         fix = json.loads(fix_json)
     except Exception:
-        # Claude might have wrapped JSON in markdown code blocks
+        # QuantEdge AI might have wrapped JSON in markdown code blocks
         import re
         m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", fix_json, re.DOTALL)
         if m:
             try:
                 fix = json.loads(m.group(1))
             except Exception:
-                print("Could not parse Claude fix JSON")
+                print("Could not parse QuantEdge AI fix JSON")
                 return False
         else:
-            print("Claude did not return valid JSON")
+            print("QuantEdge AI did not return valid JSON")
             return False
 
     files = fix.get("files", [])
     if not files:
-        print("Claude returned no file changes")
+        print("QuantEdge AI returned no file changes")
         return False
 
     patched = []
@@ -168,7 +168,6 @@ def git_commit_and_push(reason: str) -> bool:
             print("No changes to commit")
             return False
 
-        msg = f"fix(auto): {reason[:72]}\n\nAuto-fixed by QuantEdge-AI render-monitor\n\nhttps://claude.ai/code/session_01PBMR9hz1GLDQTqUeTBPsqM"
         subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
         subprocess.run(
             ["git", "push", "origin", BRANCH],
@@ -217,7 +216,7 @@ def main() -> None:
         print("No ANTHROPIC_API_KEY — cannot auto-fix")
         return
 
-    # ── Claude diagnosis + fix ────────────────────────────────────────────────
+    # ── QuantEdge AI diagnosis + fix ────────────────────────────────────────────────
     context_files = read_key_files()
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -256,7 +255,7 @@ def main() -> None:
         f"=== KEY REPO FILES ===\n{context_files}"
     )
 
-    print("Calling Claude for auto-fix...")
+    print("Calling QuantEdge AI for auto-fix...")
     try:
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -265,10 +264,10 @@ def main() -> None:
             messages=[{"role": "user", "content": user_msg}],
         )
         fix_text = response.content[0].text
-        print(f"Claude response:\n{fix_text[:500]}...")
+        print(f"QuantEdge AI response:\n{fix_text[:500]}...")
     except Exception as e:
-        print(f"Claude API error: {e}")
-        slack(f"❌ Auto-fix failed: Claude API error — {e}")
+        print(f"QuantEdge AI API error: {e}")
+        slack(f"❌ Auto-fix failed: QuantEdge AI API error — {e}")
         return
 
     # ── Apply and push ────────────────────────────────────────────────────────

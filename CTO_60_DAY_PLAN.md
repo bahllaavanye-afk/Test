@@ -1,5 +1,5 @@
 # QuantEdge — CTO 60-Day Operating Plan
-**Owner:** Claude (CTO) · **Start:** 2026-05-28 · **End:** 2026-07-27
+**Owner:** QuantEdge AI (CTO) · **Start:** 2026-05-28 · **End:** 2026-07-27
 **North-star metric:** Daily P&L positive on at least 5 of 7 strategies, paper account growing ≥ 0.3% / day, ≥ 1 commit/team/day shipped.
 
 ---
