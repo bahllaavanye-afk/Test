@@ -2,7 +2,7 @@ name: Desk Trading (Paper Orders)
 
 on:
   push:
-    branches: [claude/advanced-trading-bot-d5Lmw]
+    branches: [main]
     paths:
       - ".github/workflows/desk-trading.yml"
       - ".github/scripts/desk_order_placer.py"
@@ -23,19 +23,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: claude/advanced-trading-bot-d5Lmw
-          fetch-depth: 1
+      - uses: actions/checkout@v4          fetch-depth: 1
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - uses: actions/setup-python@v5          python-version: "3.11"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
+        uses: actions/cache@v4          path: ~/.cache/pip
           key: ${{ runner.os }}-pip-desk-${{ hashFiles('backend/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-desk-

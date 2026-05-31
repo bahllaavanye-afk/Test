@@ -5,7 +5,7 @@ name: Slack Pulse — Keep Team Informed
 
 on:
   push:
-    branches: [claude/advanced-trading-bot-d5Lmw, main]
+    branches: [main]
   schedule:
     - cron: "0 9 * * 1-5"    # Morning briefing Mon-Fri 9am UTC
     - cron: "0 17 * * 1-5"   # Evening update Mon-Fri 5pm UTC
