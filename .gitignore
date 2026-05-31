@@ -72,3 +72,5 @@ backend/seed_comparisons.py
 experiments/results/desk_runs.jsonl
 pipeline_runs.json
 employee_dashboard.png
+paper_trade_proof.png
+paper_trade_proof.txt

@@ -1,0 +1,63 @@
+name: Prove Paper Trade
+
+# Places a REAL Alpaca paper trade (BTC/USD by default — 24/7), waits for the
+# fill, closes it, renders a proof image of the full lifecycle (account →
+# quote → open fill → close fill → realized P&L), posts it to Slack
+# #desk-crypto, and uploads it as a CI artifact. Proof is produced by CI
+# against the real paper account — never fabricated.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours, around the clock
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "Symbol to trade (default BTC/USD, 24/7)"
+        required: false
+        default: "BTC/USD"
+      notional:
+        description: "USD notional"
+        required: false
+        default: "50"
+
+concurrency:
+  group: prove-paper-trade
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install matplotlib
+
+      - name: Place + close paper trade, render proof
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL:   ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          SYMBOL:            ${{ github.event.inputs.symbol || 'BTC/USD' }}
+          NOTIONAL_USD:      ${{ github.event.inputs.notional || '50' }}
+        run: python .github/scripts/prove_paper_trade.py
+
+      - name: Upload proof artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-trade-proof
+          path: paper_trade_proof.*
+          retention-days: 30
+          if-no-files-found: ignore
