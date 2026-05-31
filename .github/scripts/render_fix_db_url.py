@@ -88,6 +88,38 @@ def patch_env_var(service_id: str, key: str, value: str) -> bool:
     return False
 
 
+def delete_env_var(service_id: str, key: str) -> bool:
+    """Delete a manually-set env var so Render falls back to fromDatabase value."""
+    r = httpx.delete(
+        f"{RENDER_API}/services/{service_id}/env-vars/{key}",
+        headers=headers(),
+        timeout=20,
+    )
+    if r.status_code in (200, 204):
+        print(f"  Deleted {key} override — Render will use fromDatabase value")
+        return True
+    print(f"  DELETE {key} failed: {r.status_code} {r.text[:160]}")
+    return False
+
+
+def get_render_db_connection_string() -> str | None:
+    """Find the quantedge-db Render database and return its external connection string."""
+    try:
+        r = httpx.get(f"{RENDER_API}/postgres?limit=20", headers=headers(), timeout=20)
+        if r.status_code != 200:
+            return None
+        for item in r.json():
+            db = item.get("postgres", item)
+            if db.get("name") == "quantedge-db":
+                # Render API returns connection info
+                conn = db.get("connectionInfo", {})
+                if conn.get("externalConnectionString"):
+                    return conn["externalConnectionString"]
+    except Exception as e:
+        print(f"  Could not fetch Render DB info: {e}")
+    return None
+
+
 def trigger_deploy(service_id: str) -> None:
     r = httpx.post(f"{RENDER_API}/services/{service_id}/deploys",
                    headers={**headers(), "Content-Type": "application/json"},
@@ -121,6 +153,24 @@ def main() -> None:
                 continue
             if not DIRECT_RE.search(val):
                 print(f"  {key}: already pooler/clean — skipping")
+                continue
+            # Check for placeholder password (e.g. [YOUR-PASSWORD] or %5BYOUR-PASSWORD%5D)
+            from urllib.parse import unquote
+            decoded_val = unquote(val)
+            if "[YOUR-PASSWORD]" in decoded_val or "%5B" in val:
+                print(f"  {key}: placeholder password detected — deleting override to use Render DB")
+                # Try to get the real Render DB connection string
+                render_db_url = get_render_db_connection_string()
+                if render_db_url:
+                    # Convert to the right driver format
+                    real_url = render_db_url.replace("postgresql://", f"postgresql+{driver}://")
+                    print(f"  {key}: using Render managed DB connection")
+                    if patch_env_var(sid, key, real_url):
+                        any_changed = True
+                else:
+                    # Fall back: just delete the override so render.yaml fromDatabase kicks in
+                    if delete_env_var(sid, key):
+                        any_changed = True
                 continue
             new_val = to_pooler(val, driver)
             if not new_val:

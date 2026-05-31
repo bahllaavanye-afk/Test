@@ -96,6 +96,7 @@ def post_to_slack(
 ) -> dict:
     ch_id = get_channel_id(token, channel)
     if not ch_id:
+        print(f"  [slack] channel not found: {channel} — run bootstrap first")
         return {"ok": False, "error": f"channel_not_found:{channel}"}
     # Auto-join public channels (cheap if already in)
     ch = _channels_cache.get(channel, {})
@@ -111,7 +112,21 @@ def post_to_slack(
     }
     if thread_ts:
         payload["thread_ts"] = thread_ts
-    return slack_call(token, "chat.postMessage", payload)
+    result = slack_call(token, "chat.postMessage", payload)
+
+    # Fallback: chat:write.customize scope missing → retry as plain bot message
+    if not result.get("ok") and result.get("error") in (
+        "not_allowed_token_type", "missing_scope", "invalid_auth"
+    ):
+        print(f"  [slack] {result.get('error')} — retrying without custom username/icon")
+        fallback: dict = {"channel": ch_id, "text": f"*[{username}]* {text}", "mrkdwn": True}
+        if thread_ts:
+            fallback["thread_ts"] = thread_ts
+        result = slack_call(token, "chat.postMessage", fallback)
+
+    if not result.get("ok"):
+        print(f"  [slack] post failed to {channel}: {result.get('error')}")
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
