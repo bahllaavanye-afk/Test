@@ -32,14 +32,14 @@ def test_groq(key: str, label: str) -> dict:
     ok = status == 200 and "choices" in resp
     return {"provider": label, "status": "✅" if ok else f"❌ {status}", "ok": ok}
 
-def test_cerebras(key: str) -> dict:
+def test_cerebras(key: str, label: str = "Cerebras") -> dict:
     status, resp = _http_post(
         "https://api.cerebras.ai/v1/chat/completions",
         {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         {"model": "qwen-3-32b", "messages": [{"role": "user", "content": "Say OK"}], "max_tokens": 5}
     )
     ok = status == 200 and "choices" in resp
-    return {"provider": "Cerebras", "status": "✅" if ok else f"❌ {status}", "ok": ok}
+    return {"provider": label, "status": "✅" if ok else f"❌ {status}", "ok": ok}
 
 def test_sambanova(key: str) -> dict:
     status, resp = _http_post(
@@ -172,12 +172,13 @@ def main():
         else:
             results.append({"provider": label, "status": "⚠️ not set", "ok": False})
 
-    # Cerebras
-    key = g("CEREBRAS_API_KEY", "")
-    if key:
-        results.append(test_cerebras(key))
-    else:
-        results.append({"provider": "Cerebras", "status": "⚠️ not set", "ok": False})
+    # Cerebras accounts
+    for label, env in [("Cerebras Account 1", "CEREBRAS_API_KEY_1"), ("Cerebras Account 2", "CEREBRAS_API_KEY_2")]:
+        key = g(env, "") or (g("CEREBRAS_API_KEY", "") if env == "CEREBRAS_API_KEY_1" else "")
+        if key:
+            results.append(test_cerebras(key, label))
+        else:
+            results.append({"provider": label, "status": "⚠️ not set", "ok": False})
 
     # SambaNova
     key = g("SAMBANOVA_API_KEY", "")

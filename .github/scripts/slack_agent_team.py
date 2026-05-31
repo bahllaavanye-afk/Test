@@ -118,7 +118,9 @@ _DAILY_SOFT_LIMITS: dict[str, int] = {
     "GEMINI_API_KEY":   1_200,   # alias for account 1
     "GEMINI_API_KEY_2": 1_200,
     "GEMINI_API_KEY_3": 1_200,
-    "CEREBRAS_API_KEY": 800_000, # real: 1M tok/day
+    "CEREBRAS_API_KEY_1": 800_000,   # 1M/day hard, use 80%
+    "CEREBRAS_API_KEY":   800_000,   # alias for account 1
+    "CEREBRAS_API_KEY_2": 800_000,   # account 2
     "SAMBANOVA_API_KEY": 15_000_000,  # 20M/day hard limit, use 75%
 }
 
@@ -438,6 +440,25 @@ _GEMINI_ACCOUNT: dict[str, str] = {
     "marcus": "GEMINI_API_KEY_3",
 }
 
+# 2 Cerebras accounts — split employees evenly across groups.
+# Group 1 (Groq_1/Gemini_1 users) + Group 2 (Groq_2/Gemini_2 users) → CEREBRAS_API_KEY_1
+# Group 3 (Groq_3/Gemini_3 users) → CEREBRAS_API_KEY_2
+_CEREBRAS_ACCOUNT: dict[str, str] = {
+    "maya":   "CEREBRAS_API_KEY_1",
+    "aarav":  "CEREBRAS_API_KEY_1",
+    "linh":   "CEREBRAS_API_KEY_1",
+    "jian":   "CEREBRAS_API_KEY_1",
+    "anna":   "CEREBRAS_API_KEY_1",
+    "aditi":  "CEREBRAS_API_KEY_1",
+    "kenji":  "CEREBRAS_API_KEY_1",
+    "diego":  "CEREBRAS_API_KEY_1",
+    "lior":   "CEREBRAS_API_KEY_2",
+    "sara":   "CEREBRAS_API_KEY_2",
+    "sofia":  "CEREBRAS_API_KEY_2",
+    "hugo":   "CEREBRAS_API_KEY_2",
+    "marcus": "CEREBRAS_API_KEY_2",
+}
+
 # For shared calls, rotate across all 3 accounts round-robin.
 # Both GROQ_API_KEY_1 and GROQ_API_KEY are checked — whichever is set wins.
 _shared_groq_counter: int = 0
@@ -469,6 +490,19 @@ def _gemini_key_for(employee: str) -> str | None:
     # Fallback: try plain GEMINI_API_KEY if _1 is the assigned one
     if env_var == "GEMINI_API_KEY_1":
         return os.environ.get("GEMINI_API_KEY", "").strip() or None
+    return None
+
+
+def _cerebras_key_for(employee: str) -> str | None:
+    """Returns the Cerebras API key assigned to this employee's department group."""
+    emp = employee.split("_")[0].lower()
+    env_var = _CEREBRAS_ACCOUNT.get(emp, "CEREBRAS_API_KEY_1")
+    # Support both _1 suffix and plain name for first account
+    key = os.environ.get(env_var, "").strip()
+    if key:
+        return key
+    if env_var == "CEREBRAS_API_KEY_1":
+        return os.environ.get("CEREBRAS_API_KEY", "").strip() or None
     return None
 
 
@@ -843,11 +877,12 @@ def call_employee_agent(
             print(f"  [{emp_key}/groq] ✓ {len(r)} chars")
             return r.strip()
 
-    # 2. Cerebras — 1M tok/day, employee-dedicated or shared key
-    for key in _employee_keys(emp_key, "cerebras"):
+    # 2. Cerebras — employee's assigned account (2-account split)
+    cerebras_key = _cerebras_key_for(emp_key)
+    if cerebras_key:
         r = _try_openai_compat(
             "https://api.cerebras.ai/v1/chat/completions",
-            key, "qwen-3-32b", safe_system, safe_message, cap)
+            cerebras_key, "qwen-3-32b", safe_system, safe_message, cap)
         if r and len(r.strip()) > 20:
             print(f"  [{emp_key}/cerebras] ✓ {len(r)} chars")
             return r.strip()
@@ -913,14 +948,18 @@ def call_best_agent(
             print(f"  [agent/groq] ✓ {len(r)} chars")
             return r.strip()
 
-    # Cerebras — 1M tok/day, try all keys
-    for key in _employee_keys("shared", "cerebras"):
+    # Cerebras — round-robin across both accounts for shared calls
+    for cerebras_env in ["CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY", "CEREBRAS_API_KEY_2"]:
+        key = os.environ.get(cerebras_env, "").strip()
+        if not key:
+            continue
         r = _try_openai_compat(
             "https://api.cerebras.ai/v1/chat/completions",
             key, "qwen-3-32b", safe_sys, safe_msg, cap)
         if r and len(r.strip()) > 20:
             print(f"  [agent/cerebras] ✓ {len(r)} chars")
             return r.strip()
+        break  # try next account only if first fails
 
     # SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
     for key in _employee_keys("shared", "sambanova"):
@@ -1235,7 +1274,8 @@ def post_api_usage_report(token: str, state: dict, run_posts: int = 0) -> None:
         ("GEMINI_API_KEY_1", "GEMINI_API_KEY",  1_200,   "req"),
         ("GEMINI_API_KEY_2", None,              1_200,   "req"),
         ("GEMINI_API_KEY_3", None,              1_200,   "req"),
-        ("CEREBRAS_API_KEY", None,              800_000, "tok"),
+        ("CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY", 800_000, "tok"),
+        ("CEREBRAS_API_KEY_2", None,              800_000, "tok"),
     ]
 
     total_remaining = 0
@@ -1282,12 +1322,12 @@ def post_api_usage_report(token: str, state: dict, run_posts: int = 0) -> None:
     # Department group table
     dept_lines = [
         "",
-        "*Department Accounts (3 Groq + 3 Gemini, isolated quotas)*",
+        "*Department Accounts (3 Groq + 3 Gemini + 2 Cerebras, isolated quotas)*",
         "```",
-        "Group 1 (maya/aarav/linh/jian)    → GROQ_API_KEY_1 + GEMINI_API_KEY_1",
-        "Group 2 (anna/aditi/kenji/diego)  → GROQ_API_KEY_2 + GEMINI_API_KEY_2",
-        "Group 3 (lior/sara/sofia/hugo/marcus) → GROQ_API_KEY_3 + GEMINI_API_KEY_3",
-        "Shared   (cerebras/sambanova/gh-models) → all groups",
+        "Group 1 (maya/aarav/linh/jian)       → Groq_1 + Gemini_1 + Cerebras_1",
+        "Group 2 (anna/aditi/kenji/diego)      → Groq_2 + Gemini_2 + Cerebras_1",
+        "Group 3 (lior/sara/sofia/hugo/marcus) → Groq_3 + Gemini_3 + Cerebras_2",
+        "Shared  (sambanova/gh-models/openrouter) → all groups",
         "```",
     ]
     lines += dept_lines

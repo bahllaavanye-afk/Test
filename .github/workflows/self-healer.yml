@@ -65,7 +65,9 @@ jobs:
           SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
           GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
-          CEREBRAS_API_KEY:  ${{ secrets.CEREBRAS_API_KEY }}
+          CEREBRAS_API_KEY:   ${{ secrets.CEREBRAS_API_KEY }}
+          CEREBRAS_API_KEY_1: ${{ secrets.CEREBRAS_API_KEY_1 }}
+          CEREBRAS_API_KEY_2: ${{ secrets.CEREBRAS_API_KEY_2 }}
           SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
           GEMINI_API_KEY_2:  ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3:  ${{ secrets.GEMINI_API_KEY_3 }}

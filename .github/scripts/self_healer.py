@@ -56,6 +56,8 @@ MAX_TOKENS_PER_AI_CALL: int = 600   # Hard cap per call regardless of provider
 # Daily soft limits (tokens) — stay well under each provider's hard cap
 _DAILY_SOFT_LIMITS: dict[str, int] = {
     "SAMBANOVA_API_KEY": 15_000_000,  # 20M/day hard limit, use 75%
+    "CEREBRAS_API_KEY_2": 800_000,
+    "CEREBRAS_API_KEY_1": 800_000,
 }
 
 # ── IP sanitization — strip credentials/paths before external LLM calls ───────
@@ -188,14 +190,21 @@ def ai_fix(prompt: str) -> str | None:
             print("  [ai/groq] ✓")
             return r.strip()
 
-    # 2. Cerebras — Qwen3 32B, 1M tok/day per key
-    for key in _all_keys_for("CEREBRAS_API_KEY"):
-        r = _call_openai_compat(
-            "https://api.cerebras.ai/v1/chat/completions",
-            key, "qwen-3-32b", _QUANT_SYSTEM, safe_prompt, cap)
-        if r and len(r.strip()) > 20:
-            print("  [ai/cerebras] ✓")
-            return r.strip()
+    # 2. Cerebras — try both accounts
+    for cerebras_env in ["CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY", "CEREBRAS_API_KEY_2"]:
+        key = os.environ.get(cerebras_env, "").strip()
+        if not key:
+            continue
+        try:
+            r = _call_openai_compat(
+                "https://api.cerebras.ai/v1/chat/completions",
+                key, "qwen-3-32b", _QUANT_SYSTEM, safe_prompt, cap)
+            if r and len(r.strip()) > 20:
+                print(f"  [cerebras/{cerebras_env}] ✓ {len(r)} chars")
+                return r.strip()
+        except Exception as e:
+            print(f"  [cerebras/{cerebras_env}] error: {e}")
+            continue
 
     # 3. SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
     for key in _all_keys_for("SAMBANOVA_API_KEY"):

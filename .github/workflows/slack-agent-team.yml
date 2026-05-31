@@ -94,6 +94,7 @@ jobs:
           GROQ_API_KEY_8: ${{ secrets.GROQ_API_KEY_8 }}
           GROQ_API_KEY_9: ${{ secrets.GROQ_API_KEY_9 }}
           GROQ_API_KEY_10: ${{ secrets.GROQ_API_KEY_10 }}
+          CEREBRAS_API_KEY_1: ${{ secrets.CEREBRAS_API_KEY_1 }}
           CEREBRAS_API_KEY_2: ${{ secrets.CEREBRAS_API_KEY_2 }}
           CEREBRAS_API_KEY_3: ${{ secrets.CEREBRAS_API_KEY_3 }}
           GEMINI_API_KEY_2:  ${{ secrets.GEMINI_API_KEY_2 }}
