@@ -1,0 +1,85 @@
+name: Slack Team — bootstrap, invite admin, employee discussion
+
+# Runs from the DEFAULT branch (main) so cron actually fires.
+# 1. Bootstrap: create all channels + invite the admin (bahl.laavanye@gmail.com)
+# 2. Agent team: each AI "employee" reads repo state and posts to their desk
+# 3. Fires on schedule (4x/day), on push to main, and manually.
+#
+# Requires secret: SLACK_BOT_TOKEN (xoxb-...) with scopes:
+#   chat:write, chat:write.public, chat:write.customize,
+#   channels:read, channels:join, channels:manage, groups:read
+
+on:
+  schedule:
+    - cron: "15 9,13,17,21 * * *"   # 4x daily
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/slack-team.yml"
+      - ".github/scripts/slack_bootstrap.py"
+      - ".github/scripts/slack_agent_team.py"
+  workflow_dispatch:
+    inputs:
+      run_bootstrap:
+        description: "Create channels + invite admin"
+        required: false
+        default: "true"
+
+concurrency:
+  group: slack-team
+  cancel-in-progress: false
+
+jobs:
+  slack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install httpx anthropic --quiet
+          # Backend test deps so the QA employee can run real pytest and report live pass/fail
+          pip install --quiet \
+            pytest pytest-asyncio aiosqlite \
+            fastapi 'uvicorn[standard]' pydantic pydantic-settings \
+            'python-jose[cryptography]' 'passlib[bcrypt]' cryptography slowapi \
+            'sqlalchemy[asyncio]' alembic \
+            pandas numpy scipy statsmodels scikit-learn \
+            structlog tenacity python-dotenv anyio apscheduler redis || true
+
+      - name: Guard — token present?
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "::warning::SLACK_BOT_TOKEN not set — add it in Settings → Secrets → Actions. Skipping."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Bootstrap channels + invite admin
+        if: env.SKIP != '1'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_ADMIN_EMAIL: ${{ secrets.SLACK_ADMIN_EMAIL || 'bahl.laavanye@gmail.com' }}
+          SLACK_ADMIN_USER_ID: ${{ secrets.SLACK_ADMIN_USER_ID }}
+        run: python .github/scripts/slack_bootstrap.py || echo "bootstrap had non-fatal errors"
+
+      - name: Employee team discussion
+        if: env.SKIP != '1'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
+        run: python .github/scripts/slack_agent_team.py || echo "agent team had non-fatal errors"
