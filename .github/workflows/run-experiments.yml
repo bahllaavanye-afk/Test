@@ -24,9 +24,14 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
 
-      - uses: actions/setup-python@v5          python-version: "3.11"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
           cache: pip
 
       - name: Install dependencies
@@ -80,5 +85,5 @@ jobs:
             echo "No new experiment results to commit."
           else
             git commit -m "chore: add experiment results $(date -u +%Y-%m-%dT%H:%M)Z [skip ci]"
-            git push origin main
+            git push origin claude/advanced-trading-bot-d5Lmw
           fi

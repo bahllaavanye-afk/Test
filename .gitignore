@@ -69,3 +69,5 @@ backend/seed_comparisons.py
 
 # Claude Code agent metadata
 .claude/
+experiments/results/desk_runs.jsonl
+pipeline_runs.json

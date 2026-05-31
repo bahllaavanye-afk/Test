@@ -24,9 +24,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-python@v5          python-version: "3.11"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
           cache: pip
 
       - name: Install dependencies

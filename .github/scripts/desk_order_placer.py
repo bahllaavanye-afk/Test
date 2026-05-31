@@ -574,14 +574,13 @@ async def main() -> None:
         all_orders: list[dict] = []
         desk_summaries: list[str] = []
         total_notional = 0.0
-        _can_trade = is_open and float(account.get("buying_power", 0)) > 0
+        has_buying_power = float(account.get("buying_power", 0)) > 0
         with tracker.stage(ORDER_EXECUTION, "Place orders"):
-            if not is_open:
-                print("  ⚠ Market is closed — skipping order placement", flush=True)
-                tracker.set_output(orders_placed=0, reason="market_closed")
-            elif not _can_trade:
-                print("  ⚠ Skipping order placement (no buying power / account unavailable)", flush=True)
+            if not has_buying_power:
+                print("  ⚠ No buying power / account unavailable — orders skipped (signals logged)", flush=True)
                 tracker.set_output(orders_placed=0, reason="account_unavailable")
+            elif not is_open:
+                print("  ℹ US stock market closed — equities/options gated, crypto trades 24/7", flush=True)
             # Group approved signals by desk so we can still post per-desk summaries
             desk_orders_map: dict[str, list[dict]] = {}
             for item in approved_signals:
@@ -591,10 +590,13 @@ async def main() -> None:
                 signal   = item["signal"]
                 conf     = item["confidence"]
 
-                if not _can_trade:
+                # Per-symbol gating: crypto (BTC/USD etc.) trades 24/7; equities follow the clock.
+                tradeable = has_buying_power and _symbol_tradeable(symbol, is_open)
+                if not tradeable:
+                    reason = "no account" if not has_buying_power else "stock market closed"
                     print(
                         f"  · {strategy.name}/{symbol} signal={signal.side.upper()} "
-                        f"conf={conf:.2f} — logged (no account)",
+                        f"conf={conf:.2f} — logged ({reason})",
                         flush=True,
                     )
                     continue
@@ -657,6 +659,44 @@ async def main() -> None:
             summary += f"\n\nTotal orders placed: *{len(all_orders)}* · Polymarket arb signals: *{len(poly_signals)}*"
             _post_slack("#pnl-daily", summary)
             tracker.set_output(desks_run=len(active_desks), total_orders=len(all_orders))
+
+        # ── Persist this run for future analysis (append-only JSONL) ──────────
+        _persist_desk_run(account, all_orders, poly_signals, raw_signals)
+
+
+def _persist_desk_run(account: dict, orders: list[dict], poly_signals: list[dict],
+                      raw_signals: list[dict]) -> None:
+    """Append a full snapshot of this desk run to experiments/results/desk_runs.jsonl.
+    Every signal, order, and account state is kept for future backtesting/analytics."""
+    try:
+        out_dir = REPO_ROOT / "experiments" / "results"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "equity": float(account.get("equity", 0) or 0),
+            "buying_power": float(account.get("buying_power", 0) or 0),
+            "n_signals": len(raw_signals),
+            "n_orders": len(orders),
+            "n_poly_arb": len(poly_signals),
+            "orders": orders,
+            "poly_signals": poly_signals,
+            # raw signal summary (strategy/symbol/side/conf) — no live objects
+            "signals": [
+                {
+                    "desk": getattr(s.get("desk"), "name", "?"),
+                    "strategy": getattr(s.get("strategy"), "name", "?"),
+                    "symbol": s.get("symbol"),
+                    "side": getattr(s.get("signal"), "side", "?"),
+                    "confidence": s.get("confidence"),
+                }
+                for s in raw_signals
+            ],
+        }
+        with open(out_dir / "desk_runs.jsonl", "a") as fh:
+            fh.write(json.dumps(record, default=str) + "\n")
+        print(f"  💾 persisted desk run → experiments/results/desk_runs.jsonl", flush=True)
+    except Exception as exc:
+        print(f"  ⚠ failed to persist desk run: {exc}", flush=True)
 
     print(f"\n{'═'*60}", flush=True)
     print(f"Done. {len(all_orders)} orders placed across {len(DESKS)} desks.", flush=True)
