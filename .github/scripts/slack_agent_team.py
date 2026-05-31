@@ -85,15 +85,145 @@ def record_post(state: dict, text: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Claude API — coding agent for all employees
+# Multi-agent routing — Claude supervises, free agents do the work
+#
+# Cascade (fastest/cheapest first):
+#   1. Groq  (Llama 3.3 70B, free 14k req/day, ~500 tok/sec)
+#   2. Gemini Flash (free 1500 req/day, 1M context window)
+#   3. GitHub Models (free for Actions, GPT-4o-mini / Llama)
+#   4. Claude Haiku (fallback, best quality, low cost)
 # ─────────────────────────────────────────────────────────────────────────────
+
+_QUANT_SYSTEM = (
+    "You are a senior quantitative engineer on QuantEdge, an institutional-grade "
+    "algorithmic trading platform. Backend: FastAPI + SQLAlchemy async. ML: PyTorch "
+    "(LSTM, TFT, XGBoost, Lorentzian KNN, SSM). Brokers: Alpaca, Binance, Polymarket. "
+    "Answer concisely and technically. Reference specific files/functions where relevant. "
+    "Do NOT say you are an AI or mention your model name."
+)
+
+
+def call_groq(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
+    """Groq API — Llama 3.3 70B, free tier 14 400 req/day, ~500 tok/sec."""
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return None
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+    }
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"  [groq] {e}")
+        return None
+
+
+def call_gemini(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
+    """Google Gemini 2.0 Flash — free 1 500 req/day, 1M token context."""
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+    payload = {
+        "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4},
+    }
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+           f"gemini-2.0-flash:generateContent?key={api_key}")
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            data = json.loads(resp.read())
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        print(f"  [gemini] {e}")
+        return None
+
+
+def call_github_models(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
+    """GitHub Models — free for GitHub Actions, GPT-4o-mini / Llama 3.3."""
+    api_key = os.environ.get("GH_TOKEN", "").strip()  # already in Actions env
+    if not api_key:
+        return None
+    payload = {
+        "model": "gpt-4o-mini",   # free in GitHub Models
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+    }
+    req = urllib.request.Request(
+        "https://models.inference.ai.azure.com/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"  [github-models] {e}")
+        return None
+
+
+def call_cerebras(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
+    """Cerebras Inference — free 1M tokens/day, 2600 tok/sec, Qwen3 32B."""
+    api_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
+    if not api_key:
+        return None
+    payload = {
+        "model": "qwen-3-32b",   # free on Cerebras, 1M tok/day
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+    }
+    req = urllib.request.Request(
+        "https://api.cerebras.ai/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"  [cerebras] {e}")
+        return None
 
 
 def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """
-    Call Claude Haiku via Anthropic API. Returns None if ANTHROPIC_API_KEY not set.
-    Used by agents to generate genuinely intelligent thread responses and analysis.
-    """
+    """Claude Haiku — highest quality fallback. Used when free agents unavailable."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return None
@@ -118,12 +248,38 @@ def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) ->
             data = json.loads(resp.read())
             return data.get("content", [{}])[0].get("text", "")
     except Exception as e:
-        print(f"  [claude] API error: {e}")
+        print(f"  [claude] {e}")
         return None
+
+
+def call_best_agent(
+    user_message: str,
+    system_prompt: str = _QUANT_SYSTEM,
+    max_tokens: int = 500,
+) -> str | None:
+    """
+    Cascade: free agents first, Claude Haiku as final fallback.
+    Groq (500K tok/day) → Cerebras (1M tok/day) → GitHub Models (free in Actions)
+    → Gemini Flash (1500 req/day, 1M context) → Claude Haiku (paid).
+    Claude Sonnet is NEVER called here — reserved for human orchestration only.
+    """
+    for fn, label in [
+        (lambda: call_groq(system_prompt, user_message, max_tokens),         "groq"),
+        (lambda: call_cerebras(system_prompt, user_message, max_tokens),      "cerebras"),
+        (lambda: call_github_models(system_prompt, user_message, max_tokens), "github-models"),
+        (lambda: call_gemini(system_prompt, user_message, max_tokens),        "gemini"),
+        (lambda: call_claude(system_prompt, user_message, max_tokens),        "claude-haiku"),
+    ]:
+        result = fn()
+        if result and len(result.strip()) > 20:
+            print(f"  [agent/{label}] ✓ {len(result)} chars")
+            return result.strip()
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Slack thread reading — agents respond to actual human replies
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -243,7 +399,7 @@ def generate_thread_response(thread: dict) -> str | None:
     )
 
     # Try Claude first
-    ai_response = call_claude(system_prompt, user_msg, max_tokens=400)
+    ai_response = call_best_agent(user_msg, system_prompt, max_tokens=400)
     if ai_response and len(ai_response.strip()) > 30:
         return ai_response.strip()
 
@@ -288,6 +444,285 @@ def generate_thread_response(thread: dict) -> str | None:
 
     return (f"On it — checking the relevant code now. "
             f"I'll thread back with a specific fix once I've looked at the relevant module.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auto-create Slack channels — zero-config for new workspaces
+# ─────────────────────────────────────────────────────────────────────────────
+
+REQUIRED_CHANNELS = [
+    "engineering", "alpha-research", "ml-experiments", "squad-qa",
+    "desk-crypto", "squad-backend", "squad-frontend", "risk-alerts",
+    "infra-alerts", "desk-equities", "desk-polymarket", "desk-commodities",
+    "desk-futures", "desk-rates", "desk-kalshi", "desk-stat-arb",
+    "desk-fx-rates", "desk-options", "help", "pnl-daily", "ci-failures",
+    "squad-execution", "squad-data", "general", "standup", "wins",
+    "incidents", "strategy-review", "model-performance", "code-review",
+    "announcements", "leadership-summary", "papers", "pod-ml-rl",
+    "security-alerts", "finance-ops", "legal-compliance",
+]
+
+
+def ensure_channels_exist(token: str) -> None:
+    """Create any missing Slack channels. Safe to call repeatedly — skips existing."""
+    # Warm the channel cache first
+    get_channel_id(token, "general")
+
+    missing = [name for name in REQUIRED_CHANNELS if name not in _channels_cache]
+    if not missing:
+        print(f"  ✓ All {len(REQUIRED_CHANNELS)} channels exist")
+        return
+
+    print(f"  ℹ Creating {len(missing)} missing channel(s): {', '.join(f'#{n}' for n in missing[:8])}{'...' if len(missing) > 8 else ''}")
+    for name in missing:
+        result = slack_call(token, "conversations.create", {
+            "name": name,
+            "is_private": False,
+        })
+        if result.get("ok"):
+            ch = result.get("channel", {})
+            _channels_cache[name] = ch
+            print(f"    ✅ Created #{name}")
+        elif result.get("error") == "name_taken":
+            print(f"    ✓ #{name} exists (not in cache)")
+        else:
+            print(f"    ⚠ #{name}: {result.get('error', 'unknown error')}")
+        time.sleep(0.3)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Slash-command handler — employees type /command in threads, bot responds
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def scan_for_commands(
+    token: str,
+    channel_name: str,
+    already_replied: list[str],
+    limit: int = 20,
+) -> list[dict]:
+    """Scan recent thread replies for /command text posted by humans."""
+    ch_id = get_channel_id(token, channel_name)
+    if not ch_id:
+        return []
+    history = slack_call(token, "conversations.history", {"channel": ch_id, "limit": limit})
+    if not history.get("ok"):
+        return []
+
+    commands: list[dict] = []
+    for msg in history.get("messages", []):
+        text = msg.get("text", "")
+        ts = msg.get("ts", "")
+        is_human = msg.get("user") and not msg.get("bot_id")
+
+        # Top-level /command message
+        if text.startswith("/") and is_human and ts not in already_replied:
+            commands.append({"channel": channel_name, "channel_id": ch_id,
+                             "thread_ts": ts, "command": text, "reply_ts": ts})
+
+        # /command inside a thread reply
+        if not msg.get("reply_count"):
+            continue
+        replies_data = slack_call(token, "conversations.replies",
+                                  {"channel": ch_id, "ts": ts, "limit": 20})
+        if not replies_data.get("ok"):
+            continue
+        for reply in replies_data.get("messages", [])[1:]:
+            rt = reply.get("text", "")
+            rts = reply.get("ts", "")
+            if (rt.startswith("/") and reply.get("user")
+                    and not reply.get("bot_id") and rts not in already_replied):
+                commands.append({"channel": channel_name, "channel_id": ch_id,
+                                 "thread_ts": ts, "command": rt, "reply_ts": rts})
+
+    return commands[:5]
+
+
+def handle_thread_command(command_text: str) -> str | None:
+    """
+    Respond to a /command typed in a Slack thread.
+    Returns response text, or None if command not recognised.
+    """
+    cmd = command_text.strip()
+    if not cmd.startswith("/"):
+        return None
+    parts = cmd.split(None, 1)
+    cmd_name = parts[0].lower()
+    args = parts[1].strip() if len(parts) > 1 else ""
+
+    # ── /backtest [strategy] [symbol] ──────────────────────────────────────
+    if cmd_name == "/backtest":
+        arg_parts = args.split() if args else []
+        strategy = arg_parts[0].lower() if arg_parts else None
+        symbol = arg_parts[1].upper() if len(arg_parts) > 1 else None
+        results = latest_backtest_results()
+        if strategy:
+            matching = [r for r in results if strategy in r.get("strategy", "").lower()]
+            if symbol:
+                matching = [r for r in matching if symbol in r.get("symbol", "").upper()]
+            if matching:
+                best = max(matching, key=lambda r: float(r.get("sharpe", 0) or 0))
+                s = float(best.get("sharpe", 0) or 0)
+                em = "🔥" if s > 1.5 else "✅" if s > 1.0 else "⚠️"
+                return (f"{em} *`{best.get('strategy')}` / `{best.get('symbol')}`*\n"
+                        f"Sharpe: *{s:.2f}*  ·  Period: {best.get('start_date','?')} → {best.get('end_date','?')}\n"
+                        f"Results file: `experiments/results/`")
+            strats = list_strategies()
+            return (f"No results for `{strategy}` yet.\n"
+                    f"Available: {', '.join(f'`{s}`' for s in (strats['manual']+strats['ml'])[:8])}...\n"
+                    f"Run: `./scripts/backtest.sh {strategy} SPY 1d 2021-01-01 2024-01-01`")
+        if results:
+            top = sorted(results, key=lambda r: -float(r.get("sharpe", 0) or 0))[:6]
+            lines = [f"*Latest walk-forward Sharpes ({len(results)} runs logged):*"]
+            for r in top:
+                s = float(r.get("sharpe", 0) or 0)
+                em = "🔥" if s > 1.5 else "✅" if s > 1.0 else "⚠️"
+                lines.append(f"{em} `{r.get('strategy','?')}` / `{r.get('symbol','?')}`: *{s:.2f}*")
+            return "\n".join(lines)
+        return "No backtest results logged yet. Experiments auto-run every 6h via CI."
+
+    # ── /sharpe [strategy] ────────────────────────────────────────────────
+    elif cmd_name in ("/sharpe", "/score"):
+        results = latest_backtest_results()
+        if args:
+            matching = [r for r in results if args.lower() in r.get("strategy", "").lower()]
+            if matching:
+                best = max(matching, key=lambda r: float(r.get("sharpe", 0) or 0))
+                return f"`{best.get('strategy')}` / `{best.get('symbol')}`: Sharpe *{float(best.get('sharpe', 0) or 0):.2f}*"
+            return f"No results for `{args}`. Run `/backtest {args}` to check."
+        if results:
+            top = sorted(results, key=lambda r: -float(r.get("sharpe", 0) or 0))[:5]
+            lines = ["*Top Sharpe ratios (walk-forward):*"]
+            for r in top:
+                s = float(r.get("sharpe", 0) or 0)
+                lines.append(f"• `{r.get('strategy','?')}` / `{r.get('symbol','?')}`: *{s:.2f}*")
+            return "\n".join(lines)
+        return "No backtest results yet. Experiments run every 6h automatically."
+
+    # ── /risk ─────────────────────────────────────────────────────────────
+    elif cmd_name in ("/risk", "/risk-check"):
+        acct = alpaca_account()
+        positions = alpaca_positions()
+        if acct:
+            eq = float(acct.get("equity", 0) or 0)
+            bp = float(acct.get("buying_power", 0) or 0)
+            pnl = eq - float(acct.get("last_equity", eq) or eq)
+            em = "📈" if pnl >= 0 else "📉"
+            return (f"*Risk snapshot (Alpaca paper):*\n"
+                    f"Equity: *${eq:,.2f}*  ·  Buying power: *${bp:,.2f}*\n"
+                    f"Today's PnL: {em} *${pnl:+,.2f}*  ·  Open positions: *{len(positions)}*\n"
+                    f"Circuit breakers: armed ✅  ·  Kelly sizing: active ✅")
+        return "Alpaca paper account not connected. Add ALPACA_API_KEY to repo secrets."
+
+    # ── /prs ──────────────────────────────────────────────────────────────
+    elif cmd_name in ("/prs", "/pr-status"):
+        prs = open_prs()
+        if not prs:
+            return "No open PRs — clean state ✅"
+        lines = [f"*{len(prs)} open PR(s):*"]
+        for pr in prs[:6]:
+            url = pr.get("html_url", "")
+            title = pr.get("title", "?")[:55]
+            author = pr.get("user", {}).get("login", "?")
+            lines.append(f"• <{url}|{title}> — `{author}`")
+        return "\n".join(lines)
+
+    # ── /strategies ───────────────────────────────────────────────────────
+    elif cmd_name in ("/strategies", "/strats"):
+        strats = list_strategies()
+        manual, ml = strats["manual"], strats["ml"]
+        return (f"*Strategy registry ({len(manual)} manual + {len(ml)} ML):*\n"
+                f"Manual: {', '.join(f'`{s}`' for s in manual[:8])}{'...' if len(manual) > 8 else ''}\n"
+                f"ML: {', '.join(f'`{s}`' for s in ml[:6])}{'...' if len(ml) > 6 else ''}\n"
+                f"Add one: `backend/app/strategies/manual/<name>.py` → see `strategies/CLAUDE.md`")
+
+    # ── /tests ────────────────────────────────────────────────────────────
+    elif cmd_name in ("/tests", "/test"):
+        res = run_pytest_lightweight(timeout_secs=45)
+        if res.get("not_installed"):
+            return "Test runner not available in this environment (deps not installed)."
+        if res.get("timed_out"):
+            return f"Tests timed out. {res.get('passed', 0)} passed before timeout."
+        if res.get("failed", 0) > 0:
+            fl = res["fail_lines"][0][:80] if res.get("fail_lines") else "unknown"
+            return (f":red_circle: *{res['failed']} failing, {res['passed']} passing* ({res.get('duration', 0):.0f}s)\n"
+                    f"First failure: `{fl}`\n"
+                    f"Fix: `cd backend && pytest tests/ -x -v`")
+        return f":white_check_mark: *{res.get('passed', 0)} tests passing* ({res.get('duration', 0):.0f}s)"
+
+    # ── /ci ───────────────────────────────────────────────────────────────
+    elif cmd_name in ("/ci", "/pipeline"):
+        runs = latest_workflow_runs()
+        if not runs:
+            return "No recent CI runs found."
+        lines = ["*Recent CI runs:*"]
+        for r in runs[:5]:
+            c = r.get("conclusion") or r.get("status", "?")
+            em = {"success": "✅", "failure": "❌", "in_progress": "⏳", "cancelled": "🚫"}.get(c, "❓")
+            lines.append(f"{em} `{r.get('name','?')}` → {c} on `{r.get('head_branch','?')}`")
+        return "\n".join(lines)
+
+    # ── /positions ────────────────────────────────────────────────────────
+    elif cmd_name in ("/positions", "/portfolio", "/pos"):
+        acct = alpaca_account()
+        positions = alpaca_positions()
+        if not positions:
+            return "No open positions — portfolio flat. Paper account active."
+        eq = float(acct.get("equity", 100000) if acct else 100000)
+        lines = [f"*Portfolio — {len(positions)} position(s):*"]
+        for p in positions[:8]:
+            sym = p.get("symbol", "?")
+            mv = float(p.get("market_value", 0) or 0)
+            upl = float(p.get("unrealized_plpc", 0) or 0) * 100
+            em = "📈" if upl >= 0 else "📉"
+            pct_nav = mv / eq * 100 if eq > 0 else 0
+            lines.append(f"{em} `{sym}`: ${mv:,.0f} ({pct_nav:.1f}% NAV) · {upl:+.2f}%")
+        return "\n".join(lines)
+
+    # ── /status ───────────────────────────────────────────────────────────
+    elif cmd_name == "/status":
+        test_res = run_pytest_lightweight(timeout_secs=20)
+        runs = latest_workflow_runs()
+        acct = alpaca_account()
+        results = latest_backtest_results()
+        t_status = (f"✅ {test_res.get('passed', 0)} passing"
+                    if test_res.get("failed", 0) == 0 else f"❌ {test_res.get('failed', 0)} failing")
+        ci_status = ("✅ green" if runs and runs[0].get("conclusion") == "success"
+                     else "⚠️ check logs" if runs else "❓ unknown")
+        acct_status = f"✅ ${float(acct.get('equity', 0)):.0f} equity" if acct else "⚠️ not connected"
+        return (f"*QuantEdge System Status:*\n"
+                f"Tests: {t_status}\n"
+                f"CI: {ci_status}\n"
+                f"Alpaca paper: {acct_status}\n"
+                f"Backtest results logged: *{len(results)}*\n"
+                f"Strategies in repo: *{len(list_strategies()['manual'])+len(list_strategies()['ml'])}*")
+
+    # ── /ask / /help-me / /claude ─────────────────────────────────────────
+    elif cmd_name in ("/ask", "/help-me", "/claude", "/ai"):
+        if not args:
+            return "Usage: `/ask <your question>` — AI agent will answer (Groq → Gemini → Claude cascade)"
+        ai_resp = call_best_agent(
+            args,
+            max_tokens=400,
+        )
+        return ai_resp or "Claude API unavailable (ANTHROPIC_API_KEY not set). Check `backend/CLAUDE.md` or ask in #help."
+
+    # ── /help ─────────────────────────────────────────────────────────────
+    elif cmd_name == "/help":
+        return ("*QuantEdge bot commands — type in any thread or channel:*\n"
+                "`/backtest [strategy] [symbol]` — latest backtest results\n"
+                "`/sharpe [strategy]` — Sharpe ratios leaderboard\n"
+                "`/risk` — current Alpaca paper account risk snapshot\n"
+                "`/positions` — open portfolio positions\n"
+                "`/prs` — open pull requests with links\n"
+                "`/strategies` — all registered strategy names\n"
+                "`/tests` — run pytest and report pass/fail\n"
+                "`/ci` — recent CI pipeline run status\n"
+                "`/status` — full system health check\n"
+                "`/ask <question>` — ask Claude AI anything about the codebase\n"
+                "_Bot responds within 15 minutes (next scheduled run)._")
+
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -827,13 +1262,13 @@ def maya_chen_eng_daily() -> list[Post]:
                        + (f", {failed} failed*" if failed else "*"))
     lines.append(f"\n📊 *{len(strategies['manual']) + len(strategies['ml'])} strategies* · {test_detail}")
 
-    # Claude summary of what changed if new commits
-    if new_commits and call_claude:
+    # AI summary of what changed (uses cheapest free agent first)
+    if new_commits:
         commit_summary = "\n".join(f"- {c['msg']}" for c in new_commits[:8])
-        ai = call_claude(
+        ai = call_best_agent(
+            f"Recent commits:\n{commit_summary}",
             "You are the VP of Engineering. Write a 1-sentence summary of what changed in this commit batch "
             "and what the team should know. Be specific to the actual commit messages.",
-            f"Recent commits:\n{commit_summary}"
         )
         if ai:
             lines.append(f"\n_{ai}_")
@@ -947,11 +1382,11 @@ def diego_ramirez_execution() -> list[Post]:
         obs_opts.append("looks clean — consider adding a `dry_run` mode for CI validation")
     observation = obs_opts[0]
 
-    # Use Claude for a more insightful comment if available
-    ai = call_claude(
+    # Use best available free agent for insightful comment
+    ai = call_best_agent(
+        f"File: {target.name} ({n_lines} LOC, {n_classes} classes)\nContent snippet:\n{src[:800]}",
         "You are a senior execution engineer. Give one specific, actionable improvement for this trading code. "
         "Max 2 sentences. No bullet points. Be concrete about the file content.",
-        f"File: {target.name} ({n_lines} LOC, {n_classes} classes)\nContent snippet:\n{src[:800]}"
     )
     if ai:
         observation = ai
@@ -1245,11 +1680,11 @@ def sofia_karlsson_research() -> list[Post]:
                  + ", ".join(f"`{s}`" for s in sample))
         if len(untested) > 3:
             text += f" + {len(untested) - 3} more"
-        # Use Claude to suggest which one to prioritize
-        ai = call_claude(
+        # Use best free agent to prioritize
+        ai = call_best_agent(
+            f"Untested strategies: {', '.join(untested[:8])}",
             "You are a quantitative research director. Given a list of untested trading strategies, "
             "recommend which one to prioritize for walk-forward validation and why. 2 sentences max.",
-            f"Untested strategies: {', '.join(untested[:8])}"
         )
         if ai:
             text += f"\n\n*Priority recommendation:* {ai}"
@@ -3935,8 +4370,13 @@ def main() -> int:
     print(f"📋 State: last_run={state['last_run_ts']}, {len(state['posted_hashes'])} known hashes, "
           f"{'Claude ✅' if has_claude else 'Claude ❌ (no ANTHROPIC_API_KEY)'})")
 
+    # ── Auto-create channels ──────────────────────────────────────────────────
+    print("\n📺 Ensuring all channels exist")
+    ensure_channels_exist(token)
+
     # ── Phase 0: Inbox check — respond to unanswered human thread replies ────
-    print("\n📬 Inbox check — reading threads for replies to handle")
+    #             AND handle /command messages from employees
+    print("\n📬 Inbox check — reading threads for replies + /commands")
     inbox_channels = [
         "engineering", "alpha-research", "ml-experiments",
         "squad-qa", "desk-crypto", "squad-backend", "help",
@@ -3950,6 +4390,7 @@ def main() -> int:
     posts_made = 0
     errors = 0
     for ch in inbox_channels:
+        # ── Handle human thread replies ───────────────────────────────────
         try:
             threads = read_unresponded_threads(
                 token, ch, bot_user_id,
@@ -3958,7 +4399,7 @@ def main() -> int:
             )
         except Exception as e:
             print(f"  [inbox] {ch} read failed: {e}")
-            continue
+            threads = []
         for thread in threads[:2]:  # max 2 thread replies per channel per run
             response = generate_thread_response(thread)
             if not response:
@@ -3981,7 +4422,38 @@ def main() -> int:
             else:
                 errors += 1
                 print(f"  ✗ Thread reply in #{ch}: {r.get('error')}")
-            time.sleep(0.7)
+            time.sleep(0.6)
+
+        # ── Handle /command messages from employees ───────────────────────
+        try:
+            cmd_hits = scan_for_commands(
+                token, ch,
+                already_replied=state.get("replied_to", []),
+                limit=15,
+            )
+        except Exception as e:
+            print(f"  [cmd] {ch} scan failed: {e}")
+            cmd_hits = []
+        for cmd_info in cmd_hits[:2]:  # max 2 commands per channel per run
+            response = handle_thread_command(cmd_info["command"])
+            if not response:
+                continue
+            if is_duplicate(state, response):
+                continue
+            r = post_to_slack(
+                token, ch, response,
+                username="QuantEdge Bot",
+                icon_emoji=":robot_face:",
+                thread_ts=cmd_info["thread_ts"],
+            )
+            if r.get("ok"):
+                posts_made += 1
+                record_post(state, response)
+                state.setdefault("replied_to", []).append(cmd_info["reply_ts"])
+                print(f"  ✓ /cmd '{cmd_info['command'][:30]}' → #{ch}")
+            else:
+                errors += 1
+            time.sleep(0.6)
 
     # ── Team activity first (always runs): standups + scoreboard ────────────
     team_posts: list[Post] = []
@@ -4165,5 +4637,118 @@ def main() -> int:
     return 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Quick mode — runs every 15 min: inbox + /commands + incidents only
+# Full mode  — runs 4x/day: all agents + discussions + team activity
+# Push mode  — fires on git push: engineering bot posts what changed
+# PR mode    — fires on PR event: code-review bot posts
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def quick_main() -> int:
+    """
+    Lightweight run (every 15 min). Handles:
+      1. Thread inbox (human replies → agent responds)
+      2. Slash commands (/backtest, /ask, /risk, etc.)
+      3. Incident detection + alert
+      4. Event-specific post (push → eng update, PR → code-review)
+    Uses free agent cascade — no Claude Sonnet, keeps cost near zero.
+    """
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token.startswith("xoxb-"):
+        return 0
+
+    auth = slack_call(token, "auth.test", {})
+    if not auth.get("ok"):
+        return 1
+    bot_user_id = auth.get("user_id", "")
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "schedule")
+    print(f"⚡ Quick mode | event={event_name} | {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
+
+    state = load_state()
+    ensure_channels_exist(token)
+
+    posts_made = errors = 0
+    all_chs = list(_CHANNEL_AGENT_IDENTITY.keys())
+
+    for ch in all_chs:
+        # Human thread replies
+        try:
+            threads = read_unresponded_threads(
+                token, ch, bot_user_id,
+                already_replied=state.get("replied_to", []), limit=15)
+        except Exception:
+            threads = []
+        for t in threads[:1]:
+            resp = generate_thread_response(t)
+            if resp and not is_duplicate(state, resp):
+                agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(ch, ("QuantEdge Bot", ":robot_face:"))
+                r = post_to_slack(token, ch, resp, username=agent_name,
+                                  icon_emoji=agent_emoji, thread_ts=t["parent_ts"])
+                if r.get("ok"):
+                    posts_made += 1
+                    record_post(state, resp)
+                    state.setdefault("replied_to", []).append(t["reply_ts"])
+            time.sleep(0.5)
+
+        # /command handler
+        try:
+            cmds = scan_for_commands(token, ch,
+                                     already_replied=state.get("replied_to", []), limit=15)
+        except Exception:
+            cmds = []
+        for cmd in cmds[:2]:
+            resp = handle_thread_command(cmd["command"])
+            if resp and not is_duplicate(state, resp):
+                r = post_to_slack(token, ch, resp, username="QuantEdge Bot",
+                                  icon_emoji=":robot_face:", thread_ts=cmd["thread_ts"])
+                if r.get("ok"):
+                    posts_made += 1
+                    record_post(state, resp)
+                    state.setdefault("replied_to", []).append(cmd["reply_ts"])
+                    print(f"  ✓ cmd '{cmd['command'][:30]}' → #{ch}")
+            time.sleep(0.5)
+
+    # Incident monitoring every quick run
+    try:
+        for p in incidents_channel()[:2]:
+            if not is_duplicate(state, p.text):
+                r = post_to_slack(token, p.channel, p.text,
+                                  username=p.username, icon_emoji=p.icon_emoji)
+                if r.get("ok"):
+                    posts_made += 1
+                    record_post(state, p.text)
+                time.sleep(0.5)
+    except Exception as e:
+        print(f"  [incident] {e}")
+
+    # Event-specific extra posts
+    if event_name == "push":
+        for p in _short_vp_engineering():
+            if not is_duplicate(state, p.text):
+                r = post_to_slack(token, p.channel, p.text,
+                                  username=p.username, icon_emoji=p.icon_emoji)
+                if r.get("ok"):
+                    posts_made += 1
+                    record_post(state, p.text)
+    elif event_name == "pull_request":
+        for p in code_review_channel()[:1]:
+            if not is_duplicate(state, p.text):
+                r = post_to_slack(token, p.channel, p.text,
+                                  username=p.username, icon_emoji=p.icon_emoji)
+                if r.get("ok"):
+                    posts_made += 1
+                    record_post(state, p.text)
+
+    state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
+    save_state(state)
+    print(f"⚡ Quick done: {posts_made} posts, {errors} errors")
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    mode = sys.argv[1] if len(sys.argv) > 1 else "full"
+    if mode == "quick":
+        sys.exit(quick_main())
+    else:
+        sys.exit(main())

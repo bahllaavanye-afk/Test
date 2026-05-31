@@ -73,9 +73,14 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
-          # Claude coding agent — gives employees AI-powered responses to questions
-          # Add ANTHROPIC_API_KEY at: Settings → Secrets → New repository secret
-          # Without it: agents still work but give rule-based thread responses
+          # Multi-agent cascade: Groq → GitHub Models → Gemini → Claude Haiku
+          # Groq: free 500K tok/day (Llama 3.3 70B) — handles most requests
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Gemini Flash: free 1500 req/day, 1M context window — long-context tasks
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Cerebras: free 1M tokens/day (Qwen3 32B) — bulk analysis fallback
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          # Claude Haiku: final paid fallback — Claude Sonnet is NEVER called here
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$SLACK_BOT_TOKEN" ]; then
