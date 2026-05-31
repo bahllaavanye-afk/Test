@@ -1,5 +1,5 @@
 """
-Claude AI Slack Bot — every employee can @mention @QuantEdge-AI in any channel.
+QuantEdge AI Slack Bot — every employee can @mention @QuantEdge-AI in any channel.
 
 Triggered by: Slack Events API (app_mention events forwarded to this script).
 Also runs as a GitHub Actions scheduled job to post proactive market insights.
@@ -18,9 +18,9 @@ Usage in Slack:
 
 Requires env vars:
   SLACK_BOT_TOKEN     — xoxb-... (chat:write, app_mentions:read, channels:history)
-  ANTHROPIC_API_KEY   — for Claude API calls
+  ANTHROPIC_API_KEY   — for QuantEdge AI API calls
   GH_TOKEN            — to read repo files / experiment results
-  GH_REPO             — e.g. bahllaavanye-afk/Test
+  GH_REPO             — e.g. bahllaavanye-afk/QuantEdge
 """
 from __future__ import annotations
 
@@ -36,12 +36,12 @@ import httpx
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 GH_TOKEN = os.environ.get("GH_TOKEN", "")
-GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
+GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/QuantEdge")
 REPO_ROOT = Path(__file__).parent.parent.parent
 
 SLACK_API = "https://slack.com/api"
 
-# ── Repo context for Claude ──────────────────────────────────────────────────
+# ── Repo context for QuantEdge AI ──────────────────────────────────────────────────
 
 def _read_experiment_results() -> str:
     """Load latest backtest results for context."""
@@ -158,11 +158,11 @@ def _get_channel_history(channel: str, limit: int = 5) -> list[dict]:
     return r.json().get("messages", [])
 
 
-# ── Claude response ──────────────────────────────────────────────────────────
+# ── QuantEdge AI response ──────────────────────────────────────────────────────────
 
 def _ask_claude(question: str, channel_context: str = "") -> str:
     if not ANTHROPIC_API_KEY:
-        return "⚠️ ANTHROPIC_API_KEY not set — Claude cannot respond."
+        return "⚠️ ANTHROPIC_API_KEY not set — QuantEdge AI cannot respond."
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     status = _read_pipeline_state()
@@ -198,12 +198,12 @@ PROACTIVE_PROMPTS = [
 
 
 def run_proactive_insights() -> None:
-    """Post Claude-generated insights to relevant channels."""
+    """Post QuantEdge AI-generated insights to relevant channels."""
     if not SLACK_TOKEN:
         print("No SLACK_BOT_TOKEN — skipping proactive insights")
         return
     if not ANTHROPIC_API_KEY:
-        print("No ANTHROPIC_API_KEY — cannot call Claude")
+        print("No ANTHROPIC_API_KEY — cannot call QuantEdge AI")
         return
 
     hour = datetime.now(timezone.utc).hour
@@ -259,4 +259,4 @@ if __name__ == "__main__":
         event = json.loads(sys.argv[2])
         handle_mention(event)
     else:
-        print("Usage: claude_slack_bot.py [proactive | mention '<event_json>']")
+        print("Usage: ai_slack_bot.py [proactive | mention '<event_json>']")

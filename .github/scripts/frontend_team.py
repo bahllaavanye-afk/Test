@@ -72,7 +72,6 @@ def apply_and_push(files: list[dict]) -> bool:
     if r.returncode == 0:
         return False
 
-    msg = f"feat(ui): AI frontend team improvements\n\nFocus: {FOCUS}\n\nhttps://claude.ai/code/session_01PBMR9hz1GLDQTqUeTBPsqM"
     subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
     subprocess.run(["git", "push", "origin", BRANCH], cwd=REPO_ROOT, check=True)
     return True

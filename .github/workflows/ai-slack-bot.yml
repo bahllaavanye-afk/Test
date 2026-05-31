@@ -1,4 +1,4 @@
-name: Claude AI Slack Bot
+name: QuantEdge AI Slack Bot
 
 # Posts proactive AI insights 4x/day to all desks.
 # Every employee can trigger insights by running this workflow manually
@@ -12,8 +12,8 @@ on:
       - claude/advanced-trading-bot-d5Lmw
       - main
     paths:
-      - ".github/scripts/claude_slack_bot.py"
-      - ".github/workflows/claude-slack-bot.yml"
+      - ".github/scripts/ai_slack_bot.py"
+      - ".github/workflows/ai-slack-bot.yml"
   workflow_dispatch:
     inputs:
       channel:
@@ -22,7 +22,7 @@ on:
         default: ""
 
 concurrency:
-  group: claude-slack-bot
+  group: ai-slack-bot
   cancel-in-progress: true
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
       - name: Install deps
         run: pip install anthropic httpx
 
-      - name: Post Claude insights to Slack
+      - name: Post AI insights to Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -57,4 +57,4 @@ jobs:
             echo "::warning::ANTHROPIC_API_KEY not set — AI insights skipped (add to repo Secrets to enable)"
             exit 0
           fi
-          python .github/scripts/claude_slack_bot.py proactive
+          python .github/scripts/ai_slack_bot.py proactive

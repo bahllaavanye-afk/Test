@@ -12,7 +12,7 @@ Required env:
     SLACK_BOT_TOKEN   xoxb-... with: chat:write, chat:write.customize,
                       channels:join, channels:read, groups:read
     GH_TOKEN          optional — GITHUB_TOKEN for reading issues/PRs
-    GH_REPO           owner/repo (e.g. bahllaavanye-afk/Test)
+    GH_REPO           owner/repo (e.g. bahllaavanye-afk/QuantEdge)
 
 Designed to run on a schedule (every 1-3 hours). Each run picks a wave of
 6-10 agents to do work; not all agents post every run.
@@ -96,6 +96,7 @@ def post_to_slack(
 ) -> dict:
     ch_id = get_channel_id(token, channel)
     if not ch_id:
+        print(f"  [slack] channel not found: {channel} — run bootstrap first")
         return {"ok": False, "error": f"channel_not_found:{channel}"}
     # Auto-join public channels (cheap if already in)
     ch = _channels_cache.get(channel, {})
@@ -111,7 +112,21 @@ def post_to_slack(
     }
     if thread_ts:
         payload["thread_ts"] = thread_ts
-    return slack_call(token, "chat.postMessage", payload)
+    result = slack_call(token, "chat.postMessage", payload)
+
+    # Fallback: chat:write.customize scope missing → retry as plain bot message
+    if not result.get("ok") and result.get("error") in (
+        "not_allowed_token_type", "missing_scope", "invalid_auth"
+    ):
+        print(f"  [slack] {result.get('error')} — retrying without custom username/icon")
+        fallback: dict = {"channel": ch_id, "text": f"*[{username}]* {text}", "mrkdwn": True}
+        if thread_ts:
+            fallback["thread_ts"] = thread_ts
+        result = slack_call(token, "chat.postMessage", fallback)
+
+    if not result.get("ok"):
+        print(f"  [slack] post failed to {channel}: {result.get('error')}")
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -476,7 +491,7 @@ class Agent:
 
 
 def repo_url(*parts: str) -> str:
-    repo = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
+    repo = os.environ.get("GH_REPO", "bahllaavanye-afk/QuantEdge")
     base = f"https://github.com/{repo}"
     if not parts:
         return base
@@ -1189,7 +1204,7 @@ def trading_desk_eod_pnl() -> list[Post]:
         return [Post(
             channel="pnl-daily",
             text=(":warning: Cannot read live P&L — `ALPACA_API_KEY` not set in repo secrets. "
-                  "Add it at https://github.com/bahllaavanye-afk/Test/settings/secrets/actions "
+                  "Add it at https://github.com/bahllaavanye-afk/QuantEdge/settings/secrets/actions "
                   "and re-run to see real paper-trading numbers."),
             username="PnL bot",
             icon_emoji=":bar_chart:",

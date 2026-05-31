@@ -1,6 +1,6 @@
 # QuantEdge Researcher Guide
 
-A field manual for AI agents (Claude, GPT, and successors) and human quants who are tasked with continuously discovering, vetting, and implementing new trading strategies for the QuantEdge platform. Read this guide in full before writing a single line of strategy code. Re-read sections 2 and 3 before every PR.
+A field manual for AI agents (QuantEdge AI, GPT, and successors) and human quants who are tasked with continuously discovering, vetting, and implementing new trading strategies for the QuantEdge platform. Read this guide in full before writing a single line of strategy code. Re-read sections 2 and 3 before every PR.
 
 The mandate is simple: find real, durable, capacity-adequate edge — and reject everything else, no matter how clever it looks in-sample.
 

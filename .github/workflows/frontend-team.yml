@@ -1,6 +1,6 @@
 name: Frontend Team — AI-Driven UI Improvements
 
-# Automated frontend improvements: Claude reviews the UI, proposes changes,
+# Automated frontend improvements: QuantEdge AI reviews the UI, proposes changes,
 # and applies them. Runs daily and on manual trigger.
 
 on:

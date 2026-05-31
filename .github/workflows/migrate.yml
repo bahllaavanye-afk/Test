@@ -1,7 +1,7 @@
 name: Migrate Supabase Schema
 
 # Run on demand from the GitHub UI:
-# https://github.com/bahllaavanye-afk/Test/actions/workflows/migrate.yml
+# https://github.com/bahllaavanye-afk/QuantEdge/actions/workflows/migrate.yml
 on:
   workflow_dispatch:
     inputs:

@@ -1,7 +1,7 @@
 """
 LLM-driven formulaic alpha factor generation.
 
-Uses the Anthropic Claude API to propose novel technical alpha factors,
+Uses the Anthropic QuantEdge AI API to propose novel technical alpha factors,
 then validates each factor against historical price data using IC/IR analysis.
 
 Factors that pass validation (IC > 0.02, IR > 0.3) are saved to YAML
@@ -137,7 +137,7 @@ class AlphaMiner:
     """
     LLM-driven alpha factor miner.
 
-    Generates factor proposals via Claude API, evaluates on price history,
+    Generates factor proposals via QuantEdge AI API, evaluates on price history,
     and saves passing factors to YAML files.
     """
 
@@ -146,7 +146,7 @@ class AlphaMiner:
 
     def generate_factors(self, n: int = 5) -> list[dict]:
         """
-        Call Claude API to generate n alpha factor proposals.
+        Call QuantEdge AI API to generate n alpha factor proposals.
         Returns list of dicts: [{name, formula, rationale}]
         Falls back to a built-in set if Anthropic is not available.
         """

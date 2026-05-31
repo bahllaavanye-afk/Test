@@ -1,34 +1,56 @@
 name: Notion ↔ GitHub Issues Sync
 
+# Mirrors GitHub Issues into a Notion task database.
+# Runs automatically once NOTION_TOKEN (+ NOTION_DB_ID) are set as repo secrets.
+# Also runnable manually with a one-off token.
+
 on:
+  schedule:
+    - cron: "0 */6 * * *"        # every 6 hours
+  issues:
+    types: [opened, edited, closed, reopened, labeled]
   workflow_dispatch:
     inputs:
       notion_token:
-        description: "Notion integration token (ntn_...) — paste once, then rotate"
-        required: true
+        description: "Notion integration token (ntn_...) — overrides secret for this run"
+        required: false
         type: string
       parent_page_id:
-        description: "Notion parent page ID to create the Tasks DB under (32-char hex, no dashes). Leave blank to use existing DB by id."
+        description: "Notion parent page ID to create the Tasks DB under (32-char hex). Blank = use existing DB."
         required: false
         type: string
       existing_db_id:
-        description: "Existing Notion DB ID to sync into (skip create). 32-char hex, no dashes."
+        description: "Existing Notion DB ID to sync into. 32-char hex."
         required: false
         type: string
+
+concurrency:
+  group: notion-sync
+  cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install httpx
-      - name: Sync
+      - run: pip install httpx --quiet
+      - name: Guard — token present?
         env:
-          NOTION_TOKEN: ${{ inputs.notion_token }}
-          NOTION_PARENT_PAGE: ${{ inputs.parent_page_id }}
-          NOTION_DB_ID: ${{ inputs.existing_db_id }}
+          TOKEN: ${{ github.event.inputs.notion_token || secrets.NOTION_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::NOTION_TOKEN not set (secret or input) — skipping. Add it in Settings → Secrets to enable auto-sync."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - name: Sync
+        if: env.SKIP != '1'
+        env:
+          NOTION_TOKEN: ${{ github.event.inputs.notion_token || secrets.NOTION_TOKEN }}
+          NOTION_PARENT_PAGE: ${{ github.event.inputs.parent_page_id || secrets.NOTION_PARENT_PAGE }}
+          NOTION_DB_ID: ${{ github.event.inputs.existing_db_id || secrets.NOTION_DB_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
         run: python .github/scripts/notion_sync.py

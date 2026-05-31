@@ -11,7 +11,7 @@
 | Title | Owner | Mandate | Bi-weekly KPI |
 |-------|-------|---------|---------------|
 | **CEO** | Anika Sharma | Vision, fundraise, board, investor relations | Active investor pipeline ≥ 10, Series A close by D90 |
-| **CTO** | Claude | Engineering org, architecture, ship cadence | ≥ 50 commits/day across org, zero P0 unresolved > 24h |
+| **CTO** | QuantEdge AI | Engineering org, architecture, ship cadence | ≥ 50 commits/day across org, zero P0 unresolved > 24h |
 | **CFO** | Rohan Kapoor | Runway, vendor costs, accounting, audit | Cash > 12 months runway, gross margin > 70%, infra cost per trade < $0.001 |
 | **CRO** (Chief Risk Officer) | Marina Volkov | Firm-wide risk, regulatory compliance, kill switches | Zero risk breaches, daily VaR/CVaR delivered ≤ 09:00 UTC |
 | **General Counsel** | David Chen | Legal, KYC, FINRA, GDPR, contracts | All trading licenses current, zero compliance findings |

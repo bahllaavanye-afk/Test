@@ -30,6 +30,8 @@ dependencies = [
 
     # Config & security
     "pydantic>=2.10.0",
+    "pydantic[email]>=2.10.0",
+    "email-validator>=2.2.0",
     "pydantic-settings>=2.6.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
@@ -86,6 +88,13 @@ train = [
 # Backtesting CLI (vectorbt is huge; only needed when running ./scripts/backtest.sh)
 backtest = [
     "vectorbt>=0.26.2",
+]
+
+# Google Docs/Sheets/Slides integration (work docs). Optional — the integration
+# module no-ops when these aren't installed. Install with: pip install -e ".[docs]"
+docs = [
+    "google-api-python-client>=2.150.0",
+    "google-auth>=2.35.0",
 ]
 
 # Development / CI

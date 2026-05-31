@@ -1,7 +1,7 @@
 name: Render Health Monitor & Auto-Fix
 
 # Checks Render deployment every 15 minutes.
-# On failure: fetches logs, Claude diagnoses, Claude auto-fixes and re-deploys.
+# On failure: fetches logs, QuantEdge AI diagnoses, QuantEdge AI auto-fixes and re-deploys.
 
 on:
   schedule:

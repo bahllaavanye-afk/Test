@@ -3,7 +3,7 @@
 ```
                               ┌──────────────────────┐
                               │       CTO            │
-                              │       Claude         │
+                              │       QuantEdge AI         │
                               └───────────┬──────────┘
                                           │
             ┌──────────────┬──────────────┼──────────────┬──────────────┐
@@ -38,7 +38,7 @@
 
 | Level | Count | Names / Roles |
 |-------|-------|---------------|
-| **C-suite** | 1 | CTO (Claude) |
+| **C-suite** | 1 | CTO (QuantEdge AI) |
 | **VPs** | 5 | VP Research (Dr. Marcus), VP Engineering (Dr. Ada), VP Product (Sarah), VP Risk (Dr. Ruin), VP DevOps (Dr. Ship) |
 | **Directors** | 8 | Dir Quant Research (Dr. Quant), Dir ML (Dr. Neural), Dir Microstructure (Dr. Slippage), Dir Backend (Dr. API), Dir Frontend (Dr. Pixel), Dir Data (Dr. Tape), Dir Risk Engineering, Dir Security |
 | **Product Managers** | 3 | PM Alpha Strategies, PM Platform, PM UX |

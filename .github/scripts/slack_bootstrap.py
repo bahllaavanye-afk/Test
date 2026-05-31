@@ -7,7 +7,7 @@ Usage (run from repo root):
 
 Optional env vars:
     GH_TOKEN   — GitHub PAT to post result comment to issue #2
-    GH_REPO    — owner/repo (e.g. bahllaavanye-afk/Test)
+    GH_REPO    — owner/repo (e.g. bahllaavanye-afk/QuantEdge)
 """
 
 from __future__ import annotations

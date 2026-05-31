@@ -97,7 +97,6 @@ def apply_and_push(files: list[dict]) -> list[str]:
     if r.returncode == 0:
         return []
 
-    msg = f"fix(backend): AI backend team auto-fix\n\nFocus: {FOCUS}\n\nhttps://claude.ai/code/session_01PBMR9hz1GLDQTqUeTBPsqM"
     subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
     subprocess.run(["git", "push", "origin", BRANCH], cwd=REPO_ROOT, check=True)
     return patched
