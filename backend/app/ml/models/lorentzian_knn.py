@@ -10,8 +10,15 @@ compresses extreme differences, preventing rare events from dominating.
 Features used (same as original TV indicator):
   RSI(14), CCI(20), ADX(20), EMA delta (fast vs slow), SMA delta
 """
-import torch
-import torch.nn as nn
+try:
+    import torch
+    import torch.nn as nn
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None  # type: ignore
+    nn = None  # type: ignore
+    _TORCH_AVAILABLE = False
+
 import numpy as np
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
@@ -22,8 +29,10 @@ from app.ml.models.base_model import AbstractModel, EvalMetrics
 LORENTZIAN_FEATURES = ["rsi_14", "cci_20", "adx_20", "ema_fast_delta", "ema_slow_delta"]
 
 
-def lorentzian_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+def lorentzian_distance(x, y):
     """Lorentzian distance between two feature vectors."""
+    if not _TORCH_AVAILABLE:
+        raise ImportError("torch is required for lorentzian_distance — install with `pip install torch`")
     return torch.sqrt(torch.sum(torch.log(1 + torch.abs(x - y)) ** 2, dim=-1))
 
 
@@ -59,13 +68,15 @@ class LorentzianKNN(AbstractModel):
     model_type = "lorentzian_knn"
 
     def __init__(self, k: int = 8, lookback: int = 2000, subsample: int = 4):
+        if not _TORCH_AVAILABLE:
+            raise ImportError("torch is required for LorentzianKNN — install with `pip install torch`")
         self.k = k
         self.lookback = lookback
         self.subsample = subsample
-        self._library_X: torch.Tensor | None = None
-        self._library_y: torch.Tensor | None = None
+        self._library_X = None  # type: ignore
+        self._library_y = None  # type: ignore
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         """x: (batch, n_features) — single-step inference (no sequence)."""
         if self._library_X is None:
             return torch.zeros(x.shape[0])

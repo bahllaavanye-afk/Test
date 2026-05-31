@@ -14,8 +14,14 @@ Requires: torch_geometric (optional — falls back gracefully if not installed)
 """
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
+try:
+    import torch
+    import torch.nn as nn
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None  # type: ignore
+    nn = None  # type: ignore
+    _TORCH_AVAILABLE = False
 
 try:
     import torch_geometric  # noqa: F401
