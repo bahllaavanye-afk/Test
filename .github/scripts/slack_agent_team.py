@@ -62,9 +62,16 @@ def load_state() -> dict:
 
 def save_state(state: dict) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # Trim to avoid unbounded growth
     state["posted_hashes"] = state.get("posted_hashes", [])[-1000:]
-    state["replied_to"] = state.get("replied_to", [])[-500:]
+    state["replied_to"]    = state.get("replied_to", [])[-500:]
+    # Trim response cache to last 200 entries
+    cache = state.get("response_cache", {})
+    if len(cache) > 200:
+        # evict oldest entries by timestamp
+        sorted_keys = sorted(cache, key=lambda k: cache[k].get("ts", 0))
+        for k in sorted_keys[:len(cache) - 200]:
+            del cache[k]
+    state["response_cache"] = cache
     STATE_PATH.write_text(json.dumps(state, indent=2))
 
 
@@ -74,6 +81,182 @@ def _hash(text: str) -> str:
 
 def is_duplicate(state: dict, text: str) -> bool:
     return _hash(text) in state.get("posted_hashes", [])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Token budget tracker — persisted in state so limits survive across runs
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Daily soft limits per provider key — stay below these to never hit hard caps.
+# Set at 80% of the real limit so there's always a 20% safety margin.
+_DAILY_SOFT_LIMITS: dict[str, int] = {
+    "GROQ_API_KEY":   400_000,   # real: 500K tok/day
+    "GROQ_API_KEY_2": 400_000,
+    "GROQ_API_KEY_3": 400_000,
+    "GEMINI_API_KEY":   1_200,   # real: 1500 req/day (tracked as requests, not tokens)
+    "GEMINI_API_KEY_2": 1_200,
+    "GEMINI_API_KEY_3": 1_200,
+    "CEREBRAS_API_KEY": 800_000, # real: 1M tok/day
+}
+
+
+def _today() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def budget_ok(state: dict, provider_env: str, estimated_tokens: int = 500) -> bool:
+    """Return True if this provider still has room in today's budget."""
+    today = _today()
+    usage = state.setdefault("token_budget", {}).setdefault(provider_env, {"date": today, "used": 0})
+    if usage.get("date") != today:          # new day — reset
+        usage["date"] = today
+        usage["used"] = 0
+    limit = _DAILY_SOFT_LIMITS.get(provider_env, 999_999_999)
+    return usage["used"] + estimated_tokens < limit
+
+
+def record_usage(state: dict, provider_env: str, tokens_used: int) -> None:
+    """Increment daily usage counter for this provider key."""
+    today = _today()
+    bucket = state.setdefault("token_budget", {}).setdefault(provider_env, {"date": today, "used": 0})
+    if bucket.get("date") != today:
+        bucket["date"] = today
+        bucket["used"] = 0
+    bucket["used"] = bucket.get("used", 0) + tokens_used
+
+
+def log_budget(state: dict) -> None:
+    """Print a one-line budget summary at the start of each run."""
+    today = _today()
+    parts = []
+    for k, limit in _DAILY_SOFT_LIMITS.items():
+        used = state.get("token_budget", {}).get(k, {}).get("used", 0)
+        if state.get("token_budget", {}).get(k, {}).get("date") != today:
+            used = 0
+        parts.append(f"{k}={used}/{limit}")
+    print(f"  [budget] {' | '.join(parts)}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Response cache — 2-hour TTL — avoids redundant LLM calls when nothing changed
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CACHE_TTL_SECONDS = 7_200   # 2 hours
+
+
+def cached_call(state: dict, cache_key: str, call_fn, ttl: int = _CACHE_TTL_SECONDS) -> str | None:
+    """
+    Return cached response if fresh, else call call_fn() and cache the result.
+    cache_key should encode: (employee, channel, recent_git_sha[:8]).
+    This prevents calling the LLM again if the same employee is asked about the
+    same topic within 2 hours and no new commits have landed.
+    """
+    import time
+    now = time.time()
+    cache = state.setdefault("response_cache", {})
+    entry = cache.get(cache_key)
+    if entry and now - entry.get("ts", 0) < ttl:
+        print(f"  [cache hit] {cache_key[:32]}")
+        return entry["text"]
+    result = call_fn()
+    if result:
+        cache[cache_key] = {"text": result, "ts": now}
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Git context — detect whether anything changed since last run
+# ─────────────────────────────────────────────────────────────────────────────
+
+def current_git_sha() -> str:
+    try:
+        import subprocess
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL, text=True).strip()
+    except Exception:
+        return "unknown"
+
+
+def repo_changed(state: dict) -> bool:
+    """Return True if HEAD changed since last run. Updates state."""
+    sha = current_git_sha()
+    last = state.get("last_commit_sha", "")
+    state["last_commit_sha"] = sha
+    return sha != last
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Batch post generation — 1 API call generates posts for all employees in a group
+# Instead of 13 separate calls, 3 batch calls (one per Groq account group).
+# Token savings: ~70% reduction on system-prompt overhead.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def batch_generate(
+    employee_topics: list[tuple[str, str]],   # [(employee_name, topic_description), ...]
+    groq_key: str,
+    state: dict,
+    system_prompt: str = _QUANT_SYSTEM,
+) -> dict[str, str]:
+    """
+    One Groq API call → posts for N employees. Returns {employee: post_text}.
+    Falls back to empty dict — callers fall through to individual calls.
+    Respects daily token budget: skips if account is near its soft limit.
+    """
+    if not employee_topics or not groq_key:
+        return {}
+
+    # Find which env var this key belongs to (for budget tracking)
+    provider_env = next(
+        (k for k in ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]
+         if os.environ.get(k, "").strip() == groq_key),
+        "GROQ_API_KEY"
+    )
+    estimated = len(employee_topics) * 250   # ~250 tok output per employee
+    if not budget_ok(state, provider_env, estimated):
+        print(f"  [batch] {provider_env} at soft limit — skipping batch")
+        return {}
+
+    names = [e for e, _ in employee_topics]
+    delimiters = {e: f"==={e.upper()}===" for e in names}
+
+    lines = [
+        "Generate a short Slack post (2-4 sentences, professional but direct) for each person.",
+        "Use exactly these section delimiters — no extra text between sections.\n",
+    ]
+    for emp, topic in employee_topics:
+        lines.append(f"{delimiters[emp]}\nEmployee: {emp.title()} | Topic: {_sanitize(topic)}\n")
+
+    batch_prompt = "\n".join(lines)
+    cap = min(len(employee_topics) * 220, 1800)   # higher cap for batch output
+
+    result = _try_openai_compat(
+        "https://api.groq.com/openai/v1/chat/completions",
+        groq_key, "llama-3.3-70b-versatile",
+        _sanitize(system_prompt), batch_prompt, cap,
+    )
+    if not result:
+        return {}
+
+    record_usage(state, provider_env, estimated)
+
+    posts: dict[str, str] = {}
+    for emp in names:
+        delim = delimiters[emp]
+        if delim not in result:
+            continue
+        text = result.split(delim, 1)[1].strip()
+        # cut at the next delimiter
+        for other in names:
+            if other != emp and delimiters[other] in text:
+                text = text.split(delimiters[other])[0].strip()
+        if len(text) > 20:
+            posts[emp] = text
+
+    hit = len(posts)
+    print(f"  [batch/groq/{provider_env}] ✓ {hit}/{len(names)} posts in 1 call")
+    return posts
 
 
 def record_post(state: dict, text: str) -> None:
@@ -277,30 +460,43 @@ def call_groq(system_prompt: str, user_message: str, max_tokens: int = 600) -> s
         return None
 
 
-def call_gemini(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Google Gemini 2.0 Flash — free 1 500 req/day, 1M token context."""
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        return None
+def call_gemini(system_prompt: str, user_message: str, max_tokens: int = 600,
+                state: dict | None = None) -> str | None:
+    """
+    Google Gemini 2.0 Flash — rotates across GEMINI_API_KEY, _2, _3.
+    Free: 1500 req/day per key → 3 keys = 4500 req/day combined.
+    Checks daily budget (tracked in state) before calling.
+    """
     payload = {
         "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}],
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4},
+        "generationConfig": {"maxOutputTokens": min(max_tokens, MAX_TOKENS_PER_CALL),
+                             "temperature": 0.4},
     }
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"gemini-2.0-flash:generateContent?key={api_key}")
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            data = json.loads(resp.read())
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception as e:
-        print(f"  [gemini] {e}")
-        return None
+    for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
+        key = os.environ.get(env_var, "").strip()
+        if not key:
+            continue
+        if state and not budget_ok(state, env_var, estimated_tokens=1):
+            continue   # this key's daily request budget exhausted
+        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+               f"gemini-2.0-flash:generateContent?key={key}")
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                text = json.loads(resp.read())["candidates"][0]["content"]["parts"][0]["text"]
+                if state:
+                    record_usage(state, env_var, 1)   # track as 1 request
+                print(f"  [gemini/{env_var}] ✓")
+                return text
+        except Exception as e:
+            print(f"  [gemini/{env_var}] {e}")
+            continue
+    return None
 
 
 def call_github_models(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
@@ -4689,11 +4885,16 @@ def main() -> int:
     bot_user_id = auth.get("user_id", "")
     print(f"✅ Authed as {auth.get('user')} in {auth.get('team')} at {datetime.now(timezone.utc).isoformat()}")
 
-    # Load run state for dedup + thread tracking
+    # Load run state for dedup + thread tracking + token budget
     state = load_state()
-    has_claude = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-    print(f"📋 State: last_run={state['last_run_ts']}, {len(state['posted_hashes'])} known hashes, "
-          f"{'Claude ✅' if has_claude else 'Claude ❌ (no ANTHROPIC_API_KEY)'})")
+    print(f"📋 State: {len(state['posted_hashes'])} known hashes, "
+          f"{len(state.get('response_cache', {}))} cached responses")
+    log_budget(state)   # print token usage across all providers for this day
+
+    # Check if the repo changed since the last run — used to skip redundant posts
+    changed = repo_changed(state)
+    sha = current_git_sha()
+    print(f"📌 HEAD: {sha} — {'changed since last run' if changed else 'no new commits'}")
 
     # ── Auto-create channels ──────────────────────────────────────────────────
     print("\n📺 Ensuring all channels exist")
