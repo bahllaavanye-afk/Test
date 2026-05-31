@@ -1,0 +1,42 @@
+name: Third-Party Health Monitor
+
+# Runs from the default branch (main). Checks all external services QuantEdge
+# depends on and posts outages to #infra-alerts.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # Every 30 minutes
+  workflow_dispatch:
+    inputs:
+      post_digest:
+        description: "Post full digest to Slack"
+        required: false
+        default: "true"
+
+concurrency:
+  group: third-party-monitor
+  cancel-in-progress: true
+
+jobs:
+  check-services:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install httpx --quiet
+
+      - name: Run health checks
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          POST_DIGEST: ${{ github.event.inputs.post_digest || 'false' }}
+        run: python .github/scripts/third_party_monitor.py
+        continue-on-error: true

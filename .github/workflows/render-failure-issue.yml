@@ -1,0 +1,43 @@
+name: Render Failure → GitHub Issue Bridge
+
+# Runs from the DEFAULT branch (main) so the cron schedule fires.
+# When a Render deploy fails, fetches the logs and creates/updates a GitHub
+# Issue so Claude can read the failure directly (no manual copy-paste).
+# On recovery, auto-closes the issue.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # Every 10 minutes
+  workflow_dispatch:
+  repository_dispatch:
+    types: [render-deploy-failed]
+
+concurrency:
+  group: render-failure-issue
+  cancel-in-progress: true
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install httpx --quiet
+
+      - name: Check Render & bridge failures
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/render_failure_issue.py
