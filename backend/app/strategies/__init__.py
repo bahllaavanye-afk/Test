@@ -55,6 +55,14 @@ from app.strategies.manual.poly_market_maker import PolymarketMarketMaker
 from app.strategies.manual.poly_calibration_arb import PolymarketCalibrationArb
 from app.strategies.manual.multi_factor_equity import MultiFactorEquity
 from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrategy
+from app.strategies.manual.options_strategies import (
+    CoveredCallStrategy,
+    CashSecuredPutStrategy,
+    IronCondorStrategy,
+    LongCallMomentum,
+    EarningsIVCrushStrategy,
+    WheelStrategy,
+)
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
 # xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
@@ -72,12 +80,18 @@ _OPTIONAL_ML_STRATEGIES: list[tuple[str, str, str]] = [
 
 
 def _try_import_ml(module_path: str, class_name: str):
-    """Best-effort import of an ML strategy. Returns the class or None."""
+    """Best-effort import of an ML strategy. Returns the class or None.
+
+    Catches ImportError (missing optional dep like torch) and AttributeError
+    (e.g. `class X(nn.Module)` where nn is None because torch wasn't installed).
+    Either way, the strategy is skipped gracefully instead of breaking the
+    whole registry import on lightweight deploys (Render free tier, CI).
+    """
     try:
         import importlib
         mod = importlib.import_module(module_path)
         return getattr(mod, class_name)
-    except ImportError as e:
+    except (ImportError, AttributeError) as e:
         import logging
         logging.getLogger(__name__).info(
             "ML strategy %s skipped (optional dep missing: %s)", class_name, e
@@ -152,6 +166,12 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "poly_calibration_arb": PolymarketCalibrationArb,
     "multi_factor_equity": MultiFactorEquity,
     "credit_spread_income": CreditSpreadIncomeStrategy,
+    "covered_call": CoveredCallStrategy,
+    "cash_secured_put": CashSecuredPutStrategy,
+    "iron_condor": IronCondorStrategy,
+    "long_call_momentum": LongCallMomentum,
+    "earnings_iv_crush": EarningsIVCrushStrategy,
+    "wheel": WheelStrategy,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry
