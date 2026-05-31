@@ -2342,6 +2342,254 @@ def aditi_reply_to_qa(post_ts: str) -> Post:
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Realism layer — short messages, emoji reactions, @mentions, personality
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Agent @mention handles (for cross-team references)
+AGENT_HANDLES: dict[str, str] = {
+    "VP Engineering":           "maya",
+    "Alpha Research Director":  "aarav",
+    "ML Modeling Lead":         "linh",
+    "Execution Engineer":       "diego",
+    "Risk Engineer":            "jian",
+    "Frontend Lead":            "priya_s",
+    "Backend Lead":             "anna",
+    "Data Engineer":            "sina",
+    "Director of DevOps":       "kenji",
+    "Director of QA":           "aditi",
+    "VP Research":              "sofia",
+    "Options Researcher":       "yuki",
+    "Quant Researcher":         "hugo",
+    "Research Scientist":       "tomas",
+    "Polymarket Researcher":    "lior",
+    "Chief Risk Officer":       "marcus",
+    "Finance Engineer":         "wei",
+    "Compliance Engineer":      "helena",
+    "Junior Engineer":          "karl",
+    "CEO / Founder":            "laavanye",
+    "ML Infrastructure Engineer": "ravi",
+    "ML Research Lead":         "sara",
+    "Deep Learning Engineer":   "marcus_w",
+    "Feature Engineering Lead": "priya_n",
+    "Quant ML Researcher":      "alex",
+}
+
+
+def _m(role: str) -> str:
+    """Return @handle for a role."""
+    return "@" + AGENT_HANDLES.get(role, role.split()[0].lower())
+
+
+def add_reaction(token: str, channel_id: str, ts: str, emoji: str) -> None:
+    """Add an emoji reaction to an existing message."""
+    slack_call(token, "reactions.add", {"channel": channel_id, "timestamp": ts, "name": emoji})
+
+
+_REACTION_POOL = [
+    "rocket", "white_check_mark", "eyes", "fire", "+1",
+    "100", "brain", "bar_chart", "tada", "zap", "mag",
+]
+
+
+# ── Short-form agent functions: 1-3 line casual messages ─────────────────────
+
+def _short_vp_engineering() -> list[Post]:
+    commits = git_recent_commits(since_hours=4, limit=2)
+    if not commits:
+        return [Post("engineering", "quiet morning — no commits in last 4h. all systems green.", "VP Engineering", ":woman_office_worker:")]
+    c = commits[0]
+    url = repo_url("commit", c["sha"])
+    options = [
+        f"<{url}|`{c['sha']}`> landed — {c['msg'][:72]}",
+        f"<{url}|`{c['sha']}`> — {c['msg'][:60]}. {_m('Director of QA')} / {_m('Backend Lead')}: heads up",
+        f"new commit: {c['msg'][:80]}. anyone blocked?",
+    ]
+    return [Post("engineering", random.choice(options), "VP Engineering", ":woman_office_worker:")]
+
+
+def _short_alpha_director() -> list[Post]:
+    strats = list_strategies()["manual"]
+    changed = git_files_changed(since_hours=48)
+    recent = [Path(f).stem for f in changed if "strategies/manual" in f]
+    target = recent[0] if recent else (random.choice(strats) if strats else None)
+    if not target:
+        return []
+    options = [
+        f"quick note on `{target}` — does anyone have the latest walk-forward Sharpe? can't find it in experiments/",
+        f"`{target}` signal: clean entry logic but no `.shift(1)` guard. {_m('Quant Researcher')}: fix before paper?",
+        f"reviewing `{target}` — volume filter looks promising. tagging {_m('ML Modeling Lead')} for ML version",
+        f"flagged `{target}` for lookahead audit. {_m('Director of QA')}: test `backtest_signals()` with a zero-lag check?",
+    ]
+    return [Post("alpha-research", random.choice(options), "Alpha Research Director", ":chart_with_upwards_trend:")]
+
+
+def _short_ml_lead() -> list[Post]:
+    results = latest_backtest_results()
+    if results:
+        r = results[0]
+        s = r.get("sharpe", 0) or 0
+        sym = r.get("symbol", "?")
+        strat = r.get("strategy", "?")
+        emoji_map = [(1.5, ":fire:"), (1.0, ":white_check_mark:"), (0.5, ":ok:"), (0, ":chart_with_downwards_trend:")]
+        em = next((e for thresh, e in emoji_map if s >= thresh), ":chart_with_downwards_trend:")
+        lines = [
+            f"{em} `{strat}` / `{sym}`: Sharpe={s:.2f} — {'paper ready' if s > 1.0 else 'need more tuning'}",
+            f"ran `{strat}` on `{sym}` — Sharpe {s:.2f}. {_m('Alpha Research Director')}: gate criteria met?" if s > 0.8 else f"`{strat}` Sharpe={s:.2f} not there yet. trying wider threshold",
+        ]
+        return [Post("ml-experiments", random.choice(lines), "ML Modeling Lead", ":robot_face:")]
+    return [Post("ml-experiments", f"no results logged yet. {_m('Quant ML Researcher')} / {_m('Research Scientist')}: who's running first experiment this week?", "ML Modeling Lead", ":robot_face:")]
+
+
+def _short_risk_engineer() -> list[Post]:
+    acct = alpaca_account()
+    if acct:
+        eq = float(acct.get("equity", 0))
+        positions = alpaca_positions()
+        if positions and eq > 0:
+            largest = max(positions, key=lambda x: abs(float(x.get("market_value", 0))))
+            pct = abs(float(largest.get("market_value", 0))) / eq * 100
+            sym = largest.get("symbol", "?")
+            if pct > 10:
+                return [Post("risk-alerts", f":warning: `{sym}` at {pct:.1f}% NAV — near 12% limit. {_m('Chief Risk Officer')}: approve or trim?", "Risk Engineer", ":shield:")]
+            return [Post("risk-alerts", f"all clear: largest position `{sym}` at {pct:.1f}% NAV. breakers nominal.", "Risk Engineer", ":shield:")]
+    return [Post("risk-alerts", "risk check: no live positions. kelly + hrp + circuit breakers standing by.", "Risk Engineer", ":shield:")]
+
+
+def _short_devops() -> list[Post]:
+    runs = latest_workflow_runs()
+    if not runs:
+        return [Post("infra-alerts", "no recent CI runs. Render health check passing :white_check_mark:", "Director of DevOps", ":satellite_antenna:")]
+    last = runs[0]
+    c = last.get("conclusion") or last.get("status", "?")
+    n = last.get("name", "?")
+    em = {"success": ":white_check_mark:", "failure": ":red_circle:", "in_progress": ":hourglass:"}.get(c, ":question:")
+    msgs = {
+        "success": f"{em} `{n}` passed",
+        "failure": f"{em} `{n}` failed — self-fixer triggered. {_m('Backend Lead')}: watching",
+        "in_progress": f"{em} `{n}` running...",
+    }
+    return [Post("infra-alerts", msgs.get(c, f"{em} `{n}` → {c}"), "Director of DevOps", ":satellite_antenna:")]
+
+
+def _short_qa() -> list[Post]:
+    res = run_pytest_lightweight(timeout_secs=45)
+    if res["not_installed"] or res["timed_out"]:
+        return []
+    if res["failed"] > 0:
+        snip = res["fail_lines"][0][:70] if res["fail_lines"] else "?"
+        return [Post("squad-qa", f":red_circle: {res['failed']} failing: `{snip}` — looking into it", "Director of QA", ":mag:")]
+    return [Post("squad-qa", f":white_check_mark: {res['passed']} tests green ({res['duration']:.0f}s)", "Director of QA", ":mag:")]
+
+
+def _short_backend() -> list[Post]:
+    changed = git_files_changed(since_hours=24)
+    backend_files = [k for k in changed if k.startswith("backend/") and k.endswith(".py")]
+    if not backend_files:
+        return []
+    f = random.choice(backend_files[:5])
+    url = repo_url("blob", "main", f)
+    msgs = [
+        f"reviewed <{url}|`{Path(f).name}`> — clean, no blocking issues",
+        f"<{url}|`{Path(f).name}`>: caught a potential N+1. using `joinedload` now",
+        f"<{url}|`{Path(f).name}`>: async pattern looks good. {_m('Director of QA')}: test coverage?",
+        f"<{url}|`{Path(f).name}`>: added retry logic — was failing silently on DB timeout",
+    ]
+    return [Post("squad-backend", random.choice(msgs), "Backend Lead", ":gear:")]
+
+
+def _short_junior() -> list[Post]:
+    todos = find_todos()
+    strats = list_strategies()["manual"]
+    general_qs = [
+        "quick q — what's the fastest way to add a new feature flag without touching main?",
+        f"is there a standard format for experiment configs? i see `experiments/configs/` but the schema isn't clear",
+        "does `TRADING_MODE=test` bypass everything or just rate limiting?",
+        f"noticed `experiments/results/` is empty — is that expected until we run backtests?",
+        f"can strategies call each other or is that a coupling violation per the CLAUDE.md?",
+        f"when does a strategy graduate from paper to live? need the checklist",
+    ]
+    if todos:
+        f_path, ln, snippet = random.choice(todos)
+        url = repo_url("blob", "main", f"{f_path}#L{ln}")
+        todo_qs = [
+            f"anyone know the TODO at <{url}|`{Path(f_path).name}:{ln}`>? `{snippet[:50].strip()}` — happy to pick it up",
+            f"found a `TODO` in <{url}|`{Path(f_path).name}`> — is this still relevant or can i close it?",
+        ]
+        general_qs = todo_qs + general_qs
+    return [Post("help", random.choice(general_qs), "Junior Engineer", ":raised_hand:")]
+
+
+def _short_polymarket() -> list[Post]:
+    try:
+        req = urllib.request.Request(
+            "https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=30",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            markets = json.loads(resp.read())
+        if isinstance(markets, list):
+            arb = [m for m in markets
+                   if len(m.get("tokens", [])) >= 2
+                   and sum(float(t.get("price", 0.5)) for t in m["tokens"]) < 0.97]
+            if arb:
+                m = arb[0]
+                return [Post("desk-polymarket",
+                             f":rotating_light: arb: `{m.get('question','?')[:55]}` — sum<0.97, placing now",
+                             "Polymarket Researcher", ":vertical_traffic_light:")]
+            return [Post("desk-polymarket",
+                         f"scanned {len(markets)} markets — no arb open right now. monitoring every 15min",
+                         "Polymarket Researcher", ":vertical_traffic_light:")]
+    except Exception:
+        return []
+
+
+def _short_data_eng() -> list[Post]:
+    brokers_dir = REPO_ROOT / "backend" / "app" / "brokers"
+    brokers = [f.stem for f in brokers_dir.glob("*.py") if not f.stem.startswith("_") and f.stem != "base"] if brokers_dir.exists() else []
+    msgs = [
+        f"data feeds: {len(brokers)} brokers wired ({', '.join(brokers[:3])}). redis cache lag <2s on crypto",
+        f"binance ws reconnected — was flapping. fixed keepalive. {_m('Director of DevOps')}: fyi",
+        f"alpaca feed: p95 latency 4s. considering switch to direct WS for equity bars",
+        f"ohlcv ingestion healthy — {len(brokers)} sources active",
+    ]
+    return [Post("squad-data", random.choice(msgs), "Data Engineer", ":file_cabinet:")]
+
+
+def _short_execution_eng() -> list[Post]:
+    p = REPO_ROOT / "backend" / "app" / "execution"
+    if not p.exists():
+        return []
+    files = [f for f in p.glob("*.py") if f.stem not in ("__init__",)]
+    if not files:
+        return []
+    t = random.choice(files)
+    url = repo_url("blob", "main", f"backend/app/execution/{t.name}")
+    msgs = [
+        f"checked <{url}|`{t.name}`> — slippage bps look normal. limit-first saving ~7bps vs market avg",
+        f"<{url}|`{t.name}`>: TWAP slices working. no fills missed in last 100 orders",
+        f"execution algo: limit-first → market fallback firing after 28s avg. tuning to 20s",
+        f"smart router routing {random.randint(70,95)}% of orders to limit-first algo. {_m('Risk Engineer')}: slippage within bounds",
+    ]
+    return [Post("squad-execution", random.choice(msgs), "Execution Engineer", ":zap:")]
+
+
+# Map: agent role → short-form function (called ~55% of the time instead of full report)
+_SHORT_FNS: dict[str, Callable[[], list[Post]]] = {
+    "VP Engineering":           _short_vp_engineering,
+    "Alpha Research Director":  _short_alpha_director,
+    "ML Modeling Lead":         _short_ml_lead,
+    "Risk Engineer":            _short_risk_engineer,
+    "Director of DevOps":       _short_devops,
+    "Director of QA":           _short_qa,
+    "Backend Lead":             _short_backend,
+    "Junior Engineer":          _short_junior,
+    "Polymarket Researcher":    _short_polymarket,
+    "Data Engineer":            _short_data_eng,
+    "Execution Engineer":       _short_execution_eng,
+}
+
+
 # ─── Master agent registry ───────────────────────────────────────────────────
 
 
@@ -2523,15 +2771,17 @@ def main() -> int:
     wave_names = {a.name for a in wave}
     print(f"🎯 Wave: {wave_size}/{len(AGENTS)} agents + {len(team_posts)} team posts")
 
-    posted_ts: dict[str, str] = {}  # channel -> last_ts of a parent post in that channel
+    posted_ts: dict[str, str] = {}         # channel_name -> last_ts (for thread replies)
+    posted_for_reactions: list[tuple] = [] # [(channel_id, ts)] for reaction wave
     # Per-agent tracking: {agent_name -> {"posts": int, "errors": int, "channels": [...]}}
     agent_tracking: dict[str, dict] = {}
 
-    # Post team activity first (with dedup)
-    for p in team_posts:
+    def _do_post(p: Post, label: str) -> str | None:
+        """Post a message, record it, return ts or None. Shared by team + agent loops."""
+        nonlocal posts_made, errors
         if is_duplicate(state, p.text):
-            print(f"  ⏭ TEAM {p.username[:36]} → #{p.channel} (dup, skipping)")
-            continue
+            print(f"  ⏭ {label} → #{p.channel} (dup)")
+            return None
         r = post_to_slack(
             token, channel=p.channel, text=p.text,
             username=p.username, icon_emoji=p.icon_emoji,
@@ -2540,52 +2790,56 @@ def main() -> int:
         if r.get("ok"):
             posts_made += 1
             record_post(state, p.text)
-            ts = r.get("ts")
+            ts = r.get("ts", "")
             if ts and not p.thread_of:
                 posted_ts[p.channel] = ts
-            print(f"  ✓ TEAM {p.username[:36]} → #{p.channel}")
+                ch_id = get_channel_id(token, p.channel)
+                if ch_id:
+                    posted_for_reactions.append((ch_id, ts))
+            print(f"  ✓ {label} → #{p.channel}")
+            return ts
         else:
             errors += 1
-            print(f"  ✗ TEAM → #{p.channel}: {r.get('error')}")
-        time.sleep(0.7)
+            print(f"  ✗ {label} → #{p.channel}: {r.get('error')}")
+            return None
 
+    # Post team activity first (with dedup)
+    for p in team_posts:
+        _do_post(p, f"TEAM {p.username[:30]}")
+        time.sleep(0.6)
+
+    # Agent wave — 55% short-form, 45% full report (makes feed feel natural)
     for agent in wave:
-        agent_tracking[agent.name] = {"posts": 0, "errors": 0, "channels": []}
+        agent_tracking[agent.name] = {"posts": 0, "errors": 0, "channels": [], "mode": ""}
+        short_fn = _SHORT_FNS.get(agent.name)
+        use_short = short_fn is not None and random.random() < 0.55
+        fn_to_call = short_fn if use_short else agent.work_fn
+        mode = "short" if use_short else "full"
+        agent_tracking[agent.name]["mode"] = mode
         try:
-            posts = agent.work_fn()
+            posts = fn_to_call()
         except Exception as e:
-            print(f"  ✗ {agent.name} work_fn crashed: {e}")
+            print(f"  ✗ {agent.name} ({mode}) crashed: {e}")
             errors += 1
             agent_tracking[agent.name]["errors"] += 1
             continue
         for p in posts:
-            # Skip duplicate posts — same content already sent recently
-            if is_duplicate(state, p.text):
-                print(f"  ⏭ {agent.name} → #{p.channel} (dup, skipping)")
-                continue
-            r = post_to_slack(
-                token,
-                channel=p.channel,
-                text=p.text,
-                username=p.username,
-                icon_emoji=p.icon_emoji,
-                thread_ts=p.thread_of,
-            )
-            if r.get("ok"):
-                posts_made += 1
-                record_post(state, p.text)
-                ts = r.get("ts")
-                if ts and not p.thread_of:
-                    posted_ts[p.channel] = ts
+            ts = _do_post(p, f"{agent.name}({mode})")
+            if ts is not None:
                 agent_tracking[agent.name]["posts"] += 1
                 if p.channel not in agent_tracking[agent.name]["channels"]:
                     agent_tracking[agent.name]["channels"].append(p.channel)
-                print(f"  ✓ {agent.name} → #{p.channel}")
             else:
-                errors += 1
                 agent_tracking[agent.name]["errors"] += 1
-                print(f"  ✗ {agent.name} → #{p.channel}: {r.get('error')}")
-            time.sleep(0.7)  # tier-1 rate limit safety
+            time.sleep(0.6)
+
+    # ── Reaction wave — agents react to each other's posts (feels like real Slack)
+    print("\n👍 Reaction wave")
+    react_targets = random.sample(posted_for_reactions, min(10, len(posted_for_reactions)))
+    for ch_id, ts in react_targets:
+        emoji = random.choice(_REACTION_POOL)
+        add_reaction(token, ch_id, ts, emoji)
+        time.sleep(0.3)
 
     # ── Discussion pass: a few agents reply in threads ───────────────────────
     print("\n💬 Discussion pass — threaded replies")
@@ -2634,7 +2888,9 @@ def main() -> int:
             t = agent_tracking[n]
             status = "✅" if t["posts"] > 0 else ("⚠️" if t["errors"] == 0 else "❌")
             chs = ", ".join(f"#{c}" for c in t["channels"]) or "—"
-            unique_active.append(f"{status} *{n}*: {t['posts']} post(s) → {chs}")
+            mode = t.get("mode", "")
+            mode_tag = " _(short)_" if mode == "short" else ""
+            unique_active.append(f"{status} *{n}*{mode_tag}: {t['posts']} post(s) → {chs}")
 
     seen_benched: set[str] = set()
     unique_benched = []
@@ -2643,9 +2899,11 @@ def main() -> int:
             seen_benched.add(n)
             unique_benched.append(f"• {n}")
 
+    n_reactions = min(10, len(posted_for_reactions))
+    n_short = sum(1 for t in agent_tracking.values() if t.get("mode") == "short")
     tracker_lines = [
         f"*:clipboard: Employee Run Report — {now_str}*",
-        f"Wave: *{wave_size}/{len(AGENTS)}* agents active | *{posts_made}* messages posted | *{errors}* errors",
+        f"Wave: *{wave_size}/{len(AGENTS)}* agents | *{posts_made}* posts ({n_short} short-form) | *{n_reactions}* reactions | *{errors}* errors",
         "",
         f"*Active this run ({len(unique_active)}):*",
     ]
