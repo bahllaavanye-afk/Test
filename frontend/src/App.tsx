@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 // Public pages — eagerly loaded (smallest possible initial bundle)
 import Login from './pages/Login'
 import Landing from './pages/Landing'
+import GoogleCallback from './pages/GoogleCallback'
 import { selectIsAuthenticated } from './store/slices/authSlice'
 
 // All protected pages — lazy-loaded so each becomes a separate Vite chunk.
@@ -54,6 +55,7 @@ export default function App() {
       <Routes>
         <Route path="/landing" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="equity" element={<EquityTrading />} />
