@@ -30,6 +30,26 @@ class RiskRuleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+@router.get("/status")
+async def get_risk_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Global risk status: circuit breaker state, capital, halt flag."""
+    result = await db.execute(
+        select(RiskEvent).order_by(RiskEvent.triggered_at.desc()).limit(1)
+    )
+    latest_event = result.scalar_one_or_none()
+    is_halted = latest_event is not None and latest_event.rule_id == "global_halt"
+    return {
+        "is_halted": is_halted,
+        "global_halt": is_halted,
+        "status": "halted" if is_halted else "normal",
+        "capital": None,
+        "latest_event": latest_event.notes if latest_event else None,
+    }
+
+
 @router.get("/rules", response_model=list[RiskRuleOut])
 async def list_rules(
     db: AsyncSession = Depends(get_db),

@@ -226,6 +226,19 @@ class AlgoAgent:
                             sharpe=round(sharpe, 3), avg=round(candidate.avg_sharpe, 3),
                             n_runs=candidate.n_runs)
 
+                # Post notable results to Slack (only when sharpe > 0 to avoid noise)
+                if sharpe > 0.5 or (candidate.n_runs % 10 == 0 and candidate.n_runs > 0):
+                    try:
+                        from app.notifications.slack import slack
+                        await slack.notify(
+                            "experiments",
+                            f":robot_face: *AlgoAgent* tested `{candidate.name}` on `{candidate.symbol}` "
+                            f"(run #{candidate.n_runs}) → Sharpe *{sharpe:.3f}* "
+                            f"(avg: {candidate.avg_sharpe:.3f}, best: {candidate.best_sharpe:.3f})",
+                        )
+                    except Exception:
+                        pass
+
             except asyncio.CancelledError:
                 break
             except Exception as e:

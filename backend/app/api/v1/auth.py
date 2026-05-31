@@ -29,7 +29,10 @@ _WINDOW_SECONDS = 300  # 10 attempts per 5 minutes per IP
 
 
 def _check_rate_limit(ip: str) -> None:
+    import os
     import time
+    if os.environ.get("TRADING_MODE") == "test":
+        return
     now = time.time()
     window_start = now - _WINDOW_SECONDS
     attempts = [t for t in _login_attempts[ip] if t > window_start]

@@ -15,13 +15,14 @@ from app.utils.logging import logger
 
 _pool: aioredis.ConnectionPool | None = None
 _redis_disabled = not settings.redis_url or settings.redis_url.strip() == ""
+_redis_enabled = not _redis_disabled
 
 
 def get_pool() -> aioredis.ConnectionPool | None:
     if _redis_disabled:
         return None
     global _pool
-    if not _redis_enabled():
+    if not _redis_enabled:
         return None
     if _pool is None:
         _pool = aioredis.ConnectionPool.from_url(
@@ -129,8 +130,5 @@ class PriceCache:
             logger.warning("redis.set failed", key=key, error=str(exc))
 
 
-# Module-level singleton — falls back to the no-op cache when Redis is disabled
-if _redis_enabled():
-    price_cache: PriceCache | _NoopPriceCache = PriceCache()
-else:
-    price_cache = _NoopPriceCache()
+# Module-level singleton — PriceCache already no-ops when Redis is unavailable
+price_cache: PriceCache = PriceCache()

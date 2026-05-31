@@ -2120,11 +2120,14 @@ def main() -> int:
     # Sample wave: 60-80% of agents do real work each run (skew so it varies)
     wave_size = random.randint(int(len(AGENTS) * 0.6), int(len(AGENTS) * 0.85))
     wave = random.sample(AGENTS, wave_size)
+    wave_names = {a.name for a in wave}
     print(f"🎯 Wave: {wave_size}/{len(AGENTS)} agents + {len(team_posts)} team posts")
 
     posted_ts: dict[str, str] = {}  # channel -> last_ts of a parent post in that channel
     posts_made = 0
     errors = 0
+    # Per-agent tracking: {agent_name -> {"posts": int, "errors": int, "channels": [...]}}
+    agent_tracking: dict[str, dict] = {}
 
     # Post team activity first
     for p in team_posts:
@@ -2145,11 +2148,13 @@ def main() -> int:
         time.sleep(0.7)
 
     for agent in wave:
+        agent_tracking[agent.name] = {"posts": 0, "errors": 0, "channels": []}
         try:
             posts = agent.work_fn()
         except Exception as e:
             print(f"  ✗ {agent.name} work_fn crashed: {e}")
             errors += 1
+            agent_tracking[agent.name]["errors"] += 1
             continue
         for p in posts:
             r = post_to_slack(
@@ -2165,9 +2170,13 @@ def main() -> int:
                 ts = r.get("ts")
                 if ts and not p.thread_of:
                     posted_ts[p.channel] = ts
+                agent_tracking[agent.name]["posts"] += 1
+                if p.channel not in agent_tracking[agent.name]["channels"]:
+                    agent_tracking[agent.name]["channels"].append(p.channel)
                 print(f"  ✓ {agent.name} → #{p.channel}")
             else:
                 errors += 1
+                agent_tracking[agent.name]["errors"] += 1
                 print(f"  ✗ {agent.name} → #{p.channel}: {r.get('error')}")
             time.sleep(0.7)  # tier-1 rate limit safety
 
@@ -2199,6 +2208,56 @@ def main() -> int:
         else:
             errors += 1
         time.sleep(0.7)
+
+    # ── Employee run tracker — posted to #engineering every run ──────────────
+    print("\n📋 Posting employee run tracker")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    active_names = sorted(agent_tracking.keys())
+    benched_names = sorted(a.name for a in AGENTS if a.name not in wave_names)
+
+    # Deduplicate names (some agents share a name like "Director of DevOps")
+    seen: set[str] = set()
+    unique_active = []
+    for n in active_names:
+        if n not in seen:
+            seen.add(n)
+            t = agent_tracking[n]
+            status = "✅" if t["posts"] > 0 else ("⚠️" if t["errors"] == 0 else "❌")
+            chs = ", ".join(f"#{c}" for c in t["channels"]) or "—"
+            unique_active.append(f"{status} *{n}*: {t['posts']} post(s) → {chs}")
+
+    seen_benched: set[str] = set()
+    unique_benched = []
+    for n in benched_names:
+        if n not in seen_benched:
+            seen_benched.add(n)
+            unique_benched.append(f"• {n}")
+
+    tracker_lines = [
+        f"*:clipboard: Employee Run Report — {now_str}*",
+        f"Wave: *{wave_size}/{len(AGENTS)}* agents active | *{posts_made}* messages posted | *{errors}* errors",
+        "",
+        f"*Active this run ({len(unique_active)}):*",
+    ]
+    tracker_lines.extend(unique_active[:20])
+    if len(unique_active) > 20:
+        tracker_lines.append(f"_…and {len(unique_active) - 20} more_")
+    if unique_benched:
+        tracker_lines.append(f"\n*Benched this wave ({len(unique_benched)}):*")
+        tracker_lines.extend(unique_benched[:10])
+
+    r = post_to_slack(
+        token,
+        channel="engineering",
+        text="\n".join(tracker_lines),
+        username="Employee Tracker",
+        icon_emoji=":bar_chart:",
+    )
+    if r.get("ok"):
+        posts_made += 1
+        print("  ✓ Employee tracker → #engineering")
+    else:
+        print(f"  ✗ Employee tracker → #engineering: {r.get('error')}")
 
     print(f"\n✅ Posted {posts_made} messages, {errors} errors")
     return 0
