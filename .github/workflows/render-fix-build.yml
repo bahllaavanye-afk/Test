@@ -1,0 +1,38 @@
+name: Render — Fix Build Command (remove alembic from build)
+
+# Forces the Render service's build command to `pip install -e "."` (no alembic
+# at build time) and start command to `bash start.sh`, then redeploys.
+# Fixes the "Network is unreachable" build failure caused by a stale dashboard
+# build command that still runs `alembic upgrade head` against the IPv6 host.
+
+on:
+  workflow_dispatch:
+  # Also run automatically whenever the render config changes on main
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/render_fix_service_config.py"
+      - ".github/workflows/render-fix-build.yml"
+
+jobs:
+  fix-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install httpx --quiet
+      - name: Patch Render build/start commands
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_WORKER_SERVICE_ID: ${{ secrets.RENDER_WORKER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::warning::RENDER_API_KEY / RENDER_SERVICE_ID not set — skipping"
+            exit 0
+          fi
+          python .github/scripts/render_fix_service_config.py
