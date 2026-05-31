@@ -17,7 +17,7 @@ For each issue found:
   - Creates a GitHub Issue for complex fixes that need human attention
   - Falls back to Groq/Gemini/Claude Haiku for AI-generated fixes
 
-Uses multi-agent cascade: Groq (free, fast) → Gemini (free) → Claude Haiku.
+Uses multi-agent cascade: Groq → Cerebras → SambaNova → GitHub Models → OpenRouter → Gemini.
 """
 from __future__ import annotations
 
@@ -52,6 +52,11 @@ _QUANT_SYSTEM = (
 # ── Cost policy ───────────────────────────────────────────────────────────────
 ALLOW_PAID_APIS: bool = False   # Never change to True — zero-spend policy
 MAX_TOKENS_PER_AI_CALL: int = 600   # Hard cap per call regardless of provider
+
+# Daily soft limits (tokens) — stay well under each provider's hard cap
+_DAILY_SOFT_LIMITS: dict[str, int] = {
+    "SAMBANOVA_API_KEY": 15_000_000,  # 20M/day hard limit, use 75%
+}
 
 # ── IP sanitization — strip credentials/paths before external LLM calls ───────
 _SANITIZE_PATTERNS = [
@@ -115,7 +120,7 @@ def gh_create_issue(title: str, body: str, labels: list[str]) -> str | None:
         return None
 
 
-# ── AI helpers — cascade: Groq → Gemini → Claude Haiku ───────────────────────
+# ── AI helpers — cascade: Groq → Cerebras → SambaNova → GitHub Models → OpenRouter → Gemini ──
 
 def _call_openai_compat(url: str, key: str, model: str,
                          system: str, user: str, max_tokens: int = 800) -> str | None:
@@ -192,7 +197,16 @@ def ai_fix(prompt: str) -> str | None:
             print("  [ai/cerebras] ✓")
             return r.strip()
 
-    # 3. GitHub Models — free via GITHUB_TOKEN (already in Actions env)
+    # 3. SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
+    for key in _all_keys_for("SAMBANOVA_API_KEY"):
+        r = _call_openai_compat(
+            "https://api.sambanova.ai/v1/chat/completions",
+            key, "Meta-Llama-3.3-70B-Instruct", _QUANT_SYSTEM, safe_prompt, cap)
+        if r and len(r.strip()) > 20:
+            print("  [ai/sambanova] ✓")
+            return r.strip()
+
+    # 4. GitHub Models — free via GITHUB_TOKEN (already in Actions env)
     gh = os.environ.get("GH_TOKEN", "")
     if gh:
         r = _call_openai_compat(
@@ -202,7 +216,7 @@ def ai_fix(prompt: str) -> str | None:
             print("  [ai/github-models] ✓")
             return r.strip()
 
-    # 4. OpenRouter — free 50 req/day per key
+    # 5. OpenRouter — free 50 req/day per key
     for key in _all_keys_for("OPENROUTER_API_KEY"):
         r = _call_openai_compat(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -211,7 +225,7 @@ def ai_fix(prompt: str) -> str | None:
             print("  [ai/openrouter] ✓")
             return r.strip()
 
-    # 5. Gemini Flash — 1500 req/day per key
+    # 6. Gemini Flash — 1500 req/day per key
     for gk in _all_keys_for("GEMINI_API_KEY"):
         payload = {
             "contents": [{"parts": [{"text": f"{_QUANT_SYSTEM}\n\n{safe_prompt}"}]}],
@@ -219,7 +233,7 @@ def ai_fix(prompt: str) -> str | None:
         }
         req = urllib.request.Request(
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.0-flash:generateContent?key={gk}",
+            f"gemini-2.5-flash:generateContent?key={gk}",
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"}, method="POST")
         try:
@@ -231,7 +245,7 @@ def ai_fix(prompt: str) -> str | None:
             pass
 
     # Hard stop — never pay, even if ANTHROPIC_API_KEY is present
-    print("  [ai] ⚠ all 5 free providers exhausted — no paid fallback (zero-spend policy)")
+    print("  [ai] ⚠ all 6 free providers exhausted — no paid fallback (zero-spend policy)")
     return None
 
 
