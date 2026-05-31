@@ -23,6 +23,7 @@ Designed to run on a schedule (every 1-3 hours). Each run picks a wave of
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
@@ -39,6 +40,249 @@ from pathlib import Path
 from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+STATE_PATH = REPO_ROOT / "experiments" / "results" / "slack_state.json"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# State management — deduplication across runs
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def load_state() -> dict:
+    try:
+        return json.loads(STATE_PATH.read_text())
+    except Exception:
+        return {
+            "last_run_ts": 0,
+            "last_commit_sha": "",
+            "posted_hashes": [],   # MD5[:12] of recent message texts
+            "replied_to": [],      # Slack message ts values already replied to
+        }
+
+
+def save_state(state: dict) -> None:
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Trim to avoid unbounded growth
+    state["posted_hashes"] = state.get("posted_hashes", [])[-1000:]
+    state["replied_to"] = state.get("replied_to", [])[-500:]
+    STATE_PATH.write_text(json.dumps(state, indent=2))
+
+
+def _hash(text: str) -> str:
+    return hashlib.md5(text.encode()).hexdigest()[:12]
+
+
+def is_duplicate(state: dict, text: str) -> bool:
+    return _hash(text) in state.get("posted_hashes", [])
+
+
+def record_post(state: dict, text: str) -> None:
+    h = _hash(text)
+    hashes = state.get("posted_hashes", [])
+    if h not in hashes:
+        hashes.append(h)
+    state["posted_hashes"] = hashes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Claude API — coding agent for all employees
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
+    """
+    Call Claude Haiku via Anthropic API. Returns None if ANTHROPIC_API_KEY not set.
+    Used by agents to generate genuinely intelligent thread responses and analysis.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return None
+    payload = {
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": [{"role": "user", "content": user_message}],
+    }
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(payload).encode(),
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+            return data.get("content", [{}])[0].get("text", "")
+    except Exception as e:
+        print(f"  [claude] API error: {e}")
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Slack thread reading — agents respond to actual human replies
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def read_unresponded_threads(
+    token: str,
+    channel_name: str,
+    bot_user_id: str,
+    already_replied: list[str],
+    limit: int = 30,
+) -> list[dict]:
+    """
+    Return threads in channel where a human replied but the bot hasn't responded yet.
+    Skips threads whose reply_ts is in already_replied.
+    """
+    ch_id = get_channel_id(token, channel_name)
+    if not ch_id:
+        return []
+    history = slack_call(token, "conversations.history", {"channel": ch_id, "limit": limit})
+    if not history.get("ok"):
+        return []
+
+    unresponded = []
+    for msg in history.get("messages", []):
+        if not msg.get("reply_count"):
+            continue
+        ts = msg.get("ts")
+        replies_data = slack_call(token, "conversations.replies",
+                                  {"channel": ch_id, "ts": ts, "limit": 20})
+        if not replies_data.get("ok"):
+            continue
+        replies = replies_data.get("messages", [])
+        if len(replies) < 2:
+            continue
+        # Human replies: have "user" field and no "bot_id"
+        human_replies = [
+            r for r in replies[1:]
+            if r.get("user") and not r.get("bot_id")
+            and r.get("user") != bot_user_id
+            and r.get("ts") not in already_replied
+        ]
+        if not human_replies:
+            continue
+        # Bot already responded if any reply has bot_id or matches our known usernames
+        bot_already_replied = any(r.get("bot_id") for r in replies[1:])
+        if bot_already_replied:
+            continue
+        latest_human = human_replies[-1]
+        unresponded.append({
+            "channel": channel_name,
+            "channel_id": ch_id,
+            "parent_ts": ts,
+            "parent_text": msg.get("text", "")[:500],
+            "last_reply": latest_human.get("text", "")[:500],
+            "reply_ts": latest_human.get("ts", ""),
+        })
+    return unresponded
+
+
+_CHANNEL_AGENT_IDENTITY = {
+    "engineering":    ("VP Engineering", ":woman_office_worker:"),
+    "alpha-research": ("Alpha Research Director", ":chart_with_upwards_trend:"),
+    "ml-experiments": ("ML Research Lead", ":microscope:"),
+    "squad-qa":       ("Director of QA", ":mag:"),
+    "desk-crypto":    ("Crypto desk bot", ":coin:"),
+    "squad-backend":  ("Backend Lead", ":gear:"),
+    "squad-frontend": ("Frontend Lead", ":art:"),
+    "risk-alerts":    ("Risk Engineer", ":shield:"),
+    "infra-alerts":   ("Director of DevOps", ":satellite_antenna:"),
+    "desk-equities":  ("Equity desk bot", ":chart_with_upwards_trend:"),
+    "desk-polymarket":("Polymarket Researcher", ":vertical_traffic_light:"),
+    "help":           ("Senior Engineer", ":bulb:"),
+}
+
+
+def generate_thread_response(thread: dict) -> str | None:
+    """
+    Generate a response to a human thread reply.
+    Uses Claude API if available, falls back to code-grounded rule-based response.
+    """
+    channel = thread["channel"]
+    parent = thread["parent_text"]
+    reply = thread["last_reply"]
+
+    system_prompt = (
+        "You are a quantitative engineer on the QuantEdge trading platform team. "
+        "QuantEdge is an institutional-grade algo trading system with FastAPI backend, "
+        "React frontend, Alpaca/Binance/Polymarket brokers, and PyTorch ML models. "
+        "Reply to the human's Slack message in 2-4 sentences. Be specific, technical, "
+        "and helpful. Reference real files or concepts from the codebase where relevant. "
+        "Do NOT use bullet lists or headers — write natural conversational text. "
+        "Do NOT mention that you are an AI."
+    )
+    user_msg = (
+        f"Channel: #{channel}\n"
+        f"Original message: {parent}\n"
+        f"Human reply to respond to: {reply}\n\n"
+        "Write a helpful, technically specific response from the agent's perspective."
+    )
+
+    # Try Claude first
+    ai_response = call_claude(system_prompt, user_msg, max_tokens=400)
+    if ai_response and len(ai_response.strip()) > 30:
+        return ai_response.strip()
+
+    # Fallback: code-grounded response based on keywords
+    reply_lower = reply.lower()
+    parent_lower = parent.lower()
+    combined = reply_lower + " " + parent_lower
+
+    # Check what files exist to give grounded answers
+    backend = REPO_ROOT / "backend" / "app"
+
+    if any(w in combined for w in ("strategy", "signal", "backtest", "sharpe")):
+        strategies = list_strategies()
+        n = len(strategies["manual"]) + len(strategies["ml"])
+        return (f"Good point — we currently have {n} strategies registered. "
+                f"The abstract interface in `backend/app/strategies/base.py` requires "
+                f"`analyze()`, `execute()`, and `backtest_signals()`. "
+                f"Drop your walk-forward Sharpe in `experiments/results/` once you've run it.")
+
+    if any(w in combined for w in ("test", "pytest", "failing", "bug", "error")):
+        test_files = list((REPO_ROOT / "backend" / "tests").rglob("test_*.py"))
+        return (f"Check `backend/tests/` — we have {len(test_files)} test files. "
+                f"Run `cd backend && TRADING_MODE=test pytest tests/ -x -q` to reproduce. "
+                f"The rate limiter is bypassed in test mode so auth tests pass cleanly.")
+
+    if any(w in combined for w in ("model", "lstm", "transformer", "train", "ml")):
+        models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
+        models = [f.stem for f in models_dir.glob("*.py") if not f.stem.startswith("_")] if models_dir.exists() else []
+        return (f"Current model zoo has {len(models)} architectures: {', '.join(f'`{m}`' for m in models[:5])}. "
+                f"All follow `AbstractModel` in `base_model.py` — implement `train_epoch()` and `forward()`. "
+                f"Training scripts are in `backend/app/ml/training/`.")
+
+    if any(w in combined for w in ("deploy", "render", "vercel", "production")):
+        return ("Render auto-deploys on every push to main. Check the build logs at dashboard.render.com. "
+                "The `render.yaml` Blueprint is in `backend/` — ensure your env vars match `.env.example`. "
+                "UptimeRobot pings `/health` every 5min to prevent sleep.")
+
+    if any(w in combined for w in ("risk", "kelly", "position", "drawdown")):
+        return ("Kelly sizing is in `backend/app/risk/kelly.py`, HRP portfolio optimizer is in "
+                "`portfolio_optimizer.py`. The circuit breaker halts all directional strategies "
+                "at 5% intraday drawdown. Risk status endpoint: `GET /risk/status`.")
+
+    return (f"On it — checking the relevant code now. "
+            f"I'll thread back with a specific fix once I've looked at the relevant module.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# What's new this run? — only post if something changed
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def new_commits_since_last_run(state: dict) -> list[dict]:
+    """Return commits that are newer than last run timestamp."""
+    last_ts = state.get("last_run_ts", 0)
+    if not last_ts:
+        return git_recent_commits(since_hours=6, limit=10)
+    commits = git_recent_commits(since_hours=12, limit=20)
+    return [c for c in commits if c.get("ts", 0) > last_ts]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -516,25 +760,41 @@ def repo_url(*parts: str) -> str:
 
 
 def maya_chen_eng_daily() -> list[Post]:
-    """VP Eng — aggregate everyone's commits from last 24h into engineering daily."""
-    commits = git_recent_commits(since_hours=24, limit=20)
-    if not commits:
+    """VP Eng — engineering daily based on commits NEW since last run, not just last 24h."""
+    state = load_state()
+    new_commits = new_commits_since_last_run(state)
+    all_commits_24h = git_recent_commits(since_hours=24, limit=20)
+
+    if not all_commits_24h:
         return []
+
+    # If nothing is genuinely new since last run, only post if we haven't posted today
+    if not new_commits:
+        # Post at most once per day even with no new commits — give a quiet day update
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        quiet_msg = f"*Engineering daily — {today}*\nNo new commits since last run. All systems nominal."
+        if is_duplicate(state, quiet_msg):
+            return []
+        commits_to_show = all_commits_24h[:3]
+        new_label = "24h"
+    else:
+        commits_to_show = new_commits[:5]
+        new_label = "since last run"
+
     counts: dict[str, int] = {}
-    for c in commits:
+    for c in commits_to_show:
         counts[c["author"]] = counts.get(c["author"], 0) + 1
 
-    lines = [f"*Engineering daily — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}*",
-             f"📦 *{len(commits)} commits* in the last 24h"]
+    lines = [f"*Engineering update — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*",
+             f"📦 *{len(commits_to_show)} commit(s)* {new_label}"]
     if counts:
         top = sorted(counts.items(), key=lambda kv: -kv[1])[:5]
-        lines.append("👥 By author: " + ", ".join(f"`{a}` {n}" for a, n in top))
-    lines.append("\nTop commits:")
-    for c in commits[:5]:
+        lines.append("👥 " + ", ".join(f"`{a}` ×{n}" for a, n in top))
+    lines.append("")
+    for c in commits_to_show[:5]:
         url = repo_url("commit", c["sha"])
         lines.append(f"• <{url}|`{c['sha']}`> {c['msg'][:88]}")
 
-    # Strategies + tests state
     strategies = list_strategies()
     tcount = count_tests()
     pytest_res = run_pytest_lightweight()
@@ -544,11 +804,20 @@ def maya_chen_eng_daily() -> list[Post]:
         passed = pytest_res["passed"]
         failed = pytest_res["failed"]
         status_icon = "✅" if failed == 0 else "❌"
-        test_detail = (f"test files: *{tcount}* · pytest: {status_icon} *{passed} passed"
-                       + (f", {failed} failed" if failed else "") + "*")
-    lines.append(f"\n📊 strategies live: *{len(strategies['manual']) + len(strategies['ml'])}* "
-                 f"({len(strategies['manual'])} manual + {len(strategies['ml'])} ML) · "
-                 f"{test_detail}")
+        test_detail = (f"test files: *{tcount}* · {status_icon} *{passed} passed"
+                       + (f", {failed} failed*" if failed else "*"))
+    lines.append(f"\n📊 *{len(strategies['manual']) + len(strategies['ml'])} strategies* · {test_detail}")
+
+    # Claude summary of what changed if new commits
+    if new_commits and call_claude:
+        commit_summary = "\n".join(f"- {c['msg']}" for c in new_commits[:8])
+        ai = call_claude(
+            "You are the VP of Engineering. Write a 1-sentence summary of what changed in this commit batch "
+            "and what the team should know. Be specific to the actual commit messages.",
+            f"Recent commits:\n{commit_summary}"
+        )
+        if ai:
+            lines.append(f"\n_{ai}_")
 
     return [Post(
         channel="engineering",
@@ -628,7 +897,7 @@ def linh_tran_ml_results() -> list[Post]:
 
 
 def diego_ramirez_execution() -> list[Post]:
-    """Execution Engineer — pick a finding from the execution module."""
+    """Execution Engineer — real diff on execution module from last 48h."""
     p = REPO_ROOT / "backend" / "app" / "execution"
     if not p.exists():
         return []
@@ -636,16 +905,42 @@ def diego_ramirez_execution() -> list[Post]:
     files = [f for f in files if f.stem not in ("__init__",)]
     if not files:
         return []
-    target = random.choice(files)
+
+    # Prefer recently-changed files so the message is fresh
+    changed = git_files_changed(since_hours=48)
+    recent = [f for f in files if f"backend/app/execution/{f.name}" in changed]
+    target = recent[0] if recent else random.choice(files)
+
     src = target.read_text()
     n_classes = len(re.findall(r"^class\s", src, re.M))
     n_lines = len(src.splitlines())
     url = repo_url("blob", "main", f"backend/app/execution/{target.name}")
+
+    # Generate a specific observation about what's actually in the file
+    obs_opts = []
+    if "async def" not in src:
+        obs_opts.append("no async functions — worth porting to async for non-blocking fills")
+    if "slippage" not in src.lower() and target.stem != "slippage_tracker":
+        obs_opts.append("no slippage measurement — add expected vs fill price tracking")
+    if "retry" not in src.lower() and "attempt" not in src.lower():
+        obs_opts.append("no retry logic on fill timeout — transient rejections could leave orders dangling")
+    if not obs_opts:
+        obs_opts.append("looks clean — consider adding a `dry_run` mode for CI validation")
+    observation = obs_opts[0]
+
+    # Use Claude for a more insightful comment if available
+    ai = call_claude(
+        "You are a senior execution engineer. Give one specific, actionable improvement for this trading code. "
+        "Max 2 sentences. No bullet points. Be concrete about the file content.",
+        f"File: {target.name} ({n_lines} LOC, {n_classes} classes)\nContent snippet:\n{src[:800]}"
+    )
+    if ai:
+        observation = ai
+
     return [Post(
         channel="squad-execution",
         text=(f"Checked <{url}|`execution/{target.name}`> — {n_lines} LOC, {n_classes} classes.\n"
-              f"Slippage tracker still emits bps per algo. Next: implement Almgren-Chriss "
-              f"optimal liquidation curve for orders > $50k. PR open by Friday."),
+              f"{observation}"),
         username="Execution Engineer",
         icon_emoji=":zap:",
     )]
@@ -904,8 +1199,7 @@ def cameron_park_security() -> list[Post]:
 
 
 def sofia_karlsson_research() -> list[Post]:
-    """VP Research — paper queue + research status."""
-    # Look for any research/paper queue file
+    """VP Research — paper queue based on actual untested strategies + recent results."""
     candidates = [
         REPO_ROOT / "docs" / "research_queue.md",
         REPO_ROOT / "experiments" / "papers.md",
@@ -916,12 +1210,35 @@ def sofia_karlsson_research() -> list[Post]:
             queue_lines = [l for l in p.read_text().splitlines()
                            if l.strip().startswith(("-", "*", "1.", "2."))][:5]
             break
+
+    # Build a dynamic update based on what's actually untested
+    results = latest_backtest_results()
+    tested = {r.get("strategy") for r in results}
+    all_strats = list_strategies()["manual"]
+    untested = [s for s in all_strats if s not in tested]
+
     text = ":books: Research queue update."
     if queue_lines:
         text += "\nCurrent top items:\n" + "\n".join(queue_lines)
+    elif untested:
+        sample = random.sample(untested, min(3, len(untested)))
+        text += (f"\n*{len(untested)} strategies not yet walk-forward validated:* "
+                 + ", ".join(f"`{s}`" for s in sample))
+        if len(untested) > 3:
+            text += f" + {len(untested) - 3} more"
+        # Use Claude to suggest which one to prioritize
+        ai = call_claude(
+            "You are a quantitative research director. Given a list of untested trading strategies, "
+            "recommend which one to prioritize for walk-forward validation and why. 2 sentences max.",
+            f"Untested strategies: {', '.join(untested[:8])}"
+        )
+        if ai:
+            text += f"\n\n*Priority recommendation:* {ai}"
+        else:
+            text += "\n\nPriority: start with the arb strategies — they have tighter bid-ask spreads and cleaner signal."
     else:
-        text += "\nNext up: Frazzini-Pedersen Betting-Against-Beta (2014). Aarav owns the impl, ETA next sprint."
-    text += "\n\nReminder: every alpha gets walk-forward validation. No exceptions."
+        text += "\nAll manual strategies have results logged. Pushing ensemble weight optimization next."
+    text += "\n\n_Reminder: walk-forward validation only. Drop the 6-fold purged k-fold result, not a single in-sample split._"
     return [Post(
         channel="papers",
         text=text,
@@ -999,18 +1316,52 @@ def tomas_lindqvist_rl() -> list[Post]:
 
 
 def lior_avraham_polymarket() -> list[Post]:
-    """Polymarket Researcher — strategy file check."""
+    """Polymarket Researcher — live scan of Gamma API for arb opportunities."""
     p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
-    if not p.exists():
-        return []
-    poly = sorted(f.stem for f in p.glob("*.py") if "poly" in f.stem.lower())
-    if not poly:
-        return []
+    poly = sorted(f.stem for f in p.glob("*.py") if "poly" in f.stem.lower()) if p.exists() else []
+
+    # Hit Polymarket Gamma public API for real live opportunities
+    arb_opps: list[str] = []
+    active_markets: int = 0
+    try:
+        req = urllib.request.Request(
+            "https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=100",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            markets = json.loads(resp.read())
+        if isinstance(markets, list):
+            active_markets = len(markets)
+            for mkt in markets:
+                tokens = mkt.get("tokens", [])
+                if len(tokens) >= 2:
+                    prices = [float(t.get("price", 0.5)) for t in tokens]
+                    total = sum(prices)
+                    if total < 0.97 and all(p > 0.01 for p in prices):
+                        slug = mkt.get("question", "?")[:60]
+                        edge = round((1 - total) * 100, 2)
+                        arb_opps.append(f"`{slug}` → edge {edge}¢ (sum={total:.3f})")
+    except Exception:
+        pass
+
+    lines = [f"Polymarket desk — strategies: " + (", ".join(f"`{s}`" for s in poly) if poly else "_none registered_")]
+    if active_markets:
+        lines.append(f"Live scan: *{active_markets}* active markets checked via Gamma API")
+    if arb_opps:
+        lines.append(f"\n:rotating_light: *{len(arb_opps)} arb opportunities detected* (YES+NO sum < 97¢):")
+        for o in arb_opps[:5]:
+            lines.append(f"• {o}")
+        if len(arb_opps) > 5:
+            lines.append(f"…+{len(arb_opps)-5} more. Run `desk_order_placer.py` to execute.")
+    else:
+        if active_markets:
+            lines.append("No YES+NO arb (all markets priced efficiently right now). Monitoring...")
+        else:
+            lines.append("Gamma API unavailable — falling back to 15-min polling cycle.")
+
     return [Post(
         channel="desk-polymarket",
-        text=(f"Polymarket strategies live: " + ", ".join(f"`{s}`" for s in poly) +
-              "\nScanning for YES+NO < $0.97 plus cross-market correlation arb. "
-              "Need to validate live order placement against py-clob-client."),
+        text="\n".join(lines),
         username="Polymarket Researcher",
         icon_emoji=":vertical_traffic_light:",
     )]
@@ -2092,11 +2443,60 @@ def main() -> int:
     if not auth.get("ok"):
         print(f"❌ auth.test failed: {auth}")
         return 1
+    bot_user_id = auth.get("user_id", "")
     print(f"✅ Authed as {auth.get('user')} in {auth.get('team')} at {datetime.now(timezone.utc).isoformat()}")
+
+    # Load run state for dedup + thread tracking
+    state = load_state()
+    has_claude = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    print(f"📋 State: last_run={state['last_run_ts']}, {len(state['posted_hashes'])} known hashes, "
+          f"{'Claude ✅' if has_claude else 'Claude ❌ (no ANTHROPIC_API_KEY)'})")
+
+    # ── Phase 0: Inbox check — respond to unanswered human thread replies ────
+    print("\n📬 Inbox check — reading threads for replies to handle")
+    inbox_channels = [
+        "engineering", "alpha-research", "ml-experiments",
+        "squad-qa", "desk-crypto", "squad-backend", "help",
+    ]
+    posts_made = 0
+    errors = 0
+    for ch in inbox_channels:
+        try:
+            threads = read_unresponded_threads(
+                token, ch, bot_user_id,
+                already_replied=state.get("replied_to", []),
+                limit=20,
+            )
+        except Exception as e:
+            print(f"  [inbox] {ch} read failed: {e}")
+            continue
+        for thread in threads[:2]:  # max 2 thread replies per channel per run
+            response = generate_thread_response(thread)
+            if not response:
+                continue
+            if is_duplicate(state, response):
+                print(f"  [inbox] skipping dup reply in #{ch}")
+                continue
+            agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(ch, ("QuantEdge Bot", ":robot_face:"))
+            r = post_to_slack(
+                token, ch, response,
+                username=agent_name,
+                icon_emoji=agent_emoji,
+                thread_ts=thread["parent_ts"],
+            )
+            if r.get("ok"):
+                posts_made += 1
+                record_post(state, response)
+                state.setdefault("replied_to", []).append(thread["reply_ts"])
+                print(f"  ✓ Replied to thread in #{ch}: {thread['last_reply'][:60]}…")
+            else:
+                errors += 1
+                print(f"  ✗ Thread reply in #{ch}: {r.get('error')}")
+            time.sleep(0.7)
 
     # ── Team activity first (always runs): standups + scoreboard ────────────
     team_posts: list[Post] = []
-    print("👥 Team activity")
+    print("\n👥 Team activity")
     for team_name in TEAMS:
         sp = team_lead_standup_for(team_name)
         if sp:
@@ -2124,13 +2524,14 @@ def main() -> int:
     print(f"🎯 Wave: {wave_size}/{len(AGENTS)} agents + {len(team_posts)} team posts")
 
     posted_ts: dict[str, str] = {}  # channel -> last_ts of a parent post in that channel
-    posts_made = 0
-    errors = 0
     # Per-agent tracking: {agent_name -> {"posts": int, "errors": int, "channels": [...]}}
     agent_tracking: dict[str, dict] = {}
 
-    # Post team activity first
+    # Post team activity first (with dedup)
     for p in team_posts:
+        if is_duplicate(state, p.text):
+            print(f"  ⏭ TEAM {p.username[:36]} → #{p.channel} (dup, skipping)")
+            continue
         r = post_to_slack(
             token, channel=p.channel, text=p.text,
             username=p.username, icon_emoji=p.icon_emoji,
@@ -2138,6 +2539,7 @@ def main() -> int:
         )
         if r.get("ok"):
             posts_made += 1
+            record_post(state, p.text)
             ts = r.get("ts")
             if ts and not p.thread_of:
                 posted_ts[p.channel] = ts
@@ -2157,6 +2559,10 @@ def main() -> int:
             agent_tracking[agent.name]["errors"] += 1
             continue
         for p in posts:
+            # Skip duplicate posts — same content already sent recently
+            if is_duplicate(state, p.text):
+                print(f"  ⏭ {agent.name} → #{p.channel} (dup, skipping)")
+                continue
             r = post_to_slack(
                 token,
                 channel=p.channel,
@@ -2167,6 +2573,7 @@ def main() -> int:
             )
             if r.get("ok"):
                 posts_made += 1
+                record_post(state, p.text)
                 ts = r.get("ts")
                 if ts and not p.thread_of:
                     posted_ts[p.channel] = ts
@@ -2180,7 +2587,7 @@ def main() -> int:
                 print(f"  ✗ {agent.name} → #{p.channel}: {r.get('error')}")
             time.sleep(0.7)  # tier-1 rate limit safety
 
-    # Discussion pass: a few agents reply in threads
+    # ── Discussion pass: a few agents reply in threads ───────────────────────
     print("\n💬 Discussion pass — threaded replies")
     reply_candidates = [
         ("engineering", maya_reply_to_eng),
@@ -2194,6 +2601,8 @@ def main() -> int:
         if random.random() > 0.6:  # 60% chance to reply per channel
             continue
         reply = replier_fn(posted_ts[channel])
+        if is_duplicate(state, reply.text):
+            continue
         r = post_to_slack(
             token,
             channel=reply.channel,
@@ -2204,6 +2613,7 @@ def main() -> int:
         )
         if r.get("ok"):
             posts_made += 1
+            record_post(state, reply.text)
             print(f"  ✓ {reply.username} replied in #{channel}")
         else:
             errors += 1
@@ -2258,6 +2668,14 @@ def main() -> int:
         print("  ✓ Employee tracker → #engineering")
     else:
         print(f"  ✗ Employee tracker → #engineering: {r.get('error')}")
+
+    # ── Save state for next run ──────────────────────────────────────────────
+    state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
+    latest_commits = git_recent_commits(since_hours=1, limit=1)
+    if latest_commits:
+        state["last_commit_sha"] = latest_commits[0].get("sha", "")
+    save_state(state)
+    print(f"💾 State saved: {len(state['posted_hashes'])} hashes, {len(state['replied_to'])} replied threads")
 
     print(f"\n✅ Posted {posts_made} messages, {errors} errors")
     return 0

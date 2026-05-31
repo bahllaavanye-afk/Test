@@ -11,7 +11,7 @@ services:
     env: python
     region: oregon
     plan: free
-    buildCommand: cd backend && pip install -e "." && pip install "torch>=2.5.0" --index-url https://download.pytorch.org/whl/cpu --no-deps || echo "torch not available — ML strategies will degrade gracefully"
+    buildCommand: pip install --upgrade pip && pip install "email-validator>=2.2.0" "pydantic[email]>=2.10.0" && cd backend && pip install -e "." && (pip install "torch>=2.5.0" --index-url https://download.pytorch.org/whl/cpu --no-deps || echo "torch not available — ML strategies will degrade gracefully")
     startCommand: bash backend/start.sh
     envVars:
       - key: PYTHON_VERSION
