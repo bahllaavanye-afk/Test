@@ -556,7 +556,7 @@ def call_groq(system_prompt: str, user_message: str, max_tokens: int = 600) -> s
 def call_gemini(system_prompt: str, user_message: str, max_tokens: int = 600,
                 state: dict | None = None) -> str | None:
     """
-    Google Gemini 2.0 Flash — rotates across GEMINI_API_KEY, _2, _3.
+    Google Gemini 2.5 Flash — rotates across GEMINI_API_KEY, _2, _3.
     Free: 1500 req/day per key → 3 keys = 4500 req/day combined.
     Checks daily budget (tracked in state) before calling.
     """
@@ -590,6 +590,42 @@ def call_gemini(system_prompt: str, user_message: str, max_tokens: int = 600,
             print(f"  [gemini/{env_var}] {e}")
             continue
     return None
+
+
+def call_gemini_with_key(
+    api_key: str,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int = 500,
+    state: dict | None = None,
+) -> str | None:
+    """Call Gemini with a specific API key (used for department-isolated calls)."""
+    # Determine which env var name this key belongs to (for budget tracking)
+    env_var = "GEMINI_API_KEY"
+    for ev in ["GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY"]:
+        if os.environ.get(ev, "").strip() == api_key:
+            env_var = ev
+            break
+    if state and not budget_ok(state, env_var, estimated_tokens=max_tokens):
+        return None
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    prompt = f"{system_prompt}\n\n{user_message}" if system_prompt else user_message
+    body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7},
+    }).encode()
+    req = urllib.request.Request(url, data=body,
+                                  headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            if state:
+                record_usage(state, env_var, max_tokens)
+            return text.strip()
+    except Exception as e:
+        print(f"  [gemini-key] error: {e}")
+        return None
 
 
 def call_github_models(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
@@ -841,8 +877,7 @@ def call_employee_agent(
             print(f"  [{emp_key}/openrouter] ✓ {len(r)} chars")
             return r.strip()
 
-    # 6. Gemini Flash — 1500 req/day, massive token budget
-    # 5. Gemini — employee's assigned account (group-isolated quota)
+    # 6. Gemini — employee's assigned account (group-isolated quota)
     gemini_key = _gemini_key_for(emp_key)
     if gemini_key:
         r = call_gemini_with_key(gemini_key, safe_system, safe_message, cap, state)
