@@ -8,6 +8,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: backend
@@ -26,15 +30,47 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install fastapi 'uvicorn[standard]' sqlalchemy asyncpg aiosqlite alembic \
-            'pydantic[email]' python-jose[cryptography] passlib bcrypt==4.0.1 \
+            'pydantic[email]' pydantic-settings \
+            python-jose[cryptography] passlib bcrypt==4.0.1 \
             httpx pytest pytest-asyncio pytest-cov aiohttp redis python-dotenv \
-            numpy pandas scipy scikit-learn statsmodels structlog \
-            cryptography apscheduler websockets pytz python-dateutil
+            numpy pandas scipy scikit-learn statsmodels structlog tenacity \
+            cryptography apscheduler websockets pytz python-dateutil slowapi \
+            python-multipart anyio
+
+      - name: Debug — environment check
+        env:
+          SECRET_KEY: "test-secret-key-32-bytes-exactly!!"
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: ""
+          TRADING_MODE: "paper"
+          ALPACA_API_KEY: "test"
+          ALPACA_SECRET_KEY: "test"
+        run: |
+          {
+            echo "## CI environment"
+            echo "### Python"
+            python --version
+            echo "### app.main import"
+            echo '```'
+            python -c "from app.main import app; print(f'OK: {len(app.routes)} routes')" 2>&1 || echo "IMPORT FAILED"
+            echo '```'
+            echo "### Installed packages"
+            echo '```'
+            pip list --format=columns | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run unit tests
         shell: bash
+        env:
+          SECRET_KEY: "test-secret-key-32-bytes-exactly!!"
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: ""
+          TRADING_MODE: "paper"
+          ALPACA_API_KEY: "test"
+          ALPACA_SECRET_KEY: "test"
         run: |
-          set -eo pipefail
+          set +e
           pytest tests/unit/ -x -v \
             --ignore=tests/unit/test_features.py \
             --ignore=tests/unit/test_strategies.py \
@@ -43,14 +79,43 @@ jobs:
             --ignore=tests/unit/test_smart_router.py \
             --ignore=tests/unit/test_a3c_lstm.py \
             --ignore=tests/unit/test_ml_models.py \
-            --tb=short
+            --tb=long --color=no \
+            2>&1 | tee /tmp/pytest.log
+          EXIT=${PIPESTATUS[0]}
+          {
+            echo "## pytest output (last 120 lines)"
+            echo '```'
+            tail -120 /tmp/pytest.log
+            echo '```'
+            echo ""
+            echo "Exit code: $EXIT"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $EXIT
+
+      - name: Post pytest output to PR comment (visible without auth)
+        if: always() && github.event_name == 'pull_request'
         env:
-          SECRET_KEY: "test-secret-key-32-bytes-exactly!!"
-          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
-          REDIS_URL: ""
-          TRADING_MODE: "paper"
-          ALPACA_API_KEY: "test"
-          ALPACA_SECRET_KEY: "test"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          [ -f /tmp/pytest.log ] || exit 0
+          {
+            echo "## CI test output — \`$(git rev-parse --short HEAD)\`"
+            echo ""
+            echo "### pytest tail (last 150 lines)"
+            echo '```'
+            tail -150 /tmp/pytest.log
+            echo '```'
+          } > /tmp/comment.md
+          BODY=$(cat /tmp/comment.md | python -c "import sys, json; print(json.dumps(sys.stdin.read()))")
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/$PR_NUM/comments" \
+            -d "{\"body\": $BODY}" \
+            > /dev/null || true
 
       - name: Upload coverage
         if: always()
@@ -58,3 +123,4 @@ jobs:
         with:
           name: test-results
           path: backend/.coverage
+          if-no-files-found: ignore

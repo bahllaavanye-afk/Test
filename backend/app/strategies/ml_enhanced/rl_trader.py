@@ -7,7 +7,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import torch
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None  # type: ignore
+    _TORCH_AVAILABLE = False
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -30,7 +35,7 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor | None:
+def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30):
     """
     Build a (1, seq_len, n_features) tensor from the last `seq_len` rows
     of an OHLCV DataFrame.  Returns None if df is too short.

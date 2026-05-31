@@ -15,9 +15,16 @@ import json
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None  # type: ignore
+    nn = None  # type: ignore
+    F = None  # type: ignore
+    _TORCH_AVAILABLE = False
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 

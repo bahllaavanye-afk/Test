@@ -2,7 +2,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 import json
-import torch
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None  # type: ignore
+    _TORCH_AVAILABLE = False
 import numpy as np
 
 
@@ -26,7 +31,7 @@ class AbstractModel(ABC):
     model_type: str = "base"
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         """Inference forward pass. Returns logits or probabilities."""
 
     @abstractmethod
@@ -56,7 +61,7 @@ class AbstractModel(ABC):
             model.load_state_dict(checkpoint["state_dict"])
         return model
 
-    def predict_proba(self, x: torch.Tensor) -> np.ndarray:
+    def predict_proba(self, x) -> np.ndarray:
         """Returns probability of class 1 (up)."""
         self.eval() if hasattr(self, "eval") else None
         with torch.no_grad():
