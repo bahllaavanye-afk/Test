@@ -40,37 +40,16 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: |
-          pip install --quiet anthropic
-          # Free LLM providers + observability
-          pip install --quiet litellm langfuse google-generativeai groq || true
-          pip install --quiet cerebras-cloud-sdk || true
+        run: pip install anthropic --quiet
 
       - name: Post to Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: "disabled"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_ACTOR: ${{ github.actor }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
-          # Free LLM API keys
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
-          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
-          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
-          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 }}
-          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
-          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
-          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY_1 }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # Langfuse observability
-          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
-          ALLOW_PAID_APIS: "False"
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             # Push: quick mode handles event-specific deploy notifications dynamically
@@ -78,18 +57,4 @@ jobs:
           else
             # Scheduled briefing: full agent run generates dynamic content from live data
             python .github/scripts/slack_agent_team.py
-          fi
-      - name: Push changes
-        continue-on-error: true
-        run: |
-          git config user.email "agents@quantedge.ai"
-          git config user.name "QuantEdge Agent Team"
-          STATE_FILE=".github/state/slack_state.json"
-          if [ -f "$STATE_FILE" ]; then
-            git add "$STATE_FILE"
-            git commit -m "chore: persist agent state [skip ci]"
-            for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-            done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
           fi
