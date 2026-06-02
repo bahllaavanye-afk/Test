@@ -6155,13 +6155,21 @@ def model_perf_channel() -> list[Post]:
               f"{_m('ML Research Lead')}: which model should we up-weight in the next run?"]
     posts.append(Post("model-performance", "\n".join(lines), "Linh Tran — ML Modeling Lead", ":robot_face:"))
 
-    sara_replies = [
-        "TFT winning on sequential data — upping its weight 0.25→0.35. validating on 3-month holdout. will post IC delta",
-        "LSTM strong on short-horizon. SSM showing promise on BTC/15min — testing at 0.15 ensemble weight",
-        "Lorentzian KNN has best OOS stability — least prone to overfitting. recommend higher allocation in next Optuna run",
-        "ablation complete: removing `oi_momentum` drops ensemble Sharpe by 0.31. keeping it as mandatory feature",
-    ]
-    posts.append(Post("model-performance", random.choice(sara_replies), "Sara Kim — ML Research Lead", ":microscope:"))
+    # Sara Kim — ML Research Lead responds with specific weight recommendation
+    model_summary = "\n".join(lines[2:])  # skip header
+    sara_task = (
+        f"You are Sara Kim, ML Research Lead at QuantEdge. Linh just posted this model comparison:\n{model_summary[:400]}\n\n"
+        "Reply in 1-2 sentences recommending which model to up-weight in the ensemble and why. "
+        "Be specific: cite the model name, a Sharpe value, and a concrete action. "
+        "Do NOT say you are an AI."
+    )
+    sara_resp, _ = employee_provider_prompt("sara", sara_task, state=None)
+    if not sara_resp:
+        sara_resp = (
+            f"LSTM showing best OOS consistency — recommend up-weighting to 0.40 in next Optuna run. "
+            f"SSM promising on crypto 15min; will add at 0.15 weight. validating IC on 3-month holdout."
+        )
+    posts.append(Post("model-performance", sara_resp.strip(), "Sara Kim — ML Research Lead", ":microscope:"))
     return posts
 
 
@@ -6187,25 +6195,30 @@ def code_review_channel() -> list[Post]:
     if backend_files:
         f = random.choice(backend_files[:5])
         url = repo_url("blob", "main", f)
-        comments = [
-            f"reviewed <{url}|`{Path(f).name}`> — logic clean. nit: retry loop should use exp backoff, not fixed delay",
-            f"<{url}|`{Path(f).name}`>: type annotation missing on return. adds readability for downstream callers",
-            f"<{url}|`{Path(f).name}`>: potential race condition in async context — two tasks could write same key. adding a lock",
-            f"<{url}|`{Path(f).name}`>: ✅ approved. clean, tested, async-safe",
-            f"<{url}|`{Path(f).name}`>: nice use of `joinedload` — avoids the N+1 we had before",
-        ]
-        posts.append(Post("code-review", random.choice(comments), "Anna Hoffmann — Backend Lead", ":gear:"))
+        review_task = (
+            f"You are Anna Hoffmann, Backend Lead at QuantEdge. You reviewed `{f}` (Python, FastAPI + SQLAlchemy async). "
+            "Write a concise 1-sentence code review comment — specific concern or approval. "
+            "Mention: async patterns, SQLAlchemy ORM, FastAPI routing, type safety, or test coverage. "
+            "Do NOT say you are an AI."
+        )
+        comment, _ = employee_provider_prompt("anna", review_task, state=None)
+        if not comment:
+            comment = f"✅ async-safe, proper session scoping. {_m('Director of QA')}: coverage added?"
+        posts.append(Post("code-review", f"<{url}|`{Path(f).name}`>: {comment.strip()}", "Anna Hoffmann — Backend Lead", ":gear:"))
 
     if frontend_files:
         f = random.choice(frontend_files[:5])
         url = repo_url("blob", "main", f)
-        fe_comments = [
-            f"reviewed <{url}|`{Path(f).name}`> — useEffect deps look correct. memo on chart component is good",
-            f"<{url}|`{Path(f).name}`>: loading state handled. add error boundary around TV chart widget",
-            f"<{url}|`{Path(f).name}`>: ✅ LGTM. clean TypeScript, no `any` escapes",
-            f"<{url}|`{Path(f).name}`>: TanStack Query `staleTime` could be bumped to 30s for price data — reduces re-fetches",
-        ]
-        posts.append(Post("code-review", random.choice(fe_comments), "Priya Subramanian — Frontend Lead", ":art:"))
+        fe_task = (
+            f"You are Priya Subramanian, Frontend Lead at QuantEdge. You reviewed `{f}` (React 18, TypeScript, TanStack Query). "
+            "Write a concise 1-sentence code review comment — specific concern or approval. "
+            "Mention: React hooks, TanStack Query staleTime, TypeScript types, or Tailwind classes. "
+            "Do NOT say you are an AI."
+        )
+        fe_comment, _ = employee_provider_prompt("priya", fe_task, state=None)
+        if not fe_comment:
+            fe_comment = "✅ LGTM. Clean TypeScript, no `any` escapes, TanStack Query properly configured."
+        posts.append(Post("code-review", f"<{url}|`{Path(f).name}`>: {fe_comment.strip()}", "Priya Subramanian — Frontend Lead", ":art:"))
 
     if not posts:
         posts.append(Post("code-review",
