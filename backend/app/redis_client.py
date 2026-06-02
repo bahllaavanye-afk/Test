@@ -21,43 +21,10 @@ def _redis_enabled() -> bool:
     return not _redis_disabled
 
 
-class _NoopPriceCache:
-    """No-op price cache used when Redis is unavailable."""
-
-    async def set_price(self, *args, **kwargs) -> None:
-        pass
-
-    async def get_price(self, *args, **kwargs) -> None:
-        return None
-
-    async def set_ohlcv(self, *args, **kwargs) -> None:
-        pass
-
-    async def get_ohlcv(self, *args, **kwargs) -> None:
-        return None
-
-    async def set_arb_opportunity(self, *args, **kwargs) -> None:
-        pass
-
-    async def publish(self, *args, **kwargs) -> None:
-        pass
-
-    async def cache_prediction(self, *args, **kwargs) -> None:
-        pass
-
-    async def get(self, *args, **kwargs) -> None:
-        return None
-
-    async def set(self, *args, **kwargs) -> None:
-        pass
-
-
 def get_pool() -> aioredis.ConnectionPool | None:
     if _redis_disabled:
         return None
     global _pool
-    if not _redis_enabled():
-        return None
     if _pool is None:
         _pool = aioredis.ConnectionPool.from_url(
             settings.redis_url,
@@ -72,6 +39,19 @@ def get_redis() -> aioredis.Redis | None:
     if pool is None:
         return None
     return aioredis.Redis(connection_pool=pool)
+
+
+class _NoopPriceCache:
+    """Silent no-op cache used when Redis is not configured."""
+    async def set_price(self, *a, **kw): pass
+    async def get_price(self, *a, **kw): return None
+    async def set_ohlcv(self, *a, **kw): pass
+    async def get_ohlcv(self, *a, **kw): return None
+    async def set_arb_opportunity(self, *a, **kw): pass
+    async def publish(self, *a, **kw): pass
+    async def cache_prediction(self, *a, **kw): pass
+    async def get(self, *a, **kw): return None
+    async def set(self, *a, **kw): pass
 
 
 class PriceCache:
