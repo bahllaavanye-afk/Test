@@ -214,19 +214,31 @@ async def lifespan(app: FastAPI):
     })
 
     # Price feed — polls broker quotes → Redis + WebSocket
+    # Always started (incl. paper mode); gracefully skips ticks when broker is absent
     from app.tasks.price_feed import run_price_feed
-    if alpaca_broker is not None and all_symbols:
-        bg_tasks.append(asyncio.create_task(
-            _supervised(lambda: run_price_feed(alpaca_broker, all_symbols), "price_feed")
-        ))
-        logger.info("Price feed started", symbols=len(all_symbols))
-    else:
-        logger.warning(
-            "Price feed not started",
-            reason="no broker" if alpaca_broker is None else "no symbols",
-        )
+
+    async def _price_feed_wrapper():
+        try:
+            if alpaca_broker is not None and all_symbols:
+                await run_price_feed(alpaca_broker, all_symbols)
+            else:
+                # Park the task until restart — avoids tight no-op loop
+                logger.warning(
+                    "Price feed idle",
+                    reason="no broker" if alpaca_broker is None else "no symbols",
+                )
+                await asyncio.sleep(3600)
+        except Exception as exc:
+            logger.error(f"Price feed error: {exc}")
+            raise
+
+    bg_tasks.append(asyncio.create_task(
+        _supervised(_price_feed_wrapper, "price_feed")
+    ))
+    logger.info("Price feed task registered", symbols=len(all_symbols))
 
     # Strategy runner — one asyncio loop per (strategy, symbol) pair
+    # Always started so strategies run in paper mode too
     from app.tasks.strategy_runner import ContinuousStrategyRunner
     strategy_runner = ContinuousStrategyRunner(
         broker=alpaca_broker,
