@@ -1,0 +1,48 @@
+name: Free Agent Engineer — autonomous issue fixing
+
+# Fires when "agent-fix-needed" label is added to any issue, or every 4 hours,
+# or manually via workflow_dispatch.  Uses only free LLMs (Gemini Flash → Groq).
+
+on:
+  issues:
+    types: [labeled]   # fires when label "agent-fix-needed" is added
+  schedule:
+    - cron: "0 */4 * * *"   # every 4 hours
+  workflow_dispatch:
+
+jobs:
+  fix:
+    # Only run on label events when the right label was added; always run on
+    # schedule / workflow_dispatch so the cron sweep catches any missed issues.
+    if: >
+      github.event_name != 'issues' ||
+      github.event.label.name == 'agent-fix-needed'
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet langfuse google-generativeai || true
+
+      - name: Run free agent engineer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/free_agent_engineer.py

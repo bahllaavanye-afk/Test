@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 import traceback
+import urllib.parse
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
@@ -533,56 +534,6 @@ def _build_allquantedge_summary(report: HealthReport) -> str:
         )
 
 
-# ─── GitHub Issue Creator ─────────────────────────────────────────────────────
-
-def _create_github_issue(title: str, body: str) -> bool:
-    """
-    Create a GitHub issue with label 'agent-fix-needed' so free agents
-    (Gemini/Groq via GitHub Actions) can discover and pick up fix work
-    autonomously from the Issues queue.
-
-    Requires:
-      GH_TOKEN  — GitHub personal access token (repo scope)
-      GH_REPO   — repository in owner/repo format (e.g. "acme/quantedge")
-    """
-    gh_token = os.environ.get("GH_TOKEN", "").strip()
-    gh_repo = os.environ.get("GH_REPO", "").strip()
-
-    if not gh_token or not gh_repo:
-        print("[health] Skipping GitHub issue creation: GH_TOKEN or GH_REPO not set")
-        return False
-
-    url = f"https://api.github.com/repos/{gh_repo}/issues"
-    payload = json.dumps({
-        "title": title,
-        "body": body,
-        "labels": ["agent-fix-needed"],
-    }).encode()
-
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {gh_token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            resp = json.loads(r.read())
-        issue_url = resp.get("html_url", "")
-        print(f"[health] GitHub issue created: {issue_url}")
-        return True
-    except urllib.error.HTTPError as e:
-        print(f"[health] GitHub issue creation failed (HTTP {e.code}): {e.read()[:200]}")
-        return False
-    except Exception as e:
-        print(f"[health] GitHub issue creation error: {e}")
-        return False
-
-
 # ─── Auto-healing ─────────────────────────────────────────────────────────────
 
 def _attempt_self_heal(report: HealthReport) -> None:
@@ -663,6 +614,140 @@ def _test_agent_function_execution(fn_name: str, timeout_secs: int = 30) -> tupl
         return True, f"returned {type(result).__name__}"
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
+
+
+# ─── GitHub issue creation ────────────────────────────────────────────────────
+
+# Read at runtime so the health monitor can create self-healing issues without
+# requiring config changes.
+GH_TOKEN = os.environ.get("GH_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
+GH_REPO = os.environ.get("GH_REPO", os.environ.get("GITHUB_REPOSITORY", ""))
+GITHUB_API = "https://api.github.com"
+AGENT_FIX_LABEL = "agent-fix-needed"
+
+
+def _gh_headers() -> dict:
+    return {
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def _create_github_issue(title: str, body: str) -> int | None:
+    """
+    Create a GitHub issue labelled 'agent-fix-needed'.
+    Returns the new issue number, or None on failure.
+
+    Skips creation if GH_TOKEN / GH_REPO are not set (e.g. local dry-run).
+    Also skips if an open issue with the same title already exists.
+    """
+    if not GH_TOKEN or not GH_REPO:
+        print(f"[health] GitHub token/repo not set — skipping issue creation: {title!r}")
+        return None
+
+    # Avoid duplicates: check for existing open issues with same title
+    search_url = (
+        f"{GITHUB_API}/repos/{GH_REPO}/issues"
+        f"?state=open&labels={urllib.parse.quote(AGENT_FIX_LABEL)}&per_page=50"
+    )
+    try:
+        req = urllib.request.Request(search_url, headers=_gh_headers())
+        with urllib.request.urlopen(req, timeout=10) as r:
+            existing = json.loads(r.read())
+        for iss in existing:
+            if iss.get("title", "").strip() == title.strip():
+                print(f"[health] Issue already exists (#{iss['number']}): {title!r}")
+                return iss["number"]
+    except Exception as e:
+        print(f"[health] Could not check existing issues: {e}")
+
+    # Create the issue
+    payload = json.dumps({
+        "title": title,
+        "body": body,
+        "labels": [AGENT_FIX_LABEL],
+    }).encode()
+    create_url = f"{GITHUB_API}/repos/{GH_REPO}/issues"
+    try:
+        req = urllib.request.Request(
+            create_url,
+            data=payload,
+            headers={**_gh_headers(), "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            resp = json.loads(r.read())
+        number = resp.get("number")
+        print(f"[health] Created issue #{number}: {title!r}")
+        return number
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode(errors="replace")
+        print(f"[health] Failed to create issue: HTTP {e.code} — {body_text[:300]}")
+        return None
+    except Exception as e:
+        print(f"[health] Failed to create issue: {e}")
+        return None
+
+
+def _create_critical_issues(report: "HealthReport") -> list[int]:
+    """
+    For each critical finding, create a GitHub issue labelled 'agent-fix-needed'.
+    Returns list of created issue numbers.
+    Called by main() after posting the Slack report when report.critical_count > 0.
+    """
+    created: list[int] = []
+    ts = report.timestamp
+
+    # Channel coverage gaps
+    for ch_check in report.channel_checks:
+        if ch_check.status != "critical":
+            continue
+        title = f"[agent-health] No posting agent for #{ch_check.channel}"
+        body = (
+            f"## Agent Health Monitor — Critical Alert\n\n"
+            f"**Detected at:** {ts}\n\n"
+            f"**Problem:** The channel `#{ch_check.channel}` has no registered posting agent. "
+            f"At least one `Agent()` entry in `slack_agent_team.py` must list "
+            f"`\"{ch_check.channel}\"` in its channels array.\n\n"
+            f"**Details:**\n"
+            + "\n".join(f"- {issue}" for issue in ch_check.issues)
+            + "\n\n"
+            f"**Required fix:** Add an `Agent()` entry that posts to `#{ch_check.channel}`, "
+            f"or extend an existing agent's channel list.\n\n"
+            f"**File to modify:** `.github/scripts/slack_agent_team.py`\n\n"
+            f"_Auto-created by `agent_health_monitor.py`. "
+            f"Label `agent-fix-needed` triggers the Free-Agent Engineer to auto-fix._"
+        )
+        issue_num = _create_github_issue(title, body)
+        if issue_num:
+            created.append(issue_num)
+
+    # Engineer functions not calling real LLMs
+    for eng_check in report.engineer_checks:
+        if eng_check.status != "critical":
+            continue
+        title = f"[agent-health] {eng_check.fn_name}() not using real LLM"
+        body = (
+            f"## Agent Health Monitor — Critical Alert\n\n"
+            f"**Detected at:** {ts}\n\n"
+            f"**Problem:** The function `{eng_check.fn_name}()` in `slack_agent_team.py` "
+            f"does not call a real LLM. It must use one of: "
+            f"`employee_provider_prompt`, `moa_employee_prompt`, `call_best_agent`, "
+            f"`call_litellm`, or `call_best_agent_for_task`.\n\n"
+            f"**Details:**\n"
+            + "\n".join(f"- {issue}" for issue in eng_check.issues)
+            + "\n\n"
+            f"**Required fix:** Update `{eng_check.fn_name}()` to call a real LLM "
+            f"function instead of returning hardcoded text.\n\n"
+            f"**File to modify:** `.github/scripts/slack_agent_team.py`\n\n"
+            f"_Auto-created by `agent_health_monitor.py`. "
+            f"Label `agent-fix-needed` triggers the Free-Agent Engineer to auto-fix._"
+        )
+        issue_num = _create_github_issue(title, body)
+        if issue_num:
+            created.append(issue_num)
+
+    return created
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -769,42 +854,24 @@ def main() -> int:
             summary = _build_allquantedge_summary(report)
             _slack_post("allquantedge", summary)
 
-    # Create GitHub issue so free agents can pick up remaining critical fixes
-    if report.critical_count > 0:
-        ch_issues = [c for c in report.channel_checks if c.status == "critical"]
-        eng_issues = [e for e in report.engineer_checks if e.status == "critical"]
-        exec_issues = [r for r in report.exec_results if r.status == "critical"]
-
-        issue_body_lines = [
-            f"## QuantEdge Agent Health Report — {report.timestamp}",
-            "",
-            f"**{report.critical_count} critical issue(s)** remain after auto-healing attempts.",
-            "",
-        ]
-        if ch_issues:
-            issue_body_lines.append("### Channel Coverage Gaps")
-            for c in ch_issues:
-                issue_body_lines.append(f"- `#{c.channel}`: {'; '.join(c.issues)}")
-            issue_body_lines.append("")
-        if eng_issues:
-            issue_body_lines.append("### Engineer LLM Usage Issues")
-            for e in eng_issues:
-                issue_body_lines.append(f"- `{e.fn_name}`: {'; '.join(e.issues)}")
-            issue_body_lines.append("")
-        if exec_issues:
-            issue_body_lines.append("### Agent Execution Failures")
-            for r in exec_issues:
-                issue_body_lines.append(f"- `{r.fn_name}` → #{r.channel}: {r.error}")
-            issue_body_lines.append("")
-        issue_body_lines += [
-            "---",
-            "_Auto-generated by `agent_health_monitor.py`. Pick this up and fix the issues above._",
-        ]
-
-        _create_github_issue(
-            title=f"[agent-fix-needed] {report.critical_count} critical health issues — {report.timestamp}",
-            body="\n".join(issue_body_lines),
-        )
+    # Self-healing loop: if critical issues remain, create GitHub issues
+    # labelled "agent-fix-needed" so the Free-Agent Engineer can auto-fix them.
+    if report.critical_count > 0 and not DRY_RUN:
+        print(f"\n[health] Creating GitHub issues for {report.critical_count} critical finding(s)...")
+        created_issues = _create_critical_issues(report)
+        if created_issues:
+            print(f"[health] Created {len(created_issues)} GitHub issue(s): "
+                  f"{', '.join(f'#{n}' for n in created_issues)}")
+            # Post brief Slack notification about the auto-created issues
+            if SLACK_BOT_TOKEN:
+                _slack_post(
+                    "incidents",
+                    f":ticket: Health monitor created *{len(created_issues)}* GitHub issue(s) "
+                    f"labelled `agent-fix-needed` — Free-Agent Engineer will attempt auto-fix. "
+                    f"Issues: {', '.join(f'#{n}' for n in created_issues)}",
+                )
+    elif report.critical_count > 0 and DRY_RUN:
+        print("[health] [dry-run] Would create GitHub issues for critical findings (skipped)")
 
     # Save JSON report
     report_path = Path("/tmp/health_report.json")
