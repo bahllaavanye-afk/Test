@@ -3455,7 +3455,7 @@ def jian_wu_risk() -> list[Post]:
     )]
 
 
-def frontend_eng_frontend() -> list[Post]:
+def priya_subramanian_frontend() -> list[Post]:
     """Frontend Lead — bundle size + LLM-driven perf analysis."""
     state = load_state()
     pages = sorted((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
@@ -3477,7 +3477,7 @@ def frontend_eng_frontend() -> list[Post]:
         "Lighthouse CLS/LCP fix, WebSocket reconnect UX, or Vite chunk splitting config. "
         "Name the exact file, the change, and the expected Core Web Vitals improvement."
     )
-    ai, _ = employee_provider_prompt("frontend_eng", task, state=state)
+    ai, _ = employee_provider_prompt("priya_fe", task, state=state)
     if not ai:
         return []
     return [Post(channel="squad-frontend", text=ai, username="Frontend Lead", icon_emoji=":art:")]
@@ -3771,7 +3771,7 @@ def sofia_karlsson_research() -> list[Post]:
     )]
 
 
-def options_researcher_options() -> list[Post]:
+def yuki_mori_options() -> list[Post]:
     """Options Researcher — LLM-driven options desk analysis."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
@@ -3788,7 +3788,7 @@ def options_researcher_options() -> list[Post]:
         "and the exact Python class name and file path for the implementation. "
         "State expected Sharpe and required capital. Be specific."
     )
-    ai, _ = employee_provider_prompt("options_researcher", task, state=state)
+    ai, _ = employee_provider_prompt("yuki", task, state=state)
     if not ai:
         return []
     return [Post(channel="desk-options", text=ai, username="Options Researcher", icon_emoji=":bar_chart:")]
@@ -3831,7 +3831,7 @@ def quant_researcher_research() -> list[Post]:
     )]
 
 
-def rl_researcher_rl() -> list[Post]:
+def tomas_lindqvist_rl() -> list[Post]:
     """Research Scientist — RL execution agent analysis via LLM."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "ml"
@@ -3854,7 +3854,7 @@ def rl_researcher_rl() -> list[Post]:
         "or training data staleness. State the exact fix and which file to modify. "
         "Include one concrete hyperparameter recommendation."
     )
-    ai, _ = employee_provider_prompt("rl_researcher", task, state=state)
+    ai, _ = employee_provider_prompt("tomas", task, state=state)
     if not ai:
         return []
     return [Post(channel="pod-ml-rl", text=ai, username="Research Scientist", icon_emoji=":brain:")]
@@ -4117,7 +4117,7 @@ def ci_eng_ci() -> list[Post]:
     )]
 
 
-def devops_dir_deploy_readiness() -> list[Post]:
+def kenji_deploy_readiness() -> list[Post]:
     """DevOps — STATUS.md parse + LLM-driven unblocking analysis."""
     state = load_state()
     status_path = REPO_ROOT / "STATUS.md"
@@ -4136,32 +4136,20 @@ def devops_dir_deploy_readiness() -> list[Post]:
                 deployed.append(parts[0].split("(")[0].strip())
     has_alpaca = bool(os.environ.get("ALPACA_API_KEY"))
     has_slack = bool(os.environ.get("SLACK_BOT_TOKEN"))
-
-    text_lines = ["*Demo readiness report*"]
-    text_lines.append(f"\n*Infrastructure:*")
-    for item in deployed[:5]:
-        text_lines.append(f"  ✅ {item}")
-    for item in not_deployed[:5]:
-        text_lines.append(f"  ❌ {item}")
-
-    text_lines.append(f"\n*Repo secrets present this run:*")
-    text_lines.append(f"  {'✅' if has_alpaca else '❌'} ALPACA_API_KEY")
-    text_lines.append(f"  {'✅' if has_slack else '❌'} SLACK_BOT_TOKEN")
-
-    text_lines.append("\n*To go live (in order):*")
-    text_lines.append("1. Add 7 secrets at GitHub Settings → Secrets")
-    text_lines.append("2. Deploy backend → Render Blueprint")
-    text_lines.append("3. Deploy frontend → Vercel (root: `frontend/`)")
-    text_lines.append("4. Apply DB schema → trigger `migrate.yml` workflow")
-    text_lines.append("\n_After step 1: #pnl-daily shows live Alpaca paper P&L._")
-    text_lines.append("_After steps 2-4: strategies execute + dashboard goes live._")
-
-    return [Post(
-        channel="infra-alerts",
-        text="\n".join(text_lines),
-        username="Director of DevOps",
-        icon_emoji=":satellite_antenna:",
-    )]
+    secrets_ctx = f"Secrets present: ALPACA_API_KEY={'yes' if has_alpaca else 'NO'}, SLACK_BOT_TOKEN={'yes' if has_slack else 'NO'}."
+    infra_ctx = (f"Deployed: {', '.join(deployed[:5]) or 'none'}. "
+                 f"Blocked: {', '.join(not_deployed[:5]) or 'none'}.")
+    task = (
+        f"You are the director of DevOps at QuantEdge. {infra_ctx} {secrets_ctx} "
+        "Stack: Render (backend FastAPI), Vercel (React frontend), Supabase (PostgreSQL), Upstash (Redis). "
+        "Identify the single highest-priority unblocking action to move from current state to live paper trading. "
+        "State: what is blocked, exact command or UI step to unblock it, and which engineer role owns it. "
+        "If everything is deployed, audit the CI pipeline for the single most likely point of failure."
+    )
+    ai, _ = employee_provider_prompt("kenji_devops", task, state=state)
+    if not ai:
+        return []
+    return [Post(channel="infra-alerts", text=ai, username="Director of DevOps", icon_emoji=":satellite_antenna:")]
 
 
 def junior_eng_question() -> list[Post]:
