@@ -7,16 +7,16 @@ experiment:
 
 data:
   train_start: "2018-01-01"
-  train_end: "2022-12-31"
-  val_start: "2023-01-01"
-  val_end: "2023-06-30"
-  test_start: "2023-07-01"
+  train_end: "2023-06-30"
+  val_start: "2023-07-01"
+  val_end: "2024-03-31"
+  test_start: "2024-04-01"
   test_end: "2024-12-31"
 
 features:
-  technical: ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff", "adx_14", "cci_20"]
-  macro: ["vix", "dxy", "tnx", "spx_breadth"]
-  lookback: 30
+  technical: ["rsi_14", "macd_hist", "bb_pct_b", "atr_pct", "obv_diff", "adx_14", "cci_20", "mfi_14"]
+  cross_asset: ["vix_level", "yield_10y", "dxy_return", "gold_return", "spy_volume_ratio"]
+  lookback: 20
 
 model_params:
   max_depth: 6
@@ -24,26 +24,21 @@ model_params:
   learning_rate: 0.01
   subsample: 0.8
   colsample_bytree: 0.8
-  min_child_weight: 5
+  min_child_weight: 3
+  gamma: 0.1
   reg_alpha: 0.1
   reg_lambda: 1.0
-  tree_method: "hist"
-
-optuna:
-  n_trials: 100
-  timeout: 3600
-  sampler: "tpe"
-  pruner: "hyperband"
+  optuna_trials: 100
 
 training:
   early_stopping_rounds: 50
-  eval_metric: "logloss"
-  verbosity: 0
+  eval_metric: "auc"
+  use_gpu: false
 
 strategy:
   name: "ml_breakout"
-  confidence_threshold: 0.60
-  position_sizing: "kelly"
+  confidence_threshold: 0.62
+  position_sizing: "hrp"
   max_position_pct: 0.10
 
 results:
@@ -52,4 +47,3 @@ results:
   test_sharpe: null
   run_id: null
   trained_at: null
-  artifact_path: null

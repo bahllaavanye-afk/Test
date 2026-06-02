@@ -1,17 +1,23 @@
-name: Daily Employee Review
+name: Daily Employee Review — strict daily scoring
+
+# Runs every day at 07:00 UTC. Reviews every employee's Slack presence,
+# domain quality, and codebase contributions. Posts scores to #leadership-summary.
 
 on:
   schedule:
-    - cron: "0 7 * * *"
+    - cron: "0 7 * * *"   # every day at 07:00 UTC
   workflow_dispatch:
 
-permissions:
-  contents: read
+concurrency:
+  group: daily-employee-review
+  cancel-in-progress: true
 
 jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -22,9 +28,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           pip install --quiet langfuse litellm google-generativeai groq || true
+          pip install --quiet pyyaml requests || true
 
       - name: Run daily employee review
         env:
@@ -40,3 +47,16 @@ jobs:
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/slack_agent_team.py --review-employees
+
+      - name: Run experiments status
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/slack_agent_team.py --run-experiments
+        continue-on-error: true

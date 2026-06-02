@@ -1,7 +1,7 @@
 experiment:
   name: "ensemble_multi_asset_v1"
   model: "ensemble"
-  symbols: ["BTC/USDT", "ETH/USDT"]
+  symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"]
   exchange: "binance"
   interval: "1h"
 
@@ -14,53 +14,43 @@ data:
   test_end: "2024-12-31"
 
 features:
-  technical: ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff", "adx_14"]
-  cross_asset: ["btc_dom", "eth_btc_ratio", "total_volume", "fear_greed"]
+  technical: ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff", "stoch_k", "williams_r"]
+  cross_asset: ["btc_dom", "eth_btc_ratio", "total_volume", "funding_rate", "oi_change_pct"]
   lookback: 60
 
-ensemble:
+model_params:
   components:
-    - model: "lstm"
-      weight: 0.40
-      params:
-        hidden_size: 128
-        num_layers: 2
-        dropout: 0.3
-        bidirectional: true
-        attention: true
-    - model: "xgboost"
+    lstm:
       weight: 0.35
-      params:
-        max_depth: 6
-        n_estimators: 500
-        learning_rate: 0.01
-        subsample: 0.8
-        colsample_bytree: 0.8
-    - model: "lorentzian_knn"
-      weight: 0.25
-      params:
-        k: 8
-        lookback: 2000
-        distance_metric: "lorentzian"
-        feature_count: 5
-  combination: "weighted_vote"
-  calibration: "isotonic"
-  meta_learner: "logistic_regression"
+      hidden_size: 128
+      num_layers: 2
+      dropout: 0.3
+      bidirectional: true
+    xgboost:
+      weight: 0.30
+      max_depth: 5
+      n_estimators: 300
+      learning_rate: 0.02
+    lorentzian_knn:
+      weight: 0.20
+      k: 8
+      lookback: 2000
+    ssm:
+      weight: 0.15
+      d_model: 64
+      n_layers: 4
+  weight_optimization: "walk_forward_slsqp"
+  min_confidence: 0.15
+  confidence_threshold: 0.65
 
 training:
-  epochs: 100
-  batch_size: 256
-  lr: 0.001
-  optimizer: "adamw"
-  scheduler: "cosine"
-  early_stopping_patience: 15
+  n_walk_forward_splits: 5
 
 strategy:
   name: "ensemble"
-  confidence_threshold: 0.68
-  position_sizing: "kelly"
-  max_position_pct: 0.08
-  rebalance_interval: "4h"
+  confidence_threshold: 0.65
+  position_sizing: "hrp"
+  risk_bucket: "directional"
 
 results:
   val_accuracy: null
@@ -68,4 +58,3 @@ results:
   test_sharpe: null
   run_id: null
   trained_at: null
-  artifact_path: null

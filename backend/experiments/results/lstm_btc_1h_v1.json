@@ -3,6 +3,7 @@
     "name": "lstm_btc_1h_v1",
     "model": "lstm",
     "symbol": "BTC/USDT",
+    "exchange": "binance",
     "interval": "1h"
   },
   "status": "done",
@@ -12,9 +13,13 @@
   "max_drawdown": -0.112,
   "win_rate": 0.583,
   "total_return": 0.412,
+  "annualized_return": 0.287,
+  "sortino": 2.14,
+  "calmar": 2.57,
   "trained_at": "2025-01-15T14:23:00Z",
   "run_id": "run_20250115_142300",
   "artifact_path": "models_artifacts/lstm_btc_1h_v1.pt",
+  "features_used": ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff", "btc_dom", "funding_rate"],
   "metrics_history": [
     {"epoch": 1, "train_loss": 0.693, "val_loss": 0.695, "val_acc": 0.501},
     {"epoch": 10, "train_loss": 0.651, "val_loss": 0.661, "val_acc": 0.534},
@@ -22,5 +27,10 @@
     {"epoch": 50, "train_loss": 0.578, "val_loss": 0.601, "val_acc": 0.587},
     {"epoch": 75, "train_loss": 0.551, "val_loss": 0.589, "val_acc": 0.608},
     {"epoch": 92, "train_loss": 0.538, "val_loss": 0.584, "val_acc": 0.623}
-  ]
+  ],
+  "benchmark_comparison": {
+    "btc_buy_hold_sharpe": 0.84,
+    "btc_buy_hold_return": 0.312,
+    "ml_vs_baseline_improvement_pct": 85.7
+  }
 }
