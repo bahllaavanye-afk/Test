@@ -1,0 +1,55 @@
+experiment:
+  name: "lorentzian_knn_eth_1h_v1"
+  model: "lorentzian_knn"
+  symbol: "ETH/USDT"
+  exchange: "binance"
+  interval: "1h"
+
+data:
+  train_start: "2022-01-01"
+  train_end: "2023-12-31"
+  val_start: "2024-01-01"
+  val_end: "2024-06-30"
+  test_start: "2024-07-01"
+  test_end: "2024-12-31"
+
+features:
+  technical: ["rsi_14", "adx_14", "macd", "bb_width", "cci_20"]
+  lookback: 2000
+  feature_count: 5
+  normalization: "zscore"
+
+model_params:
+  k: 8
+  distance_metric: "lorentzian"
+  use_volatility_filter: true
+  use_regime_filter: true
+  use_adx_filter: true
+  adx_threshold: 20
+  regime_threshold: -0.1
+  kernel_regression: true
+  kernel_lookback: 8
+  relative_weighting: 8.0
+  start_regression_at_bar: 25
+
+training:
+  max_bars_back: 2000
+  min_training_bars: 200
+  walk_forward_steps: 10
+  step_size: 500
+
+strategy:
+  name: "lorentzian_knn"
+  confidence_threshold: 0.62
+  position_sizing: "fixed_fractional"
+  max_position_pct: 0.05
+  stop_loss_pct: 0.02
+  take_profit_pct: 0.04
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null
+  run_id: null
+  trained_at: null
+  artifact_path: null

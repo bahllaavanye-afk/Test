@@ -1,0 +1,45 @@
+experiment:
+  name: "lstm_btc_1h_v1"
+  model: "lstm"
+  symbol: "BTC/USDT"
+  exchange: "binance"
+  interval: "1h"
+
+data:
+  train_start: "2022-01-01"
+  train_end: "2023-12-31"
+  val_start: "2024-01-01"
+  val_end: "2024-06-30"
+  test_start: "2024-07-01"
+  test_end: "2024-12-31"
+
+features:
+  technical: ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff"]
+  cross_asset: ["btc_dom", "eth_btc_ratio", "total_volume"]
+  lookback: 60
+
+model_params:
+  hidden_size: 128
+  num_layers: 2
+  dropout: 0.3
+  bidirectional: true
+  attention: true
+
+training:
+  epochs: 100
+  batch_size: 256
+  lr: 0.001
+  optimizer: "adamw"
+  scheduler: "cosine"
+  early_stopping_patience: 10
+
+strategy:
+  name: "ml_momentum"
+  confidence_threshold: 0.65
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null
+  run_id: null
+  trained_at: null

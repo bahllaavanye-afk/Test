@@ -1,0 +1,55 @@
+experiment:
+  name: "xgb_spy_daily_v1"
+  model: "xgboost"
+  symbol: "SPY"
+  exchange: "alpaca"
+  interval: "1d"
+
+data:
+  train_start: "2018-01-01"
+  train_end: "2022-12-31"
+  val_start: "2023-01-01"
+  val_end: "2023-06-30"
+  test_start: "2023-07-01"
+  test_end: "2024-12-31"
+
+features:
+  technical: ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff", "adx_14", "cci_20"]
+  macro: ["vix", "dxy", "tnx", "spx_breadth"]
+  lookback: 30
+
+model_params:
+  max_depth: 6
+  n_estimators: 500
+  learning_rate: 0.01
+  subsample: 0.8
+  colsample_bytree: 0.8
+  min_child_weight: 5
+  reg_alpha: 0.1
+  reg_lambda: 1.0
+  tree_method: "hist"
+
+optuna:
+  n_trials: 100
+  timeout: 3600
+  sampler: "tpe"
+  pruner: "hyperband"
+
+training:
+  early_stopping_rounds: 50
+  eval_metric: "logloss"
+  verbosity: 0
+
+strategy:
+  name: "ml_breakout"
+  confidence_threshold: 0.60
+  position_sizing: "kelly"
+  max_position_pct: 0.10
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null
+  run_id: null
+  trained_at: null
+  artifact_path: null
