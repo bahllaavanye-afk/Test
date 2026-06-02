@@ -3420,44 +3420,31 @@ def jian_wu_risk() -> list[Post]:
 
 
 def priya_subramanian_frontend() -> list[Post]:
-    """Frontend Lead — real gzipped bundle size (from dist/) + page count."""
+    """Frontend Lead — bundle size + LLM-driven perf analysis."""
+    state = load_state()
     pages = sorted((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
     n_pages = len(pages)
     sizes = real_bundle_sizes()
-
     if sizes:
-        js_gz = sizes["js_gz_kb"]
-        css_gz = sizes["css_gz_kb"]
-        total_gz = sizes["total_gz_kb"]
-        js_raw = sizes["js_raw_kb"]
-        target_met = "✅" if total_gz < 300 else "⚠️"
-        size_line = (
-            f"*Real bundle (gzip):* JS {js_gz} KB + CSS {css_gz} KB = *{total_gz} KB total*  "
-            f"(raw: {js_raw} KB JS)  {target_met} target <300 KB"
-        )
+        size_ctx = (f"Real gzip bundle: JS {sizes['js_gz_kb']} KB + CSS {sizes['css_gz_kb']} KB "
+                    f"= {sizes['total_gz_kb']} KB total (target <300 KB gzip).")
     else:
-        # No dist/ — fall back to source proxy
-        total = sum(
-            f.stat().st_size
-            for pat in ("*.tsx", "*.ts")
-            for f in (REPO_ROOT / "frontend" / "src").rglob(pat)
-            if f.exists()
-        )
-        size_line = f"*Source size (no dist/ build):* {total // 1024} KB — run `npm run build` for real gzip numbers"
-
-    page_list = ", ".join(f"`{p.stem}`" for p in pages[:10])
-    if n_pages > 10:
-        page_list += f" (+{n_pages-10} more)"
-
-    return [Post(
-        channel="squad-frontend",
-        text=(f"{size_line}\n"
-              f"Pages: *{n_pages}* — {page_list}\n\n"
-              f"Next: React.lazy() code-split on heavy pages (MLInsights, Experiments, BacktestLab). "
-              f"Target: each lazy chunk <80 KB gzip."),
-        username="Frontend Lead",
-        icon_emoji=":art:",
-    )]
+        total_src = sum(f.stat().st_size for pat in ("*.tsx", "*.ts")
+                        for f in (REPO_ROOT / "frontend" / "src").rglob(pat) if f.exists())
+        size_ctx = f"Source size (no dist/ yet): {total_src // 1024} KB across TS/TSX files."
+    page_list = ", ".join(f"`{p.stem}`" for p in pages[:12])
+    task = (
+        f"You are the frontend lead at QuantEdge. {size_ctx} "
+        f"Pages: {n_pages} ({page_list}). Stack: React 18, Vite, TypeScript, Tailwind, TanStack Query, shadcn/ui. "
+        "Identify the single most impactful frontend performance improvement not yet done. "
+        "Options: React.lazy() code-splitting, TanStack Query stale-while-revalidate tuning, "
+        "Lighthouse CLS/LCP fix, WebSocket reconnect UX, or Vite chunk splitting config. "
+        "Name the exact file, the change, and the expected Core Web Vitals improvement."
+    )
+    ai, _ = employee_provider_prompt("priya_fe", task, state=state)
+    if not ai:
+        return []
+    return [Post(channel="squad-frontend", text=ai, username="Frontend Lead", icon_emoji=":art:")]
 
 
 def anna_hoffmann_backend() -> list[Post]:
@@ -3748,23 +3735,26 @@ def sofia_karlsson_research() -> list[Post]:
 
 
 def yuki_mori_options() -> list[Post]:
-    """Options Researcher — count options-related files."""
+    """Options Researcher — LLM-driven options desk analysis."""
+    state = load_state()
     p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
-    if not p.exists():
-        return []
     opts = sorted(f.stem for f in p.glob("*.py")
-                  if any(k in f.stem.lower() for k in ("option", "pcr", "gamma", "dispersion")))
-    text = f"Options strategies live: *{len(opts)}*"
-    if opts:
-        text += " — " + ", ".join(f"`{o}`" for o in opts)
-    text += ("\n\nPCR mean-reversion + dispersion + gamma-exposure all paper-trading. "
-             "Next: realized-vs-implied vol cone, GARCH(1,1) fit nightly.")
-    return [Post(
-        channel="desk-options",
-        text=text,
-        username="Options Researcher",
-        icon_emoji=":bar_chart:",
-    )]
+                  if any(k in f.stem.lower() for k in ("option", "pcr", "gamma", "dispersion"))) if p.exists() else []
+    opts_str = ", ".join(f"`{o}`" for o in opts) if opts else "none yet"
+    task = (
+        f"You are the options and derivatives researcher at QuantEdge. "
+        f"Current options strategies in paper trading: {opts_str} ({len(opts)} total). "
+        "The desk is exploring: PCR mean-reversion, dispersion trading on SPX vs single-stocks, "
+        "gamma-exposure (GEX) hedging, realized-vs-implied vol cone, and GARCH(1,1) vol forecasting. "
+        "Identify the single most valuable next step: which strategy to implement first, "
+        "what data source it needs (free Deribit API, CBOE free data, or synthetic from OHLCV), "
+        "and the exact Python class name and file path for the implementation. "
+        "State expected Sharpe and required capital. Be specific."
+    )
+    ai, _ = employee_provider_prompt("yuki", task, state=state)
+    if not ai:
+        return []
+    return [Post(channel="desk-options", text=ai, username="Options Researcher", icon_emoji=":bar_chart:")]
 
 
 def hugo_bernardes_research() -> list[Post]:
@@ -3805,25 +3795,32 @@ def hugo_bernardes_research() -> list[Post]:
 
 
 def tomas_lindqvist_rl() -> list[Post]:
-    """Research Scientist — RL training status."""
+    """Research Scientist — RL execution agent analysis via LLM."""
+    state = load_state()
     p = REPO_ROOT / "backend" / "app" / "ml"
     if not (p / "models").exists():
         return []
     models = sorted(f.stem for f in (p / "models").glob("*.py") if not f.stem.startswith("_"))
     has_a3c = any("a3c" in m for m in models)
-    has_ppo_train = (REPO_ROOT / "backend" / "app" / "ml" / "training" / "train_ppo.py").exists() if (p / "training").exists() else False
-    bits = [f"models: {len(models)} ({', '.join(models[:6])}{'…' if len(models)>6 else ''})"]
-    if has_a3c:
-        bits.append("A3C-LSTM: present")
-    if has_ppo_train:
-        bits.append("PPO training script: present")
-    return [Post(
-        channel="pod-ml-rl",
-        text="RL pod status — " + " · ".join(bits) +
-             "\nReward = -slippage_bps - commission_bps. Spinning up training on Kaggle.",
-        username="Research Scientist",
-        icon_emoji=":brain:",
-    )]
+    has_ppo = (p / "training" / "train_ppo.py").exists() if (p / "training").exists() else False
+    has_rl_exec = (REPO_ROOT / "backend" / "app" / "execution" / "rl_exec.py").exists()
+    models_str = ", ".join(models[:7]) + ("…" if len(models) > 7 else "")
+    task = (
+        f"You are the RL and execution research scientist at QuantEdge. "
+        f"ML models present: {len(models)} ({models_str}). "
+        f"A3C-LSTM: {'present' if has_a3c else 'missing'}. "
+        f"PPO training script: {'present' if has_ppo else 'missing'}. "
+        f"RL execution agent (rl_exec.py): {'present' if has_rl_exec else 'missing'}. "
+        "Reward function: R = -slippage_bps - commission_bps + fill_speed_bonus. "
+        "Identify the single most important gap in the RL execution pipeline: "
+        "state space coverage, reward shaping, environment realism (simulated vs live order book), "
+        "or training data staleness. State the exact fix and which file to modify. "
+        "Include one concrete hyperparameter recommendation."
+    )
+    ai, _ = employee_provider_prompt("tomas", task, state=state)
+    if not ai:
+        return []
+    return [Post(channel="pod-ml-rl", text=ai, username="Research Scientist", icon_emoji=":brain:")]
 
 
 def lior_avraham_polymarket() -> list[Post]:
@@ -4066,18 +4063,15 @@ def ravi_iyer_ci() -> list[Post]:
 
 
 def kenji_deploy_readiness() -> list[Post]:
-    """DevOps — reads STATUS.md and reports deployment readiness to #leadership-summary."""
+    """DevOps — STATUS.md parse + LLM-driven unblocking analysis."""
+    state = load_state()
     status_path = REPO_ROOT / "STATUS.md"
     if not status_path.exists():
         return []
     content = status_path.read_text()
-
-    # Parse deployment status lines — look for ❌ / ✅ in the table
-    not_deployed = []
-    deployed = []
+    not_deployed, deployed = [], []
     for line in content.splitlines():
         if "❌" in line or "NOT DEPLOYED" in line or "schema not applied" in line:
-            # Extract component name
             parts = [p.strip() for p in line.split("|") if p.strip()]
             if parts:
                 not_deployed.append(parts[0].split("(")[0].strip())
@@ -4085,36 +4079,22 @@ def kenji_deploy_readiness() -> list[Post]:
             parts = [p.strip() for p in line.split("|") if p.strip()]
             if parts:
                 deployed.append(parts[0].split("(")[0].strip())
-
-    # Check if required secrets are set by probing GitHub Actions env vars
     has_alpaca = bool(os.environ.get("ALPACA_API_KEY"))
     has_slack = bool(os.environ.get("SLACK_BOT_TOKEN"))
-
-    text_lines = ["*Demo readiness report*"]
-    text_lines.append(f"\n*Infrastructure:*")
-    for item in deployed[:5]:
-        text_lines.append(f"  ✅ {item}")
-    for item in not_deployed[:5]:
-        text_lines.append(f"  ❌ {item}")
-
-    text_lines.append(f"\n*Repo secrets present this run:*")
-    text_lines.append(f"  {'✅' if has_alpaca else '❌'} ALPACA_API_KEY")
-    text_lines.append(f"  {'✅' if has_slack else '❌'} SLACK_BOT_TOKEN")
-
-    text_lines.append("\n*To go live (in order):*")
-    text_lines.append("1. Add 7 secrets at GitHub Settings → Secrets")
-    text_lines.append("2. Deploy backend → Render Blueprint")
-    text_lines.append("3. Deploy frontend → Vercel (root: `frontend/`)")
-    text_lines.append("4. Apply DB schema → trigger `migrate.yml` workflow")
-    text_lines.append("\n_After step 1: #pnl-daily shows live Alpaca paper P&L._")
-    text_lines.append("_After steps 2-4: strategies execute + dashboard goes live._")
-
-    return [Post(
-        channel="infra-alerts",
-        text="\n".join(text_lines),
-        username="Director of DevOps",
-        icon_emoji=":satellite_antenna:",
-    )]
+    secrets_ctx = f"Secrets present: ALPACA_API_KEY={'yes' if has_alpaca else 'NO'}, SLACK_BOT_TOKEN={'yes' if has_slack else 'NO'}."
+    infra_ctx = (f"Deployed: {', '.join(deployed[:5]) or 'none'}. "
+                 f"Blocked: {', '.join(not_deployed[:5]) or 'none'}.")
+    task = (
+        f"You are the director of DevOps at QuantEdge. {infra_ctx} {secrets_ctx} "
+        "Stack: Render (backend FastAPI), Vercel (React frontend), Supabase (PostgreSQL), Upstash (Redis). "
+        "Identify the single highest-priority unblocking action to move from current state to live paper trading. "
+        "State: what is blocked, exact command or UI step to unblock it, and which engineer role owns it. "
+        "If everything is deployed, audit the CI pipeline for the single most likely point of failure."
+    )
+    ai, _ = employee_provider_prompt("kenji_devops", task, state=state)
+    if not ai:
+        return []
+    return [Post(channel="infra-alerts", text=ai, username="Director of DevOps", icon_emoji=":satellite_antenna:")]
 
 
 def karl_nystrom_question() -> list[Post]:
