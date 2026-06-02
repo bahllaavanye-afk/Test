@@ -245,6 +245,42 @@ async def get_history(
     return await _fetch_alpaca_bars(symbol, tf, start)
 
 
+@router.get("/bars")
+async def get_bars_query(
+    symbol: str = Query(..., description="Ticker symbol, e.g. SPY"),
+    timeframe: str = Query("1Day", description="Alpaca timeframe string, e.g. 1Day, 1Hour, 5Min"),
+    limit: int = Query(200, ge=1, le=10000, description="Number of bars to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """OHLCV bars using query parameters — used by the frontend chart widget.
+
+    Accepts Alpaca-style timeframe strings (1Day, 1Hour, 5Min) directly.
+    The start date is calculated to cover the requested number of bars.
+    """
+    # Map common timeframe strings to Alpaca API format
+    tf_map = {
+        "1min": "1Min", "1Min": "1Min",
+        "5min": "5Min", "5Min": "5Min",
+        "15min": "15Min", "15Min": "15Min",
+        "1hour": "1Hour", "1Hour": "1Hour",
+        "4hour": "4Hour", "4Hour": "4Hour",
+        "1day": "1Day", "1Day": "1Day",
+        "1week": "1Week", "1Week": "1Week",
+        # shorthand aliases
+        "1m": "1Min", "5m": "5Min", "15m": "15Min",
+        "1h": "1Hour", "4h": "4Hour", "1d": "1Day", "1w": "1Week",
+    }
+    tf = tf_map.get(timeframe, timeframe)
+
+    # Estimate start date: assume worst case 2 bars/day for intraday, 1/day for daily+
+    intraday = tf in ("1Min", "5Min", "15Min", "1Hour", "4Hour")
+    lookback_days = max(int(limit / 6.5) + 5, 30) if intraday else limit + 30
+    start = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    bars = await _fetch_alpaca_bars(symbol, tf, start, limit=limit)
+    return bars
+
+
 @router.get("/bars/{symbol}")
 async def get_bars(
     symbol: str,
@@ -256,6 +292,64 @@ async def get_bars(
     tf = _interval_to_alpaca(interval)
     start = _period_to_start(period)
     return await _fetch_alpaca_bars(symbol, tf, start)
+
+
+# ─── Polymarket ───────────────────────────────────────────────────────────────
+
+_POLYMARKET_API_URL = "https://clob.polymarket.com"
+
+
+@router.get("/polymarket")
+async def get_polymarket_markets(
+    filter: str = Query("", description="Optional keyword filter for market question"),
+    sort: str = Query("volume", description="Sort field: volume, end_date, created_at"),
+    limit: int = Query(50, ge=1, le=200, description="Number of markets to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Return active Polymarket prediction markets.
+
+    Fetches from the Polymarket CLOB API (no auth required for reads).
+    Returns an empty list if the upstream call fails rather than 404.
+    """
+    try:
+        params: dict = {"limit": limit, "active": "true", "closed": "false"}
+        if filter:
+            params["search"] = filter
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{_POLYMARKET_API_URL}/markets", params=params)
+            if resp.status_code != 200:
+                logger.warning("Polymarket API returned non-200", status=resp.status_code)
+                return []
+
+            data = resp.json()
+            markets = data if isinstance(data, list) else data.get("data", [])
+
+            result = []
+            for m in markets:
+                question = m.get("question", "") or m.get("description", "")
+                if filter and filter.lower() not in question.lower():
+                    continue
+                result.append({
+                    "id": m.get("condition_id") or m.get("id", ""),
+                    "question": question,
+                    "end_date": m.get("end_date_iso") or m.get("end_date"),
+                    "yes_price": float(m.get("outcomePrices", ["0"])[0]) if m.get("outcomePrices") else None,
+                    "no_price": float(m.get("outcomePrices", ["0", "0"])[1]) if len(m.get("outcomePrices", [])) > 1 else None,
+                    "volume": float(m.get("volume", 0) or 0),
+                    "liquidity": float(m.get("liquidity", 0) or 0),
+                    "active": m.get("active", True),
+                    "closed": m.get("closed", False),
+                })
+
+            # Sort results
+            sort_key = {"volume": "volume", "end_date": "end_date", "created_at": "end_date"}.get(sort, "volume")
+            result.sort(key=lambda x: x.get(sort_key) or "", reverse=(sort_key == "volume"))
+            return result
+
+    except Exception as exc:
+        logger.warning("polymarket endpoint failed", error=str(exc))
+        return []
 
 
 # ─── IV Rank / IV Percentile ─────────────────────────────────────────────────
@@ -655,3 +749,32 @@ async def get_pcr(
             "source": str(exc),
             "computed_at": datetime.now(timezone.utc).isoformat(),
         }
+
+
+# ─── Underscore-prefix alias ──────────────────────────────────────────────────
+# The frontend calls /market_data/* (underscore) while the primary router uses
+# /market-data/* (hyphen).  Mount a second router at /market_data so both work.
+
+router_underscore = APIRouter(prefix="/market_data", tags=["market_data"])
+
+
+@router_underscore.get("/polymarket")
+async def get_polymarket_markets_alias(
+    filter: str = Query("", description="Optional keyword filter for market question"),
+    sort: str = Query("volume", description="Sort field: volume, end_date, created_at"),
+    limit: int = Query(50, ge=1, le=200, description="Number of markets to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Underscore-prefix alias for /market-data/polymarket."""
+    return await get_polymarket_markets(filter=filter, sort=sort, limit=limit, current_user=current_user)
+
+
+@router_underscore.get("/bars")
+async def get_bars_query_alias(
+    symbol: str = Query(..., description="Ticker symbol, e.g. SPY"),
+    timeframe: str = Query("1Day", description="Alpaca timeframe string, e.g. 1Day, 1Hour, 5Min"),
+    limit: int = Query(200, ge=1, le=10000, description="Number of bars to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Underscore-prefix alias for /market-data/bars (query-param form)."""
+    return await get_bars_query(symbol=symbol, timeframe=timeframe, limit=limit, current_user=current_user)

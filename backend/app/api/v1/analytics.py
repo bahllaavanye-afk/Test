@@ -24,6 +24,62 @@ from app.utils.logging import logger
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
+@router.get("/arb-opportunities")
+async def get_arb_opportunities(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return current arbitrage opportunities.
+
+    Reads from the OHLCV table looking for cross-exchange price discrepancies.
+    Returns an empty list when no data is available rather than 404.
+    """
+    try:
+        from app.models.market_data import OHLCV
+        from sqlalchemy import desc
+
+        # Return the most recent price snapshots per symbol/exchange for comparison
+        result = await db.execute(
+            select(OHLCV.symbol, OHLCV.exchange, OHLCV.close, OHLCV.ts)
+            .order_by(desc(OHLCV.ts))
+            .limit(200)
+        )
+        rows = result.all()
+
+        # Group by symbol to find cross-exchange spreads
+        from collections import defaultdict
+        by_symbol: dict = defaultdict(list)
+        for row in rows:
+            by_symbol[row.symbol].append({
+                "exchange": row.exchange,
+                "price": float(row.close),
+                "ts": row.ts.isoformat() if row.ts else None,
+            })
+
+        opportunities = []
+        for symbol, entries in by_symbol.items():
+            if len(entries) < 2:
+                continue
+            prices = [e["price"] for e in entries if e["price"] > 0]
+            if len(prices) < 2:
+                continue
+            spread = max(prices) - min(prices)
+            spread_pct = spread / min(prices) * 100 if min(prices) > 0 else 0.0
+            if spread_pct > 0.05:  # only surface if >5bps spread
+                opportunities.append({
+                    "symbol": symbol,
+                    "spread": round(spread, 6),
+                    "spread_pct": round(spread_pct, 4),
+                    "exchanges": entries,
+                })
+
+        return opportunities
+
+    except Exception as exc:
+        logger.warning("arb-opportunities endpoint failed", error=str(exc))
+        return []
+
+
 async def _user_account_ids(db: AsyncSession, user_id: str) -> list[str]:
     """Return all account IDs owned by the given user. Used to scope queries."""
     result = await db.execute(

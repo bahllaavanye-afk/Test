@@ -17,6 +17,41 @@ _pool: aioredis.ConnectionPool | None = None
 _redis_disabled = not settings.redis_url or settings.redis_url.strip() == ""
 
 
+def _redis_enabled() -> bool:
+    return not _redis_disabled
+
+
+class _NoopPriceCache:
+    """No-op price cache used when Redis is unavailable."""
+
+    async def set_price(self, *args, **kwargs) -> None:
+        pass
+
+    async def get_price(self, *args, **kwargs) -> None:
+        return None
+
+    async def set_ohlcv(self, *args, **kwargs) -> None:
+        pass
+
+    async def get_ohlcv(self, *args, **kwargs) -> None:
+        return None
+
+    async def set_arb_opportunity(self, *args, **kwargs) -> None:
+        pass
+
+    async def publish(self, *args, **kwargs) -> None:
+        pass
+
+    async def cache_prediction(self, *args, **kwargs) -> None:
+        pass
+
+    async def get(self, *args, **kwargs) -> None:
+        return None
+
+    async def set(self, *args, **kwargs) -> None:
+        pass
+
+
 def get_pool() -> aioredis.ConnectionPool | None:
     if _redis_disabled:
         return None
