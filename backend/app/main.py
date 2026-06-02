@@ -169,9 +169,6 @@ async def lifespan(app: FastAPI):
     alpaca_broker = create_alpaca_broker(paper=settings.is_paper)
     app.state.alpaca_broker = alpaca_broker
 
-    if alpaca_broker is not None:
-        asyncio.create_task(_validate_alpaca(alpaca_broker))
-
     # Load active strategies from DB; fall back to a sensible default set if DB
     # is not yet reachable at startup (e.g. first cold boot before migrations).
     active_strategies: list[dict] = []
@@ -217,31 +214,19 @@ async def lifespan(app: FastAPI):
     })
 
     # Price feed — polls broker quotes → Redis + WebSocket
-    # Always started (incl. paper mode); gracefully skips ticks when broker is absent
     from app.tasks.price_feed import run_price_feed
-
-    async def _price_feed_wrapper():
-        try:
-            if alpaca_broker is not None and all_symbols:
-                await run_price_feed(alpaca_broker, all_symbols)
-            else:
-                # Park the task until restart — avoids tight no-op loop
-                logger.warning(
-                    "Price feed idle",
-                    reason="no broker" if alpaca_broker is None else "no symbols",
-                )
-                await asyncio.sleep(3600)
-        except Exception as exc:
-            logger.error(f"Price feed error: {exc}")
-            raise
-
-    bg_tasks.append(asyncio.create_task(
-        _supervised(_price_feed_wrapper, "price_feed")
-    ))
-    logger.info("Price feed task registered", symbols=len(all_symbols))
+    if alpaca_broker is not None and all_symbols:
+        bg_tasks.append(asyncio.create_task(
+            _supervised(lambda: run_price_feed(alpaca_broker, all_symbols), "price_feed")
+        ))
+        logger.info("Price feed started", symbols=len(all_symbols))
+    else:
+        logger.warning(
+            "Price feed not started",
+            reason="no broker" if alpaca_broker is None else "no symbols",
+        )
 
     # Strategy runner — one asyncio loop per (strategy, symbol) pair
-    # Always started so strategies run in paper mode too
     from app.tasks.strategy_runner import ContinuousStrategyRunner
     strategy_runner = ContinuousStrategyRunner(
         broker=alpaca_broker,
@@ -252,11 +237,6 @@ async def lifespan(app: FastAPI):
         _supervised(lambda: strategy_runner.start(active_strategies), "strategy_runner")
     ))
     logger.info("Strategy runner registered", strategies=len(active_strategies))
-
-    # Backtest worker — polls for queued BacktestRun rows every 30 s, executes via yfinance
-    from app.tasks.backtest_worker import backtest_worker_loop
-    bg_tasks.append(asyncio.create_task(_supervised(backtest_worker_loop, "backtest_worker")))
-    logger.info("Backtest worker registered")
 
     # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
     from app.tasks.regime_monitor import RegimeMonitor
