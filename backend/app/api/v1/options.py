@@ -114,6 +114,13 @@ async def get_options_chain(
     current_user: User = Depends(get_current_user),
 ):
     """Fetch and enrich an options chain for a given underlying symbol."""
+    # Return empty data with a helpful message when broker credentials are not configured
+    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
+        return {
+            "contracts": [],
+            "message": "Configure Alpaca API credentials to enable options chain data",
+        }
+
     today = date.today().isoformat()
 
     params: dict[str, str | int] = {
@@ -137,7 +144,10 @@ async def get_options_chain(
             raise HTTPException(502, f"Alpaca connection error: {exc}") from exc
 
     if resp.status_code == 403:
-        raise HTTPException(403, "Alpaca options data requires an approved options account level.")
+        return {
+            "contracts": [],
+            "message": "Configure TradeStation API credentials to enable options data",
+        }
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, f"Alpaca API error: {resp.text[:200]}")
 
@@ -195,6 +205,13 @@ async def get_options_expirations(
     current_user: User = Depends(get_current_user),
 ):
     """Return sorted list of distinct upcoming expiration dates for an underlying."""
+    # Return empty data with a helpful message when broker credentials are not configured
+    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
+        return {
+            "expirations": [],
+            "message": "Configure TradeStation API credentials to enable options data",
+        }
+
     today = date.today().isoformat()
     async with httpx.AsyncClient(timeout=20.0) as client:
         try:
@@ -211,7 +228,10 @@ async def get_options_expirations(
             raise HTTPException(502, f"Alpaca connection error: {exc}") from exc
 
     if resp.status_code == 403:
-        raise HTTPException(403, "Alpaca options data requires an approved options account level.")
+        return {
+            "expirations": [],
+            "message": "Configure TradeStation API credentials to enable options data",
+        }
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, f"Alpaca API error: {resp.text[:200]}")
 
