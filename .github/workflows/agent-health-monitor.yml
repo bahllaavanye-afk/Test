@@ -1,0 +1,99 @@
+name: Agent Health Monitor — self-healing diagnostics
+
+# Runs every 30 minutes + on every push that touches the agent script.
+# Checks all 47 agents, all 38 channels, all LLM providers.
+# Auto-heals what it can. Posts results to #incidents and #allquantedge.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes, 24/7
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw, main]
+    paths:
+      - ".github/scripts/slack_agent_team.py"
+      - ".github/scripts/agent_health_monitor.py"
+      - ".github/workflows/slack-agent-team.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no Slack posts)"
+        type: boolean
+        default: false
+      channel:
+        description: "Check single channel only (leave blank for all)"
+        required: false
+        type: string
+
+concurrency:
+  group: agent-health-monitor
+  cancel-in-progress: true
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write    # auto-heal patches can commit
+      issues: write
+      pull-requests: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install monitoring deps
+        run: |
+          pip install --quiet langfuse litellm google-generativeai groq || true
+          pip install --quiet cerebras-cloud-sdk || true
+
+      - name: Run health monitor
+        id: health
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
+          ALLOW_PAID_APIS: "False"
+        run: |
+          FLAGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            FLAGS="--dry-run"
+          fi
+          if [ -n "${{ inputs.channel }}" ]; then
+            FLAGS="$FLAGS --channel ${{ inputs.channel }}"
+          fi
+          python .github/scripts/agent_health_monitor.py $FLAGS
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Upload health report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-report-${{ github.run_id }}
+          path: /tmp/health_report.json
+          retention-days: 7
+
+      - name: Commit auto-healed changes
+        if: always()
+        run: |
+          git config user.email "health-monitor@quantedge.ai"
+          git config user.name "QuantEdge Health Monitor"
+          if git diff --quiet; then
+            echo "No auto-heal patches to commit"
+          else
+            git add -A
+            git commit -m "chore: auto-heal from health monitor run $(date -u +'%Y-%m-%dT%H:%M')"
+            git push origin HEAD:${{ github.ref_name }} || echo "Push skipped (branch protected)"
+          fi

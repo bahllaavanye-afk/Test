@@ -27,7 +27,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install anthropic --quiet
+        run: |
+          pip install --quiet anthropic
+          # Free LLM providers + observability
+          pip install --quiet litellm langfuse google-generativeai groq || true
+          pip install --quiet cerebras-cloud-sdk || true
 
       - name: Post to Slack
         env:
@@ -37,6 +41,18 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_ACTOR: ${{ github.actor }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          # Free LLM API keys
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Langfuse observability
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
+          ALLOW_PAID_APIS: "False"
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             # Push: quick mode handles event-specific deploy notifications dynamically
