@@ -14,37 +14,28 @@ data:
   test_end: "2024-12-31"
 
 features:
-  technical: ["rsi_14", "adx_14", "macd", "bb_width", "cci_20"]
+  technical: ["rsi_14", "cci_20", "adx_14", "ema_diff_10_20", "sma_diff_10_50"]
   lookback: 2000
-  feature_count: 5
-  normalization: "zscore"
 
 model_params:
   k: 8
+  lookback: 2000
   distance_metric: "lorentzian"
-  use_volatility_filter: true
-  use_regime_filter: true
-  use_adx_filter: true
-  adx_threshold: 20
-  regime_threshold: -0.1
-  kernel_regression: true
+  kernel_type: "rational_quadratic"
   kernel_lookback: 8
-  relative_weighting: 8.0
-  start_regression_at_bar: 25
+  kernel_relative_weight: 8.0
+  kernel_regression_level: 25
 
 training:
-  max_bars_back: 2000
-  min_training_bars: 200
-  walk_forward_steps: 10
-  step_size: 500
+  optuna_trials: 50
+  eval_metric: "sharpe"
 
 strategy:
   name: "lorentzian_knn"
-  confidence_threshold: 0.62
-  position_sizing: "fixed_fractional"
+  confidence_threshold: 0.60
+  position_sizing: "kelly_fractional"
+  kelly_fraction: 0.25
   max_position_pct: 0.05
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.04
 
 results:
   val_accuracy: null
@@ -52,4 +43,3 @@ results:
   test_sharpe: null
   run_id: null
   trained_at: null
-  artifact_path: null
