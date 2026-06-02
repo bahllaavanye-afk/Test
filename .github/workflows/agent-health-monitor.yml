@@ -31,8 +31,6 @@ concurrency:
 jobs:
   health-check:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 10
     permissions:
       contents: write    # auto-heal patches can commit
@@ -43,7 +41,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -59,16 +56,11 @@ jobs:
         id: health
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
-          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 }}
-          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
-          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
-          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
@@ -93,8 +85,7 @@ jobs:
           path: /tmp/health_report.json
           retention-days: 7
 
-      - name: Push changes
-        continue-on-error: true
+      - name: Commit auto-healed changes
         if: always()
         run: |
           git config user.email "health-monitor@quantedge.ai"
@@ -102,10 +93,7 @@ jobs:
           if git diff --quiet; then
             echo "No auto-heal patches to commit"
           else
-            git add -u
-            git commit -m "chore: auto-heal from health monitor run $(date -u +'%Y-%m-%dT%H:%M') [skip ci]"
-            for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-            done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git add -A
+            git commit -m "chore: auto-heal from health monitor run $(date -u +'%Y-%m-%dT%H:%M')"
+            git push origin HEAD:${{ github.ref_name }} || echo "Push skipped (branch protected)"
           fi

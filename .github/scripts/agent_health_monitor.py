@@ -22,24 +22,12 @@ import subprocess
 import sys
 import time
 import traceback
-import urllib.parse
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-
-def _resolve_key(*names: str) -> str:
-    for name in names:
-        v = os.environ.get(name, "")
-        if v: return v
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v: return v
-    return ""
-
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -63,16 +51,16 @@ REQUIRED_POSTING_CHANNELS = {
 
 # Employee function names that must call real LLM (not hardcoded)
 REQUIRED_LLM_CALLERS = [
-    "vp_eng_daily", "alpha_dir_strategy_review", "ml_lead_results",
-    "exec_eng_execution", "risk_eng_risk", "frontend_eng_frontend",
-    "backend_lead_backend", "data_eng_data", "devops_dir_devops",
-    "devops_dir_deploy_readiness", "qa_dir_qa", "qa_dir_open_prs",
-    "security_eng_security", "vp_research_research", "options_researcher_options",
-    "quant_researcher_research", "rl_researcher_rl", "poly_desk_polymarket",
-    "cro_risk", "finance_eng_finance", "compliance_eng_compliance",
-    "junior_eng_question", "ceo_ceo", "ci_eng_ci",
-    "ml_researcher_research", "cro_dl_engineer",
-    "frontend_eng_feature_eng", "quant_ml_quant_ml",
+    "maya_chen_eng_daily", "aarav_patel_strategy_review", "linh_tran_ml_results",
+    "diego_ramirez_execution", "jian_wu_risk", "priya_subramanian_frontend",
+    "anna_hoffmann_backend", "sina_hassani_data", "kenji_watanabe_devops",
+    "kenji_deploy_readiness", "aditi_sharma_qa", "aditi_open_prs",
+    "cameron_park_security", "sofia_karlsson_research", "yuki_mori_options",
+    "hugo_bernardes_research", "tomas_lindqvist_rl", "lior_avraham_polymarket",
+    "marcus_olufemi_risk", "wei_chang_finance", "helena_voss_compliance",
+    "karl_nystrom_question", "laavanye_bahl_ceo", "ravi_iyer_ci",
+    "sara_kim_ml_research", "marcus_williams_dl_engineer",
+    "priya_nair_feature_eng", "alex_chen_quant_ml",
 ]
 
 LLM_CALL_PATTERNS = [
@@ -276,13 +264,13 @@ def _probe_groq(api_key: str) -> str:
 
 def _probe_llm_providers() -> dict[str, str]:
     results: dict[str, str] = {}
-    gk = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1").strip()
+    gk = os.environ.get("GEMINI_API_KEY", "").strip()
     if gk:
         results["gemini"] = _probe_gemini(gk)
     else:
         results["gemini"] = "no_key"
 
-    rk = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1").strip()
+    rk = os.environ.get("GROQ_API_KEY", "").strip()
     if rk:
         results["groq"] = _probe_groq(rk)
     else:
@@ -299,24 +287,24 @@ def _probe_llm_providers() -> dict[str, str]:
 # Agents to fire-test: (fn_name, channel, expected_min_length, description)
 AGENT_EXECUTION_TESTS = [
     # Core engineering
-    ("vp_eng_daily",               "engineering",      80, "VP Eng daily report"),
-    ("backend_lead_backend",       "squad-backend",    80, "Backend lead report"),
-    ("qa_dir_qa",                  "squad-qa",         80, "QA director report"),
+    ("maya_chen_eng_daily",        "engineering",      80, "VP Eng daily report"),
+    ("anna_hoffmann_backend",      "squad-backend",    80, "Backend lead report"),
+    ("aditi_sharma_qa",            "squad-qa",         80, "QA director report"),
     # ML
-    ("ml_lead_results",            "ml-experiments",   80, "ML results report"),
+    ("linh_tran_ml_results",       "ml-experiments",   80, "ML results report"),
     # Risk
-    ("risk_eng_risk",              "risk-alerts",      60, "Risk alert report"),
+    ("jian_wu_risk",               "risk-alerts",      60, "Risk alert report"),
     # Trading desks
     ("trading_desk_eod_pnl",       "pnl-daily",        30, "EOD PnL report"),
     ("trading_desk_crypto_positions", "desk-crypto",   30, "Crypto positions"),
     # Research
-    ("vp_research_research",       "papers",           80, "Research paper summary"),
+    ("sofia_karlsson_research",    "papers",           80, "Research paper summary"),
     # Company wide
     ("general_channel",            "general",          80, "General channel digest"),
     ("allquantedge_channel",       "allquantedge",     80, "All-hands broadcast"),
     # Ops
-    ("finance_eng_finance",        "finance-ops",      60, "Finance ops report"),
-    ("security_eng_security",      "security-alerts",  60, "Security check"),
+    ("wei_chang_finance",          "finance-ops",      60, "Finance ops report"),
+    ("cameron_park_security",      "security-alerts",  60, "Security check"),
     ("standup_channel",            "standup",          80, "Daily standup"),
 ]
 
@@ -627,140 +615,6 @@ def _test_agent_function_execution(fn_name: str, timeout_secs: int = 30) -> tupl
         return False, f"{type(e).__name__}: {e}"
 
 
-# ─── GitHub issue creation ────────────────────────────────────────────────────
-
-# Read at runtime so the health monitor can create self-healing issues without
-# requiring config changes.
-GH_TOKEN = os.environ.get("GH_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
-GH_REPO = os.environ.get("GH_REPO", os.environ.get("GITHUB_REPOSITORY", ""))
-GITHUB_API = "https://api.github.com"
-AGENT_FIX_LABEL = "agent-fix-needed"
-
-
-def _gh_headers() -> dict:
-    return {
-        "Authorization": f"Bearer {GH_TOKEN}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-
-
-def _create_github_issue(title: str, body: str) -> int | None:
-    """
-    Create a GitHub issue labelled 'agent-fix-needed'.
-    Returns the new issue number, or None on failure.
-
-    Skips creation if GH_TOKEN / GH_REPO are not set (e.g. local dry-run).
-    Also skips if an open issue with the same title already exists.
-    """
-    if not GH_TOKEN or not GH_REPO:
-        print(f"[health] GitHub token/repo not set — skipping issue creation: {title!r}")
-        return None
-
-    # Avoid duplicates: check for existing open issues with same title
-    search_url = (
-        f"{GITHUB_API}/repos/{GH_REPO}/issues"
-        f"?state=open&labels={urllib.parse.quote(AGENT_FIX_LABEL)}&per_page=50"
-    )
-    try:
-        req = urllib.request.Request(search_url, headers=_gh_headers())
-        with urllib.request.urlopen(req, timeout=10) as r:
-            existing = json.loads(r.read())
-        for iss in existing:
-            if iss.get("title", "").strip() == title.strip():
-                print(f"[health] Issue already exists (#{iss['number']}): {title!r}")
-                return iss["number"]
-    except Exception as e:
-        print(f"[health] Could not check existing issues: {e}")
-
-    # Create the issue
-    payload = json.dumps({
-        "title": title,
-        "body": body,
-        "labels": [AGENT_FIX_LABEL],
-    }).encode()
-    create_url = f"{GITHUB_API}/repos/{GH_REPO}/issues"
-    try:
-        req = urllib.request.Request(
-            create_url,
-            data=payload,
-            headers={**_gh_headers(), "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            resp = json.loads(r.read())
-        number = resp.get("number")
-        print(f"[health] Created issue #{number}: {title!r}")
-        return number
-    except urllib.error.HTTPError as e:
-        body_text = e.read().decode(errors="replace")
-        print(f"[health] Failed to create issue: HTTP {e.code} — {body_text[:300]}")
-        return None
-    except Exception as e:
-        print(f"[health] Failed to create issue: {e}")
-        return None
-
-
-def _create_critical_issues(report: "HealthReport") -> list[int]:
-    """
-    For each critical finding, create a GitHub issue labelled 'agent-fix-needed'.
-    Returns list of created issue numbers.
-    Called by main() after posting the Slack report when report.critical_count > 0.
-    """
-    created: list[int] = []
-    ts = report.timestamp
-
-    # Channel coverage gaps
-    for ch_check in report.channel_checks:
-        if ch_check.status != "critical":
-            continue
-        title = f"[agent-health] No posting agent for #{ch_check.channel}"
-        body = (
-            f"## Agent Health Monitor — Critical Alert\n\n"
-            f"**Detected at:** {ts}\n\n"
-            f"**Problem:** The channel `#{ch_check.channel}` has no registered posting agent. "
-            f"At least one `Agent()` entry in `slack_agent_team.py` must list "
-            f"`\"{ch_check.channel}\"` in its channels array.\n\n"
-            f"**Details:**\n"
-            + "\n".join(f"- {issue}" for issue in ch_check.issues)
-            + "\n\n"
-            f"**Required fix:** Add an `Agent()` entry that posts to `#{ch_check.channel}`, "
-            f"or extend an existing agent's channel list.\n\n"
-            f"**File to modify:** `.github/scripts/slack_agent_team.py`\n\n"
-            f"_Auto-created by `agent_health_monitor.py`. "
-            f"Label `agent-fix-needed` triggers the Free-Agent Engineer to auto-fix._"
-        )
-        issue_num = _create_github_issue(title, body)
-        if issue_num:
-            created.append(issue_num)
-
-    # Engineer functions not calling real LLMs
-    for eng_check in report.engineer_checks:
-        if eng_check.status != "critical":
-            continue
-        title = f"[agent-health] {eng_check.fn_name}() not using real LLM"
-        body = (
-            f"## Agent Health Monitor — Critical Alert\n\n"
-            f"**Detected at:** {ts}\n\n"
-            f"**Problem:** The function `{eng_check.fn_name}()` in `slack_agent_team.py` "
-            f"does not call a real LLM. It must use one of: "
-            f"`employee_provider_prompt`, `moa_employee_prompt`, `call_best_agent`, "
-            f"`call_litellm`, or `call_best_agent_for_task`.\n\n"
-            f"**Details:**\n"
-            + "\n".join(f"- {issue}" for issue in eng_check.issues)
-            + "\n\n"
-            f"**Required fix:** Update `{eng_check.fn_name}()` to call a real LLM "
-            f"function instead of returning hardcoded text.\n\n"
-            f"**File to modify:** `.github/scripts/slack_agent_team.py`\n\n"
-            f"_Auto-created by `agent_health_monitor.py`. "
-            f"Label `agent-fix-needed` triggers the Free-Agent Engineer to auto-fix._"
-        )
-        issue_num = _create_github_issue(title, body)
-        if issue_num:
-            created.append(issue_num)
-
-    return created
-
-
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def run_health_check(target_channel: str | None = None) -> HealthReport:
@@ -864,25 +718,6 @@ def main() -> int:
         if report.critical_count > 0 or "--always-post" in sys.argv:
             summary = _build_allquantedge_summary(report)
             _slack_post("allquantedge", summary)
-
-    # Self-healing loop: if critical issues remain, create GitHub issues
-    # labelled "agent-fix-needed" so the Free-Agent Engineer can auto-fix them.
-    if report.critical_count > 0 and not DRY_RUN:
-        print(f"\n[health] Creating GitHub issues for {report.critical_count} critical finding(s)...")
-        created_issues = _create_critical_issues(report)
-        if created_issues:
-            print(f"[health] Created {len(created_issues)} GitHub issue(s): "
-                  f"{', '.join(f'#{n}' for n in created_issues)}")
-            # Post brief Slack notification about the auto-created issues
-            if SLACK_BOT_TOKEN:
-                _slack_post(
-                    "incidents",
-                    f":ticket: Health monitor created *{len(created_issues)}* GitHub issue(s) "
-                    f"labelled `agent-fix-needed` — Free-Agent Engineer will attempt auto-fix. "
-                    f"Issues: {', '.join(f'#{n}' for n in created_issues)}",
-                )
-    elif report.critical_count > 0 and DRY_RUN:
-        print("[health] [dry-run] Would create GitHub issues for critical findings (skipped)")
 
     # Save JSON report
     report_path = Path("/tmp/health_report.json")

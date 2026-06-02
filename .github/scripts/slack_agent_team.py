@@ -1796,6 +1796,7 @@ _CHANNEL_AGENT_IDENTITY = {
     "pod-ml-rl":          ("Research Scientist", ":brain:"),
     "announcements":      ("CEO / Founder", ":sparkles:"),
     "random":             ("CEO / Founder", ":sparkles:"),
+    "allquantedge":       ("Laavanye Bahl — CEO/Founder", ":sparkles:"),
 }
 
 
@@ -1949,6 +1950,68 @@ def verify_zero_spend() -> None:
     if not openrouter_model.endswith(":free") and "free" not in openrouter_model.lower():
         raise RuntimeError(f"FINANCIAL GUARD: OpenRouter model '{openrouter_model}' is not :free")
     print("ZERO-SPEND ✅ ALLOW_PAID_APIS=False | Groq×3 + Gemini×3 + Cerebras×2 + SambaNova + OpenRouter×2 + GH-Models = $0.00/day")
+
+
+def _run_inline_health_check(token: str, state: dict) -> None:
+    """
+    Fast inline health check — runs every main() call.
+    Detects missing LLM keys, CF-blocked providers, budget exhaustion.
+    Posts to #incidents if problems found. Self-heals what it can.
+    """
+    issues: list[str] = []
+    healed: list[str] = []
+
+    # 1. Check free LLM keys are present
+    llm_keys = {
+        "GEMINI_API_KEY": "Gemini Flash (primary)",
+        "GROQ_API_KEY": "Groq (secondary)",
+        "CEREBRAS_API_KEY": "Cerebras (tertiary)",
+    }
+    missing = [name for env_var, name in llm_keys.items() if not os.environ.get(env_var, "").strip()]
+    if missing:
+        issues.append(f"Missing LLM keys: {', '.join(missing)} — add to GitHub Secrets")
+
+    # 2. Check if ALL providers are CF-blocked (would silence all agents)
+    cf_blocked = list(_CF_BLOCKED_HOSTS)
+    if cf_blocked:
+        # Gemini is not CF-blocked — only Groq/Cerebras get blocked
+        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not gemini_key:
+            issues.append(f"CF-blocked: {cf_blocked} AND no Gemini key — agents will be SILENT")
+
+    # 3. Check Langfuse connectivity
+    lf_secret = os.environ.get("LANGFUSE_SECRET_KEY", "").strip()
+    lf_public = os.environ.get("LANGFUSE_PUBLIC_KEY", "").strip()
+    if not lf_secret or not lf_public:
+        issues.append("Langfuse keys missing — LLM call tracing disabled")
+
+    # 4. Check daily budget not exhausted
+    budget = state.get("daily_budget", {})
+    for provider, used in budget.items():
+        limit = {"gemini": 1_500_000, "groq": 500_000, "cerebras": 1_000_000}.get(provider, 999_999)
+        if isinstance(used, (int, float)) and used > limit * 0.95:
+            issues.append(f"{provider} token budget >95% exhausted for today — may throttle")
+
+    if not issues:
+        print("✅ Inline health check: all systems nominal")
+        return
+
+    # Post to #incidents
+    msg_lines = [":stethoscope: *Inline agent health alert:*"]
+    for issue in issues:
+        msg_lines.append(f"  :warning: {issue}")
+    if healed:
+        for h in healed:
+            msg_lines.append(f"  :wrench: Auto-healed: {h}")
+    msg_lines.append("_Full diagnostic: trigger agent-health-monitor workflow_")
+    # Use slack_call directly to avoid forward-reference to post_to_slack
+    slack_call(token, "chat.postMessage", {
+        "channel": "incidents",
+        "text": "\n".join(msg_lines),
+        "username": "Health Monitor",
+        "icon_emoji": ":stethoscope:",
+    })
+    print(f"[health] {len(issues)} inline issue(s) found → posted to #incidents")
 
 
 def _bar(used: int, limit: int, width: int = 12) -> str:
@@ -4161,7 +4224,7 @@ def helena_voss_compliance() -> list[Post]:
     )]
 
 
-def qa_dir_open_prs() -> list[Post]:
+def aditi_open_prs() -> list[Post]:
     """QA Director — LLM-driven open PR quality review posted to #ci-failures."""
     state = load_state()
     prs = open_prs()
@@ -4181,7 +4244,7 @@ def qa_dir_open_prs() -> list[Post]:
         "(3) CI quality reminder for the team. "
         "Format: Slack prose with *bold* titles. No fake test results."
     )
-    ai, _ = employee_provider_prompt("qa_dir", task, state=state)
+    ai, _ = employee_provider_prompt("aditi_qa", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4192,9 +4255,9 @@ def qa_dir_open_prs() -> list[Post]:
     )]
 
 
-def ci_eng_ci() -> list[Post]:
+def ravi_iyer_ci() -> list[Post]:
     """ML Infra / CI agent — pytest results + LLM analysis of CI health."""
-    print("  [ci_eng_ci] running pytest for CI health check…")
+    print("  [ravi_iyer_ci] running pytest for CI health check…")
     state = load_state()
     res = run_pytest_lightweight(timeout_secs=90)
     runs = latest_workflow_runs()
@@ -4224,7 +4287,7 @@ def ci_eng_ci() -> list[Post]:
         "(3) one CI improvement recommendation. "
         "Be specific and technical. Slack format."
     )
-    ai, _ = employee_provider_prompt("ci_eng", task, state=state)
+    ai, _ = employee_provider_prompt("ravi_ci", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4270,7 +4333,7 @@ def kenji_deploy_readiness() -> list[Post]:
     return [Post(channel="infra-alerts", text=ai, username="Director of DevOps", icon_emoji=":satellite_antenna:")]
 
 
-def junior_eng_question() -> list[Post]:
+def karl_nystrom_question() -> list[Post]:
     """Junior IC — LLM generates a genuine technical question from a real TODO in the codebase."""
     state = load_state()
     todos = find_todos()
@@ -4307,7 +4370,7 @@ def junior_eng_question() -> list[Post]:
             "2-3 sentences. Sound like a curious junior engineer. Name a real file or module."
         )
 
-    ai, _ = employee_provider_prompt("junior_eng", task, state=state)
+    ai, _ = employee_provider_prompt("karl_junior", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -5527,6 +5590,46 @@ def general_channel() -> list[Post]:
     ]
     posts.append(random.choice(ack_posts))
     return posts
+
+
+def allquantedge_channel() -> list[Post]:
+    """Company-wide broadcast to #allquantedge — CEO digest + cross-team highlights."""
+    state = load_state()
+    commits = git_recent_commits(since_hours=48, limit=8)
+    results = latest_backtest_results()
+    strats = list_strategies()
+    test_res = run_pytest_lightweight(timeout_secs=20)
+    positions = alpaca_positions()
+    n_manual = len(strats.get("manual", []))
+    n_ml = len(strats.get("ml_enhanced", []))
+    best = max(results, key=lambda r: float(r.get("sharpe", 0) or 0), default={}) if results else {}
+    best_str = (f"{best.get('strategy','?')} Sharpe {float(best.get('sharpe',0)):+.2f}" if best
+                else "no backtest runs yet")
+    tests_str = (f"{test_res.get('passed',0)} passed, {test_res.get('failed',0)} failed"
+                 if test_res else "tests not run")
+    pos_str = (f"{len(positions)} open positions" if isinstance(positions, list) and positions
+               else "paper account flat")
+
+    task = (
+        f"You are the CEO and founder of QuantEdge, posting a company-wide update to #allquantedge. "
+        f"Platform state: {n_manual} manual + {n_ml} ML-enhanced strategies live, all paper-trading. "
+        f"Best backtest: {best_str}. Tests: {tests_str}. {len(commits)} commits in 48h. {pos_str}. "
+        "Write a company-wide broadcast (120 words max) covering: "
+        "(1) one concrete achievement or milestone from this week, "
+        "(2) one key priority or challenge the whole team should know about, "
+        "(3) a forward-looking sentence on trajectory toward Sharpe>2.0. "
+        "Tone: energising, transparent, data-driven. Slack format. "
+        "Address as 'team' not individuals. No bullet lists — flowing prose with *bold* emphasis."
+    )
+    ai, _ = moa_employee_prompt("laavanye", task, state=state)
+    if not ai:
+        return []
+    return [Post(
+        channel="allquantedge",
+        text=ai,
+        username="Laavanye Bahl — CEO/Founder",
+        icon_emoji=":sparkles:",
+    )]
 
 
 def standup_channel() -> list[Post]:
@@ -6881,6 +6984,8 @@ AGENTS: list[Agent] = [
           ["code-review"], code_review_channel, ["code", "review"]),
     Agent("Frontend Bot", "Frontend Bot", ":computer:",
           ["squad-frontend"], frontend_improvement_agent, ["frontend", "ux", "typescript"]),
+    Agent("Laavanye Bahl — CEO/Founder", "CEO/Founder", ":sparkles:",
+          ["allquantedge"], allquantedge_channel, ["ceo", "company", "allhands"]),
 ]
 
 # 24/7 markets: crypto + polymarket + FX + kalshi + stat-arb always run every wave
@@ -7028,6 +7133,9 @@ def main() -> int:
         state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
         save_state(state)
         return 0
+
+    # ── Self-healing: run health monitor inline (fast static checks only) ────
+    _run_inline_health_check(token, state)
 
     # ── Auto-create channels ──────────────────────────────────────────────────
     print("\n📺 Ensuring all channels exist")
