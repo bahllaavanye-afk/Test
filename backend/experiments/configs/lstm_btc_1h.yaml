@@ -14,9 +14,8 @@ data:
   test_end: "2024-12-31"
 
 features:
-  technical: ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff", "ema_20", "cci_20"]
-  cross_asset: ["btc_dom", "eth_btc_ratio", "total_volume", "funding_rate"]
-  microstructure: ["bid_ask_spread_bps", "book_imbalance", "pin_proxy"]
+  technical: ["rsi_14", "macd", "bb_width", "atr_14", "obv", "vwap_diff"]
+  cross_asset: ["btc_dom", "eth_btc_ratio", "total_volume"]
   lookback: 60
 
 model_params:
@@ -25,7 +24,6 @@ model_params:
   dropout: 0.3
   bidirectional: true
   attention: true
-  attention_heads: 4
 
 training:
   epochs: 100
@@ -34,14 +32,10 @@ training:
   optimizer: "adamw"
   scheduler: "cosine"
   early_stopping_patience: 10
-  grad_clip: 1.0
-  weight_decay: 1.0e-4
 
 strategy:
   name: "ml_momentum"
   confidence_threshold: 0.65
-  position_sizing: "kelly_fractional"
-  max_position_pct: 0.05
 
 results:
   val_accuracy: null

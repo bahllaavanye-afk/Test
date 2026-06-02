@@ -8628,6 +8628,248 @@ def frontend_improvements_main() -> int:
     return 0
 
 
+def review_employees_main() -> int:
+    """
+    Daily performance review for all QuantEdge employees.
+
+    For each employee, asks the LLM to score (0-10) based on:
+      - What work exists in the codebase for their domain
+      - Recent git commits in their area
+      - Whether their Slack channel is posting substantive content
+
+    Posts a consolidated "Daily Team Review" to #leadership-summary with
+    scores and a 1-sentence verdict per employee.  Also posts a short
+    summary to #allquantedge.
+    """
+    verify_zero_spend()
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token:
+        print("[review_employees] No SLACK_BOT_TOKEN — skipping")
+        return 0
+
+    state = load_state()
+
+    # Gather lightweight codebase signals once (reused for every employee)
+    recent_commits = git_recent_commits(since_hours=24, limit=20)
+    commits_summary = "\n".join(
+        f"  {c['sha']} ({c['author']}): {c['msg']}" for c in recent_commits
+    ) or "  (no commits in the last 24 hours)"
+
+    changed_files = git_files_changed(since_hours=24)
+    changed_summary = ", ".join(list(changed_files.keys())[:20]) or "(no files changed)"
+
+    # Domain keywords that map each employee to relevant filesystem paths / modules
+    _EMP_DOMAIN_CONTEXT: dict[str, str] = {
+        "aarav":  "equities strategies, momentum, pairs/Kalman, breakout — backend/app/strategies/",
+        "linh":   "ML modeling, crypto desk, LSTM/TFT/XGBoost experiments — backend/app/ml/, backend/experiments/",
+        "hugo":   "quant research, walk-forward studies, signal prototyping — backend/app/strategies/, experiments/",
+        "jian":   "risk engine, position limits, drawdown caps, 70/30 split — backend/app/risk/",
+        "sofia":  "macro/FX-rates desk, cross-asset carry, HMM regime — backend/app/strategies/",
+        "lior":   "Polymarket / prediction markets, probability calibration — backend/app/brokers/polymarket/",
+        "maya":   "VP Engineering, backend reliability, CI/CD health — backend/, .github/workflows/",
+        "priya":  "product management, roadmap, stakeholder coordination — docs/, CLAUDE.md",
+        "anna":   "backend services, FastAPI, broker adapters — backend/app/",
+        "kenji":  "DevOps, GitHub Actions, infra, container builds — .github/, scripts/",
+        "aditi":  "QA, pytest suite, test coverage, flake triage — backend/tests/",
+    }
+
+    employee_keys = ["aarav", "linh", "hugo", "jian", "sofia", "lior", "maya", "priya", "anna", "kenji", "aditi"]
+
+    scores: list[tuple[str, int, str]] = []  # (emp_key, score, verdict)
+
+    print(f"[review_employees] Reviewing {len(employee_keys)} employees …")
+
+    for emp_key in employee_keys:
+        domain_ctx = _EMP_DOMAIN_CONTEXT.get(emp_key, "general engineering")
+        prompt = (
+            f"You are the CTO of QuantEdge running a daily performance review.\n\n"
+            f"Employee: {emp_key.capitalize()}\n"
+            f"Domain: {domain_ctx}\n\n"
+            f"Recent 24h git commits across the whole repo:\n{commits_summary}\n\n"
+            f"Files changed in last 24h: {changed_summary}\n\n"
+            f"Task: Score this employee's contribution today on a scale of 0-10 based on:\n"
+            f"1. Whether any commits touch their domain area\n"
+            f"2. Depth and quality of work in their codebase area\n"
+            f"3. Whether the work aligns with institutional-grade quant standards\n\n"
+            f"Respond with EXACTLY this format (no extra text):\n"
+            f"SCORE: <integer 0-10>\n"
+            f"VERDICT: <one sentence, specific, cite a file or commit if possible>"
+        )
+
+        result = call_best_agent(prompt, max_tokens=200)
+        if not result:
+            scores.append((emp_key, 5, "No LLM response available — defaulting to neutral score."))
+            continue
+
+        # Parse SCORE and VERDICT from response
+        score_val = 5
+        verdict = result.strip()
+        for line in result.splitlines():
+            line = line.strip()
+            if line.upper().startswith("SCORE:"):
+                try:
+                    score_val = max(0, min(10, int(line.split(":", 1)[1].strip().split()[0])))
+                except (ValueError, IndexError):
+                    pass
+            elif line.upper().startswith("VERDICT:"):
+                verdict = line.split(":", 1)[1].strip()
+
+        scores.append((emp_key, score_val, verdict))
+        print(f"  [{emp_key}] score={score_val} — {verdict[:80]}")
+
+    # Build consolidated #leadership-summary report
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    lines = [f":bar_chart: *Daily Team Review — {today_str}* (07:00 UTC)\n"]
+    for emp_key, score, verdict in scores:
+        if score >= 8:
+            emoji = ":green_circle:"
+        elif score >= 5:
+            emoji = ":yellow_circle:"
+        else:
+            emoji = ":red_circle:"
+        lines.append(f"{emoji} *{emp_key.capitalize()}* — {score}/10: {verdict}")
+
+    avg_score = sum(s for _, s, _ in scores) / len(scores) if scores else 0
+    lines.append(f"\n_Team average: {avg_score:.1f}/10 | {len(scores)} employees reviewed_")
+
+    full_report = "\n".join(lines)
+
+    post_to_slack(
+        token, "leadership-summary", full_report,
+        username="CTO Review Bot",
+        icon_emoji=":clipboard:",
+    )
+    print("[review_employees] Posted consolidated report to #leadership-summary")
+
+    # Short summary to #allquantedge
+    top_performers = [e for e, s, _ in scores if s >= 8]
+    needs_attention = [e for e, s, _ in scores if s < 5]
+    summary_parts = [f":wave: *Daily standup summary — {today_str}*"]
+    if top_performers:
+        summary_parts.append(f":star: Top performers today: {', '.join(p.capitalize() for p in top_performers)}")
+    if needs_attention:
+        summary_parts.append(f":eyes: Needs attention: {', '.join(n.capitalize() for n in needs_attention)}")
+    summary_parts.append(f"Team average score: *{avg_score:.1f}/10*. Full details in #leadership-summary.")
+
+    post_to_slack(
+        token, "allquantedge", "\n".join(summary_parts),
+        username="CTO Review Bot",
+        icon_emoji=":clipboard:",
+    )
+    print("[review_employees] Posted summary to #allquantedge")
+
+    save_state(state)
+    return 0
+
+
+def run_experiments_main() -> int:
+    """
+    Weekly experiment runner.
+
+    Reads all YAML configs from backend/experiments/configs/.
+    For each config without a corresponding result JSON in
+    backend/experiments/results/, posts an "experiment queued" update
+    to #ml-experiments using call_best_agent to generate the message.
+    Posts a final summary to #ml-experiments.
+    """
+    verify_zero_spend()
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token:
+        print("[run_experiments] No SLACK_BOT_TOKEN — skipping")
+        return 0
+
+    state = load_state()
+
+    configs_dir = REPO_ROOT / "backend" / "experiments" / "configs"
+    results_dir = REPO_ROOT / "backend" / "experiments" / "results"
+
+    if not configs_dir.exists():
+        print(f"[run_experiments] configs dir not found: {configs_dir}")
+        return 0
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    # Find all YAML configs
+    config_files = sorted(configs_dir.glob("*.yaml")) + sorted(configs_dir.glob("*.yml"))
+    if not config_files:
+        print("[run_experiments] No YAML configs found — nothing to do")
+        return 0
+
+    print(f"[run_experiments] Found {len(config_files)} config(s)")
+
+    queued: list[str] = []
+    already_done: list[str] = []
+
+    for cfg_path in config_files:
+        # Derive expected result filename: <stem>_v1.json or <stem>.json
+        stem = cfg_path.stem
+        # Check both <stem>.json and <stem>_v1.json variants
+        candidate_names = [f"{stem}.json", f"{stem}_v1.json"]
+        has_result = any((results_dir / name).exists() for name in candidate_names)
+
+        if has_result:
+            already_done.append(stem)
+            print(f"  [run_experiments] {stem}: result exists — skipping")
+            continue
+
+        # Read config content for the LLM prompt
+        try:
+            cfg_text = cfg_path.read_text()[:800]
+        except Exception:
+            cfg_text = f"(could not read {cfg_path.name})"
+
+        prompt = (
+            f"You are the ML Research Lead at QuantEdge. A new experiment has just been queued.\n\n"
+            f"Config file: {cfg_path.name}\n"
+            f"Config contents:\n{cfg_text}\n\n"
+            f"Write a concise Slack post (2-3 sentences) announcing this experiment has been queued. "
+            f"Include: the model type, symbol/asset, key hyperparameters, and what outcome metric we're "
+            f"optimizing for. Be specific and technical. Start with an emoji."
+        )
+
+        announcement = call_best_agent(prompt, max_tokens=300)
+        if not announcement:
+            announcement = (
+                f":test_tube: Experiment queued: `{stem}` — config loaded from "
+                f"`backend/experiments/configs/{cfg_path.name}`. "
+                f"Awaiting worker to pick up and run."
+            )
+
+        post_to_slack(
+            token, "ml-experiments", announcement,
+            username="ML Experiment Runner",
+            icon_emoji=":test_tube:",
+        )
+        queued.append(stem)
+        print(f"  [run_experiments] queued announcement posted for {stem}")
+
+    # Summary post
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if queued:
+        summary = (
+            f":bar_chart: *Experiment Run Summary — {today_str}*\n"
+            f":white_check_mark: Already completed: {len(already_done)} experiment(s)\n"
+            f":hourglass_flowing_sand: Newly queued: {len(queued)} experiment(s) — "
+            + ", ".join(f"`{q}`" for q in queued)
+        )
+    else:
+        summary = (
+            f":bar_chart: *Experiment Run Summary — {today_str}*\n"
+            f"All {len(already_done)} configured experiment(s) already have results. "
+            f"Nothing new to queue. Add a new YAML to `backend/experiments/configs/` to trigger a run."
+        )
+
+    post_to_slack(
+        token, "ml-experiments", summary,
+        username="ML Experiment Runner",
+        icon_emoji=":bar_chart:",
+    )
+    print(f"[run_experiments] Done — {len(queued)} queued, {len(already_done)} already done")
+
+    save_state(state)
+    return 0
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
     if mode == "quick":
@@ -8638,5 +8880,9 @@ if __name__ == "__main__":
         sys.exit(code_request_main())
     elif mode == "frontend_improvements":
         sys.exit(frontend_improvements_main())
+    elif "--review-employees" in sys.argv:
+        sys.exit(review_employees_main())
+    elif "--run-experiments" in sys.argv:
+        sys.exit(run_experiments_main())
     else:
         sys.exit(main())
