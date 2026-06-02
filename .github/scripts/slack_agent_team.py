@@ -1657,19 +1657,109 @@ def read_unresponded_threads(
 # free cascade via call_best_agent — never to Claude.
 _AGENT_SUMMON_TRIGGERS = ("@quantedge", "@quant", "@agent", "@ai", "ask:", "?? ")
 
+# Channel-specific system prompts for @agent replies — each channel gets a domain expert persona
+_CHANNEL_SUMMON_SYSTEM = {
+    "alpha-research": (
+        "You are the Alpha Research Director at QuantEdge, an institutional algo trading startup. "
+        "You specialize in quantitative strategy development: momentum, mean-reversion, pairs trading, "
+        "stat-arb, crypto arb, and Polymarket prediction markets. "
+        "When answering questions, cite specific files (e.g. backend/app/strategies/manual/momentum.py), "
+        "Sharpe ratios, backtest results, or academic references. "
+        "Reply in 3-5 sentences. Be analytically sharp. Do NOT mention you are an AI."
+    ),
+    "ml-experiments": (
+        "You are the ML Research Lead at QuantEdge. You work with LSTM, Temporal Fusion Transformer, "
+        "XGBoost, and Lorentzian KNN models in backend/app/ml/models/. "
+        "When answering, reference specific model files, training scripts, feature engineering, "
+        "walk-forward validation, or experiment YAML configs. "
+        "Reply in 3-5 sentences. Be technically precise. Do NOT mention you are an AI."
+    ),
+    "engineering": (
+        "You are the VP of Engineering at QuantEdge. The stack is FastAPI + SQLAlchemy async + "
+        "PostgreSQL + Redis + React 18 + Vite + TypeScript. "
+        "You know every backend route, frontend component, and deployment config (Render/Vercel/Supabase). "
+        "Reply in 3-5 sentences. Be concrete and actionable. Do NOT mention you are an AI."
+    ),
+    "desk-crypto": (
+        "You are the Crypto Desk Lead at QuantEdge. You run triangular arb, funding rate harvesting, "
+        "basis trading, and liquidation cascade strategies on Binance via CCXT. "
+        "Reference backend/app/strategies/manual/triangular_arb.py and crypto backtest results. "
+        "Reply in 3-5 sentences. Do NOT mention you are an AI."
+    ),
+    "desk-equities": (
+        "You are the Equities Desk Lead at QuantEdge. You run momentum, pairs trading, mean-reversion, "
+        "and low-volatility strategies on US equities via Alpaca. "
+        "Reference specific strategy files and paper trading performance. "
+        "Reply in 3-5 sentences. Do NOT mention you are an AI."
+    ),
+    "risk-alerts": (
+        "You are the Chief Risk Officer at QuantEdge. You manage Kelly sizing, HRP portfolio construction, "
+        "CVaR limits, circuit breakers, and correlation limits across all desks. "
+        "Reference backend/app/risk/ files when answering. "
+        "Reply in 3-5 sentences. Do NOT mention you are an AI."
+    ),
+    "squad-backend": (
+        "You are the Backend Lead at QuantEdge. You own the FastAPI app in backend/app/, "
+        "the SQLAlchemy models, the async background tasks (strategy_runner, price_feed, regime_monitor), "
+        "and all API routes. Reply in 3-5 sentences. Do NOT mention you are an AI."
+    ),
+    "squad-frontend": (
+        "You are the Frontend Lead at QuantEdge. You own the React 18 + TypeScript + Vite dashboard at frontend/src/. "
+        "The UI uses shadcn/ui, Tailwind (Bloomberg dark theme), TradingView widgets, and TanStack Query. "
+        "Reply in 3-5 sentences. Do NOT mention you are an AI."
+    ),
+    "incidents": (
+        "You are the Incident Commander at QuantEdge. You diagnose production issues, coordinate fixes, "
+        "and post structured incident reports. Reference logs, health endpoints (/health), "
+        "and Render/Supabase/Upstash status. Reply in 3-5 sentences. Do NOT mention you are an AI."
+    ),
+    "general": (
+        "You are Laavanye Bahl, CEO and Founder of QuantEdge — an institutional-grade quantitative trading "
+        "platform startup. You speak with strategic vision and technical depth. "
+        "Reply in 3-5 sentences. Do NOT mention you are an AI."
+    ),
+}
 
-def _match_agent_summon(text: str) -> str | None:
-    """Return the question (trigger stripped) if text starts with a summon trigger, else None."""
+_DEFAULT_SUMMON_SYSTEM = (
+    "You are a senior quantitative engineer at QuantEdge, an institutional algo trading startup. "
+    "QuantEdge runs 24/7 across equities (Alpaca), crypto (Binance/CCXT), and prediction markets (Polymarket). "
+    "The stack: Python FastAPI backend, React 18 TypeScript frontend, PostgreSQL, Redis, PyTorch ML. "
+    "Answer the question in 3-5 sentences. Be specific, technical, and helpful. "
+    "Reference real files or metrics where relevant. Do NOT mention you are an AI."
+)
+
+
+def _match_agent_summon(text: str, bot_user_id: str = "") -> str | None:
+    """
+    Return the question (trigger stripped) if text contains a summon trigger, else None.
+    Handles both literal triggers (@agent, ask:, ??) and real Slack @mention format <@USER_ID>.
+    Also detects questions addressed to the bot anywhere in the message.
+    """
+    import re
     if not text:
         return None
-    stripped = text.lstrip()
+    stripped = text.strip()
     low = stripped.lower()
+
+    # Real Slack @mention: <@U1234567> or <@U1234567|username>
+    if bot_user_id:
+        mention_re = re.compile(r"<@" + re.escape(bot_user_id) + r"(?:\|[^>]*)?>", re.IGNORECASE)
+        if mention_re.search(stripped):
+            question = mention_re.sub("", stripped).strip().lstrip(":, ").strip()
+            if question:
+                return question
+
+    # Literal text triggers (must appear at start or after whitespace)
     for trig in _AGENT_SUMMON_TRIGGERS:
         if low.startswith(trig):
-            question = stripped[len(trig):].strip()
-            # Strip a leading separator left after a mention-style trigger.
-            question = question.lstrip(":, ").strip()
+            question = stripped[len(trig):].strip().lstrip(":, ").strip()
             if question:
+                return question
+        # Also match mid-message: "hey @agent what's up?" or "cc @ai can you check this?"
+        idx = low.find(trig)
+        if idx > 0 and low[idx - 1] in (" ", "\n", "\t", ",", ";"):
+            question = stripped[idx + len(trig):].strip().lstrip(":, ").strip()
+            if question and len(question) > 5:
                 return question
     return None
 
@@ -1682,11 +1772,11 @@ def detect_agent_summons(
     limit: int = 30,
 ) -> list[dict]:
     """
-    Scan recent channel messages for a human who summoned a free agent via a
-    leading trigger (@quant / @agent / @ai / @quantedge / ask: / ?? ).
+    Scan recent channel messages for a human who summoned a free agent via:
+    - Real Slack @mention (<@BOT_USER_ID>)
+    - Literal trigger: @agent, @quant, @ai, @quantedge, ask:, ??
 
-    Self-guard matches read_unresponded_threads: must have `user`, no `bot_id`,
-    user != bot_user_id, and ts not in already_replied.
+    Self-guard: must have `user` field, no `bot_id`, user != bot_user_id, ts not in already_replied.
     """
     ch_id = get_channel_id(token, channel_name)
     if not ch_id:
@@ -1709,48 +1799,92 @@ def detect_agent_summons(
             continue
         if ts in already_replied:
             continue
-        question = _match_agent_summon(msg.get("text", ""))
+        raw_text = msg.get("text", "")
+        question = _match_agent_summon(raw_text, bot_user_id=bot_user_id)
         if not question:
             continue
         summons.append({
             "channel_id": ch_id,
             "channel_name": channel_name,
-            "thread_ts": ts,   # reply threads under the original message
+            "thread_ts": ts,
             "user": user,
             "question": question[:1500],
         })
     return summons
 
 
+def _build_summon_context() -> str:
+    """Build a brief real-time context string for summon responses."""
+    lines: list[str] = []
+    try:
+        strats = list_strategies()
+        n_manual = len(strats.get("manual", []))
+        n_ml = len(strats.get("ml", []))
+        lines.append(f"Platform has {n_manual} manual strategies + {n_ml} ML-enhanced strategies.")
+    except Exception:
+        pass
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["git", "log", "--oneline", "-3"],
+            capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            lines.append(f"Recent commits: {result.stdout.strip()[:200]}")
+    except Exception:
+        pass
+    return " ".join(lines)
+
+
 def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
     """
-    Answer each summon via the free cascade (call_best_agent) and post in-thread.
-    Records ts in state["replied_to"] so a summon is answered once. Returns count answered.
+    Answer each summon via the free LLM cascade and post in-thread with the channel's
+    agent persona. Records ts in state["replied_to"] so a summon is answered only once.
+    Returns count answered.
     """
     answered = 0
-    exhausted_notified = False
+    context_blurb = _build_summon_context()
+
     for s in summons:
         ts = s["thread_ts"]
         if ts in state.get("replied_to", []):
             continue
-        ans = call_best_agent(s["question"], max_tokens=600)
-        if ans and ans.strip():
-            reply = f":robot_face: {ans.strip()}"
-            r = post_to_slack(token, s["channel_name"], reply,
-                              username="Free Agent", icon_emoji=":robot_face:",
+
+        ch = s["channel_name"]
+        agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(ch, ("QuantEdge Agent", ":robot_face:"))
+        system_prompt = _CHANNEL_SUMMON_SYSTEM.get(ch, _DEFAULT_SUMMON_SYSTEM)
+
+        if context_blurb:
+            system_prompt = f"{system_prompt}\n\nCurrent platform context: {context_blurb}"
+
+        user_msg = (
+            f"Someone in #{ch} asked: {s['question']}\n\n"
+            "Answer this question directly and helpfully as the channel's expert. "
+            "Be specific. Reference actual files, metrics, or strategies where relevant."
+        )
+
+        ans = call_best_agent(user_msg, system_prompt=system_prompt, max_tokens=600)
+        if ans and ans.strip() and len(ans.strip()) > 20:
+            reply = ans.strip()
+            r = post_to_slack(token, ch, reply,
+                              username=agent_name, icon_emoji=agent_emoji,
                               thread_ts=ts)
             if r.get("ok"):
                 answered += 1
                 state.setdefault("replied_to", []).append(ts)
-                print(f"  ✓ summon answered → #{s['channel_name']}")
-        elif not exhausted_notified:
-            # All free providers exhausted — notify once, don't burn retries.
-            post_to_slack(
-                token, s["channel_name"],
-                ":hourglass_flowing_sand: All free agents are at their daily limit right now — please try again later. (Zero-spend policy: no paid fallback.)",
-                username="Free Agent", icon_emoji=":robot_face:", thread_ts=ts)
-            exhausted_notified = True
+                print(f"  ✓ summon answered → #{ch} as '{agent_name}'")
+            else:
+                print(f"  [summon] post failed: {r.get('error')}")
+        else:
+            # All providers exhausted — post a real status, not a template
+            fallback = (
+                f":warning: I'm at my free-tier API limit right now (Groq/Gemini/Cerebras all throttled). "
+                f"Try again in ~15 min or check the next scheduled run. "
+                f"Zero-spend policy is enforced — no paid fallback."
+            )
+            post_to_slack(token, ch, fallback,
+                          username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
             state.setdefault("replied_to", []).append(ts)
+            print(f"  [summon] providers exhausted for #{ch} summon")
         time.sleep(0.5)
     return answered
 
@@ -1809,68 +1943,76 @@ def generate_thread_response(thread: dict) -> str | None:
     parent = thread["parent_text"]
     reply = thread["last_reply"]
 
+    # Use channel-specific agent persona for more targeted replies
+    agent_name, _ = _CHANNEL_AGENT_IDENTITY.get(channel, ("QuantEdge Agent", ":robot_face:"))
+    channel_system = _CHANNEL_SUMMON_SYSTEM.get(channel, _DEFAULT_SUMMON_SYSTEM)
+
     system_prompt = (
-        "You are a quantitative engineer on the QuantEdge trading platform team. "
-        "QuantEdge is an institutional-grade algo trading system with FastAPI backend, "
-        "React frontend, Alpaca/Binance/Polymarket brokers, and PyTorch ML models. "
-        "Reply to the human's Slack message in 2-4 sentences. Be specific, technical, "
-        "and helpful. Reference real files or concepts from the codebase where relevant. "
-        "Do NOT use bullet lists or headers — write natural conversational text. "
+        f"{channel_system}\n"
+        "You are replying to a human's message in a Slack thread. "
+        "Reply in 2-4 sentences. Be specific and technical. "
+        "Reference real file paths, metric values, or strategy names from the codebase. "
+        "Do NOT use bullet lists or markdown headers. Write natural conversational text. "
         "Do NOT mention that you are an AI."
     )
     user_msg = (
-        f"Channel: #{channel}\n"
-        f"Original message: {parent}\n"
-        f"Human reply to respond to: {reply}\n\n"
-        "Write a helpful, technically specific response from the agent's perspective."
+        f"You are {agent_name} in #{channel}.\n"
+        f"The thread started with: {parent[:300]}\n"
+        f"A human just replied: {reply[:400]}\n\n"
+        "Write a helpful, technically specific response. "
+        "If they asked a question, answer it directly. "
+        "If they shared an update, react with analysis or a next step."
     )
 
-    # Try Claude first
     ai_response = call_best_agent(user_msg, system_prompt, max_tokens=400)
-    if ai_response and len(ai_response.strip()) > 30:
+    if ai_response and len(ai_response.strip()) > 20:
         return ai_response.strip()
 
-    # Fallback: code-grounded response based on keywords
+    # Code-grounded fallback based on keywords — never return generic templates
     reply_lower = reply.lower()
     parent_lower = parent.lower()
     combined = reply_lower + " " + parent_lower
 
-    # Check what files exist to give grounded answers
-    backend = REPO_ROOT / "backend" / "app"
-
-    if any(w in combined for w in ("strategy", "signal", "backtest", "sharpe")):
+    if any(w in combined for w in ("strategy", "signal", "backtest", "sharpe", "alpha")):
         strategies = list_strategies()
-        n = len(strategies["manual"]) + len(strategies["ml"])
-        return (f"Good point — we currently have {n} strategies registered. "
+        n = len(strategies.get("manual", [])) + len(strategies.get("ml", []))
+        return (f"We have {n} strategies registered. "
                 f"The abstract interface in `backend/app/strategies/base.py` requires "
                 f"`analyze()`, `execute()`, and `backtest_signals()`. "
-                f"Drop your walk-forward Sharpe in `experiments/results/` once you've run it.")
+                f"Walk-forward results go in `experiments/results/`.")
 
-    if any(w in combined for w in ("test", "pytest", "failing", "bug", "error")):
+    if any(w in combined for w in ("test", "pytest", "failing", "bug", "error", "fix")):
         test_files = list((REPO_ROOT / "backend" / "tests").rglob("test_*.py"))
-        return (f"Check `backend/tests/` — we have {len(test_files)} test files. "
+        return (f"We have {len(test_files)} test files in `backend/tests/`. "
                 f"Run `cd backend && TRADING_MODE=test pytest tests/ -x -q` to reproduce. "
-                f"The rate limiter is bypassed in test mode so auth tests pass cleanly.")
+                f"Rate limiter is bypassed in test mode.")
 
-    if any(w in combined for w in ("model", "lstm", "transformer", "train", "ml")):
+    if any(w in combined for w in ("model", "lstm", "transformer", "train", "ml", "inference")):
         models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
         models = [f.stem for f in models_dir.glob("*.py") if not f.stem.startswith("_")] if models_dir.exists() else []
-        return (f"Current model zoo has {len(models)} architectures: {', '.join(f'`{m}`' for m in models[:5])}. "
-                f"All follow `AbstractModel` in `base_model.py` — implement `train_epoch()` and `forward()`. "
-                f"Training scripts are in `backend/app/ml/training/`.")
+        return (f"Model zoo: {', '.join(f'`{m}`' for m in models[:5])} in `backend/app/ml/models/`. "
+                f"All implement `AbstractModel` — `train_epoch()` and `forward()`. "
+                f"Training scripts: `backend/app/ml/training/`.")
 
-    if any(w in combined for w in ("deploy", "render", "vercel", "production")):
-        return ("Render auto-deploys on every push to main. Check the build logs at dashboard.render.com. "
-                "The `render.yaml` Blueprint is in `backend/` — ensure your env vars match `.env.example`. "
-                "UptimeRobot pings `/health` every 5min to prevent sleep.")
+    if any(w in combined for w in ("deploy", "render", "vercel", "production", "infra")):
+        return ("Render auto-deploys on every push. Check build logs at dashboard.render.com. "
+                "`render.yaml` in `backend/` defines the blueprint. "
+                "UptimeRobot pings `/health` every 5min to prevent sleep-mode spin-down.")
 
-    if any(w in combined for w in ("risk", "kelly", "position", "drawdown")):
-        return ("Kelly sizing is in `backend/app/risk/kelly.py`, HRP portfolio optimizer is in "
-                "`portfolio_optimizer.py`. The circuit breaker halts all directional strategies "
-                "at 5% intraday drawdown. Risk status endpoint: `GET /risk/status`.")
+    if any(w in combined for w in ("risk", "kelly", "position", "drawdown", "hrp", "cvar")):
+        return ("Kelly sizing: `backend/app/risk/kelly.py`. HRP + CVaR optimizer: `portfolio_optimizer.py`. "
+                "Circuit breaker halts directional strategies at 5% intraday drawdown. "
+                "Real-time risk status: `GET /api/v1/risk/status`.")
 
-    return (f"On it — checking the relevant code now. "
-            f"I'll thread back with a specific fix once I've looked at the relevant module.")
+    if any(w in combined for w in ("working on", "update", "status", "progress", "what are you")):
+        strats = list_strategies()
+        n = len(strats.get("manual", [])) + len(strats.get("ml", []))
+        return (f"Running {n} strategies across equities (Alpaca), crypto (Binance), and prediction markets (Polymarket). "
+                f"Strategy runner and price feed are live background tasks. "
+                f"Latest backtest Sharpe ratios and regime state available at `GET /api/v1/analytics/tearsheet`.")
+
+    return (f"Good question. Let me dig into the relevant module — "
+            f"I'll post a specific answer in this thread once I've checked the code.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6379,14 +6521,143 @@ AGENT_HANDLES: dict[str, str] = {
 }
 
 
+_AGENT_SLACK_USER_IDS: dict[str, str] = {}   # handle → real Slack user ID (populated at startup)
+
+
+def _lookup_agent_user_ids(token: str) -> None:
+    """Populate _AGENT_SLACK_USER_IDS by scanning workspace member list once at startup."""
+    global _AGENT_SLACK_USER_IDS
+    if _AGENT_SLACK_USER_IDS:
+        return
+    try:
+        cursor = ""
+        members: list[dict] = []
+        for _ in range(3):  # max 3 pages
+            params: dict = {"limit": 200}
+            if cursor:
+                params["cursor"] = cursor
+            r = slack_call(token, "users.list", params)
+            if not r.get("ok"):
+                break
+            members.extend(r.get("members", []))
+            cursor = r.get("response_metadata", {}).get("next_cursor", "")
+            if not cursor:
+                break
+        handle_map = {m.get("name", "").lower(): m.get("id", "") for m in members if not m.get("is_bot") and not m.get("deleted")}
+        # Also map bot users
+        bot_map = {m.get("name", "").lower(): m.get("id", "") for m in members if m.get("is_bot") and not m.get("deleted")}
+        handle_map.update(bot_map)
+        # Map our agent handles to real Slack user IDs
+        for handle in AGENT_HANDLES.values():
+            uid = handle_map.get(handle.lower())
+            if uid:
+                _AGENT_SLACK_USER_IDS[handle] = uid
+        print(f"  [agents] resolved {len(_AGENT_SLACK_USER_IDS)} user IDs from workspace members")
+    except Exception as e:
+        print(f"  [agents] user ID lookup failed (non-fatal): {e}")
+
+
 def _m(role: str) -> str:
-    """Return @handle for a role."""
-    return "@" + AGENT_HANDLES.get(role, role.split()[0].lower())
+    """Return Slack mention for a role. Uses <@USER_ID> if ID is known, else display @handle."""
+    handle = AGENT_HANDLES.get(role, role.split()[0].lower())
+    uid = _AGENT_SLACK_USER_IDS.get(handle)
+    if uid:
+        return f"<@{uid}>"
+    return "@" + handle
 
 
 def add_reaction(token: str, channel_id: str, ts: str, emoji: str) -> None:
     """Add an emoji reaction to an existing message."""
     slack_call(token, "reactions.add", {"channel": channel_id, "timestamp": ts, "name": emoji})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cross-agent conversation threads — employees reply to each other inline
+# ─────────────────────────────────────────────────────────────────────────────
+
+_COLLAB_PAIRS: list[tuple[str, str, str, str]] = [
+    # (channel, requester_role, responder_role, topic)
+    ("alpha-research", "Alpha Research Director", "ML Modeling Lead",
+     "signal quality on the latest backtest — should we add a volatility filter?"),
+    ("ml-experiments", "ML Research Lead", "Feature Engineering Lead",
+     "adding open-interest momentum features to the LSTM input — which exchange gives cleanest data?"),
+    ("engineering", "VP Engineering", "Backend Lead",
+     "status on async strategy runner — any latency issues under load?"),
+    ("risk-alerts", "Chief Risk Officer", "Alpha Research Director",
+     "portfolio correlation check — are our long momentum positions offsetting stat-arb?"),
+    ("desk-crypto", "Crypto desk bot", "ML Modeling Lead",
+     "BTC/ETH ratio divergence this session — worth a pairs trade signal?"),
+    ("desk-equities", "Equity desk bot", "Risk Engineer",
+     "momentum strategy sizing — Kelly fraction vs HRP allocation, which do you recommend for SPY?"),
+    ("squad-backend", "Backend Lead", "Data Engineer",
+     "OHLCV ingestion latency spike — are we hitting Binance rate limits?"),
+    ("strategy-review", "Alpha Research Director", "VP Research",
+     "walk-forward results for cross-sectional momentum — statistically significant edge?"),
+]
+
+
+def generate_collab_thread(token: str, state: dict) -> int:
+    """
+    Post a realistic 2-message conversation thread between two agent personas.
+    Agent A posts a question/update, Agent B replies in the thread.
+    Runs once per main() wave with ~40% probability. Returns 1 if posted, 0 if skipped.
+    """
+    if random.random() > 0.40:
+        return 0
+    pair = random.choice(_COLLAB_PAIRS)
+    channel, requester, responder, topic = pair
+
+    # Build requester message
+    req_task = (
+        f"You are {requester} on the QuantEdge trading team posting in #{channel}. "
+        f"Post a message asking {responder} about: {topic}. "
+        "Keep it 1-2 sentences. Be specific. Use a question at the end. "
+        "Do NOT write headers or bullets. Do NOT say you are an AI."
+    )
+    req_system = _CHANNEL_SUMMON_SYSTEM.get(channel, _DEFAULT_SUMMON_SYSTEM)
+    req_msg, _ = call_best_agent_for_task("code", req_task, system_prompt=req_system)
+    if not req_msg or len(req_msg.strip()) < 20:
+        return 0
+
+    req_agent_name = requester
+    req_emoji = _CHANNEL_AGENT_IDENTITY.get(channel, ("Agent", ":robot_face:"))[1]
+
+    # Post requester message
+    r1 = post_to_slack(token, channel, req_msg.strip(),
+                       username=req_agent_name, icon_emoji=req_emoji)
+    if not r1.get("ok"):
+        return 0
+    thread_ts = r1.get("ts", "")
+    if not thread_ts:
+        return 0
+    record_post(state, req_msg.strip())
+    time.sleep(random.uniform(0.8, 2.0))
+
+    # Build responder reply in thread
+    context_blurb = _build_summon_context()
+    resp_task = (
+        f"You are {responder} on the QuantEdge trading team. {requester} just asked you in #{channel}: "
+        f'"{req_msg.strip()[:200]}" '
+        f"Context: {context_blurb} "
+        "Reply in 2-3 sentences. Be specific, cite file names or metrics. "
+        "Do NOT say you are an AI."
+    )
+    resp_persona_key = next(
+        (k for k, v in _EMPLOYEE_PERSONAS.items() if responder.lower().startswith(k)), "default"
+    )
+    resp_system = _EMPLOYEE_PERSONAS.get(resp_persona_key, _DEFAULT_SUMMON_SYSTEM)
+    resp_msg, _ = call_best_agent_for_task("code", resp_task, system_prompt=resp_system)
+    if not resp_msg or len(resp_msg.strip()) < 20:
+        return 1  # still count the first post
+
+    resp_agent_name = responder
+    r2 = post_to_slack(token, channel, resp_msg.strip(),
+                       username=resp_agent_name, icon_emoji=req_emoji,
+                       thread_ts=thread_ts)
+    if r2.get("ok"):
+        record_post(state, resp_msg.strip())
+        print(f"  ✓ collab thread: {requester} ↔ {responder} in #{channel}")
+    return 1
 
 
 _REACTION_POOL = [
@@ -7091,6 +7362,8 @@ def main() -> int:
     else:
         bot_user_id = auth.get("user_id", "")
         print(f"✅ Authed as {auth.get('user')} in {auth.get('team')} at {datetime.now(timezone.utc).isoformat()}")
+        # Resolve real Slack user IDs so @mentions actually notify people
+        _lookup_agent_user_ids(token)
 
     # Load run state for dedup + thread tracking + token budget
     state = load_state()
@@ -7260,6 +7533,15 @@ def main() -> int:
         team_posts.append(ct)
     # Friday presentation
     team_posts.extend(friday_presentation_post())
+
+    # Cross-agent collaboration thread — two employees discuss in-thread (40% probability)
+    try:
+        collab_count = generate_collab_thread(token, state)
+        if collab_count:
+            posts_made += collab_count
+            print(f"  ✓ collab thread generated")
+    except Exception as e:
+        print(f"  [collab] {e}")
 
     # Sample wave: always-on 24/7 desks ALWAYS included + enough optional to hit min 8 total
     always_on_wave = [a for a in AGENTS if any(ch in ALWAYS_ON_CHANNELS for ch in a.home_channels)]
@@ -7992,6 +8274,7 @@ def quick_main() -> int:
         bot_user_id = ""
     else:
         bot_user_id = auth.get("user_id", "")
+        _lookup_agent_user_ids(token)
     event_name = os.environ.get("GITHUB_EVENT_NAME", "schedule")
     print(f"⚡ Quick mode | event={event_name} | {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
 
