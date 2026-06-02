@@ -18,27 +18,22 @@ _redis_disabled = not settings.redis_url or settings.redis_url.strip() == ""
 
 
 def _redis_enabled() -> bool:
-    """Return True if a Redis URL is configured."""
     return not _redis_disabled
 
 
 class _NoopPriceCache:
-    """Drop-in replacement for PriceCache when Redis is not configured.
-
-    All methods are async no-ops that return None/empty so that callers
-    need no conditional logic.
-    """
+    """No-op price cache used when Redis is unavailable."""
 
     async def set_price(self, *args, **kwargs) -> None:
         pass
 
-    async def get_price(self, *args, **kwargs):
+    async def get_price(self, *args, **kwargs) -> None:
         return None
 
     async def set_ohlcv(self, *args, **kwargs) -> None:
         pass
 
-    async def get_ohlcv(self, *args, **kwargs):
+    async def get_ohlcv(self, *args, **kwargs) -> None:
         return None
 
     async def set_arb_opportunity(self, *args, **kwargs) -> None:
@@ -50,13 +45,10 @@ class _NoopPriceCache:
     async def cache_prediction(self, *args, **kwargs) -> None:
         pass
 
-    async def get(self, key: str):
+    async def get(self, *args, **kwargs) -> None:
         return None
 
-    async def set(self, key: str, value: str, ttl: int = 300) -> None:
-        pass
-
-    async def ping(self) -> None:
+    async def set(self, *args, **kwargs) -> None:
         pass
 
 
