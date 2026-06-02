@@ -3493,16 +3493,27 @@ def anna_hoffmann_backend() -> list[Post]:
 
 
 def sina_hassani_data() -> list[Post]:
-    """Data Eng — count market_data ingestion sources."""
+    """Data Eng — pipeline reliability analysis via LLM."""
+    state = load_state()
     p = REPO_ROOT / "backend" / "app"
     brokers = list((p / "brokers").glob("*.py")) if (p / "brokers").exists() else []
     brokers = [b for b in brokers if not b.stem.startswith("_") and b.stem != "base"]
+    broker_names = ", ".join(b.stem for b in brokers) if brokers else "none"
+    task = (
+        f"You are the data infrastructure engineer at QuantEdge. "
+        f"Current broker adapters: {len(brokers)} ({broker_names}). "
+        "Pipeline: broker WebSocket → OHLCV normalisation → Redis Upstash cache (TTL 60s) → strategy_runner polling. "
+        "Identify the single most critical data reliability risk right now — e.g. Redis key expiry race, "
+        "WebSocket reconnect gap, OHLCV bar misalignment across brokers, or rate-limit circuit-breaker gap. "
+        "Name the exact file in backend/app/brokers/ or backend/app/tasks/ that needs the fix. "
+        "State: symptom, root cause, one-line patch. No fluff."
+    )
+    ai, _ = employee_provider_prompt("sina", task, state=state)
+    if not ai:
+        return []
     return [Post(
         channel="squad-data",
-        text=(f"Data sources wired: *{len(brokers)}* brokers — "
-              + ", ".join(f"`{b.stem}`" for b in brokers) +
-              "\n\nOHLCV ingestion → Redis cache → strategy_runner. "
-              "Lag p95 ~4s on Alpaca, ~1.5s on Binance WS."),
+        text=ai,
         username="Data Engineer",
         icon_emoji=":file_cabinet:",
     )]
@@ -3645,8 +3656,8 @@ def aditi_sharma_qa() -> list[Post]:
 
 
 def cameron_park_security() -> list[Post]:
-    """Security — grep for secrets, count audit log usage."""
-    # Look for accidentally committed potential secrets
+    """Security — live secret scan + LLM-driven security analysis."""
+    state = load_state()
     raw = sh([
         "grep", "-rn", "--include=*.py", "--include=*.yml", "--include=*.yaml",
         "-iE", "(api_key|secret|password|token)\\s*[:=]\\s*['\"][a-zA-Z0-9]{16,}",
@@ -3654,16 +3665,23 @@ def cameron_park_security() -> list[Post]:
     ])
     suspicious = [l for l in raw.strip().split("\n")
                   if l.strip() and "test" not in l.lower() and "example" not in l.lower()]
-    # Filter out obvious false positives
     suspicious = [l for l in suspicious if "settings" not in l and "env" not in l]
-    text = f":closed_lock_with_key: Security sweep — scanned `backend/` and `.github/` for hardcoded credentials."
-    if suspicious[:3]:
-        text += "\n:warning: Potential matches (review needed):\n```\n" + "\n".join(suspicious[:3])[:500] + "\n```"
-    else:
-        text += "\n*0 hardcoded credentials detected.* Audit log retention: 7 years (Supabase logical backup)."
+    n = len(suspicious)
+    scan_summary = f"{n} potential hardcoded credential matches" if n else "0 hardcoded credentials detected"
+    task = (
+        f"You are the security engineer at QuantEdge. Live secret scan result: {scan_summary}. "
+        + (f"Matches (first 3): {'; '.join(suspicious[:3])[:300]}. " if suspicious else "")
+        + "Beyond secret leaks, identify the single most critical security gap in an algo-trading platform "
+        "running on GitHub Actions + Render + Supabase + Slack. "
+        "Consider: JWT expiry, CORS policy, Slack token scope creep, order-injection via API, "
+        "or unencrypted broker key storage. Name the exact file and the patch. Be specific."
+    )
+    ai, _ = employee_provider_prompt("cameron", task, state=state)
+    if not ai:
+        return []
     return [Post(
         channel="security-alerts",
-        text=text,
+        text=ai,
         username="Security Engineer",
         icon_emoji=":closed_lock_with_key:",
     )]
@@ -4782,116 +4800,105 @@ def marcus_williams_dl_engineer() -> list[Post]:
 
 
 def priya_nair_feature_eng() -> list[Post]:
-    """Feature Engineering Lead. Posts on indicators, wavelet analysis, MTF."""
+    """Feature Engineering Lead — LLM-driven feature pipeline analysis."""
+    state = load_state()
     features_dir = REPO_ROOT / "backend" / "app" / "ml" / "features"
-
-    feature_counts: dict[str, int] = {}
-    for fname in ["technical", "advanced_indicators", "wavelet_features", "multi_timeframe", "macro_signals"]:
-        fpath = features_dir / f"{fname}.py"
-        if fpath.exists():
-            # Count exported feature columns list
-            content = fpath.read_text()
-            count   = content.count("\"") // 4  # rough estimate of named features
-            feature_counts[fname] = count
-
-    lines = [
-        "*Priya Nair — Feature Engineering* :bar_chart:",
-        "",
-        "*Feature modules:*",
-        "• `technical.py` — 27 base indicators (RSI, MACD, BB, ATR, EMA, OBV, Stoch, ADX)",
-        "• `advanced_indicators.py` — 33 features: GK/Parkinson/Yang-Zhang vol, Hurst R/S, ApEn,",
-        "  Amihud illiquidity, Roll spread, Corwin-Schultz, Kyle lambda, DEMA/TEMA, STC, KST,",
-        "  Aroon, Williams %R, Ultimate Oscillator, calendar sin/cos, vol/trend/momentum regime",
-        "• `multi_timeframe.py` — 6 TFs (5min→1W): RSI, ADX, trend, BB pos, vol ratio,",
-        "  momentum, GK vol per TF + 6 cross-TF aggregates (trend score, divergence, agreement)",
-        "• `wavelet_features.py` — DWT energy bands (L1-L4), spectral entropy, dominant freq,",
-        "  autocorrelations at 5 lags, realized skew/kurt, price-volume cross-correlation",
-        "• `macro_signals.py` — FRED macro data (yield curve, VIX, credit spread, USD)",
-        "",
-        "*Total: ~108+ features* entering the model pipeline",
-        "",
-        "*Current focus:* wavelet features show promise on crypto — 1h BTC DWT detail/approx",
-        "  ratio correlates with trend regime switches (r=0.31 on 2yr hold-out). Investigating",
-        "  whether spectral entropy predicts volatility clustering 2-4 bars ahead.",
-    ]
-
+    present = [f for f in ["technical", "advanced_indicators", "wavelet_features",
+                            "multi_timeframe", "macro_signals", "alternative", "microstructure"]
+               if (features_dir / f"{f}.py").exists()]
+    modules_str = ", ".join(present) if present else "none found"
+    task = (
+        f"You are the feature engineering lead at QuantEdge. "
+        f"Active feature modules in backend/app/ml/features/: {modules_str} ({len(present)} total). "
+        "Feature inventory: RSI/MACD/BB/ATR/EMA, GK/Parkinson/Yang-Zhang vol estimators, "
+        "Hurst R/S, Amihud illiquidity, DWT wavelet bands, spectral entropy, multi-timeframe "
+        "(5min→1W) aggregates, FRED macro signals (yield curve, VIX, credit spread). "
+        "Identify the highest-IC feature NOT yet in the pipeline: state the exact formula, "
+        "which market regime it targets, the expected IC range from literature, "
+        "and which existing module file to add it to. Be specific — formula required."
+    )
+    ai, _ = employee_provider_prompt("priya", task, state=state)
+    if not ai:
+        return []
     return [Post(
         channel="alpha-research",
-        text="\n".join(lines),
+        text=ai,
         username="Feature Engineering Lead",
         icon_emoji=":abacus:",
     )]
 
 
 def alex_chen_quant_ml() -> list[Post]:
-    """Alex Chen — Quantitative ML Researcher. Posts cross-asset ablation analysis."""
+    """Alex Chen — Quantitative ML Researcher. LLM-driven ablation analysis."""
+    state = load_state()
     results_dir = REPO_ROOT / "experiments" / "results"
     result_files = sorted(results_dir.glob("*.json")) if results_dir.exists() else []
-
-    # Summarize by strategy
     by_strategy: dict[str, list[float]] = {}
     for f in result_files:
         try:
-            r      = json.loads(f.read_text())
-            name   = r.get("experiment", {}).get("strategy", "unknown")
+            r = json.loads(f.read_text())
+            name = r.get("experiment", {}).get("strategy", "unknown")
             sharpe = r.get("results", {}).get("sharpe", None)
             if sharpe is not None:
                 by_strategy.setdefault(name, []).append(float(sharpe))
         except Exception:
             pass
-
-    lines = [
-        "*Alex Chen — Quantitative ML Researcher* :chart_with_upwards_trend:",
-        "",
-        "*Cross-asset ablation summary:*",
-    ]
-
-    if by_strategy:
-        sorted_strats = sorted(by_strategy.items(), key=lambda kv: max(kv[1]), reverse=True)
-        for name, sharpes in sorted_strats[:8]:
-            mean_s = sum(sharpes) / len(sharpes)
-            max_s  = max(sharpes)
-            emoji  = "🟢" if max_s > 1.0 else ("🟡" if max_s > 0.5 else "🔴")
-            lines.append(
-                f"{emoji} `{name}` · n={len(sharpes)} runs · "
-                f"avg Sharpe={mean_s:+.3f} · best={max_s:+.3f}"
-            )
-    else:
-        lines += [
-            "  No results yet — experiments pending first run",
-            "  55 configs staged across PatchTST / iTransformer / Mamba / Ensemble ablations",
-        ]
-
-    lines += [
-        "",
-        "*Multi-timeframe findings:*",
-        "• 6-TF stack (5min→1W) adds +0.12 avg Sharpe vs single-TF on equity momentum",
-        "• Cross-TF trend_divergence feature is top-3 by SHAP on breakout strategies",
-        "• 1W TF auto-skipped for intraday bars — handled correctly by MTF pipeline",
-        "",
-        "*Next:* run iTransformer with d_model=256 on full 108-feature set vs baseline 27",
-    ]
-
+    models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
+    model_files = [f.stem for f in models_dir.glob("*.py") if not f.stem.startswith("_")] if models_dir.exists() else []
+    results_summary = (
+        ", ".join(f"{k}: best Sharpe {max(v):+.2f}" for k, v in
+                  sorted(by_strategy.items(), key=lambda kv: max(kv[1]), reverse=True)[:5])
+        if by_strategy else "no experiment results yet"
+    )
+    task = (
+        f"You are the quantitative ML researcher at QuantEdge. "
+        f"Experiment results ({len(by_strategy)} strategies tracked): {results_summary}. "
+        f"ML models in registry: {', '.join(model_files[:8]) if model_files else 'none'}. "
+        "Run a cross-asset ablation insight: pick the strategy with the highest variance in Sharpe "
+        "across runs (most unstable), diagnose the likely cause (overfitting, feature leak, "
+        "regime shift, or insufficient data), and propose one concrete ablation experiment "
+        "with exact hyperparameter change and expected Sharpe delta. "
+        "If no results exist, propose the highest-priority first experiment to run. Be precise."
+    )
+    ai, _ = employee_provider_prompt("alex", task, state=state)
+    if not ai:
+        return []
     return [Post(
         channel="alpha-research",
-        text="\n".join(lines),
+        text=ai,
         username="Quant ML Researcher",
         icon_emoji=":chart_with_upwards_trend:",
     )]
 
 
 def laavanye_bahl_ceo() -> list[Post]:
-    """CEO — weekly principles repost, only on Mondays."""
+    """CEO — Monday strategic update generated by LLM from real platform state."""
     if datetime.now(timezone.utc).weekday() != 0:
+        return []
+    state = load_state()
+    results = latest_backtest_results()
+    strats = list_strategies()
+    n_manual = len(strats.get("manual", []))
+    n_ml = len(strats.get("ml_enhanced", []))
+    best = max(results, key=lambda r: r.get("sharpe", 0), default={}) if results else {}
+    best_str = (f"best: {best.get('strategy','?')} Sharpe {best.get('sharpe',0):+.2f}" if best
+                else "no backtest results yet")
+    task = (
+        f"You are the CEO and founder of QuantEdge, an algo-trading startup targeting Sharpe >2.0. "
+        f"Monday state: {n_manual} manual strategies + {n_ml} ML-enhanced, all paper-trading. "
+        f"Backtest ledger: {len(results)} runs, {best_str}. "
+        "Write a Monday all-hands update (150 words max). Include: "
+        "(1) one concrete metric milestone or gap vs Sharpe>2.0 target, "
+        "(2) the single highest-priority engineering task for this week with owner role, "
+        "(3) one risk or compliance note. "
+        "Tone: direct, data-driven, no fluff. Slack format with *bold* headers."
+    )
+    ai, _ = employee_provider_prompt("laavanye", task, state=state)
+    if not ai:
         return []
     return [Post(
         channel="announcements",
-        text=("*Monday principles reminder*\n"
-              "1. Paper-first. No live capital without 2-week paper trail + CRO sign-off.\n"
-              "2. Walk-forward only. No in-sample backtests.\n"
-              "3. No mock data. Better crash than fake.\n"
-              "4. Show your work. Every strategy ships with config + backtest + paper trail.\n"
-              "5. Modular. Zero cross-strategy coupling."),
+        text=ai,
         username="CEO / Founder",
         icon_emoji=":sparkles:",
     )]
