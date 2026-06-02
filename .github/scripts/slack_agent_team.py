@@ -6935,7 +6935,7 @@ def broadcast_to_desk_agents(token: str, message: str, source_channel: str, stat
         "desk-polymarket": ["desk-crypto"],
         "desk-futures": ["desk-crypto", "desk-fx"],
         "desk-fx": ["desk-futures"],
-        "desk-equity": ["desk-futures"],
+        "desk-equities": ["desk-futures"],
         "risk-alerts": ["desk-crypto", "desk-equities", "desk-futures"],
     }
     targets = CROSS_NOTIFY_MAP.get(source_channel, [])
@@ -7046,13 +7046,16 @@ def main() -> int:
         "desk-crypto", "desk-polymarket", "desk-fx-rates",
         "desk-kalshi", "desk-stat-arb", "desk-futures",
         "desk-rates", "desk-equities", "desk-commodities",
-        "desk-equity", "desk-options",
+        "desk-options", "squad-data", "pod-ml-rl",
         "help", "pnl-daily", "squad-execution",
         # Additional channels
         "general", "random", "standup", "wins", "incidents",
         "strategy-review", "model-performance", "code-review",
         # Autopilot gap channels
         "papers", "leadership-summary", "infra-alerts", "ci-failures",
+        # Specialist — agents post here, humans reply here
+        "security-alerts", "finance-ops", "legal-compliance",
+        "announcements", "allquantedge",
     ]
     posts_made = 0
     errors = 0
@@ -7904,13 +7907,17 @@ def quick_main() -> int:
         "engineering", "alpha-research", "ml-experiments",
         "squad-qa", "squad-backend", "squad-frontend", "risk-alerts",
         "desk-crypto", "desk-polymarket", "desk-fx-rates",
-        "desk-rates", "desk-commodities", "desk-equity", "desk-options",
+        "desk-rates", "desk-commodities", "desk-equities", "desk-options",
         "help", "pnl-daily", "squad-execution",
         "desk-kalshi", "desk-stat-arb", "desk-futures",
         # Additional channels
-        "general", "random",
+        "general", "random", "standup", "wins", "incidents",
+        "strategy-review", "model-performance", "code-review",
         # Autopilot gap channels
         "papers", "leadership-summary", "infra-alerts", "ci-failures",
+        # Specialist channels — must scan so @agent mentions get answered
+        "security-alerts", "finance-ops", "legal-compliance",
+        "pod-ml-rl", "squad-data", "announcements",
         # Company-wide broadcast channel
         "allquantedge",
     ]
