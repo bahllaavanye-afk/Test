@@ -53,6 +53,15 @@ except ImportError:
         @staticmethod
         def score_current_observation(**kw): pass
 
+try:
+    import litellm as _litellm_lib
+    from litellm import completion as _litellm_completion
+    _litellm_lib.set_verbose = False
+    _litellm_lib.drop_params = True
+    _LITELLM_AVAILABLE = True
+except ImportError:
+    _LITELLM_AVAILABLE = False
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATE_PATH = REPO_ROOT / "experiments" / "results" / "slack_state.json"
 
@@ -655,6 +664,25 @@ def call_best_agent_for_task(
     safe_sys = _sanitize(sys_p)
     order = _TASK_ROUTING.get(task_type, _TASK_ROUTING["default"])
 
+    # LiteLLM fast-path: unified routing with built-in retry before manual cascade
+    if _LITELLM_AVAILABLE:
+        for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
+            key = os.environ.get(env_var, "").strip()
+            if key:
+                r = call_litellm("gemini/gemini-2.0-flash-exp", key, safe_sys, safe_prompt, cap)
+                if r and len(r.strip()) > 20:
+                    _LAST_PROVIDER = "litellm:gemini"
+                    return r.strip(), "litellm:gemini"
+        if "groq" not in _CF_BLOCKED_HOSTS:
+            for env_var in ["GROQ_API_KEY", "GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]:
+                key = os.environ.get(env_var, "").strip()
+                if key:
+                    r = call_litellm("groq/llama-3.3-70b-versatile", key, safe_sys, safe_prompt, cap)
+                    if r and len(r.strip()) > 20:
+                        _LAST_PROVIDER = "litellm:groq"
+                        return r.strip(), "litellm:groq"
+        # LiteLLM exhausted — fall through to manual cascade below
+
     for provider in order:
         if provider == "groq":
             # Try all numbered Groq accounts
@@ -896,6 +924,49 @@ _GROQ_SHARED_ACCOUNTS = [
     "GROQ_API_KEY_4", "GROQ_API_KEY_5", "GROQ_API_KEY_6",
     "GROQ_API_KEY_7", "GROQ_API_KEY_8", "GROQ_API_KEY_9", "GROQ_API_KEY_10",
 ]
+
+
+def moa_employee_prompt(emp_key: str, task: str, state: dict | None = None, n: int = 3) -> tuple[str | None, str]:
+    """Mixture-of-Agents: generate n candidates in parallel across Gemini keys, return best-scored.
+    Falls back to employee_provider_prompt if fewer than 2 keys available."""
+    import threading
+    keys = [k for k in [
+        os.environ.get("GEMINI_API_KEY"),
+        os.environ.get("GEMINI_API_KEY_2"),
+        os.environ.get("GEMINI_API_KEY_3"),
+        os.environ.get("GEMINI_API_KEY_4"),
+        os.environ.get("GEMINI_API_KEY_5"),
+    ] if k]
+    if len(keys) < 2:
+        return employee_provider_prompt(emp_key, task, state=state)
+    persona = _EMPLOYEE_PERSONAS.get(emp_key, _EMPLOYEE_PERSONAS.get("default", "You are a quant engineer."))
+    candidates: list[tuple[str, str]] = []
+    lock = threading.Lock()
+
+    def _gen(api_key: str, idx: int) -> None:
+        result = call_gemini_with_key(
+            system_prompt=persona, user_message=_sanitize(task),
+            api_key=api_key, max_tokens=600,
+        )
+        if result and len(result.strip()) > 50:
+            with lock:
+                candidates.append((result.strip(), f"gemini_key_{idx}"))
+
+    threads = [threading.Thread(target=_gen, args=(k, i)) for i, k in enumerate(keys[:n])]
+    for t in threads: t.start()
+    for t in threads: t.join(timeout=35)
+
+    if not candidates:
+        return None, "moa_no_candidates"
+    if len(candidates) == 1:
+        return candidates[0]
+
+    scored = [(score_agent_output(txt, emp_key)[0], txt, prov) for txt, prov in candidates]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best_score, best_text, best_prov = scored[0]
+    if best_score >= 7:
+        return best_text, f"moa:{best_prov}"
+    return None, "moa_quality_fail"
 
 
 def _groq_key_for(employee: str) -> str | None:
@@ -1196,6 +1267,31 @@ def call_openrouter(system_prompt: str, user_message: str, max_tokens: int = 500
             return or_result
     except Exception as e:
         print(f"  [openrouter] {e}")
+        return None
+
+
+def call_litellm(model: str, api_key: str, system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
+    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash-exp', 'groq/llama-3.3-70b-versatile', etc."""
+    if not _LITELLM_AVAILABLE:
+        return None
+    hostname = model.split("/")[0]
+    if hostname in _CF_BLOCKED_HOSTS:
+        return None
+    try:
+        resp = _litellm_completion(
+            model=model,
+            api_key=api_key,
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
+            max_tokens=max_tokens,
+            timeout=30,
+            num_retries=2,
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        err = str(e)
+        if "1010" in err or "cloudflare" in err.lower():
+            _CF_BLOCKED_HOSTS.add(hostname)
+        print(f"  [litellm] {model}: {type(e).__name__}: {err[:100]}")
         return None
 
 
@@ -3517,7 +3613,7 @@ def sina_hassani_data() -> list[Post]:
         "Name the exact file in backend/app/brokers/ or backend/app/tasks/ that needs the fix. "
         "State: symptom, root cause, one-line patch. No fluff."
     )
-    ai, _ = employee_provider_prompt("sina", task, state=state)
+    ai, _ = moa_employee_prompt("sina", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4819,7 +4915,7 @@ def priya_nair_feature_eng() -> list[Post]:
         "which market regime it targets, the expected IC range from literature, "
         "and which existing module file to add it to. Be specific — formula required."
     )
-    ai, _ = employee_provider_prompt("priya", task, state=state)
+    ai, _ = moa_employee_prompt("priya", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4862,7 +4958,7 @@ def alex_chen_quant_ml() -> list[Post]:
         "with exact hyperparameter change and expected Sharpe delta. "
         "If no results exist, propose the highest-priority first experiment to run. Be precise."
     )
-    ai, _ = employee_provider_prompt("alex", task, state=state)
+    ai, _ = moa_employee_prompt("alex", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4895,7 +4991,7 @@ def laavanye_bahl_ceo() -> list[Post]:
         "(3) one risk or compliance note. "
         "Tone: direct, data-driven, no fluff. Slack format with *bold* headers."
     )
-    ai, _ = employee_provider_prompt("laavanye", task, state=state)
+    ai, _ = moa_employee_prompt("laavanye", task, state=state)
     if not ai:
         return []
     return [Post(
