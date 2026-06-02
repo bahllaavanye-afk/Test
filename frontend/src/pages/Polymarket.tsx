@@ -16,13 +16,6 @@ interface Market {
   end_date: string
 }
 
-const DEMO_MARKETS: Market[] = [
-  { id: 'fed-rate-2025', title: 'Will Fed cut rates before Sep 2025?', yes_price: 0.68, no_price: 0.30, volume_24h: 245000, liquidity: 890000, category: 'economics', end_date: '2025-09-01' },
-  { id: 'btc-100k-2025', title: 'BTC above $100k by end of 2025?', yes_price: 0.45, no_price: 0.53, volume_24h: 1200000, liquidity: 3400000, category: 'crypto', end_date: '2025-12-31' },
-  { id: 'sp500-5500', title: 'S&P 500 above 5500 EOY 2025?', yes_price: 0.71, no_price: 0.27, volume_24h: 580000, liquidity: 1200000, category: 'economics', end_date: '2025-12-31' },
-  { id: 'eth-merge-staking', title: 'ETH staking yield above 5% in Q3 2025?', yes_price: 0.38, no_price: 0.60, volume_24h: 89000, liquidity: 340000, category: 'crypto', end_date: '2025-09-30' },
-  { id: 'trump-2026', title: 'Will US avoid recession in 2026?', yes_price: 0.44, no_price: 0.52, volume_24h: 320000, liquidity: 760000, category: 'economics', end_date: '2026-12-31' },
-]
 
 const CATEGORY_COLORS: Record<string, string> = {
   economics: '#f5a623',
@@ -59,7 +52,7 @@ export default function Polymarket() {
       }).then(r => r.data),
   })
 
-  const markets: Market[] = apiMarkets.length === 0 && !isLoading ? DEMO_MARKETS : apiMarkets
+  const markets: Market[] = apiMarkets
 
   const filteredMarkets = markets.filter(m =>
     filter === 'all' ? true : m.category === filter
@@ -93,7 +86,7 @@ export default function Polymarket() {
     { value: 'economics', label: 'Economics' },
   ]
 
-  const usingDemo = apiMarkets.length === 0 && !isLoading
+  const isEmpty = apiMarkets.length === 0 && !isLoading
 
   return (
     <div className="space-y-6">
@@ -133,11 +126,10 @@ export default function Polymarket() {
         </select>
       </div>
 
-      {/* Demo banner */}
-      {usingDemo && (
-        <div className="border border-[#1e1e1e] bg-[#111111] rounded-lg px-4 py-3 text-xs text-[#888888]">
-          Connect <span className="text-[#f5a623] font-mono">POLYMARKET_PRIVATE_KEY</span> in{' '}
-          <span className="font-mono">.env</span> to see live markets. Paper trading shows simulated markets.
+      {/* Empty state */}
+      {isEmpty && (
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-6 py-12 text-center">
+          <div>No active Polymarket positions. Configure POLYMARKET_PRIVATE_KEY to connect.</div>
         </div>
       )}
 
@@ -266,8 +258,8 @@ export default function Polymarket() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!isLoading && sortedMarkets.length === 0 && !usingDemo && (
+      {/* Empty state for filter with no results */}
+      {!isLoading && sortedMarkets.length === 0 && !isEmpty && (
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-6 py-12 text-center">
           <p className="text-[#888888] text-sm">No markets match the current filter.</p>
           <p className="text-xs text-[#555555] mt-2">Try switching to "All" to see all available markets.</p>

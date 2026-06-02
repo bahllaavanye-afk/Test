@@ -94,10 +94,7 @@ export default function MLInsights() {
           </div>
         ) : models.length === 0 ? (
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-6 text-center">
-            <p className="text-[#555] text-sm">No models registered yet.</p>
-            <p className="text-[#444] text-xs mt-2">
-              Train on Kaggle/Colab using <code className="text-[#f5a623]">notebooks/train_lstm.ipynb</code>, then upload artifacts to activate.
-            </p>
+            <div>No models trained yet. Use the Experiments tab to train your first model.</div>
           </div>
         ) : (
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
