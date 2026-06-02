@@ -603,14 +603,14 @@ def score_agent_output(output: str, task_type: str, provider_used: str = "") -> 
 # Cerebras Qwen3 32B is a solid fallback but NOT used as primary on critical tasks.
 
 _TASK_ROUTING: dict[str, list[str]] = {
-    "code":       ["groq", "gemini", "cerebras"],
-    "quant":      ["gemini", "groq", "sambanova"],
-    "ml":         ["gemini", "groq", "cerebras"],
-    "risk":       ["gemini", "groq", "sambanova"],
-    "review":     ["gemini", "groq", "openrouter"],
-    "polymarket": ["groq", "gemini", "sambanova"],
-    "frontend":   ["groq", "gemini", "cerebras"],
-    "default":    ["groq", "gemini", "cerebras", "sambanova", "openrouter"],
+    "code":       ["gemini", "cerebras", "groq", "openrouter"],
+    "quant":      ["gemini", "cerebras", "groq", "sambanova"],
+    "ml":         ["gemini", "cerebras", "groq"],
+    "risk":       ["gemini", "cerebras", "groq", "sambanova"],
+    "review":     ["gemini", "cerebras", "openrouter"],
+    "polymarket": ["gemini", "groq", "sambanova"],
+    "frontend":   ["gemini", "cerebras", "groq"],
+    "default":    ["gemini", "cerebras", "groq", "sambanova", "openrouter"],
 }
 
 # Maps employee short-name → task type for routing
@@ -3920,36 +3920,72 @@ def marcus_olufemi_risk() -> list[Post]:
 
 
 def wei_chang_finance() -> list[Post]:
-    """Finance Eng — burn + runway from .env.example services."""
+    """Finance Eng — burn + runway with LLM-generated cost analysis."""
+    state = load_state()
+    # Gather real context: check which services are configured in .env.example
+    env_example = REPO_ROOT / ".env.example"
+    services_ctx = ""
+    if env_example.exists():
+        try:
+            env_lines = [l.strip() for l in env_example.read_text().splitlines()
+                         if l.strip() and not l.strip().startswith("#")]
+            services_ctx = f"Configured services from .env.example: {', '.join(env_lines[:20])}"
+        except Exception:
+            services_ctx = ".env.example present but unreadable"
+    else:
+        services_ctx = "No .env.example found"
+
+    prompt = (
+        f"You are a Finance Engineer at QuantEdge, a quant trading startup. {services_ctx}. "
+        "The platform uses free tiers of Render, Vercel, Supabase, Upstash Redis, and Alpaca paper trading. "
+        "Give a specific burn rate analysis with: (1) current monthly cost in dollars with per-service breakdown, "
+        "(2) the first cost trigger (which service hits a paid tier first and at what usage threshold), "
+        "(3) one concrete cost-saving recommendation with expected dollar impact. "
+        "Slack format, *bold* key numbers, max 150 words."
+    )
+    ai_text, _provider = employee_provider_prompt("sara", prompt, state=state)
+    if not ai_text:
+        ai_text = (
+            "*Burn check* (static fallback)\n"
+            "• Render/Vercel/Supabase/Upstash/Alpaca: all free tiers — *~$1/mo* (domain only)\n"
+            "• First paid trigger: Supabase at 500MB DB or 2GB bandwidth\n"
+            "• Runway: indefinite until first AUM > $100k"
+        )
     return [Post(
         channel="finance-ops",
-        text=("*Burn check*\n"
-              "• Render web (free tier): $0\n"
-              "• Render worker (free tier): $0\n"
-              "• Vercel Hobby: $0\n"
-              "• Supabase free tier: $0\n"
-              "• Upstash Redis (free tier): $0\n"
-              "• Alpaca paper: $0 (commission-free)\n"
-              "• Domain: $12/yr → $1/mo\n"
-              "\n*Total burn: ~$1/mo* · Runway: indefinite at this level.\n"
-              "Reassess when first paying user or first AUM > $100k."),
+        text=ai_text,
         username="Finance Engineer",
         icon_emoji=":moneybag:",
     )]
 
 
 def helena_voss_compliance() -> list[Post]:
-    """Compliance Engineer — audit log + KYC."""
+    """Compliance Engineer — audit log + KYC with LLM-generated compliance analysis."""
+    state = load_state()
     has_audit_model = (REPO_ROOT / "backend" / "app" / "models" / "audit_log.py").exists()
     has_audit_api = (REPO_ROOT / "backend" / "app" / "api" / "v1" / "audit_log.py").exists()
+    audit_model_status = "present" if has_audit_model else "MISSING"
+    audit_api_status = "present" if has_audit_api else "MISSING"
+
+    prompt = (
+        f"You are a Compliance Engineer at QuantEdge, a quant trading startup. "
+        f"Current state: audit_log ORM at backend/app/models/audit_log.py is {audit_model_status}, "
+        f"audit_log API at backend/app/api/v1/audit_log.py is {audit_api_status}. "
+        "Give 3 specific compliance actions with: (1) the exact file to create or modify, "
+        "(2) what SEC/FINRA rule it satisfies, (3) priority (P0/P1/P2). "
+        "Focus on the highest-risk gap. Slack format, *bold* key points, max 150 words."
+    )
+    ai_text, _provider = employee_provider_prompt("sara", prompt, state=state)
+    if not ai_text:
+        ai_text = (
+            f"*Compliance state* (static fallback)\n"
+            f"• Audit log ORM: {'✅' if has_audit_model else '❌ MISSING — create backend/app/models/audit_log.py'}\n"
+            f"• Audit log API: {'✅' if has_audit_api else '❌ MISSING — create backend/app/api/v1/audit_log.py'}\n"
+            "• KYC: not started — gated on first live-capital allocation"
+        )
     return [Post(
         channel="legal-compliance",
-        text=(f"Compliance state\n"
-              f"• Audit log ORM: {'✅' if has_audit_model else '❌'}\n"
-              f"• Audit log API: {'✅' if has_audit_api else '❌'}\n"
-              f"• Retention: 7 years (Supabase logical backup)\n"
-              f"• KYC: not started — gated on first live-capital allocation\n"
-              f"\nNext: trading-license tracker doc + jurisdictional KYC matrix."),
+        text=ai_text,
         username="Compliance Engineer",
         icon_emoji=":scales:",
     )]
