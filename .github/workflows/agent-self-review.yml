@@ -20,15 +20,11 @@ concurrency:
 jobs:
   self-review:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: claude/advanced-trading-bot-d5Lmw
 
       - uses: actions/setup-python@v5
         with:
@@ -39,8 +35,8 @@ jobs:
 
       - name: Run automated agent quality review
         env:
-          ANTHROPIC_API_KEY: "disabled"
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python .github/scripts/review_agent_quality.py
 
       - name: Upload review report
