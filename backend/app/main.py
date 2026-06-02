@@ -91,6 +91,81 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: research_scientist.run(), "research_scientist")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: modeling_engineer.run(), "modeling_engineer")))
 
+    # ── Strategy runner + price feed ──────────────────────────────────────────
+    # Build the Alpaca broker (returns None gracefully when API keys are absent)
+    from app.brokers.alpaca import create_alpaca_broker
+    alpaca_broker = create_alpaca_broker(paper=settings.is_paper)
+    app.state.alpaca_broker = alpaca_broker
+
+    # Load active strategies from DB; fall back to a sensible default set if DB
+    # is not yet reachable at startup (e.g. first cold boot before migrations).
+    active_strategies: list[dict] = []
+    try:
+        from app.database import AsyncSessionLocal
+        from app.models.strategy import Strategy
+        from sqlalchemy import select as _select
+        async with AsyncSessionLocal() as _db:
+            _result = await _db.execute(
+                _select(Strategy).where(Strategy.is_enabled == True)  # noqa: E712
+            )
+            _rows = _result.scalars().all()
+            active_strategies = [
+                {
+                    "name": s.name,
+                    "symbols": s.symbols if isinstance(s.symbols, list) else [],
+                    "params": {},
+                    "tick_interval_seconds": int(getattr(s, "tick_interval_seconds", 3600)),
+                    "confidence_threshold": float(getattr(s, "confidence_threshold", 0.6)),
+                }
+                for s in _rows
+            ]
+        logger.info("Loaded active strategies from DB", count=len(active_strategies))
+    except Exception as _exc:
+        logger.warning("Could not load strategies from DB at startup", error=str(_exc))
+
+    # Default watchlist used when no strategies are enabled in DB yet
+    if not active_strategies:
+        logger.info("No active DB strategies — using default paper watchlist")
+        active_strategies = [
+            {"name": "momentum",       "symbols": ["SPY", "QQQ", "AAPL", "TSLA"], "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "mean_reversion", "symbols": ["SPY", "QQQ"],                  "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "rsi_macd",       "symbols": ["SPY", "AAPL"],                 "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+        ]
+
+    app.state.active_strategies = active_strategies
+
+    # Collect all unique symbols for the price feed
+    all_symbols: list[str] = list({
+        sym
+        for s in active_strategies
+        for sym in s.get("symbols", [])
+    })
+
+    # Price feed — polls broker quotes → Redis + WebSocket
+    from app.tasks.price_feed import run_price_feed
+    if alpaca_broker is not None and all_symbols:
+        bg_tasks.append(asyncio.create_task(
+            _supervised(lambda: run_price_feed(alpaca_broker, all_symbols), "price_feed")
+        ))
+        logger.info("Price feed started", symbols=len(all_symbols))
+    else:
+        logger.warning(
+            "Price feed not started",
+            reason="no broker" if alpaca_broker is None else "no symbols",
+        )
+
+    # Strategy runner — one asyncio loop per (strategy, symbol) pair
+    from app.tasks.strategy_runner import ContinuousStrategyRunner
+    strategy_runner = ContinuousStrategyRunner(
+        broker=alpaca_broker,
+        risk_manager=None,
+    )
+    app.state.strategy_runner = strategy_runner
+    bg_tasks.append(asyncio.create_task(
+        _supervised(lambda: strategy_runner.start(active_strategies), "strategy_runner")
+    ))
+    logger.info("Strategy runner registered", strategies=len(active_strategies))
+
     # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
     from app.tasks.regime_monitor import RegimeMonitor
     regime_monitor = RegimeMonitor()

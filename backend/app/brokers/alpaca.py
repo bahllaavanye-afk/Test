@@ -63,12 +63,43 @@ def _is_crypto(symbol: str) -> bool:
     return "/" in symbol or any(symbol.endswith(s) for s in ("BTC", "ETH", "SOL", "DOGE"))
 
 
+def create_alpaca_broker(paper: bool = True) -> "AlpacaBroker | None":
+    """Factory that returns an AlpacaBroker when keys are present, or None.
+
+    In paper/dev mode without API keys the process must not crash — the strategy
+    runner simply runs in signal-only mode (no orders submitted) when broker is None.
+    """
+    from app.config import settings
+
+    api_key = settings.alpaca_api_key
+    secret_key = settings.alpaca_secret_key
+
+    if not api_key or not secret_key:
+        logger.warning(
+            "ALPACA_API_KEY / ALPACA_SECRET_KEY not set — Alpaca broker disabled. "
+            "Strategies will run in signal-only mode (no orders submitted)."
+        )
+        return None
+
+    if not ALPACA_AVAILABLE:
+        logger.warning("alpaca-py not installed — Alpaca broker unavailable")
+        return None
+
+    try:
+        return AlpacaBroker(api_key=api_key, secret_key=secret_key, paper=paper)
+    except Exception as exc:
+        logger.warning("Failed to initialise AlpacaBroker", error=str(exc))
+        return None
+
+
 class AlpacaBroker(AbstractBroker):
     """Unified Alpaca broker for both equities and crypto spot."""
 
     def __init__(self, api_key: str, secret_key: str, paper: bool = True):
         if not ALPACA_AVAILABLE:
             raise ImportError("alpaca-py required: pip install alpaca-py")
+        if not api_key or not secret_key:
+            raise ValueError("Alpaca API key and secret key are required")
         self.paper = paper
         self.trading     = TradingClient(api_key, secret_key, paper=paper)
         self.stock_data  = StockHistoricalDataClient(api_key, secret_key)

@@ -13,6 +13,41 @@ from app.ws.manager import manager
 from app.utils.logging import logger
 
 
+# Default paper-trading strategy configuration used when no active strategies are
+# found in the database (e.g. fresh install, no DB yet).  Covers the major
+# regime buckets so the runner produces signals immediately after boot.
+DEFAULT_ACTIVE_STRATEGIES: list[dict] = [
+    {
+        "name": "momentum",
+        "symbols": ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"],
+        "params": {},
+        "tick_interval_seconds": 3600,
+        "confidence_threshold": 0.60,
+    },
+    {
+        "name": "mean_reversion",
+        "symbols": ["SPY", "QQQ", "AAPL"],
+        "params": {},
+        "tick_interval_seconds": 3600,
+        "confidence_threshold": 0.60,
+    },
+    {
+        "name": "rsi_macd",
+        "symbols": ["SPY", "TSLA", "GOOGL"],
+        "params": {},
+        "tick_interval_seconds": 1800,
+        "confidence_threshold": 0.55,
+    },
+    {
+        "name": "btc_eth_stat_arb",
+        "symbols": ["BTC/USD"],
+        "params": {},
+        "tick_interval_seconds": 3600,
+        "confidence_threshold": 0.60,
+    },
+]
+
+
 # ── Item 4: Regime-Conditional Strategy Activation Matrix ───────────────────
 # Regimes: 0=bear, 1=sideways, 2=bull (from HMM regime detector stored in Redis)
 # Source: research into 2 Sigma / Renaissance regime-conditional allocation
@@ -216,6 +251,104 @@ class ContinuousStrategyRunner:
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                # Catch all per-strategy exceptions so one broken strategy
+                # does NOT kill the runner loop for other strategies.
                 logger.error("Strategy loop error", strategy=strategy_name, symbol=symbol, error=str(e))
 
             await asyncio.sleep(tick_interval)
+
+
+async def start_strategy_runner() -> None:
+    """
+    Factory coroutine registered as a supervised background task in main.py.
+
+    1. Creates the Alpaca broker from settings when API keys are present.
+       If ALPACA_API_KEY is missing, broker is None and the runner still ticks
+       (strategies will skip the order submission path but keep generating signals
+       whenever OHLCV data is available from Redis).
+    2. Loads active strategies from the DB.  Falls back to DEFAULT_ACTIVE_STRATEGIES
+       when the DB is empty or unavailable (graceful cold-start).
+    3. Passes everything to ContinuousStrategyRunner.start() which spawns one
+       asyncio Task per (strategy, symbol) pair.
+    """
+    from app.config import settings
+
+    # ── Build broker (best-effort) ────────────────────────────────────────────
+    broker = None
+    risk_manager = None
+
+    if settings.alpaca_api_key and settings.alpaca_secret_key:
+        try:
+            from app.brokers.alpaca import AlpacaBroker
+            broker = AlpacaBroker(
+                api_key=settings.alpaca_api_key,
+                secret_key=settings.alpaca_secret_key,
+                paper=(settings.trading_mode != "live"),
+            )
+            logger.info(
+                "Strategy runner: Alpaca broker connected",
+                paper=(settings.trading_mode != "live"),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Strategy runner: failed to create Alpaca broker — signals only, no orders",
+                error=str(exc),
+            )
+    else:
+        logger.warning(
+            "Strategy runner: ALPACA_API_KEY not set — running in signal-only mode. "
+            "Paper orders will be skipped until credentials are configured."
+        )
+
+    # ── Build risk manager (best-effort) ─────────────────────────────────────
+    try:
+        from app.risk.manager import RiskManager
+        risk_manager = RiskManager()
+    except Exception as exc:
+        logger.warning("Strategy runner: RiskManager unavailable", error=str(exc))
+
+    # ── Load active strategies from DB ────────────────────────────────────────
+    active_strategies: list[dict] = []
+    try:
+        from app.database import AsyncSessionLocal
+        from app.models.strategy import Strategy
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Strategy).where(Strategy.is_enabled == True)  # noqa: E712
+            )
+            db_strategies = result.scalars().all()
+
+        if db_strategies:
+            active_strategies = [
+                {
+                    "name": s.name,
+                    "symbols": s.symbols if s.symbols else [],
+                    "params": {},
+                    "tick_interval_seconds": int(s.tick_interval_seconds),
+                    "confidence_threshold": float(s.confidence_threshold),
+                }
+                for s in db_strategies
+                if s.name in STRATEGY_REGISTRY
+            ]
+            logger.info(
+                "Strategy runner: loaded strategies from DB",
+                count=len(active_strategies),
+            )
+    except Exception as exc:
+        logger.warning(
+            "Strategy runner: could not load strategies from DB — using defaults",
+            error=str(exc),
+        )
+
+    if not active_strategies:
+        logger.info(
+            "Strategy runner: no DB strategies found — using default paper-trading set",
+            count=len(DEFAULT_ACTIVE_STRATEGIES),
+        )
+        active_strategies = DEFAULT_ACTIVE_STRATEGIES
+
+    # ── Run ───────────────────────────────────────────────────────────────────
+    runner = ContinuousStrategyRunner(broker=broker, risk_manager=risk_manager)
+    await runner.start(active_strategies)
