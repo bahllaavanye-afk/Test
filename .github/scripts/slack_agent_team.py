@@ -603,14 +603,14 @@ def score_agent_output(output: str, task_type: str, provider_used: str = "") -> 
 # Cerebras Qwen3 32B is a solid fallback but NOT used as primary on critical tasks.
 
 _TASK_ROUTING: dict[str, list[str]] = {
-    "code":       ["groq", "gemini", "cerebras"],
-    "quant":      ["gemini", "groq", "sambanova"],
-    "ml":         ["gemini", "groq", "cerebras"],
-    "risk":       ["gemini", "groq", "sambanova"],
-    "review":     ["gemini", "groq", "openrouter"],
-    "polymarket": ["groq", "gemini", "sambanova"],
-    "frontend":   ["groq", "gemini", "cerebras"],
-    "default":    ["groq", "gemini", "cerebras", "sambanova", "openrouter"],
+    "code":       ["gemini", "cerebras", "groq", "openrouter"],
+    "quant":      ["gemini", "cerebras", "groq", "sambanova"],
+    "ml":         ["gemini", "cerebras", "groq"],
+    "risk":       ["gemini", "cerebras", "groq", "sambanova"],
+    "review":     ["gemini", "cerebras", "openrouter"],
+    "polymarket": ["gemini", "groq", "sambanova"],
+    "frontend":   ["gemini", "cerebras", "groq"],
+    "default":    ["gemini", "cerebras", "groq", "sambanova", "openrouter"],
 }
 
 # Maps employee short-name → task type for routing
@@ -3971,7 +3971,7 @@ def cro_risk() -> list[Post]:
     )]
 
 
-def finance_eng_finance() -> list[Post]:
+def wei_chang_finance() -> list[Post]:
     """Finance Eng — burn + runway with LLM-generated cost analysis."""
     state = load_state()
     # Gather real context: check which services are configured in .env.example
@@ -3995,7 +3995,7 @@ def finance_eng_finance() -> list[Post]:
         "(3) one concrete cost-saving recommendation with expected dollar impact. "
         "Slack format, *bold* key numbers, max 150 words."
     )
-    ai_text, _provider = employee_provider_prompt("ml_researcher", prompt, state=state)
+    ai_text, _provider = employee_provider_prompt("sara", prompt, state=state)
     if not ai_text:
         ai_text = (
             "*Burn check* (static fallback)\n"
@@ -4011,7 +4011,7 @@ def finance_eng_finance() -> list[Post]:
     )]
 
 
-def compliance_eng_compliance() -> list[Post]:
+def helena_voss_compliance() -> list[Post]:
     """Compliance Engineer — audit log + KYC with LLM-generated compliance analysis."""
     state = load_state()
     has_audit_model = (REPO_ROOT / "backend" / "app" / "models" / "audit_log.py").exists()
@@ -4027,7 +4027,7 @@ def compliance_eng_compliance() -> list[Post]:
         "(2) what SEC/FINRA rule it satisfies, (3) priority (P0/P1/P2). "
         "Focus on the highest-risk gap. Slack format, *bold* key points, max 150 words."
     )
-    ai_text, _provider = employee_provider_prompt("ml_researcher", prompt, state=state)
+    ai_text, _provider = employee_provider_prompt("sara", prompt, state=state)
     if not ai_text:
         ai_text = (
             f"*Compliance state* (static fallback)\n"
