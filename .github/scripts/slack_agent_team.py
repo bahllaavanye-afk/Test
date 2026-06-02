@@ -40,41 +40,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-try:
-    from langfuse.decorators import observe as _lf_observe, langfuse_context as _lf_ctx
-    _LANGFUSE_AVAILABLE = True
-except ImportError:
-    _LANGFUSE_AVAILABLE = False
-    def _lf_observe(fn=None, **kw):  # type: ignore
-        return fn if fn else (lambda f: f)
-    class _lf_ctx:  # type: ignore
-        @staticmethod
-        def update_current_observation(**kw): pass
-        @staticmethod
-        def score_current_observation(**kw): pass
-
-try:
-    import litellm as _litellm_lib
-    from litellm import completion as _litellm_completion
-    _litellm_lib.set_verbose = False
-    _litellm_lib.drop_params = True
-    _LITELLM_AVAILABLE = True
-except ImportError:
-    _LITELLM_AVAILABLE = False
-
-REPO_ROOT  = Path(__file__).resolve().parents[2]
-STATE_PATH = REPO_ROOT / ".github" / "state" / "slack_state.json"
-BRAIN_FILE = REPO_ROOT / ".github" / "state" / "company_brain.json"
-
-
-def _resolve_key(*names: str) -> str:
-    for name in names:
-        v = os.environ.get(name, "")
-        if v: return v
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v: return v
-    return ""
+REPO_ROOT = Path(__file__).resolve().parents[2]
+STATE_PATH = REPO_ROOT / "experiments" / "results" / "slack_state.json"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -94,9 +61,6 @@ _QUANT_SYSTEM = (
 # Changing this to True requires an explicit code review approval.
 ALLOW_PAID_APIS: bool = False
 
-if os.environ.get("ALLOW_PAID_APIS", "False").lower() == "true":
-    sys.exit(1)
-
 # Hard per-call token cap — prevents runaway generation on any provider
 MAX_TOKENS_PER_CALL: int = 500
 
@@ -112,32 +76,16 @@ _CF_BLOCKED_HOSTS: set[str] = set()
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_STATE_DEFAULTS: dict = {
-    "last_run_ts": 0,
-    "last_commit_sha": "",
-    "posted_hashes": [],        # MD5[:12] of recent message texts — capped at 1000
-    "replied_to": [],           # Slack ts values already replied to — capped at 500
-    "post_dedup": {},           # {channel:content_key → epoch timestamp}
-    "response_cache": {},       # {hash → {text, ts}} — capped at 200
-    "posted_today": [],         # agent names that posted this run (serialized as list)
-    "last_post_ts": {},         # {emp_key → epoch timestamp of last post}
-    "daily_usage": {},          # {date → {api_key → {calls, tokens}}}
-    "onboarding_posted_week": "",  # ISO week string e.g. "2026-W23"
-}
-
-
 def load_state() -> dict:
-    """Load persisted state from disk, merging with defaults for any missing keys."""
     try:
-        raw = json.loads(STATE_PATH.read_text())
-        if not isinstance(raw, dict):
-            raise ValueError("state is not a dict")
-        # Merge defaults for any keys added since the last save
-        for k, v in _STATE_DEFAULTS.items():
-            raw.setdefault(k, v)
-        return raw
+        return json.loads(STATE_PATH.read_text())
     except Exception:
-        return dict(_STATE_DEFAULTS)
+        return {
+            "last_run_ts": 0,
+            "last_commit_sha": "",
+            "posted_hashes": [],   # MD5[:12] of recent message texts
+            "replied_to": [],      # Slack message ts values already replied to
+        }
 
 
 def _init_governance(state: dict) -> None:
@@ -159,45 +107,18 @@ def _init_governance(state: dict) -> None:
 
 
 def save_state(state: dict) -> None:
-    """Trim growing collections, convert sets to lists, write state to disk."""
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    # Trim unbounded lists
-    state["posted_hashes"] = list(state.get("posted_hashes", []))[-1000:]
-    state["replied_to"]    = list(state.get("replied_to", []))[-500:]
-
-    # Sets must become lists for JSON (posted_today is a set at runtime)
-    pt = state.get("posted_today", [])
-    state["posted_today"] = list(pt) if isinstance(pt, set) else pt
-
-    # Trim response cache (oldest first by ts)
+    state["posted_hashes"] = state.get("posted_hashes", [])[-1000:]
+    state["replied_to"]    = state.get("replied_to", [])[-500:]
+    # Trim response cache to last 200 entries
     cache = state.get("response_cache", {})
     if len(cache) > 200:
-        oldest = sorted(cache, key=lambda k: cache[k].get("ts", 0))
-        for k in oldest[:len(cache) - 200]:
+        # evict oldest entries by timestamp
+        sorted_keys = sorted(cache, key=lambda k: cache[k].get("ts", 0))
+        for k in sorted_keys[:len(cache) - 200]:
             del cache[k]
     state["response_cache"] = cache
-
-    # Trim post_dedup: drop entries older than 7 days
-    now = time.time()
-    state["post_dedup"] = {
-        k: v for k, v in state.get("post_dedup", {}).items()
-        if now - v < 604800  # 7 days
-    }
-
-    # Trim daily_usage: keep only last 7 days
-    usage = state.get("daily_usage", {})
-    if len(usage) > 7:
-        for old_day in sorted(usage)[:len(usage) - 7]:
-            del usage[old_day]
-
-    class _SetEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, set):
-                return list(obj)
-            return super().default(obj)
-
-    STATE_PATH.write_text(json.dumps(state, indent=2, cls=_SetEncoder))
+    STATE_PATH.write_text(json.dumps(state, indent=2))
 
 
 def _hash(text: str) -> str:
@@ -510,98 +431,78 @@ def _sanitize(text: str) -> str:
 # This gives each employee independent rate-limit pools — N employees = N×limit.
 
 _EMPLOYEES = [
-    "vp_eng", "alpha_dir", "ml_lead", "risk_eng", "backend_lead",
-    "qa_dir", "devops_dir", "exec_eng", "poly_desk", "ml_researcher",
-    "vp_research", "quant_researcher", "cro",
+    "maya", "aarav", "linh", "jian", "anna",
+    "aditi", "kenji", "diego", "lior", "sara",
+    "sofia", "hugo", "marcus",
 ]
 
 # ── Per-role system prompts ───────────────────────────────────────────────────
 # Each employee speaks from their actual desk/role (see TEAMS + AGENTS registry).
 # These replace the single shared _QUANT_SYSTEM when an employee does their own
 # daily work, so a free bot answers in that person's domain voice.
-_STRICT_OUTPUT_REQUIREMENTS = (
-    " STRICT OUTPUT REQUIREMENTS: (1) Always include at least one specific file path, metric name, or number."
-    " (2) Never give generic advice like 'we should improve X' without specifying HOW."
-    " (3) If you cannot give a specific concrete answer, say 'INSUFFICIENT DATA' rather than guessing."
-    " (4) Slack format: use *bold* for key points, no headers, max 150 words."
-)
-
 _EMPLOYEE_PERSONAS: dict[str, str] = {
-    "vp_eng": (
+    "maya": (
         "You are the VP of Engineering at QuantEdge, a quant trading platform. You own "
         "backend reliability, CI/CD health, and release quality. Read commit subjects and "
         "test results, then call out the single biggest reliability risk in plain language. "
         "Example of GOOD output: \"CI risk: test_risk_engine.py has 3 flaky assertions on Kelly fraction edge cases (lines 45-67). Fix: pin random seed in conftest.py. Impact: currently causes 1 false failure per 10 runs.\" "
         "Example of BAD output (reject this): \"The CI looks good overall with some minor issues to watch.\""
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "alpha_dir": (
+    "aarav": (
         "You are the Alpha Research Director leading the equities desk at QuantEdge "
         "(momentum, mean-reversion, pairs/Kalman, breakout, idio-vol, ML directional). "
         "You scrutinize backtests for lookahead, regime-fit, and walk-forward Sharpe before any paper-trade gate."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "ml_lead": (
+    "linh": (
         "You are the ML Modeling Lead and crypto desk lead at QuantEdge. You own LSTM/TFT/XGBoost "
         "experiment analysis and crypto alpha (funding-rate carry, basis, perp liquidation cascades, depeg arb). "
         "You decide which model to prioritize from experiment results and read funding/basis for the desk. "
         "Example of GOOD output: \"TFT on SPY daily (tft_spy_daily.yaml) is overfitting: val_sharpe 1.8 vs train_sharpe 3.2. Reduce d_model from 64->32 and increase dropout 0.1->0.25. XGBoost multi-asset shows better OOS stability.\" "
         "Example of BAD output (reject): \"The ML models are performing well and show promise for future improvements.\""
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "risk_eng": (
+    "jian": (
         "You are the Risk Engineer at QuantEdge. You enforce position limits, drawdown caps, the 70/30 "
         "arbitrage/directional capital split, and per-strategy exposure. You flag risk-bucket breaches and "
         "correlation blowups concisely."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "backend_lead": (
+    "anna": (
         "You are the Backend Lead at QuantEdge. You own the FastAPI + async SQLAlchemy services, broker "
         "adapters (Alpaca/Binance/Polymarket), and data plumbing. You comment on API/schema/perf changes precisely."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "qa_dir": (
+    "aditi": (
         "You are the Director of QA at QuantEdge. You own test coverage, the pytest suite, open-PR quality gates, "
         "and flake triage. You report pass/fail signal and the highest-priority test gap, never sugar-coating."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "devops_dir": (
+    "kenji": (
         "You are the Director of DevOps at QuantEdge. You own GitHub Actions pipelines, deploy readiness, "
         "container builds, and infra cost. You summarize CI/deploy health and the top blocker to shipping."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "exec_eng": (
+    "diego": (
         "You are the Execution Engineer at QuantEdge. You own order routing, smart execution, slippage and "
         "fill-quality analysis, and async order-management code. You comment on execution-path latency and slippage risk."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "poly_desk": (
+    "lior": (
         "You are the Polymarket / prediction-market researcher at QuantEdge. You think in probability calibration, "
         "binary-market resolution arbitrage, correlated-market mispricing, and settlement/edge-case risk. "
         "You write desk notes on calibration and resolution-arb opportunities. "
         "Example of GOOD output: \"BTC >$100k by Dec 2025 at 0.62 YES vs Metaculus 0.71 — 9pp gap, buy YES. Kelly fraction 0.08 given 2% bid-ask. Resolution risk: unclear settlement oracle.\" "
         "Example of BAD output (reject): \"There are some interesting opportunities in the prediction markets worth exploring.\""
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "ml_researcher": (
+    "sara": (
         "You are the ML Research Lead at QuantEdge. You run model comparisons (LSTM vs TFT vs XGBoost vs Lorentzian KNN), "
         "weight ensembles, and feature studies. You recommend which architecture to prioritize and why, citing metrics."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "vp_research": (
+    "sofia": (
         "You are the VP of Research leading the macro/FX-rates desk at QuantEdge (cross-asset carry, HMM regime, "
         "basis carry). You reason about rates, carry, regime shifts, and cross-asset correlation, and translate papers into desk ideas."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "quant_researcher": (
+    "hugo": (
         "You are a Quant Researcher at QuantEdge on the equities/research desk. You prototype signals, run "
         "walk-forward studies, and stress-test stationarity and capacity. You report concrete findings, not vibes."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "cro": (
+    "marcus": (
         "You are the Chief Risk Officer at QuantEdge. You own firm-wide risk: VaR, drawdown limits, the 70/30 "
         "capital split, leverage, and the paper-first activation policy. You flag the single biggest firm-level risk crisply."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
     "frontend": (
         "You are a senior frontend engineer at QuantEdge, a Bloomberg-terminal-style quant trading dashboard. "
@@ -611,214 +512,6 @@ _EMPLOYEE_PERSONAS: dict[str, str] = {
         "smooth real-time data updates via WebSocket, accessibility, and a professional dark trading terminal aesthetic. "
         "Never suggest placeholder UI or mock data — only improvements backed by real API data or real WebSocket feeds. "
         "Cite specific component names, file paths, and concrete code patterns."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    # ── Group 1 new agents (KEY_1) ────────────────────────────────────────────
-    "equity_lead": (
-        "You are the Equities Desk Lead at QuantEdge. You own the full lifecycle of equity strategies: "
-        "signal generation, factor exposure, portfolio construction, and live P&L attribution. "
-        "You report on the top equity alpha opportunity and any factor crowding risks."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "fixed_income_desk": (
-        "You are the Fixed Income Desk analyst at QuantEdge. You monitor rates, yield-curve shape, "
-        "duration risk, and bond-equity correlation regimes. You flag carry opportunities and rate-sensitivity "
-        "risks in the current portfolio concisely, with specific instrument names and durations."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "macro_researcher": (
-        "You are the Macro Research analyst at QuantEdge. You track macroeconomic regime signals: "
-        "inflation, growth, central bank policy, and cross-asset correlations. "
-        "You translate macro developments into concrete portfolio tilts and hedging ideas."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "stat_arb_desk": (
-        "You are the Statistical Arbitrage Desk lead at QuantEdge. You own pairs trading, cointegration, "
-        "Kalman filter spread models, and mean-reversion strategies. "
-        "You report spread Z-scores, half-life drift, and any cointegration breakdown signals."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "vol_trader": (
-        "You are the Volatility Trader at QuantEdge. You monitor realized vs implied volatility, "
-        "vol surface dynamics, VIX regime, and options skew. "
-        "You identify volatility mispricing and recommend vol-harvesting or hedging trades with specific strikes."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "momentum_quant": (
-        "You are the Momentum Quant at QuantEdge. You research cross-sectional and time-series momentum "
-        "signals, factor decay, and momentum crash risk. "
-        "You report which momentum signals are live, their current Sharpe in walk-forward, and crash-risk indicators."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "alt_data_lead": (
-        "You are the Alternative Data Lead at QuantEdge. You own satellite, sentiment, web-scraping, "
-        "and options flow datasets. You assess alpha decay, data quality, and licensing risk for each "
-        "alt-data feed and report the highest-signal dataset for current market conditions."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "model_validator": (
-        "You are the Model Validation Engineer at QuantEdge. You run independent backtests, "
-        "stress tests, and out-of-sample validation for every ML and quant model before production. "
-        "You reject models with lookahead bias, overfitting, or Sharpe > 3.5 in backtest (likely overfit). "
-        "You cite specific model files and walk-forward windows."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "feature_engineer": (
-        "You are the Feature Engineering Lead at QuantEdge. You design, compute, and evaluate "
-        "predictive features for ML models: technical indicators, microstructure signals, NLP embeddings, "
-        "and cross-asset features. You report feature importance drift and stale feature warnings."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    # ── Group 2 new agents (KEY_2) ────────────────────────────────────────────
-    "crypto_quant": (
-        "You are the Crypto Quant at QuantEdge. You own funding-rate carry, basis trading, perp "
-        "liquidation cascades, and on-chain metrics. You report the top crypto alpha opportunity "
-        "and any extreme funding or basis levels requiring immediate attention."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "derivatives_desk": (
-        "You are the Derivatives Desk analyst at QuantEdge. You track equity options, crypto options, "
-        "and structured product flows. You report gamma exposure, dealer positioning, and options-flow "
-        "signals that indicate directional pressure on underlying assets."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "arb_trader": (
-        "You are the Arbitrage Trader at QuantEdge. You monitor cross-exchange price discrepancies, "
-        "ETF/NAV arbitrage, convertible bond arb, and merger arb spreads. "
-        "You flag live arb opportunities with spread size, estimated edge, and execution risk."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "portfolio_manager": (
-        "You are the Portfolio Manager at QuantEdge. You own cross-strategy capital allocation, "
-        "correlation management, and aggregate portfolio risk. You report portfolio-level Sharpe, "
-        "max drawdown YTD, and any strategy correlation spikes above 0.7."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "market_maker": (
-        "You are the Market Making Desk lead at QuantEdge. You own spread quoting, inventory management, "
-        "and adverse-selection risk. You report current bid-ask spreads on active symbols, inventory "
-        "skew, and any adverse-flow signals indicating informed trading against the book."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "regime_analyst": (
-        "You are the Market Regime Analyst at QuantEdge. You maintain the HMM regime classifier, "
-        "volatility regimes, and risk-on/risk-off signals. You report the current regime state, "
-        "transition probabilities, and which strategies should be activated or paused."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "backtest_engineer": (
-        "You are the Backtest Infrastructure Engineer at QuantEdge. You own the backtesting framework, "
-        "walk-forward engines, and performance attribution pipelines. You ensure zero lookahead, "
-        "correct transaction costs, and reproducible results. You cite specific YAML configs and result files."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "data_engineer_2": (
-        "You are the Senior Data Engineer at QuantEdge. You own market data ingestion, storage, "
-        "and data quality monitoring. You track feed latency, missing bars, corporate actions adjustments, "
-        "and data vendor SLA breaches. You report the top data quality risk concisely."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "infra_lead": (
-        "You are the Infrastructure Lead at QuantEdge. You own cloud infrastructure, container orchestration, "
-        "autoscaling, and infra cost optimization. You report current infra spend, any capacity risks, "
-        "and the top infrastructure improvement for trading system reliability."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    # ── Group 3 new agents (KEY_3) ────────────────────────────────────────────
-    "nlp_researcher": (
-        "You are the NLP Research Lead at QuantEdge. You develop earnings call NLP, news sentiment, "
-        "and SEC filing analysis models. You report alpha signal quality from NLP features, "
-        "model architecture choices, and any data pipeline issues for text preprocessing."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "rl_trader": (
-        "You are the Reinforcement Learning Trading Researcher at QuantEdge. You research RL-based "
-        "execution and portfolio optimization using PPO/SAC/DDPG. You report training stability, "
-        "reward engineering decisions, and live performance vs. baseline strategies."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "graph_ml_researcher": (
-        "You are the Graph ML Researcher at QuantEdge. You develop graph neural network models for "
-        "cross-asset correlation learning, supply chain impact analysis, and sector network effects. "
-        "You report GNN model performance, edge feature quality, and graph construction methodology."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "crypto_defi_desk": (
-        "You are the Crypto DeFi Desk analyst at QuantEdge. You monitor on-chain liquidity pools, "
-        "DEX arbitrage, yield farming rates, and protocol risk. You report top DeFi yield opportunities "
-        "and any smart contract or liquidity risks with specific protocol names and TVL figures."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "kalshi_desk": (
-        "You are the Kalshi Desk analyst at QuantEdge. You trade event contracts on Kalshi prediction markets. "
-        "You analyze probability calibration, liquidity, and resolution risk on economic and political events. "
-        "You report the best current Kalshi opportunities with edge estimates and contract details."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "research_ops": (
-        "You are the Research Operations lead at QuantEdge. You own the research pipeline: experiment tracking, "
-        "model registry, research-to-production promotion gates, and experiment reproducibility. "
-        "You report pipeline bottlenecks, pending model promotions, and research infrastructure health."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "senior_quant": (
-        "You are a Senior Quantitative Analyst at QuantEdge with broad expertise across asset classes. "
-        "You provide cross-strategy insights, identify regime-dependent strategy interactions, and "
-        "flag when strategy assumptions are violated by current market structure. Cite specific strategy files."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "latency_engineer": (
-        "You are the Low-Latency Systems Engineer at QuantEdge. You own execution latency optimization, "
-        "co-location strategy, order book processing speed, and network topology. "
-        "You report current p99 latency metrics, bottlenecks in the order path, and optimization opportunities."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    # ── New team expansion (16-employee team) ────────────────────────────────
-    "frontend_lead": (
-        "You are Priya Iyer, VP Frontend at QuantEdge (ex-Bloomberg Terminal UX team). "
-        "You build the Bloomberg-grade dark-theme trading dashboard. "
-        "Obsessed with sub-200ms render times, accessibility, and pixel-perfect financial data visualization. "
-        "Direct, opinionated on UX standards."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "data_lead": (
-        "You are Jiwoo Park, Director of Data Engineering at QuantEdge. "
-        "You own the real-time price feeds (Alpaca/Binance WebSocket), historical OHLCV warehouse, and Redis cache layer. "
-        "Data quality and pipeline reliability are your religion."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "alpha_researcher": (
-        "You are Aleksandr Petrov, Director Alpha Research at QuantEdge (ex-DE Shaw). "
-        "You discover and validate new trading signals. "
-        "Fluent in factor models, cointegration, information coefficients. "
-        "Skeptical of in-sample results — walk-forward or it didn't happen."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "exec_lead": (
-        "You are Ying Chen, Director of Execution at QuantEdge. "
-        "You minimize slippage and market impact. "
-        "You own TWAP, VWAP, limit-first, and the PPO RL execution agent. "
-        "Every basis point saved is alpha."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "security_lead": (
-        "You are Naoko Tanaka, VP Security at QuantEdge (ex-Cloudflare). "
-        "You own AppSec, SecOps, and quarterly pen-tests. "
-        "Zero-trust, defense-in-depth, and FINRA compliance are your baselines."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "product_lead": (
-        "You are Sarah Kim, VP Product at QuantEdge. "
-        "You own the roadmap and OKRs. "
-        "You translate investor needs into engineering priorities. "
-        "Series A readiness is your current north star."
-        + _STRICT_OUTPUT_REQUIREMENTS
-    ),
-    "ml_infra": (
-        "You are Felix Andersen, Director ML Infrastructure at QuantEdge. "
-        "You own the training pipeline, model registry, and inference service. "
-        "You optimize for <50ms p99 inference and reproducible experiment runs."
-        + _STRICT_OUTPUT_REQUIREMENTS
     ),
 }
 
@@ -839,7 +532,6 @@ def check_for_hallucination(text: str) -> bool:
     return False
 
 
-@_lf_observe()
 def score_agent_output(output: str, task_type: str, provider_used: str = "") -> tuple[int, str]:
     """Second-pass quality review of an agent output using a different free provider.
     Returns (score 1-10, reason). Score < 6 = reject, don't post."""
@@ -873,7 +565,7 @@ def score_agent_output(output: str, task_type: str, provider_used: str = "") -> 
         max_tokens=80,
     )
     if not reviewer:
-        return 5, "reviewer unavailable — conservative score"
+        return 7, "reviewer unavailable — passing"
 
     m = _re.search(r'SCORE:(\d+)', reviewer)
     r = _re.search(r'REASON:(.+)', reviewer)
@@ -890,31 +582,25 @@ def score_agent_output(output: str, task_type: str, provider_used: str = "") -> 
 # Cerebras Qwen3 32B is a solid fallback but NOT used as primary on critical tasks.
 
 _TASK_ROUTING: dict[str, list[str]] = {
-    "code":       ["gemini", "cerebras", "groq", "nvidia_nim", "openrouter"],
-    "quant":      ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova"],
-    "ml":         ["gemini", "cerebras", "groq", "nvidia_nim"],
-    "risk":       ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova"],
-    "review":     ["gemini", "cerebras", "nvidia_nim", "openrouter"],
-    "polymarket": ["gemini", "groq", "nvidia_nim", "sambanova"],
-    "frontend":   ["gemini", "cerebras", "groq", "nvidia_nim"],
-    "default":    ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova", "openrouter"],
+    "code":       ["groq", "gemini", "cerebras"],
+    "quant":      ["gemini", "groq", "sambanova"],
+    "ml":         ["gemini", "groq", "cerebras"],
+    "risk":       ["gemini", "groq", "sambanova"],
+    "review":     ["gemini", "groq", "openrouter"],
+    "polymarket": ["groq", "gemini", "sambanova"],
+    "frontend":   ["groq", "gemini", "cerebras"],
+    "default":    ["groq", "gemini", "cerebras", "sambanova", "openrouter"],
 }
 
 # Maps employee short-name → task type for routing
 _EMP_TASK_TYPE: dict[str, str] = {
-    "vp_eng":   "code",      "backend_lead":  "code",      "devops_dir":  "code",
-    "qa_dir":  "code",      "exec_eng": "code",
-    "ml_lead":   "ml",        "ml_researcher":  "ml",
-    "alpha_dir":  "quant",     "quant_researcher":  "quant",     "vp_research":  "quant",
-    "risk_eng":   "risk",      "cro":"risk",
-    "poly_desk":   "polymarket",
+    "maya":   "code",      "anna":  "code",      "kenji":  "code",
+    "aditi":  "code",      "diego": "code",
+    "linh":   "ml",        "sara":  "ml",
+    "aarav":  "quant",     "hugo":  "quant",     "sofia":  "quant",
+    "jian":   "risk",      "marcus":"risk",
+    "lior":   "polymarket",
     "frontend": "frontend",
-    # New team expansion
-    "frontend_lead":    "frontend",
-    "data_lead":        "code",
-    "alpha_researcher": "quant",
-    "exec_lead":        "code",
-    "security_lead":    "code",
 }
 
 
@@ -925,7 +611,7 @@ def call_best_agent_for_task(
     max_tokens: int = 500,
 ) -> tuple[str | None, str]:
     """Route to the best provider for the given task type.
-    Returns (text, provider_name). Uses _llm_waterfall first, then _TASK_ROUTING order.
+    Returns (text, provider_name). Uses _TASK_ROUTING order.
     Falls back through all providers before returning (None, 'exhausted')."""
     global _LAST_PROVIDER
     sys_p = system_prompt or _QUANT_SYSTEM
@@ -933,31 +619,6 @@ def call_best_agent_for_task(
     safe_prompt = _sanitize(prompt)
     safe_sys = _sanitize(sys_p)
     order = _TASK_ROUTING.get(task_type, _TASK_ROUTING["default"])
-
-    # _llm_waterfall first: GitHub Models → SambaNova → Gemini → Groq → Cerebras → OpenRouter
-    text, provider = _llm_waterfall(safe_sys, safe_prompt, cap, task_label=f"task/{task_type}")
-    if text:
-        _LAST_PROVIDER = provider
-        return text, provider
-
-    # LiteLLM fast-path: unified routing with built-in retry before manual cascade
-    if _LITELLM_AVAILABLE:
-        for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
-            key = os.environ.get(env_var, "").strip()
-            if key:
-                r = call_litellm("gemini/gemini-2.0-flash-exp", key, safe_sys, safe_prompt, cap)
-                if r and len(r.strip()) > 20:
-                    _LAST_PROVIDER = "litellm:gemini"
-                    return r.strip(), "litellm:gemini"
-        if "groq" not in _CF_BLOCKED_HOSTS:
-            for env_var in ["GROQ_API_KEY", "GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]:
-                key = os.environ.get(env_var, "").strip()
-                if key:
-                    r = call_litellm("groq/llama-3.3-70b-versatile", key, safe_sys, safe_prompt, cap)
-                    if r and len(r.strip()) > 20:
-                        _LAST_PROVIDER = "litellm:groq"
-                        return r.strip(), "litellm:groq"
-        # LiteLLM exhausted — fall through to manual cascade below
 
     for provider in order:
         if provider == "groq":
@@ -1034,26 +695,9 @@ def call_best_agent_for_task(
                     track_api_call(env_var, cap)
                     return r.strip(), f"OpenRouter({env_var})"
 
-        elif provider == "nvidia_nim":
-            key = (
-                os.environ.get("NVIDIA_AGENTS_API_KEYS", "").strip()
-                or os.environ.get("NVIDIA_NIM_API_KEY", "").strip()
-            )
-            if key:
-                # Use Nemotron-70B — NVIDIA's best instruction-following model for agents
-                r = _try_openai_compat(
-                    "https://integrate.api.nvidia.com/v1/chat/completions",
-                    key, "nvidia/llama-3.1-nemotron-70b-instruct",
-                    safe_sys, safe_prompt, cap)
-                if r and len(r.strip()) > 20:
-                    _LAST_PROVIDER = "NVIDIA-NIM"
-                    track_api_call("NVIDIA_AGENTS_API_KEYS", cap)
-                    return r.strip(), "NVIDIA-NIM"
-
     return None, "exhausted"
 
 
-@_lf_observe()
 def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None) -> tuple[str | None, str | None]:
     """Returns (answer_text, provider_name) or (None, None) if all tiers exhausted.
     Routes through call_best_agent_for_task with the employee's elite domain persona.
@@ -1062,11 +706,9 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
     Appends to state["quality_log"] for CTO daily digest."""
     import time
     global _LAST_PROVIDER
-    emp = (emp_key or "").lower()
-    if emp not in _EMPLOYEE_PERSONAS:
-        emp = emp.split("_")[0]
+    emp = (emp_key or "").split("_")[0].lower()
     persona = _EMPLOYEE_PERSONAS.get(emp, _QUANT_SYSTEM)
-    task_type = _EMP_TASK_TYPE.get(emp, _EMP_TASK_TYPE.get(emp.split("_")[0], "default"))
+    task_type = _EMP_TASK_TYPE.get(emp, "default")
     result, provider = call_best_agent_for_task(task_type, task, system_prompt=persona)
     if not result:
         return (None, None)
@@ -1077,14 +719,7 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
 
     # Quality gate: score the output and retry once if below threshold
     score, reason = score_agent_output(result, emp, provider_used=provider or "")
-    _lf_ctx.update_current_observation(
-        name=f"employee:{emp_key}",
-        metadata={"provider": provider, "emp_key": emp_key},
-        input=task[:500],
-        output=result[:500] if result else None,
-    )
-    _lf_ctx.score_current_observation(name="quality_score", value=score / 10.0)
-    if score < 7:
+    if score < 6:
         print(f"[quality] {emp} output rejected (score={score}): {reason}")
         result2, provider2 = call_best_agent_for_task(
             task_type,
@@ -1093,7 +728,7 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
         )
         if result2:
             score2, reason2 = score_agent_output(result2, emp, provider_used=provider2 or "")
-            if score2 >= 7:
+            if score2 >= score:
                 result = result2
                 score = score2
                 reason = reason2
@@ -1152,192 +787,60 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
 # This prevents any single Groq account from being overloaded by other employees' quota.
 
 _GROQ_ACCOUNT: dict[str, str] = {
-    # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (core team + group 1 new agents)
-    "vp_eng":           "GROQ_API_KEY_1",
-    "alpha_dir":        "GROQ_API_KEY_1",
-    "ml_lead":          "GROQ_API_KEY_1",
-    "risk_eng":         "GROQ_API_KEY_1",
-    "frontend_eng":     "GROQ_API_KEY_1",
-    "rl_researcher":    "GROQ_API_KEY_1",
-    "ceo":              "GROQ_API_KEY_1",
-    "equity_lead":      "GROQ_API_KEY_1",
-    "fixed_income_desk": "GROQ_API_KEY_1",
-    "macro_researcher": "GROQ_API_KEY_1",
-    "stat_arb_desk":    "GROQ_API_KEY_1",
-    "vol_trader":       "GROQ_API_KEY_1",
-    "momentum_quant":   "GROQ_API_KEY_1",
-    "alt_data_lead":    "GROQ_API_KEY_1",
-    "model_validator":  "GROQ_API_KEY_1",
-    "feature_engineer": "GROQ_API_KEY_1",
-    # Account 2 — GROQ_API_KEY_2  (core team + group 2 new agents)
-    "backend_lead":     "GROQ_API_KEY_2",
-    "qa_dir":           "GROQ_API_KEY_2",
-    "devops_dir":       "GROQ_API_KEY_2",
-    "exec_eng":         "GROQ_API_KEY_2",
-    "ci_eng":           "GROQ_API_KEY_2",
-    "junior_eng":       "GROQ_API_KEY_2",
-    "security_eng":     "GROQ_API_KEY_2",
-    "finance_eng":      "GROQ_API_KEY_2",
-    "frontend":         "GROQ_API_KEY_2",
-    "crypto_quant":     "GROQ_API_KEY_2",
-    "derivatives_desk": "GROQ_API_KEY_2",
-    "arb_trader":       "GROQ_API_KEY_2",
-    "portfolio_manager": "GROQ_API_KEY_2",
-    "market_maker":     "GROQ_API_KEY_2",
-    "regime_analyst":   "GROQ_API_KEY_2",
-    "backtest_engineer": "GROQ_API_KEY_2",
-    "data_engineer_2":  "GROQ_API_KEY_2",
-    "infra_lead":       "GROQ_API_KEY_2",
-    "frontend_lead":    "GROQ_API_KEY_2",
-    "data_lead":        "GROQ_API_KEY_2",
-    "alpha_researcher": "GROQ_API_KEY_2",
-    "exec_lead":        "GROQ_API_KEY_2",
-    "security_lead":    "GROQ_API_KEY_2",
-    # Account 3 — GROQ_API_KEY_3  (core team + group 3 new agents)
-    "poly_desk":         "GROQ_API_KEY_3",
-    "ml_researcher":     "GROQ_API_KEY_3",
-    "vp_research":       "GROQ_API_KEY_3",
-    "quant_researcher":  "GROQ_API_KEY_3",
-    "cro":               "GROQ_API_KEY_3",
-    "data_eng":          "GROQ_API_KEY_3",
-    "quant_ml":          "GROQ_API_KEY_3",
-    "options_researcher": "GROQ_API_KEY_3",
-    "compliance_eng":    "GROQ_API_KEY_3",
-    "nlp_researcher":    "GROQ_API_KEY_3",
-    "rl_trader":         "GROQ_API_KEY_3",
-    "graph_ml_researcher": "GROQ_API_KEY_3",
-    "crypto_defi_desk":  "GROQ_API_KEY_3",
-    "kalshi_desk":       "GROQ_API_KEY_3",
-    "research_ops":      "GROQ_API_KEY_3",
-    "senior_quant":      "GROQ_API_KEY_3",
-    "latency_engineer":  "GROQ_API_KEY_3",
+    # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (4 employees)
+    "maya":   "GROQ_API_KEY_1",
+    "aarav":  "GROQ_API_KEY_1",
+    "linh":   "GROQ_API_KEY_1",
+    "jian":   "GROQ_API_KEY_1",
+    # Account 2 — GROQ_API_KEY_2  (4 employees)
+    "anna":   "GROQ_API_KEY_2",
+    "aditi":  "GROQ_API_KEY_2",
+    "kenji":  "GROQ_API_KEY_2",
+    "diego":  "GROQ_API_KEY_2",
+    # Account 3 — GROQ_API_KEY_3  (5 employees)
+    "lior":   "GROQ_API_KEY_3",
+    "sara":   "GROQ_API_KEY_3",
+    "sofia":  "GROQ_API_KEY_3",
+    "hugo":   "GROQ_API_KEY_3",
+    "marcus": "GROQ_API_KEY_3",
 }
 
 # Each employee group gets the same-numbered Gemini account as their Groq account.
 # Group 1 (GROQ_API_KEY_1) → GEMINI_API_KEY_1, etc.
 # This isolates quota completely — Group 2 Gemini burnout never affects Group 1.
 _GEMINI_ACCOUNT: dict[str, str] = {
-    # Mirror GROQ account groups for consistent quota isolation
-    "vp_eng":           "GEMINI_API_KEY_1",
-    "alpha_dir":        "GEMINI_API_KEY_1",
-    "ml_lead":          "GEMINI_API_KEY_1",
-    "risk_eng":         "GEMINI_API_KEY_1",
-    "frontend_eng":     "GEMINI_API_KEY_1",
-    "rl_researcher":    "GEMINI_API_KEY_1",
-    "ceo":              "GEMINI_API_KEY_1",
-    "equity_lead":      "GEMINI_API_KEY_1",
-    "fixed_income_desk": "GEMINI_API_KEY_1",
-    "macro_researcher": "GEMINI_API_KEY_1",
-    "stat_arb_desk":    "GEMINI_API_KEY_1",
-    "vol_trader":       "GEMINI_API_KEY_1",
-    "momentum_quant":   "GEMINI_API_KEY_1",
-    "alt_data_lead":    "GEMINI_API_KEY_1",
-    "model_validator":  "GEMINI_API_KEY_1",
-    "feature_engineer": "GEMINI_API_KEY_1",
-    "backend_lead":     "GEMINI_API_KEY_2",
-    "qa_dir":           "GEMINI_API_KEY_2",
-    "devops_dir":       "GEMINI_API_KEY_2",
-    "exec_eng":         "GEMINI_API_KEY_2",
-    "ci_eng":           "GEMINI_API_KEY_2",
-    "junior_eng":       "GEMINI_API_KEY_2",
-    "security_eng":     "GEMINI_API_KEY_2",
-    "finance_eng":      "GEMINI_API_KEY_2",
-    "frontend":         "GEMINI_API_KEY_2",
-    "crypto_quant":     "GEMINI_API_KEY_2",
-    "derivatives_desk": "GEMINI_API_KEY_2",
-    "arb_trader":       "GEMINI_API_KEY_2",
-    "portfolio_manager": "GEMINI_API_KEY_2",
-    "market_maker":     "GEMINI_API_KEY_2",
-    "regime_analyst":   "GEMINI_API_KEY_2",
-    "backtest_engineer": "GEMINI_API_KEY_2",
-    "data_engineer_2":  "GEMINI_API_KEY_2",
-    "infra_lead":       "GEMINI_API_KEY_2",
-    "frontend_lead":    "GEMINI_API_KEY_2",
-    "data_lead":        "GEMINI_API_KEY_2",
-    "alpha_researcher": "GEMINI_API_KEY_2",
-    "exec_lead":        "GEMINI_API_KEY_2",
-    "security_lead":    "GEMINI_API_KEY_2",
-    "poly_desk":         "GEMINI_API_KEY_3",
-    "ml_researcher":     "GEMINI_API_KEY_3",
-    "vp_research":       "GEMINI_API_KEY_3",
-    "quant_researcher":  "GEMINI_API_KEY_3",
-    "cro":               "GEMINI_API_KEY_3",
-    "data_eng":          "GEMINI_API_KEY_3",
-    "quant_ml":          "GEMINI_API_KEY_3",
-    "options_researcher": "GEMINI_API_KEY_3",
-    "compliance_eng":    "GEMINI_API_KEY_3",
-    "nlp_researcher":    "GEMINI_API_KEY_3",
-    "rl_trader":         "GEMINI_API_KEY_3",
-    "graph_ml_researcher": "GEMINI_API_KEY_3",
-    "crypto_defi_desk":  "GEMINI_API_KEY_3",
-    "kalshi_desk":       "GEMINI_API_KEY_3",
-    "research_ops":      "GEMINI_API_KEY_3",
-    "senior_quant":      "GEMINI_API_KEY_3",
-    "latency_engineer":  "GEMINI_API_KEY_3",
+    "maya":   "GEMINI_API_KEY_1",
+    "aarav":  "GEMINI_API_KEY_1",
+    "linh":   "GEMINI_API_KEY_1",
+    "jian":   "GEMINI_API_KEY_1",
+    "anna":   "GEMINI_API_KEY_2",
+    "aditi":  "GEMINI_API_KEY_2",
+    "kenji":  "GEMINI_API_KEY_2",
+    "diego":  "GEMINI_API_KEY_2",
+    "lior":   "GEMINI_API_KEY_3",
+    "sara":   "GEMINI_API_KEY_3",
+    "sofia":  "GEMINI_API_KEY_3",
+    "hugo":   "GEMINI_API_KEY_3",
+    "marcus": "GEMINI_API_KEY_3",
 }
 
 # 2 Cerebras accounts — split employees evenly across groups.
 # Group 1 (Groq_1/Gemini_1 users) + Group 2 (Groq_2/Gemini_2 users) → CEREBRAS_API_KEY_1
 # Group 3 (Groq_3/Gemini_3 users) → CEREBRAS_API_KEY_2
 _CEREBRAS_ACCOUNT: dict[str, str] = {
-    # Groups 1 and 2 → CEREBRAS_API_KEY_1
-    "vp_eng":           "CEREBRAS_API_KEY_1",
-    "alpha_dir":        "CEREBRAS_API_KEY_1",
-    "ml_lead":          "CEREBRAS_API_KEY_1",
-    "risk_eng":         "CEREBRAS_API_KEY_1",
-    "frontend_eng":     "CEREBRAS_API_KEY_1",
-    "rl_researcher":    "CEREBRAS_API_KEY_1",
-    "ceo":              "CEREBRAS_API_KEY_1",
-    "equity_lead":      "CEREBRAS_API_KEY_1",
-    "fixed_income_desk": "CEREBRAS_API_KEY_1",
-    "macro_researcher": "CEREBRAS_API_KEY_1",
-    "stat_arb_desk":    "CEREBRAS_API_KEY_1",
-    "vol_trader":       "CEREBRAS_API_KEY_1",
-    "momentum_quant":   "CEREBRAS_API_KEY_1",
-    "alt_data_lead":    "CEREBRAS_API_KEY_1",
-    "model_validator":  "CEREBRAS_API_KEY_1",
-    "feature_engineer": "CEREBRAS_API_KEY_1",
-    "backend_lead":     "CEREBRAS_API_KEY_1",
-    "qa_dir":           "CEREBRAS_API_KEY_1",
-    "devops_dir":       "CEREBRAS_API_KEY_1",
-    "exec_eng":         "CEREBRAS_API_KEY_1",
-    "ci_eng":           "CEREBRAS_API_KEY_1",
-    "junior_eng":       "CEREBRAS_API_KEY_1",
-    "security_eng":     "CEREBRAS_API_KEY_1",
-    "finance_eng":      "CEREBRAS_API_KEY_1",
-    "frontend":         "CEREBRAS_API_KEY_1",
-    "crypto_quant":     "CEREBRAS_API_KEY_1",
-    "derivatives_desk": "CEREBRAS_API_KEY_1",
-    "arb_trader":       "CEREBRAS_API_KEY_1",
-    "portfolio_manager": "CEREBRAS_API_KEY_1",
-    "market_maker":     "CEREBRAS_API_KEY_1",
-    "regime_analyst":   "CEREBRAS_API_KEY_1",
-    "backtest_engineer": "CEREBRAS_API_KEY_1",
-    "data_engineer_2":  "CEREBRAS_API_KEY_1",
-    "infra_lead":       "CEREBRAS_API_KEY_1",
-    "frontend_lead":    "CEREBRAS_API_KEY_1",
-    "data_lead":        "CEREBRAS_API_KEY_1",
-    "alpha_researcher": "CEREBRAS_API_KEY_1",
-    "exec_lead":        "CEREBRAS_API_KEY_1",
-    "security_lead":    "CEREBRAS_API_KEY_1",
-    # Group 3 → CEREBRAS_API_KEY_2
-    "poly_desk":         "CEREBRAS_API_KEY_2",
-    "ml_researcher":     "CEREBRAS_API_KEY_2",
-    "vp_research":       "CEREBRAS_API_KEY_2",
-    "quant_researcher":  "CEREBRAS_API_KEY_2",
-    "cro":               "CEREBRAS_API_KEY_2",
-    "data_eng":          "CEREBRAS_API_KEY_2",
-    "quant_ml":          "CEREBRAS_API_KEY_2",
-    "options_researcher": "CEREBRAS_API_KEY_2",
-    "compliance_eng":    "CEREBRAS_API_KEY_2",
-    "nlp_researcher":    "CEREBRAS_API_KEY_2",
-    "rl_trader":         "CEREBRAS_API_KEY_2",
-    "graph_ml_researcher": "CEREBRAS_API_KEY_2",
-    "crypto_defi_desk":  "CEREBRAS_API_KEY_2",
-    "kalshi_desk":       "CEREBRAS_API_KEY_2",
-    "research_ops":      "CEREBRAS_API_KEY_2",
-    "senior_quant":      "CEREBRAS_API_KEY_2",
-    "latency_engineer":  "CEREBRAS_API_KEY_2",
+    "maya":   "CEREBRAS_API_KEY_1",
+    "aarav":  "CEREBRAS_API_KEY_1",
+    "linh":   "CEREBRAS_API_KEY_1",
+    "jian":   "CEREBRAS_API_KEY_1",
+    "anna":   "CEREBRAS_API_KEY_1",
+    "aditi":  "CEREBRAS_API_KEY_1",
+    "kenji":  "CEREBRAS_API_KEY_1",
+    "diego":  "CEREBRAS_API_KEY_1",
+    "lior":   "CEREBRAS_API_KEY_2",
+    "sara":   "CEREBRAS_API_KEY_2",
+    "sofia":  "CEREBRAS_API_KEY_2",
+    "hugo":   "CEREBRAS_API_KEY_2",
+    "marcus": "CEREBRAS_API_KEY_2",
 }
 
 # For shared calls, rotate across all available accounts round-robin.
@@ -1352,60 +855,11 @@ _GROQ_SHARED_ACCOUNTS = [
 ]
 
 
-def moa_employee_prompt(emp_key: str, task: str, state: dict | None = None, n: int = 3) -> tuple[str | None, str]:
-    """Mixture-of-Agents: generate n candidates in parallel across Gemini keys, return best-scored.
-    Falls back to employee_provider_prompt if fewer than 2 keys available."""
-    import threading
-    keys = [k for k in [
-        os.environ.get("GEMINI_API_KEY_1"),   # user's primary key (_1 suffix)
-        os.environ.get("GEMINI_API_KEY"),      # bare name alias for KEY_1
-        os.environ.get("GEMINI_API_KEY_2"),
-        os.environ.get("GEMINI_API_KEY_3"),
-        os.environ.get("GEMINI_API_KEY_4"),
-        os.environ.get("GEMINI_API_KEY_5"),
-    ] if k]
-    # Deduplicate while preserving order (KEY_1 and bare GEMINI_API_KEY may be identical)
-    seen: set[str] = set()
-    keys = [k for k in keys if not (k in seen or seen.add(k))]  # type: ignore[func-returns-value]
-    if len(keys) < 2:
-        return employee_provider_prompt(emp_key, task, state=state)
-    persona = _EMPLOYEE_PERSONAS.get(emp_key, _EMPLOYEE_PERSONAS.get("default", "You are a quant engineer."))
-    candidates: list[tuple[str, str]] = []
-    lock = threading.Lock()
-
-    def _gen(api_key: str, idx: int) -> None:
-        result = call_gemini_with_key(
-            system_prompt=persona, user_message=_sanitize(task),
-            api_key=api_key, max_tokens=600,
-        )
-        if result and len(result.strip()) > 50:
-            with lock:
-                candidates.append((result.strip(), f"gemini_key_{idx}"))
-
-    threads = [threading.Thread(target=_gen, args=(k, i)) for i, k in enumerate(keys[:n])]
-    for t in threads: t.start()
-    for t in threads: t.join(timeout=35)
-
-    if not candidates:
-        return None, "moa_no_candidates"
-    if len(candidates) == 1:
-        return candidates[0]
-
-    scored = [(score_agent_output(txt, emp_key)[0], txt, prov) for txt, prov in candidates]
-    scored.sort(key=lambda x: x[0], reverse=True)
-    best_score, best_text, best_prov = scored[0]
-    if best_score >= 7:
-        return best_text, f"moa:{best_prov}"
-    return None, "moa_quality_fail"
-
-
 def _groq_key_for(employee: str) -> str | None:
     """Return the Groq key for this employee's assigned account.
     Checks _1 suffix first (GROQ_API_KEY_1), then plain (GROQ_API_KEY) as alias.
     """
-    emp = (employee or "").lower()
-    if emp not in _GROQ_ACCOUNT:
-        emp = emp.split("_")[0]
+    emp = employee.split("_")[0].lower()
     env_var = _GROQ_ACCOUNT.get(emp, "GROQ_API_KEY_1")
     key = os.environ.get(env_var, "").strip()
     if key:
@@ -1418,9 +872,7 @@ def _groq_key_for(employee: str) -> str | None:
 
 def _gemini_key_for(employee: str) -> str | None:
     """Returns the Gemini API key assigned to this employee's department group."""
-    emp = (employee or "").lower()
-    if emp not in _GEMINI_ACCOUNT:
-        emp = emp.split("_")[0]
+    emp = employee.split("_")[0].lower()
     env_var = _GEMINI_ACCOUNT.get(emp, "GEMINI_API_KEY_1")
     key = os.environ.get(env_var, "").strip()
     if key:
@@ -1433,9 +885,7 @@ def _gemini_key_for(employee: str) -> str | None:
 
 def _cerebras_key_for(employee: str) -> str | None:
     """Returns the Cerebras API key assigned to this employee's department group."""
-    emp = (employee or "").lower()
-    if emp not in _CEREBRAS_ACCOUNT:
-        emp = emp.split("_")[0]
+    emp = employee.split("_")[0].lower()
     env_var = _CEREBRAS_ACCOUNT.get(emp, "CEREBRAS_API_KEY_1")
     # Support both _1 suffix and plain name for first account
     key = os.environ.get(env_var, "").strip()
@@ -1474,9 +924,7 @@ def _employee_keys(employee: str, provider: str) -> list[str]:
       CEREBRAS_API_KEY_2 … _10                          — numbered pool
       CEREBRAS_API_KEY                                   — shared primary
     """
-    emp = (employee or "").lower()
-    if emp not in _GROQ_ACCOUNT and emp not in _CEREBRAS_ACCOUNT:
-        emp = emp.split("_")[0]
+    emp = employee.split("_")[0].lower()
     prov = provider.upper()
     keys: list[str] = []
 
@@ -1609,54 +1057,12 @@ def call_gemini_with_key(
 
 
 def call_github_models(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """GitHub Models — free for GitHub Actions, tries multiple models for resilience."""
-    api_key = os.environ.get("GH_TOKEN", "").strip()  # always available in Actions env
-    if not api_key:
-        return None
-    # Try models in order of preference — fall through on any failure
-    _GH_MODELS = [
-        "gpt-4o-mini",
-        "Meta-Llama-3.1-8B-Instruct",
-        "Mistral-small",
-    ]
-    for model_name in _GH_MODELS:
-        payload = {
-            "model": model_name,
-            "max_tokens": max_tokens,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_message},
-            ],
-        }
-        req = urllib.request.Request(
-            "https://models.inference.ai.azure.com/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=25) as resp:
-                data = json.loads(resp.read())
-                text = data["choices"][0]["message"]["content"]
-                if text and len(text.strip()) > 10:
-                    track_api_call("GH_TOKEN", data.get("usage", {}).get("total_tokens", max_tokens))
-                    return text.strip()
-        except Exception as e:
-            print(f"  [github-models/{model_name}] {e}")
-            continue
-    return None
-
-
-def call_sambanova(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """SambaNova — free 400 req/day, Llama 3.3 70B, fastest inference."""
-    api_key = os.environ.get("SAMBANOVA_API_KEY", "").strip()
+    """GitHub Models — free for GitHub Actions, GPT-4o-mini / Llama 3.3."""
+    api_key = os.environ.get("GH_TOKEN", "").strip()  # already in Actions env
     if not api_key:
         return None
     payload = {
-        "model": "Meta-Llama-3.3-70B-Instruct",
+        "model": "gpt-4o-mini",   # free in GitHub Models
         "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -1664,7 +1070,7 @@ def call_sambanova(system_prompt: str, user_message: str, max_tokens: int = 600)
         ],
     }
     req = urllib.request.Request(
-        "https://api.sambanova.ai/v1/chat/completions",
+        "https://models.inference.ai.azure.com/chat/completions",
         data=json.dumps(payload).encode(),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -1675,13 +1081,12 @@ def call_sambanova(system_prompt: str, user_message: str, max_tokens: int = 600)
     try:
         with urllib.request.urlopen(req, timeout=25) as resp:
             data = json.loads(resp.read())
-            text = data["choices"][0]["message"]["content"]
-            if text and len(text.strip()) > 10:
-                track_api_call("SAMBANOVA_API_KEY", data.get("usage", {}).get("total_tokens", max_tokens))
-                return text.strip()
+            gh_result = data["choices"][0]["message"]["content"]
+            track_api_call("GH_TOKEN", data.get("usage", {}).get("total_tokens", max_tokens))
+            return gh_result
     except Exception as e:
-        print(f"  [sambanova] {e}")
-    return None
+        print(f"  [github-models] {e}")
+        return None
 
 
 def call_cerebras(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
@@ -1749,74 +1154,6 @@ def call_openrouter(system_prompt: str, user_message: str, max_tokens: int = 500
     except Exception as e:
         print(f"  [openrouter] {e}")
         return None
-
-
-def call_litellm(model: str, api_key: str, system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash-exp', 'groq/llama-3.3-70b-versatile', etc."""
-    if not _LITELLM_AVAILABLE:
-        return None
-    hostname = model.split("/")[0]
-    if hostname in _CF_BLOCKED_HOSTS:
-        return None
-    try:
-        resp = _litellm_completion(
-            model=model,
-            api_key=api_key,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
-            max_tokens=max_tokens,
-            timeout=30,
-            num_retries=2,
-        )
-        return resp.choices[0].message.content
-    except Exception as e:
-        err = str(e)
-        if "1010" in err or "cloudflare" in err.lower():
-            _CF_BLOCKED_HOSTS.add(hostname)
-        print(f"  [litellm] {model}: {type(e).__name__}: {err[:100]}")
-        return None
-
-
-def call_claude_for_review(system_prompt: str, user_message: str, max_tokens: int = 800) -> tuple[str, str]:
-    """
-    Claude Haiku for code review ONLY.
-    Gated by ALLOW_PAID_REVIEW env var (separate from ALLOW_PAID_APIS).
-    ALLOW_PAID_APIS stays False forever — this is a review-specific paid path.
-    Cost: ~$0.001 per diff review (input+output ~5K tokens).
-    """
-    if os.environ.get("ALLOW_PAID_REVIEW", "false").lower() != "true":
-        return "", "review-paid-disabled"
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        return "", "no-anthropic-key"
-    payload = {
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": max_tokens,
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_message}],
-    }
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(payload).encode(),
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-            text = data.get("content", [{}])[0].get("text", "")
-            model = data.get("model", "claude-haiku")
-            input_tokens = data.get("usage", {}).get("input_tokens", 0)
-            output_tokens = data.get("usage", {}).get("output_tokens", 0)
-            cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
-            print(f"  [claude-review] {input_tokens}in/{output_tokens}out tokens | ${cost_usd:.5f}")
-            return text, model
-    except Exception as e:
-        print(f"  [claude-review] {e}")
-        return "", f"claude-error:{e}"
 
 
 def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
@@ -1933,9 +1270,7 @@ def call_employee_agent(
         raise RuntimeError("ALLOW_PAID_APIS must stay False — zero spend policy")
 
     # Governance: check if engineer is paused for today
-    emp_key = (employee or "").lower()
-    if emp_key not in _GROQ_ACCOUNT and emp_key not in _GEMINI_ACCOUNT:
-        emp_key = emp_key.split("_")[0]
+    emp_key = employee.split("_")[0].lower()
     gov = state.get("governance", {}) if state else {}
     paused = gov.get("paused_engineers", {})
     if emp_key in paused and paused[emp_key] == _today():
@@ -1954,15 +1289,7 @@ def call_employee_agent(
     safe_system  = _sanitize(system_prompt)
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
 
-    # 1. GitHub Models — FIRST: always available in GitHub Actions via GITHUB_TOKEN
-    # No Cloudflare issues, GPT-4o-mini quality, zero rate-limit in Actions
-    r = call_github_models(safe_system, safe_message, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [{emp_key}/github-models] ✓ {len(r)} chars")
-        _LAST_PROVIDER = "GitHub Models"
-        return r.strip()
-
-    # 2. Groq — employee's assigned account (one of 3 accounts, ~333 req/day each)
+    # 1. Groq — employee's assigned account (one of 3 accounts, ~333 req/day each)
     groq_key = _groq_key_for(emp_key)
     if groq_key:
         r = _try_openai_compat(
@@ -1975,7 +1302,7 @@ def call_employee_agent(
             track_api_call(groq_env, cap)
             return r.strip()
 
-    # 3. Cerebras — employee's assigned account (2-account split)
+    # 2. Cerebras — employee's assigned account (2-account split)
     cerebras_key = _cerebras_key_for(emp_key)
     if cerebras_key:
         r = _try_openai_compat(
@@ -1984,11 +1311,11 @@ def call_employee_agent(
         if r and len(r.strip()) > 20:
             print(f"  [{emp_key}/cerebras] ✓ {len(r)} chars")
             _LAST_PROVIDER = "Cerebras"
-            cerebras_env = _CEREBRAS_ACCOUNT.get(emp_key, "CEREBRAS_API_KEY_1")
+            cerebras_env = "CEREBRAS_API_KEY_2" if emp_key in ("lior","sara","sofia","hugo","marcus") else "CEREBRAS_API_KEY_1"
             track_api_call(cerebras_env, cap)
             return r.strip()
 
-    # 4. SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
+    # 3. SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
     for key in _employee_keys(emp_key, "sambanova"):
         r = _try_openai_compat(
             "https://api.sambanova.ai/v1/chat/completions",
@@ -1998,6 +1325,13 @@ def call_employee_agent(
             _LAST_PROVIDER = "SambaNova"
             track_api_call("SAMBANOVA_API_KEY", cap)
             return r.strip()
+
+    # 4. GitHub Models — free via GITHUB_TOKEN, no extra key needed
+    r = call_github_models(safe_system, safe_message, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [{emp_key}/github-models] ✓ {len(r)} chars")
+        _LAST_PROVIDER = "GitHub Models"
+        return r.strip()
 
     # 5. OpenRouter — try both keys (50 req/day each = 100/day combined)
     for or_env in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
@@ -2027,89 +1361,6 @@ def call_employee_agent(
     return None
 
 
-def _llm_waterfall(
-    system_prompt: str,
-    user_message: str,
-    max_tokens: int = 600,
-    task_label: str = "",
-) -> tuple[str | None, str]:
-    """Single provider cascade used by all LLM callers.
-    Returns (text, provider_name). Never raises.
-    Order: GitHub Models → SambaNova → Gemini → Groq → Cerebras → OpenRouter.
-    """
-    cap = min(max_tokens, MAX_TOKENS_PER_CALL)
-    safe_sys = _sanitize(system_prompt)
-    safe_msg = _sanitize(user_message)
-    label = f"[{task_label}]" if task_label else ""
-
-    # 1. GitHub Models — always works in Actions, GPT-4o-mini + Llama fallback
-    r = call_github_models(safe_sys, safe_msg, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  {label}[gh-models] ✓ {len(r)} chars")
-        return r.strip(), "GitHub Models"
-
-    # 2. SambaNova — 400 req/day free, Llama 3.3 70B, no Cloudflare
-    r = call_sambanova(safe_sys, safe_msg, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  {label}[sambanova] ✓ {len(r)} chars")
-        return r.strip(), "SambaNova"
-
-    # 3. Gemini — 1500 req/day per key, 3 keys = 4500/day
-    for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
-        key = os.environ.get(env_var, "").strip()
-        if not key:
-            continue
-        r2 = call_gemini_with_key(key, safe_sys, safe_msg, cap)
-        if r2 and len(r2.strip()) > 20:
-            print(f"  {label}[gemini/{env_var}] ✓ {len(r2)} chars")
-            track_api_call(env_var, cap)
-            return r2.strip(), f"Gemini({env_var})"
-
-    # 4. Groq — round-robin across accounts
-    for env_var in ["GROQ_API_KEY", "GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]:
-        key = os.environ.get(env_var, "").strip()
-        if not key:
-            continue
-        r3 = _try_openai_compat(
-            "https://api.groq.com/openai/v1/chat/completions",
-            key, "llama-3.3-70b-versatile", safe_sys, safe_msg, cap)
-        if r3 and len(r3.strip()) > 20:
-            print(f"  {label}[groq/{env_var}] ✓ {len(r3)} chars")
-            track_api_call(env_var, cap)
-            return r3.strip(), f"Groq({env_var})"
-
-    # 5. Cerebras — round-robin
-    for env_var in ["CEREBRAS_API_KEY", "CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY_2"]:
-        key = os.environ.get(env_var, "").strip()
-        if not key:
-            continue
-        r4 = _try_openai_compat(
-            "https://api.cerebras.ai/v1/chat/completions",
-            key, "qwen-3-32b", safe_sys, safe_msg, cap)
-        if r4 and len(r4.strip()) > 20:
-            print(f"  {label}[cerebras/{env_var}] ✓ {len(r4)} chars")
-            track_api_call(env_var, cap)
-            return r4.strip(), f"Cerebras({env_var})"
-
-    # 6. OpenRouter
-    for env_var in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
-        key = os.environ.get(env_var, "").strip()
-        if not key:
-            continue
-        r5 = _try_openai_compat(
-            "https://openrouter.ai/api/v1/chat/completions",
-            key, "meta-llama/llama-3.3-70b-instruct:free",
-            safe_sys, safe_msg, cap,
-            extra_headers={"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"})
-        if r5 and len(r5.strip()) > 20:
-            print(f"  {label}[openrouter/{env_var}] ✓ {len(r5)} chars")
-            track_api_call(env_var, cap)
-            return r5.strip(), f"OpenRouter({env_var})"
-
-    print(f"  {label}[waterfall] all providers exhausted")
-    return None, "exhausted"
-
-
 def call_best_agent(
     user_message: str,
     system_prompt: str = _QUANT_SYSTEM,
@@ -2117,18 +1368,78 @@ def call_best_agent(
 ) -> str | None:
     """
     Shared cascade for non-employee calls (inbox, commands, incident posts).
-    Delegates to _llm_waterfall: GitHub Models → SambaNova → Gemini → Groq →
-                                  Cerebras → OpenRouter.
+    Groq: round-robins across all 3 accounts so no single account absorbs shared load.
     100% free — zero-spend policy enforced.
     """
-    global _LAST_PROVIDER
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
     safe_msg = _sanitize(user_message)
     safe_sys = _sanitize(system_prompt)
 
-    text, provider = _llm_waterfall(safe_sys, safe_msg, cap, task_label="agent")
-    _LAST_PROVIDER = provider
-    return text
+    # Groq — round-robin across all 3 accounts for shared calls
+    key = _groq_key_shared()
+    if key:
+        r = _try_openai_compat(
+            "https://api.groq.com/openai/v1/chat/completions",
+            key, "llama-3.3-70b-versatile", safe_sys, safe_msg, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/groq] ✓ {len(r)} chars")
+            groq_env_shared = next((ev for ev in _GROQ_SHARED_ACCOUNTS if os.environ.get(ev,"").strip() == key), "GROQ_API_KEY_1")
+            track_api_call(groq_env_shared, cap)
+            return r.strip()
+
+    # Cerebras — round-robin across all accounts for shared calls
+    for cerebras_env in ["CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY", "CEREBRAS_API_KEY_2", "CEREBRAS_API_KEY_3"]:
+        key = os.environ.get(cerebras_env, "").strip()
+        if not key:
+            continue
+        r = _try_openai_compat(
+            "https://api.cerebras.ai/v1/chat/completions",
+            key, "qwen-3-32b", safe_sys, safe_msg, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/cerebras] ✓ {len(r)} chars")
+            track_api_call(cerebras_env, cap)
+            return r.strip()
+        break  # try next account only if first fails
+
+    # SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
+    for key in _employee_keys("shared", "sambanova"):
+        r = _try_openai_compat(
+            "https://api.sambanova.ai/v1/chat/completions",
+            key, "Meta-Llama-3.3-70B-Instruct", safe_sys, safe_msg, cap)
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/sambanova] ✓ {len(r)} chars")
+            track_api_call("SAMBANOVA_API_KEY", cap)
+            return r.strip()
+
+    # GitHub Models — free in Actions
+    r = call_github_models(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [agent/github-models] ✓ {len(r)} chars")
+        return r.strip()
+
+    # OpenRouter — try both keys (50 req/day each = 100/day combined)
+    for or_env in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
+        key = os.environ.get(or_env, "").strip()
+        if not key:
+            continue
+        r = _try_openai_compat(
+            "https://openrouter.ai/api/v1/chat/completions",
+            key, "meta-llama/llama-3.3-70b-instruct:free", safe_sys, safe_msg, cap,
+            {"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"})
+        if r and len(r.strip()) > 20:
+            print(f"  [agent/openrouter/{or_env}] ✓ {len(r)} chars")
+            track_api_call(or_env, cap)
+            return r.strip()
+
+    # Gemini — 1500 req/day
+    r = call_gemini(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [agent/gemini] ✓ {len(r)} chars")
+        return r.strip()
+
+    # Hard stop — never pay
+    print("  [agent] ⚠ all free providers exhausted — returning None (zero-spend policy)")
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2207,109 +1518,19 @@ def read_unresponded_threads(
 # free cascade via call_best_agent — never to Claude.
 _AGENT_SUMMON_TRIGGERS = ("@quantedge", "@quant", "@agent", "@ai", "ask:", "?? ")
 
-# Channel-specific system prompts for @agent replies — each channel gets a domain expert persona
-_CHANNEL_SUMMON_SYSTEM = {
-    "alpha-research": (
-        "You are the Alpha Research Director at QuantEdge, an institutional algo trading startup. "
-        "You specialize in quantitative strategy development: momentum, mean-reversion, pairs trading, "
-        "stat-arb, crypto arb, and Polymarket prediction markets. "
-        "When answering questions, cite specific files (e.g. backend/app/strategies/manual/momentum.py), "
-        "Sharpe ratios, backtest results, or academic references. "
-        "Reply in 3-5 sentences. Be analytically sharp. Do NOT mention you are an AI."
-    ),
-    "ml-experiments": (
-        "You are the ML Research Lead at QuantEdge. You work with LSTM, Temporal Fusion Transformer, "
-        "XGBoost, and Lorentzian KNN models in backend/app/ml/models/. "
-        "When answering, reference specific model files, training scripts, feature engineering, "
-        "walk-forward validation, or experiment YAML configs. "
-        "Reply in 3-5 sentences. Be technically precise. Do NOT mention you are an AI."
-    ),
-    "engineering": (
-        "You are the VP of Engineering at QuantEdge. The stack is FastAPI + SQLAlchemy async + "
-        "PostgreSQL + Redis + React 18 + Vite + TypeScript. "
-        "You know every backend route, frontend component, and deployment config (Render/Vercel/Supabase). "
-        "Reply in 3-5 sentences. Be concrete and actionable. Do NOT mention you are an AI."
-    ),
-    "desk-crypto": (
-        "You are the Crypto Desk Lead at QuantEdge. You run triangular arb, funding rate harvesting, "
-        "basis trading, and liquidation cascade strategies on Binance via CCXT. "
-        "Reference backend/app/strategies/manual/triangular_arb.py and crypto backtest results. "
-        "Reply in 3-5 sentences. Do NOT mention you are an AI."
-    ),
-    "desk-equities": (
-        "You are the Equities Desk Lead at QuantEdge. You run momentum, pairs trading, mean-reversion, "
-        "and low-volatility strategies on US equities via Alpaca. "
-        "Reference specific strategy files and paper trading performance. "
-        "Reply in 3-5 sentences. Do NOT mention you are an AI."
-    ),
-    "risk-alerts": (
-        "You are the Chief Risk Officer at QuantEdge. You manage Kelly sizing, HRP portfolio construction, "
-        "CVaR limits, circuit breakers, and correlation limits across all desks. "
-        "Reference backend/app/risk/ files when answering. "
-        "Reply in 3-5 sentences. Do NOT mention you are an AI."
-    ),
-    "squad-backend": (
-        "You are the Backend Lead at QuantEdge. You own the FastAPI app in backend/app/, "
-        "the SQLAlchemy models, the async background tasks (strategy_runner, price_feed, regime_monitor), "
-        "and all API routes. Reply in 3-5 sentences. Do NOT mention you are an AI."
-    ),
-    "squad-frontend": (
-        "You are the Frontend Lead at QuantEdge. You own the React 18 + TypeScript + Vite dashboard at frontend/src/. "
-        "The UI uses shadcn/ui, Tailwind (Bloomberg dark theme), TradingView widgets, and TanStack Query. "
-        "Reply in 3-5 sentences. Do NOT mention you are an AI."
-    ),
-    "incidents": (
-        "You are the Incident Commander at QuantEdge. You diagnose production issues, coordinate fixes, "
-        "and post structured incident reports. Reference logs, health endpoints (/health), "
-        "and Render/Supabase/Upstash status. Reply in 3-5 sentences. Do NOT mention you are an AI."
-    ),
-    "general": (
-        "You are Laavanye Bahl, CEO and Founder of QuantEdge — an institutional-grade quantitative trading "
-        "platform startup. You speak with strategic vision and technical depth. "
-        "Reply in 3-5 sentences. Do NOT mention you are an AI."
-    ),
-}
 
-_DEFAULT_SUMMON_SYSTEM = (
-    "You are a senior quantitative engineer at QuantEdge, an institutional algo trading startup. "
-    "QuantEdge runs 24/7 across equities (Alpaca), crypto (Binance/CCXT), and prediction markets (Polymarket). "
-    "The stack: Python FastAPI backend, React 18 TypeScript frontend, PostgreSQL, Redis, PyTorch ML. "
-    "Answer the question in 3-5 sentences. Be specific, technical, and helpful. "
-    "Reference real files or metrics where relevant. Do NOT mention you are an AI."
-)
-
-
-def _match_agent_summon(text: str, bot_user_id: str = "") -> str | None:
-    """
-    Return the question (trigger stripped) if text contains a summon trigger, else None.
-    Handles both literal triggers (@agent, ask:, ??) and real Slack @mention format <@USER_ID>.
-    Also detects questions addressed to the bot anywhere in the message.
-    """
-    import re
+def _match_agent_summon(text: str) -> str | None:
+    """Return the question (trigger stripped) if text starts with a summon trigger, else None."""
     if not text:
         return None
-    stripped = text.strip()
+    stripped = text.lstrip()
     low = stripped.lower()
-
-    # Real Slack @mention: <@U1234567> or <@U1234567|username>
-    if bot_user_id:
-        mention_re = re.compile(r"<@" + re.escape(bot_user_id) + r"(?:\|[^>]*)?>", re.IGNORECASE)
-        if mention_re.search(stripped):
-            question = mention_re.sub("", stripped).strip().lstrip(":, ").strip()
-            if question:
-                return question
-
-    # Literal text triggers (must appear at start or after whitespace)
     for trig in _AGENT_SUMMON_TRIGGERS:
         if low.startswith(trig):
-            question = stripped[len(trig):].strip().lstrip(":, ").strip()
+            question = stripped[len(trig):].strip()
+            # Strip a leading separator left after a mention-style trigger.
+            question = question.lstrip(":, ").strip()
             if question:
-                return question
-        # Also match mid-message: "hey @agent what's up?" or "cc @ai can you check this?"
-        idx = low.find(trig)
-        if idx > 0 and low[idx - 1] in (" ", "\n", "\t", ",", ";"):
-            question = stripped[idx + len(trig):].strip().lstrip(":, ").strip()
-            if question and len(question) > 5:
                 return question
     return None
 
@@ -2322,11 +1543,11 @@ def detect_agent_summons(
     limit: int = 30,
 ) -> list[dict]:
     """
-    Scan recent channel messages for a human who summoned a free agent via:
-    - Real Slack @mention (<@BOT_USER_ID>)
-    - Literal trigger: @agent, @quant, @ai, @quantedge, ask:, ??
+    Scan recent channel messages for a human who summoned a free agent via a
+    leading trigger (@quant / @agent / @ai / @quantedge / ask: / ?? ).
 
-    Self-guard: must have `user` field, no `bot_id`, user != bot_user_id, ts not in already_replied.
+    Self-guard matches read_unresponded_threads: must have `user`, no `bot_id`,
+    user != bot_user_id, and ts not in already_replied.
     """
     ch_id = get_channel_id(token, channel_name)
     if not ch_id:
@@ -2349,311 +1570,48 @@ def detect_agent_summons(
             continue
         if ts in already_replied:
             continue
-        raw_text = msg.get("text", "")
-        question = _match_agent_summon(raw_text, bot_user_id=bot_user_id)
+        question = _match_agent_summon(msg.get("text", ""))
         if not question:
             continue
         summons.append({
             "channel_id": ch_id,
             "channel_name": channel_name,
-            "thread_ts": ts,
+            "thread_ts": ts,   # reply threads under the original message
             "user": user,
             "question": question[:1500],
         })
     return summons
 
 
-def _build_summon_context() -> str:
-    """Build a brief real-time context string for summon responses."""
-    lines: list[str] = []
-    try:
-        strats = list_strategies()
-        n_manual = len(strats.get("manual", []))
-        n_ml = len(strats.get("ml", []))
-        lines.append(f"Platform has {n_manual} manual strategies + {n_ml} ML-enhanced strategies.")
-    except Exception:
-        pass
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["git", "log", "--oneline", "-3"],
-            capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=5)
-        if result.returncode == 0 and result.stdout.strip():
-            lines.append(f"Recent commits: {result.stdout.strip()[:200]}")
-    except Exception:
-        pass
-    return " ".join(lines)
-
-
-# Map role-key prefixes to persona overrides for @mention routing
-_PERSONA_MENTION_MAP: dict[str, str] = {
-    "vp_eng":             "engineering",
-    "alpha_dir":          "alpha-research",
-    "ml_lead":            "ml-experiments",
-    "risk_eng":           "risk-alerts",
-    "cro":                "risk-alerts",
-    "backend_lead":       "squad-backend",
-    "frontend_eng":       "squad-frontend",
-    "devops_dir":         "infra-alerts",
-    "qa_dir":             "squad-qa",
-    "security_eng":       "security-alerts",
-    "vp_research":        "papers",
-    "poly_desk":          "desk-polymarket",
-    "exec_eng":           "squad-execution",
-    "data_eng":           "squad-data",
-    "ci_eng":             "ci-failures",
-    "ceo":                "general",
-    "finance_eng":        "finance-ops",
-    "compliance_eng":     "legal-compliance",
-    # New team expansion
-    "frontend_lead":      "squad-frontend",
-    "data_lead":          "squad-data",
-    "alpha_researcher":   "alpha-research",
-    "exec_lead":          "squad-execution",
-    "security_lead":      "security-alerts",
-}
-
-
-def _detect_persona_override(question: str) -> tuple[str | None, str | None]:
-    """
-    Parse '@vp_eng:', '@alpha_dir:' etc. at the start of a question.
-    Returns (channel_key, stripped_question) if found, else (None, None).
-    Allows routing a summon to a specific expert regardless of the channel it was posted in.
-    """
-    import re
-    for role_key, channel_key in _PERSONA_MENTION_MAP.items():
-        pattern = re.compile(r"^@?" + re.escape(role_key) + r"\s*[:, ]+\s*", re.IGNORECASE)
-        m = pattern.match(question.strip())
-        if m:
-            return channel_key, question[m.end():].strip()
-    return None, None
-
-
-def _fetch_thread_context(token: str, ch_id: str, thread_ts: str, limit: int = 5) -> list[str]:
-    """Fetch the last N messages from a thread for LLM context (excludes the root message)."""
-    data = slack_call(token, "conversations.replies",
-                      {"channel": ch_id, "ts": thread_ts, "limit": limit + 1})
-    if not data.get("ok"):
-        return []
-    msgs = data.get("messages", [])
-    # Skip root message (first), take last `limit` thread replies
-    context_msgs = msgs[1:][-limit:]
-    lines = []
-    for m in context_msgs:
-        text = (m.get("text") or "").strip()[:300]
-        if text:
-            who = "Bot" if m.get("bot_id") else "User"
-            lines.append(f"{who}: {text}")
-    return lines
-
-
-def _react(token: str, ch_id: str, ts: str, emoji: str) -> None:
-    """Add a reaction emoji to a Slack message. Silently ignores already_reacted."""
-    result = slack_call(token, "reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
-    if not result.get("ok") and result.get("error") not in ("already_reacted", "no_permission"):
-        print(f"  [react] {emoji} failed: {result.get('error')}")
-
-
-def _build_summon_blocks(reply: str, agent_name: str) -> list[dict]:
-    """
-    Format a summon reply as Block Kit blocks for rich display.
-    Falls back gracefully — Slack renders `text` if blocks not supported.
-    """
-    # Split into paragraphs; code blocks stay as-is
-    blocks: list[dict] = []
-    paragraphs = [p.strip() for p in reply.split("\n\n") if p.strip()]
-
-    for para in paragraphs[:6]:  # cap at 6 blocks to stay within Slack's 50-block limit
-        if para.startswith("```") or para.startswith("`"):
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": para[:3000]},
-            })
-        elif len(para) > 2 and para[0] in ("-", "•", "*") and "\n" in para:
-            # Bullet list — keep as section
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": para[:3000]},
-            })
-        else:
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": para[:3000]},
-            })
-
-    if blocks:
-        blocks.append({"type": "divider"})
-        blocks.append({
-            "type": "context",
-            "elements": [{
-                "type": "mrkdwn",
-                "text": f"_{agent_name}_ • QuantEdge AI Agent • Free-tier LLM",
-            }],
-        })
-    return blocks
-
-
-def _post_with_blocks(
-    token: str,
-    ch_id: str,
-    text: str,
-    blocks: list[dict],
-    username: str,
-    icon_emoji: str,
-    thread_ts: str | None,
-) -> dict:
-    """Post a Slack message with Block Kit blocks. Falls back to text-only if blocks fail."""
-    payload: dict = {
-        "channel": ch_id,
-        "text": text,           # fallback for notifications
-        "blocks": blocks,
-        "username": username,
-        "icon_emoji": icon_emoji,
-        "mrkdwn": True,
-    }
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    result = slack_call(token, "chat.postMessage", payload)
-    if not result.get("ok"):
-        # Retry without blocks (Block Kit might not be enabled on this workspace)
-        payload.pop("blocks", None)
-        result = slack_call(token, "chat.postMessage", payload)
-    return result
-
-
 def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
     """
-    SOTA summon handler: 👀 reaction on receipt, thread context window, persona routing,
-    Block Kit rich replies, ✅ on success. Zero paid API spend.
-    Returns count answered.
+    Answer each summon via the free cascade (call_best_agent) and post in-thread.
+    Records ts in state["replied_to"] so a summon is answered once. Returns count answered.
     """
     answered = 0
-    context_blurb = _build_summon_context()
-
+    exhausted_notified = False
     for s in summons:
         ts = s["thread_ts"]
-        ch_id = s.get("channel_id") or get_channel_id(token, s["channel_name"])
         if ts in state.get("replied_to", []):
             continue
-
-        ch = s["channel_name"]
-        question = s["question"]
-
-        # ── 1. 👀 reaction: acknowledge receipt immediately ──────────────────
-        if ch_id:
-            _react(token, ch_id, ts, "eyes")
-
-        # ── 2. Persona routing: @vp_eng: override channel default persona ────
-        override_ch, routed_question = _detect_persona_override(question)
-        lookup_ch = override_ch or ch
-        if routed_question:
-            question = routed_question
-
-        agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(lookup_ch, ("QuantEdge Agent", ":robot_face:"))
-        system_prompt = _CHANNEL_SUMMON_SYSTEM.get(lookup_ch, _DEFAULT_SUMMON_SYSTEM)
-
-        # ── 3. Thread context: include last 5 thread messages for continuity ─
-        thread_ctx_lines: list[str] = []
-        if ch_id:
-            thread_ctx_lines = _fetch_thread_context(token, ch_id, ts, limit=5)
-
-        # Build rich context for LLM
-        context_parts = []
-        if context_blurb:
-            context_parts.append(f"Platform context: {context_blurb}")
-        if thread_ctx_lines:
-            ctx_str = "\n".join(thread_ctx_lines)
-            context_parts.append(f"Thread history (most recent):\n{ctx_str}")
-        if context_parts:
-            system_prompt = f"{system_prompt}\n\n" + "\n\n".join(context_parts)
-
-        user_msg = (
-            f"Someone in #{ch} asked: {question}\n\n"
-            "Answer directly and helpfully as the channel's expert. "
-            "Be specific. Reference actual files, metrics, or strategies where relevant. "
-            "Use markdown formatting (bold, bullet points, code blocks) for clarity."
-        )
-
-        # ── 4. Code requests → dispatch to Gemini Task Runner ────────────────
-        if _is_code_request(question):
-            issue_num = dispatch_to_gemini_runner(
-                title=f"[{ch}] {question[:120]}",
-                body=question,
-                context=f"Requested in #{ch} by Slack user at {ts}",
-            )
-            if issue_num:
-                dispatch_msg = (
-                    f":rocket: Got it! I've queued this as a code task (issue #{issue_num}). "
-                    f"The Gemini runner will implement it in the next 20 min and post an update here."
-                )
-                if ch_id:
-                    _post_with_blocks(
-                        token, ch_id, dispatch_msg,
-                        _build_summon_blocks(dispatch_msg, agent_name),
-                        username=agent_name, icon_emoji=agent_emoji, thread_ts=ts,
-                    )
-                    _react(token, ch_id, ts, "white_check_mark")
-                else:
-                    post_to_slack(token, ch, dispatch_msg,
-                                  username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
-                state.setdefault("replied_to", []).append(ts)
-                answered += 1
-                print(f"  ✓ code request dispatched to gemini-task #{issue_num}")
-                time.sleep(0.5)
-                continue
-
-        # ── 5. LLM call → Block Kit reply ────────────────────────────────────
-        ans = call_best_agent(user_msg, system_prompt=system_prompt, max_tokens=700)
-        if ans and ans.strip() and len(ans.strip()) > 20:
-            reply = ans.strip()
-            blocks = _build_summon_blocks(reply, agent_name)
-            if ch_id:
-                r = _post_with_blocks(token, ch_id, reply, blocks,
-                                      username=agent_name, icon_emoji=agent_emoji,
-                                      thread_ts=ts)
-            else:
-                r = post_to_slack(token, ch, reply,
-                                  username=agent_name, icon_emoji=agent_emoji,
-                                  thread_ts=ts)
+        ans = call_best_agent(s["question"], max_tokens=600)
+        if ans and ans.strip():
+            reply = f":robot_face: {ans.strip()}"
+            r = post_to_slack(token, s["channel_name"], reply,
+                              username="Free Agent", icon_emoji=":robot_face:",
+                              thread_ts=ts)
             if r.get("ok"):
-                # ✅ reaction on success
-                if ch_id:
-                    _react(token, ch_id, ts, "white_check_mark")
                 answered += 1
                 state.setdefault("replied_to", []).append(ts)
-                print(f"  ✓ summon answered → #{ch} as '{agent_name}' (blocks={bool(blocks)})")
-            else:
-                print(f"  [summon] post failed: {r.get('error')}")
-                if ch_id:
-                    _react(token, ch_id, ts, "x")
-        else:
-            # ── 6. LLM exhausted → dispatch as gemini-task, post fallback ───
-            issue_num = dispatch_to_gemini_runner(
-                title=f"[{ch}] {question[:120]}",
-                body=question,
-                context=f"All free LLM providers were throttled when this was asked in #{ch}.",
-            )
-            if issue_num:
-                fallback = (
-                    f":warning: Free-tier API limit reached right now. I've queued your request "
-                    f"(issue #{issue_num}) — the Gemini runner will handle it in the next 20 min."
-                )
-            else:
-                fallback = (
-                    f":warning: I'm at my free-tier API limit right now (Groq/Gemini/Cerebras all throttled). "
-                    f"Try again in ~15 min or check the next scheduled run. "
-                    f"Zero-spend policy is enforced — no paid fallback."
-                )
-            if ch_id:
-                _post_with_blocks(token, ch_id, fallback,
-                                  _build_summon_blocks(fallback, agent_name),
-                                  username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
-                _react(token, ch_id, ts, "hourglass_flowing_sand")
-            else:
-                post_to_slack(token, ch, fallback,
-                              username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
+                print(f"  ✓ summon answered → #{s['channel_name']}")
+        elif not exhausted_notified:
+            # All free providers exhausted — notify once, don't burn retries.
+            post_to_slack(
+                token, s["channel_name"],
+                ":hourglass_flowing_sand: All free agents are at their daily limit right now — please try again later. (Zero-spend policy: no paid fallback.)",
+                username="Free Agent", icon_emoji=":robot_face:", thread_ts=ts)
+            exhausted_notified = True
             state.setdefault("replied_to", []).append(ts)
-            print(f"  [summon] providers exhausted for #{ch} summon")
         time.sleep(0.5)
     return answered
 
@@ -2699,7 +1657,6 @@ _CHANNEL_AGENT_IDENTITY = {
     "pod-ml-rl":          ("Research Scientist", ":brain:"),
     "announcements":      ("CEO / Founder", ":sparkles:"),
     "random":             ("CEO / Founder", ":sparkles:"),
-    "allquantedge":       ("Laavanye Bahl — CEO/Founder", ":sparkles:"),
 }
 
 
@@ -2712,76 +1669,68 @@ def generate_thread_response(thread: dict) -> str | None:
     parent = thread["parent_text"]
     reply = thread["last_reply"]
 
-    # Use channel-specific agent persona for more targeted replies
-    agent_name, _ = _CHANNEL_AGENT_IDENTITY.get(channel, ("QuantEdge Agent", ":robot_face:"))
-    channel_system = _CHANNEL_SUMMON_SYSTEM.get(channel, _DEFAULT_SUMMON_SYSTEM)
-
     system_prompt = (
-        f"{channel_system}\n"
-        "You are replying to a human's message in a Slack thread. "
-        "Reply in 2-4 sentences. Be specific and technical. "
-        "Reference real file paths, metric values, or strategy names from the codebase. "
-        "Do NOT use bullet lists or markdown headers. Write natural conversational text. "
+        "You are a quantitative engineer on the QuantEdge trading platform team. "
+        "QuantEdge is an institutional-grade algo trading system with FastAPI backend, "
+        "React frontend, Alpaca/Binance/Polymarket brokers, and PyTorch ML models. "
+        "Reply to the human's Slack message in 2-4 sentences. Be specific, technical, "
+        "and helpful. Reference real files or concepts from the codebase where relevant. "
+        "Do NOT use bullet lists or headers — write natural conversational text. "
         "Do NOT mention that you are an AI."
     )
     user_msg = (
-        f"You are {agent_name} in #{channel}.\n"
-        f"The thread started with: {parent[:300]}\n"
-        f"A human just replied: {reply[:400]}\n\n"
-        "Write a helpful, technically specific response. "
-        "If they asked a question, answer it directly. "
-        "If they shared an update, react with analysis or a next step."
+        f"Channel: #{channel}\n"
+        f"Original message: {parent}\n"
+        f"Human reply to respond to: {reply}\n\n"
+        "Write a helpful, technically specific response from the agent's perspective."
     )
 
+    # Try Claude first
     ai_response = call_best_agent(user_msg, system_prompt, max_tokens=400)
-    if ai_response and len(ai_response.strip()) > 20:
+    if ai_response and len(ai_response.strip()) > 30:
         return ai_response.strip()
 
-    # Code-grounded fallback based on keywords — never return generic templates
+    # Fallback: code-grounded response based on keywords
     reply_lower = reply.lower()
     parent_lower = parent.lower()
     combined = reply_lower + " " + parent_lower
 
-    if any(w in combined for w in ("strategy", "signal", "backtest", "sharpe", "alpha")):
+    # Check what files exist to give grounded answers
+    backend = REPO_ROOT / "backend" / "app"
+
+    if any(w in combined for w in ("strategy", "signal", "backtest", "sharpe")):
         strategies = list_strategies()
-        n = len(strategies.get("manual", [])) + len(strategies.get("ml", []))
-        return (f"We have {n} strategies registered. "
+        n = len(strategies["manual"]) + len(strategies["ml"])
+        return (f"Good point — we currently have {n} strategies registered. "
                 f"The abstract interface in `backend/app/strategies/base.py` requires "
                 f"`analyze()`, `execute()`, and `backtest_signals()`. "
-                f"Walk-forward results go in `experiments/results/`.")
+                f"Drop your walk-forward Sharpe in `experiments/results/` once you've run it.")
 
-    if any(w in combined for w in ("test", "pytest", "failing", "bug", "error", "fix")):
+    if any(w in combined for w in ("test", "pytest", "failing", "bug", "error")):
         test_files = list((REPO_ROOT / "backend" / "tests").rglob("test_*.py"))
-        return (f"We have {len(test_files)} test files in `backend/tests/`. "
+        return (f"Check `backend/tests/` — we have {len(test_files)} test files. "
                 f"Run `cd backend && TRADING_MODE=test pytest tests/ -x -q` to reproduce. "
-                f"Rate limiter is bypassed in test mode.")
+                f"The rate limiter is bypassed in test mode so auth tests pass cleanly.")
 
-    if any(w in combined for w in ("model", "lstm", "transformer", "train", "ml", "inference")):
+    if any(w in combined for w in ("model", "lstm", "transformer", "train", "ml")):
         models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
         models = [f.stem for f in models_dir.glob("*.py") if not f.stem.startswith("_")] if models_dir.exists() else []
-        return (f"Model zoo: {', '.join(f'`{m}`' for m in models[:5])} in `backend/app/ml/models/`. "
-                f"All implement `AbstractModel` — `train_epoch()` and `forward()`. "
-                f"Training scripts: `backend/app/ml/training/`.")
+        return (f"Current model zoo has {len(models)} architectures: {', '.join(f'`{m}`' for m in models[:5])}. "
+                f"All follow `AbstractModel` in `base_model.py` — implement `train_epoch()` and `forward()`. "
+                f"Training scripts are in `backend/app/ml/training/`.")
 
-    if any(w in combined for w in ("deploy", "render", "vercel", "production", "infra")):
-        return ("Render auto-deploys on every push. Check build logs at dashboard.render.com. "
-                "`render.yaml` in `backend/` defines the blueprint. "
-                "UptimeRobot pings `/health` every 5min to prevent sleep-mode spin-down.")
+    if any(w in combined for w in ("deploy", "render", "vercel", "production")):
+        return ("Render auto-deploys on every push to main. Check the build logs at dashboard.render.com. "
+                "The `render.yaml` Blueprint is in `backend/` — ensure your env vars match `.env.example`. "
+                "UptimeRobot pings `/health` every 5min to prevent sleep.")
 
-    if any(w in combined for w in ("risk", "kelly", "position", "drawdown", "hrp", "cvar")):
-        return ("Kelly sizing: `backend/app/risk/kelly.py`. HRP + CVaR optimizer: `portfolio_optimizer.py`. "
-                "Circuit breaker halts directional strategies at 5% intraday drawdown. "
-                "Real-time risk status: `GET /api/v1/risk/status`.")
+    if any(w in combined for w in ("risk", "kelly", "position", "drawdown")):
+        return ("Kelly sizing is in `backend/app/risk/kelly.py`, HRP portfolio optimizer is in "
+                "`portfolio_optimizer.py`. The circuit breaker halts all directional strategies "
+                "at 5% intraday drawdown. Risk status endpoint: `GET /risk/status`.")
 
-    if any(w in combined for w in ("working on", "update", "status", "progress", "what are you")):
-        strats = list_strategies()
-        n = len(strats.get("manual", [])) + len(strats.get("ml", []))
-        return (f"Running {n} strategies across equities (Alpaca), crypto (Binance), and prediction markets (Polymarket). "
-                f"Strategy runner and price feed are live background tasks. "
-                f"Latest backtest Sharpe ratios and regime state available at `GET /api/v1/analytics/tearsheet`.")
-
-    return (f"Good question. Let me dig into the relevant module — "
-            f"I'll post a specific answer in this thread once I've checked the code.")
+    return (f"On it — checking the relevant code now. "
+            f"I'll thread back with a specific fix once I've looked at the relevant module.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2861,68 +1810,6 @@ def verify_zero_spend() -> None:
     if not openrouter_model.endswith(":free") and "free" not in openrouter_model.lower():
         raise RuntimeError(f"FINANCIAL GUARD: OpenRouter model '{openrouter_model}' is not :free")
     print("ZERO-SPEND ✅ ALLOW_PAID_APIS=False | Groq×3 + Gemini×3 + Cerebras×2 + SambaNova + OpenRouter×2 + GH-Models = $0.00/day")
-
-
-def _run_inline_health_check(token: str, state: dict) -> None:
-    """
-    Fast inline health check — runs every main() call.
-    Detects missing LLM keys, CF-blocked providers, budget exhaustion.
-    Posts to #incidents if problems found. Self-heals what it can.
-    """
-    issues: list[str] = []
-    healed: list[str] = []
-
-    # 1. Check free LLM keys are present
-    llm_keys = {
-        "GEMINI_API_KEY": "Gemini Flash (primary)",
-        "GROQ_API_KEY": "Groq (secondary)",
-        "CEREBRAS_API_KEY": "Cerebras (tertiary)",
-    }
-    missing = [name for env_var, name in llm_keys.items() if not os.environ.get(env_var, "").strip()]
-    if missing:
-        issues.append(f"Missing LLM keys: {', '.join(missing)} — add to GitHub Secrets")
-
-    # 2. Check if ALL providers are CF-blocked (would silence all agents)
-    cf_blocked = list(_CF_BLOCKED_HOSTS)
-    if cf_blocked:
-        # Gemini is not CF-blocked — only Groq/Cerebras get blocked
-        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        if not gemini_key:
-            issues.append(f"CF-blocked: {cf_blocked} AND no Gemini key — agents will be SILENT")
-
-    # 3. Check Langfuse connectivity
-    lf_secret = os.environ.get("LANGFUSE_SECRET_KEY", "").strip()
-    lf_public = os.environ.get("LANGFUSE_PUBLIC_KEY", "").strip()
-    if not lf_secret or not lf_public:
-        issues.append("Langfuse keys missing — LLM call tracing disabled")
-
-    # 4. Check daily budget not exhausted
-    budget = state.get("daily_budget", {})
-    for provider, used in budget.items():
-        limit = {"gemini": 1_500_000, "groq": 500_000, "cerebras": 1_000_000}.get(provider, 999_999)
-        if isinstance(used, (int, float)) and used > limit * 0.95:
-            issues.append(f"{provider} token budget >95% exhausted for today — may throttle")
-
-    if not issues:
-        print("✅ Inline health check: all systems nominal")
-        return
-
-    # Post to #incidents
-    msg_lines = [":stethoscope: *Inline agent health alert:*"]
-    for issue in issues:
-        msg_lines.append(f"  :warning: {issue}")
-    if healed:
-        for h in healed:
-            msg_lines.append(f"  :wrench: Auto-healed: {h}")
-    msg_lines.append("_Full diagnostic: trigger agent-health-monitor workflow_")
-    # Use slack_call directly to avoid forward-reference to post_to_slack
-    slack_call(token, "chat.postMessage", {
-        "channel": "incidents",
-        "text": "\n".join(msg_lines),
-        "username": "Health Monitor",
-        "icon_emoji": ":stethoscope:",
-    })
-    print(f"[health] {len(issues)} inline issue(s) found → posted to #incidents")
 
 
 def _bar(used: int, limit: int, width: int = 12) -> str:
@@ -3076,19 +1963,13 @@ def post_api_guard_map(token: str, state: dict) -> None:
 
 def post_engineer_onboarding(token: str, state: dict) -> None:
     """Post/update the engineer onboarding guide in #help. Only posts once per week."""
+    last_posted = state.get("onboarding_posted_week")
     current_week = datetime.now(timezone.utc).strftime("%Y-W%W")
-
-    # State-based cooldown (works once state is persisted across runs)
-    if state.get("onboarding_posted_week") == current_week:
+    if last_posted == current_week:
         return
 
     ch_id = get_channel_id(token, "help")
     if not ch_id:
-        return
-
-    # Slack history backup — prevents spam even when state is empty/fresh
-    if _slack_channel_has_recent_bot_post(token, "help", "Welcome to QuantEdge", hours=150.0):  # 6 days
-        state["onboarding_posted_week"] = current_week
         return
 
     guide = """*:wave: Welcome to QuantEdge — Free Agent Team Guide*
@@ -4262,7 +3143,7 @@ def repo_url(*parts: str) -> str:
 # ── Agent work functions: each returns 0-2 Posts with real findings ─────────
 
 
-def vp_eng_daily() -> list[Post]:
+def maya_chen_eng_daily() -> list[Post]:
     """VP Eng — engineering daily based on commits NEW since last run, not just last 24h."""
     state = load_state()
     new_commits = new_commits_since_last_run(state)
@@ -4316,7 +3197,7 @@ def vp_eng_daily() -> list[Post]:
     commit_subjects = "\n".join(f"- {c['msg']}" for c in commits_to_show[:10])
     test_line = test_detail.replace("*", "")
     ai, provider = employee_provider_prompt(
-        "vp_eng",
+        "maya",
         ("Summarize today's CI health and name the single top reliability risk, "
          "given these commit subjects and test status. 2-3 sentences, Slack-ready, no preamble.\n\n"
          f"Commit subjects:\n{commit_subjects}\n\nTests: {test_line}"),
@@ -4372,7 +3253,7 @@ def alpha_dir_strategy_review() -> list[Post]:
                 f"\n\nIs this on track for paper-trade gate? Drop the latest walk-forward Sharpe in thread.")
 
     ai, provider = employee_provider_prompt(
-        "alpha_dir",
+        "aarav",
         (f"Strategy file: {target}.py\n"
          f"Static findings: {'; '.join(findings)}\n"
          f"Source snippet:\n{src[:600]}\n\n"
@@ -4392,8 +3273,8 @@ def alpha_dir_strategy_review() -> list[Post]:
     )]
 
 
-def ml_lead_results() -> list[Post]:
-    """ML Lead — post the freshest backtest/experiment result with full context."""
+def linh_tran_ml_results() -> list[Post]:
+    """ML Lead — post the freshest backtest/experiment result."""
     state = load_state()
     results = latest_backtest_results()
     if not results:
@@ -4406,57 +3287,20 @@ def ml_lead_results() -> list[Post]:
         )]
 
     r = results[0]
+    scaffold = (f"Latest experiment: *{r.get('strategy', '?')}* on `{r.get('symbol', '?')}` "
+                f"({r.get('strategy_type', '?')})\n"
+                f"• Sharpe: *{r.get('sharpe', 0):.2f}* (avg over {r.get('n_runs', 1)} runs)\n"
+                f"• Logged: `experiments/results/` at {r.get('timestamp', 'unknown')}\n\n"
+                f"Total experiments tracked: *{len(results)}*. Top 3 by Sharpe coming next.")
 
-    # Top 3 by Sharpe for the scaffold
-    top3 = sorted(results, key=lambda x: x.get("sharpe", 0), reverse=True)[:3]
-    top3_lines = "\n".join(
-        f"  {i+1}. *{x.get('strategy','?')}* `{x.get('symbol','?')}` — Sharpe {x.get('sharpe',0):.2f}"
-        for i, x in enumerate(top3)
+    ai, provider = employee_provider_prompt(
+        "linh",
+        (f"ML experiment result — strategy: {r.get('strategy','?')}, symbol: {r.get('symbol','?')}, "
+         f"Sharpe: {r.get('sharpe', 0):.2f}, runs: {r.get('n_runs',1)}, "
+         f"total experiments: {len(results)}. "
+         "In 2 sentences: what does this Sharpe suggest about the model, and what's the next tuning step?"),
+    state=state,
     )
-
-    scaffold = (
-        f":microscope: *ML Experiment Update — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*\n"
-        f"Latest: *{r.get('strategy', '?')}* on `{r.get('symbol', '?')}` "
-        f"({r.get('strategy_type', '?')})\n"
-        f"• Sharpe: *{r.get('sharpe', 0):.2f}* · runs: {r.get('n_runs', 1)} "
-        f"· logged: {r.get('timestamp', 'unknown')}\n\n"
-        f"*Top 3 by Sharpe ({len(results)} total):*\n{top3_lines}"
-    )
-
-    # Gather richer context for the LLM — mirrors vp_eng_daily() pattern
-    ml_commits = [
-        c for c in git_recent_commits(since_hours=48, limit=20)
-        if any(kw in c["msg"].lower() for kw in ("ml", "model", "lstm", "train", "feature", "experiment", "backtest", "sharpe"))
-    ]
-    commit_subjects = "\n".join(f"- {c['msg']}" for c in ml_commits[:8]) or "- no recent ML commits"
-
-    pytest_res = run_pytest_lightweight()
-    if pytest_res.get("not_installed") or pytest_res.get("timed_out"):
-        test_line = f"test files: {count_tests()}"
-    else:
-        passed = pytest_res.get("passed", 0)
-        failed = pytest_res.get("failed", 0)
-        test_line = f"{'✅' if failed == 0 else '❌'} {passed} passed" + (f", {failed} failed" if failed else "")
-
-    # List available ML model files for context
-    ml_models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
-    model_files = [f.stem for f in ml_models_dir.glob("*.py") if not f.stem.startswith("_")] if ml_models_dir.exists() else []
-
-    context = (
-        f"Strategy: {r.get('strategy','?')}, symbol: {r.get('symbol','?')}, "
-        f"Sharpe: {r.get('sharpe', 0):.2f}, runs: {r.get('n_runs',1)}, "
-        f"total experiments in registry: {len(results)}.\n\n"
-        f"Top 3 experiments by Sharpe:\n"
-        + "\n".join(f"  {x.get('strategy','?')} {x.get('symbol','?')}: Sharpe={x.get('sharpe',0):.2f}" for x in top3)
-        + f"\n\nRecent ML-related commits:\n{commit_subjects}\n\n"
-        f"Test suite: {test_line}\n"
-        f"Available model files: {', '.join(model_files) or 'none'}\n\n"
-        "In 2-3 sentences: what does this Sharpe suggest about the model quality, "
-        "which model should be prioritised next, and what is the single highest-leverage tuning step? "
-        "Be concrete — mention the strategy name and a specific hyperparameter or feature."
-    )
-
-    ai, provider = employee_provider_prompt("ml_lead", context, state=state)
     text = scaffold + (f"\n\n{ai}" if ai else "")
     return [Post(
         channel="ml-experiments",
@@ -4466,7 +3310,7 @@ def ml_lead_results() -> list[Post]:
     )]
 
 
-def exec_eng_execution() -> list[Post]:
+def diego_ramirez_execution() -> list[Post]:
     """Execution Engineer — real diff on execution module from last 48h."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "execution"
@@ -4501,7 +3345,7 @@ def exec_eng_execution() -> list[Post]:
 
     # Use Diego's dedicated free-tier bot for insightful comment
     ai, provider = employee_provider_prompt(
-        "exec_eng",
+        "diego",
         (f"File: {target.name} ({n_lines} LOC, {n_classes} classes)\nContent snippet:\n{src[:800]}\n\n"
          "Give one specific, actionable improvement for this trading execution code. "
          "Max 2 sentences. No bullet points. Be concrete about the file content."),
@@ -4532,7 +3376,7 @@ def _bucket_dollar(val: float) -> str:
     else:
         return "institutional position"
 
-def risk_eng_risk() -> list[Post]:
+def jian_wu_risk() -> list[Post]:
     """Risk Engineer — module check + real Alpaca position concentration."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "risk"
@@ -4575,7 +3419,7 @@ def risk_eng_risk() -> list[Post]:
                     f"corr={'yes' if has_corr else 'no'}; circuit_breaker={'yes' if has_cb else 'no'}; "
                     f"equity_size={equity_bucket}; largest_position={pos_bucket}")
     ai, provider = employee_provider_prompt(
-        "risk_eng",
+        "jian",
         (f"Risk system status: {risk_summary}. "
          "Name the single most important risk gap to close next. 1-2 sentences, Slack-ready."),
     state=state,
@@ -4633,7 +3477,7 @@ def backend_lead_backend() -> list[Post]:
 
     file_list = ", ".join(p for p, _ in top[:5])
     ai, provider = employee_provider_prompt(
-        "backend_lead",
+        "anna",
         (f"{len(backend_changes)} backend files changed in last 48h. "
          f"Top files: {file_list}. "
          "What's the single biggest backend reliability risk from this churn? 2 sentences, Slack-ready."),
@@ -4700,7 +3544,7 @@ def devops_dir_devops() -> list[Post]:
                 f"on `{last.get('head_branch')}`")
 
     ai, provider = employee_provider_prompt(
-        "devops_dir",
+        "kenji",
         (f"Last 10 CI workflow runs: {counts}. "
          f"Latest: {last.get('name')} → {last.get('conclusion') or last.get('status')} on {last.get('head_branch')}. "
          "What's the top DevOps/infra action to improve CI reliability? 1-2 sentences, Slack-ready."),
@@ -4797,7 +3641,7 @@ def qa_dir_qa() -> list[Post]:
                            f"{pytest_res.get('failed',0)} failed, "
                            f"{pytest_res.get('errors',0)} errors")
     ai, provider = employee_provider_prompt(
-        "qa_dir",
+        "aditi",
         (f"QA status: {test_status_summary}. "
          "What's the single most important QA improvement to make this sprint? 2 sentences, Slack-ready."),
     state=state,
@@ -4846,7 +3690,7 @@ def security_eng_security() -> list[Post]:
     )]
 
 
-def vp_research_research() -> list[Post]:
+def sofia_karlsson_research() -> list[Post]:
     """VP Research — paper queue based on actual untested strategies + recent results."""
     state = load_state()
     candidates = [
@@ -4872,7 +3716,7 @@ def vp_research_research() -> list[Post]:
         # Even when queue exists, still call LLM for prioritization insight
         queue_context = "\n".join(queue_lines[:10])
         ai, provider = employee_provider_prompt(
-            "vp_research",
+            "sofia",
             f"Review this research queue and give a 2-bullet prioritization: which item should the desk tackle first and why?\n\n{queue_context}",
             state=state,
         )
@@ -4886,7 +3730,7 @@ def vp_research_research() -> list[Post]:
             text += f" + {len(untested) - 3} more"
         # Use Sofia's dedicated free-tier bot to prioritize
         ai, provider = employee_provider_prompt(
-            "vp_research",
+            "sofia",
             (f"Untested strategies: {', '.join(untested[:8])}. "
              "Recommend which one to prioritize for walk-forward validation and why. 2 sentences max."),
         state=state,
@@ -4951,7 +3795,7 @@ def quant_researcher_research() -> list[Post]:
                 "\nWill drop walk-forward Sharpe in #ml-experiments by EOD.")
 
     ai, provider = employee_provider_prompt(
-        "quant_researcher",
+        "hugo",
         (f"{len(untested)} of {len(strats)} manual strategies untested. "
          f"Sample: {', '.join(sample)}. "
          "Which one should we run walk-forward validation on first, and why? 2 sentences, Slack-ready."),
@@ -4995,7 +3839,7 @@ def rl_researcher_rl() -> list[Post]:
     return [Post(channel="pod-ml-rl", text=ai, username="Research Scientist", icon_emoji=":brain:")]
 
 
-def poly_desk_polymarket() -> list[Post]:
+def lior_avraham_polymarket() -> list[Post]:
     """Polymarket Researcher — live scan of Gamma API for arb opportunities."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
@@ -5044,7 +3888,7 @@ def poly_desk_polymarket() -> list[Post]:
     opp_summary = (f"{len(arb_opps)} arb opps found" if arb_opps
                    else f"{active_markets} markets checked, no arb found")
     ai, provider = employee_provider_prompt(
-        "poly_desk",
+        "lior",
         (f"Polymarket scan: {opp_summary}. Strategies registered: {len(poly)}. "
          "What's the single best next step for the Polymarket desk? 1-2 sentences, Slack-ready."),
     state=state,
@@ -5090,7 +3934,7 @@ def cro_risk() -> list[Post]:
     else:
         acct_state = "no account data"
     ai, provider = employee_provider_prompt(
-        "cro",
+        "marcus",
         (f"CRO daily: {acct_state}; audit_log={'present' if has_audit else 'missing'}; "
          "70/30 capital split enforced. Name the single biggest firm-level risk to address today. "
          "1-2 sentences, CRO tone, Slack-ready."),
@@ -5271,20 +4115,32 @@ def devops_dir_deploy_readiness() -> list[Post]:
                 deployed.append(parts[0].split("(")[0].strip())
     has_alpaca = bool(os.environ.get("ALPACA_API_KEY"))
     has_slack = bool(os.environ.get("SLACK_BOT_TOKEN"))
-    secrets_ctx = f"Secrets present: ALPACA_API_KEY={'yes' if has_alpaca else 'NO'}, SLACK_BOT_TOKEN={'yes' if has_slack else 'NO'}."
-    infra_ctx = (f"Deployed: {', '.join(deployed[:5]) or 'none'}. "
-                 f"Blocked: {', '.join(not_deployed[:5]) or 'none'}.")
-    task = (
-        f"You are the director of DevOps at QuantEdge. {infra_ctx} {secrets_ctx} "
-        "Stack: Render (backend FastAPI), Vercel (React frontend), Supabase (PostgreSQL), Upstash (Redis). "
-        "Identify the single highest-priority unblocking action to move from current state to live paper trading. "
-        "State: what is blocked, exact command or UI step to unblock it, and which engineer role owns it. "
-        "If everything is deployed, audit the CI pipeline for the single most likely point of failure."
-    )
-    ai, _ = employee_provider_prompt("devops_dir", task, state=state)
-    if not ai:
-        return []
-    return [Post(channel="infra-alerts", text=ai, username="Director of DevOps", icon_emoji=":satellite_antenna:")]
+
+    text_lines = ["*Demo readiness report*"]
+    text_lines.append(f"\n*Infrastructure:*")
+    for item in deployed[:5]:
+        text_lines.append(f"  ✅ {item}")
+    for item in not_deployed[:5]:
+        text_lines.append(f"  ❌ {item}")
+
+    text_lines.append(f"\n*Repo secrets present this run:*")
+    text_lines.append(f"  {'✅' if has_alpaca else '❌'} ALPACA_API_KEY")
+    text_lines.append(f"  {'✅' if has_slack else '❌'} SLACK_BOT_TOKEN")
+
+    text_lines.append("\n*To go live (in order):*")
+    text_lines.append("1. Add 7 secrets at GitHub Settings → Secrets")
+    text_lines.append("2. Deploy backend → Render Blueprint")
+    text_lines.append("3. Deploy frontend → Vercel (root: `frontend/`)")
+    text_lines.append("4. Apply DB schema → trigger `migrate.yml` workflow")
+    text_lines.append("\n_After step 1: #pnl-daily shows live Alpaca paper P&L._")
+    text_lines.append("_After steps 2-4: strategies execute + dashboard goes live._")
+
+    return [Post(
+        channel="infra-alerts",
+        text="\n".join(text_lines),
+        username="Director of DevOps",
+        icon_emoji=":satellite_antenna:",
+    )]
 
 
 def junior_eng_question() -> list[Post]:
@@ -5462,27 +4318,11 @@ def trading_desk_equity_positions() -> list[Post]:
     positions = alpaca_positions()
     eq_pos = [p for p in positions if "/" not in p.get("symbol", "")]
     if not eq_pos:
-        strategies = list_strategies()
-        results = latest_backtest_results()
-        best_eq = next((r for r in results if r.get("strategy") in
-                        {"momentum", "mean_reversion", "breakout", "rsi_macd", "supertrend"}), None)
-        sharpe_ctx = (f"best equity backtest Sharpe {best_eq.get('sharpe', 0):.2f} ({best_eq.get('strategy', '?')})"
-                      if best_eq else "no equity backtests logged yet")
-        eq_strats = ", ".join(strategies["manual"][:5]) if strategies["manual"] else "momentum, mean_reversion"
-        task = (
-            f"[{_hr}] You are the equity desk bot at QuantEdge. No open positions. "
-            f"Active strategies: {eq_strats}. {sharpe_ctx}. "
-            "Generate a realistic equity desk update covering: 1 key SPY/AAPL/MSFT/NVDA price action observation, "
-            "1 strategy signal from our momentum or mean-reversion suite, current paper portfolio posture. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "quant",
+            f"[{_hr}] Equity desk update: no open positions. Give 3 bullets — current SPY/QQQ trend, top sector strength/weakness, and one equity trade setup worth watching today.",
         )
-        ai, _ = employee_provider_prompt("alpha_dir", task)
-        body = (
-            f"*Equity desk — {_hr}*\n"
-            + (ai.strip() if ai else
-               f"SPY session monitoring active. Momentum strategy scanning for breakout entries; "
-               f"mean-reversion watching RSI extremes. Paper portfolio flat — 2-week gate required before live. "
-               f"Strategy universe: {eq_strats}.")
-        )
+        body = f"*Equity desk — {_hr}*\n" + (ai.strip() if ai else "_No open equity positions. Monitoring._")
         return [Post(channel="desk-equities", text=body, username="Equity desk bot", icon_emoji=":chart_with_upwards_trend:")]
     lines = [f"*Equity desk — live positions ({len(eq_pos)})*"]
     for p in eq_pos[:10]:
@@ -5507,19 +4347,10 @@ def trading_desk_crypto_positions() -> list[Post]:
     if not crypto_pos:
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        results = latest_backtest_results()
-        best_crypto = next((r for r in results if r.get("strategy") in
-                            {"triangular_arb", "funding_rate_arb", "crypto_adaptive_trend",
-                             "stablecoin_depeg_arb", "liquidation_cascade_fade"}), None)
-        sharpe_ctx = (f"best crypto backtest Sharpe {best_crypto.get('sharpe', 0):.2f} ({best_crypto.get('strategy', '?')})"
-                      if best_crypto else "no crypto backtests logged yet")
-        task = (
-            f"[{_hr}] You are the crypto desk bot at QuantEdge. No open crypto positions. "
-            f"{sharpe_ctx}. Universe: BTC/USD, ETH/USD, SOL/USD, DOGE/USD. "
-            "Generate a realistic crypto desk update: 1 BTC/ETH price action observation, "
-            "1 funding rate or basis observation, 1 signal from our triangular_arb or funding_rate_arb strategy. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "quant",
+            f"[{_hr}] Crypto desk update: no open positions. Give 3 bullet points on current BTC/ETH market structure — key price levels, funding rate, and one actionable trade idea for today.",
         )
-        ai, _ = employee_provider_prompt("ml_lead", task)
         body = f"*Crypto desk — {_hr}*\n" + (ai.strip() if ai else "_Monitoring markets, no open positions._")
         return [Post(channel="desk-crypto", text=body, username="Crypto desk bot", icon_emoji=":coin:")]
     lines = [f"*Crypto desk — live positions ({len(crypto_pos)})*"]
@@ -5556,13 +4387,10 @@ def trading_desk_options_positions() -> list[Post]:
         lines.append("_No options-underlying positions open._")
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] You are the options desk bot at QuantEdge. No underlying positions open. "
-            "Underlying universe: SPY, QQQ, AAPL, TSLA, NVDA. Strategies: options_pcr_reversal, gamma_exposure, dispersion_trading. "
-            "Generate a desk update covering: current VIX regime observation, whether implied vol is rich or cheap "
-            "on SPY/QQQ, and one options strategy signal from PCR mean-reversion or gamma exposure. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "quant",
+            f"[{_hr}] Options desk: no underlying positions. Give 2 bullets — current VIX regime and whether implied vol is rich or cheap on SPY/QQQ right now.",
         )
-        ai, _ = employee_provider_prompt("alpha_dir", task)
         if ai:
             lines.append(ai.strip())
     # Recent orders for these symbols
@@ -5599,13 +4427,10 @@ def trading_desk_polymarket_positions() -> list[Post]:
         lines.append("• No SPY proxy position open — sentiment: neutral")
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] You are the Polymarket desk bot at QuantEdge. No open positions. "
-            "Strategy: polymarket_sentiment_momentum with 0.70 confidence threshold. "
-            "Generate a desk update: 1 political/macro event currently priced on prediction markets, "
-            "the implied probability, and whether there's a calibration gap vs historical base rates. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "polymarket",
+            f"[{_hr}] Polymarket desk: no open positions. Give 2 bullets — one political/macro event currently being mispriced on prediction markets and the implied probability gap.",
         )
-        ai, _ = employee_provider_prompt("poly_desk", task)
         if ai:
             lines.append(ai.strip())
     lines.append(f"• Capital allocated: ${min(equity * 0.05, 1000):.0f} (5% of paper equity)")
@@ -5635,14 +4460,10 @@ def trading_desk_macro_positions() -> list[Post]:
         lines.append("_No macro positions open._")
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] You are the Macro/FX desk bot at QuantEdge. No positions open. "
-            "Universe: GLD (gold), TLT (bonds), UUP (USD), EWJ (Japan), EEM (EM). "
-            "Strategies: cross_asset_carry, sector_rotation, time_series_momentum. "
-            "Generate a desk update: current USD strength vs major currencies, "
-            "gold/bond correlation observation, and one macro trade idea (rates/FX/gold). 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "quant",
+            f"[{_hr}] Macro/FX desk: no positions open. Give 2 bullets — current USD strength vs major pairs and one macro trade idea (rates/FX/gold).",
         )
-        ai, _ = employee_provider_prompt("vp_research", task)
         if ai:
             lines.append(ai.strip())
     lines.append("\n*Strategies active:* `cross_asset_carry`, `sector_rotation`, `time_series_momentum`")
@@ -5677,14 +4498,10 @@ def trading_desk_commodities() -> list[Post]:
         lines.append("_No commodity positions open._")
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] You are the commodities desk bot at QuantEdge. No positions. "
-            "Universe: GLD (gold) · SLV (silver) · USO (WTI oil) · UNG (natgas) · DBA (agri) · DBC (broad). "
-            "Strategies: time_series_momentum, breakout, cross_asset_carry, mean_reversion. "
-            "Generate a desk update: current gold vs oil divergence observation, "
-            "one commodity momentum signal, and one trade setup worth watching. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "quant",
+            f"[{_hr}] Commodities desk: no positions. Give 2 bullets — current gold vs oil divergence and one commodity trade setup (WTI, gold, or natgas).",
         )
-        ai, _ = employee_provider_prompt("vp_research", task)
         if ai:
             lines.append(ai.strip())
         lines.append("Universe: GLD (gold) · SLV (silver) · USO (WTI oil) · UNG (natgas) · DBA (agri) · DBC (broad)")
@@ -5729,14 +4546,10 @@ def trading_desk_futures() -> list[Post]:
         lines.append("_No futures proxies open._")
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] You are the futures desk bot at QuantEdge. No positions. "
-            "ETF proxies: SPY→ES, QQQ→NQ, IWM→RTY, DIA→YM, IEF→ZN, TLT→ZB, USO→CL, GLD→GC. "
-            "Strategies: time_series_momentum, cross_sectional_momentum, breakout, supertrend. "
-            "Generate a desk update: ES/NQ spread trend observation, "
-            "bond-equity correlation signal, and whether conditions favor risk-on or risk-off. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "quant",
+            f"[{_hr}] Futures desk: no positions. Give 2 bullets — ES/NQ spread trend and whether the bond-equity correlation is supportive of risk-on.",
         )
-        ai, _ = employee_provider_prompt("quant_researcher", task)
         if ai:
             lines.append(ai.strip())
         lines.append("Instruments: " + " · ".join(f"`{sym}` ({name})" for sym, name in list(proxy_map.items())[:4]))
@@ -5791,14 +4604,10 @@ def trading_desk_rates() -> list[Post]:
         lines.append("_No rates positions open._")
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] You are the rates desk bot at QuantEdge. No positions open. "
-            "Ladder: SHY (1-3Y), IEI (3-7Y), IEF (7-10Y), TLT (20Y+), TIP (TIPS), LQD (IG credit), HYG (HY credit). "
-            "Strategies: cross_asset_carry, basis_carry, time_series_momentum, mean_reversion. "
-            "Generate a desk update: current yield curve shape (2s10s) observation, "
-            "IG vs HY credit spread signal, and whether to be long or short duration. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "risk",
+            f"[{_hr}] Rates desk: no positions open. Give 2 bullets — current yield curve shape (2s10s) and whether to be long or short duration here.",
         )
-        ai, _ = employee_provider_prompt("risk_eng", task)
         if ai:
             lines.append(ai.strip())
         lines.append("Ladder: " + " · ".join(f"`{sym}` ({dur})" for sym, dur in duration_map.items()))
@@ -5851,18 +4660,7 @@ def trading_desk_kalshi() -> list[Post]:
 
     lines = ["*Kalshi desk — CFTC-regulated binary markets*"]
     if error_msg:
-        lines.append(f"_API unavailable: {error_msg}. Falling back to market analysis._")
-        from datetime import datetime, timezone as _tz
-        _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] You are the Kalshi desk bot at QuantEdge. Kalshi API unavailable. "
-            "Kalshi trades CFTC-regulated binary markets on economic, political, and financial events. "
-            "Generate a desk note: 1 economic event market likely to have mispricing today "
-            "(Fed rate, CPI, GDP), the fair-value probability estimate, and the binary arb logic. 80 words max."
-        )
-        ai, _ = employee_provider_prompt("poly_desk", task)
-        if ai:
-            lines.append(ai.strip())
+        lines.append(f"_API unavailable: {error_msg}. Retrying next cycle._")
     elif active_count:
         lines.append(f"Live scan: *{active_count}* open markets")
         if arb_opps:
@@ -5879,26 +4677,14 @@ def trading_desk_kalshi() -> list[Post]:
             lines.append("No binary arb right now — markets pricing efficiently. Monitoring.")
             from datetime import datetime, timezone as _tz
             _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-            task = (
-                f"[{_hr}] Kalshi desk: no arb gaps found in {active_count} markets. "
-                "Suggest one Kalshi market category (economic, political, sports) likely to have mispricing "
-                "in the next 24h and explain the calibration gap. 80 words max."
+            ai, _ = call_best_agent_for_task(
+                "polymarket",
+                f"[{_hr}] Kalshi desk: no arb gaps found in {active_count} markets. Suggest one Kalshi market category (economic, political, sports) likely to have mispricing in the next 24h and why.",
             )
-            ai, _ = employee_provider_prompt("poly_desk", task)
             if ai:
                 lines.append(ai.strip())
     else:
         lines.append("_No markets returned — Kalshi API may be rate-limiting._")
-        from datetime import datetime, timezone as _tz
-        _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        task = (
-            f"[{_hr}] Kalshi desk: API returned empty market list. "
-            "Generate a synthetic desk note on the most interesting binary prediction market "
-            "category to trade today and the key risk to watch. 70 words max."
-        )
-        ai, _ = employee_provider_prompt("poly_desk", task)
-        if ai:
-            lines.append(ai.strip())
 
     return [Post(
         channel="desk-kalshi",
@@ -5927,15 +4713,10 @@ def trading_desk_stat_arb() -> list[Post]:
         lines.append("_No positions — waiting for z-score signal above threshold._")
         from datetime import datetime, timezone as _tz
         _hr = datetime.now(_tz.utc).strftime("%H:00 UTC")
-        strats_ctx = ", ".join(arb_strats[:4]) if arb_strats else "pairs_trading, kalman_pairs, triangular_arb"
-        task = (
-            f"[{_hr}] You are the StatArb desk bot at QuantEdge. No open positions. "
-            f"Strategies loaded: {strats_ctx}. Pair universe: SPY/QQQ, GLD/TLT, IWM/SPY. "
-            "Engine: Engle-Granger cointegration + Kalman filter + PCA stat arb. "
-            "Generate a desk update: which pair spread looks most stretched right now, "
-            "the z-score estimate, and the entry threshold. 80 words max."
+        ai, _ = call_best_agent_for_task(
+            "quant",
+            f"[{_hr}] StatArb desk: no open positions. Give 2 bullets — which equity pair spread (SPY/QQQ, GLD/TLT, or IWM/SPY) looks most stretched right now and the entry z-score threshold.",
         )
-        ai, _ = employee_provider_prompt("quant_researcher", task)
         if ai:
             lines.append(ai.strip())
     if arb_strats:
@@ -5949,7 +4730,7 @@ def trading_desk_stat_arb() -> list[Post]:
     )]
 
 
-def ml_researcher_research() -> list[Post]:
+def sara_kim_ml_research() -> list[Post]:
     """ML Research Lead. Posts SOTA model comparisons and ablation findings."""
     state = load_state()
     results_dir = REPO_ROOT / "experiments" / "results"
@@ -6003,7 +4784,7 @@ def ml_researcher_research() -> list[Post]:
     best_sharpe = best.get("results", {}).get("sharpe", 0) if best else 0
     best_strat = best.get("experiment", {}).get("strategy", "none") if best else "none"
     ai, provider = employee_provider_prompt(
-        "ml_researcher",
+        "sara",
         (f"ML research: {len(model_names)} models, {n_configs} configs, {n_results} results. "
          f"Best result: {best_strat} Sharpe={best_sharpe:.3f}. "
          "What is the single most impactful next ML research direction? 2 sentences, Slack-ready."),
@@ -6068,7 +4849,7 @@ def cro_dl_engineer() -> list[Post]:
 
     # Marcus's bot adds one DL architecture insight
     ai, provider = employee_provider_prompt(
-        "cro",
+        "marcus",
         (f"DL engineer update: {len(model_files)} architectures, {n_features} features, {n_configs} configs. "
          f"Models: {', '.join(sorted(model_files)[:6])}. "
          "What's the single most impactful DL architecture change to make next? 2 sentences, Slack-ready."),
@@ -6621,46 +5402,6 @@ def general_channel() -> list[Post]:
     return posts
 
 
-def allquantedge_channel() -> list[Post]:
-    """Company-wide broadcast to #allquantedge — CEO digest + cross-team highlights."""
-    state = load_state()
-    commits = git_recent_commits(since_hours=48, limit=8)
-    results = latest_backtest_results()
-    strats = list_strategies()
-    test_res = run_pytest_lightweight(timeout_secs=20)
-    positions = alpaca_positions()
-    n_manual = len(strats.get("manual", []))
-    n_ml = len(strats.get("ml_enhanced", []))
-    best = max(results, key=lambda r: float(r.get("sharpe", 0) or 0), default={}) if results else {}
-    best_str = (f"{best.get('strategy','?')} Sharpe {float(best.get('sharpe',0)):+.2f}" if best
-                else "no backtest runs yet")
-    tests_str = (f"{test_res.get('passed',0)} passed, {test_res.get('failed',0)} failed"
-                 if test_res else "tests not run")
-    pos_str = (f"{len(positions)} open positions" if isinstance(positions, list) and positions
-               else "paper account flat")
-
-    task = (
-        f"You are the CEO and founder of QuantEdge, posting a company-wide update to #allquantedge. "
-        f"Platform state: {n_manual} manual + {n_ml} ML-enhanced strategies live, all paper-trading. "
-        f"Best backtest: {best_str}. Tests: {tests_str}. {len(commits)} commits in 48h. {pos_str}. "
-        "Write a company-wide broadcast (120 words max) covering: "
-        "(1) one concrete achievement or milestone from this week, "
-        "(2) one key priority or challenge the whole team should know about, "
-        "(3) a forward-looking sentence on trajectory toward Sharpe>2.0. "
-        "Tone: energising, transparent, data-driven. Slack format. "
-        "Address as 'team' not individuals. No bullet lists — flowing prose with *bold* emphasis."
-    )
-    ai, _ = moa_employee_prompt("ceo", task, state=state)
-    if not ai:
-        return []
-    return [Post(
-        channel="allquantedge",
-        text=ai,
-        username="Laavanye Bahl — CEO/Founder",
-        icon_emoji=":sparkles:",
-    )]
-
-
 def standup_channel() -> list[Post]:
     """Every employee posts a concise async standup to #standup."""
     weekday = datetime.now(timezone.utc).strftime("%A")
@@ -6672,7 +5413,6 @@ def standup_channel() -> list[Post]:
     positions = alpaca_positions()
     acct = alpaca_account()
     strats = list_strategies()
-    state = load_state()
 
     standups: list[Post] = []
 
@@ -6687,7 +5427,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Maya Chen (VP Eng)*\n↳ {random.choice(maya_tasks)}",
-        "VP Eng", ":woman_office_worker:"))
+        "Maya Chen", ":woman_office_worker:"))
 
     # Aarav — Alpha Research Director
     all_manual = strats["manual"]
@@ -6701,7 +5441,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Aarav Patel (Alpha Director)*\n↳ {random.choice(aarav_tasks)}",
-        "Alpha Dir", ":chart_with_upwards_trend:"))
+        "Aarav Patel", ":chart_with_upwards_trend:"))
 
     # Linh — ML Modeling Lead
     if results:
@@ -6715,7 +5455,7 @@ def standup_channel() -> list[Post]:
         linh_tasks = [f"kicking off first LSTM experiment on BTC/1h. {_m('ML Research Lead')}: review config?"]
     standups.append(Post("standup",
         f"*{weekday} standup — Linh Tran (ML Lead)*\n↳ {random.choice(linh_tasks)}",
-        "ML Lead", ":robot_face:"))
+        "Linh Tran", ":robot_face:"))
 
     # Jian — Risk Engineer
     if positions and acct:
@@ -6733,7 +5473,7 @@ def standup_channel() -> list[Post]:
         ]
     standups.append(Post("standup",
         f"*{weekday} standup — Jian Wu (Risk Engineer)*\n↳ {random.choice(risk_tasks)}",
-        "Risk Eng", ":shield:"))
+        "Jian Wu", ":shield:"))
 
     # Anna — Backend Lead
     backend_files = [k for k in changed if k.startswith("backend/") and k.endswith(".py")]
@@ -6752,53 +5492,33 @@ def standup_channel() -> list[Post]:
         ]
     standups.append(Post("standup",
         f"*{weekday} standup — Anna Hoffmann (Backend Lead)*\n↳ {random.choice(anna_tasks)}",
-        "Backend Lead", ":gear:"))
+        "Anna Hoffmann", ":gear:"))
 
-    # Aditi — Director of QA (LLM-driven standup)
-    passed_count = test_res.get("passed", 0)
-    failed_count = test_res.get("failed", 0)
-    aditi_ctx = (
-        f"pytest: {passed_count} passed, {failed_count} failed. "
-        f"Open PRs: {pr_count}. "
-        f"Recent commits: {c_count} in last 24h."
-    )
-    aditi_ai, _ = employee_provider_prompt(
-        "qa_dir",
-        (f"You are Aditi Sharma, Director of QA at QuantEdge. Write a 1-sentence async standup for #standup. "
-         f"Context: {aditi_ctx} "
-         "Be specific about test status and one action item. Max 25 words. No greeting, no sign-off."),
-        state=state,
-    )
-    aditi_msg = aditi_ai if aditi_ai else (
-        f"✅ {passed_count} tests green. reviewing untested strategies."
-        if failed_count == 0
-        else f"⚠️ {failed_count} tests red — isolating root cause."
-    )
+    # Aditi — Director of QA
+    if test_res.get("not_installed") or test_res.get("timed_out"):
+        aditi_msg = f"test runner issue — deps missing. {_m('Director of DevOps')}: help needed on CI env"
+    elif test_res.get("failed", 0) > 0:
+        aditi_msg = f"⚠️ {test_res['failed']} tests red — isolating root cause. {_m('Backend Lead')}: heads up"
+    else:
+        aditi_msg = f"✅ {test_res.get('passed', 0)} tests green. reviewing untested strategies — flagging to {_m('Alpha Research Director')}"
     standups.append(Post("standup",
         f"*{weekday} standup — Aditi Sharma (QA Director)*\n↳ {aditi_msg}",
-        "QA Dir", ":mag:"))
+        "Aditi Sharma", ":mag:"))
 
-    # Kenji — DevOps (LLM-driven standup)
+    # Kenji — DevOps
     runs = latest_workflow_runs()
     if runs:
         last = runs[0]
-        ci_status = last.get("conclusion") or last.get("status", "running")
-        kenji_ctx = f"Last CI run: '{last.get('name', '?')}' → {ci_status} on {last.get('head_branch', 'main')}."
+        c = last.get("conclusion") or last.get("status", "running")
+        kenji_tasks = [
+            f"CI last run: `{last.get('name', '?')}` → {c}. deploy pipeline nominal.",
+            f"Render health: green. UptimeRobot pinging every 5min. Vercel edge functions stable.",
+        ]
     else:
-        kenji_ctx = "No recent CI runs detected."
-    kenji_ai, _ = employee_provider_prompt(
-        "devops_dir",
-        (f"You are Kenji Watanabe, DevOps Director at QuantEdge. Write a 1-sentence async standup for #standup. "
-         f"Context: {kenji_ctx} Stack: Render (FastAPI), Vercel (React), Supabase, Upstash Redis. "
-         "State CI/deploy health and one action item. Max 25 words. No greeting, no sign-off."),
-        state=state,
-    )
-    kenji_msg = kenji_ai if kenji_ai else (
-        f"CI: {ci_status}. Render + Vercel deploys nominal." if runs else "No recent CI runs — monitoring."
-    )
+        kenji_tasks = ["no recent CI runs — monitoring. Render + Vercel deploys on standby."]
     standups.append(Post("standup",
-        f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {kenji_msg}",
-        "DevOps Dir", ":satellite_antenna:"))
+        f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {random.choice(kenji_tasks)}",
+        "Kenji Watanabe", ":satellite_antenna:"))
 
     # Diego — Execution Engineer
     exec_tasks = [
@@ -6808,25 +5528,17 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Diego Ramirez (Execution Eng)*\n↳ {random.choice(exec_tasks)}",
-        "Exec Eng", ":zap:"))
+        "Diego Ramirez", ":zap:"))
 
-    # Lior — Polymarket (LLM-driven standup)
-    poly_strats = list_strategies().get("manual", [])
-    poly_count = sum(1 for s in poly_strats if "poly" in s.lower() or "polymarket" in s.lower())
-    lior_ctx = f"{poly_count} Polymarket strategies registered. Monitoring YES+NO sum arbitrage via Gamma API."
-    lior_ai, _ = employee_provider_prompt(
-        "poly_desk",
-        (f"You are Lior Avraham, Polymarket Researcher at QuantEdge. Write a 1-sentence async standup for #standup. "
-         f"Context: {lior_ctx} "
-         "State your current focus on prediction market arb or monitoring. Max 25 words. No greeting, no sign-off."),
-        state=state,
-    )
-    lior_msg = lior_ai if lior_ai else (
-        f"scanning live Polymarket markets for YES+NO arb. {poly_count} strategies on paper."
-    )
+    # Lior — Polymarket
+    poly_tasks = [
+        f"scanning 30 live Polymarket markets. watching YES+NO sums for < 97¢ arb. {_m('Alpha Research Director')}: binary arb strategy on paper",
+        "2 Kalshi + 1 Polymarket arb windows identified this morning. placing orders.",
+        "no arb windows right now — market makers tightened. monitoring every 10min.",
+    ]
     standups.append(Post("standup",
-        f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {lior_msg}",
-        "Poly Desk", ":vertical_traffic_light:"))
+        f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {random.choice(poly_tasks)}",
+        "Lior Avraham", ":vertical_traffic_light:"))
 
     # Sara — ML Research Lead
     sara_tasks = [
@@ -6836,72 +5548,37 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Sara Kim (ML Research Lead)*\n↳ {random.choice(sara_tasks)}",
-        "ML Researcher", ":microscope:"))
+        "Sara Kim", ":microscope:"))
 
-    # Sofia — VP Research (LLM-driven standup)
-    all_strats = strats.get("manual", [])
-    untested_count = max(0, len(all_strats) - len(results))
-    sofia_ctx = (
-        f"{len(all_strats)} manual strategies in repo; "
-        f"{len(results)} have backtest results; "
-        f"{untested_count} still need walk-forward validation."
-    )
-    sofia_ai, _ = employee_provider_prompt(
-        "vp_research",
-        (f"You are Sofia Karlsson, VP Research at QuantEdge. Write a 1-sentence async standup for #standup. "
-         f"Context: {sofia_ctx} "
-         "State your research focus today (validation methodology, paper review, or alpha ideation). "
-         "Max 25 words. No greeting, no sign-off."),
-        state=state,
-    )
-    sofia_msg = sofia_ai if sofia_ai else (
-        f"prioritising walk-forward validation — {untested_count} strategies still need OOS results."
-    )
+    # Sofia — VP Research
+    sofia_tasks = [
+        f"reviewing TFT paper (Lim et al 2021) implementation. checking variable selection against our features.",
+        f"curating new alpha ideas from 3 arxiv papers. {_m('Quant Researcher')}: sending you the most promising one",
+        f"walk-forward validation methodology audit — ensuring all teams use purged k-fold, not simple split.",
+    ]
     standups.append(Post("standup",
-        f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {sofia_msg}",
-        "VP Research", ":books:"))
+        f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {random.choice(sofia_tasks)}",
+        "Sofia Karlsson", ":books:"))
 
-    # Hugo — Quant Researcher (LLM-driven standup)
-    best_result = max(results, key=lambda r: float(r.get("sharpe", 0) or 0), default={}) if results else {}
-    hugo_ctx = (
-        f"Best backtest Sharpe: {best_result.get('sharpe', 'N/A')} on {best_result.get('strategy', 'unknown')}. "
-        f"{len(results)} backtest runs in experiments/results/."
-    )
-    hugo_ai, _ = employee_provider_prompt(
-        "quant_researcher",
-        (f"You are Hugo Bernardes, Quant Researcher at QuantEdge. Write a 1-sentence async standup for #standup. "
-         f"Context: {hugo_ctx} "
-         "State your current analysis task (IC analysis, cointegration, Monte Carlo, or factor research). "
-         "Max 25 words. No greeting, no sign-off."),
-        state=state,
-    )
-    hugo_msg = hugo_ai if hugo_ai else (
-        f"running IC analysis on alpha factors. {len(results)} strategies in the backtest ledger."
-    )
+    # Hugo — Quant Researcher
+    hugo_tasks = [
+        f"IC analysis on 5 alpha factors. `oi_momentum` IC=0.04 holding steady. {_m('Feature Engineering Lead')}: ready to add to pipeline",
+        f"running cointegration test on 20 equity pairs. finding 3 with p-value < 0.05 for stat arb desk",
+        f"Monte Carlo robustness check on momentum strategy. 1000 bootstrap samples. Sharpe CI: [0.8, 1.6]",
+    ]
     standups.append(Post("standup",
-        f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {hugo_msg}",
-        "Quant Researcher", ":mag_right:"))
+        f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {random.choice(hugo_tasks)}",
+        "Hugo Bernardes", ":mag_right:"))
 
-    # Marcus — CRO (LLM-driven standup)
-    has_cb = (REPO_ROOT / "backend" / "app" / "risk" / "circuit_breaker.py").exists()
-    marcus_ctx = (
-        f"Circuit breaker: {'present' if has_cb else 'missing'}. "
-        f"70/30 capital split policy enforced. "
-        f"Open positions: {len(positions) if positions else 0}."
-    )
-    marcus_ai, _ = employee_provider_prompt(
-        "cro",
-        (f"You are Marcus Olufemi, Chief Risk Officer at QuantEdge. Write a 1-sentence async standup for #standup. "
-         f"Context: {marcus_ctx} "
-         "State firm-level risk status and one key compliance point. Max 25 words. No greeting, no sign-off."),
-        state=state,
-    )
-    marcus_msg = marcus_ai if marcus_ai else (
-        "risk posture nominal. 70/30 allocation enforced. live trading requires CRO sign-off + 14-day paper record."
-    )
+    # Marcus — CRO
+    marcus_tasks = [
+        f"weekly risk review: all desks within allocated buckets. no circuit breaker events. {_m('Risk Engineer')}: good work",
+        f"signing off on `cross_sectional_momentum` paper candidacy — Kelly-sized, 5% NAV cap. go ahead {_m('Alpha Research Director')}",
+        f"reminder: live trading requires CRO sign-off + 14-day paper record. no exceptions.",
+    ]
     standups.append(Post("standup",
-        f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {marcus_msg}",
-        "CRO", ":shield:"))
+        f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {random.choice(marcus_tasks)}",
+        "Marcus Olufemi", ":shield:"))
 
     return standups
 
@@ -6920,7 +5597,7 @@ def wins_channel() -> list[Post]:
         strat = best.get("strategy", "?")
         sym = best.get("symbol", "?")
         if s > 1.0:
-            credit = random.choice(["ML Lead", "ML Researcher", "Quant Researcher", "Alpha Dir"])
+            credit = random.choice(["Linh Tran", "Sara Kim", "Hugo Bernardes", "Aarav Patel"])
             posts.append(Post("wins",
                 f":trophy: `{strat}` / `{sym}` → Sharpe *{s:.2f}* on walk-forward!\n"
                 f"beats our 1.0 paper gate. {_m('Alpha Research Director')}: paper candidacy? "
@@ -7102,21 +5779,13 @@ def model_perf_channel() -> list[Post]:
               f"{_m('ML Research Lead')}: which model should we up-weight in the next run?"]
     posts.append(Post("model-performance", "\n".join(lines), "Linh Tran — ML Modeling Lead", ":robot_face:"))
 
-    # Sara Kim — ML Research Lead responds with specific weight recommendation
-    model_summary = "\n".join(lines[2:])  # skip header
-    sara_task = (
-        f"You are Sara Kim, ML Research Lead at QuantEdge. Linh just posted this model comparison:\n{model_summary[:400]}\n\n"
-        "Reply in 1-2 sentences recommending which model to up-weight in the ensemble and why. "
-        "Be specific: cite the model name, a Sharpe value, and a concrete action. "
-        "Do NOT say you are an AI."
-    )
-    sara_resp, _ = employee_provider_prompt("ml_researcher", sara_task, state=None)
-    if not sara_resp:
-        sara_resp = (
-            f"LSTM showing best OOS consistency — recommend up-weighting to 0.40 in next Optuna run. "
-            f"SSM promising on crypto 15min; will add at 0.15 weight. validating IC on 3-month holdout."
-        )
-    posts.append(Post("model-performance", sara_resp.strip(), "Sara Kim — ML Research Lead", ":microscope:"))
+    sara_replies = [
+        "TFT winning on sequential data — upping its weight 0.25→0.35. validating on 3-month holdout. will post IC delta",
+        "LSTM strong on short-horizon. SSM showing promise on BTC/15min — testing at 0.15 ensemble weight",
+        "Lorentzian KNN has best OOS stability — least prone to overfitting. recommend higher allocation in next Optuna run",
+        "ablation complete: removing `oi_momentum` drops ensemble Sharpe by 0.31. keeping it as mandatory feature",
+    ]
+    posts.append(Post("model-performance", random.choice(sara_replies), "Sara Kim — ML Research Lead", ":microscope:"))
     return posts
 
 
@@ -7142,30 +5811,25 @@ def code_review_channel() -> list[Post]:
     if backend_files:
         f = random.choice(backend_files[:5])
         url = repo_url("blob", "main", f)
-        review_task = (
-            f"You are Anna Hoffmann, Backend Lead at QuantEdge. You reviewed `{f}` (Python, FastAPI + SQLAlchemy async). "
-            "Write a concise 1-sentence code review comment — specific concern or approval. "
-            "Mention: async patterns, SQLAlchemy ORM, FastAPI routing, type safety, or test coverage. "
-            "Do NOT say you are an AI."
-        )
-        comment, _ = employee_provider_prompt("backend_lead", review_task, state=None)
-        if not comment:
-            comment = f"✅ async-safe, proper session scoping. {_m('Director of QA')}: coverage added?"
-        posts.append(Post("code-review", f"<{url}|`{Path(f).name}`>: {comment.strip()}", "Anna Hoffmann — Backend Lead", ":gear:"))
+        comments = [
+            f"reviewed <{url}|`{Path(f).name}`> — logic clean. nit: retry loop should use exp backoff, not fixed delay",
+            f"<{url}|`{Path(f).name}`>: type annotation missing on return. adds readability for downstream callers",
+            f"<{url}|`{Path(f).name}`>: potential race condition in async context — two tasks could write same key. adding a lock",
+            f"<{url}|`{Path(f).name}`>: ✅ approved. clean, tested, async-safe",
+            f"<{url}|`{Path(f).name}`>: nice use of `joinedload` — avoids the N+1 we had before",
+        ]
+        posts.append(Post("code-review", random.choice(comments), "Anna Hoffmann — Backend Lead", ":gear:"))
 
     if frontend_files:
         f = random.choice(frontend_files[:5])
         url = repo_url("blob", "main", f)
-        fe_task = (
-            f"You are Priya Subramanian, Frontend Lead at QuantEdge. You reviewed `{f}` (React 18, TypeScript, TanStack Query). "
-            "Write a concise 1-sentence code review comment — specific concern or approval. "
-            "Mention: React hooks, TanStack Query staleTime, TypeScript types, or Tailwind classes. "
-            "Do NOT say you are an AI."
-        )
-        fe_comment, _ = employee_provider_prompt("frontend_eng", fe_task, state=None)
-        if not fe_comment:
-            fe_comment = "✅ LGTM. Clean TypeScript, no `any` escapes, TanStack Query properly configured."
-        posts.append(Post("code-review", f"<{url}|`{Path(f).name}`>: {fe_comment.strip()}", "Priya Subramanian — Frontend Lead", ":art:"))
+        fe_comments = [
+            f"reviewed <{url}|`{Path(f).name}`> — useEffect deps look correct. memo on chart component is good",
+            f"<{url}|`{Path(f).name}`>: loading state handled. add error boundary around TV chart widget",
+            f"<{url}|`{Path(f).name}`>: ✅ LGTM. clean TypeScript, no `any` escapes",
+            f"<{url}|`{Path(f).name}`>: TanStack Query `staleTime` could be bumped to 30s for price data — reduces re-fetches",
+        ]
+        posts.append(Post("code-review", random.choice(fe_comments), "Priya Subramanian — Frontend Lead", ":art:"))
 
     if not posts:
         posts.append(Post("code-review",
@@ -7444,19 +6108,6 @@ def build_discussion_chains(
         ]
         chains.append(("standup", pt, random.choice(thread_comments)))
 
-    # Write a summary of discussion activity to company_brain.json
-    if chains:
-        channels_with_discussion = list({ch for ch, _, _ in chains})
-        _write_brain_learning(
-            source="build_discussion_chains",
-            learning=(
-                f"Discussion chains built across {len(chains)} threads in "
-                f"{len(channels_with_discussion)} channels: "
-                + ", ".join(f"#{c}" for c in channels_with_discussion[:5])
-            ),
-            metadata={"chain_count": len(chains), "channels": channels_with_discussion},
-        )
-
     return chains
 
 
@@ -7466,171 +6117,42 @@ def build_discussion_chains(
 
 # Agent @mention handles (for cross-team references)
 AGENT_HANDLES: dict[str, str] = {
-    "VP Engineering":           "vp_eng",
-    "Alpha Research Director":  "alpha_dir",
-    "ML Modeling Lead":         "ml_lead",
-    "Execution Engineer":       "exec_eng",
-    "Risk Engineer":            "risk_eng",
+    "VP Engineering":           "maya",
+    "Alpha Research Director":  "aarav",
+    "ML Modeling Lead":         "linh",
+    "Execution Engineer":       "diego",
+    "Risk Engineer":            "jian",
     "Frontend Lead":            "priya_s",
-    "Backend Lead":             "backend_lead",
-    "Data Engineer":            "data_eng",
-    "Director of DevOps":       "devops_dir",
-    "Director of QA":           "qa_dir",
-    "VP Research":              "vp_research",
-    "Options Researcher":       "options_researcher",
-    "Quant Researcher":         "quant_researcher",
-    "Research Scientist":       "rl_researcher",
-    "Polymarket Researcher":    "poly_desk",
-    "Chief Risk Officer":       "cro",
-    "Finance Engineer":         "finance_eng",
-    "Compliance Engineer":      "compliance_eng",
-    "Junior Engineer":          "junior_eng",
-    "CEO / Founder":            "ceo",
-    "ML Infrastructure Engineer": "ci_eng",
-    "ML Research Lead":         "ml_researcher",
+    "Backend Lead":             "anna",
+    "Data Engineer":            "sina",
+    "Director of DevOps":       "kenji",
+    "Director of QA":           "aditi",
+    "VP Research":              "sofia",
+    "Options Researcher":       "yuki",
+    "Quant Researcher":         "hugo",
+    "Research Scientist":       "tomas",
+    "Polymarket Researcher":    "lior",
+    "Chief Risk Officer":       "marcus",
+    "Finance Engineer":         "wei",
+    "Compliance Engineer":      "helena",
+    "Junior Engineer":          "karl",
+    "CEO / Founder":            "laavanye",
+    "ML Infrastructure Engineer": "ravi",
+    "ML Research Lead":         "sara",
     "Deep Learning Engineer":   "marcus_w",
     "Feature Engineering Lead": "priya_n",
-    "Quant ML Researcher":      "quant_ml",
+    "Quant ML Researcher":      "alex",
 }
 
 
-_AGENT_SLACK_USER_IDS: dict[str, str] = {}   # handle → real Slack user ID (populated at startup)
-
-
-def _lookup_agent_user_ids(token: str) -> None:
-    """Populate _AGENT_SLACK_USER_IDS by scanning workspace member list once at startup."""
-    global _AGENT_SLACK_USER_IDS
-    if _AGENT_SLACK_USER_IDS:
-        return
-    try:
-        cursor = ""
-        members: list[dict] = []
-        for _ in range(3):  # max 3 pages
-            params: dict = {"limit": 200}
-            if cursor:
-                params["cursor"] = cursor
-            r = slack_call(token, "users.list", params)
-            if not r.get("ok"):
-                break
-            members.extend(r.get("members", []))
-            cursor = r.get("response_metadata", {}).get("next_cursor", "")
-            if not cursor:
-                break
-        handle_map = {m.get("name", "").lower(): m.get("id", "") for m in members if not m.get("is_bot") and not m.get("deleted")}
-        # Also map bot users
-        bot_map = {m.get("name", "").lower(): m.get("id", "") for m in members if m.get("is_bot") and not m.get("deleted")}
-        handle_map.update(bot_map)
-        # Map our agent handles to real Slack user IDs
-        for handle in AGENT_HANDLES.values():
-            uid = handle_map.get(handle.lower())
-            if uid:
-                _AGENT_SLACK_USER_IDS[handle] = uid
-        print(f"  [agents] resolved {len(_AGENT_SLACK_USER_IDS)} user IDs from workspace members")
-    except Exception as e:
-        print(f"  [agents] user ID lookup failed (non-fatal): {e}")
-
-
 def _m(role: str) -> str:
-    """Return Slack mention for a role. Uses <@USER_ID> if ID is known, else display @handle."""
-    handle = AGENT_HANDLES.get(role, role.split()[0].lower())
-    uid = _AGENT_SLACK_USER_IDS.get(handle)
-    if uid:
-        return f"<@{uid}>"
-    return "@" + handle
+    """Return @handle for a role."""
+    return "@" + AGENT_HANDLES.get(role, role.split()[0].lower())
 
 
 def add_reaction(token: str, channel_id: str, ts: str, emoji: str) -> None:
     """Add an emoji reaction to an existing message."""
     slack_call(token, "reactions.add", {"channel": channel_id, "timestamp": ts, "name": emoji})
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Cross-agent conversation threads — employees reply to each other inline
-# ─────────────────────────────────────────────────────────────────────────────
-
-_COLLAB_PAIRS: list[tuple[str, str, str, str]] = [
-    # (channel, requester_role, responder_role, topic)
-    ("alpha-research", "Alpha Research Director", "ML Modeling Lead",
-     "signal quality on the latest backtest — should we add a volatility filter?"),
-    ("ml-experiments", "ML Research Lead", "Feature Engineering Lead",
-     "adding open-interest momentum features to the LSTM input — which exchange gives cleanest data?"),
-    ("engineering", "VP Engineering", "Backend Lead",
-     "status on async strategy runner — any latency issues under load?"),
-    ("risk-alerts", "Chief Risk Officer", "Alpha Research Director",
-     "portfolio correlation check — are our long momentum positions offsetting stat-arb?"),
-    ("desk-crypto", "Crypto desk bot", "ML Modeling Lead",
-     "BTC/ETH ratio divergence this session — worth a pairs trade signal?"),
-    ("desk-equities", "Equity desk bot", "Risk Engineer",
-     "momentum strategy sizing — Kelly fraction vs HRP allocation, which do you recommend for SPY?"),
-    ("squad-backend", "Backend Lead", "Data Engineer",
-     "OHLCV ingestion latency spike — are we hitting Binance rate limits?"),
-    ("strategy-review", "Alpha Research Director", "VP Research",
-     "walk-forward results for cross-sectional momentum — statistically significant edge?"),
-]
-
-
-def generate_collab_thread(token: str, state: dict) -> int:
-    """
-    Post a realistic 2-message conversation thread between two agent personas.
-    Agent A posts a question/update, Agent B replies in the thread.
-    Runs once per main() wave with ~40% probability. Returns 1 if posted, 0 if skipped.
-    """
-    if random.random() > 0.40:
-        return 0
-    pair = random.choice(_COLLAB_PAIRS)
-    channel, requester, responder, topic = pair
-
-    # Build requester message
-    req_task = (
-        f"You are {requester} on the QuantEdge trading team posting in #{channel}. "
-        f"Post a message asking {responder} about: {topic}. "
-        "Keep it 1-2 sentences. Be specific. Use a question at the end. "
-        "Do NOT write headers or bullets. Do NOT say you are an AI."
-    )
-    req_system = _CHANNEL_SUMMON_SYSTEM.get(channel, _DEFAULT_SUMMON_SYSTEM)
-    req_msg, _ = call_best_agent_for_task("code", req_task, system_prompt=req_system)
-    if not req_msg or len(req_msg.strip()) < 20:
-        return 0
-
-    req_agent_name = requester
-    req_emoji = _CHANNEL_AGENT_IDENTITY.get(channel, ("Agent", ":robot_face:"))[1]
-
-    # Post requester message
-    r1 = post_to_slack(token, channel, req_msg.strip(),
-                       username=req_agent_name, icon_emoji=req_emoji)
-    if not r1.get("ok"):
-        return 0
-    thread_ts = r1.get("ts", "")
-    if not thread_ts:
-        return 0
-    record_post(state, req_msg.strip())
-    time.sleep(random.uniform(0.8, 2.0))
-
-    # Build responder reply in thread
-    context_blurb = _build_summon_context()
-    resp_task = (
-        f"You are {responder} on the QuantEdge trading team. {requester} just asked you in #{channel}: "
-        f'"{req_msg.strip()[:200]}" '
-        f"Context: {context_blurb} "
-        "Reply in 2-3 sentences. Be specific, cite file names or metrics. "
-        "Do NOT say you are an AI."
-    )
-    resp_persona_key = next(
-        (k for k, v in _EMPLOYEE_PERSONAS.items() if responder.lower().startswith(k)), "default"
-    )
-    resp_system = _EMPLOYEE_PERSONAS.get(resp_persona_key, _DEFAULT_SUMMON_SYSTEM)
-    resp_msg, _ = call_best_agent_for_task("code", resp_task, system_prompt=resp_system)
-    if not resp_msg or len(resp_msg.strip()) < 20:
-        return 1  # still count the first post
-
-    resp_agent_name = responder
-    r2 = post_to_slack(token, channel, resp_msg.strip(),
-                       username=resp_agent_name, icon_emoji=req_emoji,
-                       thread_ts=thread_ts)
-    if r2.get("ok"):
-        record_post(state, resp_msg.strip())
-        print(f"  ✓ collab thread: {requester} ↔ {responder} in #{channel}")
-    return 1
 
 
 _REACTION_POOL = [
@@ -7949,23 +6471,6 @@ def _short_stat_arb() -> list[Post]:
 
 def _short_general() -> list[Post]:
     commits = git_recent_commits(since_hours=24, limit=3)
-    strats = list_strategies()
-    n_manual = len(strats.get("manual", []))
-    state = load_state()
-    context = (
-        f"{len(commits)} commits in last 24h. "
-        f"{n_manual} strategies in repo. "
-        f"All desks paper-trading on Alpaca."
-    )
-    ai, _ = employee_provider_prompt(
-        "ceo",
-        (f"You are Laavanye Bahl, CEO/Founder of QuantEdge. Write a 1-sentence motivational or strategic update for #general. "
-         f"Context: {context} "
-         "Max 25 words. Sound like a startup founder, not an AI. No greeting, no sign-off."),
-        state=state,
-    )
-    if ai:
-        return [Post("general", ai, "Laavanye Bahl — CEO/Founder", ":sparkles:")]
     msgs = [
         f"good {datetime.now(timezone.utc).strftime('%A')} — {len(commits)} commits since yesterday. keep shipping.",
         f"reminder: paper-first. no live trading without CRO sign-off. {_m('Risk Engineer')}: status?",
@@ -7978,12 +6483,12 @@ def _short_general() -> list[Post]:
 def _short_standup() -> list[Post]:
     weekday = datetime.now(timezone.utc).strftime("%A")
     employees = [
-        ("VP Eng", ":woman_office_worker:", ["reviewing PRs", "unblocking team", "CI monitoring"]),
-        ("Alpha Dir", ":chart_with_upwards_trend:", ["strategy walk-forward", "alpha research", "paper gate review"]),
-        ("ML Lead", ":robot_face:", ["LSTM retrain", "ensemble update", "model comparison"]),
-        ("Risk Eng", ":shield:", ["risk dashboard", "kelly sizing", "circuit breaker check"]),
-        ("Backend Lead", ":gear:", ["backend PR", "API endpoint", "DB migration"]),
-        ("Exec Eng", ":zap:", ["execution algo tuning", "slippage analysis", "RL policy"]),
+        ("Maya Chen", ":woman_office_worker:", ["reviewing PRs", "unblocking team", "CI monitoring"]),
+        ("Aarav Patel", ":chart_with_upwards_trend:", ["strategy walk-forward", "alpha research", "paper gate review"]),
+        ("Linh Tran", ":robot_face:", ["LSTM retrain", "ensemble update", "model comparison"]),
+        ("Jian Wu", ":shield:", ["risk dashboard", "kelly sizing", "circuit breaker check"]),
+        ("Anna Hoffmann", ":gear:", ["backend PR", "API endpoint", "DB migration"]),
+        ("Diego Ramirez", ":zap:", ["execution algo tuning", "slippage analysis", "RL policy"]),
     ]
     name, emoji, tasks = random.choice(employees)
     task = random.choice(tasks)
@@ -8171,7 +6676,7 @@ AGENTS: list[Agent] = [
     Agent("Director of DevOps", "Director of DevOps", ":satellite_antenna:",
           ["infra-alerts"], devops_dir_devops, ["devops", "ci"]),
     Agent("Director of DevOps", "Director of DevOps", ":satellite_antenna:",
-          ["infra-alerts"], devops_dir_deploy_readiness, ["deploy", "infra"]),
+          ["infra-alerts"], kenji_deploy_readiness, ["deploy", "infra"]),
     Agent("Director of QA", "Director of QA", ":mag:",
           ["squad-qa"], qa_dir_qa, ["qa", "test"]),
     Agent("Director of QA", "Director of QA", ":mag:",
@@ -8249,8 +6754,6 @@ AGENTS: list[Agent] = [
           ["code-review"], code_review_channel, ["code", "review"]),
     Agent("Frontend Bot", "Frontend Bot", ":computer:",
           ["squad-frontend"], frontend_improvement_agent, ["frontend", "ux", "typescript"]),
-    Agent("Laavanye Bahl — CEO/Founder", "CEO/Founder", ":sparkles:",
-          ["allquantedge"], allquantedge_channel, ["ceo", "company", "allhands"]),
 ]
 
 # 24/7 markets: crypto + polymarket + FX + kalshi + stat-arb always run every wave
@@ -8305,7 +6808,7 @@ def broadcast_to_desk_agents(token: str, message: str, source_channel: str, stat
         "desk-polymarket": ["desk-crypto"],
         "desk-futures": ["desk-crypto", "desk-fx"],
         "desk-fx": ["desk-futures"],
-        "desk-equities": ["desk-futures"],
+        "desk-equity": ["desk-futures"],
         "risk-alerts": ["desk-crypto", "desk-equities", "desk-futures"],
     }
     targets = CROSS_NOTIFY_MAP.get(source_channel, [])
@@ -8366,20 +6869,10 @@ def main() -> int:
     else:
         bot_user_id = auth.get("user_id", "")
         print(f"✅ Authed as {auth.get('user')} in {auth.get('team')} at {datetime.now(timezone.utc).isoformat()}")
-        # Resolve real Slack user IDs so @mentions actually notify people
-        _lookup_agent_user_ids(token)
 
     # Load run state for dedup + thread tracking + token budget
     state = load_state()
     _init_governance(state)
-
-    # Reset posted_today at the start of each new UTC day so agents are forced to post daily
-    today = _today()
-    if state.get("posted_today_date") != today:
-        state["posted_today"] = []
-        state["posted_today_date"] = today
-        print(f"📅 New day ({today}) — reset posted_today for fresh catch-up pass")
-
     post_engineer_onboarding(token, state)
     if token:
         post_api_guard_map(token, state)
@@ -8409,9 +6902,6 @@ def main() -> int:
         save_state(state)
         return 0
 
-    # ── Self-healing: run health monitor inline (fast static checks only) ────
-    _run_inline_health_check(token, state)
-
     # ── Auto-create channels ──────────────────────────────────────────────────
     print("\n📺 Ensuring all channels exist")
     ensure_channels_exist(token)
@@ -8429,16 +6919,13 @@ def main() -> int:
         "desk-crypto", "desk-polymarket", "desk-fx-rates",
         "desk-kalshi", "desk-stat-arb", "desk-futures",
         "desk-rates", "desk-equities", "desk-commodities",
-        "desk-options", "squad-data", "pod-ml-rl",
+        "desk-equity", "desk-options",
         "help", "pnl-daily", "squad-execution",
         # Additional channels
         "general", "random", "standup", "wins", "incidents",
         "strategy-review", "model-performance", "code-review",
         # Autopilot gap channels
         "papers", "leadership-summary", "infra-alerts", "ci-failures",
-        # Specialist — agents post here, humans reply here
-        "security-alerts", "finance-ops", "legal-compliance",
-        "announcements", "allquantedge",
     ]
     posts_made = 0
     errors = 0
@@ -8546,15 +7033,6 @@ def main() -> int:
     # Friday presentation
     team_posts.extend(friday_presentation_post())
 
-    # Cross-agent collaboration thread — two employees discuss in-thread (40% probability)
-    try:
-        collab_count = generate_collab_thread(token, state)
-        if collab_count:
-            posts_made += collab_count
-            print(f"  ✓ collab thread generated")
-    except Exception as e:
-        print(f"  [collab] {e}")
-
     # Sample wave: always-on 24/7 desks ALWAYS included + enough optional to hit min 8 total
     always_on_wave = [a for a in AGENTS if any(ch in ALWAYS_ON_CHANNELS for ch in a.home_channels)]
     optional_agents = [a for a in AGENTS if not any(ch in ALWAYS_ON_CHANNELS for ch in a.home_channels)]
@@ -8634,7 +7112,7 @@ def main() -> int:
             time.sleep(0.6)
 
         # ── Risk broadcast: propagate jian/marcus risk signals to related desks ─
-        if agent.work_fn in (risk_eng_risk, cro_risk) and posts:
+        if agent.work_fn in (jian_wu_risk, marcus_olufemi_risk) and posts:
             risk_summary_text = posts[0].text if posts else ""
             if risk_summary_text:
                 broadcast_to_desk_agents(token, risk_summary_text, "risk-alerts", state)
@@ -8755,10 +7233,7 @@ def main() -> int:
         print(f"  ✓ Catch-up pass: {catchup_count} benched engineer(s) ran")
 
     # ── Catch-up pass: guarantee every engineer posts at least once per full run ──
-    # Always a set in memory; JSON loads it as list — convert back
-    _pt_raw = state.get("posted_today", [])
-    posted_today = set(_pt_raw) if not isinstance(_pt_raw, set) else _pt_raw
-    state["posted_today"] = posted_today
+    posted_today = state.setdefault("posted_today", set())
     for agent in AGENTS:
         if agent.name not in posted_today:
             try:
@@ -8780,15 +7255,6 @@ def main() -> int:
         state["last_commit_sha"] = latest_commits[0].get("sha", "")
     save_state(state)
     print(f"💾 State saved: {len(state['posted_hashes'])} hashes, {len(state['replied_to'])} replied threads")
-
-    # ── Page status reports — each employee audits their assigned pages ──────
-    try:
-        page_posts = run_page_status_reports(token, state)
-        if page_posts:
-            posts_made += page_posts
-            print(f"  ✓ Page reports: {page_posts} page audit(s) posted")
-    except Exception as e:
-        print(f"  [page_reports] {e}")
 
     # Post governance report to #cto-audit
     post_governance_report(token, state)
@@ -8831,35 +7297,6 @@ def _already_posted(state: dict, channel: str, content_key: str, cooldown_second
     return False
 
 
-_BOT_USERNAMES = {"QuantEdge Agent Team", "QuantEdge Slack Agent"}
-
-def _slack_channel_has_recent_bot_post(
-    token: str, channel: str, text_snippet: str, hours: float = 23.0
-) -> bool:
-    """Check Slack channel history for a recent bot post containing text_snippet.
-    Used as a hard fallback when in-memory state is empty (e.g. first run after deploy).
-    Returns True if found (skip posting), False if safe to post.
-    """
-    try:
-        ch_id = get_channel_id(token, channel)
-        if not ch_id:
-            return False
-        oldest = str(time.time() - hours * 3600)
-        resp = slack_call(token, "conversations.history", {
-            "channel": ch_id, "limit": 50, "oldest": oldest
-        })
-        if not resp or not resp.get("ok"):
-            return False
-        for msg in resp.get("messages", []):
-            # Match bot messages by username or subtype
-            is_bot = msg.get("bot_id") or msg.get("username", "") in _BOT_USERNAMES
-            if is_bot and text_snippet.lower() in msg.get("text", "").lower():
-                return True
-    except Exception:
-        pass
-    return False
-
-
 def post_throughput_report(token: str, state: dict) -> None:
     """Post a per-key call/token throughput report to #agent-api-usage."""
     if _already_posted(state, "agent-api-usage", "throughput_report", 3300):
@@ -8891,10 +7328,10 @@ def post_throughput_report(token: str, state: dict) -> None:
         lines.append("")
         lines.append("*Free Agent Usage This Wave*")
         _EMP_ROLES = {
-            "vp_eng": "VP Eng", "alpha_dir": "Alpha Research", "ml_lead": "ML/Crypto",
-            "risk_eng": "Risk", "backend_lead": "Backend", "qa_dir": "QA", "devops_dir": "DevOps",
-            "exec_eng": "Execution", "poly_desk": "Polymarket", "ml_researcher": "ML Research",
-            "vp_research": "FX/Macro", "quant_researcher": "Quant Research", "cro": "CRO/DL",
+            "maya": "VP Eng", "aarav": "Alpha Research", "linh": "ML/Crypto",
+            "jian": "Risk", "anna": "Backend", "aditi": "QA", "kenji": "DevOps",
+            "diego": "Execution", "lior": "Polymarket", "sara": "ML Research",
+            "sofia": "FX/Macro", "hugo": "Quant Research", "marcus": "CRO/DL",
             "frontend": "Frontend",
         }
         quality_log = state.get("quality_log", [])
@@ -9103,15 +7540,15 @@ def post_daily_standup(token: str, state: dict) -> int:
     import random
     if _already_posted(state, "standup-channel", "standup", 3300):  # 55-min cooldown
         return 0
-    always_on = ["ml_lead", "poly_desk", "vp_research", "devops_dir", "risk_eng"]  # 24/7 desk leads
+    always_on = ["linh", "lior", "sofia", "kenji", "jian"]  # 24/7 desk leads
     emp = random.choice(always_on)
     _hr = datetime.now(_tz.utc).strftime("%H:%M UTC")
     _desk_context = {
-        "ml_lead": "BTC/ETH crypto markets, funding rates, perpetual futures",
-        "poly_desk": "Polymarket prediction markets, active events, probability edges",
-        "vp_research": "FX/macro markets, G10 currencies, DXY, yield differentials",
-        "devops_dir": "platform infra, CI pipelines, deploy health, latency metrics",
-        "risk_eng": "portfolio risk, VaR, drawdown, position concentration, correlation matrix",
+        "linh": "BTC/ETH crypto markets, funding rates, perpetual futures",
+        "lior": "Polymarket prediction markets, active events, probability edges",
+        "sofia": "FX/macro markets, G10 currencies, DXY, yield differentials",
+        "kenji": "platform infra, CI pipelines, deploy health, latency metrics",
+        "jian": "portfolio risk, VaR, drawdown, position concentration, correlation matrix",
     }
     context = _desk_context.get(emp, "quantitative trading signals")
     prompt = (
@@ -9123,8 +7560,8 @@ def post_daily_standup(token: str, state: dict) -> int:
     if result and len(result.strip()) > 30:
         _disp = _SILENT_EMP_DISPLAY.get(emp, (emp.capitalize(), ":green_circle:"))
         username, icon = _disp
-        channel = {"ml_lead": "desk-crypto", "poly_desk": "desk-polymarket", "vp_research": "desk-fx-rates",
-                   "devops_dir": "engineering", "risk_eng": "risk-alerts"}.get(emp, "engineering")
+        channel = {"linh": "desk-crypto", "lior": "desk-polymarket", "sofia": "desk-fx-rates",
+                   "kenji": "engineering", "jian": "risk-alerts"}.get(emp, "engineering")
         res = post_to_slack(token, channel, result.strip(), username=username, icon_emoji=icon)
         if res and res.get("ok"):
             print(f"  [standup] ✓ {emp} posted to #{channel}")
@@ -9137,23 +7574,21 @@ def post_daily_standup(token: str, state: dict) -> int:
 def _get_engineer_channel(emp_key: str) -> str:
     """Return the primary Slack channel for an engineer, defaulting to 'engineering'."""
     _EMP_CHANNEL_MAP: dict[str, str] = {
-        "vp_eng": "engineering",
-        "alpha_dir": "alpha-research",
-        "ml_lead": "desk-crypto",
-        "risk_eng": "risk-alerts",
-        "backend_lead": "squad-backend",
-        "qa_dir": "squad-qa",
-        "devops_dir": "infra-alerts",
-        "exec_eng": "squad-execution",
-        "poly_desk": "desk-polymarket",
-        "ml_researcher": "ml-experiments",
-        "vp_research": "desk-fx-rates",
-        "quant_researcher": "alpha-research",
-        "cro": "leadership-summary",
-        "frontend": "squad-frontend",  # frontend persona → correct channel
+        "maya": "engineering",
+        "aarav": "alpha-research",
+        "linh": "desk-crypto",
+        "jian": "risk-alerts",
+        "anna": "squad-backend",
+        "aditi": "squad-qa",
+        "kenji": "infra-alerts",
+        "diego": "squad-execution",
+        "lior": "desk-polymarket",
+        "sara": "ml-experiments",
+        "sofia": "desk-fx-rates",
+        "hugo": "alpha-research",
+        "marcus": "leadership-summary",
     }
-    # Use full key first, then fallback to first segment for legacy
-    key = emp_key if emp_key in _EMP_CHANNEL_MAP else emp_key.split("_")[0].lower()
+    key = emp_key.split("_")[0].lower()
     # Also check TEAMS dict for lead mappings
     for _team_info in TEAMS.values():
         lead_first = _team_info.get("lead", "").split()[0].lower()
@@ -9163,19 +7598,19 @@ def _get_engineer_channel(emp_key: str) -> str:
 
 
 _SILENT_EMP_DISPLAY: dict[str, tuple[str, str]] = {
-    "vp_eng":   ("VP Eng",       ":female-technologist:"),
-    "alpha_dir":  ("Aarav Singh",     ":male-office-worker:"),
-    "ml_lead":   ("Linh Nguyen",     ":woman-technologist:"),
-    "risk_eng":   ("Risk Eng",         ":man-in-tuxedo:"),
-    "backend_lead":   ("Anna Kovacs",     ":woman-mechanic:"),
-    "qa_dir":  ("QA Dir",    ":female-technologist:"),
-    "devops_dir":  ("Kenji Tanaka",    ":male-technologist:"),
-    "exec_eng":  ("Diego Reyes",     ":man-technologist:"),
-    "poly_desk":   ("Lior Ben-David",  ":man-office-worker:"),
-    "ml_researcher":   ("Sara Osei",       ":woman-scientist:"),
-    "vp_research":  ("Sofia Alvarez",   ":woman-office-worker:"),
-    "quant_researcher":   ("Hugo Fernandez",  ":man-scientist:"),
-    "cro": ("CRO",  ":man-in-suit-levitating:"),
+    "maya":   ("Maya Chen",       ":female-technologist:"),
+    "aarav":  ("Aarav Singh",     ":male-office-worker:"),
+    "linh":   ("Linh Nguyen",     ":woman-technologist:"),
+    "jian":   ("Jian Wu",         ":man-in-tuxedo:"),
+    "anna":   ("Anna Kovacs",     ":woman-mechanic:"),
+    "aditi":  ("Aditi Sharma",    ":female-technologist:"),
+    "kenji":  ("Kenji Tanaka",    ":male-technologist:"),
+    "diego":  ("Diego Reyes",     ":man-technologist:"),
+    "lior":   ("Lior Ben-David",  ":man-office-worker:"),
+    "sara":   ("Sara Osei",       ":woman-scientist:"),
+    "sofia":  ("Sofia Alvarez",   ":woman-office-worker:"),
+    "hugo":   ("Hugo Fernandez",  ":man-scientist:"),
+    "marcus": ("Marcus Olufemi",  ":man-in-suit-levitating:"),
 }
 
 
@@ -9214,9 +7649,9 @@ def check_silent_engineers(token: str, state: dict) -> int:
 
 
 def post_daily_agent_reminder(token: str, state: dict) -> None:
-    """Post once/day to #engineering and #help reminding engineers to use the free bots.
-    NOTE: never posts to #alpha-research — that channel is for research content only.
-    Uses Slack history as primary cooldown so repeated runs never double-post."""
+    """Post once/day to remind engineers to use the free bots."""
+    if _already_posted(state, "engineering", "agent_reminder", 86000):  # 24-hr cooldown
+        return
     msg = (
         "*:robot_face: Your free AI team is on 24/7 — use them for everything:*\n"
         "• `@agent <question>` in any channel → instant answer (Groq/Gemini/Cerebras)\n"
@@ -9226,22 +7661,8 @@ def post_daily_agent_reminder(token: str, state: dict) -> None:
         "• Reply in any thread → bot auto-responds\n"
         "_Zero cost. Zero setup. Just ask._"
     )
-    snippet = "Your free AI team is on 24/7"
-    for ch in ["engineering", "help"]:
-        # Primary: state-based cooldown (works once state is persisted)
-        if _already_posted(state, ch, "agent_reminder", 86000):  # 24-hr
-            continue
-        # Backup: Slack history check — prevents double-post even on first run
-        if _slack_channel_has_recent_bot_post(token, ch, snippet, hours=23.0):
-            # Mark as posted in state so subsequent waves skip it too
-            state.setdefault("post_dedup", {})[f"{ch}:agent_reminder"] = time.time()
-            continue
-        res = post_to_slack(token, ch, msg, username="QuantEdge Bot", icon_emoji=":robot_face:")
-        if res and res.get("ok"):
-            state.setdefault("post_dedup", {})[f"{ch}:agent_reminder"] = time.time()
-            print(f"  [daily_reminder] ✓ posted to #{ch}")
-        else:
-            print(f"  [daily_reminder] ✗ post to #{ch} failed: {res.get('error') if res else 'no response'}")
+    for ch in ["engineering", "help", "alpha-research"]:
+        slack_call(token, "chat.postMessage", {"channel": ch, "text": msg})
 
 
 def run_frontend_improvements(token: str, state: dict) -> None:
@@ -9343,7 +7764,6 @@ def quick_main() -> int:
         bot_user_id = ""
     else:
         bot_user_id = auth.get("user_id", "")
-        _lookup_agent_user_ids(token)
     event_name = os.environ.get("GITHUB_EVENT_NAME", "schedule")
     print(f"⚡ Quick mode | event={event_name} | {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
 
@@ -9357,17 +7777,13 @@ def quick_main() -> int:
         "engineering", "alpha-research", "ml-experiments",
         "squad-qa", "squad-backend", "squad-frontend", "risk-alerts",
         "desk-crypto", "desk-polymarket", "desk-fx-rates",
-        "desk-rates", "desk-commodities", "desk-equities", "desk-options",
+        "desk-rates", "desk-commodities", "desk-equity", "desk-options",
         "help", "pnl-daily", "squad-execution",
         "desk-kalshi", "desk-stat-arb", "desk-futures",
         # Additional channels
-        "general", "random", "standup", "wins", "incidents",
-        "strategy-review", "model-performance", "code-review",
+        "general", "random",
         # Autopilot gap channels
         "papers", "leadership-summary", "infra-alerts", "ci-failures",
-        # Specialist channels — must scan so @agent mentions get answered
-        "security-alerts", "finance-ops", "legal-compliance",
-        "pod-ml-rl", "squad-data", "announcements",
         # Company-wide broadcast channel
         "allquantedge",
     ]
@@ -9460,9 +7876,8 @@ def quick_main() -> int:
 
     state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
 
-    # Post usage snapshot to #agent-api-usage — 4-hour cooldown to avoid flooding every 15 min
-    if not _already_posted(state, "agent-api-usage", "api_usage_report", 14400):
-        post_api_usage_report(token, state, run_posts=posts_made)
+    # Post usage snapshot to #agent-api-usage on every quick run too
+    post_api_usage_report(token, state, run_posts=posts_made)
 
     # Fill idle API key capacity and post throughput report
     posts_made += fill_idle_capacity(token, state)
@@ -9613,882 +8028,15 @@ def frontend_improvements_main() -> int:
     return 0
 
 
-def review_employees_main() -> int:
-    """
-    Daily performance review for all QuantEdge employees.
-
-    For each employee, asks the LLM to score (0-10) based on:
-      - What work exists in the codebase for their domain
-      - Recent git commits in their area
-      - Whether their Slack channel is posting substantive content
-
-    Posts a consolidated "Daily Team Review" to #leadership-summary with
-    scores and a 1-sentence verdict per employee.  Also posts a short
-    summary to #allquantedge.
-    """
-    verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token:
-        print("[review_employees] No SLACK_BOT_TOKEN — skipping")
-        return 0
-
-    state = load_state()
-
-    # Gather lightweight codebase signals once (reused for every employee)
-    recent_commits = git_recent_commits(since_hours=24, limit=20)
-    commits_summary = "\n".join(
-        f"  {c['sha']} ({c['author']}): {c['msg']}" for c in recent_commits
-    ) or "  (no commits in the last 24 hours)"
-
-    changed_files = git_files_changed(since_hours=24)
-    changed_summary = ", ".join(list(changed_files.keys())[:20]) or "(no files changed)"
-
-    # Domain keywords that map each employee to relevant filesystem paths / modules
-    _EMP_DOMAIN_CONTEXT: dict[str, str] = {
-        "alpha_dir":        "equities strategies, momentum, pairs/Kalman, breakout — backend/app/strategies/",
-        "ml_lead":          "ML modeling, crypto desk, LSTM/TFT/XGBoost experiments — backend/app/ml/, backend/experiments/",
-        "quant_researcher": "quant research, walk-forward studies, signal prototyping — backend/app/strategies/, experiments/",
-        "risk_eng":         "risk engine, position limits, drawdown caps, 70/30 split — backend/app/risk/",
-        "vp_research":      "macro/FX-rates desk, cross-asset carry, HMM regime — backend/app/strategies/",
-        "poly_desk":        "Polymarket / prediction markets, probability calibration — backend/app/brokers/polymarket/",
-        "vp_eng":           "VP Engineering, backend reliability, CI/CD health — backend/, .github/workflows/",
-        "backend_lead":     "backend services, FastAPI, broker adapters — backend/app/",
-        "devops_dir":       "DevOps, GitHub Actions, infra, container builds — .github/, scripts/",
-        "qa_dir":           "QA, pytest suite, test coverage, flake triage — backend/tests/",
-        "cro":              "firm-wide risk, VaR, drawdown limits, 70/30 capital split — backend/app/risk/",
-        "exec_eng":         "order routing, smart execution, slippage and fill-quality — backend/app/execution/",
-        "ml_researcher":    "model comparisons, LSTM vs TFT vs XGBoost, feature studies — backend/app/ml/",
-    }
-
-    employee_keys = ["alpha_dir", "ml_lead", "quant_researcher", "risk_eng", "vp_research",
-                     "poly_desk", "vp_eng", "backend_lead", "devops_dir", "qa_dir",
-                     "cro", "exec_eng", "ml_researcher"]
-
-    scores: list[tuple[str, int, str]] = []  # (emp_key, score, verdict)
-
-    print(f"[review_employees] Reviewing {len(employee_keys)} employees …")
-
-    for emp_key in employee_keys:
-        domain_ctx = _EMP_DOMAIN_CONTEXT.get(emp_key, "general engineering")
-        prompt = (
-            f"You are the CTO of QuantEdge running a daily performance review.\n\n"
-            f"Employee: {emp_key.capitalize()}\n"
-            f"Domain: {domain_ctx}\n\n"
-            f"Recent 24h git commits across the whole repo:\n{commits_summary}\n\n"
-            f"Files changed in last 24h: {changed_summary}\n\n"
-            f"Task: Score this employee's contribution today on a scale of 0-10 based on:\n"
-            f"1. Whether any commits touch their domain area\n"
-            f"2. Depth and quality of work in their codebase area\n"
-            f"3. Whether the work aligns with institutional-grade quant standards\n\n"
-            f"Respond with EXACTLY this format (no extra text):\n"
-            f"SCORE: <integer 0-10>\n"
-            f"VERDICT: <one sentence, specific, cite a file or commit if possible>"
-        )
-
-        result = call_best_agent(prompt, max_tokens=200)
-        if not result:
-            scores.append((emp_key, 5, "No LLM response available — defaulting to neutral score."))
-            continue
-
-        # Parse SCORE and VERDICT from response
-        score_val = 5
-        verdict = result.strip()
-        for line in result.splitlines():
-            line = line.strip()
-            if line.upper().startswith("SCORE:"):
-                try:
-                    score_val = max(0, min(10, int(line.split(":", 1)[1].strip().split()[0])))
-                except (ValueError, IndexError):
-                    pass
-            elif line.upper().startswith("VERDICT:"):
-                verdict = line.split(":", 1)[1].strip()
-
-        scores.append((emp_key, score_val, verdict))
-        print(f"  [{emp_key}] score={score_val} — {verdict[:80]}")
-
-    # Build consolidated #leadership-summary report
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    lines = [f":bar_chart: *Daily Team Review — {today_str}* (07:00 UTC)\n"]
-    for emp_key, score, verdict in scores:
-        if score >= 8:
-            emoji = ":green_circle:"
-        elif score >= 5:
-            emoji = ":yellow_circle:"
-        else:
-            emoji = ":red_circle:"
-        lines.append(f"{emoji} *{emp_key.capitalize()}* — {score}/10: {verdict}")
-
-    avg_score = sum(s for _, s, _ in scores) / len(scores) if scores else 0
-    lines.append(f"\n_Team average: {avg_score:.1f}/10 | {len(scores)} employees reviewed_")
-
-    full_report = "\n".join(lines)
-
-    post_to_slack(
-        token, "leadership-summary", full_report,
-        username="CTO Review Bot",
-        icon_emoji=":clipboard:",
-    )
-    print("[review_employees] Posted consolidated report to #leadership-summary")
-
-    # Short summary to #allquantedge
-    top_performers = [e for e, s, _ in scores if s >= 8]
-    needs_attention = [e for e, s, _ in scores if s < 5]
-    summary_parts = [f":wave: *Daily standup summary — {today_str}*"]
-    if top_performers:
-        summary_parts.append(f":star: Top performers today: {', '.join(p.capitalize() for p in top_performers)}")
-    if needs_attention:
-        summary_parts.append(f":eyes: Needs attention: {', '.join(n.capitalize() for n in needs_attention)}")
-    summary_parts.append(f"Team average score: *{avg_score:.1f}/10*. Full details in #leadership-summary.")
-
-    post_to_slack(
-        token, "allquantedge", "\n".join(summary_parts),
-        username="CTO Review Bot",
-        icon_emoji=":clipboard:",
-    )
-    print("[review_employees] Posted summary to #allquantedge")
-
-    save_state(state)
-    return 0
-
-
-def run_experiments_main() -> int:
-    """
-    Weekly experiment runner.
-
-    Reads all YAML configs from backend/experiments/configs/.
-    For each config without a corresponding result JSON in
-    backend/experiments/results/, posts an "experiment queued" update
-    to #ml-experiments using call_best_agent to generate the message.
-    Posts a final summary to #ml-experiments.
-    """
-    verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token:
-        print("[run_experiments] No SLACK_BOT_TOKEN — skipping")
-        return 0
-
-    state = load_state()
-
-    configs_dir = REPO_ROOT / "backend" / "experiments" / "configs"
-    results_dir = REPO_ROOT / "backend" / "experiments" / "results"
-
-    if not configs_dir.exists():
-        print(f"[run_experiments] configs dir not found: {configs_dir}")
-        return 0
-
-    results_dir.mkdir(parents=True, exist_ok=True)
-
-    # Find all YAML configs
-    config_files = sorted(configs_dir.glob("*.yaml")) + sorted(configs_dir.glob("*.yml"))
-    if not config_files:
-        print("[run_experiments] No YAML configs found — nothing to do")
-        return 0
-
-    print(f"[run_experiments] Found {len(config_files)} config(s)")
-
-    queued: list[str] = []
-    already_done: list[str] = []
-
-    for cfg_path in config_files:
-        # Derive expected result filename: <stem>_v1.json or <stem>.json
-        stem = cfg_path.stem
-        # Check both <stem>.json and <stem>_v1.json variants
-        candidate_names = [f"{stem}.json", f"{stem}_v1.json"]
-        has_result = any((results_dir / name).exists() for name in candidate_names)
-
-        if has_result:
-            already_done.append(stem)
-            print(f"  [run_experiments] {stem}: result exists — skipping")
-            continue
-
-        # Read config content for the LLM prompt
-        try:
-            cfg_text = cfg_path.read_text()[:800]
-        except Exception:
-            cfg_text = f"(could not read {cfg_path.name})"
-
-        prompt = (
-            f"You are the ML Research Lead at QuantEdge. A new experiment has just been queued.\n\n"
-            f"Config file: {cfg_path.name}\n"
-            f"Config contents:\n{cfg_text}\n\n"
-            f"Write a concise Slack post (2-3 sentences) announcing this experiment has been queued. "
-            f"Include: the model type, symbol/asset, key hyperparameters, and what outcome metric we're "
-            f"optimizing for. Be specific and technical. Start with an emoji."
-        )
-
-        announcement = call_best_agent(prompt, max_tokens=300)
-        if not announcement:
-            announcement = (
-                f":test_tube: Experiment queued: `{stem}` — config loaded from "
-                f"`backend/experiments/configs/{cfg_path.name}`. "
-                f"Awaiting worker to pick up and run."
-            )
-
-        post_to_slack(
-            token, "ml-experiments", announcement,
-            username="ML Experiment Runner",
-            icon_emoji=":test_tube:",
-        )
-        queued.append(stem)
-        print(f"  [run_experiments] queued announcement posted for {stem}")
-
-    # Summary post
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if queued:
-        summary = (
-            f":bar_chart: *Experiment Run Summary — {today_str}*\n"
-            f":white_check_mark: Already completed: {len(already_done)} experiment(s)\n"
-            f":hourglass_flowing_sand: Newly queued: {len(queued)} experiment(s) — "
-            + ", ".join(f"`{q}`" for q in queued)
-        )
-    else:
-        summary = (
-            f":bar_chart: *Experiment Run Summary — {today_str}*\n"
-            f"All {len(already_done)} configured experiment(s) already have results. "
-            f"Nothing new to queue. Add a new YAML to `backend/experiments/configs/` to trigger a run."
-        )
-
-    post_to_slack(
-        token, "ml-experiments", summary,
-        username="ML Experiment Runner",
-        icon_emoji=":bar_chart:",
-    )
-    print(f"[run_experiments] Done — {len(queued)} queued, {len(already_done)} already done")
-
-    save_state(state)
-    return 0
-
-
-def review_gemini_changes_main() -> int:
-    """Cron-triggered review of recent Gemini/free-LLM commits.
-    Posts a quality assessment to #code-review. Auto-reverts broken commits."""
-    verify_zero_spend()
-    import subprocess
-
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    state = load_state()
-
-    # Find commits from the Gemini runner in the last N hours
-    look_back = os.environ.get("REVIEW_HOURS", "6")
-    result = subprocess.run(
-        ["git", "log", f"--since={look_back} hours ago", "--oneline",
-         "--author=Gemini Task Runner", "--author=QuantEdge Bot",
-         "--author=QuantEdge Agent Team"],
-        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=10,
-    )
-    commits = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
-
-    if not commits:
-        print(f"[review] No Gemini/agent commits in the last {look_back}h — nothing to review")
-        return 0
-
-    print(f"[review] Found {len(commits)} commit(s) to review:\n  " + "\n  ".join(commits))
-
-    # Get the diff of those commits
-    oldest_sha = commits[-1].split()[0]
-    diff_result = subprocess.run(
-        ["git", "diff", f"{oldest_sha}^", "HEAD", "--stat", "--", "*.py", "*.ts", "*.tsx", "*.yml"],
-        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=15,
-    )
-    diff_stat = diff_result.stdout.strip()[:800] if diff_result.returncode == 0 else "diff unavailable"
-
-    full_diff = subprocess.run(
-        ["git", "diff", f"{oldest_sha}^", "HEAD", "--", "*.py", "*.ts", "*.tsx"],
-        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=15,
-    )
-    diff_text = (full_diff.stdout.strip()[:3000] if full_diff.returncode == 0 else "")
-
-    # Check for Python syntax errors in changed .py files
-    changed_py = subprocess.run(
-        ["git", "diff", f"{oldest_sha}^", "HEAD", "--name-only", "--", "*.py"],
-        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=10,
-    )
-    syntax_errors: list[str] = []
-    for py_file in changed_py.stdout.splitlines():
-        full_path = REPO_ROOT / py_file.strip()
-        if full_path.exists():
-            check = subprocess.run(
-                ["python", "-m", "py_compile", str(full_path)],
-                capture_output=True, text=True,
-            )
-            if check.returncode != 0:
-                syntax_errors.append(f"`{py_file}`: {check.stderr.strip()[:120]}")
-
-    # ── Review provider selection ──────────────────────────────────────────────
-    # REVIEW_PROVIDER env var (set in workflow or workflow_dispatch input):
-    #   auto   — try Claude Haiku first, fall back through Gemini → Groq → Cerebras
-    #   claude — Claude Haiku only (fails silently if key missing → no review posted)
-    #   gemini — Gemini Flash only (free)
-    #   groq   — Groq llama only (free)
-    #   free   — skip Claude, use free LLM cascade directly
-    review_provider = os.environ.get("REVIEW_PROVIDER", "auto").lower().strip()
-
-    review_system = (
-        "You are the VP Engineering at QuantEdge, an institutional quantitative trading platform "
-        "(FastAPI backend, React frontend, PyTorch ML, Alpaca/Binance/Polymarket brokers). "
-        "Review AI-generated code changes for correctness, security, and regressions. "
-        "Be specific — cite file names and line numbers. Use Slack *bold* for issues. "
-        "Max 180 words."
-    )
-    review_user = (
-        f"Review {len(commits)} AI-generated commit(s) pushed by the Gemini/Groq task runner.\n\n"
-        f"Commits:\n" + "\n".join(f"  {c}" for c in commits[:10]) + "\n\n"
-        f"Files changed:\n{diff_stat}\n\n"
-        f"Diff excerpt:\n```diff\n{diff_text[:2500]}\n```\n\n"
-        "Check: (1) correctness, (2) security (no secrets/SQL injection/XSS), "
-        "(3) broken imports or logic errors, (4) regressions to existing functionality.\n"
-        "End your response with exactly one of:\n"
-        "VERDICT: ✅ LGTM\nVERDICT: ⚠️ MINOR ISSUES\nVERDICT: ❌ BROKEN"
-    )
-
-    ai_review, provider = "", "none"
-    sys_safe = _sanitize(review_system)
-    usr_safe = _sanitize(review_user)
-
-    if review_provider in ("auto", "claude"):
-        # Claude Haiku (paid, ~$0.001/review) — gated by ALLOW_PAID_REVIEW=true
-        ai_review, provider = call_claude_for_review(review_system, review_user, max_tokens=800)
-        if not ai_review:
-            print(f"  [review] Claude path skipped/failed: {provider}")
-
-    if not ai_review and review_provider in ("auto", "gemini"):
-        # Try all Gemini keys directly (free)
-        for env_var in ["GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY"]:
-            key = os.environ.get(env_var, "").strip()
-            if not key:
-                continue
-            result = call_gemini_with_key(key, sys_safe, usr_safe, 800)
-            if result and len(result.strip()) > 20:
-                ai_review, provider = result.strip(), f"Gemini({env_var})"
-                break
-        if not ai_review:
-            print(f"  [review] Gemini path exhausted")
-
-    if not ai_review and review_provider in ("auto", "groq", "free"):
-        # Try all Groq keys directly (free)
-        for acct in range(1, 4):
-            key = os.environ.get(f"GROQ_API_KEY_{acct}", "").strip()
-            if not key:
-                continue
-            result = _try_openai_compat(
-                "https://api.groq.com/openai/v1/chat/completions",
-                key, "llama-3.3-70b-versatile", sys_safe, usr_safe, 800)
-            if result and len(result.strip()) > 20:
-                ai_review, provider = result.strip(), f"Groq-{acct}"
-                break
-        if not ai_review:
-            print(f"  [review] Groq path exhausted")
-
-    if not ai_review:
-        # Final fallback: generic free cascade (Cerebras, SambaNova, OpenRouter)
-        result, p = call_best_agent_for_task("default", usr_safe, system_prompt=sys_safe, max_tokens=800)
-        if result:
-            ai_review, provider = result, p or "free-cascade"
-
-    if not ai_review:
-        print(f"  [review] All providers exhausted for REVIEW_PROVIDER={review_provider}")
-
-    # Build Slack post
-    reviewer_label = (
-        f"claude-haiku" if "claude" in provider.lower()
-        else provider.split(":")[0] if provider else "free-llm"
-    )
-    blocks: list[str] = [
-        f":mag: *Gemini Commit Review — last {look_back}h* ({len(commits)} commit(s)) _reviewed by {reviewer_label}_",
-        "",
-        "*Commits reviewed:*",
-    ]
-    blocks += [f"  `{c}`" for c in commits[:8]]
-    blocks += ["", f"*Files:* {diff_stat.splitlines()[0] if diff_stat else 'n/a'}"]
-
-    if syntax_errors:
-        blocks += ["", ":rotating_light: *Syntax errors detected:*"]
-        blocks += [f"  {e}" for e in syntax_errors]
-
-    if ai_review:
-        blocks += ["", f"*Review ({reviewer_label}):*", ai_review.strip()]
-    else:
-        blocks += ["", f"_(LLM review unavailable — provider: {provider})_"]
-
-    text = "\n".join(blocks)
-
-    if token:
-        post_to_slack(token, "code-review", text, username="Code Review Bot", icon_emoji=":mag:")
-        print(f"[review] Posted to #code-review via {reviewer_label}")
-    else:
-        print(f"[review] No SLACK_BOT_TOKEN — review:\n{text}")
-
-    # Auto-revert if syntax errors (safety net)
-    if syntax_errors and os.environ.get("AUTO_REVERT", "false").lower() == "true":
-        print(f"[review] AUTO_REVERT: reverting last commit due to syntax errors")
-        subprocess.run(["git", "revert", "--no-edit", "HEAD"], cwd=str(REPO_ROOT))
-        subprocess.run(["git", "push", "origin", "HEAD:claude/advanced-trading-bot-d5Lmw"],
-                       cwd=str(REPO_ROOT))
-        if token:
-            post_to_slack(token, "incidents",
-                          f":rotating_light: *Auto-reverted* last Gemini commit — syntax errors in: "
-                          + ", ".join(syntax_errors[:3]),
-                          username="Safety Bot", icon_emoji=":rotating_light:")
-
-    save_state(state)
-    return 0
-
-
-def summons_only_main() -> int:
-    """Lightweight summon-watcher: scans all monitored channels for @agent / ask: / ??
-    messages and answers them via the free LLM cascade. Runs every 5 min."""
-    verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token.startswith("xoxb-"):
-        print("[summons] No valid SLACK_BOT_TOKEN — skipping")
-        return 0
-
-    auth = slack_call(token, "auth.test", {})
-    if not auth.get("ok"):
-        print(f"[summons] auth.test failed: {auth.get('error', 'unknown')} — continuing")
-        bot_user_id = ""
-        bot_name = "QuantEdge Bot"
-    else:
-        bot_user_id = auth.get("user_id", "")
-        bot_name = auth.get("user", "QuantEdge Bot")
-
-    state = load_state()
-    _init_governance(state)
-
-    # First run: announce the bot handle in key channels so users know how to tag it
-    if not state.get("bot_handle_announced"):
-        handle_msg = (
-            f":wave: I'm *{bot_name}* — the QuantEdge AI agent team. "
-            f"Tag me with `<@{bot_user_id}>` or type `@agent`, `@quant`, `ask:`, or `?? ` "
-            "followed by your question in any channel. I respond within 5 minutes via "
-            "Gemini/Groq/Cerebras (zero paid APIs)."
-        )
-        for ch in ["general", "help", "engineering"]:
-            try:
-                post_to_slack(token, ch, handle_msg, username=bot_name, icon_emoji=":robot_face:")
-            except Exception:
-                pass
-        state["bot_handle_announced"] = True
-
-    already_replied: list[str] = state.get("replied_to", [])
-
-    scan_channels = [
-        "general", "engineering", "help", "alpha-research", "ml-experiments",
-        "squad-qa", "squad-backend", "squad-frontend", "squad-execution", "squad-data",
-        "risk-alerts", "desk-crypto", "desk-equities", "desk-polymarket",
-        "desk-stat-arb", "desk-futures", "desk-rates", "desk-commodities",
-        "desk-options", "desk-fx-rates", "desk-kalshi",
-        "incidents", "standup", "strategy-review", "model-performance",
-        "code-review", "papers", "allquantedge", "random", "infra-alerts",
-        "pnl-daily", "security-alerts", "finance-ops", "legal-compliance",
-    ]
-
-    total = 0
-    ts_start = datetime.now(timezone.utc)
-    print(f"🔍 Summon watcher | {ts_start.strftime('%H:%M UTC')} | {len(scan_channels)} channels | bot={bot_user_id}")
-
-    for ch in scan_channels:
-        try:
-            summons = detect_agent_summons(
-                token, ch, bot_user_id,
-                already_replied=already_replied, limit=50)
-        except Exception as e:
-            print(f"  [summons] #{ch}: {e}")
-            continue
-        if summons:
-            print(f"  [{ch}] {len(summons)} summon(s) detected")
-            try:
-                n = answer_agent_summons(token, summons[:5], state)
-                total += n
-                already_replied = state.get("replied_to", [])
-            except Exception as e:
-                print(f"  [summons] answer #{ch}: {e}")
-
-    elapsed = (datetime.now(timezone.utc) - ts_start).total_seconds()
-    print(f"[summons] Done in {elapsed:.1f}s — {total} answered across {len(scan_channels)} channels")
-    save_state(state)
-    return 0
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Page Status Reporter — each employee audits their assigned dashboard pages
-# Posts rich text "page walkthroughs" to their Slack channel every 4 hours.
-# Reads actual TSX source so the LLM reasons about REAL code, not mock data.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Page → (owner_emp_key, slack_channel, emoji, what_to_check)
-_PAGE_ASSIGNMENTS: list[tuple[str, str, str, str, str]] = [
-    (
-        "Dashboard.tsx",
-        "frontend_lead",
-        "squad-frontend",
-        ":house:",
-        "KPI cards, P&L chart, live price ticker, alert feed, TV Market Overview widget",
-    ),
-    (
-        "EquityTrading.tsx",
-        "alpha_dir",
-        "desk-equities",
-        ":chart_with_upwards_trend:",
-        "TradingView Advanced Chart iframe, order form (market/limit/stop), positions table, execution selector",
-    ),
-    (
-        "CryptoTrading.tsx",
-        "ml_lead",
-        "desk-crypto",
-        ":coin:",
-        "Binance symbol chart, funding rate display, triangular arb opportunities, order entry",
-    ),
-    (
-        "Polymarket.tsx",
-        "poly_desk",
-        "desk-polymarket",
-        ":crystal_ball:",
-        "Active prediction markets, probability calibration, YES/NO arb opportunities, Kelly sizing display",
-    ),
-    (
-        "Comparison.tsx",
-        "alpha_dir",
-        "strategy-review",
-        ":bar_chart:",
-        "Manual vs ML strategy comparison chart, benchmark table (SPY/QQQ/BRK.B/All Weather), stat-sig badge",
-    ),
-    (
-        "BacktestLab.tsx",
-        "backtest_engineer",
-        "alpha-research",
-        ":test_tube:",
-        "Backtest form (strategy/symbol/dates), results table, equity curve, walk-forward metrics",
-    ),
-    (
-        "Experiments.tsx",
-        "ml_lead",
-        "ml-experiments",
-        ":microscope:",
-        "ML experiment list, live training progress, model registry, experiment config viewer",
-    ),
-    (
-        "MLInsights.tsx",
-        "ml_researcher",
-        "ml-experiments",
-        ":brain:",
-        "Model predictions feed, feature importance bar chart, confidence gauge, ensemble weights",
-    ),
-    (
-        "Analytics.tsx",
-        "portfolio_manager",
-        "pnl-daily",
-        ":abacus:",
-        "Sharpe/Sortino/Calmar metrics, monthly returns heatmap, equity curve, tearsheet export button",
-    ),
-    (
-        "RiskManager.tsx",
-        "risk_eng",
-        "risk-alerts",
-        ":shield:",
-        "Risk gauge, drawdown monitor, 70/30 bucket allocation, circuit breaker status, Kelly fraction",
-    ),
-    (
-        "AgentDashboard.tsx",
-        "vp_eng",
-        "engineering",
-        ":robot_face:",
-        "Employee roster with LLM assignments, code review grades panel, shared memory, task queue",
-    ),
-    (
-        "Landing.tsx",
-        "product_lead",
-        "general",
-        ":rocket:",
-        "Investor pitch copy, Sharpe/drawdown stats, feature list, CTA button, benchmark comparison",
-    ),
-    (
-        "PnL.tsx",
-        "portfolio_manager",
-        "pnl-daily",
-        ":money_with_wings:",
-        "Daily P&L breakdown by strategy, realized/unrealized split, cumulative equity, drawdown display",
-    ),
-    (
-        "SystemMonitor.tsx",
-        "devops_dir",
-        "infra-alerts",
-        ":computer:",
-        "Backend health endpoint status, WebSocket connection status, Redis/DB latency, worker heartbeat",
-    ),
-]
-
-
-def _read_page_source(page_filename: str, max_chars: int = 3000) -> str:
-    """Read a frontend page TSX file, returning first max_chars characters."""
-    page_path = REPO_ROOT / "frontend" / "src" / "pages" / page_filename
-    try:
-        content = page_path.read_text()
-        if len(content) > max_chars:
-            return content[:max_chars] + f"\n... [truncated — {len(content)} chars total]"
-        return content
-    except FileNotFoundError:
-        return f"[FILE NOT FOUND: {page_path}]"
-
-
-def run_page_status_reports(token: str, state: dict) -> int:
-    """
-    Each assigned employee audits their dashboard pages from the TSX source.
-    Posts a rich-text page walkthrough to their Slack channel.
-    Rotates through pages — each run covers ~4 pages (cooldown 4h per page).
-    Returns number of posts made.
-    """
-    hr = datetime.now(timezone.utc).strftime("%H:%M UTC")
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    posts_made = 0
-
-    # Pick pages whose cooldown has expired (4 hours per page)
-    cooldown = 4 * 3600
-    pages_to_report: list[tuple] = []
-    for entry in _PAGE_ASSIGNMENTS:
-        page_file, emp_key, channel, emoji, what_to_check = entry
-        ck = f"page_report:{page_file}"
-        last_ts = state.get("post_dedup", {}).get(f"{channel}:{ck}", 0)
-        if time.time() - last_ts >= cooldown:
-            pages_to_report.append(entry)
-
-    if not pages_to_report:
-        print("  [page_reports] all pages on cooldown — skipping")
-        return 0
-
-    # Process up to 4 pages per run to stay within token budget
-    for page_file, emp_key, channel, emoji, what_to_check in pages_to_report[:4]:
-        ck = f"page_report:{page_file}"
-        page_name = page_file.replace(".tsx", "")
-
-        # Read the actual source
-        source = _read_page_source(page_file, max_chars=2500)
-
-        # Get recent git history for this file
-        try:
-            git_hist = subprocess.check_output(
-                ["git", "log", "--oneline", "-5", "--", f"frontend/src/pages/{page_file}"],
-                cwd=str(REPO_ROOT), stderr=subprocess.DEVNULL, text=True,
-            ).strip() or "(no recent commits)"
-        except Exception:
-            git_hist = "(git unavailable)"
-
-        task_prompt = (
-            f"You are reviewing the QuantEdge dashboard page: *{page_name}* ({page_file}).\n\n"
-            f"WHAT TO CHECK: {what_to_check}\n\n"
-            f"RECENT GIT HISTORY:\n{git_hist}\n\n"
-            f"SOURCE CODE (first 2500 chars):\n```\n{source}\n```\n\n"
-            f"Write a page walkthrough report (3-5 bullet points). For each point:\n"
-            f"• What should be visible/working\n"
-            f"• Whether the TSX code actually implements it\n"
-            f"• Any bug, missing feature, or UX issue you can see from the source\n"
-            f"Be specific: cite component names, line patterns, missing imports, TODO comments.\n"
-            f"End with ONE top priority fix labelled **TOP FIX:**."
-        )
-
-        print(f"  [page_reports] {page_file} → {emp_key} → #{channel}")
-        ai_result, provider = employee_provider_prompt(emp_key, task_prompt, state=state)
-
-        if not ai_result:
-            print(f"  [page_reports] {page_file}: provider exhausted — skipping")
-            continue
-
-        # Format the Slack post
-        emp_persona = _EMPLOYEE_PERSONAS.get(emp_key, "")
-        # Extract employee display name from persona (first sentence)
-        emp_display = emp_key.replace("_", " ").title()
-        if emp_persona:
-            m = re.match(r"You are ([^.,(]+)", emp_persona)
-            if m:
-                emp_display = m.group(1).strip()
-
-        msg = (
-            f"{emoji} *Page Report — {page_name}* | {date_str} {hr}\n"
-            f"_Reported by {emp_display} · via {provider or 'LLM'}_\n\n"
-            f"{ai_result.strip()}"
-        )
-
-        if is_duplicate(state, msg):
-            print(f"  [page_reports] {page_file} → dup — skip")
-            # Still mark cooldown so we don't re-check until next window
-            state.setdefault("post_dedup", {})[f"{channel}:{ck}"] = time.time()
-            continue
-
-        r = post_to_slack(token, channel, msg,
-                          username=f"{emp_display[:30]} (Page Audit)",
-                          icon_emoji=emoji)
-        if r.get("ok"):
-            posts_made += 1
-            record_post(state, msg)
-            state.setdefault("post_dedup", {})[f"{channel}:{ck}"] = time.time()
-            print(f"  [page_reports] ✓ {page_file} → #{channel}")
-        else:
-            print(f"  [page_reports] ✗ {page_file} → #{channel}: {r.get('error')}")
-
-        time.sleep(0.8)
-
-    return posts_made
-
-
-def post_honest_progress_report(token: str, state: dict) -> None:
-    """
-    Posts a candid progress report to #leadership-summary comparing current
-    QuantEdge state vs. the grand plan. Runs at most once per 12 hours.
-    """
-    ck = "honest_progress"
-    if _already_posted(state, "leadership-summary", ck, cooldown_seconds=43200):
-        return
-
-    # Gather real signals
-    try:
-        test_result = subprocess.run(
-            ["python", "-m", "pytest", "tests/", "-x", "-q", "--tb=no", "--no-header"],
-            cwd=str(REPO_ROOT / "backend"),
-            capture_output=True, text=True, timeout=60,
-        )
-        test_summary = (test_result.stdout + test_result.stderr).strip().split("\n")[-1]
-    except Exception:
-        test_summary = "(tests could not run)"
-
-    try:
-        ts_result = subprocess.run(
-            ["npx", "tsc", "--noEmit"],
-            cwd=str(REPO_ROOT / "frontend"),
-            capture_output=True, text=True, timeout=60,
-        )
-        ts_errors = (ts_result.stdout + ts_result.stderr).strip()
-        ts_status = "0 errors ✅" if not ts_errors else f"errors found ⚠️"
-    except Exception:
-        ts_status = "(tsc could not run)"
-
-    # Count strategies, ML models, pages
-    strategy_files = list((REPO_ROOT / "backend" / "app" / "strategies").rglob("*.py"))
-    ml_model_files = list((REPO_ROOT / "backend" / "app" / "ml" / "models").rglob("*.py"))
-    page_files = list((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
-    workflow_files = list((REPO_ROOT / ".github" / "workflows").glob("*.yml"))
-
-    # Recent commits
-    try:
-        commits_7d = subprocess.check_output(
-            ["git", "log", "--oneline", "--since=7 days ago"],
-            cwd=str(REPO_ROOT), stderr=subprocess.DEVNULL, text=True,
-        ).strip().split("\n")
-        n_commits = len([c for c in commits_7d if c])
-    except Exception:
-        n_commits = 0
-
-    hr = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    # Check gap closer status
-    models_dir = REPO_ROOT / "backend" / "models_artifacts"
-    trained_models = list(models_dir.glob("*/model.pt")) if models_dir.exists() else []
-    vercel_url = os.environ.get("VERCEL_URL", "").strip()
-
-    # Gap 1: Alpaca paper trading
-    alpaca_wf = REPO_ROOT / ".github" / "workflows" / "desk-trading.yml"
-    gap1 = "✅ Paper orders running every 15 min (desk-trading.yml + live-trading-reporter.yml)" if alpaca_wf.exists() else "⚠️  desk-trading.yml missing"
-
-    # Gap 2: Live trading reporter
-    reporter_wf = REPO_ROOT / ".github" / "workflows" / "live-trading-reporter.yml"
-    gap2 = "✅ Live P&L reporter running every 30 min on market days" if reporter_wf.exists() else "⚠️  live-trading-reporter.yml missing"
-
-    # Gap 3: LSTM training
-    if trained_models:
-        gap3 = f"✅ {len(trained_models)} trained LSTM model(s) in models_artifacts/"
-    else:
-        training_wf = REPO_ROOT / ".github" / "workflows" / "lstm-training.yml"
-        gap3 = "🔄 LSTM training scheduled (Sunday 02:00 UTC, first run upcoming)" if training_wf.exists() else "⚠️  lstm-training.yml missing"
-
-    # Gap 4: Vercel deployment
-    vercel_wf = REPO_ROOT / ".github" / "workflows" / "vercel-deploy.yml"
-    if vercel_url:
-        gap4 = f"✅ Live frontend: {vercel_url}"
-    elif vercel_wf.exists():
-        gap4 = "🔄 Vercel workflow ready — add VERCEL_TOKEN secret to enable auto-deploy"
-    else:
-        gap4 = "⚠️  Vercel deployment not configured"
-
-    progress_lines = [
-        f":bar_chart: *QuantEdge — Honest Progress Report* | {hr}",
-        "",
-        "*What is actually working:*",
-        f"  ✅ {len(page_files)} dashboard pages (React/TS)",
-        f"  ✅ {len(strategy_files)} strategy files",
-        f"  ✅ {len(ml_model_files)} ML model files",
-        f"  ✅ {len(workflow_files)} GitHub Actions workflows (agent automation)",
-        f"  ✅ TypeScript: {ts_status}",
-        f"  ✅ Backend tests: {test_summary}",
-        f"  ✅ {n_commits} commits in last 7 days",
-        "",
-        "*Gap Closers (vs. institutional hedge funds):*",
-        f"  {gap1}",
-        f"  {gap2}",
-        f"  {gap3}",
-        f"  {gap4}",
-        "",
-        "*Remaining gaps:*",
-        "  ⚠️  Walk-forward Sharpe not yet measurable (need ≥ 30 days paper data)",
-        "  ⚠️  WebSocket live prices depend on Alpaca/Binance keys being active",
-        "  ⚠️  No real capital at risk (intentional — paper until walk-forward validates)",
-        "",
-        "*Honest Sharpe estimate today: N/A* — paper trading only, insufficient live history",
-        "*Path to Sharpe > 2.0:* 30-day paper run → walk-forward validation → deploy live",
-    ]
-
-    msg = "\n".join(progress_lines)
-    if not is_duplicate(state, msg):
-        r = post_to_slack(
-            token, "leadership-summary", msg,
-            username="CRO Progress Report", icon_emoji=":clipboard:",
-        )
-        if r.get("ok"):
-            record_post(state, msg)
-            print("  [honest_progress] ✓ posted to #leadership-summary")
-
-
-def page_reports_main() -> int:
-    """
-    Standalone page audit mode: all assigned employees audit their pages and post
-    text-based walkthroughs to Slack. Triggered by page-reporter.yml workflow.
-    """
-    verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token.startswith("xoxb-"):
-        print("[page_reports] No valid SLACK_BOT_TOKEN — skipping")
-        return 0
-
-    state = load_state()
-    _init_governance(state)
-
-    print(f"📸 Page Status Reporter | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"  Pages to audit: {len(_PAGE_ASSIGNMENTS)}")
-
-    n = run_page_status_reports(token, state)
-    post_honest_progress_report(token, state)
-
-    save_state(state)
-    print(f"✅ Page reports done — {n} posts made")
-    return 0
-
-
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
     if mode == "quick":
         sys.exit(quick_main())
-    elif mode == "summons":
-        sys.exit(summons_only_main())
-    elif mode == "review":
-        sys.exit(review_gemini_changes_main())
     elif mode == "precompute":
         sys.exit(precompute_main())
     elif mode == "code_request":
         sys.exit(code_request_main())
     elif mode == "frontend_improvements":
         sys.exit(frontend_improvements_main())
-    elif mode == "page_reports":
-        sys.exit(page_reports_main())
-    elif "--review-employees" in sys.argv:
-        sys.exit(review_employees_main())
-    elif "--run-experiments" in sys.argv:
-        sys.exit(run_experiments_main())
     else:
         sys.exit(main())
