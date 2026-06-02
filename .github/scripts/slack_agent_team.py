@@ -40,6 +40,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+try:
+    from langfuse.decorators import observe as _lf_observe, langfuse_context as _lf_ctx
+    _LANGFUSE_AVAILABLE = True
+except ImportError:
+    _LANGFUSE_AVAILABLE = False
+    def _lf_observe(fn=None, **kw):  # type: ignore
+        return fn if fn else (lambda f: f)
+    class _lf_ctx:  # type: ignore
+        @staticmethod
+        def update_current_observation(**kw): pass
+        @staticmethod
+        def score_current_observation(**kw): pass
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATE_PATH = REPO_ROOT / "experiments" / "results" / "slack_state.json"
 
@@ -553,6 +566,7 @@ def check_for_hallucination(text: str) -> bool:
     return False
 
 
+@_lf_observe()
 def score_agent_output(output: str, task_type: str, provider_used: str = "") -> tuple[int, str]:
     """Second-pass quality review of an agent output using a different free provider.
     Returns (score 1-10, reason). Score < 6 = reject, don't post."""
@@ -719,6 +733,7 @@ def call_best_agent_for_task(
     return None, "exhausted"
 
 
+@_lf_observe()
 def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None) -> tuple[str | None, str | None]:
     """Returns (answer_text, provider_name) or (None, None) if all tiers exhausted.
     Routes through call_best_agent_for_task with the employee's elite domain persona.
@@ -740,6 +755,13 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
 
     # Quality gate: score the output and retry once if below threshold
     score, reason = score_agent_output(result, emp, provider_used=provider or "")
+    _lf_ctx.update_current_observation(
+        name=f"employee:{emp_key}",
+        metadata={"provider": provider, "emp_key": emp_key},
+        input=task[:500],
+        output=result[:500] if result else None,
+    )
+    _lf_ctx.score_current_observation(name="quality_score", value=score / 10.0)
     if score < 7:
         print(f"[quality] {emp} output rejected (score={score}): {reason}")
         result2, provider2 = call_best_agent_for_task(
