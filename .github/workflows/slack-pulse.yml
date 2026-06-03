@@ -6,6 +6,13 @@ name: Slack Pulse — Keep Team Informed
 on:
   push:
     branches: [claude/advanced-trading-bot-d5Lmw, main]
+    # Ignore automated state-persist commits — they have [skip ci] in the message
+    # but also explicitly filter to code changes only to be safe
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/scripts/*.py"
+      - ".github/workflows/*.yml"
   schedule:
     - cron: "0 9 * * 1-5"    # Morning briefing Mon-Fri 9am UTC
     - cron: "0 17 * * 1-5"   # Evening update Mon-Fri 5pm UTC
