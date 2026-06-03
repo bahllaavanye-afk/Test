@@ -7,8 +7,9 @@ import os
 import pytest
 import pytest_asyncio
 
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
-os.environ.setdefault("ALEMBIC_DATABASE_URL", "sqlite:///./test.db")
+# Force test DB — must override parent env to prevent tests from wiping the dev DB
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:////home/user/Test/backend/test.db"
+os.environ["ALEMBIC_DATABASE_URL"] = "sqlite:////home/user/Test/backend/test.db"
 os.environ.setdefault("REDIS_URL", "")
 os.environ.setdefault("SECRET_KEY", "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
 os.environ.setdefault("TRADING_MODE", "test")

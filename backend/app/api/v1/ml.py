@@ -39,6 +39,38 @@ async def list_models(
         return []
 
 
+@router.get("/signals")
+async def list_signals(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return recent ML prediction signals (latest per active model)."""
+    from app.models.ml_model import MLPrediction
+    from sqlalchemy.orm import selectinload
+    try:
+        result = await db.execute(
+            select(MLPrediction)
+            .order_by(MLPrediction.created_at.desc())
+            .limit(50)
+        )
+        preds = result.scalars().all()
+        return [
+            {
+                "id": p.id,
+                "model_id": p.model_id,
+                "symbol": p.symbol,
+                "prediction": p.prediction,
+                "confidence": float(p.confidence),
+                "ts": p.ts.isoformat() if p.ts else None,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in preds
+        ]
+    except Exception as exc:
+        logger.warning("list_signals DB query failed", error=str(exc))
+        return []
+
+
 @router.get("/models/{model_id}/activate")
 async def activate_model(
     model_id: str,

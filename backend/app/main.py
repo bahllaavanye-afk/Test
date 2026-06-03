@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import engine, Base
+import app.models  # noqa: F401 — registers all ORM models with Base.metadata before create_all
 from app.api.v1.router import api_router
 from app.ws.prices import router as prices_router
 from app.ws.orders import router as orders_router
