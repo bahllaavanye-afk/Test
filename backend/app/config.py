@@ -1,9 +1,14 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
+import os as _os
+
+# Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+_BACKEND_ENV = _os.path.join(_HERE, "..", ".env")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_BACKEND_ENV, extra="ignore")
 
     # App
     app_name: str = "QuantEdge"

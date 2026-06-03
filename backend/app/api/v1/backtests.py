@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.backtest import BacktestRun
@@ -55,6 +56,7 @@ async def list_backtests(
 ):
     result = await db.execute(
         select(BacktestRun).where(BacktestRun.user_id == current_user.id)
+        .options(selectinload(BacktestRun.result))
         .order_by(BacktestRun.created_at.desc()).limit(20)
     )
     runs = result.scalars().all()
@@ -82,8 +84,12 @@ async def trigger_backtest(
     )
     db.add(run)
     await db.commit()
-    await db.refresh(run)
-    return BacktestOut.from_run(run)
+    # Use explicit query to avoid lazy-load issue on async session
+    fresh = await db.execute(
+        select(BacktestRun).where(BacktestRun.id == run.id)
+        .options(selectinload(BacktestRun.result))
+    )
+    return BacktestOut.from_run(fresh.scalar_one())
 
 
 @router.get("/scenarios")
