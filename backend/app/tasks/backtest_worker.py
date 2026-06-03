@@ -7,6 +7,7 @@ Uses yfinance for free OHLCV data — no broker keys required.
 from __future__ import annotations
 import asyncio
 import uuid
+import pandas as pd
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -46,10 +47,26 @@ async def run_backtest_job(run_id: str) -> None:
             raise ValueError(f"Unknown strategy: {strategy_name}")
 
         strategy = StratClass()
-        signals = await strategy.backtest_signals(df)
+        # backtest_signals may be sync or async depending on the strategy
+        import inspect
+        from app.strategies.base import BacktestSignals as _BSig
+        _result = strategy.backtest_signals(df)
+        raw_signals = (await _result) if inspect.isawaitable(_result) else _result
+
+        # Convert BacktestSignals → pd.Series[int] expected by run_backtest
+        if isinstance(raw_signals, _BSig):
+            import numpy as np
+            sig = pd.Series(0, index=df.index, dtype=int)
+            sig[raw_signals.entries.astype(bool)] = 1
+            sig[raw_signals.exits.astype(bool)] = 0
+            if raw_signals.short_entries is not None:
+                sig[raw_signals.short_entries.astype(bool)] = -1
+            signals_series = sig
+        else:
+            signals_series = raw_signals  # already a pd.Series
 
         metrics = run_backtest(
-            signals=signals,
+            signals=signals_series,
             prices=df["close"],
             opens=df["open"],
             volume=df["volume"],
