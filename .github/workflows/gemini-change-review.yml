@@ -1,8 +1,11 @@
 name: Gemini Change Review — auto-review every AI commit
 
-# Reviews every batch of AI-generated commits using Gemini/Groq (zero paid APIs).
+# Reviews every batch of AI-generated commits.
+# Reviewer: Claude Haiku (paid, ~$0.001/review) when ANTHROPIC_API_KEY is set.
+# Fallback: Gemini/Groq free LLMs if Claude unavailable.
 # Posts quality assessment to #code-review on Slack.
 # Auto-reverts if Python syntax errors are found (safety net).
+# NOTE: ALLOW_PAID_APIS stays False — only review uses the paid path (ALLOW_PAID_REVIEW=true).
 #
 # Triggers:
 #   1. Every push to the branch that doesn't come from state-persist (i.e., code changes)
@@ -30,6 +33,11 @@ on:
         description: "Auto-revert commit if syntax errors are found"
         type: boolean
         default: false
+      review_provider:
+        description: "Reviewer: auto (Claude→Gemini→Groq), claude, gemini, groq, free"
+        required: false
+        default: "auto"
+        type: string
 
 concurrency:
   group: gemini-change-review
@@ -77,8 +85,11 @@ jobs:
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
+          ALLOW_PAID_REVIEW: "true"   # Claude Haiku for review only (~$0.001/run)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           REVIEW_HOURS: ${{ inputs.review_hours || '6' }}
           AUTO_REVERT: ${{ inputs.auto_revert || 'false' }}
+          REVIEW_PROVIDER: ${{ inputs.review_provider || 'auto' }}
         run: python .github/scripts/slack_agent_team.py review
 
       - name: Persist state
