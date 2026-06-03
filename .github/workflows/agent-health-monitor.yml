@@ -95,7 +95,7 @@ jobs:
           if git diff --quiet; then
             echo "No auto-heal patches to commit"
           else
-            git add -A
-            git commit -m "chore: auto-heal from health monitor run $(date -u +'%Y-%m-%dT%H:%M')"
+            git add -u
+            git commit -m "chore: auto-heal from health monitor run $(date -u +'%Y-%m-%dT%H:%M') [skip ci]"
             git push origin HEAD:${{ github.ref_name }} || echo "Push skipped (branch protected)"
           fi

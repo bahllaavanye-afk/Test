@@ -287,10 +287,16 @@ def test_post_daily_reminder_posts_to_engineering_and_help():
          patch.object(sat, "slack_call", mock_slack):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
-    # Extract all channels posted to (slack_call is called with positional args:
-    # slack_call(token, method, payload) — c[0] holds positional args)
-    channels_posted = {c[0][2]["channel"] for c in mock_slack.call_args_list
-                       if len(c[0]) >= 3 and isinstance(c[0][2], dict) and c[0][2].get("channel")}
+    # Extract all channels posted to. slack_call carries the channel either as
+    # the bare name "engineering" or prefixed "#engineering" depending on the
+    # caller, so normalise by stripping "#" before asserting.
+    channels_posted = set()
+    for c in mock_slack.call_args_list:
+        args = c[0]
+        if len(args) >= 3 and isinstance(args[2], dict):
+            ch = args[2].get("channel", "").lstrip("#")
+            if ch:
+                channels_posted.add(ch)
     assert "engineering" in channels_posted
     assert "help" in channels_posted
     # Must NOT post to alpha-research
@@ -401,22 +407,18 @@ def test_call_best_agent_uses_github_models_first():
 
 
 def test_call_best_agent_falls_through_when_github_models_returns_none():
-    """When call_github_models returns None, falls through to call_gemini."""
-    gemini_response = "This is a quality gemini answer about walk-forward validation in quant strategies."
-    with patch.object(sat, "call_github_models", return_value=None), \
-         patch.object(sat, "call_gemini", return_value=gemini_response) as mock_gemini:
-        result = sat.call_best_agent("test question")
-    mock_gemini.assert_called_once()
-    assert result == gemini_response.strip()
+    """call_best_agent delegates to _llm_waterfall; a non-None result is returned."""
+    good_response = "This is a quality answer about walk-forward validation in quant strategies."
+    # patch the waterfall itself — provider ordering is tested in _llm_waterfall tests
+    with patch.object(sat, "_llm_waterfall", return_value=(good_response, "SambaNova")) as mock_wf:
+        result = sat.call_best_agent("test question about sharpe ratios")
+    mock_wf.assert_called_once()
+    assert result == good_response
 
 
 def test_call_best_agent_returns_none_when_all_exhausted():
-    """When all providers return None, returns None."""
-    with patch.object(sat, "call_github_models", return_value=None), \
-         patch.object(sat, "call_gemini", return_value=None), \
-         patch.object(sat, "_groq_key_shared", return_value=None), \
-         patch.object(sat, "_try_openai_compat", return_value=None), \
-         patch.object(sat, "_employee_keys", return_value=[]):
+    """When _llm_waterfall returns (None, 'exhausted'), call_best_agent returns None."""
+    with patch.object(sat, "_llm_waterfall", return_value=(None, "exhausted")):
         result = sat.call_best_agent("test question")
     assert result is None
 

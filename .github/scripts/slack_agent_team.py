@@ -3894,6 +3894,7 @@ def priya_subramanian_frontend() -> list[Post]:
 
 def anna_hoffmann_backend() -> list[Post]:
     """Backend Lead — diff stats on backend in last 24h."""
+    state = load_state()
     changed = git_files_changed(since_hours=48)
     backend_changes = {k: v for k, v in changed.items() if k.startswith("backend/")}
     if not backend_changes:
@@ -7503,6 +7504,14 @@ def main() -> int:
     # Load run state for dedup + thread tracking + token budget
     state = load_state()
     _init_governance(state)
+
+    # Reset posted_today at the start of each new UTC day so agents are forced to post daily
+    today = _today()
+    if state.get("posted_today_date") != today:
+        state["posted_today"] = []
+        state["posted_today_date"] = today
+        print(f"📅 New day ({today}) — reset posted_today for fresh catch-up pass")
+
     post_engineer_onboarding(token, state)
     if token:
         post_api_guard_map(token, state)
@@ -8264,6 +8273,7 @@ def _get_engineer_channel(emp_key: str) -> str:
         "sofia": "desk-fx-rates",
         "hugo": "alpha-research",
         "marcus": "leadership-summary",
+        "frontend": "squad-frontend",  # frontend persona → correct channel
     }
     key = emp_key.split("_")[0].lower()
     # Also check TEAMS dict for lead mappings
@@ -8348,7 +8358,12 @@ def post_daily_agent_reminder(token: str, state: dict) -> None:
             # Mark as posted in state so subsequent waves skip it too
             state.setdefault("post_dedup", {})[f"{ch}:agent_reminder"] = time.time()
             continue
-        slack_call(token, "chat.postMessage", {"channel": ch, "text": msg})
+        res = post_to_slack(token, ch, msg, username="QuantEdge Bot", icon_emoji=":robot_face:")
+        if res and res.get("ok"):
+            state.setdefault("post_dedup", {})[f"{ch}:agent_reminder"] = time.time()
+            print(f"  [daily_reminder] ✓ posted to #{ch}")
+        else:
+            print(f"  [daily_reminder] ✗ post to #{ch} failed: {res.get('error') if res else 'no response'}")
 
 
 def run_frontend_improvements(token: str, state: dict) -> None:
@@ -8567,8 +8582,9 @@ def quick_main() -> int:
 
     state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
 
-    # Post usage snapshot to #agent-api-usage on every quick run too
-    post_api_usage_report(token, state, run_posts=posts_made)
+    # Post usage snapshot to #agent-api-usage — 4-hour cooldown to avoid flooding every 15 min
+    if not _already_posted(state, "agent-api-usage", "api_usage_report", 14400):
+        post_api_usage_report(token, state, run_posts=posts_made)
 
     # Fill idle API key capacity and post throughput report
     posts_made += fill_idle_capacity(token, state)
