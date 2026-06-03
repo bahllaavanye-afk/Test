@@ -24,6 +24,31 @@ from app.utils.logging import logger
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
+@router.get("/")
+async def analytics_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """High-level analytics summary: available modules and quick stats."""
+    from sqlalchemy import text
+    try:
+        trade_count_result = await db.execute(
+            select(func.count()).select_from(Trade)
+        )
+        trade_count = trade_count_result.scalar() or 0
+    except Exception:
+        trade_count = 0
+    return {
+        "modules": [
+            "arb-opportunities", "performance", "slippage", "attribution",
+            "macro", "sentiment", "correlation", "tearsheet", "equity-curve",
+            "monthly-returns", "portfolio-greeks",
+        ],
+        "trade_count": trade_count,
+        "tearsheet_available": trade_count > 0,
+    }
+
+
 @router.get("/arb-opportunities")
 async def get_arb_opportunities(
     db: AsyncSession = Depends(get_db),
