@@ -14,6 +14,22 @@ env:
   UV_SYSTEM_PYTHON: "1"
 
 jobs:
+  test-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest
+        run: pip install --quiet pytest
+
+      - name: Run Slack agent tests
+        run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
