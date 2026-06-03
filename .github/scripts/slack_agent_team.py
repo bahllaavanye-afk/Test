@@ -698,7 +698,7 @@ def call_best_agent_for_task(
     max_tokens: int = 500,
 ) -> tuple[str | None, str]:
     """Route to the best provider for the given task type.
-    Returns (text, provider_name). Uses _TASK_ROUTING order.
+    Returns (text, provider_name). Uses _llm_waterfall first, then _TASK_ROUTING order.
     Falls back through all providers before returning (None, 'exhausted')."""
     global _LAST_PROVIDER
     sys_p = system_prompt or _QUANT_SYSTEM
@@ -707,19 +707,11 @@ def call_best_agent_for_task(
     safe_sys = _sanitize(sys_p)
     order = _TASK_ROUTING.get(task_type, _TASK_ROUTING["default"])
 
-    # GitHub Models — FIRST (works natively in GitHub Actions, no Cloudflare issues)
-    r = call_github_models(safe_sys, safe_prompt, cap)
-    if r and len(r.strip()) > 20:
-        _LAST_PROVIDER = "GitHub Models"
-        print(f"  [task/{task_type}/github-models] ✓ {len(r)} chars")
-        return r.strip(), "GitHub Models"
-
-    # SambaNova — SECOND (400 req/day free, no Cloudflare, Llama 3.3 70B)
-    r = call_sambanova(safe_sys, safe_prompt, cap)
-    if r and len(r.strip()) > 20:
-        _LAST_PROVIDER = "SambaNova"
-        print(f"  [task/{task_type}/sambanova] ✓ {len(r)} chars")
-        return r.strip(), "SambaNova"
+    # _llm_waterfall first: GitHub Models → SambaNova → Gemini → Groq → Cerebras → OpenRouter
+    text, provider = _llm_waterfall(safe_sys, safe_prompt, cap, task_label=f"task/{task_type}")
+    if text:
+        _LAST_PROVIDER = provider
+        return text, provider
 
     # LiteLLM fast-path: unified routing with built-in retry before manual cascade
     if _LITELLM_AVAILABLE:
@@ -1601,6 +1593,89 @@ def call_employee_agent(
     return None
 
 
+def _llm_waterfall(
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int = 600,
+    task_label: str = "",
+) -> tuple[str | None, str]:
+    """Single provider cascade used by all LLM callers.
+    Returns (text, provider_name). Never raises.
+    Order: GitHub Models → SambaNova → Gemini → Groq → Cerebras → OpenRouter.
+    """
+    cap = min(max_tokens, MAX_TOKENS_PER_CALL)
+    safe_sys = _sanitize(system_prompt)
+    safe_msg = _sanitize(user_message)
+    label = f"[{task_label}]" if task_label else ""
+
+    # 1. GitHub Models — always works in Actions, GPT-4o-mini + Llama fallback
+    r = call_github_models(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  {label}[gh-models] ✓ {len(r)} chars")
+        return r.strip(), "GitHub Models"
+
+    # 2. SambaNova — 400 req/day free, Llama 3.3 70B, no Cloudflare
+    r = call_sambanova(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  {label}[sambanova] ✓ {len(r)} chars")
+        return r.strip(), "SambaNova"
+
+    # 3. Gemini — 1500 req/day per key, 3 keys = 4500/day
+    for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
+        key = os.environ.get(env_var, "").strip()
+        if not key:
+            continue
+        r2 = call_gemini_with_key(key, safe_sys, safe_msg, cap)
+        if r2 and len(r2.strip()) > 20:
+            print(f"  {label}[gemini/{env_var}] ✓ {len(r2)} chars")
+            track_api_call(env_var, cap)
+            return r2.strip(), f"Gemini({env_var})"
+
+    # 4. Groq — round-robin across accounts
+    for env_var in ["GROQ_API_KEY", "GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]:
+        key = os.environ.get(env_var, "").strip()
+        if not key:
+            continue
+        r3 = _try_openai_compat(
+            "https://api.groq.com/openai/v1/chat/completions",
+            key, "llama-3.3-70b-versatile", safe_sys, safe_msg, cap)
+        if r3 and len(r3.strip()) > 20:
+            print(f"  {label}[groq/{env_var}] ✓ {len(r3)} chars")
+            track_api_call(env_var, cap)
+            return r3.strip(), f"Groq({env_var})"
+
+    # 5. Cerebras — round-robin
+    for env_var in ["CEREBRAS_API_KEY", "CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY_2"]:
+        key = os.environ.get(env_var, "").strip()
+        if not key:
+            continue
+        r4 = _try_openai_compat(
+            "https://api.cerebras.ai/v1/chat/completions",
+            key, "qwen-3-32b", safe_sys, safe_msg, cap)
+        if r4 and len(r4.strip()) > 20:
+            print(f"  {label}[cerebras/{env_var}] ✓ {len(r4)} chars")
+            track_api_call(env_var, cap)
+            return r4.strip(), f"Cerebras({env_var})"
+
+    # 6. OpenRouter
+    for env_var in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
+        key = os.environ.get(env_var, "").strip()
+        if not key:
+            continue
+        r5 = _try_openai_compat(
+            "https://openrouter.ai/api/v1/chat/completions",
+            key, "meta-llama/llama-3.3-70b-instruct:free",
+            safe_sys, safe_msg, cap,
+            extra_headers={"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"})
+        if r5 and len(r5.strip()) > 20:
+            print(f"  {label}[openrouter/{env_var}] ✓ {len(r5)} chars")
+            track_api_call(env_var, cap)
+            return r5.strip(), f"OpenRouter({env_var})"
+
+    print(f"  {label}[waterfall] all providers exhausted")
+    return None, "exhausted"
+
+
 def call_best_agent(
     user_message: str,
     system_prompt: str = _QUANT_SYSTEM,
@@ -1608,86 +1683,18 @@ def call_best_agent(
 ) -> str | None:
     """
     Shared cascade for non-employee calls (inbox, commands, incident posts).
-    Provider order: GitHub Models (always works in Actions) → Groq → Cerebras →
-                    SambaNova → OpenRouter → Gemini.
+    Delegates to _llm_waterfall: GitHub Models → SambaNova → Gemini → Groq →
+                                  Cerebras → OpenRouter.
     100% free — zero-spend policy enforced.
     """
+    global _LAST_PROVIDER
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
     safe_msg = _sanitize(user_message)
     safe_sys = _sanitize(system_prompt)
 
-    # GitHub Models — FIRST: always available in GitHub Actions via GITHUB_TOKEN
-    # No Cloudflare issues, GPT-4o-mini + Llama 3.1, zero rate-limit in Actions
-    r = call_github_models(safe_sys, safe_msg, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [agent/github-models] ✓ {len(r)} chars")
-        return r.strip()
-
-    # SambaNova — SECOND: 400 req/day free, no Cloudflare, Llama 3.3 70B
-    r = call_sambanova(safe_sys, safe_msg, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [agent/sambanova-direct] ✓ {len(r)} chars")
-        return r.strip()
-
-    # Gemini — 1500 req/day across 3 keys = 4500 req/day total
-    r = call_gemini(safe_sys, safe_msg, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [agent/gemini] ✓ {len(r)} chars")
-        return r.strip()
-
-    # Groq — round-robin across all 3 accounts for shared calls
-    key = _groq_key_shared()
-    if key:
-        r = _try_openai_compat(
-            "https://api.groq.com/openai/v1/chat/completions",
-            key, "llama-3.3-70b-versatile", safe_sys, safe_msg, cap)
-        if r and len(r.strip()) > 20:
-            print(f"  [agent/groq] ✓ {len(r)} chars")
-            groq_env_shared = next((ev for ev in _GROQ_SHARED_ACCOUNTS if os.environ.get(ev,"").strip() == key), "GROQ_API_KEY_1")
-            track_api_call(groq_env_shared, cap)
-            return r.strip()
-
-    # Cerebras — round-robin across all accounts for shared calls
-    for cerebras_env in ["CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY", "CEREBRAS_API_KEY_2", "CEREBRAS_API_KEY_3"]:
-        key = os.environ.get(cerebras_env, "").strip()
-        if not key:
-            continue
-        r = _try_openai_compat(
-            "https://api.cerebras.ai/v1/chat/completions",
-            key, "qwen-3-32b", safe_sys, safe_msg, cap)
-        if r and len(r.strip()) > 20:
-            print(f"  [agent/cerebras] ✓ {len(r)} chars")
-            track_api_call(cerebras_env, cap)
-            return r.strip()
-        break
-
-    # SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
-    for key in _employee_keys("shared", "sambanova"):
-        r = _try_openai_compat(
-            "https://api.sambanova.ai/v1/chat/completions",
-            key, "Meta-Llama-3.3-70B-Instruct", safe_sys, safe_msg, cap)
-        if r and len(r.strip()) > 20:
-            print(f"  [agent/sambanova] ✓ {len(r)} chars")
-            track_api_call("SAMBANOVA_API_KEY", cap)
-            return r.strip()
-
-    # OpenRouter — try both keys (50 req/day each = 100/day combined)
-    for or_env in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
-        key = os.environ.get(or_env, "").strip()
-        if not key:
-            continue
-        r = _try_openai_compat(
-            "https://openrouter.ai/api/v1/chat/completions",
-            key, "meta-llama/llama-3.3-70b-instruct:free", safe_sys, safe_msg, cap,
-            {"HTTP-Referer": "https://github.com/bahllaavanye-afk/Test"})
-        if r and len(r.strip()) > 20:
-            print(f"  [agent/openrouter/{or_env}] ✓ {len(r)} chars")
-            track_api_call(or_env, cap)
-            return r.strip()
-
-    # Hard stop — never pay
-    print("  [agent] ⚠ all free providers exhausted — returning None (zero-spend policy)")
-    return None
+    text, provider = _llm_waterfall(safe_sys, safe_msg, cap, task_label="agent")
+    _LAST_PROVIDER = provider
+    return text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
