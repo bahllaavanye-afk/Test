@@ -24,12 +24,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
-      - name: Install pytest
-        run: pip install --quiet pytest
+      - name: Install uv + pytest
+        run: |
+          pip install uv --quiet
+          uv pip install --system pytest
 
       - name: Run Slack agent tests
-        run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short
+        run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short -x --timeout=30
 
   test:
     runs-on: ubuntu-latest
