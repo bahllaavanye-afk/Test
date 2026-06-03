@@ -439,10 +439,14 @@ def main() -> int:
             if ok is None:
                 print(f"[gemini-runner] Rate-limited on issue #{issue_num} — leaving open for retry.")
                 return 0  # don't close issue, don't fail workflow
-            comment = f"## Gemini Task Runner Result\n\n{report}"
-            close_issue(issue_num, comment)
-            _slack_post("engineering", f":robot_face: *Gemini runner* closed issue #{issue_num}\n{report}")
-            return 0 if ok else 1
+            if ok:
+                close_issue(issue_num, f"## ✅ Done\n\n{report}")
+                _slack_post("engineering", f":robot_face: *Gemini runner* closed issue #{issue_num}\n{report}")
+            else:
+                _gh("POST", f"/repos/{GH_REPO}/issues/{issue_num}/comments",
+                    {"body": f"## ⚠️ Attempt failed — left open for retry\n\n{report}"})
+                _slack_post("engineering", f":warning: *Gemini runner* could not fix #{issue_num} — left open\n{report[:200]}")
+            return 0  # always exit 0; failures are tracked via issue comments
 
     # ── Batch mode: process all open gemini-task issues
     tasks = fetch_open_tasks()
@@ -461,8 +465,23 @@ def main() -> int:
             print(f"  [gemini-runner] Rate-limited on #{num} — leaving open for retry.")
             results.append((num, None, report[:200]))
             break  # stop processing; all keys throttled, no point continuing
-        comment = f"## {'✅ Done' if ok else '❌ Failed'}\n\n{report}"
-        close_issue(num, comment)
+        if ok:
+            # Verify at least one staged file exists before declaring success
+            staged = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+                capture_output=True, text=True, cwd=REPO_ROOT,
+            ).stdout.strip()
+            if not staged:
+                ok = False
+                report = "Patch produced no committed changes — issue left open for retry.\n\n" + report
+        if ok:
+            close_issue(num, f"## ✅ Done\n\n{report}")
+            print(f"  [gemini-runner] Closed #{num} — fix verified ({staged.splitlines()[0] if staged else 'ok'})")
+        else:
+            # Add a failure comment but keep issue OPEN for the next run to retry
+            _gh("POST", f"/repos/{GH_REPO}/issues/{num}/comments",
+                {"body": f"## ⚠️ Attempt failed — left open for retry\n\n{report}"})
+            print(f"  [gemini-runner] Issue #{num} left OPEN — fix failed or unverified")
         results.append((num, ok, report[:200]))
         time.sleep(2)
 
