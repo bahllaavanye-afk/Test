@@ -20,21 +20,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: claude/advanced-trading-bot-d5Lmw
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
-      - name: Install uv + pytest
-        run: |
-          pip install uv --quiet
-          uv pip install --system pytest pytest-timeout
+      - name: Install pytest
+        run: pip install --quiet pytest
 
       - name: Run Slack agent tests
-        run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short -x --timeout=30
+        run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short
 
   test:
     runs-on: ubuntu-latest
