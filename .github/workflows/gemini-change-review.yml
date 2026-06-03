@@ -1,0 +1,94 @@
+name: Gemini Change Review — auto-review every AI commit
+
+# Reviews every batch of AI-generated commits using Gemini/Groq (zero paid APIs).
+# Posts quality assessment to #code-review on Slack.
+# Auto-reverts if Python syntax errors are found (safety net).
+#
+# Triggers:
+#   1. Every push to the branch that doesn't come from state-persist (i.e., code changes)
+#   2. Every 6 hours via cron (catches anything missed)
+#   3. Manual dispatch (trigger from Actions tab)
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/scripts/**"
+      - ".github/workflows/**"
+  schedule:
+    - cron: "0 */6 * * *"    # every 6 hours, 24/7
+  workflow_dispatch:
+    inputs:
+      review_hours:
+        description: "Look back N hours for commits to review (default: 6)"
+        required: false
+        default: "6"
+        type: string
+      auto_revert:
+        description: "Auto-revert commit if syntax errors are found"
+        type: boolean
+        default: false
+
+concurrency:
+  group: gemini-change-review
+  cancel-in-progress: true   # only need latest review
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write   # needed for auto-revert
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history for git diff
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install --quiet \
+            google-generativeai groq litellm langfuse cerebras-cloud-sdk \
+            pandas numpy scipy requests || true
+
+      - name: Review Gemini changes
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
+          ALLOW_PAID_APIS: "False"
+          REVIEW_HOURS: ${{ inputs.review_hours || '6' }}
+          AUTO_REVERT: ${{ inputs.auto_revert || 'false' }}
+        run: python .github/scripts/slack_agent_team.py review
+
+      - name: Persist state
+        if: always()
+        run: |
+          git config user.email "agents@quantedge.ai"
+          git config user.name "QuantEdge Agent Team"
+          STATE="experiments/results/slack_state.json"
+          if [ -f "$STATE" ] && ! git diff --quiet "$STATE" 2>/dev/null; then
+            git add "$STATE"
+            git commit -m "chore: persist review state [skip ci]"
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+          fi
