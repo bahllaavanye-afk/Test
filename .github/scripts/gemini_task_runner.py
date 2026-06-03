@@ -66,7 +66,13 @@ SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "").strip()
 
 # ── LLM callers ───────────────────────────────────────────────────────────────
 
+class _RateLimited(Exception):
+    """All providers returned 429 — retry next scheduled run."""
+
+
 def _call_gemini(prompt: str, api_key: str, max_tokens: int = 8000) -> str:
+    if not api_key:
+        raise RuntimeError("empty api_key")
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"gemini-2.0-flash:generateContent?key={api_key}"
@@ -77,8 +83,13 @@ def _call_gemini(prompt: str, api_key: str, max_tokens: int = 8000) -> str:
     }).encode()
     req = urllib.request.Request(url, data=body,
                                  headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            raise _RateLimited("Gemini 429")
+        raise
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
@@ -99,27 +110,56 @@ def _call_groq(prompt: str, max_tokens: int = 4000) -> str:
         headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=45) as resp:
-        data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            raise _RateLimited("Groq 429")
+        raise
     return data["choices"][0]["message"]["content"]
 
 
 def call_free_llm(prompt: str, max_tokens: int = 8000) -> tuple[str, str]:
-    """Try Gemini keys in order, then Groq. Returns (text, provider)."""
-    for key in GEMINI_KEYS:
+    """Try Gemini keys then Groq. On 429 waits 15s and retries once.
+    Raises _RateLimited (not RuntimeError) when all providers throttled — caller exits 0."""
+    throttled = 0
+    active_keys = [k for k in GEMINI_KEYS if k]
+
+    for key in active_keys:
         try:
             text = _call_gemini(prompt, key, max_tokens)
             if text and len(text.strip()) > 50:
                 return text.strip(), "gemini-flash"
+        except _RateLimited as e:
+            print(f"  [gemini] {e} — trying next key")
+            throttled += 1
+            time.sleep(3)
         except Exception as e:
             print(f"  [gemini] failed: {e}")
+
+    # All keys rate-limited — wait 15s and retry once per key
+    if throttled == len(active_keys) and active_keys:
+        print("  [gemini] all keys throttled — waiting 15s before retry")
+        time.sleep(15)
+        for key in active_keys:
+            try:
+                text = _call_gemini(prompt, key, max_tokens)
+                if text and len(text.strip()) > 50:
+                    return text.strip(), "gemini-flash-retry"
+            except (_RateLimited, Exception) as e:
+                print(f"  [gemini-retry] {e}")
+
     try:
         text = _call_groq(prompt, min(max_tokens, 4000))
         if text and len(text.strip()) > 50:
             return text.strip(), "groq-llama3"
+    except _RateLimited as e:
+        print(f"  [groq] {e}")
     except Exception as e:
         print(f"  [groq] failed: {e}")
-    raise RuntimeError("All free LLM providers exhausted")
+
+    raise _RateLimited("All free LLM providers throttled — issues stay open for next run")
 
 
 # ── GitHub API ─────────────────────────────────────────────────────────────────
@@ -306,8 +346,10 @@ def execute_task(title: str, body: str) -> tuple[bool, str]:
     try:
         raw, provider = call_free_llm(prompt, max_tokens=8000)
         print(f"  [task] LLM response from {provider}: {len(raw)} chars")
-    except RuntimeError as e:
-        return False, f"LLM exhausted: {e}"
+    except _RateLimited as e:
+        return None, str(e)  # None = rate-limited, leave issue open
+    except Exception as e:
+        return False, f"LLM error: {e}"
 
     try:
         result = _parse_response(raw)
@@ -371,6 +413,9 @@ def main() -> int:
             task_text = sys.argv[idx + 1]
             ok, report = execute_task(task_text, "Dispatched inline via --task flag.")
             print(report)
+            if ok is None:
+                print("[gemini-runner] Rate-limited — will retry next run.")
+                return 0
             _slack_post("engineering", f":robot_face: *Gemini runner* — `{task_text[:60]}`\n{report}")
             return 0 if ok else 1
 
@@ -383,6 +428,9 @@ def main() -> int:
             title = data.get("title", "")
             body = data.get("body", "") or ""
             ok, report = execute_task(title, body)
+            if ok is None:
+                print(f"[gemini-runner] Rate-limited on issue #{issue_num} — leaving open for retry.")
+                return 0  # don't close issue, don't fail workflow
             comment = f"## Gemini Task Runner Result\n\n{report}"
             close_issue(issue_num, comment)
             _slack_post("engineering", f":robot_face: *Gemini runner* closed issue #{issue_num}\n{report}")
@@ -401,6 +449,10 @@ def main() -> int:
         body = issue.get("body", "") or ""
         print(f"\n[gemini-runner] Processing issue #{num}: {title[:80]}")
         ok, report = execute_task(title, body)
+        if ok is None:
+            print(f"  [gemini-runner] Rate-limited on #{num} — leaving open for retry.")
+            results.append((num, None, report[:200]))
+            break  # stop processing; all keys throttled, no point continuing
         comment = f"## {'✅ Done' if ok else '❌ Failed'}\n\n{report}"
         close_issue(num, comment)
         results.append((num, ok, report[:200]))
@@ -409,12 +461,13 @@ def main() -> int:
     # Post summary to #engineering
     lines = [f":robot_face: *Gemini Task Runner* — {len(results)} task(s) processed"]
     for num, ok, rep in results:
-        icon = "✅" if ok else "❌"
+        icon = "✅" if ok else ("⏳" if ok is None else "❌")
         lines.append(f"{icon} Issue #{num}: {rep[:100]}")
     _slack_post("engineering", "\n".join(lines))
 
-    failed = sum(1 for _, ok, _ in results if not ok)
-    return 1 if failed == len(results) else 0
+    # Only hard-fail if a task actually errored (not rate-limited)
+    failed = sum(1 for _, ok, _ in results if ok is False)
+    return 1 if failed == len(results) and failed > 0 else 0
 
 
 if __name__ == "__main__":
