@@ -250,6 +250,11 @@ async def lifespan(app: FastAPI):
     ))
     logger.info("Strategy runner registered", strategies=len(active_strategies))
 
+    # Backtest worker — polls for queued BacktestRun rows every 30 s, executes via yfinance
+    from app.tasks.backtest_worker import backtest_worker_loop
+    bg_tasks.append(asyncio.create_task(_supervised(backtest_worker_loop, "backtest_worker")))
+    logger.info("Backtest worker registered")
+
     # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
     from app.tasks.regime_monitor import RegimeMonitor
     regime_monitor = RegimeMonitor()
