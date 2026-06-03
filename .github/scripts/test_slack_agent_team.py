@@ -280,23 +280,15 @@ def test_slack_history_dedup_matches_known_bot_username():
 def test_post_daily_reminder_posts_to_engineering_and_help():
     """When not already posted and no recent history, posts to engineering and help."""
     state = {}
-    mock_slack = MagicMock(return_value={"ok": True})
+    mock_post = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "_already_posted", return_value=False), \
          patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "slack_call", mock_slack):
+         patch.object(sat, "post_to_slack", mock_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
-    # Extract all channels posted to. slack_call carries the channel either as
-    # the bare name "engineering" or prefixed "#engineering" depending on the
-    # caller, so normalise by stripping "#" before asserting.
-    channels_posted = set()
-    for c in mock_slack.call_args_list:
-        args = c[0]
-        if len(args) >= 3 and isinstance(args[2], dict):
-            ch = args[2].get("channel", "").lstrip("#")
-            if ch:
-                channels_posted.add(ch)
+    # Extract all channels posted to via post_to_slack(token, channel, text, ...)
+    channels_posted = {c[0][1] for c in mock_post.call_args_list if len(c[0]) >= 2}
     assert "engineering" in channels_posted
     assert "help" in channels_posted
     # Must NOT post to alpha-research
@@ -304,31 +296,31 @@ def test_post_daily_reminder_posts_to_engineering_and_help():
 
 
 def test_post_daily_reminder_skips_when_already_posted():
-    """When _already_posted returns True, slack_call is NOT called for that channel."""
+    """When _already_posted returns True, post_to_slack is NOT called for that channel."""
     state = {}
-    mock_slack = MagicMock(return_value={"ok": True})
+    mock_post = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "_already_posted", return_value=True), \
          patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "slack_call", mock_slack):
+         patch.object(sat, "post_to_slack", mock_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
     # No posts should have been made (all channels skipped by _already_posted)
-    assert mock_slack.call_count == 0
+    assert mock_post.call_count == 0
 
 
 def test_post_daily_reminder_skips_when_recent_history_found():
-    """When _slack_channel_has_recent_bot_post returns True, slack_call is NOT called and state is updated."""
+    """When _slack_channel_has_recent_bot_post returns True, post_to_slack is NOT called and state is updated."""
     state = {}
-    mock_slack = MagicMock(return_value={"ok": True})
+    mock_post = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "_already_posted", return_value=False), \
          patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=True), \
-         patch.object(sat, "slack_call", mock_slack):
+         patch.object(sat, "post_to_slack", mock_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
-    # No actual chat.postMessage calls
-    assert mock_slack.call_count == 0
+    # No actual posts should have been made
+    assert mock_post.call_count == 0
     # State should be updated with the dedup entry
     post_dedup = state.get("post_dedup", {})
     assert "engineering:agent_reminder" in post_dedup or "help:agent_reminder" in post_dedup
@@ -769,14 +761,13 @@ def test_post_daily_reminder_never_posts_to_alpha_research():
     state = {}
     posted_channels = []
 
-    def capture_slack(token, method, payload):
-        if method == "chat.postMessage":
-            posted_channels.append(payload.get("channel", ""))
+    def capture_post(token, channel, text, **kwargs):
+        posted_channels.append(channel)
         return {"ok": True}
 
     with patch.object(sat, "_already_posted", return_value=False), \
          patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "slack_call", side_effect=capture_slack):
+         patch.object(sat, "post_to_slack", side_effect=capture_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
     assert "alpha-research" not in posted_channels
