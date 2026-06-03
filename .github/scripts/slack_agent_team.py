@@ -1428,6 +1428,49 @@ def call_litellm(model: str, api_key: str, system_prompt: str, user_message: str
         return None
 
 
+def call_claude_for_review(system_prompt: str, user_message: str, max_tokens: int = 800) -> tuple[str, str]:
+    """
+    Claude Haiku for code review ONLY.
+    Gated by ALLOW_PAID_REVIEW env var (separate from ALLOW_PAID_APIS).
+    ALLOW_PAID_APIS stays False forever — this is a review-specific paid path.
+    Cost: ~$0.001 per diff review (input+output ~5K tokens).
+    """
+    if os.environ.get("ALLOW_PAID_REVIEW", "false").lower() != "true":
+        return "", "review-paid-disabled"
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return "", "no-anthropic-key"
+    payload = {
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": [{"role": "user", "content": user_message}],
+    }
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(payload).encode(),
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+            text = data.get("content", [{}])[0].get("text", "")
+            model = data.get("model", "claude-haiku")
+            input_tokens = data.get("usage", {}).get("input_tokens", 0)
+            output_tokens = data.get("usage", {}).get("output_tokens", 0)
+            cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
+            print(f"  [claude-review] {input_tokens}in/{output_tokens}out tokens | ${cost_usd:.5f}")
+            return text, model
+    except Exception as e:
+        print(f"  [claude-review] {e}")
+        return "", f"claude-error:{e}"
+
+
 def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
     """
     Claude Haiku — BLOCKED by default (paid-API flag is off).
@@ -9141,24 +9184,89 @@ def review_gemini_changes_main() -> int:
             if check.returncode != 0:
                 syntax_errors.append(f"`{py_file}`: {check.stderr.strip()[:120]}")
 
-    # LLM review of the diff
-    review_prompt = (
-        f"You are the VP Engineering at QuantEdge reviewing {len(commits)} recent AI-generated commit(s).\n\n"
+    # ── Review provider selection ──────────────────────────────────────────────
+    # REVIEW_PROVIDER env var (set in workflow or workflow_dispatch input):
+    #   auto   — try Claude Haiku first, fall back through Gemini → Groq → Cerebras
+    #   claude — Claude Haiku only (fails silently if key missing → no review posted)
+    #   gemini — Gemini Flash only (free)
+    #   groq   — Groq llama only (free)
+    #   free   — skip Claude, use free LLM cascade directly
+    review_provider = os.environ.get("REVIEW_PROVIDER", "auto").lower().strip()
+
+    review_system = (
+        "You are the VP Engineering at QuantEdge, an institutional quantitative trading platform "
+        "(FastAPI backend, React frontend, PyTorch ML, Alpaca/Binance/Polymarket brokers). "
+        "Review AI-generated code changes for correctness, security, and regressions. "
+        "Be specific — cite file names and line numbers. Use Slack *bold* for issues. "
+        "Max 180 words."
+    )
+    review_user = (
+        f"Review {len(commits)} AI-generated commit(s) pushed by the Gemini/Groq task runner.\n\n"
         f"Commits:\n" + "\n".join(f"  {c}" for c in commits[:10]) + "\n\n"
         f"Files changed:\n{diff_stat}\n\n"
-        f"Diff excerpt:\n```\n{diff_text[:2000]}\n```\n\n"
-        "Review for: (1) correctness, (2) security issues, (3) broken logic, (4) regressions.\n"
-        "Be specific — cite file names and line contexts. Max 200 words. Slack format (*bold* for issues).\n"
-        "End with: VERDICT: ✅ LGTM | ⚠️ MINOR ISSUES | ❌ BROKEN"
+        f"Diff excerpt:\n```diff\n{diff_text[:2500]}\n```\n\n"
+        "Check: (1) correctness, (2) security (no secrets/SQL injection/XSS), "
+        "(3) broken imports or logic errors, (4) regressions to existing functionality.\n"
+        "End your response with exactly one of:\n"
+        "VERDICT: ✅ LGTM\nVERDICT: ⚠️ MINOR ISSUES\nVERDICT: ❌ BROKEN"
     )
-    ai_review, provider = employee_provider_prompt("vp_eng" if "vp_eng" in (
-        _EMPLOYEE_PERSONAS.keys()) else "maya", review_prompt, state=state)
+
+    ai_review, provider = "", "none"
+    sys_safe = _sanitize(review_system)
+    usr_safe = _sanitize(review_user)
+
+    if review_provider in ("auto", "claude"):
+        # Claude Haiku (paid, ~$0.001/review) — gated by ALLOW_PAID_REVIEW=true
+        ai_review, provider = call_claude_for_review(review_system, review_user, max_tokens=800)
+        if not ai_review:
+            print(f"  [review] Claude path skipped/failed: {provider}")
+
+    if not ai_review and review_provider in ("auto", "gemini"):
+        # Try all Gemini keys directly (free)
+        for env_var in ["GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY"]:
+            key = os.environ.get(env_var, "").strip()
+            if not key:
+                continue
+            result = call_gemini_with_key(key, sys_safe, usr_safe, 800)
+            if result and len(result.strip()) > 20:
+                ai_review, provider = result.strip(), f"Gemini({env_var})"
+                break
+        if not ai_review:
+            print(f"  [review] Gemini path exhausted")
+
+    if not ai_review and review_provider in ("auto", "groq", "free"):
+        # Try all Groq keys directly (free)
+        for acct in range(1, 4):
+            key = os.environ.get(f"GROQ_API_KEY_{acct}", "").strip()
+            if not key:
+                continue
+            result = _try_openai_compat(
+                "https://api.groq.com/openai/v1/chat/completions",
+                key, "llama-3.3-70b-versatile", sys_safe, usr_safe, 800)
+            if result and len(result.strip()) > 20:
+                ai_review, provider = result.strip(), f"Groq-{acct}"
+                break
+        if not ai_review:
+            print(f"  [review] Groq path exhausted")
+
+    if not ai_review:
+        # Final fallback: generic free cascade (Cerebras, SambaNova, OpenRouter)
+        result, p = call_best_agent_for_task("default", usr_safe, system_prompt=sys_safe, max_tokens=800)
+        if result:
+            ai_review, provider = result, p or "free-cascade"
+
+    if not ai_review:
+        print(f"  [review] All providers exhausted for REVIEW_PROVIDER={review_provider}")
 
     # Build Slack post
+    reviewer_label = (
+        f"claude-haiku" if "claude" in provider.lower()
+        else provider.split(":")[0] if provider else "free-llm"
+    )
     blocks: list[str] = [
-        f":mag: *Gemini Commit Review — last {look_back}h* ({len(commits)} commit(s))",
+        f":mag: *Gemini Commit Review — last {look_back}h* ({len(commits)} commit(s)) _reviewed by {reviewer_label}_",
         "",
-        f"*Commits reviewed:*",
+        "*Commits reviewed:*",
     ]
     blocks += [f"  `{c}`" for c in commits[:8]]
     blocks += ["", f"*Files:* {diff_stat.splitlines()[0] if diff_stat else 'n/a'}"]
@@ -9168,7 +9276,7 @@ def review_gemini_changes_main() -> int:
         blocks += [f"  {e}" for e in syntax_errors]
 
     if ai_review:
-        blocks += ["", "*AI Review:*", ai_review.strip()]
+        blocks += ["", f"*Review ({reviewer_label}):*", ai_review.strip()]
     else:
         blocks += ["", f"_(LLM review unavailable — provider: {provider})_"]
 
@@ -9176,7 +9284,7 @@ def review_gemini_changes_main() -> int:
 
     if token:
         post_to_slack(token, "code-review", text, username="Code Review Bot", icon_emoji=":mag:")
-        print(f"[review] Posted to #code-review via {provider}")
+        print(f"[review] Posted to #code-review via {reviewer_label}")
     else:
         print(f"[review] No SLACK_BOT_TOKEN — review:\n{text}")
 
