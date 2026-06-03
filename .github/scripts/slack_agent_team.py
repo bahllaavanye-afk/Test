@@ -907,60 +907,97 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
 # This prevents any single Groq account from being overloaded by other employees' quota.
 
 _GROQ_ACCOUNT: dict[str, str] = {
-    # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (4 employees)
-    "maya":   "GROQ_API_KEY_1",
-    "aarav":  "GROQ_API_KEY_1",
-    "linh":   "GROQ_API_KEY_1",
-    "jian":   "GROQ_API_KEY_1",
-    # Account 2 — GROQ_API_KEY_2  (4 employees)
-    "anna":   "GROQ_API_KEY_2",
-    "aditi":  "GROQ_API_KEY_2",
-    "kenji":  "GROQ_API_KEY_2",
-    "diego":  "GROQ_API_KEY_2",
-    # Account 3 — GROQ_API_KEY_3  (5 employees)
-    "lior":   "GROQ_API_KEY_3",
-    "sara":   "GROQ_API_KEY_3",
-    "sofia":  "GROQ_API_KEY_3",
-    "hugo":   "GROQ_API_KEY_3",
-    "marcus": "GROQ_API_KEY_3",
+    # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (core team)
+    "maya":      "GROQ_API_KEY_1",
+    "aarav":     "GROQ_API_KEY_1",
+    "linh":      "GROQ_API_KEY_1",
+    "jian":      "GROQ_API_KEY_1",
+    "priya":     "GROQ_API_KEY_1",   # frontend + feature eng leads
+    "tomas":     "GROQ_API_KEY_1",   # RL researcher
+    "laavanye":  "GROQ_API_KEY_1",   # CEO (Monday-only, light usage)
+    # Account 2 — GROQ_API_KEY_2  (core team + secondary)
+    "anna":      "GROQ_API_KEY_2",
+    "aditi":     "GROQ_API_KEY_2",
+    "kenji":     "GROQ_API_KEY_2",
+    "diego":     "GROQ_API_KEY_2",
+    "ravi":      "GROQ_API_KEY_2",   # ML infra / CI
+    "karl":      "GROQ_API_KEY_2",   # junior engineer
+    "cameron":   "GROQ_API_KEY_2",   # security engineer
+    "wei":       "GROQ_API_KEY_2",   # finance engineer
+    "frontend":  "GROQ_API_KEY_2",   # frontend improvement role
+    # Account 3 — GROQ_API_KEY_3  (core team + secondary)
+    "lior":      "GROQ_API_KEY_3",
+    "sara":      "GROQ_API_KEY_3",
+    "sofia":     "GROQ_API_KEY_3",
+    "hugo":      "GROQ_API_KEY_3",
+    "marcus":    "GROQ_API_KEY_3",
+    "sina":      "GROQ_API_KEY_3",   # data engineer
+    "alex":      "GROQ_API_KEY_3",   # quant ML researcher
+    "yuki":      "GROQ_API_KEY_3",   # options researcher
+    "helena":    "GROQ_API_KEY_3",   # compliance engineer
 }
 
 # Each employee group gets the same-numbered Gemini account as their Groq account.
 # Group 1 (GROQ_API_KEY_1) → GEMINI_API_KEY_1, etc.
 # This isolates quota completely — Group 2 Gemini burnout never affects Group 1.
 _GEMINI_ACCOUNT: dict[str, str] = {
-    "maya":   "GEMINI_API_KEY_1",
-    "aarav":  "GEMINI_API_KEY_1",
-    "linh":   "GEMINI_API_KEY_1",
-    "jian":   "GEMINI_API_KEY_1",
-    "anna":   "GEMINI_API_KEY_2",
-    "aditi":  "GEMINI_API_KEY_2",
-    "kenji":  "GEMINI_API_KEY_2",
-    "diego":  "GEMINI_API_KEY_2",
-    "lior":   "GEMINI_API_KEY_3",
-    "sara":   "GEMINI_API_KEY_3",
-    "sofia":  "GEMINI_API_KEY_3",
-    "hugo":   "GEMINI_API_KEY_3",
-    "marcus": "GEMINI_API_KEY_3",
+    # Mirror GROQ account groups for consistent quota isolation
+    "maya":      "GEMINI_API_KEY_1",
+    "aarav":     "GEMINI_API_KEY_1",
+    "linh":      "GEMINI_API_KEY_1",
+    "jian":      "GEMINI_API_KEY_1",
+    "priya":     "GEMINI_API_KEY_1",
+    "tomas":     "GEMINI_API_KEY_1",
+    "laavanye":  "GEMINI_API_KEY_1",
+    "anna":      "GEMINI_API_KEY_2",
+    "aditi":     "GEMINI_API_KEY_2",
+    "kenji":     "GEMINI_API_KEY_2",
+    "diego":     "GEMINI_API_KEY_2",
+    "ravi":      "GEMINI_API_KEY_2",
+    "karl":      "GEMINI_API_KEY_2",
+    "cameron":   "GEMINI_API_KEY_2",
+    "wei":       "GEMINI_API_KEY_2",
+    "frontend":  "GEMINI_API_KEY_2",
+    "lior":      "GEMINI_API_KEY_3",
+    "sara":      "GEMINI_API_KEY_3",
+    "sofia":     "GEMINI_API_KEY_3",
+    "hugo":      "GEMINI_API_KEY_3",
+    "marcus":    "GEMINI_API_KEY_3",
+    "sina":      "GEMINI_API_KEY_3",
+    "alex":      "GEMINI_API_KEY_3",
+    "yuki":      "GEMINI_API_KEY_3",
+    "helena":    "GEMINI_API_KEY_3",
 }
 
 # 2 Cerebras accounts — split employees evenly across groups.
 # Group 1 (Groq_1/Gemini_1 users) + Group 2 (Groq_2/Gemini_2 users) → CEREBRAS_API_KEY_1
 # Group 3 (Groq_3/Gemini_3 users) → CEREBRAS_API_KEY_2
 _CEREBRAS_ACCOUNT: dict[str, str] = {
-    "maya":   "CEREBRAS_API_KEY_1",
-    "aarav":  "CEREBRAS_API_KEY_1",
-    "linh":   "CEREBRAS_API_KEY_1",
-    "jian":   "CEREBRAS_API_KEY_1",
-    "anna":   "CEREBRAS_API_KEY_1",
-    "aditi":  "CEREBRAS_API_KEY_1",
-    "kenji":  "CEREBRAS_API_KEY_1",
-    "diego":  "CEREBRAS_API_KEY_1",
-    "lior":   "CEREBRAS_API_KEY_2",
-    "sara":   "CEREBRAS_API_KEY_2",
-    "sofia":  "CEREBRAS_API_KEY_2",
-    "hugo":   "CEREBRAS_API_KEY_2",
-    "marcus": "CEREBRAS_API_KEY_2",
+    "maya":      "CEREBRAS_API_KEY_1",
+    "aarav":     "CEREBRAS_API_KEY_1",
+    "linh":      "CEREBRAS_API_KEY_1",
+    "jian":      "CEREBRAS_API_KEY_1",
+    "priya":     "CEREBRAS_API_KEY_1",
+    "tomas":     "CEREBRAS_API_KEY_1",
+    "laavanye":  "CEREBRAS_API_KEY_1",
+    "anna":      "CEREBRAS_API_KEY_1",
+    "aditi":     "CEREBRAS_API_KEY_1",
+    "kenji":     "CEREBRAS_API_KEY_1",
+    "diego":     "CEREBRAS_API_KEY_1",
+    "ravi":      "CEREBRAS_API_KEY_1",
+    "karl":      "CEREBRAS_API_KEY_1",
+    "cameron":   "CEREBRAS_API_KEY_1",
+    "wei":       "CEREBRAS_API_KEY_1",
+    "frontend":  "CEREBRAS_API_KEY_1",
+    "lior":      "CEREBRAS_API_KEY_2",
+    "sara":      "CEREBRAS_API_KEY_2",
+    "sofia":     "CEREBRAS_API_KEY_2",
+    "hugo":      "CEREBRAS_API_KEY_2",
+    "marcus":    "CEREBRAS_API_KEY_2",
+    "sina":      "CEREBRAS_API_KEY_2",
+    "alex":      "CEREBRAS_API_KEY_2",
+    "yuki":      "CEREBRAS_API_KEY_2",
+    "helena":    "CEREBRAS_API_KEY_2",
 }
 
 # For shared calls, rotate across all available accounts round-robin.
@@ -980,12 +1017,16 @@ def moa_employee_prompt(emp_key: str, task: str, state: dict | None = None, n: i
     Falls back to employee_provider_prompt if fewer than 2 keys available."""
     import threading
     keys = [k for k in [
-        os.environ.get("GEMINI_API_KEY"),
+        os.environ.get("GEMINI_API_KEY_1"),   # user's primary key (_1 suffix)
+        os.environ.get("GEMINI_API_KEY"),      # bare name alias for KEY_1
         os.environ.get("GEMINI_API_KEY_2"),
         os.environ.get("GEMINI_API_KEY_3"),
         os.environ.get("GEMINI_API_KEY_4"),
         os.environ.get("GEMINI_API_KEY_5"),
     ] if k]
+    # Deduplicate while preserving order (KEY_1 and bare GEMINI_API_KEY may be identical)
+    seen: set[str] = set()
+    keys = [k for k in keys if not (k in seen or seen.add(k))]  # type: ignore[func-returns-value]
     if len(keys) < 2:
         return employee_provider_prompt(emp_key, task, state=state)
     persona = _EMPLOYEE_PERSONAS.get(emp_key, _EMPLOYEE_PERSONAS.get("default", "You are a quant engineer."))
@@ -9093,10 +9134,88 @@ def run_experiments_main() -> int:
     return 0
 
 
+def summons_only_main() -> int:
+    """Lightweight summon-watcher: scans all monitored channels for @agent / ask: / ??
+    messages and answers them via the free LLM cascade. Runs every 5 min."""
+    verify_zero_spend()
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token.startswith("xoxb-"):
+        print("[summons] No valid SLACK_BOT_TOKEN — skipping")
+        return 0
+
+    auth = slack_call(token, "auth.test", {})
+    if not auth.get("ok"):
+        print(f"[summons] auth.test failed: {auth.get('error', 'unknown')} — continuing")
+        bot_user_id = ""
+        bot_name = "QuantEdge Bot"
+    else:
+        bot_user_id = auth.get("user_id", "")
+        bot_name = auth.get("user", "QuantEdge Bot")
+
+    state = load_state()
+    _init_governance(state)
+
+    # First run: announce the bot handle in key channels so users know how to tag it
+    if not state.get("bot_handle_announced"):
+        handle_msg = (
+            f":wave: I'm *{bot_name}* — the QuantEdge AI agent team. "
+            f"Tag me with `<@{bot_user_id}>` or type `@agent`, `@quant`, `ask:`, or `?? ` "
+            "followed by your question in any channel. I respond within 5 minutes via "
+            "Gemini/Groq/Cerebras (zero paid APIs)."
+        )
+        for ch in ["general", "help", "engineering"]:
+            try:
+                post_to_slack(token, ch, handle_msg, username=bot_name, icon_emoji=":robot_face:")
+            except Exception:
+                pass
+        state["bot_handle_announced"] = True
+
+    already_replied: list[str] = state.get("replied_to", [])
+
+    scan_channels = [
+        "general", "engineering", "help", "alpha-research", "ml-experiments",
+        "squad-qa", "squad-backend", "squad-frontend", "squad-execution", "squad-data",
+        "risk-alerts", "desk-crypto", "desk-equities", "desk-polymarket",
+        "desk-stat-arb", "desk-futures", "desk-rates", "desk-commodities",
+        "desk-options", "desk-fx-rates", "desk-kalshi",
+        "incidents", "standup", "strategy-review", "model-performance",
+        "code-review", "papers", "allquantedge", "random", "infra-alerts",
+        "pnl-daily", "security-alerts", "finance-ops", "legal-compliance",
+    ]
+
+    total = 0
+    ts_start = datetime.now(timezone.utc)
+    print(f"🔍 Summon watcher | {ts_start.strftime('%H:%M UTC')} | {len(scan_channels)} channels | bot={bot_user_id}")
+
+    for ch in scan_channels:
+        try:
+            summons = detect_agent_summons(
+                token, ch, bot_user_id,
+                already_replied=already_replied, limit=50)
+        except Exception as e:
+            print(f"  [summons] #{ch}: {e}")
+            continue
+        if summons:
+            print(f"  [{ch}] {len(summons)} summon(s) detected")
+            try:
+                n = answer_agent_summons(token, summons[:5], state)
+                total += n
+                already_replied = state.get("replied_to", [])
+            except Exception as e:
+                print(f"  [summons] answer #{ch}: {e}")
+
+    elapsed = (datetime.now(timezone.utc) - ts_start).total_seconds()
+    print(f"[summons] Done in {elapsed:.1f}s — {total} answered across {len(scan_channels)} channels")
+    save_state(state)
+    return 0
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
     if mode == "quick":
         sys.exit(quick_main())
+    elif mode == "summons":
+        sys.exit(summons_only_main())
     elif mode == "precompute":
         sys.exit(precompute_main())
     elif mode == "code_request":
