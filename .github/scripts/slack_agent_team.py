@@ -664,6 +664,13 @@ def call_best_agent_for_task(
     safe_sys = _sanitize(sys_p)
     order = _TASK_ROUTING.get(task_type, _TASK_ROUTING["default"])
 
+    # GitHub Models — FIRST (works natively in GitHub Actions, no Cloudflare issues)
+    r = call_github_models(safe_sys, safe_prompt, cap)
+    if r and len(r.strip()) > 20:
+        _LAST_PROVIDER = "GitHub Models"
+        print(f"  [task/{task_type}/github-models] ✓ {len(r)} chars")
+        return r.strip(), "GitHub Models"
+
     # LiteLLM fast-path: unified routing with built-in retry before manual cascade
     if _LITELLM_AVAILABLE:
         for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
@@ -1428,7 +1435,15 @@ def call_employee_agent(
     safe_system  = _sanitize(system_prompt)
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
 
-    # 1. Groq — employee's assigned account (one of 3 accounts, ~333 req/day each)
+    # 1. GitHub Models — FIRST: always available in GitHub Actions via GITHUB_TOKEN
+    # No Cloudflare issues, GPT-4o-mini quality, zero rate-limit in Actions
+    r = call_github_models(safe_system, safe_message, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [{emp_key}/github-models] ✓ {len(r)} chars")
+        _LAST_PROVIDER = "GitHub Models"
+        return r.strip()
+
+    # 2. Groq — employee's assigned account (one of 3 accounts, ~333 req/day each)
     groq_key = _groq_key_for(emp_key)
     if groq_key:
         r = _try_openai_compat(
@@ -1441,7 +1456,7 @@ def call_employee_agent(
             track_api_call(groq_env, cap)
             return r.strip()
 
-    # 2. Cerebras — employee's assigned account (2-account split)
+    # 3. Cerebras — employee's assigned account (2-account split)
     cerebras_key = _cerebras_key_for(emp_key)
     if cerebras_key:
         r = _try_openai_compat(
@@ -1454,7 +1469,7 @@ def call_employee_agent(
             track_api_call(cerebras_env, cap)
             return r.strip()
 
-    # 3. SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
+    # 4. SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
     for key in _employee_keys(emp_key, "sambanova"):
         r = _try_openai_compat(
             "https://api.sambanova.ai/v1/chat/completions",
@@ -1464,13 +1479,6 @@ def call_employee_agent(
             _LAST_PROVIDER = "SambaNova"
             track_api_call("SAMBANOVA_API_KEY", cap)
             return r.strip()
-
-    # 4. GitHub Models — free via GITHUB_TOKEN, no extra key needed
-    r = call_github_models(safe_system, safe_message, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [{emp_key}/github-models] ✓ {len(r)} chars")
-        _LAST_PROVIDER = "GitHub Models"
-        return r.strip()
 
     # 5. OpenRouter — try both keys (50 req/day each = 100/day combined)
     for or_env in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
@@ -1507,12 +1515,27 @@ def call_best_agent(
 ) -> str | None:
     """
     Shared cascade for non-employee calls (inbox, commands, incident posts).
-    Groq: round-robins across all 3 accounts so no single account absorbs shared load.
+    Provider order: GitHub Models (always works in Actions) → Groq → Cerebras →
+                    SambaNova → OpenRouter → Gemini.
     100% free — zero-spend policy enforced.
     """
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
     safe_msg = _sanitize(user_message)
     safe_sys = _sanitize(system_prompt)
+
+    # GitHub Models — FIRST: always available in GitHub Actions via GITHUB_TOKEN
+    # No Cloudflare issues, GPT-4o-mini quality, zero rate-limit in Actions
+    r = call_github_models(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [agent/github-models] ✓ {len(r)} chars")
+        track_api_call("GH_TOKEN", cap)
+        return r.strip()
+
+    # Gemini — 1500 req/day across 3 keys = 4500 req/day total
+    r = call_gemini(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [agent/gemini] ✓ {len(r)} chars")
+        return r.strip()
 
     # Groq — round-robin across all 3 accounts for shared calls
     key = _groq_key_shared()
@@ -1538,7 +1561,7 @@ def call_best_agent(
             print(f"  [agent/cerebras] ✓ {len(r)} chars")
             track_api_call(cerebras_env, cap)
             return r.strip()
-        break  # try next account only if first fails
+        break
 
     # SambaNova — 20M tokens/day free, Llama 3.3 70B on custom RDU chips
     for key in _employee_keys("shared", "sambanova"):
@@ -1549,12 +1572,6 @@ def call_best_agent(
             print(f"  [agent/sambanova] ✓ {len(r)} chars")
             track_api_call("SAMBANOVA_API_KEY", cap)
             return r.strip()
-
-    # GitHub Models — free in Actions
-    r = call_github_models(safe_sys, safe_msg, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [agent/github-models] ✓ {len(r)} chars")
-        return r.strip()
 
     # OpenRouter — try both keys (50 req/day each = 100/day combined)
     for or_env in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
@@ -1569,12 +1586,6 @@ def call_best_agent(
             print(f"  [agent/openrouter/{or_env}] ✓ {len(r)} chars")
             track_api_call(or_env, cap)
             return r.strip()
-
-    # Gemini — 1500 req/day
-    r = call_gemini(safe_sys, safe_msg, cap)
-    if r and len(r.strip()) > 20:
-        print(f"  [agent/gemini] ✓ {len(r)} chars")
-        return r.strip()
 
     # Hard stop — never pay
     print("  [agent] ⚠ all free providers exhausted — returning None (zero-spend policy)")
