@@ -496,9 +496,9 @@ def _sanitize(text: str) -> str:
 # This gives each employee independent rate-limit pools — N employees = N×limit.
 
 _EMPLOYEES = [
-    "maya", "aarav", "linh", "jian", "anna",
-    "aditi", "kenji", "diego", "lior", "sara",
-    "sofia", "hugo", "marcus",
+    "vp_eng", "alpha_dir", "ml_lead", "risk_eng", "backend_lead",
+    "qa_dir", "devops_dir", "exec_eng", "poly_desk", "ml_researcher",
+    "vp_research", "quant_researcher", "cro",
 ]
 
 # ── Per-role system prompts ───────────────────────────────────────────────────
@@ -513,7 +513,7 @@ _STRICT_OUTPUT_REQUIREMENTS = (
 )
 
 _EMPLOYEE_PERSONAS: dict[str, str] = {
-    "maya": (
+    "vp_eng": (
         "You are the VP of Engineering at QuantEdge, a quant trading platform. You own "
         "backend reliability, CI/CD health, and release quality. Read commit subjects and "
         "test results, then call out the single biggest reliability risk in plain language. "
@@ -521,13 +521,13 @@ _EMPLOYEE_PERSONAS: dict[str, str] = {
         "Example of BAD output (reject this): \"The CI looks good overall with some minor issues to watch.\""
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "aarav": (
+    "alpha_dir": (
         "You are the Alpha Research Director leading the equities desk at QuantEdge "
         "(momentum, mean-reversion, pairs/Kalman, breakout, idio-vol, ML directional). "
         "You scrutinize backtests for lookahead, regime-fit, and walk-forward Sharpe before any paper-trade gate."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "linh": (
+    "ml_lead": (
         "You are the ML Modeling Lead and crypto desk lead at QuantEdge. You own LSTM/TFT/XGBoost "
         "experiment analysis and crypto alpha (funding-rate carry, basis, perp liquidation cascades, depeg arb). "
         "You decide which model to prioritize from experiment results and read funding/basis for the desk. "
@@ -535,33 +535,33 @@ _EMPLOYEE_PERSONAS: dict[str, str] = {
         "Example of BAD output (reject): \"The ML models are performing well and show promise for future improvements.\""
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "jian": (
+    "risk_eng": (
         "You are the Risk Engineer at QuantEdge. You enforce position limits, drawdown caps, the 70/30 "
         "arbitrage/directional capital split, and per-strategy exposure. You flag risk-bucket breaches and "
         "correlation blowups concisely."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "anna": (
+    "backend_lead": (
         "You are the Backend Lead at QuantEdge. You own the FastAPI + async SQLAlchemy services, broker "
         "adapters (Alpaca/Binance/Polymarket), and data plumbing. You comment on API/schema/perf changes precisely."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "aditi": (
+    "qa_dir": (
         "You are the Director of QA at QuantEdge. You own test coverage, the pytest suite, open-PR quality gates, "
         "and flake triage. You report pass/fail signal and the highest-priority test gap, never sugar-coating."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "kenji": (
+    "devops_dir": (
         "You are the Director of DevOps at QuantEdge. You own GitHub Actions pipelines, deploy readiness, "
         "container builds, and infra cost. You summarize CI/deploy health and the top blocker to shipping."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "diego": (
+    "exec_eng": (
         "You are the Execution Engineer at QuantEdge. You own order routing, smart execution, slippage and "
         "fill-quality analysis, and async order-management code. You comment on execution-path latency and slippage risk."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "lior": (
+    "poly_desk": (
         "You are the Polymarket / prediction-market researcher at QuantEdge. You think in probability calibration, "
         "binary-market resolution arbitrage, correlated-market mispricing, and settlement/edge-case risk. "
         "You write desk notes on calibration and resolution-arb opportunities. "
@@ -569,22 +569,22 @@ _EMPLOYEE_PERSONAS: dict[str, str] = {
         "Example of BAD output (reject): \"There are some interesting opportunities in the prediction markets worth exploring.\""
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "sara": (
+    "ml_researcher": (
         "You are the ML Research Lead at QuantEdge. You run model comparisons (LSTM vs TFT vs XGBoost vs Lorentzian KNN), "
         "weight ensembles, and feature studies. You recommend which architecture to prioritize and why, citing metrics."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "sofia": (
+    "vp_research": (
         "You are the VP of Research leading the macro/FX-rates desk at QuantEdge (cross-asset carry, HMM regime, "
         "basis carry). You reason about rates, carry, regime shifts, and cross-asset correlation, and translate papers into desk ideas."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "hugo": (
+    "quant_researcher": (
         "You are a Quant Researcher at QuantEdge on the equities/research desk. You prototype signals, run "
         "walk-forward studies, and stress-test stationarity and capacity. You report concrete findings, not vibes."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
-    "marcus": (
+    "cro": (
         "You are the Chief Risk Officer at QuantEdge. You own firm-wide risk: VaR, drawdown limits, the 70/30 "
         "capital split, leverage, and the paper-first activation policy. You flag the single biggest firm-level risk crisply."
         + _STRICT_OUTPUT_REQUIREMENTS
@@ -681,12 +681,12 @@ _TASK_ROUTING: dict[str, list[str]] = {
 
 # Maps employee short-name → task type for routing
 _EMP_TASK_TYPE: dict[str, str] = {
-    "maya":   "code",      "anna":  "code",      "kenji":  "code",
-    "aditi":  "code",      "diego": "code",
-    "linh":   "ml",        "sara":  "ml",
-    "aarav":  "quant",     "hugo":  "quant",     "sofia":  "quant",
-    "jian":   "risk",      "marcus":"risk",
-    "lior":   "polymarket",
+    "vp_eng":   "code",      "backend_lead":  "code",      "devops_dir":  "code",
+    "qa_dir":  "code",      "exec_eng": "code",
+    "ml_lead":   "ml",        "ml_researcher":  "ml",
+    "alpha_dir":  "quant",     "quant_researcher":  "quant",     "vp_research":  "quant",
+    "risk_eng":   "risk",      "cro":"risk",
+    "poly_desk":   "polymarket",
     "frontend": "frontend",
 }
 
@@ -718,7 +718,7 @@ def call_best_agent_for_task(
         for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
             key = os.environ.get(env_var, "").strip()
             if key:
-                r = call_litellm("gemini/gemini-2.0-flash-exp", key, safe_sys, safe_prompt, cap)
+                r = call_litellm("gemini/gemini-2.0-flash", key, safe_sys, safe_prompt, cap)
                 if r and len(r.strip()) > 20:
                     _LAST_PROVIDER = "litellm:gemini"
                     return r.strip(), "litellm:gemini"
@@ -819,9 +819,11 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
     Appends to state["quality_log"] for CTO daily digest."""
     import time
     global _LAST_PROVIDER
-    emp = (emp_key or "").split("_")[0].lower()
+    emp = (emp_key or "").lower()
+    if emp not in _EMPLOYEE_PERSONAS:
+        emp = emp.split("_")[0]
     persona = _EMPLOYEE_PERSONAS.get(emp, _QUANT_SYSTEM)
-    task_type = _EMP_TASK_TYPE.get(emp, "default")
+    task_type = _EMP_TASK_TYPE.get(emp, _EMP_TASK_TYPE.get(emp.split("_")[0], "default"))
     result, provider = call_best_agent_for_task(task_type, task, system_prompt=persona)
     if not result:
         return (None, None)
@@ -908,33 +910,33 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
 
 _GROQ_ACCOUNT: dict[str, str] = {
     # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (core team)
-    "maya":      "GROQ_API_KEY_1",
-    "aarav":     "GROQ_API_KEY_1",
-    "linh":      "GROQ_API_KEY_1",
-    "jian":      "GROQ_API_KEY_1",
-    "priya":     "GROQ_API_KEY_1",   # frontend + feature eng leads
-    "tomas":     "GROQ_API_KEY_1",   # RL researcher
-    "laavanye":  "GROQ_API_KEY_1",   # CEO (Monday-only, light usage)
+    "vp_eng":      "GROQ_API_KEY_1",
+    "alpha_dir":     "GROQ_API_KEY_1",
+    "ml_lead":      "GROQ_API_KEY_1",
+    "risk_eng":      "GROQ_API_KEY_1",
+    "frontend_eng":     "GROQ_API_KEY_1",   # frontend + feature eng leads
+    "rl_researcher":     "GROQ_API_KEY_1",   # RL researcher
+    "ceo":  "GROQ_API_KEY_1",   # CEO (Monday-only, light usage)
     # Account 2 — GROQ_API_KEY_2  (core team + secondary)
-    "anna":      "GROQ_API_KEY_2",
-    "aditi":     "GROQ_API_KEY_2",
-    "kenji":     "GROQ_API_KEY_2",
-    "diego":     "GROQ_API_KEY_2",
-    "ravi":      "GROQ_API_KEY_2",   # ML infra / CI
-    "karl":      "GROQ_API_KEY_2",   # junior engineer
-    "cameron":   "GROQ_API_KEY_2",   # security engineer
-    "wei":       "GROQ_API_KEY_2",   # finance engineer
+    "backend_lead":      "GROQ_API_KEY_2",
+    "qa_dir":     "GROQ_API_KEY_2",
+    "devops_dir":     "GROQ_API_KEY_2",
+    "exec_eng":     "GROQ_API_KEY_2",
+    "ci_eng":      "GROQ_API_KEY_2",   # ML infra / CI
+    "junior_eng":      "GROQ_API_KEY_2",   # junior engineer
+    "security_eng":   "GROQ_API_KEY_2",   # security engineer
+    "finance_eng":       "GROQ_API_KEY_2",   # finance engineer
     "frontend":  "GROQ_API_KEY_2",   # frontend improvement role
     # Account 3 — GROQ_API_KEY_3  (core team + secondary)
-    "lior":      "GROQ_API_KEY_3",
-    "sara":      "GROQ_API_KEY_3",
-    "sofia":     "GROQ_API_KEY_3",
-    "hugo":      "GROQ_API_KEY_3",
-    "marcus":    "GROQ_API_KEY_3",
-    "sina":      "GROQ_API_KEY_3",   # data engineer
-    "alex":      "GROQ_API_KEY_3",   # quant ML researcher
-    "yuki":      "GROQ_API_KEY_3",   # options researcher
-    "helena":    "GROQ_API_KEY_3",   # compliance engineer
+    "poly_desk":      "GROQ_API_KEY_3",
+    "ml_researcher":      "GROQ_API_KEY_3",
+    "vp_research":     "GROQ_API_KEY_3",
+    "quant_researcher":      "GROQ_API_KEY_3",
+    "cro":    "GROQ_API_KEY_3",
+    "data_eng":      "GROQ_API_KEY_3",   # data engineer
+    "quant_ml":      "GROQ_API_KEY_3",   # quant ML researcher
+    "options_researcher":      "GROQ_API_KEY_3",   # options researcher
+    "compliance_eng":    "GROQ_API_KEY_3",   # compliance engineer
 }
 
 # Each employee group gets the same-numbered Gemini account as their Groq account.
@@ -942,62 +944,62 @@ _GROQ_ACCOUNT: dict[str, str] = {
 # This isolates quota completely — Group 2 Gemini burnout never affects Group 1.
 _GEMINI_ACCOUNT: dict[str, str] = {
     # Mirror GROQ account groups for consistent quota isolation
-    "maya":      "GEMINI_API_KEY_1",
-    "aarav":     "GEMINI_API_KEY_1",
-    "linh":      "GEMINI_API_KEY_1",
-    "jian":      "GEMINI_API_KEY_1",
-    "priya":     "GEMINI_API_KEY_1",
-    "tomas":     "GEMINI_API_KEY_1",
-    "laavanye":  "GEMINI_API_KEY_1",
-    "anna":      "GEMINI_API_KEY_2",
-    "aditi":     "GEMINI_API_KEY_2",
-    "kenji":     "GEMINI_API_KEY_2",
-    "diego":     "GEMINI_API_KEY_2",
-    "ravi":      "GEMINI_API_KEY_2",
-    "karl":      "GEMINI_API_KEY_2",
-    "cameron":   "GEMINI_API_KEY_2",
-    "wei":       "GEMINI_API_KEY_2",
+    "vp_eng":      "GEMINI_API_KEY_1",
+    "alpha_dir":     "GEMINI_API_KEY_1",
+    "ml_lead":      "GEMINI_API_KEY_1",
+    "risk_eng":      "GEMINI_API_KEY_1",
+    "frontend_eng":     "GEMINI_API_KEY_1",
+    "rl_researcher":     "GEMINI_API_KEY_1",
+    "ceo":  "GEMINI_API_KEY_1",
+    "backend_lead":      "GEMINI_API_KEY_2",
+    "qa_dir":     "GEMINI_API_KEY_2",
+    "devops_dir":     "GEMINI_API_KEY_2",
+    "exec_eng":     "GEMINI_API_KEY_2",
+    "ci_eng":      "GEMINI_API_KEY_2",
+    "junior_eng":      "GEMINI_API_KEY_2",
+    "security_eng":   "GEMINI_API_KEY_2",
+    "finance_eng":       "GEMINI_API_KEY_2",
     "frontend":  "GEMINI_API_KEY_2",
-    "lior":      "GEMINI_API_KEY_3",
-    "sara":      "GEMINI_API_KEY_3",
-    "sofia":     "GEMINI_API_KEY_3",
-    "hugo":      "GEMINI_API_KEY_3",
-    "marcus":    "GEMINI_API_KEY_3",
-    "sina":      "GEMINI_API_KEY_3",
-    "alex":      "GEMINI_API_KEY_3",
-    "yuki":      "GEMINI_API_KEY_3",
-    "helena":    "GEMINI_API_KEY_3",
+    "poly_desk":      "GEMINI_API_KEY_3",
+    "ml_researcher":      "GEMINI_API_KEY_3",
+    "vp_research":     "GEMINI_API_KEY_3",
+    "quant_researcher":      "GEMINI_API_KEY_3",
+    "cro":    "GEMINI_API_KEY_3",
+    "data_eng":      "GEMINI_API_KEY_3",
+    "quant_ml":      "GEMINI_API_KEY_3",
+    "options_researcher":      "GEMINI_API_KEY_3",
+    "compliance_eng":    "GEMINI_API_KEY_3",
 }
 
 # 2 Cerebras accounts — split employees evenly across groups.
 # Group 1 (Groq_1/Gemini_1 users) + Group 2 (Groq_2/Gemini_2 users) → CEREBRAS_API_KEY_1
 # Group 3 (Groq_3/Gemini_3 users) → CEREBRAS_API_KEY_2
 _CEREBRAS_ACCOUNT: dict[str, str] = {
-    "maya":      "CEREBRAS_API_KEY_1",
-    "aarav":     "CEREBRAS_API_KEY_1",
-    "linh":      "CEREBRAS_API_KEY_1",
-    "jian":      "CEREBRAS_API_KEY_1",
-    "priya":     "CEREBRAS_API_KEY_1",
-    "tomas":     "CEREBRAS_API_KEY_1",
-    "laavanye":  "CEREBRAS_API_KEY_1",
-    "anna":      "CEREBRAS_API_KEY_1",
-    "aditi":     "CEREBRAS_API_KEY_1",
-    "kenji":     "CEREBRAS_API_KEY_1",
-    "diego":     "CEREBRAS_API_KEY_1",
-    "ravi":      "CEREBRAS_API_KEY_1",
-    "karl":      "CEREBRAS_API_KEY_1",
-    "cameron":   "CEREBRAS_API_KEY_1",
-    "wei":       "CEREBRAS_API_KEY_1",
+    "vp_eng":      "CEREBRAS_API_KEY_1",
+    "alpha_dir":     "CEREBRAS_API_KEY_1",
+    "ml_lead":      "CEREBRAS_API_KEY_1",
+    "risk_eng":      "CEREBRAS_API_KEY_1",
+    "frontend_eng":     "CEREBRAS_API_KEY_1",
+    "rl_researcher":     "CEREBRAS_API_KEY_1",
+    "ceo":  "CEREBRAS_API_KEY_1",
+    "backend_lead":      "CEREBRAS_API_KEY_1",
+    "qa_dir":     "CEREBRAS_API_KEY_1",
+    "devops_dir":     "CEREBRAS_API_KEY_1",
+    "exec_eng":     "CEREBRAS_API_KEY_1",
+    "ci_eng":      "CEREBRAS_API_KEY_1",
+    "junior_eng":      "CEREBRAS_API_KEY_1",
+    "security_eng":   "CEREBRAS_API_KEY_1",
+    "finance_eng":       "CEREBRAS_API_KEY_1",
     "frontend":  "CEREBRAS_API_KEY_1",
-    "lior":      "CEREBRAS_API_KEY_2",
-    "sara":      "CEREBRAS_API_KEY_2",
-    "sofia":     "CEREBRAS_API_KEY_2",
-    "hugo":      "CEREBRAS_API_KEY_2",
-    "marcus":    "CEREBRAS_API_KEY_2",
-    "sina":      "CEREBRAS_API_KEY_2",
-    "alex":      "CEREBRAS_API_KEY_2",
-    "yuki":      "CEREBRAS_API_KEY_2",
-    "helena":    "CEREBRAS_API_KEY_2",
+    "poly_desk":      "CEREBRAS_API_KEY_2",
+    "ml_researcher":      "CEREBRAS_API_KEY_2",
+    "vp_research":     "CEREBRAS_API_KEY_2",
+    "quant_researcher":      "CEREBRAS_API_KEY_2",
+    "cro":    "CEREBRAS_API_KEY_2",
+    "data_eng":      "CEREBRAS_API_KEY_2",
+    "quant_ml":      "CEREBRAS_API_KEY_2",
+    "options_researcher":      "CEREBRAS_API_KEY_2",
+    "compliance_eng":    "CEREBRAS_API_KEY_2",
 }
 
 # For shared calls, rotate across all available accounts round-robin.
@@ -1063,7 +1065,9 @@ def _groq_key_for(employee: str) -> str | None:
     """Return the Groq key for this employee's assigned account.
     Checks _1 suffix first (GROQ_API_KEY_1), then plain (GROQ_API_KEY) as alias.
     """
-    emp = employee.split("_")[0].lower()
+    emp = (employee or "").lower()
+    if emp not in _GROQ_ACCOUNT:
+        emp = emp.split("_")[0]
     env_var = _GROQ_ACCOUNT.get(emp, "GROQ_API_KEY_1")
     key = os.environ.get(env_var, "").strip()
     if key:
@@ -1076,7 +1080,9 @@ def _groq_key_for(employee: str) -> str | None:
 
 def _gemini_key_for(employee: str) -> str | None:
     """Returns the Gemini API key assigned to this employee's department group."""
-    emp = employee.split("_")[0].lower()
+    emp = (employee or "").lower()
+    if emp not in _GEMINI_ACCOUNT:
+        emp = emp.split("_")[0]
     env_var = _GEMINI_ACCOUNT.get(emp, "GEMINI_API_KEY_1")
     key = os.environ.get(env_var, "").strip()
     if key:
@@ -1089,7 +1095,9 @@ def _gemini_key_for(employee: str) -> str | None:
 
 def _cerebras_key_for(employee: str) -> str | None:
     """Returns the Cerebras API key assigned to this employee's department group."""
-    emp = employee.split("_")[0].lower()
+    emp = (employee or "").lower()
+    if emp not in _CEREBRAS_ACCOUNT:
+        emp = emp.split("_")[0]
     env_var = _CEREBRAS_ACCOUNT.get(emp, "CEREBRAS_API_KEY_1")
     # Support both _1 suffix and plain name for first account
     key = os.environ.get(env_var, "").strip()
@@ -1128,7 +1136,9 @@ def _employee_keys(employee: str, provider: str) -> list[str]:
       CEREBRAS_API_KEY_2 … _10                          — numbered pool
       CEREBRAS_API_KEY                                   — shared primary
     """
-    emp = employee.split("_")[0].lower()
+    emp = (employee or "").lower()
+    if emp not in _GROQ_ACCOUNT and emp not in _CEREBRAS_ACCOUNT:
+        emp = emp.split("_")[0]
     prov = provider.upper()
     keys: list[str] = []
 
@@ -1404,7 +1414,7 @@ def call_openrouter(system_prompt: str, user_message: str, max_tokens: int = 500
 
 
 def call_litellm(model: str, api_key: str, system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash-exp', 'groq/llama-3.3-70b-versatile', etc."""
+    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash', 'groq/llama-3.3-70b-versatile', etc."""
     if not _LITELLM_AVAILABLE:
         return None
     hostname = model.split("/")[0]
@@ -1585,7 +1595,9 @@ def call_employee_agent(
         raise RuntimeError("ALLOW_PAID_APIS must stay False — zero spend policy")
 
     # Governance: check if engineer is paused for today
-    emp_key = employee.split("_")[0].lower()
+    emp_key = (employee or "").lower()
+    if emp_key not in _GROQ_ACCOUNT and emp_key not in _GEMINI_ACCOUNT:
+        emp_key = emp_key.split("_")[0]
     gov = state.get("governance", {}) if state else {}
     paused = gov.get("paused_engineers", {})
     if emp_key in paused and paused[emp_key] == _today():
@@ -3725,7 +3737,7 @@ def repo_url(*parts: str) -> str:
 # ── Agent work functions: each returns 0-2 Posts with real findings ─────────
 
 
-def maya_chen_eng_daily() -> list[Post]:
+def vp_eng_daily() -> list[Post]:
     """VP Eng — engineering daily based on commits NEW since last run, not just last 24h."""
     state = load_state()
     new_commits = new_commits_since_last_run(state)
@@ -3779,7 +3791,7 @@ def maya_chen_eng_daily() -> list[Post]:
     commit_subjects = "\n".join(f"- {c['msg']}" for c in commits_to_show[:10])
     test_line = test_detail.replace("*", "")
     ai, provider = employee_provider_prompt(
-        "maya",
+        "vp_eng",
         ("Summarize today's CI health and name the single top reliability risk, "
          "given these commit subjects and test status. 2-3 sentences, Slack-ready, no preamble.\n\n"
          f"Commit subjects:\n{commit_subjects}\n\nTests: {test_line}"),
@@ -3835,7 +3847,7 @@ def alpha_dir_strategy_review() -> list[Post]:
                 f"\n\nIs this on track for paper-trade gate? Drop the latest walk-forward Sharpe in thread.")
 
     ai, provider = employee_provider_prompt(
-        "aarav",
+        "alpha_dir",
         (f"Strategy file: {target}.py\n"
          f"Static findings: {'; '.join(findings)}\n"
          f"Source snippet:\n{src[:600]}\n\n"
@@ -3855,7 +3867,7 @@ def alpha_dir_strategy_review() -> list[Post]:
     )]
 
 
-def linh_tran_ml_results() -> list[Post]:
+def ml_lead_results() -> list[Post]:
     """ML Lead — post the freshest backtest/experiment result."""
     state = load_state()
     results = latest_backtest_results()
@@ -3876,7 +3888,7 @@ def linh_tran_ml_results() -> list[Post]:
                 f"Total experiments tracked: *{len(results)}*. Top 3 by Sharpe coming next.")
 
     ai, provider = employee_provider_prompt(
-        "linh",
+        "ml_lead",
         (f"ML experiment result — strategy: {r.get('strategy','?')}, symbol: {r.get('symbol','?')}, "
          f"Sharpe: {r.get('sharpe', 0):.2f}, runs: {r.get('n_runs',1)}, "
          f"total experiments: {len(results)}. "
@@ -3892,7 +3904,7 @@ def linh_tran_ml_results() -> list[Post]:
     )]
 
 
-def diego_ramirez_execution() -> list[Post]:
+def exec_eng_execution() -> list[Post]:
     """Execution Engineer — real diff on execution module from last 48h."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "execution"
@@ -3927,7 +3939,7 @@ def diego_ramirez_execution() -> list[Post]:
 
     # Use Diego's dedicated free-tier bot for insightful comment
     ai, provider = employee_provider_prompt(
-        "diego",
+        "exec_eng",
         (f"File: {target.name} ({n_lines} LOC, {n_classes} classes)\nContent snippet:\n{src[:800]}\n\n"
          "Give one specific, actionable improvement for this trading execution code. "
          "Max 2 sentences. No bullet points. Be concrete about the file content."),
@@ -3958,7 +3970,7 @@ def _bucket_dollar(val: float) -> str:
     else:
         return "institutional position"
 
-def jian_wu_risk() -> list[Post]:
+def risk_eng_risk() -> list[Post]:
     """Risk Engineer — module check + real Alpaca position concentration."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "risk"
@@ -4001,7 +4013,7 @@ def jian_wu_risk() -> list[Post]:
                     f"corr={'yes' if has_corr else 'no'}; circuit_breaker={'yes' if has_cb else 'no'}; "
                     f"equity_size={equity_bucket}; largest_position={pos_bucket}")
     ai, provider = employee_provider_prompt(
-        "jian",
+        "risk_eng",
         (f"Risk system status: {risk_summary}. "
          "Name the single most important risk gap to close next. 1-2 sentences, Slack-ready."),
     state=state,
@@ -4016,7 +4028,7 @@ def jian_wu_risk() -> list[Post]:
     )]
 
 
-def priya_subramanian_frontend() -> list[Post]:
+def frontend_eng_frontend() -> list[Post]:
     """Frontend Lead — bundle size + LLM-driven perf analysis."""
     state = load_state()
     pages = sorted((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
@@ -4038,7 +4050,7 @@ def priya_subramanian_frontend() -> list[Post]:
         "Lighthouse CLS/LCP fix, WebSocket reconnect UX, or Vite chunk splitting config. "
         "Name the exact file, the change, and the expected Core Web Vitals improvement."
     )
-    ai, _ = employee_provider_prompt("priya_fe", task, state=state)
+    ai, _ = employee_provider_prompt("frontend_eng", task, state=state)
     if not ai:
         return []
     return [Post(channel="squad-frontend", text=ai, username="Frontend Lead", icon_emoji=":art:")]
@@ -4059,7 +4071,7 @@ def backend_lead_backend() -> list[Post]:
 
     file_list = ", ".join(p for p, _ in top[:5])
     ai, provider = employee_provider_prompt(
-        "anna",
+        "backend_lead",
         (f"{len(backend_changes)} backend files changed in last 48h. "
          f"Top files: {file_list}. "
          "What's the single biggest backend reliability risk from this churn? 2 sentences, Slack-ready."),
@@ -4077,7 +4089,7 @@ def backend_lead_backend() -> list[Post]:
     )]
 
 
-def sina_hassani_data() -> list[Post]:
+def data_eng_data() -> list[Post]:
     """Data Eng — pipeline reliability analysis via LLM."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app"
@@ -4093,7 +4105,7 @@ def sina_hassani_data() -> list[Post]:
         "Name the exact file in backend/app/brokers/ or backend/app/tasks/ that needs the fix. "
         "State: symptom, root cause, one-line patch. No fluff."
     )
-    ai, _ = moa_employee_prompt("sina", task, state=state)
+    ai, _ = moa_employee_prompt("data_eng", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4126,7 +4138,7 @@ def devops_dir_devops() -> list[Post]:
                 f"on `{last.get('head_branch')}`")
 
     ai, provider = employee_provider_prompt(
-        "kenji",
+        "devops_dir",
         (f"Last 10 CI workflow runs: {counts}. "
          f"Latest: {last.get('name')} → {last.get('conclusion') or last.get('status')} on {last.get('head_branch')}. "
          "What's the top DevOps/infra action to improve CI reliability? 1-2 sentences, Slack-ready."),
@@ -4223,7 +4235,7 @@ def qa_dir_qa() -> list[Post]:
                            f"{pytest_res.get('failed',0)} failed, "
                            f"{pytest_res.get('errors',0)} errors")
     ai, provider = employee_provider_prompt(
-        "aditi",
+        "qa_dir",
         (f"QA status: {test_status_summary}. "
          "What's the single most important QA improvement to make this sprint? 2 sentences, Slack-ready."),
     state=state,
@@ -4240,7 +4252,7 @@ def qa_dir_qa() -> list[Post]:
     return posts
 
 
-def cameron_park_security() -> list[Post]:
+def security_eng_security() -> list[Post]:
     """Security — live secret scan + LLM-driven security analysis."""
     state = load_state()
     raw = sh([
@@ -4261,7 +4273,7 @@ def cameron_park_security() -> list[Post]:
         "Consider: JWT expiry, CORS policy, Slack token scope creep, order-injection via API, "
         "or unencrypted broker key storage. Name the exact file and the patch. Be specific."
     )
-    ai, _ = employee_provider_prompt("cameron", task, state=state)
+    ai, _ = employee_provider_prompt("security_eng", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4272,7 +4284,7 @@ def cameron_park_security() -> list[Post]:
     )]
 
 
-def sofia_karlsson_research() -> list[Post]:
+def vp_research_research() -> list[Post]:
     """VP Research — paper queue based on actual untested strategies + recent results."""
     state = load_state()
     candidates = [
@@ -4298,7 +4310,7 @@ def sofia_karlsson_research() -> list[Post]:
         # Even when queue exists, still call LLM for prioritization insight
         queue_context = "\n".join(queue_lines[:10])
         ai, provider = employee_provider_prompt(
-            "sofia",
+            "vp_research",
             f"Review this research queue and give a 2-bullet prioritization: which item should the desk tackle first and why?\n\n{queue_context}",
             state=state,
         )
@@ -4312,7 +4324,7 @@ def sofia_karlsson_research() -> list[Post]:
             text += f" + {len(untested) - 3} more"
         # Use Sofia's dedicated free-tier bot to prioritize
         ai, provider = employee_provider_prompt(
-            "sofia",
+            "vp_research",
             (f"Untested strategies: {', '.join(untested[:8])}. "
              "Recommend which one to prioritize for walk-forward validation and why. 2 sentences max."),
         state=state,
@@ -4332,7 +4344,7 @@ def sofia_karlsson_research() -> list[Post]:
     )]
 
 
-def yuki_mori_options() -> list[Post]:
+def options_researcher_options() -> list[Post]:
     """Options Researcher — LLM-driven options desk analysis."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
@@ -4349,7 +4361,7 @@ def yuki_mori_options() -> list[Post]:
         "and the exact Python class name and file path for the implementation. "
         "State expected Sharpe and required capital. Be specific."
     )
-    ai, _ = employee_provider_prompt("yuki", task, state=state)
+    ai, _ = employee_provider_prompt("options_researcher", task, state=state)
     if not ai:
         return []
     return [Post(channel="desk-options", text=ai, username="Options Researcher", icon_emoji=":bar_chart:")]
@@ -4377,7 +4389,7 @@ def quant_researcher_research() -> list[Post]:
                 "\nWill drop walk-forward Sharpe in #ml-experiments by EOD.")
 
     ai, provider = employee_provider_prompt(
-        "hugo",
+        "quant_researcher",
         (f"{len(untested)} of {len(strats)} manual strategies untested. "
          f"Sample: {', '.join(sample)}. "
          "Which one should we run walk-forward validation on first, and why? 2 sentences, Slack-ready."),
@@ -4392,7 +4404,7 @@ def quant_researcher_research() -> list[Post]:
     )]
 
 
-def tomas_lindqvist_rl() -> list[Post]:
+def rl_researcher_rl() -> list[Post]:
     """Research Scientist — RL execution agent analysis via LLM."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "ml"
@@ -4415,13 +4427,13 @@ def tomas_lindqvist_rl() -> list[Post]:
         "or training data staleness. State the exact fix and which file to modify. "
         "Include one concrete hyperparameter recommendation."
     )
-    ai, _ = employee_provider_prompt("tomas", task, state=state)
+    ai, _ = employee_provider_prompt("rl_researcher", task, state=state)
     if not ai:
         return []
     return [Post(channel="pod-ml-rl", text=ai, username="Research Scientist", icon_emoji=":brain:")]
 
 
-def lior_avraham_polymarket() -> list[Post]:
+def poly_desk_polymarket() -> list[Post]:
     """Polymarket Researcher — live scan of Gamma API for arb opportunities."""
     state = load_state()
     p = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
@@ -4470,7 +4482,7 @@ def lior_avraham_polymarket() -> list[Post]:
     opp_summary = (f"{len(arb_opps)} arb opps found" if arb_opps
                    else f"{active_markets} markets checked, no arb found")
     ai, provider = employee_provider_prompt(
-        "lior",
+        "poly_desk",
         (f"Polymarket scan: {opp_summary}. Strategies registered: {len(poly)}. "
          "What's the single best next step for the Polymarket desk? 1-2 sentences, Slack-ready."),
     state=state,
@@ -4516,7 +4528,7 @@ def cro_risk() -> list[Post]:
     else:
         acct_state = "no account data"
     ai, provider = employee_provider_prompt(
-        "marcus",
+        "cro",
         (f"CRO daily: {acct_state}; audit_log={'present' if has_audit else 'missing'}; "
          "70/30 capital split enforced. Name the single biggest firm-level risk to address today. "
          "1-2 sentences, CRO tone, Slack-ready."),
@@ -4532,7 +4544,7 @@ def cro_risk() -> list[Post]:
     )]
 
 
-def wei_chang_finance() -> list[Post]:
+def finance_eng_finance() -> list[Post]:
     """Finance Eng — burn + runway with LLM-generated cost analysis."""
     state = load_state()
     # Gather real context: check which services are configured in .env.example
@@ -4556,7 +4568,7 @@ def wei_chang_finance() -> list[Post]:
         "(3) one concrete cost-saving recommendation with expected dollar impact. "
         "Slack format, *bold* key numbers, max 150 words."
     )
-    ai_text, _provider = employee_provider_prompt("sara", prompt, state=state)
+    ai_text, _provider = employee_provider_prompt("ml_researcher", prompt, state=state)
     if not ai_text:
         ai_text = (
             "*Burn check* (static fallback)\n"
@@ -4572,7 +4584,7 @@ def wei_chang_finance() -> list[Post]:
     )]
 
 
-def helena_voss_compliance() -> list[Post]:
+def compliance_eng_compliance() -> list[Post]:
     """Compliance Engineer — audit log + KYC with LLM-generated compliance analysis."""
     state = load_state()
     has_audit_model = (REPO_ROOT / "backend" / "app" / "models" / "audit_log.py").exists()
@@ -4588,7 +4600,7 @@ def helena_voss_compliance() -> list[Post]:
         "(2) what SEC/FINRA rule it satisfies, (3) priority (P0/P1/P2). "
         "Focus on the highest-risk gap. Slack format, *bold* key points, max 150 words."
     )
-    ai_text, _provider = employee_provider_prompt("sara", prompt, state=state)
+    ai_text, _provider = employee_provider_prompt("ml_researcher", prompt, state=state)
     if not ai_text:
         ai_text = (
             f"*Compliance state* (static fallback)\n"
@@ -4604,7 +4616,7 @@ def helena_voss_compliance() -> list[Post]:
     )]
 
 
-def aditi_open_prs() -> list[Post]:
+def qa_dir_open_prs() -> list[Post]:
     """QA Director — LLM-driven open PR quality review posted to #ci-failures."""
     state = load_state()
     prs = open_prs()
@@ -4624,7 +4636,7 @@ def aditi_open_prs() -> list[Post]:
         "(3) CI quality reminder for the team. "
         "Format: Slack prose with *bold* titles. No fake test results."
     )
-    ai, _ = employee_provider_prompt("aditi_qa", task, state=state)
+    ai, _ = employee_provider_prompt("qa_dir", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4635,9 +4647,9 @@ def aditi_open_prs() -> list[Post]:
     )]
 
 
-def ravi_iyer_ci() -> list[Post]:
+def ci_eng_ci() -> list[Post]:
     """ML Infra / CI agent — pytest results + LLM analysis of CI health."""
-    print("  [ravi_iyer_ci] running pytest for CI health check…")
+    print("  [ci_eng_ci] running pytest for CI health check…")
     state = load_state()
     res = run_pytest_lightweight(timeout_secs=90)
     runs = latest_workflow_runs()
@@ -4667,7 +4679,7 @@ def ravi_iyer_ci() -> list[Post]:
         "(3) one CI improvement recommendation. "
         "Be specific and technical. Slack format."
     )
-    ai, _ = employee_provider_prompt("ravi_ci", task, state=state)
+    ai, _ = employee_provider_prompt("ci_eng", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4678,7 +4690,7 @@ def ravi_iyer_ci() -> list[Post]:
     )]
 
 
-def kenji_deploy_readiness() -> list[Post]:
+def devops_dir_deploy_readiness() -> list[Post]:
     """DevOps — STATUS.md parse + LLM-driven unblocking analysis."""
     state = load_state()
     status_path = REPO_ROOT / "STATUS.md"
@@ -4707,13 +4719,13 @@ def kenji_deploy_readiness() -> list[Post]:
         "State: what is blocked, exact command or UI step to unblock it, and which engineer role owns it. "
         "If everything is deployed, audit the CI pipeline for the single most likely point of failure."
     )
-    ai, _ = employee_provider_prompt("kenji_devops", task, state=state)
+    ai, _ = employee_provider_prompt("devops_dir", task, state=state)
     if not ai:
         return []
     return [Post(channel="infra-alerts", text=ai, username="Director of DevOps", icon_emoji=":satellite_antenna:")]
 
 
-def karl_nystrom_question() -> list[Post]:
+def junior_eng_question() -> list[Post]:
     """Junior IC — LLM generates a genuine technical question from a real TODO in the codebase."""
     state = load_state()
     todos = find_todos()
@@ -4750,7 +4762,7 @@ def karl_nystrom_question() -> list[Post]:
             "2-3 sentences. Sound like a curious junior engineer. Name a real file or module."
         )
 
-    ai, _ = employee_provider_prompt("karl_junior", task, state=state)
+    ai, _ = employee_provider_prompt("junior_eng", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -4779,7 +4791,7 @@ def trading_desk_eod_pnl() -> list[Post]:
             "(SPY, QQQ direction today), top strategy signal from our momentum/mean-reversion suite, "
             "and paper portfolio posture. Be specific about market levels and strategy signals. 90 words max."
         )
-        ai, _ = employee_provider_prompt("aarav", task)
+        ai, _ = employee_provider_prompt("alpha_dir", task)
         text = (
             f"*PnL desk — EOD update*\n"
             + (ai.strip() if ai else
@@ -4901,7 +4913,7 @@ def trading_desk_equity_positions() -> list[Post]:
             "Generate a realistic equity desk update covering: 1 key SPY/AAPL/MSFT/NVDA price action observation, "
             "1 strategy signal from our momentum or mean-reversion suite, current paper portfolio posture. 80 words max."
         )
-        ai, _ = employee_provider_prompt("aarav", task)
+        ai, _ = employee_provider_prompt("alpha_dir", task)
         body = (
             f"*Equity desk — {_hr}*\n"
             + (ai.strip() if ai else
@@ -4945,7 +4957,7 @@ def trading_desk_crypto_positions() -> list[Post]:
             "Generate a realistic crypto desk update: 1 BTC/ETH price action observation, "
             "1 funding rate or basis observation, 1 signal from our triangular_arb or funding_rate_arb strategy. 80 words max."
         )
-        ai, _ = employee_provider_prompt("linh", task)
+        ai, _ = employee_provider_prompt("ml_lead", task)
         body = f"*Crypto desk — {_hr}*\n" + (ai.strip() if ai else "_Monitoring markets, no open positions._")
         return [Post(channel="desk-crypto", text=body, username="Crypto desk bot", icon_emoji=":coin:")]
     lines = [f"*Crypto desk — live positions ({len(crypto_pos)})*"]
@@ -4988,7 +5000,7 @@ def trading_desk_options_positions() -> list[Post]:
             "Generate a desk update covering: current VIX regime observation, whether implied vol is rich or cheap "
             "on SPY/QQQ, and one options strategy signal from PCR mean-reversion or gamma exposure. 80 words max."
         )
-        ai, _ = employee_provider_prompt("aarav", task)
+        ai, _ = employee_provider_prompt("alpha_dir", task)
         if ai:
             lines.append(ai.strip())
     # Recent orders for these symbols
@@ -5031,7 +5043,7 @@ def trading_desk_polymarket_positions() -> list[Post]:
             "Generate a desk update: 1 political/macro event currently priced on prediction markets, "
             "the implied probability, and whether there's a calibration gap vs historical base rates. 80 words max."
         )
-        ai, _ = employee_provider_prompt("lior", task)
+        ai, _ = employee_provider_prompt("poly_desk", task)
         if ai:
             lines.append(ai.strip())
     lines.append(f"• Capital allocated: ${min(equity * 0.05, 1000):.0f} (5% of paper equity)")
@@ -5068,7 +5080,7 @@ def trading_desk_macro_positions() -> list[Post]:
             "Generate a desk update: current USD strength vs major currencies, "
             "gold/bond correlation observation, and one macro trade idea (rates/FX/gold). 80 words max."
         )
-        ai, _ = employee_provider_prompt("sofia", task)
+        ai, _ = employee_provider_prompt("vp_research", task)
         if ai:
             lines.append(ai.strip())
     lines.append("\n*Strategies active:* `cross_asset_carry`, `sector_rotation`, `time_series_momentum`")
@@ -5110,7 +5122,7 @@ def trading_desk_commodities() -> list[Post]:
             "Generate a desk update: current gold vs oil divergence observation, "
             "one commodity momentum signal, and one trade setup worth watching. 80 words max."
         )
-        ai, _ = employee_provider_prompt("sofia", task)
+        ai, _ = employee_provider_prompt("vp_research", task)
         if ai:
             lines.append(ai.strip())
         lines.append("Universe: GLD (gold) · SLV (silver) · USO (WTI oil) · UNG (natgas) · DBA (agri) · DBC (broad)")
@@ -5162,7 +5174,7 @@ def trading_desk_futures() -> list[Post]:
             "Generate a desk update: ES/NQ spread trend observation, "
             "bond-equity correlation signal, and whether conditions favor risk-on or risk-off. 80 words max."
         )
-        ai, _ = employee_provider_prompt("hugo", task)
+        ai, _ = employee_provider_prompt("quant_researcher", task)
         if ai:
             lines.append(ai.strip())
         lines.append("Instruments: " + " · ".join(f"`{sym}` ({name})" for sym, name in list(proxy_map.items())[:4]))
@@ -5224,7 +5236,7 @@ def trading_desk_rates() -> list[Post]:
             "Generate a desk update: current yield curve shape (2s10s) observation, "
             "IG vs HY credit spread signal, and whether to be long or short duration. 80 words max."
         )
-        ai, _ = employee_provider_prompt("jian", task)
+        ai, _ = employee_provider_prompt("risk_eng", task)
         if ai:
             lines.append(ai.strip())
         lines.append("Ladder: " + " · ".join(f"`{sym}` ({dur})" for sym, dur in duration_map.items()))
@@ -5286,7 +5298,7 @@ def trading_desk_kalshi() -> list[Post]:
             "Generate a desk note: 1 economic event market likely to have mispricing today "
             "(Fed rate, CPI, GDP), the fair-value probability estimate, and the binary arb logic. 80 words max."
         )
-        ai, _ = employee_provider_prompt("lior", task)
+        ai, _ = employee_provider_prompt("poly_desk", task)
         if ai:
             lines.append(ai.strip())
     elif active_count:
@@ -5310,7 +5322,7 @@ def trading_desk_kalshi() -> list[Post]:
                 "Suggest one Kalshi market category (economic, political, sports) likely to have mispricing "
                 "in the next 24h and explain the calibration gap. 80 words max."
             )
-            ai, _ = employee_provider_prompt("lior", task)
+            ai, _ = employee_provider_prompt("poly_desk", task)
             if ai:
                 lines.append(ai.strip())
     else:
@@ -5322,7 +5334,7 @@ def trading_desk_kalshi() -> list[Post]:
             "Generate a synthetic desk note on the most interesting binary prediction market "
             "category to trade today and the key risk to watch. 70 words max."
         )
-        ai, _ = employee_provider_prompt("lior", task)
+        ai, _ = employee_provider_prompt("poly_desk", task)
         if ai:
             lines.append(ai.strip())
 
@@ -5361,7 +5373,7 @@ def trading_desk_stat_arb() -> list[Post]:
             "Generate a desk update: which pair spread looks most stretched right now, "
             "the z-score estimate, and the entry threshold. 80 words max."
         )
-        ai, _ = employee_provider_prompt("hugo", task)
+        ai, _ = employee_provider_prompt("quant_researcher", task)
         if ai:
             lines.append(ai.strip())
     if arb_strats:
@@ -5375,7 +5387,7 @@ def trading_desk_stat_arb() -> list[Post]:
     )]
 
 
-def sara_kim_ml_research() -> list[Post]:
+def ml_researcher_research() -> list[Post]:
     """ML Research Lead. Posts SOTA model comparisons and ablation findings."""
     state = load_state()
     results_dir = REPO_ROOT / "experiments" / "results"
@@ -5429,7 +5441,7 @@ def sara_kim_ml_research() -> list[Post]:
     best_sharpe = best.get("results", {}).get("sharpe", 0) if best else 0
     best_strat = best.get("experiment", {}).get("strategy", "none") if best else "none"
     ai, provider = employee_provider_prompt(
-        "sara",
+        "ml_researcher",
         (f"ML research: {len(model_names)} models, {n_configs} configs, {n_results} results. "
          f"Best result: {best_strat} Sharpe={best_sharpe:.3f}. "
          "What is the single most impactful next ML research direction? 2 sentences, Slack-ready."),
@@ -5494,7 +5506,7 @@ def cro_dl_engineer() -> list[Post]:
 
     # Marcus's bot adds one DL architecture insight
     ai, provider = employee_provider_prompt(
-        "marcus",
+        "cro",
         (f"DL engineer update: {len(model_files)} architectures, {n_features} features, {n_configs} configs. "
          f"Models: {', '.join(sorted(model_files)[:6])}. "
          "What's the single most impactful DL architecture change to make next? 2 sentences, Slack-ready."),
@@ -5511,7 +5523,7 @@ def cro_dl_engineer() -> list[Post]:
     )]
 
 
-def priya_nair_feature_eng() -> list[Post]:
+def frontend_eng_feature_eng() -> list[Post]:
     """Feature Engineering Lead — LLM-driven feature pipeline analysis."""
     state = load_state()
     features_dir = REPO_ROOT / "backend" / "app" / "ml" / "features"
@@ -5529,7 +5541,7 @@ def priya_nair_feature_eng() -> list[Post]:
         "which market regime it targets, the expected IC range from literature, "
         "and which existing module file to add it to. Be specific — formula required."
     )
-    ai, _ = moa_employee_prompt("priya", task, state=state)
+    ai, _ = moa_employee_prompt("frontend_eng", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -5540,7 +5552,7 @@ def priya_nair_feature_eng() -> list[Post]:
     )]
 
 
-def alex_chen_quant_ml() -> list[Post]:
+def quant_ml_quant_ml() -> list[Post]:
     """Alex Chen — Quantitative ML Researcher. LLM-driven ablation analysis."""
     state = load_state()
     results_dir = REPO_ROOT / "experiments" / "results"
@@ -5572,7 +5584,7 @@ def alex_chen_quant_ml() -> list[Post]:
         "with exact hyperparameter change and expected Sharpe delta. "
         "If no results exist, propose the highest-priority first experiment to run. Be precise."
     )
-    ai, _ = moa_employee_prompt("alex", task, state=state)
+    ai, _ = moa_employee_prompt("quant_ml", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -5583,7 +5595,7 @@ def alex_chen_quant_ml() -> list[Post]:
     )]
 
 
-def laavanye_bahl_ceo() -> list[Post]:
+def ceo_ceo() -> list[Post]:
     """CEO — Monday strategic update generated by LLM from real platform state."""
     if datetime.now(timezone.utc).weekday() != 0:
         return []
@@ -5605,7 +5617,7 @@ def laavanye_bahl_ceo() -> list[Post]:
         "(3) one risk or compliance note. "
         "Tone: direct, data-driven, no fluff. Slack format with *bold* headers."
     )
-    ai, _ = moa_employee_prompt("laavanye", task, state=state)
+    ai, _ = moa_employee_prompt("ceo", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -6076,7 +6088,7 @@ def allquantedge_channel() -> list[Post]:
         "Tone: energising, transparent, data-driven. Slack format. "
         "Address as 'team' not individuals. No bullet lists — flowing prose with *bold* emphasis."
     )
-    ai, _ = moa_employee_prompt("laavanye", task, state=state)
+    ai, _ = moa_employee_prompt("ceo", task, state=state)
     if not ai:
         return []
     return [Post(
@@ -6112,7 +6124,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Maya Chen (VP Eng)*\n↳ {random.choice(maya_tasks)}",
-        "Maya Chen", ":woman_office_worker:"))
+        "VP Eng", ":woman_office_worker:"))
 
     # Aarav — Alpha Research Director
     all_manual = strats["manual"]
@@ -6126,7 +6138,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Aarav Patel (Alpha Director)*\n↳ {random.choice(aarav_tasks)}",
-        "Aarav Patel", ":chart_with_upwards_trend:"))
+        "Alpha Dir", ":chart_with_upwards_trend:"))
 
     # Linh — ML Modeling Lead
     if results:
@@ -6140,7 +6152,7 @@ def standup_channel() -> list[Post]:
         linh_tasks = [f"kicking off first LSTM experiment on BTC/1h. {_m('ML Research Lead')}: review config?"]
     standups.append(Post("standup",
         f"*{weekday} standup — Linh Tran (ML Lead)*\n↳ {random.choice(linh_tasks)}",
-        "Linh Tran", ":robot_face:"))
+        "ML Lead", ":robot_face:"))
 
     # Jian — Risk Engineer
     if positions and acct:
@@ -6158,7 +6170,7 @@ def standup_channel() -> list[Post]:
         ]
     standups.append(Post("standup",
         f"*{weekday} standup — Jian Wu (Risk Engineer)*\n↳ {random.choice(risk_tasks)}",
-        "Jian Wu", ":shield:"))
+        "Risk Eng", ":shield:"))
 
     # Anna — Backend Lead
     backend_files = [k for k in changed if k.startswith("backend/") and k.endswith(".py")]
@@ -6177,7 +6189,7 @@ def standup_channel() -> list[Post]:
         ]
     standups.append(Post("standup",
         f"*{weekday} standup — Anna Hoffmann (Backend Lead)*\n↳ {random.choice(anna_tasks)}",
-        "Anna Hoffmann", ":gear:"))
+        "Backend Lead", ":gear:"))
 
     # Aditi — Director of QA
     if test_res.get("not_installed") or test_res.get("timed_out"):
@@ -6188,7 +6200,7 @@ def standup_channel() -> list[Post]:
         aditi_msg = f"✅ {test_res.get('passed', 0)} tests green. reviewing untested strategies — flagging to {_m('Alpha Research Director')}"
     standups.append(Post("standup",
         f"*{weekday} standup — Aditi Sharma (QA Director)*\n↳ {aditi_msg}",
-        "Aditi Sharma", ":mag:"))
+        "QA Dir", ":mag:"))
 
     # Kenji — DevOps
     runs = latest_workflow_runs()
@@ -6203,7 +6215,7 @@ def standup_channel() -> list[Post]:
         kenji_tasks = ["no recent CI runs — monitoring. Render + Vercel deploys on standby."]
     standups.append(Post("standup",
         f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {random.choice(kenji_tasks)}",
-        "Kenji Watanabe", ":satellite_antenna:"))
+        "DevOps Dir", ":satellite_antenna:"))
 
     # Diego — Execution Engineer
     exec_tasks = [
@@ -6213,7 +6225,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Diego Ramirez (Execution Eng)*\n↳ {random.choice(exec_tasks)}",
-        "Diego Ramirez", ":zap:"))
+        "Exec Eng", ":zap:"))
 
     # Lior — Polymarket
     poly_tasks = [
@@ -6223,7 +6235,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {random.choice(poly_tasks)}",
-        "Lior Avraham", ":vertical_traffic_light:"))
+        "Poly Desk", ":vertical_traffic_light:"))
 
     # Sara — ML Research Lead
     sara_tasks = [
@@ -6233,7 +6245,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Sara Kim (ML Research Lead)*\n↳ {random.choice(sara_tasks)}",
-        "Sara Kim", ":microscope:"))
+        "ML Researcher", ":microscope:"))
 
     # Sofia — VP Research
     sofia_tasks = [
@@ -6243,7 +6255,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {random.choice(sofia_tasks)}",
-        "Sofia Karlsson", ":books:"))
+        "VP Research", ":books:"))
 
     # Hugo — Quant Researcher
     hugo_tasks = [
@@ -6253,7 +6265,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {random.choice(hugo_tasks)}",
-        "Hugo Bernardes", ":mag_right:"))
+        "Quant Researcher", ":mag_right:"))
 
     # Marcus — CRO
     marcus_tasks = [
@@ -6263,7 +6275,7 @@ def standup_channel() -> list[Post]:
     ]
     standups.append(Post("standup",
         f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {random.choice(marcus_tasks)}",
-        "Marcus Olufemi", ":shield:"))
+        "CRO", ":shield:"))
 
     return standups
 
@@ -6282,7 +6294,7 @@ def wins_channel() -> list[Post]:
         strat = best.get("strategy", "?")
         sym = best.get("symbol", "?")
         if s > 1.0:
-            credit = random.choice(["Linh Tran", "Sara Kim", "Hugo Bernardes", "Aarav Patel"])
+            credit = random.choice(["ML Lead", "ML Researcher", "Quant Researcher", "Alpha Dir"])
             posts.append(Post("wins",
                 f":trophy: `{strat}` / `{sym}` → Sharpe *{s:.2f}* on walk-forward!\n"
                 f"beats our 1.0 paper gate. {_m('Alpha Research Director')}: paper candidacy? "
@@ -6472,7 +6484,7 @@ def model_perf_channel() -> list[Post]:
         "Be specific: cite the model name, a Sharpe value, and a concrete action. "
         "Do NOT say you are an AI."
     )
-    sara_resp, _ = employee_provider_prompt("sara", sara_task, state=None)
+    sara_resp, _ = employee_provider_prompt("ml_researcher", sara_task, state=None)
     if not sara_resp:
         sara_resp = (
             f"LSTM showing best OOS consistency — recommend up-weighting to 0.40 in next Optuna run. "
@@ -6510,7 +6522,7 @@ def code_review_channel() -> list[Post]:
             "Mention: async patterns, SQLAlchemy ORM, FastAPI routing, type safety, or test coverage. "
             "Do NOT say you are an AI."
         )
-        comment, _ = employee_provider_prompt("anna", review_task, state=None)
+        comment, _ = employee_provider_prompt("backend_lead", review_task, state=None)
         if not comment:
             comment = f"✅ async-safe, proper session scoping. {_m('Director of QA')}: coverage added?"
         posts.append(Post("code-review", f"<{url}|`{Path(f).name}`>: {comment.strip()}", "Anna Hoffmann — Backend Lead", ":gear:"))
@@ -6524,7 +6536,7 @@ def code_review_channel() -> list[Post]:
             "Mention: React hooks, TanStack Query staleTime, TypeScript types, or Tailwind classes. "
             "Do NOT say you are an AI."
         )
-        fe_comment, _ = employee_provider_prompt("priya", fe_task, state=None)
+        fe_comment, _ = employee_provider_prompt("frontend_eng", fe_task, state=None)
         if not fe_comment:
             fe_comment = "✅ LGTM. Clean TypeScript, no `any` escapes, TanStack Query properly configured."
         posts.append(Post("code-review", f"<{url}|`{Path(f).name}`>: {fe_comment.strip()}", "Priya Subramanian — Frontend Lead", ":art:"))
@@ -6815,31 +6827,31 @@ def build_discussion_chains(
 
 # Agent @mention handles (for cross-team references)
 AGENT_HANDLES: dict[str, str] = {
-    "VP Engineering":           "maya",
-    "Alpha Research Director":  "aarav",
-    "ML Modeling Lead":         "linh",
-    "Execution Engineer":       "diego",
-    "Risk Engineer":            "jian",
+    "VP Engineering":           "vp_eng",
+    "Alpha Research Director":  "alpha_dir",
+    "ML Modeling Lead":         "ml_lead",
+    "Execution Engineer":       "exec_eng",
+    "Risk Engineer":            "risk_eng",
     "Frontend Lead":            "priya_s",
-    "Backend Lead":             "anna",
-    "Data Engineer":            "sina",
-    "Director of DevOps":       "kenji",
-    "Director of QA":           "aditi",
-    "VP Research":              "sofia",
-    "Options Researcher":       "yuki",
-    "Quant Researcher":         "hugo",
-    "Research Scientist":       "tomas",
-    "Polymarket Researcher":    "lior",
-    "Chief Risk Officer":       "marcus",
-    "Finance Engineer":         "wei",
-    "Compliance Engineer":      "helena",
-    "Junior Engineer":          "karl",
-    "CEO / Founder":            "laavanye",
-    "ML Infrastructure Engineer": "ravi",
-    "ML Research Lead":         "sara",
+    "Backend Lead":             "backend_lead",
+    "Data Engineer":            "data_eng",
+    "Director of DevOps":       "devops_dir",
+    "Director of QA":           "qa_dir",
+    "VP Research":              "vp_research",
+    "Options Researcher":       "options_researcher",
+    "Quant Researcher":         "quant_researcher",
+    "Research Scientist":       "rl_researcher",
+    "Polymarket Researcher":    "poly_desk",
+    "Chief Risk Officer":       "cro",
+    "Finance Engineer":         "finance_eng",
+    "Compliance Engineer":      "compliance_eng",
+    "Junior Engineer":          "junior_eng",
+    "CEO / Founder":            "ceo",
+    "ML Infrastructure Engineer": "ci_eng",
+    "ML Research Lead":         "ml_researcher",
     "Deep Learning Engineer":   "marcus_w",
     "Feature Engineering Lead": "priya_n",
-    "Quant ML Researcher":      "alex",
+    "Quant ML Researcher":      "quant_ml",
 }
 
 
@@ -7310,12 +7322,12 @@ def _short_general() -> list[Post]:
 def _short_standup() -> list[Post]:
     weekday = datetime.now(timezone.utc).strftime("%A")
     employees = [
-        ("Maya Chen", ":woman_office_worker:", ["reviewing PRs", "unblocking team", "CI monitoring"]),
-        ("Aarav Patel", ":chart_with_upwards_trend:", ["strategy walk-forward", "alpha research", "paper gate review"]),
-        ("Linh Tran", ":robot_face:", ["LSTM retrain", "ensemble update", "model comparison"]),
-        ("Jian Wu", ":shield:", ["risk dashboard", "kelly sizing", "circuit breaker check"]),
-        ("Anna Hoffmann", ":gear:", ["backend PR", "API endpoint", "DB migration"]),
-        ("Diego Ramirez", ":zap:", ["execution algo tuning", "slippage analysis", "RL policy"]),
+        ("VP Eng", ":woman_office_worker:", ["reviewing PRs", "unblocking team", "CI monitoring"]),
+        ("Alpha Dir", ":chart_with_upwards_trend:", ["strategy walk-forward", "alpha research", "paper gate review"]),
+        ("ML Lead", ":robot_face:", ["LSTM retrain", "ensemble update", "model comparison"]),
+        ("Risk Eng", ":shield:", ["risk dashboard", "kelly sizing", "circuit breaker check"]),
+        ("Backend Lead", ":gear:", ["backend PR", "API endpoint", "DB migration"]),
+        ("Exec Eng", ":zap:", ["execution algo tuning", "slippage analysis", "RL policy"]),
     ]
     name, emoji, tasks = random.choice(employees)
     task = random.choice(tasks)
@@ -7503,7 +7515,7 @@ AGENTS: list[Agent] = [
     Agent("Director of DevOps", "Director of DevOps", ":satellite_antenna:",
           ["infra-alerts"], devops_dir_devops, ["devops", "ci"]),
     Agent("Director of DevOps", "Director of DevOps", ":satellite_antenna:",
-          ["infra-alerts"], kenji_deploy_readiness, ["deploy", "infra"]),
+          ["infra-alerts"], devops_dir_deploy_readiness, ["deploy", "infra"]),
     Agent("Director of QA", "Director of QA", ":mag:",
           ["squad-qa"], qa_dir_qa, ["qa", "test"]),
     Agent("Director of QA", "Director of QA", ":mag:",
@@ -7966,7 +7978,7 @@ def main() -> int:
             time.sleep(0.6)
 
         # ── Risk broadcast: propagate jian/marcus risk signals to related desks ─
-        if agent.work_fn in (jian_wu_risk, marcus_olufemi_risk) and posts:
+        if agent.work_fn in (risk_eng_risk, cro_risk) and posts:
             risk_summary_text = posts[0].text if posts else ""
             if risk_summary_text:
                 broadcast_to_desk_agents(token, risk_summary_text, "risk-alerts", state)
@@ -8214,10 +8226,10 @@ def post_throughput_report(token: str, state: dict) -> None:
         lines.append("")
         lines.append("*Free Agent Usage This Wave*")
         _EMP_ROLES = {
-            "maya": "VP Eng", "aarav": "Alpha Research", "linh": "ML/Crypto",
-            "jian": "Risk", "anna": "Backend", "aditi": "QA", "kenji": "DevOps",
-            "diego": "Execution", "lior": "Polymarket", "sara": "ML Research",
-            "sofia": "FX/Macro", "hugo": "Quant Research", "marcus": "CRO/DL",
+            "vp_eng": "VP Eng", "alpha_dir": "Alpha Research", "ml_lead": "ML/Crypto",
+            "risk_eng": "Risk", "backend_lead": "Backend", "qa_dir": "QA", "devops_dir": "DevOps",
+            "exec_eng": "Execution", "poly_desk": "Polymarket", "ml_researcher": "ML Research",
+            "vp_research": "FX/Macro", "quant_researcher": "Quant Research", "cro": "CRO/DL",
             "frontend": "Frontend",
         }
         quality_log = state.get("quality_log", [])
@@ -8426,15 +8438,15 @@ def post_daily_standup(token: str, state: dict) -> int:
     import random
     if _already_posted(state, "standup-channel", "standup", 3300):  # 55-min cooldown
         return 0
-    always_on = ["linh", "lior", "sofia", "kenji", "jian"]  # 24/7 desk leads
+    always_on = ["ml_lead", "poly_desk", "vp_research", "devops_dir", "risk_eng"]  # 24/7 desk leads
     emp = random.choice(always_on)
     _hr = datetime.now(_tz.utc).strftime("%H:%M UTC")
     _desk_context = {
-        "linh": "BTC/ETH crypto markets, funding rates, perpetual futures",
-        "lior": "Polymarket prediction markets, active events, probability edges",
-        "sofia": "FX/macro markets, G10 currencies, DXY, yield differentials",
-        "kenji": "platform infra, CI pipelines, deploy health, latency metrics",
-        "jian": "portfolio risk, VaR, drawdown, position concentration, correlation matrix",
+        "ml_lead": "BTC/ETH crypto markets, funding rates, perpetual futures",
+        "poly_desk": "Polymarket prediction markets, active events, probability edges",
+        "vp_research": "FX/macro markets, G10 currencies, DXY, yield differentials",
+        "devops_dir": "platform infra, CI pipelines, deploy health, latency metrics",
+        "risk_eng": "portfolio risk, VaR, drawdown, position concentration, correlation matrix",
     }
     context = _desk_context.get(emp, "quantitative trading signals")
     prompt = (
@@ -8446,8 +8458,8 @@ def post_daily_standup(token: str, state: dict) -> int:
     if result and len(result.strip()) > 30:
         _disp = _SILENT_EMP_DISPLAY.get(emp, (emp.capitalize(), ":green_circle:"))
         username, icon = _disp
-        channel = {"linh": "desk-crypto", "lior": "desk-polymarket", "sofia": "desk-fx-rates",
-                   "kenji": "engineering", "jian": "risk-alerts"}.get(emp, "engineering")
+        channel = {"ml_lead": "desk-crypto", "poly_desk": "desk-polymarket", "vp_research": "desk-fx-rates",
+                   "devops_dir": "engineering", "risk_eng": "risk-alerts"}.get(emp, "engineering")
         res = post_to_slack(token, channel, result.strip(), username=username, icon_emoji=icon)
         if res and res.get("ok"):
             print(f"  [standup] ✓ {emp} posted to #{channel}")
@@ -8460,22 +8472,23 @@ def post_daily_standup(token: str, state: dict) -> int:
 def _get_engineer_channel(emp_key: str) -> str:
     """Return the primary Slack channel for an engineer, defaulting to 'engineering'."""
     _EMP_CHANNEL_MAP: dict[str, str] = {
-        "maya": "engineering",
-        "aarav": "alpha-research",
-        "linh": "desk-crypto",
-        "jian": "risk-alerts",
-        "anna": "squad-backend",
-        "aditi": "squad-qa",
-        "kenji": "infra-alerts",
-        "diego": "squad-execution",
-        "lior": "desk-polymarket",
-        "sara": "ml-experiments",
-        "sofia": "desk-fx-rates",
-        "hugo": "alpha-research",
-        "marcus": "leadership-summary",
+        "vp_eng": "engineering",
+        "alpha_dir": "alpha-research",
+        "ml_lead": "desk-crypto",
+        "risk_eng": "risk-alerts",
+        "backend_lead": "squad-backend",
+        "qa_dir": "squad-qa",
+        "devops_dir": "infra-alerts",
+        "exec_eng": "squad-execution",
+        "poly_desk": "desk-polymarket",
+        "ml_researcher": "ml-experiments",
+        "vp_research": "desk-fx-rates",
+        "quant_researcher": "alpha-research",
+        "cro": "leadership-summary",
         "frontend": "squad-frontend",  # frontend persona → correct channel
     }
-    key = emp_key.split("_")[0].lower()
+    # Use full key first, then fallback to first segment for legacy
+    key = emp_key if emp_key in _EMP_CHANNEL_MAP else emp_key.split("_")[0].lower()
     # Also check TEAMS dict for lead mappings
     for _team_info in TEAMS.values():
         lead_first = _team_info.get("lead", "").split()[0].lower()
@@ -8485,19 +8498,19 @@ def _get_engineer_channel(emp_key: str) -> str:
 
 
 _SILENT_EMP_DISPLAY: dict[str, tuple[str, str]] = {
-    "maya":   ("Maya Chen",       ":female-technologist:"),
-    "aarav":  ("Aarav Singh",     ":male-office-worker:"),
-    "linh":   ("Linh Nguyen",     ":woman-technologist:"),
-    "jian":   ("Jian Wu",         ":man-in-tuxedo:"),
-    "anna":   ("Anna Kovacs",     ":woman-mechanic:"),
-    "aditi":  ("Aditi Sharma",    ":female-technologist:"),
-    "kenji":  ("Kenji Tanaka",    ":male-technologist:"),
-    "diego":  ("Diego Reyes",     ":man-technologist:"),
-    "lior":   ("Lior Ben-David",  ":man-office-worker:"),
-    "sara":   ("Sara Osei",       ":woman-scientist:"),
-    "sofia":  ("Sofia Alvarez",   ":woman-office-worker:"),
-    "hugo":   ("Hugo Fernandez",  ":man-scientist:"),
-    "marcus": ("Marcus Olufemi",  ":man-in-suit-levitating:"),
+    "vp_eng":   ("VP Eng",       ":female-technologist:"),
+    "alpha_dir":  ("Aarav Singh",     ":male-office-worker:"),
+    "ml_lead":   ("Linh Nguyen",     ":woman-technologist:"),
+    "risk_eng":   ("Risk Eng",         ":man-in-tuxedo:"),
+    "backend_lead":   ("Anna Kovacs",     ":woman-mechanic:"),
+    "qa_dir":  ("QA Dir",    ":female-technologist:"),
+    "devops_dir":  ("Kenji Tanaka",    ":male-technologist:"),
+    "exec_eng":  ("Diego Reyes",     ":man-technologist:"),
+    "poly_desk":   ("Lior Ben-David",  ":man-office-worker:"),
+    "ml_researcher":   ("Sara Osei",       ":woman-scientist:"),
+    "vp_research":  ("Sofia Alvarez",   ":woman-office-worker:"),
+    "quant_researcher":   ("Hugo Fernandez",  ":man-scientist:"),
+    "cro": ("CRO",  ":man-in-suit-levitating:"),
 }
 
 
