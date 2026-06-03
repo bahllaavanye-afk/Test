@@ -73,6 +73,9 @@ jobs:
           SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/slack_agent_team.py --run-experiments
         continue-on-error: true
