@@ -132,15 +132,23 @@ def save_state(state: dict) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     state["posted_hashes"] = state.get("posted_hashes", [])[-1000:]
     state["replied_to"]    = state.get("replied_to", [])[-500:]
+    # Convert set to list for JSON serialization (posted_today uses set internally)
+    if isinstance(state.get("posted_today"), set):
+        state["posted_today"] = list(state["posted_today"])
     # Trim response cache to last 200 entries
     cache = state.get("response_cache", {})
     if len(cache) > 200:
-        # evict oldest entries by timestamp
         sorted_keys = sorted(cache, key=lambda k: cache[k].get("ts", 0))
         for k in sorted_keys[:len(cache) - 200]:
             del cache[k]
     state["response_cache"] = cache
-    STATE_PATH.write_text(json.dumps(state, indent=2))
+    # Custom encoder: convert any remaining sets to lists
+    class _SetEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, set):
+                return list(obj)
+            return super().default(obj)
+    STATE_PATH.write_text(json.dumps(state, indent=2, cls=_SetEncoder))
 
 
 def _hash(text: str) -> str:
@@ -7828,7 +7836,10 @@ def main() -> int:
         print(f"  ✓ Catch-up pass: {catchup_count} benched engineer(s) ran")
 
     # ── Catch-up pass: guarantee every engineer posts at least once per full run ──
-    posted_today = state.setdefault("posted_today", set())
+    # Always a set in memory; JSON loads it as list — convert back
+    _pt_raw = state.get("posted_today", [])
+    posted_today = set(_pt_raw) if not isinstance(_pt_raw, set) else _pt_raw
+    state["posted_today"] = posted_today
     for agent in AGENTS:
         if agent.name not in posted_today:
             try:
