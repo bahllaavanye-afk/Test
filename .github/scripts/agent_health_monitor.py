@@ -52,16 +52,16 @@ REQUIRED_POSTING_CHANNELS = {
 
 # Employee function names that must call real LLM (not hardcoded)
 REQUIRED_LLM_CALLERS = [
-    "maya_chen_eng_daily", "aarav_patel_strategy_review", "linh_tran_ml_results",
-    "diego_ramirez_execution", "jian_wu_risk", "priya_subramanian_frontend",
-    "anna_hoffmann_backend", "sina_hassani_data", "kenji_watanabe_devops",
-    "kenji_deploy_readiness", "aditi_sharma_qa", "aditi_open_prs",
-    "cameron_park_security", "sofia_karlsson_research", "yuki_mori_options",
-    "hugo_bernardes_research", "tomas_lindqvist_rl", "lior_avraham_polymarket",
-    "marcus_olufemi_risk", "wei_chang_finance", "helena_voss_compliance",
-    "karl_nystrom_question", "laavanye_bahl_ceo", "ravi_iyer_ci",
-    "sara_kim_ml_research", "marcus_williams_dl_engineer",
-    "priya_nair_feature_eng", "alex_chen_quant_ml",
+    "vp_eng_daily", "alpha_dir_strategy_review", "ml_lead_results",
+    "exec_eng_execution", "risk_eng_risk", "frontend_eng_frontend",
+    "backend_lead_backend", "data_eng_data", "devops_dir_devops",
+    "devops_dir_deploy_readiness", "qa_dir_qa", "qa_dir_open_prs",
+    "security_eng_security", "vp_research_research", "options_researcher_options",
+    "quant_researcher_research", "rl_researcher_rl", "poly_desk_polymarket",
+    "cro_risk", "finance_eng_finance", "compliance_eng_compliance",
+    "junior_eng_question", "ceo_ceo", "ci_eng_ci",
+    "ml_researcher_research", "cro_dl_engineer",
+    "frontend_eng_feature_eng", "quant_ml_quant_ml",
 ]
 
 LLM_CALL_PATTERNS = [
@@ -288,24 +288,24 @@ def _probe_llm_providers() -> dict[str, str]:
 # Agents to fire-test: (fn_name, channel, expected_min_length, description)
 AGENT_EXECUTION_TESTS = [
     # Core engineering
-    ("maya_chen_eng_daily",        "engineering",      80, "VP Eng daily report"),
-    ("anna_hoffmann_backend",      "squad-backend",    80, "Backend lead report"),
-    ("aditi_sharma_qa",            "squad-qa",         80, "QA director report"),
+    ("vp_eng_daily",               "engineering",      80, "VP Eng daily report"),
+    ("backend_lead_backend",       "squad-backend",    80, "Backend lead report"),
+    ("qa_dir_qa",                  "squad-qa",         80, "QA director report"),
     # ML
-    ("linh_tran_ml_results",       "ml-experiments",   80, "ML results report"),
+    ("ml_lead_results",            "ml-experiments",   80, "ML results report"),
     # Risk
-    ("jian_wu_risk",               "risk-alerts",      60, "Risk alert report"),
+    ("risk_eng_risk",              "risk-alerts",      60, "Risk alert report"),
     # Trading desks
     ("trading_desk_eod_pnl",       "pnl-daily",        30, "EOD PnL report"),
     ("trading_desk_crypto_positions", "desk-crypto",   30, "Crypto positions"),
     # Research
-    ("sofia_karlsson_research",    "papers",           80, "Research paper summary"),
+    ("vp_research_research",       "papers",           80, "Research paper summary"),
     # Company wide
     ("general_channel",            "general",          80, "General channel digest"),
     ("allquantedge_channel",       "allquantedge",     80, "All-hands broadcast"),
     # Ops
-    ("wei_chang_finance",          "finance-ops",      60, "Finance ops report"),
-    ("cameron_park_security",      "security-alerts",  60, "Security check"),
+    ("finance_eng_finance",        "finance-ops",      60, "Finance ops report"),
+    ("security_eng_security",      "security-alerts",  60, "Security check"),
     ("standup_channel",            "standup",          80, "Daily standup"),
 ]
 

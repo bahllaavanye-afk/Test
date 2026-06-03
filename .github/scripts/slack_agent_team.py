@@ -2287,10 +2287,140 @@ def _build_summon_context() -> str:
     return " ".join(lines)
 
 
+# Map role-key prefixes to persona overrides for @mention routing
+_PERSONA_MENTION_MAP: dict[str, str] = {
+    "vp_eng":             "engineering",
+    "alpha_dir":          "alpha-research",
+    "ml_lead":            "ml-experiments",
+    "risk_eng":           "risk-alerts",
+    "cro":                "risk-alerts",
+    "backend_lead":       "squad-backend",
+    "frontend_eng":       "squad-frontend",
+    "devops_dir":         "infra-alerts",
+    "qa_dir":             "squad-qa",
+    "security_eng":       "security-alerts",
+    "vp_research":        "papers",
+    "poly_desk":          "desk-polymarket",
+    "exec_eng":           "squad-execution",
+    "data_eng":           "squad-data",
+    "ci_eng":             "ci-failures",
+    "ceo":                "general",
+    "finance_eng":        "finance-ops",
+    "compliance_eng":     "legal-compliance",
+}
+
+
+def _detect_persona_override(question: str) -> tuple[str | None, str | None]:
+    """
+    Parse '@vp_eng:', '@alpha_dir:' etc. at the start of a question.
+    Returns (channel_key, stripped_question) if found, else (None, None).
+    Allows routing a summon to a specific expert regardless of the channel it was posted in.
+    """
+    import re
+    for role_key, channel_key in _PERSONA_MENTION_MAP.items():
+        pattern = re.compile(r"^@?" + re.escape(role_key) + r"\s*[:, ]+\s*", re.IGNORECASE)
+        m = pattern.match(question.strip())
+        if m:
+            return channel_key, question[m.end():].strip()
+    return None, None
+
+
+def _fetch_thread_context(token: str, ch_id: str, thread_ts: str, limit: int = 5) -> list[str]:
+    """Fetch the last N messages from a thread for LLM context (excludes the root message)."""
+    data = slack_call(token, "conversations.replies",
+                      {"channel": ch_id, "ts": thread_ts, "limit": limit + 1})
+    if not data.get("ok"):
+        return []
+    msgs = data.get("messages", [])
+    # Skip root message (first), take last `limit` thread replies
+    context_msgs = msgs[1:][-limit:]
+    lines = []
+    for m in context_msgs:
+        text = (m.get("text") or "").strip()[:300]
+        if text:
+            who = "Bot" if m.get("bot_id") else "User"
+            lines.append(f"{who}: {text}")
+    return lines
+
+
+def _react(token: str, ch_id: str, ts: str, emoji: str) -> None:
+    """Add a reaction emoji to a Slack message. Silently ignores already_reacted."""
+    result = slack_call(token, "reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
+    if not result.get("ok") and result.get("error") not in ("already_reacted", "no_permission"):
+        print(f"  [react] {emoji} failed: {result.get('error')}")
+
+
+def _build_summon_blocks(reply: str, agent_name: str) -> list[dict]:
+    """
+    Format a summon reply as Block Kit blocks for rich display.
+    Falls back gracefully — Slack renders `text` if blocks not supported.
+    """
+    # Split into paragraphs; code blocks stay as-is
+    blocks: list[dict] = []
+    paragraphs = [p.strip() for p in reply.split("\n\n") if p.strip()]
+
+    for para in paragraphs[:6]:  # cap at 6 blocks to stay within Slack's 50-block limit
+        if para.startswith("```") or para.startswith("`"):
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": para[:3000]},
+            })
+        elif len(para) > 2 and para[0] in ("-", "•", "*") and "\n" in para:
+            # Bullet list — keep as section
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": para[:3000]},
+            })
+        else:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": para[:3000]},
+            })
+
+    if blocks:
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "context",
+            "elements": [{
+                "type": "mrkdwn",
+                "text": f"_{agent_name}_ • QuantEdge AI Agent • Free-tier LLM",
+            }],
+        })
+    return blocks
+
+
+def _post_with_blocks(
+    token: str,
+    ch_id: str,
+    text: str,
+    blocks: list[dict],
+    username: str,
+    icon_emoji: str,
+    thread_ts: str | None,
+) -> dict:
+    """Post a Slack message with Block Kit blocks. Falls back to text-only if blocks fail."""
+    payload: dict = {
+        "channel": ch_id,
+        "text": text,           # fallback for notifications
+        "blocks": blocks,
+        "username": username,
+        "icon_emoji": icon_emoji,
+        "mrkdwn": True,
+    }
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    result = slack_call(token, "chat.postMessage", payload)
+    if not result.get("ok"):
+        # Retry without blocks (Block Kit might not be enabled on this workspace)
+        payload.pop("blocks", None)
+        result = slack_call(token, "chat.postMessage", payload)
+    return result
+
+
 def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
     """
-    Answer each summon via the free LLM cascade and post in-thread with the channel's
-    agent persona. Records ts in state["replied_to"] so a summon is answered only once.
+    SOTA summon handler: 👀 reaction on receipt, thread context window, persona routing,
+    Block Kit rich replies, ✅ on success. Zero paid API spend.
     Returns count answered.
     """
     answered = 0
@@ -2298,28 +2428,53 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
 
     for s in summons:
         ts = s["thread_ts"]
+        ch_id = s.get("channel_id") or get_channel_id(token, s["channel_name"])
         if ts in state.get("replied_to", []):
             continue
 
         ch = s["channel_name"]
-        agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(ch, ("QuantEdge Agent", ":robot_face:"))
-        system_prompt = _CHANNEL_SUMMON_SYSTEM.get(ch, _DEFAULT_SUMMON_SYSTEM)
+        question = s["question"]
 
+        # ── 1. 👀 reaction: acknowledge receipt immediately ──────────────────
+        if ch_id:
+            _react(token, ch_id, ts, "eyes")
+
+        # ── 2. Persona routing: @vp_eng: override channel default persona ────
+        override_ch, routed_question = _detect_persona_override(question)
+        lookup_ch = override_ch or ch
+        if routed_question:
+            question = routed_question
+
+        agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(lookup_ch, ("QuantEdge Agent", ":robot_face:"))
+        system_prompt = _CHANNEL_SUMMON_SYSTEM.get(lookup_ch, _DEFAULT_SUMMON_SYSTEM)
+
+        # ── 3. Thread context: include last 5 thread messages for continuity ─
+        thread_ctx_lines: list[str] = []
+        if ch_id:
+            thread_ctx_lines = _fetch_thread_context(token, ch_id, ts, limit=5)
+
+        # Build rich context for LLM
+        context_parts = []
         if context_blurb:
-            system_prompt = f"{system_prompt}\n\nCurrent platform context: {context_blurb}"
+            context_parts.append(f"Platform context: {context_blurb}")
+        if thread_ctx_lines:
+            ctx_str = "\n".join(thread_ctx_lines)
+            context_parts.append(f"Thread history (most recent):\n{ctx_str}")
+        if context_parts:
+            system_prompt = f"{system_prompt}\n\n" + "\n\n".join(context_parts)
 
         user_msg = (
-            f"Someone in #{ch} asked: {s['question']}\n\n"
-            "Answer this question directly and helpfully as the channel's expert. "
-            "Be specific. Reference actual files, metrics, or strategies where relevant."
+            f"Someone in #{ch} asked: {question}\n\n"
+            "Answer directly and helpfully as the channel's expert. "
+            "Be specific. Reference actual files, metrics, or strategies where relevant. "
+            "Use markdown formatting (bold, bullet points, code blocks) for clarity."
         )
 
-        # For code change requests, dispatch to the Gemini Task Runner instead of
-        # answering inline — the runner has no token limit and commits changes directly.
-        if _is_code_request(s["question"]):
+        # ── 4. Code requests → dispatch to Gemini Task Runner ────────────────
+        if _is_code_request(question):
             issue_num = dispatch_to_gemini_runner(
-                title=f"[{ch}] {s['question'][:120]}",
-                body=s["question"],
+                title=f"[{ch}] {question[:120]}",
+                body=question,
                 context=f"Requested in #{ch} by Slack user at {ts}",
             )
             if issue_num:
@@ -2327,31 +2482,51 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                     f":rocket: Got it! I've queued this as a code task (issue #{issue_num}). "
                     f"The Gemini runner will implement it in the next 20 min and post an update here."
                 )
-                post_to_slack(token, ch, dispatch_msg,
-                              username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
+                if ch_id:
+                    _post_with_blocks(
+                        token, ch_id, dispatch_msg,
+                        _build_summon_blocks(dispatch_msg, agent_name),
+                        username=agent_name, icon_emoji=agent_emoji, thread_ts=ts,
+                    )
+                    _react(token, ch_id, ts, "white_check_mark")
+                else:
+                    post_to_slack(token, ch, dispatch_msg,
+                                  username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
                 state.setdefault("replied_to", []).append(ts)
                 answered += 1
                 print(f"  ✓ code request dispatched to gemini-task #{issue_num}")
                 time.sleep(0.5)
                 continue
 
-        ans = call_best_agent(user_msg, system_prompt=system_prompt, max_tokens=600)
+        # ── 5. LLM call → Block Kit reply ────────────────────────────────────
+        ans = call_best_agent(user_msg, system_prompt=system_prompt, max_tokens=700)
         if ans and ans.strip() and len(ans.strip()) > 20:
             reply = ans.strip()
-            r = post_to_slack(token, ch, reply,
-                              username=agent_name, icon_emoji=agent_emoji,
-                              thread_ts=ts)
+            blocks = _build_summon_blocks(reply, agent_name)
+            if ch_id:
+                r = _post_with_blocks(token, ch_id, reply, blocks,
+                                      username=agent_name, icon_emoji=agent_emoji,
+                                      thread_ts=ts)
+            else:
+                r = post_to_slack(token, ch, reply,
+                                  username=agent_name, icon_emoji=agent_emoji,
+                                  thread_ts=ts)
             if r.get("ok"):
+                # ✅ reaction on success
+                if ch_id:
+                    _react(token, ch_id, ts, "white_check_mark")
                 answered += 1
                 state.setdefault("replied_to", []).append(ts)
-                print(f"  ✓ summon answered → #{ch} as '{agent_name}'")
+                print(f"  ✓ summon answered → #{ch} as '{agent_name}' (blocks={bool(blocks)})")
             else:
                 print(f"  [summon] post failed: {r.get('error')}")
+                if ch_id:
+                    _react(token, ch_id, ts, "x")
         else:
-            # Providers exhausted — dispatch as a gemini-task so it's not lost
+            # ── 6. LLM exhausted → dispatch as gemini-task, post fallback ───
             issue_num = dispatch_to_gemini_runner(
-                title=f"[{ch}] {s['question'][:120]}",
-                body=s["question"],
+                title=f"[{ch}] {question[:120]}",
+                body=question,
                 context=f"All free LLM providers were throttled when this was asked in #{ch}.",
             )
             if issue_num:
@@ -2365,8 +2540,14 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                     f"Try again in ~15 min or check the next scheduled run. "
                     f"Zero-spend policy is enforced — no paid fallback."
                 )
-            post_to_slack(token, ch, fallback,
-                          username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
+            if ch_id:
+                _post_with_blocks(token, ch_id, fallback,
+                                  _build_summon_blocks(fallback, agent_name),
+                                  username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
+                _react(token, ch_id, ts, "hourglass_flowing_sand")
+            else:
+                post_to_slack(token, ch, fallback,
+                              username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
             state.setdefault("replied_to", []).append(ts)
             print(f"  [summon] providers exhausted for #{ch} summon")
         time.sleep(0.5)
