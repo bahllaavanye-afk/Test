@@ -47,6 +47,7 @@ async def get_benchmarks():
     return get_benchmark_stats()
 
 
+@router.get("/results", response_model=list[ComparisonOut])
 @router.get("/", response_model=list[ComparisonOut])
 async def list_comparisons(
     db: AsyncSession = Depends(get_db),
