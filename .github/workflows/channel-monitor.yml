@@ -15,8 +15,6 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 8
     permissions:
       contents: write
@@ -24,7 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -39,15 +36,12 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY_1 }}
-          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 }}
-          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
-          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
-          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
@@ -56,17 +50,14 @@ jobs:
         run: |
           python .github/scripts/channel_monitor.py
 
-      - name: Push changes
-        continue-on-error: true
+      - name: Persist state
+        if: always()
         run: |
           git config user.email "channel-monitor@quantedge.ai"
           git config user.name "QuantEdge Channel Monitor"
-          STATE_FILE=".github/state/slack_state.json"
+          STATE_FILE="experiments/results/slack_state.json"
           if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
             git add "$STATE_FILE"
             git commit -m "chore: persist channel monitor state [skip ci]"
-            for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-            done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
           fi
