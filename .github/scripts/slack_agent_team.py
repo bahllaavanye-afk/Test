@@ -98,16 +98,32 @@ _CF_BLOCKED_HOSTS: set[str] = set()
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+_STATE_DEFAULTS: dict = {
+    "last_run_ts": 0,
+    "last_commit_sha": "",
+    "posted_hashes": [],        # MD5[:12] of recent message texts — capped at 1000
+    "replied_to": [],           # Slack ts values already replied to — capped at 500
+    "post_dedup": {},           # {channel:content_key → epoch timestamp}
+    "response_cache": {},       # {hash → {text, ts}} — capped at 200
+    "posted_today": [],         # agent names that posted this run (serialized as list)
+    "last_post_ts": {},         # {emp_key → epoch timestamp of last post}
+    "daily_usage": {},          # {date → {api_key → {calls, tokens}}}
+    "onboarding_posted_week": "",  # ISO week string e.g. "2026-W23"
+}
+
+
 def load_state() -> dict:
+    """Load persisted state from disk, merging with defaults for any missing keys."""
     try:
-        return json.loads(STATE_PATH.read_text())
+        raw = json.loads(STATE_PATH.read_text())
+        if not isinstance(raw, dict):
+            raise ValueError("state is not a dict")
+        # Merge defaults for any keys added since the last save
+        for k, v in _STATE_DEFAULTS.items():
+            raw.setdefault(k, v)
+        return raw
     except Exception:
-        return {
-            "last_run_ts": 0,
-            "last_commit_sha": "",
-            "posted_hashes": [],   # MD5[:12] of recent message texts
-            "replied_to": [],      # Slack message ts values already replied to
-        }
+        return dict(_STATE_DEFAULTS)
 
 
 def _init_governance(state: dict) -> None:
@@ -129,25 +145,44 @@ def _init_governance(state: dict) -> None:
 
 
 def save_state(state: dict) -> None:
+    """Trim growing collections, convert sets to lists, write state to disk."""
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    state["posted_hashes"] = state.get("posted_hashes", [])[-1000:]
-    state["replied_to"]    = state.get("replied_to", [])[-500:]
-    # Convert set to list for JSON serialization (posted_today uses set internally)
-    if isinstance(state.get("posted_today"), set):
-        state["posted_today"] = list(state["posted_today"])
-    # Trim response cache to last 200 entries
+
+    # Trim unbounded lists
+    state["posted_hashes"] = list(state.get("posted_hashes", []))[-1000:]
+    state["replied_to"]    = list(state.get("replied_to", []))[-500:]
+
+    # Sets must become lists for JSON (posted_today is a set at runtime)
+    pt = state.get("posted_today", [])
+    state["posted_today"] = list(pt) if isinstance(pt, set) else pt
+
+    # Trim response cache (oldest first by ts)
     cache = state.get("response_cache", {})
     if len(cache) > 200:
-        sorted_keys = sorted(cache, key=lambda k: cache[k].get("ts", 0))
-        for k in sorted_keys[:len(cache) - 200]:
+        oldest = sorted(cache, key=lambda k: cache[k].get("ts", 0))
+        for k in oldest[:len(cache) - 200]:
             del cache[k]
     state["response_cache"] = cache
-    # Custom encoder: convert any remaining sets to lists
+
+    # Trim post_dedup: drop entries older than 7 days
+    now = time.time()
+    state["post_dedup"] = {
+        k: v for k, v in state.get("post_dedup", {}).items()
+        if now - v < 604800  # 7 days
+    }
+
+    # Trim daily_usage: keep only last 7 days
+    usage = state.get("daily_usage", {})
+    if len(usage) > 7:
+        for old_day in sorted(usage)[:len(usage) - 7]:
+            del usage[old_day]
+
     class _SetEncoder(json.JSONEncoder):
         def default(self, obj):
             if isinstance(obj, set):
                 return list(obj)
             return super().default(obj)
+
     STATE_PATH.write_text(json.dumps(state, indent=2, cls=_SetEncoder))
 
 
