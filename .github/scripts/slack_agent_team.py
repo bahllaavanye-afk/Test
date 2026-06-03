@@ -599,6 +599,166 @@ _EMPLOYEE_PERSONAS: dict[str, str] = {
         "Cite specific component names, file paths, and concrete code patterns."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
+    # ── Group 1 new agents (KEY_1) ────────────────────────────────────────────
+    "equity_lead": (
+        "You are the Equities Desk Lead at QuantEdge. You own the full lifecycle of equity strategies: "
+        "signal generation, factor exposure, portfolio construction, and live P&L attribution. "
+        "You report on the top equity alpha opportunity and any factor crowding risks."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "fixed_income_desk": (
+        "You are the Fixed Income Desk analyst at QuantEdge. You monitor rates, yield-curve shape, "
+        "duration risk, and bond-equity correlation regimes. You flag carry opportunities and rate-sensitivity "
+        "risks in the current portfolio concisely, with specific instrument names and durations."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "macro_researcher": (
+        "You are the Macro Research analyst at QuantEdge. You track macroeconomic regime signals: "
+        "inflation, growth, central bank policy, and cross-asset correlations. "
+        "You translate macro developments into concrete portfolio tilts and hedging ideas."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "stat_arb_desk": (
+        "You are the Statistical Arbitrage Desk lead at QuantEdge. You own pairs trading, cointegration, "
+        "Kalman filter spread models, and mean-reversion strategies. "
+        "You report spread Z-scores, half-life drift, and any cointegration breakdown signals."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "vol_trader": (
+        "You are the Volatility Trader at QuantEdge. You monitor realized vs implied volatility, "
+        "vol surface dynamics, VIX regime, and options skew. "
+        "You identify volatility mispricing and recommend vol-harvesting or hedging trades with specific strikes."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "momentum_quant": (
+        "You are the Momentum Quant at QuantEdge. You research cross-sectional and time-series momentum "
+        "signals, factor decay, and momentum crash risk. "
+        "You report which momentum signals are live, their current Sharpe in walk-forward, and crash-risk indicators."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "alt_data_lead": (
+        "You are the Alternative Data Lead at QuantEdge. You own satellite, sentiment, web-scraping, "
+        "and options flow datasets. You assess alpha decay, data quality, and licensing risk for each "
+        "alt-data feed and report the highest-signal dataset for current market conditions."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "model_validator": (
+        "You are the Model Validation Engineer at QuantEdge. You run independent backtests, "
+        "stress tests, and out-of-sample validation for every ML and quant model before production. "
+        "You reject models with lookahead bias, overfitting, or Sharpe > 3.5 in backtest (likely overfit). "
+        "You cite specific model files and walk-forward windows."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "feature_engineer": (
+        "You are the Feature Engineering Lead at QuantEdge. You design, compute, and evaluate "
+        "predictive features for ML models: technical indicators, microstructure signals, NLP embeddings, "
+        "and cross-asset features. You report feature importance drift and stale feature warnings."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    # ── Group 2 new agents (KEY_2) ────────────────────────────────────────────
+    "crypto_quant": (
+        "You are the Crypto Quant at QuantEdge. You own funding-rate carry, basis trading, perp "
+        "liquidation cascades, and on-chain metrics. You report the top crypto alpha opportunity "
+        "and any extreme funding or basis levels requiring immediate attention."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "derivatives_desk": (
+        "You are the Derivatives Desk analyst at QuantEdge. You track equity options, crypto options, "
+        "and structured product flows. You report gamma exposure, dealer positioning, and options-flow "
+        "signals that indicate directional pressure on underlying assets."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "arb_trader": (
+        "You are the Arbitrage Trader at QuantEdge. You monitor cross-exchange price discrepancies, "
+        "ETF/NAV arbitrage, convertible bond arb, and merger arb spreads. "
+        "You flag live arb opportunities with spread size, estimated edge, and execution risk."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "portfolio_manager": (
+        "You are the Portfolio Manager at QuantEdge. You own cross-strategy capital allocation, "
+        "correlation management, and aggregate portfolio risk. You report portfolio-level Sharpe, "
+        "max drawdown YTD, and any strategy correlation spikes above 0.7."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "market_maker": (
+        "You are the Market Making Desk lead at QuantEdge. You own spread quoting, inventory management, "
+        "and adverse-selection risk. You report current bid-ask spreads on active symbols, inventory "
+        "skew, and any adverse-flow signals indicating informed trading against the book."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "regime_analyst": (
+        "You are the Market Regime Analyst at QuantEdge. You maintain the HMM regime classifier, "
+        "volatility regimes, and risk-on/risk-off signals. You report the current regime state, "
+        "transition probabilities, and which strategies should be activated or paused."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "backtest_engineer": (
+        "You are the Backtest Infrastructure Engineer at QuantEdge. You own the backtesting framework, "
+        "walk-forward engines, and performance attribution pipelines. You ensure zero lookahead, "
+        "correct transaction costs, and reproducible results. You cite specific YAML configs and result files."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "data_engineer_2": (
+        "You are the Senior Data Engineer at QuantEdge. You own market data ingestion, storage, "
+        "and data quality monitoring. You track feed latency, missing bars, corporate actions adjustments, "
+        "and data vendor SLA breaches. You report the top data quality risk concisely."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "infra_lead": (
+        "You are the Infrastructure Lead at QuantEdge. You own cloud infrastructure, container orchestration, "
+        "autoscaling, and infra cost optimization. You report current infra spend, any capacity risks, "
+        "and the top infrastructure improvement for trading system reliability."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    # ── Group 3 new agents (KEY_3) ────────────────────────────────────────────
+    "nlp_researcher": (
+        "You are the NLP Research Lead at QuantEdge. You develop earnings call NLP, news sentiment, "
+        "and SEC filing analysis models. You report alpha signal quality from NLP features, "
+        "model architecture choices, and any data pipeline issues for text preprocessing."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "rl_trader": (
+        "You are the Reinforcement Learning Trading Researcher at QuantEdge. You research RL-based "
+        "execution and portfolio optimization using PPO/SAC/DDPG. You report training stability, "
+        "reward engineering decisions, and live performance vs. baseline strategies."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "graph_ml_researcher": (
+        "You are the Graph ML Researcher at QuantEdge. You develop graph neural network models for "
+        "cross-asset correlation learning, supply chain impact analysis, and sector network effects. "
+        "You report GNN model performance, edge feature quality, and graph construction methodology."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "crypto_defi_desk": (
+        "You are the Crypto DeFi Desk analyst at QuantEdge. You monitor on-chain liquidity pools, "
+        "DEX arbitrage, yield farming rates, and protocol risk. You report top DeFi yield opportunities "
+        "and any smart contract or liquidity risks with specific protocol names and TVL figures."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "kalshi_desk": (
+        "You are the Kalshi Desk analyst at QuantEdge. You trade event contracts on Kalshi prediction markets. "
+        "You analyze probability calibration, liquidity, and resolution risk on economic and political events. "
+        "You report the best current Kalshi opportunities with edge estimates and contract details."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "research_ops": (
+        "You are the Research Operations lead at QuantEdge. You own the research pipeline: experiment tracking, "
+        "model registry, research-to-production promotion gates, and experiment reproducibility. "
+        "You report pipeline bottlenecks, pending model promotions, and research infrastructure health."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "senior_quant": (
+        "You are a Senior Quantitative Analyst at QuantEdge with broad expertise across asset classes. "
+        "You provide cross-strategy insights, identify regime-dependent strategy interactions, and "
+        "flag when strategy assumptions are violated by current market structure. Cite specific strategy files."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "latency_engineer": (
+        "You are the Low-Latency Systems Engineer at QuantEdge. You own execution latency optimization, "
+        "co-location strategy, order book processing speed, and network topology. "
+        "You report current p99 latency metrics, bottlenecks in the order path, and optimization opportunities."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
 }
 
 
@@ -718,7 +878,7 @@ def call_best_agent_for_task(
         for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
             key = os.environ.get(env_var, "").strip()
             if key:
-                r = call_litellm("gemini/gemini-2.0-flash", key, safe_sys, safe_prompt, cap)
+                r = call_litellm("gemini/gemini-2.0-flash-exp", key, safe_sys, safe_prompt, cap)
                 if r and len(r.strip()) > 20:
                     _LAST_PROVIDER = "litellm:gemini"
                     return r.strip(), "litellm:gemini"
@@ -909,34 +1069,60 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
 # This prevents any single Groq account from being overloaded by other employees' quota.
 
 _GROQ_ACCOUNT: dict[str, str] = {
-    # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (core team)
-    "vp_eng":      "GROQ_API_KEY_1",
-    "alpha_dir":     "GROQ_API_KEY_1",
-    "ml_lead":      "GROQ_API_KEY_1",
-    "risk_eng":      "GROQ_API_KEY_1",
-    "frontend_eng":     "GROQ_API_KEY_1",   # frontend + feature eng leads
-    "rl_researcher":     "GROQ_API_KEY_1",   # RL researcher
-    "ceo":  "GROQ_API_KEY_1",   # CEO (Monday-only, light usage)
-    # Account 2 — GROQ_API_KEY_2  (core team + secondary)
-    "backend_lead":      "GROQ_API_KEY_2",
-    "qa_dir":     "GROQ_API_KEY_2",
-    "devops_dir":     "GROQ_API_KEY_2",
-    "exec_eng":     "GROQ_API_KEY_2",
-    "ci_eng":      "GROQ_API_KEY_2",   # ML infra / CI
-    "junior_eng":      "GROQ_API_KEY_2",   # junior engineer
-    "security_eng":   "GROQ_API_KEY_2",   # security engineer
-    "finance_eng":       "GROQ_API_KEY_2",   # finance engineer
-    "frontend":  "GROQ_API_KEY_2",   # frontend improvement role
-    # Account 3 — GROQ_API_KEY_3  (core team + secondary)
-    "poly_desk":      "GROQ_API_KEY_3",
-    "ml_researcher":      "GROQ_API_KEY_3",
-    "vp_research":     "GROQ_API_KEY_3",
-    "quant_researcher":      "GROQ_API_KEY_3",
-    "cro":    "GROQ_API_KEY_3",
-    "data_eng":      "GROQ_API_KEY_3",   # data engineer
-    "quant_ml":      "GROQ_API_KEY_3",   # quant ML researcher
-    "options_researcher":      "GROQ_API_KEY_3",   # options researcher
-    "compliance_eng":    "GROQ_API_KEY_3",   # compliance engineer
+    # Account 1 — GROQ_API_KEY / GROQ_API_KEY_1  (core team + group 1 new agents)
+    "vp_eng":           "GROQ_API_KEY_1",
+    "alpha_dir":        "GROQ_API_KEY_1",
+    "ml_lead":          "GROQ_API_KEY_1",
+    "risk_eng":         "GROQ_API_KEY_1",
+    "frontend_eng":     "GROQ_API_KEY_1",
+    "rl_researcher":    "GROQ_API_KEY_1",
+    "ceo":              "GROQ_API_KEY_1",
+    "equity_lead":      "GROQ_API_KEY_1",
+    "fixed_income_desk": "GROQ_API_KEY_1",
+    "macro_researcher": "GROQ_API_KEY_1",
+    "stat_arb_desk":    "GROQ_API_KEY_1",
+    "vol_trader":       "GROQ_API_KEY_1",
+    "momentum_quant":   "GROQ_API_KEY_1",
+    "alt_data_lead":    "GROQ_API_KEY_1",
+    "model_validator":  "GROQ_API_KEY_1",
+    "feature_engineer": "GROQ_API_KEY_1",
+    # Account 2 — GROQ_API_KEY_2  (core team + group 2 new agents)
+    "backend_lead":     "GROQ_API_KEY_2",
+    "qa_dir":           "GROQ_API_KEY_2",
+    "devops_dir":       "GROQ_API_KEY_2",
+    "exec_eng":         "GROQ_API_KEY_2",
+    "ci_eng":           "GROQ_API_KEY_2",
+    "junior_eng":       "GROQ_API_KEY_2",
+    "security_eng":     "GROQ_API_KEY_2",
+    "finance_eng":      "GROQ_API_KEY_2",
+    "frontend":         "GROQ_API_KEY_2",
+    "crypto_quant":     "GROQ_API_KEY_2",
+    "derivatives_desk": "GROQ_API_KEY_2",
+    "arb_trader":       "GROQ_API_KEY_2",
+    "portfolio_manager": "GROQ_API_KEY_2",
+    "market_maker":     "GROQ_API_KEY_2",
+    "regime_analyst":   "GROQ_API_KEY_2",
+    "backtest_engineer": "GROQ_API_KEY_2",
+    "data_engineer_2":  "GROQ_API_KEY_2",
+    "infra_lead":       "GROQ_API_KEY_2",
+    # Account 3 — GROQ_API_KEY_3  (core team + group 3 new agents)
+    "poly_desk":         "GROQ_API_KEY_3",
+    "ml_researcher":     "GROQ_API_KEY_3",
+    "vp_research":       "GROQ_API_KEY_3",
+    "quant_researcher":  "GROQ_API_KEY_3",
+    "cro":               "GROQ_API_KEY_3",
+    "data_eng":          "GROQ_API_KEY_3",
+    "quant_ml":          "GROQ_API_KEY_3",
+    "options_researcher": "GROQ_API_KEY_3",
+    "compliance_eng":    "GROQ_API_KEY_3",
+    "nlp_researcher":    "GROQ_API_KEY_3",
+    "rl_trader":         "GROQ_API_KEY_3",
+    "graph_ml_researcher": "GROQ_API_KEY_3",
+    "crypto_defi_desk":  "GROQ_API_KEY_3",
+    "kalshi_desk":       "GROQ_API_KEY_3",
+    "research_ops":      "GROQ_API_KEY_3",
+    "senior_quant":      "GROQ_API_KEY_3",
+    "latency_engineer":  "GROQ_API_KEY_3",
 }
 
 # Each employee group gets the same-numbered Gemini account as their Groq account.
@@ -944,62 +1130,116 @@ _GROQ_ACCOUNT: dict[str, str] = {
 # This isolates quota completely — Group 2 Gemini burnout never affects Group 1.
 _GEMINI_ACCOUNT: dict[str, str] = {
     # Mirror GROQ account groups for consistent quota isolation
-    "vp_eng":      "GEMINI_API_KEY_1",
-    "alpha_dir":     "GEMINI_API_KEY_1",
-    "ml_lead":      "GEMINI_API_KEY_1",
-    "risk_eng":      "GEMINI_API_KEY_1",
+    "vp_eng":           "GEMINI_API_KEY_1",
+    "alpha_dir":        "GEMINI_API_KEY_1",
+    "ml_lead":          "GEMINI_API_KEY_1",
+    "risk_eng":         "GEMINI_API_KEY_1",
     "frontend_eng":     "GEMINI_API_KEY_1",
-    "rl_researcher":     "GEMINI_API_KEY_1",
-    "ceo":  "GEMINI_API_KEY_1",
-    "backend_lead":      "GEMINI_API_KEY_2",
-    "qa_dir":     "GEMINI_API_KEY_2",
-    "devops_dir":     "GEMINI_API_KEY_2",
-    "exec_eng":     "GEMINI_API_KEY_2",
-    "ci_eng":      "GEMINI_API_KEY_2",
-    "junior_eng":      "GEMINI_API_KEY_2",
-    "security_eng":   "GEMINI_API_KEY_2",
-    "finance_eng":       "GEMINI_API_KEY_2",
-    "frontend":  "GEMINI_API_KEY_2",
-    "poly_desk":      "GEMINI_API_KEY_3",
-    "ml_researcher":      "GEMINI_API_KEY_3",
-    "vp_research":     "GEMINI_API_KEY_3",
-    "quant_researcher":      "GEMINI_API_KEY_3",
-    "cro":    "GEMINI_API_KEY_3",
-    "data_eng":      "GEMINI_API_KEY_3",
-    "quant_ml":      "GEMINI_API_KEY_3",
-    "options_researcher":      "GEMINI_API_KEY_3",
+    "rl_researcher":    "GEMINI_API_KEY_1",
+    "ceo":              "GEMINI_API_KEY_1",
+    "equity_lead":      "GEMINI_API_KEY_1",
+    "fixed_income_desk": "GEMINI_API_KEY_1",
+    "macro_researcher": "GEMINI_API_KEY_1",
+    "stat_arb_desk":    "GEMINI_API_KEY_1",
+    "vol_trader":       "GEMINI_API_KEY_1",
+    "momentum_quant":   "GEMINI_API_KEY_1",
+    "alt_data_lead":    "GEMINI_API_KEY_1",
+    "model_validator":  "GEMINI_API_KEY_1",
+    "feature_engineer": "GEMINI_API_KEY_1",
+    "backend_lead":     "GEMINI_API_KEY_2",
+    "qa_dir":           "GEMINI_API_KEY_2",
+    "devops_dir":       "GEMINI_API_KEY_2",
+    "exec_eng":         "GEMINI_API_KEY_2",
+    "ci_eng":           "GEMINI_API_KEY_2",
+    "junior_eng":       "GEMINI_API_KEY_2",
+    "security_eng":     "GEMINI_API_KEY_2",
+    "finance_eng":      "GEMINI_API_KEY_2",
+    "frontend":         "GEMINI_API_KEY_2",
+    "crypto_quant":     "GEMINI_API_KEY_2",
+    "derivatives_desk": "GEMINI_API_KEY_2",
+    "arb_trader":       "GEMINI_API_KEY_2",
+    "portfolio_manager": "GEMINI_API_KEY_2",
+    "market_maker":     "GEMINI_API_KEY_2",
+    "regime_analyst":   "GEMINI_API_KEY_2",
+    "backtest_engineer": "GEMINI_API_KEY_2",
+    "data_engineer_2":  "GEMINI_API_KEY_2",
+    "infra_lead":       "GEMINI_API_KEY_2",
+    "poly_desk":         "GEMINI_API_KEY_3",
+    "ml_researcher":     "GEMINI_API_KEY_3",
+    "vp_research":       "GEMINI_API_KEY_3",
+    "quant_researcher":  "GEMINI_API_KEY_3",
+    "cro":               "GEMINI_API_KEY_3",
+    "data_eng":          "GEMINI_API_KEY_3",
+    "quant_ml":          "GEMINI_API_KEY_3",
+    "options_researcher": "GEMINI_API_KEY_3",
     "compliance_eng":    "GEMINI_API_KEY_3",
+    "nlp_researcher":    "GEMINI_API_KEY_3",
+    "rl_trader":         "GEMINI_API_KEY_3",
+    "graph_ml_researcher": "GEMINI_API_KEY_3",
+    "crypto_defi_desk":  "GEMINI_API_KEY_3",
+    "kalshi_desk":       "GEMINI_API_KEY_3",
+    "research_ops":      "GEMINI_API_KEY_3",
+    "senior_quant":      "GEMINI_API_KEY_3",
+    "latency_engineer":  "GEMINI_API_KEY_3",
 }
 
 # 2 Cerebras accounts — split employees evenly across groups.
 # Group 1 (Groq_1/Gemini_1 users) + Group 2 (Groq_2/Gemini_2 users) → CEREBRAS_API_KEY_1
 # Group 3 (Groq_3/Gemini_3 users) → CEREBRAS_API_KEY_2
 _CEREBRAS_ACCOUNT: dict[str, str] = {
-    "vp_eng":      "CEREBRAS_API_KEY_1",
-    "alpha_dir":     "CEREBRAS_API_KEY_1",
-    "ml_lead":      "CEREBRAS_API_KEY_1",
-    "risk_eng":      "CEREBRAS_API_KEY_1",
+    # Groups 1 and 2 → CEREBRAS_API_KEY_1
+    "vp_eng":           "CEREBRAS_API_KEY_1",
+    "alpha_dir":        "CEREBRAS_API_KEY_1",
+    "ml_lead":          "CEREBRAS_API_KEY_1",
+    "risk_eng":         "CEREBRAS_API_KEY_1",
     "frontend_eng":     "CEREBRAS_API_KEY_1",
-    "rl_researcher":     "CEREBRAS_API_KEY_1",
-    "ceo":  "CEREBRAS_API_KEY_1",
-    "backend_lead":      "CEREBRAS_API_KEY_1",
-    "qa_dir":     "CEREBRAS_API_KEY_1",
-    "devops_dir":     "CEREBRAS_API_KEY_1",
-    "exec_eng":     "CEREBRAS_API_KEY_1",
-    "ci_eng":      "CEREBRAS_API_KEY_1",
-    "junior_eng":      "CEREBRAS_API_KEY_1",
-    "security_eng":   "CEREBRAS_API_KEY_1",
-    "finance_eng":       "CEREBRAS_API_KEY_1",
-    "frontend":  "CEREBRAS_API_KEY_1",
-    "poly_desk":      "CEREBRAS_API_KEY_2",
-    "ml_researcher":      "CEREBRAS_API_KEY_2",
-    "vp_research":     "CEREBRAS_API_KEY_2",
-    "quant_researcher":      "CEREBRAS_API_KEY_2",
-    "cro":    "CEREBRAS_API_KEY_2",
-    "data_eng":      "CEREBRAS_API_KEY_2",
-    "quant_ml":      "CEREBRAS_API_KEY_2",
-    "options_researcher":      "CEREBRAS_API_KEY_2",
+    "rl_researcher":    "CEREBRAS_API_KEY_1",
+    "ceo":              "CEREBRAS_API_KEY_1",
+    "equity_lead":      "CEREBRAS_API_KEY_1",
+    "fixed_income_desk": "CEREBRAS_API_KEY_1",
+    "macro_researcher": "CEREBRAS_API_KEY_1",
+    "stat_arb_desk":    "CEREBRAS_API_KEY_1",
+    "vol_trader":       "CEREBRAS_API_KEY_1",
+    "momentum_quant":   "CEREBRAS_API_KEY_1",
+    "alt_data_lead":    "CEREBRAS_API_KEY_1",
+    "model_validator":  "CEREBRAS_API_KEY_1",
+    "feature_engineer": "CEREBRAS_API_KEY_1",
+    "backend_lead":     "CEREBRAS_API_KEY_1",
+    "qa_dir":           "CEREBRAS_API_KEY_1",
+    "devops_dir":       "CEREBRAS_API_KEY_1",
+    "exec_eng":         "CEREBRAS_API_KEY_1",
+    "ci_eng":           "CEREBRAS_API_KEY_1",
+    "junior_eng":       "CEREBRAS_API_KEY_1",
+    "security_eng":     "CEREBRAS_API_KEY_1",
+    "finance_eng":      "CEREBRAS_API_KEY_1",
+    "frontend":         "CEREBRAS_API_KEY_1",
+    "crypto_quant":     "CEREBRAS_API_KEY_1",
+    "derivatives_desk": "CEREBRAS_API_KEY_1",
+    "arb_trader":       "CEREBRAS_API_KEY_1",
+    "portfolio_manager": "CEREBRAS_API_KEY_1",
+    "market_maker":     "CEREBRAS_API_KEY_1",
+    "regime_analyst":   "CEREBRAS_API_KEY_1",
+    "backtest_engineer": "CEREBRAS_API_KEY_1",
+    "data_engineer_2":  "CEREBRAS_API_KEY_1",
+    "infra_lead":       "CEREBRAS_API_KEY_1",
+    # Group 3 → CEREBRAS_API_KEY_2
+    "poly_desk":         "CEREBRAS_API_KEY_2",
+    "ml_researcher":     "CEREBRAS_API_KEY_2",
+    "vp_research":       "CEREBRAS_API_KEY_2",
+    "quant_researcher":  "CEREBRAS_API_KEY_2",
+    "cro":               "CEREBRAS_API_KEY_2",
+    "data_eng":          "CEREBRAS_API_KEY_2",
+    "quant_ml":          "CEREBRAS_API_KEY_2",
+    "options_researcher": "CEREBRAS_API_KEY_2",
     "compliance_eng":    "CEREBRAS_API_KEY_2",
+    "nlp_researcher":    "CEREBRAS_API_KEY_2",
+    "rl_trader":         "CEREBRAS_API_KEY_2",
+    "graph_ml_researcher": "CEREBRAS_API_KEY_2",
+    "crypto_defi_desk":  "CEREBRAS_API_KEY_2",
+    "kalshi_desk":       "CEREBRAS_API_KEY_2",
+    "research_ops":      "CEREBRAS_API_KEY_2",
+    "senior_quant":      "CEREBRAS_API_KEY_2",
+    "latency_engineer":  "CEREBRAS_API_KEY_2",
 }
 
 # For shared calls, rotate across all available accounts round-robin.
@@ -1414,7 +1654,7 @@ def call_openrouter(system_prompt: str, user_message: str, max_tokens: int = 500
 
 
 def call_litellm(model: str, api_key: str, system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash', 'groq/llama-3.3-70b-versatile', etc."""
+    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash-exp', 'groq/llama-3.3-70b-versatile', etc."""
     if not _LITELLM_AVAILABLE:
         return None
     hostname = model.split("/")[0]
@@ -1646,7 +1886,7 @@ def call_employee_agent(
         if r and len(r.strip()) > 20:
             print(f"  [{emp_key}/cerebras] ✓ {len(r)} chars")
             _LAST_PROVIDER = "Cerebras"
-            cerebras_env = "CEREBRAS_API_KEY_2" if emp_key in ("lior","sara","sofia","hugo","marcus") else "CEREBRAS_API_KEY_1"
+            cerebras_env = _CEREBRAS_ACCOUNT.get(emp_key, "CEREBRAS_API_KEY_1")
             track_api_call(cerebras_env, cap)
             return r.strip()
 
@@ -8980,20 +9220,24 @@ def review_employees_main() -> int:
 
     # Domain keywords that map each employee to relevant filesystem paths / modules
     _EMP_DOMAIN_CONTEXT: dict[str, str] = {
-        "aarav":  "equities strategies, momentum, pairs/Kalman, breakout — backend/app/strategies/",
-        "linh":   "ML modeling, crypto desk, LSTM/TFT/XGBoost experiments — backend/app/ml/, backend/experiments/",
-        "hugo":   "quant research, walk-forward studies, signal prototyping — backend/app/strategies/, experiments/",
-        "jian":   "risk engine, position limits, drawdown caps, 70/30 split — backend/app/risk/",
-        "sofia":  "macro/FX-rates desk, cross-asset carry, HMM regime — backend/app/strategies/",
-        "lior":   "Polymarket / prediction markets, probability calibration — backend/app/brokers/polymarket/",
-        "maya":   "VP Engineering, backend reliability, CI/CD health — backend/, .github/workflows/",
-        "priya":  "product management, roadmap, stakeholder coordination — docs/, CLAUDE.md",
-        "anna":   "backend services, FastAPI, broker adapters — backend/app/",
-        "kenji":  "DevOps, GitHub Actions, infra, container builds — .github/, scripts/",
-        "aditi":  "QA, pytest suite, test coverage, flake triage — backend/tests/",
+        "alpha_dir":        "equities strategies, momentum, pairs/Kalman, breakout — backend/app/strategies/",
+        "ml_lead":          "ML modeling, crypto desk, LSTM/TFT/XGBoost experiments — backend/app/ml/, backend/experiments/",
+        "quant_researcher": "quant research, walk-forward studies, signal prototyping — backend/app/strategies/, experiments/",
+        "risk_eng":         "risk engine, position limits, drawdown caps, 70/30 split — backend/app/risk/",
+        "vp_research":      "macro/FX-rates desk, cross-asset carry, HMM regime — backend/app/strategies/",
+        "poly_desk":        "Polymarket / prediction markets, probability calibration — backend/app/brokers/polymarket/",
+        "vp_eng":           "VP Engineering, backend reliability, CI/CD health — backend/, .github/workflows/",
+        "backend_lead":     "backend services, FastAPI, broker adapters — backend/app/",
+        "devops_dir":       "DevOps, GitHub Actions, infra, container builds — .github/, scripts/",
+        "qa_dir":           "QA, pytest suite, test coverage, flake triage — backend/tests/",
+        "cro":              "firm-wide risk, VaR, drawdown limits, 70/30 capital split — backend/app/risk/",
+        "exec_eng":         "order routing, smart execution, slippage and fill-quality — backend/app/execution/",
+        "ml_researcher":    "model comparisons, LSTM vs TFT vs XGBoost, feature studies — backend/app/ml/",
     }
 
-    employee_keys = ["aarav", "linh", "hugo", "jian", "sofia", "lior", "maya", "priya", "anna", "kenji", "aditi"]
+    employee_keys = ["alpha_dir", "ml_lead", "quant_researcher", "risk_eng", "vp_research",
+                     "poly_desk", "vp_eng", "backend_lead", "devops_dir", "qa_dir",
+                     "cro", "exec_eng", "ml_researcher"]
 
     scores: list[tuple[str, int, str]] = []  # (emp_key, score, verdict)
 
