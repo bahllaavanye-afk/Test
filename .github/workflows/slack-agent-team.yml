@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: read
+      contents: write
       issues: write          # QA agent auto-creates tracking issues for untested strategies
       pull-requests: read
       actions: read
@@ -88,3 +88,14 @@ jobs:
             exit 0
           fi
           python .github/scripts/slack_agent_team.py
+      - name: Persist agent state
+        if: always()
+        run: |
+          git config user.email "agents@quantedge.ai"
+          git config user.name "QuantEdge Agent Team"
+          STATE_FILE="backend/experiments/results/slack_state.json"
+          if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
+            git add "$STATE_FILE"
+            git commit -m "chore: persist agent state [skip ci]"
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+          fi

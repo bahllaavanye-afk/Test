@@ -19,6 +19,8 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +38,7 @@ jobs:
       - name: Post to Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_SHA: ${{ github.sha }}
@@ -60,4 +63,15 @@ jobs:
           else
             # Scheduled briefing: full agent run generates dynamic content from live data
             python .github/scripts/slack_agent_team.py
+          fi
+      - name: Persist agent state
+        if: always()
+        run: |
+          git config user.email "agents@quantedge.ai"
+          git config user.name "QuantEdge Agent Team"
+          STATE_FILE="backend/experiments/results/slack_state.json"
+          if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
+            git add "$STATE_FILE"
+            git commit -m "chore: persist agent state [skip ci]"
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
           fi

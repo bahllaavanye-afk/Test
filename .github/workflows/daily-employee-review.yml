@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +47,18 @@ jobs:
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/slack_agent_team.py --review-employees
+
+      - name: Persist agent state
+        if: always()
+        run: |
+          git config user.email "agents@quantedge.ai"
+          git config user.name "QuantEdge Agent Team"
+          STATE_FILE="backend/experiments/results/slack_state.json"
+          if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
+            git add "$STATE_FILE"
+            git commit -m "chore: persist agent state [skip ci]"
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+          fi
 
       - name: Run experiments status
         env:
