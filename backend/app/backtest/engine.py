@@ -148,13 +148,15 @@ def run_backtest(
 
     # ── Sharpe ────────────────────────────────────────────────────────────────
     excess = returns - rf_daily
-    sharpe = float(excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
+    _excess_std = float(np.std(excess))
+    sharpe = float(excess.mean() / _excess_std * np.sqrt(252)) if _excess_std > 1e-10 else 0.0
 
     # ── Sortino ───────────────────────────────────────────────────────────────
     downside = returns[returns < rf_daily]
+    _down_std = float(np.std(downside)) if len(downside) > 1 else 0.0
     sortino = (
-        float(excess.mean() / downside.std() * np.sqrt(252))
-        if len(downside) > 1 and downside.std() > 0 else 0.0
+        float(excess.mean() / _down_std * np.sqrt(252))
+        if _down_std > 1e-10 else 0.0
     )
 
     # ── Drawdown ──────────────────────────────────────────────────────────────
