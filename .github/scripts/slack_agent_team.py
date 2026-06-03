@@ -1978,6 +1978,27 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
             "Be specific. Reference actual files, metrics, or strategies where relevant."
         )
 
+        # For code change requests, dispatch to the Gemini Task Runner instead of
+        # answering inline — the runner has no token limit and commits changes directly.
+        if _is_code_request(s["question"]):
+            issue_num = dispatch_to_gemini_runner(
+                title=f"[{ch}] {s['question'][:120]}",
+                body=s["question"],
+                context=f"Requested in #{ch} by Slack user at {ts}",
+            )
+            if issue_num:
+                dispatch_msg = (
+                    f":rocket: Got it! I've queued this as a code task (issue #{issue_num}). "
+                    f"The Gemini runner will implement it in the next 20 min and post an update here."
+                )
+                post_to_slack(token, ch, dispatch_msg,
+                              username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
+                state.setdefault("replied_to", []).append(ts)
+                answered += 1
+                print(f"  ✓ code request dispatched to gemini-task #{issue_num}")
+                time.sleep(0.5)
+                continue
+
         ans = call_best_agent(user_msg, system_prompt=system_prompt, max_tokens=600)
         if ans and ans.strip() and len(ans.strip()) > 20:
             reply = ans.strip()
@@ -1991,12 +2012,23 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
             else:
                 print(f"  [summon] post failed: {r.get('error')}")
         else:
-            # All providers exhausted — post a real status, not a template
-            fallback = (
-                f":warning: I'm at my free-tier API limit right now (Groq/Gemini/Cerebras all throttled). "
-                f"Try again in ~15 min or check the next scheduled run. "
-                f"Zero-spend policy is enforced — no paid fallback."
+            # Providers exhausted — dispatch as a gemini-task so it's not lost
+            issue_num = dispatch_to_gemini_runner(
+                title=f"[{ch}] {s['question'][:120]}",
+                body=s["question"],
+                context=f"All free LLM providers were throttled when this was asked in #{ch}.",
             )
+            if issue_num:
+                fallback = (
+                    f":warning: Free-tier API limit reached right now. I've queued your request "
+                    f"(issue #{issue_num}) — the Gemini runner will handle it in the next 20 min."
+                )
+            else:
+                fallback = (
+                    f":warning: I'm at my free-tier API limit right now (Groq/Gemini/Cerebras all throttled). "
+                    f"Try again in ~15 min or check the next scheduled run. "
+                    f"Zero-spend policy is enforced — no paid fallback."
+                )
             post_to_slack(token, ch, fallback,
                           username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
             state.setdefault("replied_to", []).append(ts)
@@ -3464,6 +3496,42 @@ def github_create_issue(title: str, body: str, labels: list[str] | None = None) 
     if labels:
         payload["labels"] = labels
     return github_api("/issues", method="POST", body=payload)
+
+
+def dispatch_to_gemini_runner(title: str, body: str, context: str = "") -> int | None:
+    """Create a 'gemini-task' GitHub Issue so the Gemini Task Runner workflow picks it up.
+
+    The gemini-task-runner.yml workflow fires on every 'labeled' event and every
+    20-minute schedule. The free LLM (Gemini Flash → Groq) will implement the task,
+    commit the changes, and close the issue automatically.
+
+    Returns issue number or None on failure.
+    """
+    full_body = body.strip()
+    if context:
+        full_body += f"\n\n## Context\n{context.strip()}"
+    full_body += "\n\n_Dispatched by slack_agent_team.py — handled by gemini-task-runner workflow._"
+    resp = github_create_issue(title, full_body, labels=["gemini-task"])
+    if resp and isinstance(resp, dict):
+        num = resp.get("number")
+        if num:
+            print(f"[dispatch] Gemini task created: issue #{num} — {title[:60]}")
+            return num
+    print(f"[dispatch] Failed to create gemini-task issue: {resp}")
+    return None
+
+
+_CODE_REQUEST_KEYWORDS = frozenset([
+    "implement", "add", "fix", "create", "write", "update", "change",
+    "refactor", "build", "modify", "patch", "generate", "make", "develop",
+    "extend", "integrate", "connect", "enable", "disable", "configure",
+])
+
+
+def _is_code_request(question: str) -> bool:
+    """Return True if the question is asking for a code change rather than an explanation."""
+    lower = question.lower()
+    return any(kw in lower for kw in _CODE_REQUEST_KEYWORDS)
 
 
 def open_prs() -> list[dict]:
