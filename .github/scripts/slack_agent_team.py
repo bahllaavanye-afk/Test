@@ -1978,6 +1978,27 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
             "Be specific. Reference actual files, metrics, or strategies where relevant."
         )
 
+        # For code change requests, dispatch to the Gemini Task Runner instead of
+        # answering inline — the runner has no token limit and commits changes directly.
+        if _is_code_request(s["question"]):
+            issue_num = dispatch_to_gemini_runner(
+                title=f"[{ch}] {s['question'][:120]}",
+                body=s["question"],
+                context=f"Requested in #{ch} by Slack user at {ts}",
+            )
+            if issue_num:
+                dispatch_msg = (
+                    f":rocket: Got it! I've queued this as a code task (issue #{issue_num}). "
+                    f"The Gemini runner will implement it in the next 20 min and post an update here."
+                )
+                post_to_slack(token, ch, dispatch_msg,
+                              username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
+                state.setdefault("replied_to", []).append(ts)
+                answered += 1
+                print(f"  ✓ code request dispatched to gemini-task #{issue_num}")
+                time.sleep(0.5)
+                continue
+
         ans = call_best_agent(user_msg, system_prompt=system_prompt, max_tokens=600)
         if ans and ans.strip() and len(ans.strip()) > 20:
             reply = ans.strip()
@@ -1991,12 +2012,23 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
             else:
                 print(f"  [summon] post failed: {r.get('error')}")
         else:
-            # All providers exhausted — post a real status, not a template
-            fallback = (
-                f":warning: I'm at my free-tier API limit right now (Groq/Gemini/Cerebras all throttled). "
-                f"Try again in ~15 min or check the next scheduled run. "
-                f"Zero-spend policy is enforced — no paid fallback."
+            # Providers exhausted — dispatch as a gemini-task so it's not lost
+            issue_num = dispatch_to_gemini_runner(
+                title=f"[{ch}] {s['question'][:120]}",
+                body=s["question"],
+                context=f"All free LLM providers were throttled when this was asked in #{ch}.",
             )
+            if issue_num:
+                fallback = (
+                    f":warning: Free-tier API limit reached right now. I've queued your request "
+                    f"(issue #{issue_num}) — the Gemini runner will handle it in the next 20 min."
+                )
+            else:
+                fallback = (
+                    f":warning: I'm at my free-tier API limit right now (Groq/Gemini/Cerebras all throttled). "
+                    f"Try again in ~15 min or check the next scheduled run. "
+                    f"Zero-spend policy is enforced — no paid fallback."
+                )
             post_to_slack(token, ch, fallback,
                           username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
             state.setdefault("replied_to", []).append(ts)
