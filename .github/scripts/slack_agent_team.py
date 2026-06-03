@@ -9134,6 +9134,116 @@ def run_experiments_main() -> int:
     return 0
 
 
+def review_gemini_changes_main() -> int:
+    """Cron-triggered review of recent Gemini/free-LLM commits.
+    Posts a quality assessment to #code-review. Auto-reverts broken commits."""
+    verify_zero_spend()
+    import subprocess
+
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    state = load_state()
+
+    # Find commits from the Gemini runner in the last N hours
+    look_back = os.environ.get("REVIEW_HOURS", "6")
+    result = subprocess.run(
+        ["git", "log", f"--since={look_back} hours ago", "--oneline",
+         "--author=Gemini Task Runner", "--author=QuantEdge Bot",
+         "--author=QuantEdge Agent Team"],
+        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=10,
+    )
+    commits = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+
+    if not commits:
+        print(f"[review] No Gemini/agent commits in the last {look_back}h — nothing to review")
+        return 0
+
+    print(f"[review] Found {len(commits)} commit(s) to review:\n  " + "\n  ".join(commits))
+
+    # Get the diff of those commits
+    oldest_sha = commits[-1].split()[0]
+    diff_result = subprocess.run(
+        ["git", "diff", f"{oldest_sha}^", "HEAD", "--stat", "--", "*.py", "*.ts", "*.tsx", "*.yml"],
+        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=15,
+    )
+    diff_stat = diff_result.stdout.strip()[:800] if diff_result.returncode == 0 else "diff unavailable"
+
+    full_diff = subprocess.run(
+        ["git", "diff", f"{oldest_sha}^", "HEAD", "--", "*.py", "*.ts", "*.tsx"],
+        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=15,
+    )
+    diff_text = (full_diff.stdout.strip()[:3000] if full_diff.returncode == 0 else "")
+
+    # Check for Python syntax errors in changed .py files
+    changed_py = subprocess.run(
+        ["git", "diff", f"{oldest_sha}^", "HEAD", "--name-only", "--", "*.py"],
+        capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=10,
+    )
+    syntax_errors: list[str] = []
+    for py_file in changed_py.stdout.splitlines():
+        full_path = REPO_ROOT / py_file.strip()
+        if full_path.exists():
+            check = subprocess.run(
+                ["python", "-m", "py_compile", str(full_path)],
+                capture_output=True, text=True,
+            )
+            if check.returncode != 0:
+                syntax_errors.append(f"`{py_file}`: {check.stderr.strip()[:120]}")
+
+    # LLM review of the diff
+    review_prompt = (
+        f"You are the VP Engineering at QuantEdge reviewing {len(commits)} recent AI-generated commit(s).\n\n"
+        f"Commits:\n" + "\n".join(f"  {c}" for c in commits[:10]) + "\n\n"
+        f"Files changed:\n{diff_stat}\n\n"
+        f"Diff excerpt:\n```\n{diff_text[:2000]}\n```\n\n"
+        "Review for: (1) correctness, (2) security issues, (3) broken logic, (4) regressions.\n"
+        "Be specific — cite file names and line contexts. Max 200 words. Slack format (*bold* for issues).\n"
+        "End with: VERDICT: ✅ LGTM | ⚠️ MINOR ISSUES | ❌ BROKEN"
+    )
+    ai_review, provider = employee_provider_prompt("vp_eng" if "vp_eng" in (
+        _EMPLOYEE_PERSONAS.keys()) else "maya", review_prompt, state=state)
+
+    # Build Slack post
+    blocks: list[str] = [
+        f":mag: *Gemini Commit Review — last {look_back}h* ({len(commits)} commit(s))",
+        "",
+        f"*Commits reviewed:*",
+    ]
+    blocks += [f"  `{c}`" for c in commits[:8]]
+    blocks += ["", f"*Files:* {diff_stat.splitlines()[0] if diff_stat else 'n/a'}"]
+
+    if syntax_errors:
+        blocks += ["", ":rotating_light: *Syntax errors detected:*"]
+        blocks += [f"  {e}" for e in syntax_errors]
+
+    if ai_review:
+        blocks += ["", "*AI Review:*", ai_review.strip()]
+    else:
+        blocks += ["", f"_(LLM review unavailable — provider: {provider})_"]
+
+    text = "\n".join(blocks)
+
+    if token:
+        post_to_slack(token, "code-review", text, username="Code Review Bot", icon_emoji=":mag:")
+        print(f"[review] Posted to #code-review via {provider}")
+    else:
+        print(f"[review] No SLACK_BOT_TOKEN — review:\n{text}")
+
+    # Auto-revert if syntax errors (safety net)
+    if syntax_errors and os.environ.get("AUTO_REVERT", "false").lower() == "true":
+        print(f"[review] AUTO_REVERT: reverting last commit due to syntax errors")
+        subprocess.run(["git", "revert", "--no-edit", "HEAD"], cwd=str(REPO_ROOT))
+        subprocess.run(["git", "push", "origin", "HEAD:claude/advanced-trading-bot-d5Lmw"],
+                       cwd=str(REPO_ROOT))
+        if token:
+            post_to_slack(token, "incidents",
+                          f":rotating_light: *Auto-reverted* last Gemini commit — syntax errors in: "
+                          + ", ".join(syntax_errors[:3]),
+                          username="Safety Bot", icon_emoji=":rotating_light:")
+
+    save_state(state)
+    return 0
+
+
 def summons_only_main() -> int:
     """Lightweight summon-watcher: scans all monitored channels for @agent / ask: / ??
     messages and answers them via the free LLM cascade. Runs every 5 min."""
@@ -9216,6 +9326,8 @@ if __name__ == "__main__":
         sys.exit(quick_main())
     elif mode == "summons":
         sys.exit(summons_only_main())
+    elif mode == "review":
+        sys.exit(review_gemini_changes_main())
     elif mode == "precompute":
         sys.exit(precompute_main())
     elif mode == "code_request":

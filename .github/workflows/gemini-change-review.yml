@@ -1,11 +1,8 @@
 name: Gemini Change Review — auto-review every AI commit
 
-# Reviews every batch of AI-generated commits.
-# Reviewer: Claude Haiku (paid, ~$0.001/review) when ANTHROPIC_API_KEY is set.
-# Fallback: Gemini/Groq free LLMs if Claude unavailable.
+# Reviews every batch of AI-generated commits using Gemini/Groq (zero paid APIs).
 # Posts quality assessment to #code-review on Slack.
 # Auto-reverts if Python syntax errors are found (safety net).
-# NOTE: ALLOW_PAID_APIS stays False — only review uses the paid path (ALLOW_PAID_REVIEW=true).
 #
 # Triggers:
 #   1. Every push to the branch that doesn't come from state-persist (i.e., code changes)
@@ -21,7 +18,7 @@ on:
       - ".github/scripts/**"
       - ".github/workflows/**"
   schedule:
-    - cron: "0 * * * *"    # every 6 hours, 24/7
+    - cron: "0 */6 * * *"    # every 6 hours, 24/7
   workflow_dispatch:
     inputs:
       review_hours:
@@ -33,11 +30,6 @@ on:
         description: "Auto-revert commit if syntax errors are found"
         type: boolean
         default: false
-      review_provider:
-        description: "Reviewer: auto (Claude→Gemini→Groq), claude, gemini, groq, free"
-        required: false
-        default: "auto"
-        type: string
 
 concurrency:
   group: gemini-change-review
@@ -46,8 +38,6 @@ concurrency:
 jobs:
   review:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 8
     permissions:
       contents: write   # needed for auto-revert
@@ -55,7 +45,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
           fetch-depth: 0   # need full history for git diff
 
       - uses: actions/setup-python@v5
@@ -74,41 +63,32 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
           GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
           GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
-          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 }}
-          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
-          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
-          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY_1 }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
-          ALLOW_PAID_REVIEW: "true"   # Claude Haiku for review only (~$0.001/run)
-          ANTHROPIC_API_KEY: "disabled"
           REVIEW_HOURS: ${{ inputs.review_hours || '6' }}
           AUTO_REVERT: ${{ inputs.auto_revert || 'false' }}
-          REVIEW_PROVIDER: ${{ inputs.review_provider || 'auto' }}
         run: python .github/scripts/slack_agent_team.py review
 
-      - name: Push changes
-        continue-on-error: true
+      - name: Persist state
+        if: always()
         run: |
           git config user.email "agents@quantedge.ai"
           git config user.name "QuantEdge Agent Team"
-          STATE=".github/state/slack_state.json"
-          if [ -f "$STATE" ]; then
+          STATE="experiments/results/slack_state.json"
+          if [ -f "$STATE" ] && ! git diff --quiet "$STATE" 2>/dev/null; then
             git add "$STATE"
             git commit -m "chore: persist review state [skip ci]"
-            for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-            done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
           fi
