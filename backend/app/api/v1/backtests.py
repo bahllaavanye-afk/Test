@@ -85,202 +85,47 @@ class BacktestOut(BaseModel):
         )
 
 
-async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
-                              interval: str, start_date: date, end_date: date,
-                              initial_equity: float) -> None:
-    """Background task: fetch OHLCV, run strategy.backtest_signals(), pass to engine."""
-    from app.database import AsyncSessionLocal
-    from app.backtest.data_loader import fetch_ohlcv
-    from app.backtest.engine import run_backtest
-    from app.strategies import STRATEGY_REGISTRY
-    import pandas as pd
-
-    async with AsyncSessionLocal() as db:
-        # Mark as running
-        run_q = await db.execute(select(BacktestRun).where(BacktestRun.id == run_id))
-        run = run_q.scalar_one_or_none()
-        if run is None:
-            return
-        run.status = "running"
-        run.started_at = datetime.now(timezone.utc)
-        await db.commit()
-
-        try:
-            # Resolve strategy class
-            strategy_cls = STRATEGY_REGISTRY.get(strategy_name)
-            if strategy_cls is None:
-                run.status = "failed"
-                run.error_message = f"Unknown strategy: {strategy_name}"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
-
-            market_type = getattr(strategy_cls, "market_type", "equity")
-
-            # Load OHLCV data via yfinance (free, no API key)
-            df = await fetch_ohlcv(symbol, start_date, end_date, interval, market_type)
-            if df is None or df.empty or len(df) < 20:
-                run.status = "failed"
-                run.error_message = f"Insufficient data for {symbol} ({interval})"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
-
-            # Generate backtest signals via the strategy's backtest_signals()
-            strategy = strategy_cls()
-            bt_signals = strategy.backtest_signals(df)
-
-            # Convert BacktestSignals → numeric signal series (-1/0/+1)
-            signals = pd.Series(0.0, index=df.index)
-            signals[bt_signals.entries] = 1.0
-            signals[bt_signals.exits] = 0.0
-            if bt_signals.short_entries is not None:
-                signals[bt_signals.short_entries] = -1.0
-            if bt_signals.short_exits is not None:
-                signals[bt_signals.short_exits & (signals == -1.0)] = 0.0
-
-            # Run vectorized backtest engine
-            opens = df["open"] if "open" in df.columns else None
-            volume = df["volume"] if "volume" in df.columns else None
-            metrics = run_backtest(
-                signals=signals,
-                prices=df["close"],
-                opens=opens,
-                volume=volume,
-                initial_equity=initial_equity,
-            )
-
-            # Persist result to DB
-            result = BacktestResult(
-                id=str(uuid.uuid4()),
-                run_id=run_id,
-                total_return=round(metrics.total_return, 6),
-                annualized_return=round(metrics.annualized_return, 6),
-                sharpe_ratio=round(metrics.sharpe, 4),
-                sortino_ratio=round(metrics.sortino, 4),
-                calmar_ratio=round(metrics.calmar, 4),
-                max_drawdown=round(metrics.max_drawdown, 4),
-                win_rate=round(metrics.win_rate, 4),
-                profit_factor=round(metrics.profit_factor, 4),
-                total_trades=metrics.num_trades,
-                equity_curve=metrics.equity_curve[:500],  # cap payload size
-            )
-            db.add(result)
-
-            run.status = "done"
-            run.completed_at = datetime.now(timezone.utc)
-            await db.commit()
-
-        except Exception as exc:
-            run.status = "failed"
-            run.error_message = str(exc)[:500]
-            run.completed_at = datetime.now(timezone.utc)
-            try:
-                await db.commit()
-            except Exception:
-                pass
+@router.get("/")
+async def list_backtests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(BacktestRun).where(BacktestRun.user_id == current_user.id)
+        .options(selectinload(BacktestRun.result))
+        .order_by(BacktestRun.created_at.desc()).limit(20)
+    )
+    runs = result.scalars().all()
+    return [BacktestOut.from_run(r) for r in runs]
 
 
-async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
-                                  interval: str, start_date: date, end_date: date,
-                                  train_years: int, test_months: int,
-                                  initial_equity: float) -> None:
-    """Background task: walk-forward validation using strategy.backtest_signals()."""
-    from app.database import AsyncSessionLocal
-    from app.backtest.data_loader import fetch_ohlcv
-    from app.backtest.walk_forward import walk_forward
-    from app.strategies import STRATEGY_REGISTRY
-    import pandas as pd
-    import statistics
-
-    async with AsyncSessionLocal() as db:
-        run_q = await db.execute(select(BacktestRun).where(BacktestRun.id == run_id))
-        run = run_q.scalar_one_or_none()
-        if run is None:
-            return
-        run.status = "running"
-        run.started_at = datetime.now(timezone.utc)
-        await db.commit()
-
-        try:
-            strategy_cls = STRATEGY_REGISTRY.get(strategy_name)
-            if strategy_cls is None:
-                run.status = "failed"
-                run.error_message = f"Unknown strategy: {strategy_name}"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
-
-            market_type = getattr(strategy_cls, "market_type", "equity")
-            df = await fetch_ohlcv(symbol, start_date, end_date, interval, market_type)
-            if df is None or df.empty or len(df) < (train_years * 252 + test_months * 21):
-                run.status = "failed"
-                run.error_message = "Insufficient data for walk-forward validation"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
-
-            strategy = strategy_cls()
-
-            def signals_fn(train_prices, test_prices):
-                """Generate signals for the test window using the strategy."""
-                test_df = df.loc[test_prices.index]
-                bt = strategy.backtest_signals(test_df)
-                sig = pd.Series(0.0, index=test_df.index)
-                sig[bt.entries] = 1.0
-                sig[bt.exits] = 0.0
-                if bt.short_entries is not None:
-                    sig[bt.short_entries] = -1.0
-                return sig
-
-            wf_result = walk_forward(
-                signals_fn=signals_fn,
-                prices=df["close"],
-                train_years=train_years,
-                test_months=test_months,
-                initial_equity=initial_equity,
-            )
-
-            sharpes = [
-                w["sharpe"] for w in wf_result.windows
-                if "sharpe" in w and w["sharpe"] is not None
-            ]
-            drawdowns = [
-                w["max_drawdown"] for w in wf_result.windows
-                if "max_drawdown" in w and w["max_drawdown"] is not None
-            ]
-
-            result = BacktestResult(
-                id=str(uuid.uuid4()),
-                run_id=run_id,
-                total_return=round(
-                    wf_result.combined_equity[-1]["equity"] / initial_equity - 1, 6
-                ) if wf_result.combined_equity else 0.0,
-                annualized_return=None,
-                sharpe_ratio=round(statistics.mean(sharpes), 4) if sharpes else None,
-                sortino_ratio=None,
-                calmar_ratio=None,
-                max_drawdown=round(min(drawdowns), 4) if drawdowns else None,
-                win_rate=None,
-                profit_factor=None,
-                total_trades=sum(w.get("num_trades", 0) for w in wf_result.windows),
-                equity_curve=wf_result.combined_equity[:500],
-                trades_log=wf_result.windows,
-            )
-            db.add(result)
-
-            run.status = "done"
-            run.completed_at = datetime.now(timezone.utc)
-            await db.commit()
-
-        except Exception as exc:
-            run.status = "failed"
-            run.error_message = str(exc)[:500]
-            run.completed_at = datetime.now(timezone.utc)
-            try:
-                await db.commit()
-            except Exception:
-                pass
+@router.post("/")
+async def trigger_backtest(
+    body: BacktestRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    run = BacktestRun(
+        id=str(uuid.uuid4()),
+        user_id=current_user.id,
+        strategy_name=body.strategy_name,
+        symbol=body.symbol,
+        interval=body.interval,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        params={"initial_equity": body.initial_equity},
+        status="queued",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(run)
+    await db.commit()
+    # Use explicit query to avoid lazy-load issue on async session
+    fresh = await db.execute(
+        select(BacktestRun).where(BacktestRun.id == run.id)
+        .options(selectinload(BacktestRun.result))
+    )
+    return BacktestOut.from_run(fresh.scalar_one())
 
 
 @router.get("/scenarios")
