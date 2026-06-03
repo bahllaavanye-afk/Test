@@ -193,6 +193,9 @@ class ContinuousStrategyRunner:
                 df = await self._get_ohlcv(symbol, strategy_cls)
 
                 if df is None or len(df) < 30:
+                    if df is None:
+                        logger.warning("No OHLCV data — price feed may be offline",
+                                       strategy=strategy_name, symbol=symbol)
                     await asyncio.sleep(tick_interval)
                     continue
 

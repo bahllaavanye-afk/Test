@@ -77,7 +77,7 @@ export default function BacktestLab() {
               <div key={r.id} className="flex justify-between items-center text-xs p-2.5 bg-[#0a0a0a] rounded border border-[#1e1e1e]">
                 <span className="font-mono text-[#f5a623]">{r.strategy_name}</span>
                 <span>{r.symbol} / {r.interval}</span>
-                <span className={`px-2 py-0.5 rounded text-xs ${r.status === 'done' ? 'bg-[#00c853]/20 text-[#00c853]' : r.status === 'running' ? 'bg-[#f5a623]/20 text-[#f5a623]' : 'bg-[#1e1e1e] text-[#888888]'}`}>
+                <span className={`px-2 py-0.5 rounded text-xs ${r.status === 'done' || r.status === 'completed' ? 'bg-[#00c853]/20 text-[#00c853]' : r.status === 'running' ? 'bg-[#f5a623]/20 text-[#f5a623]' : r.status === 'failed' ? 'bg-[#ff1744]/20 text-[#ff1744]' : 'bg-[#1e1e1e] text-[#888888]'}`}>
                   {r.status}
                 </span>
                 {r.sharpe != null && <span className="text-[#00c853]">Sharpe: {r.sharpe?.toFixed(3)}</span>}

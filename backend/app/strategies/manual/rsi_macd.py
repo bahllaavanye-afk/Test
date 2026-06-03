@@ -35,11 +35,13 @@ class RSIMACDStrategy(AbstractStrategy):
         if rsi is None or macd_df is None:
             return None
 
-        rsi_val = rsi.iloc[-1]
-        macd_val = macd_df["MACD_12_26_9"].iloc[-1]
-        macd_sig = macd_df["MACDs_12_26_9"].iloc[-1]
-        macd_prev = macd_df["MACD_12_26_9"].iloc[-2]
-        macd_sig_prev = macd_df["MACDs_12_26_9"].iloc[-2]
+        # Use previous bar's values (iloc[-2]) to avoid lookahead bias —
+        # today's close isn't known until EOD, so we trade on yesterday's signal.
+        rsi_val = rsi.iloc[-2]
+        macd_val = macd_df["MACD_12_26_9"].iloc[-2]
+        macd_sig = macd_df["MACDs_12_26_9"].iloc[-2]
+        macd_prev = macd_df["MACD_12_26_9"].iloc[-3]
+        macd_sig_prev = macd_df["MACDs_12_26_9"].iloc[-3]
 
         macd_crossover_up = macd_val > macd_sig and macd_prev <= macd_sig_prev
         macd_crossover_down = macd_val < macd_sig and macd_prev >= macd_sig_prev
