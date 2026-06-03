@@ -18,6 +18,8 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 25
     env:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}

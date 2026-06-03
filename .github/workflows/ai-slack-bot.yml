@@ -28,6 +28,8 @@ concurrency:
 jobs:
   insights:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

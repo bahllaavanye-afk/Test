@@ -46,6 +46,8 @@ concurrency:
 jobs:
   review:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 8
     permissions:
       contents: write   # needed for auto-revert
