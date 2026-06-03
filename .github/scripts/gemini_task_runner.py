@@ -58,10 +58,16 @@ GH_TOKEN = os.environ.get("GH_TOKEN", "")
 GH_REPO = os.environ.get("GH_REPO", "")
 GEMINI_KEYS = [
     os.environ.get(k, "").strip()
-    for k in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]
+    for k in ["GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+              "GEMINI_API_KEY", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]
     if os.environ.get(k, "").strip()
 ]
-GROQ_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+GROQ_KEYS = [
+    os.environ.get(k, "").strip()
+    for k in ["GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3",
+              "GROQ_API_KEY", "GROQ_API_KEY_4", "GROQ_API_KEY_5"]
+    if os.environ.get(k, "").strip()
+]
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "").strip()
 
 # ── LLM callers ───────────────────────────────────────────────────────────────
@@ -93,9 +99,7 @@ def _call_gemini(prompt: str, api_key: str, max_tokens: int = 8000) -> str:
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-def _call_groq(prompt: str, max_tokens: int = 4000) -> str:
-    if not GROQ_KEY:
-        raise RuntimeError("GROQ_API_KEY not set")
+def _call_groq(prompt: str, api_key: str, max_tokens: int = 4000) -> str:
     body = json.dumps({
         "model": "llama-3.3-70b-versatile",
         "max_tokens": max_tokens,
@@ -107,7 +111,7 @@ def _call_groq(prompt: str, max_tokens: int = 4000) -> str:
     req = urllib.request.Request(
         "https://api.groq.com/openai/v1/chat/completions",
         data=body,
-        headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
     try:
@@ -150,15 +154,19 @@ def call_free_llm(prompt: str, max_tokens: int = 8000) -> tuple[str, str]:
             except (_RateLimited, Exception) as e:
                 print(f"  [gemini-retry] {e}")
 
-    try:
-        text = _call_groq(prompt, min(max_tokens, 4000))
-        if text and len(text.strip()) > 50:
-            return text.strip(), "groq-llama3"
-    except _RateLimited as e:
-        print(f"  [groq] {e}")
-    except Exception as e:
-        print(f"  [groq] failed: {e}")
+    for groq_key in GROQ_KEYS:
+        try:
+            text = _call_groq(prompt, groq_key, min(max_tokens, 4000))
+            if text and len(text.strip()) > 50:
+                return text.strip(), "groq-llama3"
+        except _RateLimited as e:
+            print(f"  [groq] {e} — trying next key")
+            time.sleep(2)
+        except Exception as e:
+            print(f"  [groq] failed: {e}")
 
+    if not GEMINI_KEYS and not GROQ_KEYS:
+        raise _RateLimited("No API keys configured — add GEMINI_API_KEY_1/GROQ_API_KEY_1 to secrets")
     raise _RateLimited("All free LLM providers throttled — issues stay open for next run")
 
 
