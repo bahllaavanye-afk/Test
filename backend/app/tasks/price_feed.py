@@ -93,12 +93,45 @@ async def start_price_feed() -> None:
         )
 
     if broker is None:
-        # No broker available — park the task indefinitely in stub mode.
-        # The _supervised wrapper in main.py will restart if this ever raises.
-        logger.info("Price feed: stub mode active — no quotes will be polled")
-        while True:
-            await asyncio.sleep(60)
-        return  # unreachable, satisfies type checkers
+        # No Alpaca keys — fall back to yfinance polling (free, no auth needed).
+        # 60-second cadence is fine for daily-resolution strategies.
+        logger.info("Price feed: no Alpaca broker — using yfinance fallback (60s cadence)")
+        await _yfinance_price_feed(DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS)
+        return
 
     symbols = DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS
     await run_price_feed(broker, symbols)
+
+
+async def _yfinance_price_feed(symbols: list[str]) -> None:
+    """Poll yfinance every 60 s and publish last-close prices to Redis + WebSocket."""
+    cache = price_cache
+    while True:
+        for sym in symbols:
+            try:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, _yf_publish_sync, sym, cache
+                )
+            except Exception as exc:
+                logger.debug("yfinance price feed error", symbol=sym, error=str(exc))
+        await asyncio.sleep(60)
+
+
+def _yf_publish_sync(symbol: str, cache) -> None:
+    try:
+        import yfinance as yf
+        yf_sym = symbol.replace("/USD", "-USD").replace("/USDT", "-USD")
+        info = yf.Ticker(yf_sym).fast_info
+        last = float(getattr(info, "last_price", 0) or getattr(info, "regularMarketPrice", 0) or 0)
+        if last <= 0:
+            return
+        import asyncio
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(asyncio.gather(
+            cache.set_price("yfinance", symbol, {"last": last, "bid": last, "ask": last}),
+            manager.broadcast(f"prices:{symbol}", {"type": "quote", "symbol": symbol, "last": last, "bid": last, "ask": last}),
+            return_exceptions=True,
+        ))
+        loop.close()
+    except Exception:
+        pass

@@ -178,6 +178,11 @@ async def lifespan(app: FastAPI):
     ))
     logger.info("Strategy runner registered", strategies=len(active_strategies))
 
+    # Backtest worker — polls for queued BacktestRun rows every 30 s, executes via yfinance
+    from app.tasks.backtest_worker import backtest_worker_loop
+    bg_tasks.append(asyncio.create_task(_supervised(backtest_worker_loop, "backtest_worker")))
+    logger.info("Backtest worker registered")
+
     # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
     from app.tasks.regime_monitor import RegimeMonitor
     regime_monitor = RegimeMonitor()
@@ -299,8 +304,25 @@ def create_app() -> FastAPI:
         except Exception as e:
             checks["strategies"] = {"ok": False, "error": str(e)[:120]}
 
+        # Broker status
+        alpaca = getattr(app.state, "alpaca_broker", None)
+        checks["alpaca"] = {
+            "ok": alpaca is not None,
+            "note": "Set ALPACA_API_KEY + ALPACA_SECRET_KEY to enable live/paper trading" if alpaca is None else "connected",
+        }
+
+        # ML models on disk
+        from pathlib import Path as _Path
+        _models_dir = _Path(settings.models_dir)
+        _model_files = (list(_models_dir.glob("*.pt")) + list(_models_dir.glob("*.ubj")) + list(_models_dir.glob("*.pkl"))) if _models_dir.exists() else []
+        checks["ml_models"] = {
+            "ok": len(_model_files) > 0,
+            "count": len(_model_files),
+            "note": "Run experiments/run_experiment.py to train models" if not _model_files else "models loaded",
+        }
+
         # Non-critical checks don't make status degraded
-        non_critical = {"redis", "torch"}
+        non_critical = {"redis", "torch", "alpaca", "ml_models"}
         critical_checks = {k: v for k, v in checks.items() if k not in non_critical}
         all_ok = all(v.get("ok", False) for v in critical_checks.values())
         return {

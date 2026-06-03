@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
-    # Database — accepts postgres://, postgresql://, or postgresql+asyncpg://
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/quantedge"
-    alembic_database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/quantedge"
+    # Database — accepts sqlite+aiosqlite:// for local dev, or postgres:// for production.
+    # Defaults to SQLite so the app starts without any credentials.
+    database_url: str = "sqlite+aiosqlite:///./dev.db"
+    alembic_database_url: str = "sqlite:///./dev.db"
 
     @model_validator(mode="before")
     @classmethod
