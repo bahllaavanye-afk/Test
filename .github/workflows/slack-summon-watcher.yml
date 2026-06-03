@@ -1,0 +1,121 @@
+name: Slack Summon Watcher — answer @agent within 5 min
+
+# Scans every Slack channel every 5 minutes for @agent / @quant / ask: / ?? messages
+# and answers them via the free LLM cascade (Groq/Gemini/Cerebras — zero paid APIs).
+# Humans tag the bot; the bot responds in-thread within 5 minutes.
+#
+# Individual agents can also be tagged:
+#   @agent — answered by channel-specific expert persona
+#   @quant / @ai / @quantedge — same as @agent
+#   ask: <question> — same trigger
+#   ?? <question>  — same trigger
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes, 24/7
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Post a test @agent message first (for manual verification)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: slack-summon-watcher
+  cancel-in-progress: true   # new run supersedes any still-running scan
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: write   # needed to persist replied_to state
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install --quiet \
+            google-generativeai groq litellm langfuse cerebras-cloud-sdk \
+            pandas numpy scipy requests || true
+
+      - name: Post test summon (manual verification only)
+        if: inputs.test_mode == 'true'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          # Post a real @agent message to #general so the watcher has something to answer
+          python - <<'EOF'
+          import os, json, urllib.request
+          token = os.environ.get("SLACK_BOT_TOKEN", "")
+          if not token:
+              print("No token — skipping test post")
+              exit(0)
+          # Resolve #general channel ID
+          r = urllib.request.urlopen(urllib.request.Request(
+              "https://slack.com/api/conversations.list?limit=200",
+              headers={"Authorization": f"Bearer {token}"},
+          ))
+          data = json.loads(r.read())
+          chs = {c["name"]: c["id"] for c in data.get("channels", [])}
+          ch_id = chs.get("general") or chs.get("engineering") or list(chs.values())[0]
+          if not ch_id:
+              print("No channel found — skipping test post")
+              exit(0)
+          # Post the test summon as a regular chat message (not the bot identity)
+          body = json.dumps({
+              "channel": ch_id,
+              "text": "@agent What is the current CI health and how many strategies are running?",
+          }).encode()
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=body,
+              headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+          )
+          resp = json.loads(urllib.request.urlopen(req).read())
+          if resp.get("ok"):
+              print(f"✓ Test summon posted: ts={resp.get('ts')}")
+          else:
+              print(f"Post failed: {resp.get('error')}")
+          EOF
+
+      - name: Answer summons
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/slack_agent_team.py summons
+
+      - name: Persist replied-to state
+        if: always()
+        run: |
+          git config user.email "agents@quantedge.ai"
+          git config user.name "QuantEdge Agent Team"
+          STATE="experiments/results/slack_state.json"
+          if [ -f "$STATE" ] && ! git diff --quiet "$STATE" 2>/dev/null; then
+            git add "$STATE"
+            git commit -m "chore: persist summon reply state [skip ci]"
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+          fi
