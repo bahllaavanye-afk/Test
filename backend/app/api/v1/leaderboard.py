@@ -429,3 +429,12 @@ async def get_leaderboard_summary(
         total_paper_pnl=round(total_paper_pnl, 2),
         total_live_pnl=round(total_live_pnl, 2),
     )
+
+
+@router.get("/entries", response_model=list[LeaderboardEntry])
+async def get_leaderboard_entries(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[LeaderboardEntry]:
+    """Alias for GET /leaderboard/ — returns all strategy leaderboard entries."""
+    return await get_leaderboard(db=db, current_user=current_user)
