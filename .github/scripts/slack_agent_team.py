@@ -2318,13 +2318,19 @@ def post_api_guard_map(token: str, state: dict) -> None:
 
 def post_engineer_onboarding(token: str, state: dict) -> None:
     """Post/update the engineer onboarding guide in #help. Only posts once per week."""
-    last_posted = state.get("onboarding_posted_week")
     current_week = datetime.now(timezone.utc).strftime("%Y-W%W")
-    if last_posted == current_week:
+
+    # State-based cooldown (works once state is persisted across runs)
+    if state.get("onboarding_posted_week") == current_week:
         return
 
     ch_id = get_channel_id(token, "help")
     if not ch_id:
+        return
+
+    # Slack history backup — prevents spam even when state is empty/fresh
+    if _slack_channel_has_recent_bot_post(token, "help", "Welcome to QuantEdge", hours=150.0):  # 6 days
+        state["onboarding_posted_week"] = current_week
         return
 
     guide = """*:wave: Welcome to QuantEdge — Free Agent Team Guide*
@@ -7916,6 +7922,35 @@ def _already_posted(state: dict, channel: str, content_key: str, cooldown_second
     return False
 
 
+_BOT_USERNAMES = {"QuantEdge Agent Team", "QuantEdge Slack Agent"}
+
+def _slack_channel_has_recent_bot_post(
+    token: str, channel: str, text_snippet: str, hours: float = 23.0
+) -> bool:
+    """Check Slack channel history for a recent bot post containing text_snippet.
+    Used as a hard fallback when in-memory state is empty (e.g. first run after deploy).
+    Returns True if found (skip posting), False if safe to post.
+    """
+    try:
+        ch_id = get_channel_id(token, channel)
+        if not ch_id:
+            return False
+        oldest = str(time.time() - hours * 3600)
+        resp = slack_call(token, "conversations.history", {
+            "channel": ch_id, "limit": 50, "oldest": oldest
+        })
+        if not resp or not resp.get("ok"):
+            return False
+        for msg in resp.get("messages", []):
+            # Match bot messages by username or subtype
+            is_bot = msg.get("bot_id") or msg.get("username", "") in _BOT_USERNAMES
+            if is_bot and text_snippet.lower() in msg.get("text", "").lower():
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def post_throughput_report(token: str, state: dict) -> None:
     """Post a per-key call/token throughput report to #agent-api-usage."""
     if _already_posted(state, "agent-api-usage", "throughput_report", 3300):
@@ -8268,9 +8303,9 @@ def check_silent_engineers(token: str, state: dict) -> int:
 
 
 def post_daily_agent_reminder(token: str, state: dict) -> None:
-    """Post once/day to remind engineers to use the free bots."""
-    if _already_posted(state, "engineering", "agent_reminder", 86000):  # 24-hr cooldown
-        return
+    """Post once/day to #engineering and #help reminding engineers to use the free bots.
+    NOTE: never posts to #alpha-research — that channel is for research content only.
+    Uses Slack history as primary cooldown so repeated runs never double-post."""
     msg = (
         "*:robot_face: Your free AI team is on 24/7 — use them for everything:*\n"
         "• `@agent <question>` in any channel → instant answer (Groq/Gemini/Cerebras)\n"
@@ -8280,7 +8315,16 @@ def post_daily_agent_reminder(token: str, state: dict) -> None:
         "• Reply in any thread → bot auto-responds\n"
         "_Zero cost. Zero setup. Just ask._"
     )
-    for ch in ["engineering", "help", "alpha-research"]:
+    snippet = "Your free AI team is on 24/7"
+    for ch in ["engineering", "help"]:
+        # Primary: state-based cooldown (works once state is persisted)
+        if _already_posted(state, ch, "agent_reminder", 86000):  # 24-hr
+            continue
+        # Backup: Slack history check — prevents double-post even on first run
+        if _slack_channel_has_recent_bot_post(token, ch, snippet, hours=23.0):
+            # Mark as posted in state so subsequent waves skip it too
+            state.setdefault("post_dedup", {})[f"{ch}:agent_reminder"] = time.time()
+            continue
         slack_call(token, "chat.postMessage", {"channel": ch, "text": msg})
 
 
