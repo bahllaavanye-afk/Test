@@ -671,6 +671,13 @@ def call_best_agent_for_task(
         print(f"  [task/{task_type}/github-models] ✓ {len(r)} chars")
         return r.strip(), "GitHub Models"
 
+    # SambaNova — SECOND (400 req/day free, no Cloudflare, Llama 3.3 70B)
+    r = call_sambanova(safe_sys, safe_prompt, cap)
+    if r and len(r.strip()) > 20:
+        _LAST_PROVIDER = "SambaNova"
+        print(f"  [task/{task_type}/sambanova] ✓ {len(r)} chars")
+        return r.strip(), "SambaNova"
+
     # LiteLLM fast-path: unified routing with built-in retry before manual cascade
     if _LITELLM_AVAILABLE:
         for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
@@ -1178,12 +1185,54 @@ def call_gemini_with_key(
 
 
 def call_github_models(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """GitHub Models — free for GitHub Actions, GPT-4o-mini / Llama 3.3."""
-    api_key = os.environ.get("GH_TOKEN", "").strip()  # already in Actions env
+    """GitHub Models — free for GitHub Actions, tries multiple models for resilience."""
+    api_key = os.environ.get("GH_TOKEN", "").strip()  # always available in Actions env
+    if not api_key:
+        return None
+    # Try models in order of preference — fall through on any failure
+    _GH_MODELS = [
+        "gpt-4o-mini",
+        "Meta-Llama-3.1-8B-Instruct",
+        "Mistral-small",
+    ]
+    for model_name in _GH_MODELS:
+        payload = {
+            "model": model_name,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_message},
+            ],
+        }
+        req = urllib.request.Request(
+            "https://models.inference.ai.azure.com/chat/completions",
+            data=json.dumps(payload).encode(),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                data = json.loads(resp.read())
+                text = data["choices"][0]["message"]["content"]
+                if text and len(text.strip()) > 10:
+                    track_api_call("GH_TOKEN", data.get("usage", {}).get("total_tokens", max_tokens))
+                    return text.strip()
+        except Exception as e:
+            print(f"  [github-models/{model_name}] {e}")
+            continue
+    return None
+
+
+def call_sambanova(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
+    """SambaNova — free 400 req/day, Llama 3.3 70B, fastest inference."""
+    api_key = os.environ.get("SAMBANOVA_API_KEY", "").strip()
     if not api_key:
         return None
     payload = {
-        "model": "gpt-4o-mini",   # free in GitHub Models
+        "model": "Meta-Llama-3.3-70B-Instruct",
         "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -1191,7 +1240,7 @@ def call_github_models(system_prompt: str, user_message: str, max_tokens: int = 
         ],
     }
     req = urllib.request.Request(
-        "https://models.inference.ai.azure.com/chat/completions",
+        "https://api.sambanova.ai/v1/chat/completions",
         data=json.dumps(payload).encode(),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -1202,12 +1251,13 @@ def call_github_models(system_prompt: str, user_message: str, max_tokens: int = 
     try:
         with urllib.request.urlopen(req, timeout=25) as resp:
             data = json.loads(resp.read())
-            gh_result = data["choices"][0]["message"]["content"]
-            track_api_call("GH_TOKEN", data.get("usage", {}).get("total_tokens", max_tokens))
-            return gh_result
+            text = data["choices"][0]["message"]["content"]
+            if text and len(text.strip()) > 10:
+                track_api_call("SAMBANOVA_API_KEY", data.get("usage", {}).get("total_tokens", max_tokens))
+                return text.strip()
     except Exception as e:
-        print(f"  [github-models] {e}")
-        return None
+        print(f"  [sambanova] {e}")
+    return None
 
 
 def call_cerebras(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
@@ -1524,11 +1574,16 @@ def call_best_agent(
     safe_sys = _sanitize(system_prompt)
 
     # GitHub Models — FIRST: always available in GitHub Actions via GITHUB_TOKEN
-    # No Cloudflare issues, GPT-4o-mini quality, zero rate-limit in Actions
+    # No Cloudflare issues, GPT-4o-mini + Llama 3.1, zero rate-limit in Actions
     r = call_github_models(safe_sys, safe_msg, cap)
     if r and len(r.strip()) > 20:
         print(f"  [agent/github-models] ✓ {len(r)} chars")
-        track_api_call("GH_TOKEN", cap)
+        return r.strip()
+
+    # SambaNova — SECOND: 400 req/day free, no Cloudflare, Llama 3.3 70B
+    r = call_sambanova(safe_sys, safe_msg, cap)
+    if r and len(r.strip()) > 20:
+        print(f"  [agent/sambanova-direct] ✓ {len(r)} chars")
         return r.strip()
 
     # Gemini — 1500 req/day across 3 keys = 4500 req/day total
