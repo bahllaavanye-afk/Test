@@ -6,9 +6,13 @@ name: Gemini Task Runner — free-LLM code changes
 
 on:
   issues:
-    types: [labeled]
+    types: [labeled]           # fires immediately when gemini-task label is added
   schedule:
-    - cron: "*/20 * * * *"   # poll every 20 minutes for queued tasks
+    - cron: "*/20 * * * *"    # batch retry every 20 min for rate-limited issues
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths-ignore:
+      - "experiments/results/slack_state.json"  # don't re-run on state commits
   workflow_dispatch:
     inputs:
       issue_number:
