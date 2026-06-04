@@ -26,21 +26,35 @@ jobs:
     name: Gemini Cloud Training
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Skip if GEMINI_API_KEY not configured
-    if: ${{ secrets.GEMINI_API_KEY != '' }}
     defaults:
       run:
         working-directory: backend
 
     steps:
+      - name: Check API key configured
+        id: key_check
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY not configured — skipping"
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
       - uses: actions/checkout@v4
+        if: steps.key_check.outputs.has_key == 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.key_check.outputs.has_key == 'true'
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install deps
+        if: steps.key_check.outputs.has_key == 'true'
         run: |
           pip install uv --quiet
           uv pip install --system \
@@ -50,6 +64,7 @@ jobs:
             'structlog>=24.4.0' 'pyyaml>=6.0'
 
       - name: Train all symbols with Gemini
+        if: steps.key_check.outputs.has_key == 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PYTHONPATH: "."
@@ -63,7 +78,7 @@ jobs:
           fi
 
       - name: Show results summary
-        if: always()
+        if: steps.key_check.outputs.has_key == 'true'
         run: |
           echo "## Gemini Training Results" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -83,6 +98,7 @@ print(f'  status: {d.get(\"status\",\"?\")}')
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit result files
+        if: steps.key_check.outputs.has_key == 'true'
         run: |
           cd ..
           git config user.email "gemini-trainer@quantedge.ai"
