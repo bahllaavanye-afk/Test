@@ -38,13 +38,6 @@ async def _supervised(coro_factory, name: str, restart_delay: int = 30):
             delay = min(delay * 2, 300)
 
 
-async def _validate_alpaca(broker) -> None:
-    from app.brokers.alpaca import validate_alpaca_connection
-    ok = await validate_alpaca_connection(broker)
-    if not ok:
-        logger.warning("Alpaca broker is not connected — strategy runner will use yfinance fallback")
-
-
 async def _slack_startup_catchup() -> None:
     """
     On startup: wait 30 s for the app to settle, then post CTO reviews for
