@@ -6,24 +6,30 @@ from app.ml.models.ensemble_model import EnsembleModel
 try:
     from app.ml.models.lstm import LSTMPredictor
 except ImportError:
-    pass
+    LSTMPredictor = None  # type: ignore[assignment,misc]
 
 try:
     from app.ml.models.transformer import TransformerPredictor
 except ImportError:
-    pass
+    TransformerPredictor = None  # type: ignore[assignment,misc]
 
 try:
     from app.ml.models.mamba_trader import MambaTrader
 except ImportError:
-    pass
+    MambaTrader = None  # type: ignore[assignment,misc]
 
 try:
     from app.ml.models.itransformer import iTransformerPredictor
 except ImportError:
-    pass
+    iTransformerPredictor = None  # type: ignore[assignment,misc]
 
 try:
     from app.ml.models.lorentzian_knn import LorentzianKNN
 except ImportError:
-    pass
+    LorentzianKNN = None  # type: ignore[assignment,misc]
+
+try:
+    from app.ml.models.gemini_signal import GeminiSignalEngine, get_gemini_engine
+except ImportError:
+    GeminiSignalEngine = None  # type: ignore[assignment,misc]
+    get_gemini_engine = None  # type: ignore[assignment]
