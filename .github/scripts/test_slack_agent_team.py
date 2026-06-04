@@ -519,7 +519,8 @@ def test_answer_summons_posts_llm_answer():
     mock_post = MagicMock(return_value={"ok": True, "ts": "9999999.000"})
     with patch.object(sat, "call_best_agent", return_value=real_answer), \
          patch.object(sat, "post_to_slack", mock_post), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         count = sat.answer_agent_summons("xoxb-test", summons, state)
 
     assert count == 1
@@ -537,7 +538,8 @@ def test_answer_summons_skips_already_replied_ts():
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value="Some answer"), \
          patch.object(sat, "post_to_slack", mock_post), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         count = sat.answer_agent_summons("xoxb-test", summons, state)
 
     assert count == 0
@@ -552,7 +554,8 @@ def test_answer_summons_posts_api_limit_fallback_when_llm_fails():
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=None), \
          patch.object(sat, "post_to_slack", mock_post), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
 
     mock_post.assert_called_once()
@@ -573,7 +576,8 @@ def test_answer_summons_records_ts_in_replied_to():
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=good_answer), \
          patch.object(sat, "post_to_slack", mock_post), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
 
     assert "TS_NEW_1" in state["replied_to"]
@@ -602,7 +606,8 @@ def test_answer_summons_appends_to_replied_to():
 
     with patch.object(sat, "call_best_agent", return_value=good_answer), \
          patch.object(sat, "post_to_slack", return_value={"ok": True}), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
 
     assert "replied_to" in state
@@ -676,7 +681,8 @@ def test_identity_used_in_answer_summons():
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=answer), \
          patch.object(sat, "post_to_slack", mock_post), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
 
     mock_post.assert_called_once()
@@ -694,7 +700,8 @@ def test_identity_used_for_engineering_channel():
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=answer), \
          patch.object(sat, "post_to_slack", mock_post), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
 
     mock_post.assert_called_once()
@@ -748,7 +755,8 @@ def test_answer_summons_alpha_research_uses_correct_identity():
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=answer), \
          patch.object(sat, "post_to_slack", mock_post), \
-         patch.object(sat, "_build_summon_context", return_value=""):
+         patch.object(sat, "_build_summon_context", return_value=""), \
+         patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
 
     kwargs = mock_post.call_args[1]

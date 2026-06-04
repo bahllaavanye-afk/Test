@@ -290,6 +290,7 @@ class TestSyntheticOHLCVRegression:
 
     def test_fetch_ohlcv_returns_synthetic_when_yfinance_fails(self):
         """fetch_ohlcv must return synthetic data instead of raising when yfinance fails."""
+        pytest.importorskip("yfinance")  # skip gracefully when not installed in CI
         from app.backtest.data_loader import fetch_ohlcv
 
         with patch("yfinance.download", side_effect=Exception("network error")):
