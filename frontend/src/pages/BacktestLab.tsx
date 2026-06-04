@@ -9,10 +9,6 @@ function getStepIndex(status: string): number {
   return STATUS_STEPS.indexOf(status)
 }
 
-function isTerminal(status: string): boolean {
-  return status === 'done' || status === 'completed' || status === 'failed'
-}
-
 function RunProgressBar({ status }: { status: string }) {
   const stepIdx = getStepIndex(status)
   const isFailed = status === 'failed'
@@ -105,6 +101,13 @@ export default function BacktestLab() {
       if (pollIntervalRef.current !== null) window.clearInterval(pollIntervalRef.current)
     }
   }, [activeRunId, qc, refetchRuns])
+
+  const { data: strategies } = useQuery({
+    queryKey: ['strategies'],
+    queryFn: () => api.get('/strategies/').then(r => r.data),
+    staleTime: 300_000,
+    retry: false,
+  })
 
   const { data: strategies } = useQuery({
     queryKey: ['strategies'],
@@ -246,16 +249,49 @@ export default function BacktestLab() {
             <span className="text-[10px] text-[#555555] font-mono">{runsArr.length} runs</span>
           </div>
           <div className="space-y-2">
-            {runs?.map((r: any) => (
-              <div key={r.id} className="flex justify-between items-center text-xs p-2.5 bg-[#0a0a0a] rounded border border-[#1e1e1e]">
-                <span className="font-mono text-[#f5a623]">{r.strategy_name}</span>
-                <span>{r.symbol} / {r.interval}</span>
-                <span className={`px-2 py-0.5 rounded text-xs ${r.status === 'done' || r.status === 'completed' ? 'bg-[#00c853]/20 text-[#00c853]' : r.status === 'running' ? 'bg-[#f5a623]/20 text-[#f5a623]' : r.status === 'failed' ? 'bg-[#ff1744]/20 text-[#ff1744]' : 'bg-[#1e1e1e] text-[#888888]'}`}>
-                  {r.status}
-                </span>
-                {r.sharpe != null && <span className="text-[#00c853]">Sharpe: {r.sharpe?.toFixed(3)}</span>}
-                {r.max_drawdown != null && <span className="text-[#ff1744]">DD: {(r.max_drawdown * 100).toFixed(1)}%</span>}
-                {r.total_return != null && <span className="text-[#2979ff]">Ret: {(r.total_return * 100).toFixed(1)}%</span>}
+            {runsArr.map((r: any) => {
+              const isRunning = r.status === 'running' || r.status === 'queued' || r.status === 'loading_data' || r.status === 'computing_metrics'
+              const isDone = r.status === 'done' || r.status === 'completed'
+              return (
+                <div key={r.id} className={`text-xs p-3 bg-[#0a0a0a] rounded border transition-all ${isRunning ? 'border-[#f5a623]/30' : isDone ? 'border-[#1e1e1e] hover:border-[#2a2a2a]' : 'border-[#ff1744]/20'}`}>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[#f5a623] font-semibold">{r.strategy_name}</span>
+                      <span className="text-[#555555]">{r.symbol} / {r.interval}</span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      isDone ? 'bg-[#00c853]/15 text-[#00c853]'
+                      : isRunning ? 'bg-[#f5a623]/15 text-[#f5a623]'
+                      : r.status === 'failed' ? 'bg-[#ff1744]/15 text-[#ff1744]'
+                      : 'bg-[#1e1e1e] text-[#888888]'
+                    }`}>
+                      {r.status}
+                    </span>
+                  </div>
+                  {isRunning ? (
+                    <RunProgressBar status={r.status} />
+                  ) : isDone ? (
+                    <div className="flex items-center gap-4 pt-1">
+                      {r.sharpe != null && (
+                        <span className={`font-mono font-bold ${r.sharpe >= 2 ? 'text-[#00c853]' : r.sharpe >= 1 ? 'text-[#f5a623]' : 'text-[#ff1744]'}`}>
+                          Sharpe {r.sharpe.toFixed(3)}
+                        </span>
+                      )}
+                      {r.max_drawdown != null && <span className="text-[#ff1744] font-mono">DD {(r.max_drawdown * 100).toFixed(1)}%</span>}
+                      {r.total_return != null && <span className="text-[#2979ff] font-mono">Ret {(r.total_return * 100).toFixed(1)}%</span>}
+                      {r.win_rate != null && <span className="text-[#888888] font-mono">WR {(r.win_rate * 100).toFixed(0)}%</span>}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+            {runsArr.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5">
+                  <path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+                </svg>
+                <p className="text-sm text-[#888888]">No backtests yet</p>
+                <p className="text-xs text-[#555555]">Configure a strategy and run your first backtest above.</p>
               </div>
             )}
           </div>
