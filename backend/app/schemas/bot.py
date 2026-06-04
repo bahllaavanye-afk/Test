@@ -27,16 +27,6 @@ class ConditionConfig(BaseModel):
     start_time: str | None = None   # "09:30" ET
     end_time: str | None = None     # "16:00" ET
     pnl_pct: float | None = None
-    # EMA cross custom periods
-    fast_period: int | None = None
-    slow_period: int | None = None
-    # price_vs_ma MA type
-    ma_type: str | None = "sma"     # "sma" or "ema"
-    # Stochastic periods
-    k_period: int | None = None
-    d_period: int | None = None
-    # Supertrend multiplier
-    multiplier: float | None = None
 
 
 class ActionConfig(BaseModel):
