@@ -26,6 +26,8 @@ jobs:
     name: Gemini Cloud Training
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Skip if GEMINI_API_KEY not configured
+    if: ${{ secrets.GEMINI_API_KEY != '' }}
     defaults:
       run:
         working-directory: backend
