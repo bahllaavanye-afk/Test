@@ -82,6 +82,20 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
         return None
 
 
+def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
+    """
+    GBM synthetic SPY returns when yfinance is unreachable (network policy,
+    offline dev container). Keeps the regime monitor functional 24/7.
+    Deterministic per-day seed so the regime is stable within a session.
+    """
+    seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
+    rng = np.random.default_rng(seed)
+    # Mild positive drift, ~16% annualised vol — a neutral "sideways/bull" market
+    daily_mu = 0.0003
+    daily_sigma = 0.01
+    return rng.normal(daily_mu, daily_sigma, n).astype(float)
+
+
 async def _fetch_spy_returns() -> np.ndarray | None:
     """Fetch 1 year of SPY daily returns without blocking the event loop."""
     loop = asyncio.get_running_loop()
