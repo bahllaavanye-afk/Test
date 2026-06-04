@@ -31,6 +31,7 @@ const Polymarket = lazy(() => import('./pages/Polymarket'))
 const MLInsights = lazy(() => import('./pages/MLInsights'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Releases = lazy(() => import('./pages/Releases'))
+const BotBuilder = lazy(() => import('./pages/BotBuilder'))
 
 function PageLoader() {
   return (
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="ml-insights" element={<MLInsights />} />
           <Route path="pipeline" element={<Pipeline />} />
           <Route path="releases" element={<Releases />} />
+          <Route path="bots" element={<BotBuilder />} />
         </Route>
       </Routes>
     </Suspense>

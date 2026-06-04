@@ -396,6 +396,30 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    # Bot Runner — load all enabled bots and schedule them
+    async def _start_bot_runner():
+        try:
+            from app.tasks.bot_runner import BotRunner
+            bot_runner = BotRunner(scheduler)
+            await bot_runner.start()
+            # Store on app state so the API can reschedule on create/update
+            try:
+                from app.main import app as _app
+                _app.state.bot_runner = bot_runner
+            except Exception:
+                pass
+            logger.info("BotRunner started")
+        except Exception as exc:
+            logger.error("BotRunner start failed", error=str(exc))
+
+    scheduler.add_job(
+        _start_bot_runner,
+        "date",  # run once at startup
+        id="bot_runner_init",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler

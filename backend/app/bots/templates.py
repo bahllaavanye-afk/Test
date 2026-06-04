@@ -1,0 +1,158 @@
+"""Pre-built bot templates that users can start from."""
+from __future__ import annotations
+
+BOT_TEMPLATES: dict[str, dict] = {
+    "rsi_oversold_bounce": {
+        "name": "RSI Oversold Bounce",
+        "description": "Buy when RSI drops below 30 (oversold), exit when RSI recovers to 60",
+        "symbol": "SPY",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1h"},
+        "conditions": [
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": "<", "value": 30},
+            {"type": "time_window", "start_time": "09:30", "end_time": "16:00"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "open_long", "size_pct": 5, "stop_loss_pct": 2},
+        "exit_rules": [
+            {"type": "take_profit", "value": 3},
+            {"type": "stop_loss", "value": 2},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "indicator_value": 60},
+        ],
+    },
+    "momentum_breakout": {
+        "name": "Momentum Breakout",
+        "description": "Buy when price breaks above 50-day SMA with RSI above 50",
+        "symbol": "QQQ",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "price_vs_ma", "ma_period": 50, "operator": ">"},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 50},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "open_long", "size_pct": 10, "stop_loss_pct": 3, "take_profit_pct": 8},
+        "exit_rules": [
+            {"type": "stop_loss", "value": 3},
+            {"type": "take_profit", "value": 8},
+        ],
+    },
+    "mean_reversion_bb": {
+        "name": "Bollinger Band Mean Reversion",
+        "description": "Buy at lower BB, sell at upper BB",
+        "symbol": "AAPL",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1h"},
+        "conditions": [
+            {"type": "indicator", "indicator": "bb", "operator": "price_below_lower"},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "open_long", "size_pct": 5, "stop_loss_pct": 3},
+        "exit_rules": [
+            {"type": "indicator", "indicator": "bb", "operator": "price_above_upper"},
+            {"type": "stop_loss", "value": 3},
+        ],
+    },
+    "crypto_rsi_dip": {
+        "name": "Crypto RSI Dip Buyer",
+        "description": "Buy BTC/ETH when RSI(4h) dips below 35",
+        "symbol": "BTCUSDT",
+        "market_type": "crypto",
+        "trigger": {"type": "schedule", "interval": "4h"},
+        "conditions": [
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": "<", "value": 35},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "open_long", "size_pct": 3, "stop_loss_pct": 5, "take_profit_pct": 10},
+        "exit_rules": [
+            {"type": "take_profit", "value": 10},
+            {"type": "stop_loss", "value": 5},
+        ],
+    },
+    "volatility_crush": {
+        "name": "Post-Earnings Volatility Crush",
+        "description": "Alert when IV is elevated before earnings — set up iron condor",
+        "symbol": "SPY",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": "<", "value": 70},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "send_alert", "alert_message": "IV elevated — consider iron condor"},
+        "exit_rules": [],
+    },
+    "trend_following_ema": {
+        "name": "EMA Trend Follow",
+        "description": "Long when EMA(20) > EMA(50), short when EMA(20) < EMA(50)",
+        "symbol": "SPY",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "indicator", "indicator": "ema_cross", "operator": "bullish_cross"},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "open_long", "size_pct": 10, "stop_loss_pct": 2},
+        "exit_rules": [
+            {"type": "indicator", "indicator": "ema_cross", "operator": "bearish_cross"},
+            {"type": "stop_loss", "value": 2},
+        ],
+    },
+    "weekly_cash_secured_put": {
+        "name": "Weekly Cash-Secured Put",
+        "description": "Sell weekly put on Friday at 0.20 delta (alert only)",
+        "symbol": "SPY",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 40},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "send_alert", "alert_message": "Sell 0.20-delta put — check options chain"},
+        "exit_rules": [],
+    },
+    "swing_macd_signal": {
+        "name": "MACD Swing Signal",
+        "description": "Long when MACD crosses above signal line with RSI between 40-60",
+        "symbol": "SPY",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "indicator", "indicator": "macd", "operator": "bullish_cross"},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 40},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": "<", "value": 60},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "open_long", "size_pct": 8, "stop_loss_pct": 2, "take_profit_pct": 5},
+        "exit_rules": [
+            {"type": "take_profit", "value": 5},
+            {"type": "stop_loss", "value": 2},
+        ],
+    },
+    "portfolio_protect": {
+        "name": "Portfolio Protection Alert",
+        "description": "Send alert when SPY drops >2% in a day",
+        "symbol": "SPY",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "5m"},
+        "conditions": [
+            {"type": "pnl", "operator": "<", "pnl_pct": -2.0},
+        ],
+        "condition_logic": "ANY",
+        "action": {"type": "send_alert", "alert_message": "SPY down >2% today — review portfolio exposure"},
+        "exit_rules": [],
+    },
+    "btc_dominance_alert": {
+        "name": "BTC Dominance Signal",
+        "description": "Alert when BTC breaks above a resistance level",
+        "symbol": "BTCUSDT",
+        "market_type": "crypto",
+        "trigger": {"type": "price_cross", "price_level": 100000.0, "direction": "above"},
+        "conditions": [],
+        "condition_logic": "ALL",
+        "action": {"type": "send_alert", "alert_message": "BTC broke $100k — consider rotating to altcoins"},
+        "exit_rules": [],
+    },
+}

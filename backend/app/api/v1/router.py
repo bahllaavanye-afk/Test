@@ -4,6 +4,7 @@ from app.api.v1 import auth, accounts, orders, positions, trades, strategies, ba
 from app.api.v1.options import router as options_router
 from app.api.v1.regime import router as regime_router
 from app.api.v1.audit_log import router as audit_log_router
+from app.api.v1.bots import router as bots_router
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -33,3 +34,4 @@ api_router.include_router(integrations.router)
 api_router.include_router(pipeline.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(releases.router)
+api_router.include_router(bots_router)
