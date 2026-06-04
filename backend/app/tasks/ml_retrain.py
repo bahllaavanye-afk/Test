@@ -46,17 +46,47 @@ async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> d
         return {"status": "error", "error": str(e)}
 
 
+def _load_retrain_configs() -> list[tuple[str, str, str]]:
+    """
+    Discover retrain targets dynamically from experiment configs (*.yaml).
+    Falls back to a minimal default set if no configs exist.
+    Returns list of (model_name, symbol, interval).
+    """
+    import yaml
+    configs_dir = Path(__file__).parents[3] / "experiments" / "configs"
+    seen: set[tuple[str, str, str]] = set()
+    results: list[tuple[str, str, str]] = []
+
+    for cfg_path in sorted(configs_dir.glob("*.yaml")):
+        try:
+            with open(cfg_path) as f:
+                cfg = yaml.safe_load(f)
+            exp = cfg.get("experiment", {})
+            model = exp.get("model", "lstm")
+            symbol = exp.get("symbol", "SPY")
+            interval = exp.get("interval", "1d")
+            key = (model, symbol, interval)
+            if key not in seen:
+                seen.add(key)
+                results.append(key)
+        except Exception:
+            continue
+
+    if not results:
+        results = [("lstm", "BTC-USD", "1h"), ("lstm", "ETH-USD", "1h"), ("lstm", "SPY", "1d")]
+
+    return results
+
+
 async def nightly_retrain() -> None:
-    """Retrain all configured models. Called by APScheduler at 02:00 UTC."""
-    RETRAIN_CONFIGS = [
-        ("lstm", "BTC-USD", "1h"),
-        ("lstm", "ETH-USD", "1h"),
-        ("lstm", "SPY", "1d"),
-    ]
-    logger.info("Nightly retrain starting", configs=len(RETRAIN_CONFIGS))
+    """Retrain all models discovered from experiment configs. Called by APScheduler at 02:00 UTC."""
+    retrain_configs = _load_retrain_configs()
+    # Cap at 10 per night to avoid overwhelming free-tier CPU
+    retrain_configs = retrain_configs[:10]
+    logger.info("Nightly retrain starting", configs=len(retrain_configs))
     results = await asyncio.gather(
-        *[retrain_model(m, s, i) for m, s, i in RETRAIN_CONFIGS],
+        *[retrain_model(m, s, i) for m, s, i in retrain_configs],
         return_exceptions=True
     )
     successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
-    logger.info("Nightly retrain complete", total=len(RETRAIN_CONFIGS), succeeded=successes)
+    logger.info("Nightly retrain complete", total=len(retrain_configs), succeeded=successes)

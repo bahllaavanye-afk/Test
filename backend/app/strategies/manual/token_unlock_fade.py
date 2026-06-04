@@ -217,7 +217,8 @@ class TokenUnlockFade(AbstractStrategy):
         if not isinstance(df.index, pd.DatetimeIndex):
             return default
 
-        idx_dates = df.index.normalize()
+        # Normalize index to tz-naive dates for consistent comparisons
+        idx_dates = df.index.tz_localize(None).normalize() if df.index.tz is not None else df.index.normalize()
 
         short_entry = pd.Series(False, index=df.index)
         short_exit = pd.Series(False, index=df.index)
@@ -226,7 +227,7 @@ class TokenUnlockFade(AbstractStrategy):
 
         for _sym, d_str, _frac in self._all_unlocks:
             try:
-                unlock_dt = pd.Timestamp(d_str, tz="UTC")
+                unlock_dt = pd.Timestamp(d_str)  # tz-naive to match idx_dates
             except Exception:
                 continue
 

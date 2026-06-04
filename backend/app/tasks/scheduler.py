@@ -239,6 +239,163 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _auto_queue_backtests():
+        """
+        Daily at 03:00 UTC: queue backtests for every registered strategy using
+        symbols appropriate for that strategy's market_type.
+        Skips polymarket strategies (no OHLCV) and runs already queued today.
+        """
+        from app.database import AsyncSessionLocal
+        from app.models.backtest import BacktestRun
+        from app.strategies import STRATEGY_REGISTRY
+        from datetime import date, timedelta
+
+        # Symbol universe per market type — driven by strategy.market_type, not hardcoded
+        SYMBOLS_BY_MARKET: dict[str, list[str]] = {
+            "equity": ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "GLD", "TLT"],
+            "crypto": ["BTC-USD", "ETH-USD", "SOL-USD"],
+            "polymarket": [],  # no OHLCV available
+        }
+        INTERVAL = "1d"
+        END = date.today()
+        START = END - timedelta(days=730)
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        queued = 0
+        try:
+            async with AsyncSessionLocal() as db:
+                for strategy_name, strategy_cls in STRATEGY_REGISTRY.items():
+                    market = getattr(strategy_cls, "market_type", "equity")
+                    symbols = SYMBOLS_BY_MARKET.get(market, [])
+                    for symbol in symbols:
+                        existing = await db.execute(
+                            select(BacktestRun)
+                            .where(
+                                BacktestRun.strategy_name == strategy_name,
+                                BacktestRun.symbol == symbol,
+                                BacktestRun.created_at >= today_start,
+                            )
+                            .limit(1)
+                        )
+                        if existing.scalar_one_or_none():
+                            continue
+                        run = BacktestRun(
+                            id=str(uuid.uuid4()),
+                            strategy_name=strategy_name,
+                            symbol=symbol,
+                            interval=INTERVAL,
+                            start_date=START,
+                            end_date=END,
+                            status="queued",
+                            created_at=datetime.now(timezone.utc),
+                        )
+                        db.add(run)
+                        queued += 1
+                await db.commit()
+            logger.info("Auto-queued backtests", count=queued)
+        except Exception as exc:
+            logger.error("Auto-queue backtests failed", error=str(exc))
+
+    scheduler.add_job(
+        _auto_queue_backtests,
+        "cron",
+        hour=3,
+        minute=0,
+        id="auto_queue_backtests",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    async def _auto_run_experiments():
+        """
+        Daily at 04:00 UTC: run experiment configs that are missing results or have
+        results older than 7 days. Caps at 3 per run to avoid overwhelming free-tier CPU.
+        Cycles through all configs over time so everything stays fresh.
+        """
+        import sys
+        import json
+        from pathlib import Path
+        from datetime import timedelta
+
+        configs_dir = Path(__file__).parents[3] / "experiments" / "configs"
+        results_dir = Path(__file__).parents[3] / "experiments" / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+        stale_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        due: list[Path] = []
+
+        for cfg in sorted(configs_dir.glob("*.yaml")):
+            result_file = results_dir / f"{cfg.stem}.json"
+            if not result_file.exists():
+                due.append(cfg)
+                continue
+            try:
+                data = json.loads(result_file.read_text())
+                ran_at_str = data.get("trained_at") or data.get("completed_at") or ""
+                if ran_at_str:
+                    from datetime import datetime as _dt
+                    ran_at = _dt.fromisoformat(ran_at_str.replace("Z", "+00:00"))
+                    if ran_at < stale_cutoff:
+                        due.append(cfg)
+                else:
+                    due.append(cfg)
+            except Exception:
+                due.append(cfg)
+
+        if not due:
+            logger.info("Auto-run experiments: all configs are fresh")
+            return
+
+        to_run = due[:3]
+        logger.info("Auto-run experiments: starting", configs=[c.name for c in to_run])
+
+        run_script = Path(__file__).parents[3] / "experiments" / "run_experiment.py"
+        for cfg in to_run:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable, str(run_script), "--config", cfg.name,
+                    cwd=str(cfg.parent.parent),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    await asyncio.wait_for(proc.communicate(), timeout=600)
+                    logger.info("Experiment completed", config=cfg.name, returncode=proc.returncode)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    logger.warning("Experiment timed out", config=cfg.name)
+            except Exception as exc:
+                logger.error("Experiment run failed", config=cfg.name, error=str(exc))
+
+    scheduler.add_job(
+        _auto_run_experiments,
+        "cron",
+        hour=4,
+        minute=0,
+        id="auto_run_experiments",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    async def _slack_check_followups():
+        """Every 4 hours: post follow-up nudges for unanswered Slack questions."""
+        try:
+            from app.api.v1.notifications import _run_followup_check
+            result = await _run_followup_check(hours_threshold=4)
+            if result.get("followed_up", 0):
+                logger.info("Slack follow-ups sent", count=result["followed_up"])
+        except Exception as exc:
+            logger.debug("Slack follow-up check failed", error=str(exc))
+
+    scheduler.add_job(
+        _slack_check_followups,
+        "interval",
+        hours=4,
+        id="slack_check_followups",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler
