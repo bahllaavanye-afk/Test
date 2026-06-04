@@ -292,3 +292,109 @@ Keep replies under 4 sentences. Be direct, technical, and action-oriented."""
 
     except Exception as e:
         return {"error": str(e), "review": None}
+
+
+# ── CTO Agent: Backfill — review ALL existing messages in channels ────────────
+
+class HistoryReviewRequest(BaseModel):
+    channels: list[str] | None = None   # channel IDs; None = auto-discover bot's channels
+    per_channel_limit: int = 50         # how many recent messages to review per channel
+    post_replies: bool = True           # post CTO replies back to Slack
+
+
+@router.post("/slack/review-history")
+async def review_channel_history(
+    payload: HistoryReviewRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    CTO backfill: pull existing messages from each channel via Slack
+    conversations.history and post a threaded CTO review on each unreviewed
+    human message. This is the 'start with all existing messages' pass.
+
+    Requires SLACK_BOT_TOKEN (scopes: channels:history, groups:history,
+    channels:read, chat:write) and ANTHROPIC_API_KEY.
+    """
+    from app.config import settings
+    import httpx
+
+    token = getattr(settings, "slack_bot_token", "") or ""
+    api_key = getattr(settings, "anthropic_api_key", "") or ""
+
+    if not token:
+        return {"error": "SLACK_BOT_TOKEN not configured — cannot read history", "reviewed": 0}
+    if not api_key:
+        return {"error": "ANTHROPIC_API_KEY not configured — cannot review", "reviewed": 0}
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Resolve channel list (auto-discover if not provided)
+    channels = payload.channels
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        if not channels:
+            resp = await client.get(
+                "https://slack.com/api/conversations.list",
+                headers=headers,
+                params={"types": "public_channel,private_channel", "limit": 200},
+            )
+            data = resp.json()
+            channels = [c["id"] for c in data.get("channels", []) if c.get("is_member")]
+
+    if not channels:
+        return {"error": "bot is not a member of any channels", "reviewed": 0}
+
+    # 2. For each channel, pull history and review each human message
+    import anthropic
+    anthropic_client = anthropic.Anthropic(api_key=api_key)
+
+    system_prompt = """You are the AI CTO of QuantEdge, an institutional quant trading platform.
+Review each employee message: give concise technical guidance and assign a concrete follow-up task.
+Keep replies under 3 sentences. Be direct and action-oriented. Never fabricate data."""
+
+    reviewed = 0
+    summary: list[dict] = []
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for ch in channels:
+            resp = await client.get(
+                "https://slack.com/api/conversations.history",
+                headers=headers,
+                params={"channel": ch, "limit": payload.per_channel_limit},
+            )
+            hist = resp.json()
+            messages = hist.get("messages", [])
+
+            for msg in reversed(messages):  # oldest-first
+                # Skip bot messages, edits, and already-reviewed (threaded) replies
+                if msg.get("bot_id") or msg.get("subtype"):
+                    continue
+                text = msg.get("text", "")
+                if not text or len(text.strip()) < 5:
+                    continue
+                if text.startswith("🤖"):  # already a CTO reply
+                    continue
+
+                try:
+                    r = anthropic_client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=250,
+                        system=system_prompt,
+                        messages=[{"role": "user",
+                                   "content": f"Employee message: {text[:500]}"}],
+                    )
+                    review = r.content[0].text if r.content else ""
+                except Exception as e:
+                    review = f"(review failed: {e})"
+
+                if review and payload.post_replies:
+                    await client.post(
+                        "https://slack.com/api/chat.postMessage",
+                        headers=headers,
+                        json={"channel": ch, "thread_ts": msg.get("ts"),
+                              "text": f"🤖 *CTO Review*: {review}"},
+                    )
+
+                reviewed += 1
+                summary.append({"channel": ch, "message": text[:80], "review": review[:120]})
+
+    return {"reviewed": reviewed, "channels": len(channels), "details": summary[:50]}
