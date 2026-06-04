@@ -6,7 +6,7 @@ from app.models.base import Base
 from app.models import (  # noqa: F401
     account, order, position, trade, strategy, backtest,
     experiment, ml_model, market_data, risk, slippage,
-    comparison, user, model_release, inference_log,
+    comparison, user, model_release, inference_log, bot,
 )
 
 config = context.config
@@ -26,6 +26,8 @@ def _to_sync_url(url: str) -> str:
 
 
 _sync_url = _to_sync_url(_raw) if _raw else ""
+
+target_metadata = Base.metadata
 
 # Read DB URL from environment — prefer explicit ALEMBIC_DATABASE_URL, fall back to DATABASE_URL
 _raw_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL", "")
@@ -71,7 +73,8 @@ def _do_run_migrations(connection):
 def run_migrations_online() -> None:
     url = _sync_url or config.get_main_option("sqlalchemy.url")
     # Sync engine (psycopg2) — avoids asyncio IPv6 connection issues on Render
-    connectable = create_engine(url, poolclass=pool.NullPool, connect_args={"connect_timeout": 30})
+    _connect_args = {"connect_timeout": 30} if "postgresql" in url or "postgres" in url else {}
+    connectable = create_engine(url, poolclass=pool.NullPool, connect_args=_connect_args)
     with connectable.connect() as connection:
         _do_run_migrations(connection)
     connectable.dispose()
