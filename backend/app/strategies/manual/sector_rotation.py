@@ -39,12 +39,20 @@ class SectorRotationStrategy(AbstractStrategy):
     BOTTOM_N = 3  # Sell/short bottom N sectors
     MOMENTUM_PERIOD = 63  # ~3 months of trading days
 
+    DEFAULT_PARAMS = {
+        "lookback_days": 63,
+        "top_n_sectors": 3,
+        "rebalance_freq": 21,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.momentum_period = int(effective["lookback_days"])
+        self.top_n = int(effective["top_n_sectors"])
+        self.rebalance_freq = int(effective["rebalance_freq"])
         p = params or {}
-        self.top_n = int(p.get("top_n", self.TOP_N))
         self.bottom_n = int(p.get("bottom_n", self.BOTTOM_N))
-        self.momentum_period = int(p.get("momentum_period", self.MOMENTUM_PERIOD))
 
     def _compute_momentum(self, close: pd.Series, period: int) -> float | None:
         """3-month price return for momentum ranking."""
