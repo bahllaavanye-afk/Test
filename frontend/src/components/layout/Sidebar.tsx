@@ -26,7 +26,7 @@ const NAV = [
 
 export default function Sidebar() {
   return (
-    <aside className="w-16 glass-panel border-r border-white/[0.06] flex flex-col items-center py-4 gap-1 relative z-10">
+    <aside className="w-16 glass-panel border-r border-white/[0.06] flex flex-col items-center py-4 gap-1 relative z-10 overflow-visible">
       <div
         className="font-bold text-lg mb-6 text-transparent bg-clip-text"
         style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
@@ -39,15 +39,15 @@ export default function Sidebar() {
           to={to}
           end={to === '/'}
           className={({ isActive }) =>
-            `w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 ${
+            `sidebar-nav-item w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 ${
               isActive
                 ? 'bg-[#00ff88]/10 text-[#00ff88] shadow-[0_0_12px_rgba(0,255,136,0.20)]'
                 : 'text-[#888888] hover:text-[#e8e8e8] hover:bg-white/[0.06] hover:shadow-[0_0_8px_rgba(0,212,255,0.10)]'
             }`
           }
-          title={label}
         >
           <Icon size={18} />
+          <span className="sidebar-tooltip">{label}</span>
         </NavLink>
       ))}
     </aside>

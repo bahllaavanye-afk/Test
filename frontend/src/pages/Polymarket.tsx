@@ -126,10 +126,45 @@ export default function Polymarket() {
         </select>
       </div>
 
-      {/* Empty state */}
+      {/* Empty state with setup instructions */}
       {isEmpty && (
-        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-6 py-12 text-center">
-          <div>No active Polymarket positions. Configure POLYMARKET_PRIVATE_KEY to connect.</div>
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg px-8 py-12 text-center space-y-4 animate-fade-in">
+          <div className="flex justify-center">
+            <div className="w-14 h-14 rounded-full bg-[#f5a623]/10 border border-[#f5a623]/30 flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 8v4M12 16h.01"/>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-[#e8e8e8]">Polymarket not connected</p>
+            <p className="text-xs text-[#888888] mt-1">Connect a Polygon wallet to browse and trade prediction markets.</p>
+          </div>
+          <div className="max-w-sm mx-auto bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg p-4 text-left space-y-2">
+            <p className="text-xs font-semibold text-[#f5a623] uppercase tracking-wider mb-3">Setup Instructions</p>
+            {[
+              ['1', 'Create a Polygon wallet at wallet.polymarket.com'],
+              ['2', 'Fund with USDC on Polygon network'],
+              ['3', 'Export private key from wallet settings'],
+              ['4', 'Add POLYMARKET_PRIVATE_KEY to your .env file'],
+              ['5', 'Restart the backend to activate trading'],
+            ].map(([step, text]) => (
+              <div key={step} className="flex items-start gap-2.5">
+                <span className="w-4 h-4 rounded-full bg-[#f5a623]/20 border border-[#f5a623]/40 text-[#f5a623] text-[9px] font-black flex items-center justify-center shrink-0 mt-0.5">
+                  {step}
+                </span>
+                <span className="text-xs text-[#888888]">{text}</span>
+              </div>
+            ))}
+          </div>
+          <a
+            href="/settings"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-black transition-colors hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #f5a623, #e09520)' }}
+          >
+            Go to Settings
+          </a>
         </div>
       )}
 

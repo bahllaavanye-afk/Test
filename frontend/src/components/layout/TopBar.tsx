@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useQuery } from '@tanstack/react-query'
 import { logout } from '../../store/slices/authSlice'
 import { callLogout } from '../../api/client'
+import api from '../../api/client'
 import { selectTradingMode, setMode } from '../../store/slices/tradingModeSlice'
 import { LogOut, Activity } from 'lucide-react'
 import { LiveIndicator } from '../ui/LiveIndicator'
@@ -84,6 +86,14 @@ export default function TopBar() {
   const [clock, setClock] = useState('')
   const [isMarketOpen, setIsMarketOpen] = useState(false)
 
+  const { data: strategies } = useQuery({
+    queryKey: ['strategies-count'],
+    queryFn: () => api.get('/strategies/').then(r => r.data),
+    staleTime: 300_000,
+    retry: false,
+  })
+  const strategyCount = Array.isArray(strategies) ? strategies.length : null
+
   useEffect(() => {
     function tick() {
       const now = new Date()
@@ -133,7 +143,17 @@ export default function TopBar() {
           </button>
           {/* Data feed live badge */}
           <LiveIndicator label="DATA FEED" color="#00ff88" />
-          <span style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:'var(--muted)',letterSpacing:'0.08em'}}>
+          {/* Strategy count badge */}
+          {strategyCount !== null && (
+            <span
+              className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[#1e1e1e] bg-[#111111] text-[9px] font-mono text-[#888888] tracking-wider"
+            >
+              <span className="w-1 h-1 rounded-full bg-[#f5a623] inline-block" />
+              {strategyCount} strategies
+            </span>
+          )}
+          {/* Pulsing UTC clock */}
+          <span className="clock-pulse" style={{fontSize:10,fontFamily:'JetBrains Mono,monospace',color:'var(--muted)',letterSpacing:'0.08em'}}>
             UTC {clock}
           </span>
           <span

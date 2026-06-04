@@ -83,6 +83,7 @@ export default function Dashboard() {
   const { data: sentiment } = useQuery({ queryKey: ['sentiment'], queryFn: () => api.get('/analytics/sentiment').then(r => r.data), refetchInterval: 600_000 })
   const { data: agentStatus } = useQuery({ queryKey: ['agents-status'], queryFn: () => api.get('/agents/status').then(r => r.data), refetchInterval: 15_000 })
   const { data: accounts } = useQuery({ queryKey: ['accounts'], queryFn: () => api.get('/accounts/').then(r => r.data), refetchInterval: 30_000 })
+  const { data: recentOrders } = useQuery({ queryKey: ['recent-orders'], queryFn: () => api.get('/orders/?limit=5').then(r => r.data), refetchInterval: 15_000, retry: false })
 
   const activeCount = Array.isArray(strategies) ? strategies.filter((s: any) => s.is_active || s.is_enabled).length : 0
   const totalPnl = perf?.total_pnl ?? 0
@@ -192,28 +193,41 @@ export default function Dashboard() {
           </div>
 
           <div className="kpi-card">
-            <p className="section-header" style={{marginBottom:12}}>
-              Agent Team ({agentList.length > 0 ? agentList.length : '---'})
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="section-header" style={{marginBottom:0}}>
+                Agent Team
+              </p>
+              {agentList.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono text-[#888888]">{agentList.filter((a: any) => a.running).length}/{agentList.length} active</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00c853] pulse-green" />
+                </div>
+              )}
+            </div>
             {agentList.length === 0 ? (
-              <p className="text-xs text-[#555]">No agent status. Start the backend to see agent health.</p>
+              <div className="flex flex-col items-center justify-center py-4 text-center space-y-1">
+                <p className="text-xs text-[#555]">No agent data</p>
+                <p className="text-[10px] text-[#444]">Start the backend to see agent health.</p>
+              </div>
             ) : (
               <div className="space-y-1.5">
                 {agentList.map((agent: any) => {
                   const isRunning = agent.running ?? false
+                  const lastRun = agent.last_run ? new Date(agent.last_run) : null
+                  const minutesAgo = lastRun ? Math.round((Date.now() - lastRun.getTime()) / 60000) : null
                   return (
-                    <div key={agent.name} className="flex items-center gap-2 py-1">
-                      <span className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ background: isRunning ? '#00c853' : '#ff1744', boxShadow: isRunning ? '0 0 5px #00c853' : 'none' }} />
+                    <div key={agent.name} className="flex items-center gap-2 py-1 border-b border-[#1a1a1a] last:border-0">
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ background: isRunning ? '#00c853' : '#555555', boxShadow: isRunning ? '0 0 4px #00c853' : 'none' }} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-medium text-[#e8e8e8] truncate">{agent.name}</span>
-                          <span className="text-[10px] text-[#555] ml-1 flex-shrink-0">{agent.total_runs ?? 0} runs</span>
+                          <span className="text-[10px] text-[#555] ml-1 flex-shrink-0 font-mono">{agent.total_runs ?? 0}r</span>
                         </div>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mt-0.5">
                           <span className="text-[10px] text-[#555] truncate">{agent.role ?? ''}</span>
                           <span className="text-[10px] text-[#444] flex-shrink-0">
-                            {agent.last_run ? new Date(agent.last_run).toLocaleTimeString() : '---'}
+                            {minutesAgo !== null ? (minutesAgo < 60 ? `${minutesAgo}m ago` : `${Math.round(minutesAgo/60)}h ago`) : '---'}
                           </span>
                         </div>
                       </div>
@@ -291,6 +305,52 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Recent Signals Feed ── */}
+      <div className="kpi-card">
+        <div className="flex items-center justify-between mb-3">
+          <p className="section-header" style={{marginBottom:0}}>Recent Signals</p>
+          <span className="text-[10px] text-[#555] font-mono">last 5 orders</span>
+        </div>
+        {!recentOrders ? (
+          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 bg-[#1e1e1e] rounded animate-pulse" />)}</div>
+        ) : !Array.isArray(recentOrders) || recentOrders.length === 0 ? (
+          <p className="text-xs text-[#555555] text-center py-4">No recent orders. Strategies begin executing once accounts are connected.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {(recentOrders as any[]).slice(0, 5).map((order: any, i: number) => {
+              const isBuy = order.side === 'buy'
+              const filled = order.status === 'filled' || order.status === 'completed'
+              return (
+                <div key={order.id ?? i} className="flex items-center gap-3 px-2.5 py-2 bg-[#0a0a0a] rounded border border-[#1e1e1e] hover:border-[#2a2a2a] transition-colors animate-slide-up">
+                  <span
+                    className="text-[10px] font-black px-1.5 py-0.5 rounded shrink-0"
+                    style={{
+                      color: isBuy ? '#00c853' : '#ff1744',
+                      background: isBuy ? 'rgba(0,200,83,0.15)' : 'rgba(255,23,68,0.15)',
+                    }}
+                  >
+                    {isBuy ? 'BUY' : 'SELL'}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-[#f5a623]">{order.symbol ?? '---'}</span>
+                  <span className="text-xs text-[#888888]">{order.qty ?? order.quantity ?? '---'} shares</span>
+                  {order.price != null && <span className="text-xs font-mono text-[#e8e8e8]">${Number(order.price).toFixed(2)}</span>}
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${filled ? 'text-[#00c853] bg-[#00c853]/10' : 'text-[#888888] bg-[#1e1e1e]'}`}>
+                      {order.status ?? 'pending'}
+                    </span>
+                    {order.created_at && (
+                      <span className="text-[10px] text-[#444444] font-mono">
+                        {new Date(order.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Market News ── */}
