@@ -166,7 +166,7 @@ class MultiFactorEquity(AbstractStrategy):
             raise RuntimeError("yfinance is required for MultiFactorEquity")
 
         # Gather factor data concurrently in a thread pool
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _gather_all():
             results = {}
