@@ -29,7 +29,7 @@ jobs:
       - name: Install uv + pytest
         run: |
           pip install uv --quiet
-          uv pip install --system pytest
+          uv pip install --system pytest pytest-timeout
 
       - name: Run Slack agent tests
         run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short -x --timeout=30
