@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     arb_bucket_pct: float = 0.70         # 70% capital to arbitrage bucket
     ml_bucket_pct: float = 0.30          # 30% capital to ML bucket
 
+    # Anthropic — for CTO agent Slack review and alpha mining
+    anthropic_api_key: str = ""        # sk-ant-... from console.anthropic.com
+
     # Slack — bot token (preferred) or webhooks per channel
     slack_bot_token: str = ""          # xoxb-... (chat:write + chat:write.public scopes)
     slack_webhook_default: str = ""
