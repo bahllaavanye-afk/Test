@@ -226,7 +226,7 @@ def scan_security_issues() -> list[SecurityIssue]:
         (r'asyncio\.get_event_loop\(\)', "low", "deprecated_api",
          "get_event_loop() deprecated — use get_running_loop()", True),
         (r'datetime\.utcnow\(\)', "low", "deprecated_api",
-         "datetime.now(timezone.utc) deprecated — use datetime.now(timezone.utc)", True),
+         "datetime.utcnow() deprecated — use datetime.now(timezone.utc)", True),
         (r'except\s+Exception\s*:\s*\n\s*pass', "medium", "silent_exception",
          "Bare 'except Exception: pass' silently swallows errors", False),
     ]
