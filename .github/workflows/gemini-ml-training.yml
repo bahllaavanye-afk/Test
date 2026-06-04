@@ -1,0 +1,96 @@
+name: Gemini Free Cloud ML Training
+
+on:
+  schedule:
+    # Run daily at 01:00 UTC (before nightly retrain at 02:00)
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "Symbol to train (or 'all' for all symbols)"
+        default: "all"
+      interval:
+        description: "Bar interval"
+        default: "1d"
+
+concurrency:
+  group: gemini-training
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  train:
+    name: Gemini Cloud Training
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        run: |
+          pip install uv --quiet
+          uv pip install --system \
+            'google-generativeai>=0.8.0' \
+            'yfinance>=0.2.0' 'pandas>=2.2.0' 'numpy>=1.26.0' \
+            'pydantic-settings>=2.6.0' 'python-dotenv>=1.0.1' \
+            'structlog>=24.4.0' 'pyyaml>=6.0'
+
+      - name: Train all symbols with Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PYTHONPATH: "."
+        run: |
+          SYMBOL="${{ github.event.inputs.symbol || 'all' }}"
+          if [ "$SYMBOL" = "all" ]; then
+            python -m app.ml.training.train_gemini --all 2>&1 | tee /tmp/gemini_train.log
+          else
+            INTERVAL="${{ github.event.inputs.interval || '1d' }}"
+            python -m app.ml.training.train_gemini --symbol "$SYMBOL" --interval "$INTERVAL" 2>&1 | tee /tmp/gemini_train.log
+          fi
+
+      - name: Show results summary
+        if: always()
+        run: |
+          echo "## Gemini Training Results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -d "../experiments/results" ]; then
+            ls -lt ../experiments/results/*.json 2>/dev/null | head -10 | awk '{print $NF}' | while read f; do
+              echo "=== $(basename $f) ===" >> "$GITHUB_STEP_SUMMARY"
+              python -c "
+import json, sys
+d = json.load(open('$f'))
+print(f'  symbol: {d.get(\"symbol\",\"?\")}')
+print(f'  accuracy: {d.get(\"test_accuracy\",\"?\"):.3f}' if isinstance(d.get('test_accuracy'), float) else f'  accuracy: {d.get(\"test_accuracy\",\"?\")}')
+print(f'  sharpe: {d.get(\"test_sharpe\",\"?\"):.3f}' if isinstance(d.get('test_sharpe'), float) else f'  sharpe: {d.get(\"test_sharpe\",\"?\")}')
+print(f'  status: {d.get(\"status\",\"?\")}')
+" 2>/dev/null || cat "$f" | head -5
+            done
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit result files
+        run: |
+          cd ..
+          git config user.email "gemini-trainer@quantedge.ai"
+          git config user.name "Gemini ML Trainer"
+          git add experiments/results/*.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "feat(ml): Gemini cloud training results — $(date -u '+%Y-%m-%d')"
+            git push origin HEAD:main || echo "Push skipped (not on main)"
+          else
+            echo "No new results to commit"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
