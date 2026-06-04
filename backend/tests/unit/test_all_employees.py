@@ -226,6 +226,7 @@ class TestSelfImprover:
         assert params == {}
 
     def test_evaluate_returns_float(self):
+        pytest.importorskip("yfinance")  # skip gracefully when not installed in CI
         from app.tasks.self_improver import SelfImprover
         si = SelfImprover()
         # Mock yfinance to return synthetic data
@@ -298,15 +299,15 @@ class TestCodeQualityLoop:
         assert cql.interval_seconds == 9999
 
     def test_count_loc_returns_dict(self):
-        from app.tasks.code_quality_loop import _count_loc
-        result = _count_loc(Path("/home/user/Test/backend/app"))
+        from app.tasks.code_quality_loop import _count_loc, BACKEND_ROOT
+        result = _count_loc(BACKEND_ROOT / "app")
         assert isinstance(result, dict)
         assert result["files"] > 0
         assert result["code_lines"] > 0
 
     def test_count_strategies(self):
-        from app.tasks.code_quality_loop import _count_strategies
-        result = _count_strategies(Path("/home/user/Test/backend"))
+        from app.tasks.code_quality_loop import _count_strategies, BACKEND_ROOT
+        result = _count_strategies(BACKEND_ROOT)
         assert isinstance(result, dict)
         assert result["manual_strategies"] > 0
 

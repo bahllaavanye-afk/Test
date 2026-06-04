@@ -415,11 +415,16 @@ class TestBacktestSignalsConversionRegression:
 class TestAPIEndpointRegression:
     """Smoke-test that key API endpoints exist (not 404/500)."""
 
-    BASE = "http://localhost:8000"
+    @pytest.fixture(autouse=True)
+    def _setup_client(self):
+        from starlette.testclient import TestClient
+        from app.main import app
+        self._client = TestClient(app, raise_server_exceptions=False)
+        yield
+        self._client.close()
 
     def _get(self, path: str):
-        import httpx
-        return httpx.get(f"{self.BASE}{path}", timeout=5.0)
+        return self._client.get(path)
 
     def test_health_endpoint_200(self):
         resp = self._get("/health")
