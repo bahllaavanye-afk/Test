@@ -393,16 +393,8 @@ async def _post_threaded_reply(channel_id: str, thread_ts: str, text: str, token
 
 # ── Follow-up check endpoint ─────────────────────────────────────────────────
 
-@router.post("/slack/check-followups")
-async def check_and_send_followups(
-    hours_threshold: int = Query(4, ge=1, le=48),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Scan Redis for open questions that have not been answered for `hours_threshold`
-    hours and post a follow-up nudge in the original thread.
-    Called by the scheduler every 4 hours.
-    """
+async def _run_followup_check(hours_threshold: int = 4) -> dict:
+    """Core follow-up logic — callable from both the scheduler and the API endpoint."""
     from app.config import settings
     import json
     from datetime import datetime, timedelta, timezone
@@ -447,6 +439,7 @@ async def check_and_send_followups(
                     continue  # too recent
 
                 # Generate follow-up nudge
+
                 r = ac.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=150,
@@ -472,6 +465,19 @@ async def check_and_send_followups(
         pass
 
     return {"followed_up": followed_up}
+
+
+@router.post("/slack/check-followups")
+async def check_and_send_followups(
+    hours_threshold: int = Query(4, ge=1, le=48),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Scan Redis for open questions that have not been answered for `hours_threshold`
+    hours and post a follow-up nudge in the original thread.
+    Also called by the scheduler every 4 hours.
+    """
+    return await _run_followup_check(hours_threshold)
 
 
 # ── CTO Agent: Manual Review Trigger ─────────────────────────────────────────
