@@ -6497,6 +6497,7 @@ def standup_channel() -> list[Post]:
     positions = alpaca_positions()
     acct = alpaca_account()
     strats = list_strategies()
+    state = load_state()
 
     standups: list[Post] = []
 
@@ -6578,30 +6579,50 @@ def standup_channel() -> list[Post]:
         f"*{weekday} standup — Anna Hoffmann (Backend Lead)*\n↳ {random.choice(anna_tasks)}",
         "Backend Lead", ":gear:"))
 
-    # Aditi — Director of QA
-    if test_res.get("not_installed") or test_res.get("timed_out"):
-        aditi_msg = f"test runner issue — deps missing. {_m('Director of DevOps')}: help needed on CI env"
-    elif test_res.get("failed", 0) > 0:
-        aditi_msg = f"⚠️ {test_res['failed']} tests red — isolating root cause. {_m('Backend Lead')}: heads up"
-    else:
-        aditi_msg = f"✅ {test_res.get('passed', 0)} tests green. reviewing untested strategies — flagging to {_m('Alpha Research Director')}"
+    # Aditi — Director of QA (LLM-driven standup)
+    passed_count = test_res.get("passed", 0)
+    failed_count = test_res.get("failed", 0)
+    aditi_ctx = (
+        f"pytest: {passed_count} passed, {failed_count} failed. "
+        f"Open PRs: {pr_count}. "
+        f"Recent commits: {c_count} in last 24h."
+    )
+    aditi_ai, _ = employee_provider_prompt(
+        "qa_dir",
+        (f"You are Aditi Sharma, Director of QA at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {aditi_ctx} "
+         "Be specific about test status and one action item. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    aditi_msg = aditi_ai if aditi_ai else (
+        f"✅ {passed_count} tests green. reviewing untested strategies."
+        if failed_count == 0
+        else f"⚠️ {failed_count} tests red — isolating root cause."
+    )
     standups.append(Post("standup",
         f"*{weekday} standup — Aditi Sharma (QA Director)*\n↳ {aditi_msg}",
         "QA Dir", ":mag:"))
 
-    # Kenji — DevOps
+    # Kenji — DevOps (LLM-driven standup)
     runs = latest_workflow_runs()
     if runs:
         last = runs[0]
-        c = last.get("conclusion") or last.get("status", "running")
-        kenji_tasks = [
-            f"CI last run: `{last.get('name', '?')}` → {c}. deploy pipeline nominal.",
-            f"Render health: green. UptimeRobot pinging every 5min. Vercel edge functions stable.",
-        ]
+        ci_status = last.get("conclusion") or last.get("status", "running")
+        kenji_ctx = f"Last CI run: '{last.get('name', '?')}' → {ci_status} on {last.get('head_branch', 'main')}."
     else:
-        kenji_tasks = ["no recent CI runs — monitoring. Render + Vercel deploys on standby."]
+        kenji_ctx = "No recent CI runs detected."
+    kenji_ai, _ = employee_provider_prompt(
+        "devops_dir",
+        (f"You are Kenji Watanabe, DevOps Director at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {kenji_ctx} Stack: Render (FastAPI), Vercel (React), Supabase, Upstash Redis. "
+         "State CI/deploy health and one action item. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    kenji_msg = kenji_ai if kenji_ai else (
+        f"CI: {ci_status}. Render + Vercel deploys nominal." if runs else "No recent CI runs — monitoring."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {random.choice(kenji_tasks)}",
+        f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {kenji_msg}",
         "DevOps Dir", ":satellite_antenna:"))
 
     # Diego — Execution Engineer
@@ -6614,14 +6635,22 @@ def standup_channel() -> list[Post]:
         f"*{weekday} standup — Diego Ramirez (Execution Eng)*\n↳ {random.choice(exec_tasks)}",
         "Exec Eng", ":zap:"))
 
-    # Lior — Polymarket
-    poly_tasks = [
-        f"scanning 30 live Polymarket markets. watching YES+NO sums for < 97¢ arb. {_m('Alpha Research Director')}: binary arb strategy on paper",
-        "2 Kalshi + 1 Polymarket arb windows identified this morning. placing orders.",
-        "no arb windows right now — market makers tightened. monitoring every 10min.",
-    ]
+    # Lior — Polymarket (LLM-driven standup)
+    poly_strats = list_strategies().get("manual", [])
+    poly_count = sum(1 for s in poly_strats if "poly" in s.lower() or "polymarket" in s.lower())
+    lior_ctx = f"{poly_count} Polymarket strategies registered. Monitoring YES+NO sum arbitrage via Gamma API."
+    lior_ai, _ = employee_provider_prompt(
+        "poly_desk",
+        (f"You are Lior Avraham, Polymarket Researcher at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {lior_ctx} "
+         "State your current focus on prediction market arb or monitoring. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    lior_msg = lior_ai if lior_ai else (
+        f"scanning live Polymarket markets for YES+NO arb. {poly_count} strategies on paper."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {random.choice(poly_tasks)}",
+        f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {lior_msg}",
         "Poly Desk", ":vertical_traffic_light:"))
 
     # Sara — ML Research Lead
@@ -6634,34 +6663,69 @@ def standup_channel() -> list[Post]:
         f"*{weekday} standup — Sara Kim (ML Research Lead)*\n↳ {random.choice(sara_tasks)}",
         "ML Researcher", ":microscope:"))
 
-    # Sofia — VP Research
-    sofia_tasks = [
-        f"reviewing TFT paper (Lim et al 2021) implementation. checking variable selection against our features.",
-        f"curating new alpha ideas from 3 arxiv papers. {_m('Quant Researcher')}: sending you the most promising one",
-        f"walk-forward validation methodology audit — ensuring all teams use purged k-fold, not simple split.",
-    ]
+    # Sofia — VP Research (LLM-driven standup)
+    all_strats = strats.get("manual", [])
+    untested_count = max(0, len(all_strats) - len(results))
+    sofia_ctx = (
+        f"{len(all_strats)} manual strategies in repo; "
+        f"{len(results)} have backtest results; "
+        f"{untested_count} still need walk-forward validation."
+    )
+    sofia_ai, _ = employee_provider_prompt(
+        "vp_research",
+        (f"You are Sofia Karlsson, VP Research at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {sofia_ctx} "
+         "State your research focus today (validation methodology, paper review, or alpha ideation). "
+         "Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    sofia_msg = sofia_ai if sofia_ai else (
+        f"prioritising walk-forward validation — {untested_count} strategies still need OOS results."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {random.choice(sofia_tasks)}",
+        f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {sofia_msg}",
         "VP Research", ":books:"))
 
-    # Hugo — Quant Researcher
-    hugo_tasks = [
-        f"IC analysis on 5 alpha factors. `oi_momentum` IC=0.04 holding steady. {_m('Feature Engineering Lead')}: ready to add to pipeline",
-        f"running cointegration test on 20 equity pairs. finding 3 with p-value < 0.05 for stat arb desk",
-        f"Monte Carlo robustness check on momentum strategy. 1000 bootstrap samples. Sharpe CI: [0.8, 1.6]",
-    ]
+    # Hugo — Quant Researcher (LLM-driven standup)
+    best_result = max(results, key=lambda r: float(r.get("sharpe", 0) or 0), default={}) if results else {}
+    hugo_ctx = (
+        f"Best backtest Sharpe: {best_result.get('sharpe', 'N/A')} on {best_result.get('strategy', 'unknown')}. "
+        f"{len(results)} backtest runs in experiments/results/."
+    )
+    hugo_ai, _ = employee_provider_prompt(
+        "quant_researcher",
+        (f"You are Hugo Bernardes, Quant Researcher at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {hugo_ctx} "
+         "State your current analysis task (IC analysis, cointegration, Monte Carlo, or factor research). "
+         "Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    hugo_msg = hugo_ai if hugo_ai else (
+        f"running IC analysis on alpha factors. {len(results)} strategies in the backtest ledger."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {random.choice(hugo_tasks)}",
+        f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {hugo_msg}",
         "Quant Researcher", ":mag_right:"))
 
-    # Marcus — CRO
-    marcus_tasks = [
-        f"weekly risk review: all desks within allocated buckets. no circuit breaker events. {_m('Risk Engineer')}: good work",
-        f"signing off on `cross_sectional_momentum` paper candidacy — Kelly-sized, 5% NAV cap. go ahead {_m('Alpha Research Director')}",
-        f"reminder: live trading requires CRO sign-off + 14-day paper record. no exceptions.",
-    ]
+    # Marcus — CRO (LLM-driven standup)
+    has_cb = (REPO_ROOT / "backend" / "app" / "risk" / "circuit_breaker.py").exists()
+    marcus_ctx = (
+        f"Circuit breaker: {'present' if has_cb else 'missing'}. "
+        f"70/30 capital split policy enforced. "
+        f"Open positions: {len(positions) if positions else 0}."
+    )
+    marcus_ai, _ = employee_provider_prompt(
+        "cro",
+        (f"You are Marcus Olufemi, Chief Risk Officer at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {marcus_ctx} "
+         "State firm-level risk status and one key compliance point. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    marcus_msg = marcus_ai if marcus_ai else (
+        "risk posture nominal. 70/30 allocation enforced. live trading requires CRO sign-off + 14-day paper record."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {random.choice(marcus_tasks)}",
+        f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {marcus_msg}",
         "CRO", ":shield:"))
 
     return standups
@@ -7697,6 +7761,23 @@ def _short_stat_arb() -> list[Post]:
 
 def _short_general() -> list[Post]:
     commits = git_recent_commits(since_hours=24, limit=3)
+    strats = list_strategies()
+    n_manual = len(strats.get("manual", []))
+    state = load_state()
+    context = (
+        f"{len(commits)} commits in last 24h. "
+        f"{n_manual} strategies in repo. "
+        f"All desks paper-trading on Alpaca."
+    )
+    ai, _ = employee_provider_prompt(
+        "ceo",
+        (f"You are Laavanye Bahl, CEO/Founder of QuantEdge. Write a 1-sentence motivational or strategic update for #general. "
+         f"Context: {context} "
+         "Max 25 words. Sound like a startup founder, not an AI. No greeting, no sign-off."),
+        state=state,
+    )
+    if ai:
+        return [Post("general", ai, "Laavanye Bahl — CEO/Founder", ":sparkles:")]
     msgs = [
         f"good {datetime.now(timezone.utc).strftime('%A')} — {len(commits)} commits since yesterday. keep shipping.",
         f"reminder: paper-first. no live trading without CRO sign-off. {_m('Risk Engineer')}: status?",

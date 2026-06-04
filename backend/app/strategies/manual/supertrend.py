@@ -12,10 +12,16 @@ class SupertrendStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 900.0
 
+    DEFAULT_PARAMS = {
+        "atr_period": 10,    # ATR lookback period for volatility measurement
+        "multiplier": 3.0,   # ATR multiplier for band distance (higher = fewer signals)
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.atr_period = params.get("atr_period", 10) if params else 10
-        self.multiplier = params.get("multiplier", 3.0) if params else 3.0
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.atr_period = effective["atr_period"]
+        self.multiplier = effective["multiplier"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         if len(data) < self.atr_period + 10:

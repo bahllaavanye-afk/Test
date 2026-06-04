@@ -15,13 +15,22 @@ class MeanReversionStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 300.0
 
+    DEFAULT_PARAMS = {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "rsi_period": 14,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.bb_period = params.get("bb_period", 20) if params else 20
-        self.bb_std = params.get("bb_std", 2.0) if params else 2.0
-        self.rsi_period = params.get("rsi_period", 14) if params else 14
-        self.rsi_oversold = params.get("rsi_oversold", 30) if params else 30
-        self.rsi_overbought = params.get("rsi_overbought", 70) if params else 70
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.bb_period = effective["bb_period"]
+        self.bb_std = effective["bb_std"]
+        self.rsi_period = effective["rsi_period"]
+        self.rsi_oversold = effective["rsi_oversold"]
+        self.rsi_overbought = effective["rsi_overbought"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         if "close" not in data.columns or len(data) < self.bb_period + 5:

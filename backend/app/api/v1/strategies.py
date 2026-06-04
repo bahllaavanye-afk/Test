@@ -31,6 +31,19 @@ class StrategyToggle(BaseModel):
     is_enabled: bool
 
 
+@router.get("/params-schema")
+async def get_params_schema(current_user: User = Depends(get_current_user)):
+    """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
+    schema = {}
+    for name, cls in STRATEGY_REGISTRY.items():
+        if hasattr(cls, "DEFAULT_PARAMS"):
+            schema[name] = {
+                "params": cls.DEFAULT_PARAMS,
+                "display_name": getattr(cls, "display_name", name),
+            }
+    return schema
+
+
 @router.get("/available")
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""

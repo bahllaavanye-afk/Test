@@ -20,11 +20,20 @@ class MomentumStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 3600.0  # hourly check
 
+    DEFAULT_PARAMS = {
+        "formation_period": 252,   # ~12 months trading days
+        "skip_period": 21,         # skip last 1 month (avoid short-term reversal)
+        "holding_period": 21,      # hold for ~1 month
+        "momentum_threshold": 0.08,  # minimum momentum score to generate signal
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.formation_period = params.get("formation_period", 252) if params else 252   # ~12 months
-        self.skip_period = params.get("skip_period", 21) if params else 21               # skip last 1 month
-        self.holding_period = params.get("holding_period", 21) if params else 21
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.formation_period = effective["formation_period"]
+        self.skip_period = effective["skip_period"]
+        self.holding_period = effective["holding_period"]
+        self.momentum_threshold = effective["momentum_threshold"]
         self.min_bars = self.formation_period + self.skip_period + 10
 
     def _compute_momentum_score(self, close: pd.Series) -> float:
@@ -50,7 +59,7 @@ class MomentumStrategy(AbstractStrategy):
         risk_adj = mom_score / (vol * np.sqrt(252) + 1e-9)
         confidence = min(0.90, max(0.50, 0.50 + risk_adj * 0.15))
 
-        if mom_score > 0.08:   # > 8% momentum → buy signal
+        if mom_score > self.momentum_threshold:   # > threshold momentum → buy signal
             return Signal(
                 symbol=symbol,
                 side="buy",
@@ -60,7 +69,7 @@ class MomentumStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata={"momentum_score": round(mom_score, 4), "risk_adj": round(risk_adj, 4)},
             )
-        elif mom_score < -0.08:  # strong negative momentum → sell short
+        elif mom_score < -self.momentum_threshold:  # strong negative momentum → sell short
             return Signal(
                 symbol=symbol,
                 side="sell",
@@ -76,9 +85,9 @@ class MomentumStrategy(AbstractStrategy):
         close = df["close"]
         # 12-1 momentum (shifted to prevent lookahead)
         mom = (close.shift(self.skip_period) / close.shift(self.formation_period + self.skip_period) - 1).shift(1)
-        entries = mom > 0.08
+        entries = mom > self.momentum_threshold
         exits = mom < 0.0
-        short_entries = mom < -0.08
+        short_entries = mom < -self.momentum_threshold
         short_exits = mom > 0.0
         return BacktestSignals(
             entries=entries.fillna(False),

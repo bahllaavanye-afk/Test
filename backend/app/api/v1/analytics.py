@@ -1134,3 +1134,90 @@ async def get_tearsheet(
         "drawdown_curve": drawdown_curve,
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+
+@router.get("/competition-report")
+async def get_competition_report(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Compare QuantEdge performance vs major benchmarks and institutional funds.
+    Returns live metrics + static reference benchmarks for investor pitch.
+    """
+    # Static reference benchmarks (long-run historical averages)
+    BENCHMARKS = {
+        "spy":       {"name": "S&P 500 (SPY)",          "sharpe": 0.47, "annual_return": 10.4, "max_dd": -57.0},
+        "qqq":       {"name": "NASDAQ 100 (QQQ)",        "sharpe": 0.52, "annual_return": 14.2, "max_dd": -83.0},
+        "brk_b":     {"name": "Warren Buffett (BRK-B)",  "sharpe": 0.79, "annual_return": 19.9, "max_dd": -48.0},
+        "all_weather":{"name": "Ray Dalio All Weather",  "sharpe": 0.67, "annual_return": 8.2,  "max_dd": -20.0},
+        "two_sigma": {"name": "Two Sigma (est.)",        "sharpe": 1.20, "annual_return": 20.0, "max_dd": -10.0},
+        "renaissance":{"name": "Renaissance Medallion",  "sharpe": 2.10, "annual_return": 66.0, "max_dd": -5.0},
+    }
+    QUANTEDGE_TARGET = {"sharpe": 2.0, "annual_return": 25.0, "max_dd": -15.0}
+
+    # Fetch live QuantEdge metrics from tearsheet (last 365 days)
+    live_sharpe = None
+    live_annual_return = None
+    live_max_dd = None
+    try:
+        account_ids = await _user_account_ids(db, current_user.id)
+        if account_ids:
+            since = datetime.now(timezone.utc) - timedelta(days=365)
+            result = await db.execute(
+                select(Trade.realized_pnl, Trade.exit_time)
+                .where(Trade.account_id.in_(account_ids), Trade.exit_time >= since)
+                .order_by(Trade.exit_time)
+            )
+            rows = result.all()
+            if len(rows) >= 20:
+                import numpy as np
+                pnls = [float(r.realized_pnl or 0) for r in rows]
+                arr = pd.Series(pnls)
+                mean_r = arr.mean()
+                std_r = arr.std()
+                if std_r > 0:
+                    live_sharpe = round(float(mean_r / std_r * math.sqrt(252)), 3)
+                live_annual_return = round(float(arr.sum() / max(1, len(arr)) * 252 / 100), 1)
+                running = arr.cumsum()
+                peak = running.cummax()
+                dd = (running - peak) / (peak.abs() + 1e-9) * 100
+                live_max_dd = round(float(dd.min()), 1)
+    except Exception:
+        pass
+
+    qs = live_sharpe or 0.0
+    qr = live_annual_return or 0.0
+    qd = live_max_dd or 0.0
+
+    comparison = {}
+    for key, bm in BENCHMARKS.items():
+        comparison[key] = {
+            **bm,
+            "beating_sharpe": (qs > bm["sharpe"]) if qs else None,
+            "beating_return": (qr > bm["annual_return"]) if qr else None,
+            "sharpe_delta": round(qs - bm["sharpe"], 3) if qs else None,
+            "return_delta": round(qr - bm["annual_return"], 1) if qr else None,
+        }
+
+    benchmarks_beaten = sum(1 for v in comparison.values() if v.get("beating_sharpe") is True)
+
+    return {
+        "quantedge": {
+            "sharpe": qs,
+            "annual_return_pct": qr,
+            "max_drawdown_pct": qd,
+            "data_available": live_sharpe is not None,
+        },
+        "target": QUANTEDGE_TARGET,
+        "benchmarks": comparison,
+        "benchmarks_beaten": benchmarks_beaten,
+        "total_benchmarks": len(BENCHMARKS),
+        "rank_summary": (
+            f"Beating {benchmarks_beaten}/{len(BENCHMARKS)} benchmarks on Sharpe ratio"
+            if live_sharpe else
+            "Insufficient trade history — need ≥20 closed trades for comparison"
+        ),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }
