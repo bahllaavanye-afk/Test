@@ -109,7 +109,7 @@ async def _yfinance_price_feed(symbols: list[str]) -> None:
     while True:
         for sym in symbols:
             try:
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None, _yf_publish_sync, sym, cache
                 )
             except Exception as exc:

@@ -92,7 +92,7 @@ function CryptoPositions() {
     queryKey: ['positions-crypto'],
     queryFn: () => api.get('/positions/').then(r => r.data),
     refetchInterval: 5_000,
-    select: (d: any[]) => d.filter(p =>
+    select: (d: unknown) => (Array.isArray(d) ? d : []).filter((p: any) =>
       ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC']
         .some(c => p.symbol?.includes(c))
     ),

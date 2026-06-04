@@ -121,7 +121,7 @@ async def fetch_ohlcv(
     market_type: str = "equity",
 ) -> pd.DataFrame:
     """Async wrapper — runs the sync yfinance call in a thread pool."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
         None, fetch_ohlcv_sync, symbol, start, end, interval, market_type
     )

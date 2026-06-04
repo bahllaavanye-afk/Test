@@ -43,7 +43,7 @@ export default function RiskManager() {
             {rules?.map((r: any) => (
               <div key={r.id} className="flex justify-between text-xs p-2 bg-[#0a0a0a] rounded">
                 <span className="font-mono">{r.rule_type}</span>
-                <span className="text-[#f5a623]">{(r.threshold * 100).toFixed(0)}%</span>
+                <span className="text-[#f5a623]">{(typeof r.threshold === 'number' ? r.threshold * 100 : 0).toFixed(0)}%</span>
                 <span className={`${r.action === 'halt_all' ? 'text-[#ff1744]' : r.action === 'halt_bucket' ? 'text-[#f5a623]' : 'text-[#888888]'}`}>{r.action}</span>
               </div>
             ))}

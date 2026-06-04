@@ -20,11 +20,13 @@ from app.risk.correlation_monitor import correlation_monitor
 
 
 async def _supervised(coro_factory, name: str, restart_delay: int = 30):
-    """Restart a background coroutine if it crashes, with exponential backoff."""
+    """Restart a background coroutine if it crashes, with exponential backoff.
+    Delay resets to restart_delay after each successful (non-crashing) run."""
     delay = restart_delay
     while True:
         try:
             await coro_factory()
+            delay = restart_delay  # task exited cleanly — reset backoff
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -187,8 +189,10 @@ async def lifespan(app: FastAPI):
     # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
     from app.tasks.regime_monitor import RegimeMonitor
     regime_monitor = RegimeMonitor()
-    regime_monitor.start()
     app.state.regime_monitor = regime_monitor
+    bg_tasks.append(asyncio.create_task(
+        _supervised(regime_monitor._loop, "regime_monitor")
+    ))
 
     yield
 

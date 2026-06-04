@@ -65,8 +65,8 @@ def _fit_regime(returns: np.ndarray) -> int:
     return 1  # sideways
 
 
-async def _fetch_spy_returns() -> np.ndarray | None:
-    """Fetch 1 year of SPY daily returns via yfinance."""
+def _fetch_spy_returns_sync() -> np.ndarray | None:
+    """Sync yfinance fetch — must be called via run_in_executor."""
     try:
         import yfinance as yf  # type: ignore
         end = datetime.now(timezone.utc).date()
@@ -76,11 +76,16 @@ async def _fetch_spy_returns() -> np.ndarray | None:
         if df is None or len(df) < 60:
             return None
         closes = df["Close"].dropna()
-        returns = closes.pct_change().dropna().values.astype(float)
-        return returns
+        return closes.pct_change().dropna().values.astype(float)
     except Exception as exc:
         logger.warning("Regime monitor: SPY fetch failed", error=str(exc))
         return None
+
+
+async def _fetch_spy_returns() -> np.ndarray | None:
+    """Fetch 1 year of SPY daily returns without blocking the event loop."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _fetch_spy_returns_sync)
 
 
 async def run_once(redis_client) -> int | None:
