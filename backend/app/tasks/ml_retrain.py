@@ -49,34 +49,19 @@ async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> d
 def _load_retrain_configs() -> list[tuple[str, str, str]]:
     """
     Discover retrain targets dynamically from experiment configs (*.yaml).
-    Falls back to a minimal default set if no configs exist or yaml is unavailable.
+    Falls back to a minimal default set if no configs exist.
     Returns list of (model_name, symbol, interval).
     """
+    import yaml
     configs_dir = Path(__file__).parents[3] / "experiments" / "configs"
     seen: set[tuple[str, str, str]] = set()
     results: list[tuple[str, str, str]] = []
 
-    try:
-        import yaml as _yaml
-        _load_yaml = _yaml.safe_load
-    except ImportError:
-        _load_yaml = None
-
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
             with open(cfg_path) as f:
-                if _load_yaml:
-                    cfg = _load_yaml(f)
-                else:
-                    # Minimal fallback: regex-extract model/symbol/interval from YAML text
-                    import re
-                    text = f.read()
-                    cfg = {"experiment": {
-                        k: v for k, v in re.findall(
-                            r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)", text, re.MULTILINE
-                        )
-                    }}
-            exp = (cfg or {}).get("experiment", {})
+                cfg = yaml.safe_load(f)
+            exp = cfg.get("experiment", {})
             model = exp.get("model", "lstm")
             symbol = exp.get("symbol", "SPY")
             interval = exp.get("interval", "1d")
