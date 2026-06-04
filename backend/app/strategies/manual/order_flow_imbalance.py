@@ -36,6 +36,7 @@ import pandas as pd
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+from app.utils.logging import logger
 
 _DATA_BASE = "https://data.alpaca.markets"
 
@@ -135,8 +136,7 @@ class OrderFlowImbalanceStrategy(AbstractStrategy):
         Signal sell if OFI < -0.60 and momentum < 0.
         """
         if symbol not in DEFAULT_SYMBOLS:
-            # Still process but note it's outside default universe
-            pass
+            logger.debug("order_flow_imbalance: symbol outside default universe", symbol=symbol)
 
         df = await self._fetch_minute_bars(symbol)
         if df.empty or len(df) < self.OFI_LOOKBACK + 5:

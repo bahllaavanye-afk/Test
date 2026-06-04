@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.models.position import Position
 from app.models.user import User
 from app.models.account import Account
-from pydantic import BaseModel, ConfigDict, ConfigDict
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from app.utils.logging import logger
 

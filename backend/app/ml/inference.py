@@ -63,6 +63,27 @@ class InferenceService:
         if scaler_path.exists():
             self.scalers["default"] = FeatureScaler.load(str(scaler_path))
 
+        # Load Gemini signal engine (always available when API key is set)
+        from app.ml.models.gemini_signal import get_gemini_engine
+        gemini = get_gemini_engine()
+        if gemini.is_available:
+            self.models["gemini"] = gemini
+            self.weights["gemini"] = 0.20
+            # Reduce other weights proportionally
+            total = sum(v for k, v in self.weights.items() if k != "gemini")
+            scale = 0.80 / total if total > 0 else 1.0
+            for k in list(self.weights.keys()):
+                if k != "gemini":
+                    self.weights[k] = round(self.weights[k] * scale, 3)
+            logger.info("Gemini signal engine loaded", weight=0.20)
+
+    def has_any_model(self) -> bool:
+        """Returns True if at least one model (lstm, xgboost, lorentzian, gemini) is loaded."""
+        return any(
+            self.models.get(k) is not None
+            for k in ("lstm", "xgboost", "lorentzian", "gemini")
+        )
+
     async def predict(self, data: pd.DataFrame, symbol: str) -> dict | None:
         """
         Generate ensemble prediction for the latest bar in data.
@@ -104,6 +125,17 @@ class InferenceService:
                 x = torch.tensor(lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32)
                 prob = float(self.models["lorentzian"].forward(x).item())
                 predictions["lorentzian"] = prob
+
+            # Gemini signal (async)
+            if "gemini" in self.models:
+                try:
+                    gemini_prob = await self.models["gemini"].predict_proba(
+                        data, symbol, interval="1d"
+                    )
+                    if gemini_prob is not None:
+                        predictions["gemini"] = gemini_prob
+                except Exception:
+                    pass
 
             if not predictions:
                 return None

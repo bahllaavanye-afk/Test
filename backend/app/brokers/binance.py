@@ -26,6 +26,7 @@ class BinanceBroker(AbstractBroker):
             "secret": secret,
             "options": {"defaultType": "spot"},
             "enableRateLimit": True,
+            "timeout": 30000,
         })
         if testnet:
             self.exchange.set_sandbox_mode(True)
@@ -79,7 +80,11 @@ class BinanceBroker(AbstractBroker):
         return {"equity": usdt, "cash": usdt, "buying_power": usdt, "portfolio_value": usdt}
 
     async def get_quote(self, symbol: str) -> QuoteResult:
-        ticker = await self.exchange.fetch_ticker(symbol)
+        try:
+            ticker = await asyncio.wait_for(self.exchange.fetch_ticker(symbol), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("Binance fetch_ticker timed out", symbol=symbol)
+            raise BrokerError(f"Binance quote timed out for {symbol}")
         return QuoteResult(symbol=symbol, bid=float(ticker["bid"]), ask=float(ticker["ask"]),
                            last=float(ticker["last"]), volume=float(ticker.get("baseVolume", 0)))
 

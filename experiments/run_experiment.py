@@ -55,6 +55,20 @@ async def run_from_config(config_path: Path) -> dict:
             batch_size=train_cfg.get("batch_size", 256),
             lr=train_cfg.get("lr", 0.001),
         )
+    elif model_type in ("gemini", "gemini_signal", "gemini_code_execution"):
+        from app.ml.training.train_gemini import train_with_gemini
+        result = await train_with_gemini(
+            hist,
+            symbol=symbol,
+            interval=interval,
+            experiment_name=exp.get("name"),
+        )
+    elif model_type == "xgboost":
+        try:
+            from app.ml.training.train_xgboost import train as train_xgb
+            result = await train_xgb(hist, experiment_name=exp.get("name", "xgb_experiment"))
+        except Exception as e:
+            result = {"status": "error", "reason": str(e)}
     else:
         print(f"Model type '{model_type}' not yet implemented in CLI runner")
         result = {"status": "skipped"}
