@@ -272,8 +272,8 @@ def auto_fix_deprecated_apis(issues: list[SecurityIssue]) -> int:
                 continue
             content = file_path.read_text(errors="replace")
             original = content
-            content = content.replace("asyncio.get_running_loop()", "asyncio.get_running_loop()")
-            content = content.replace("datetime.now(timezone.utc)", "datetime.now(timezone.utc)")
+            content = content.replace("asyncio.get_event_loop()", "asyncio.get_running_loop()")
+            content = content.replace("datetime.utcnow()", "datetime.now(timezone.utc)")
             if content != original:
                 file_path.write_text(content)
                 fixes_applied += 1
