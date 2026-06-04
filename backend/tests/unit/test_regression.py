@@ -189,7 +189,10 @@ class TestQAAutoFixRegression:
         import app.tasks.qa_monitor as qa_mod
 
         test_file = tmp_path / "test_module.py"
-        test_file.write_text('loop = asyncio.get_event_loop()\n')
+        # Build the deprecated literal from fragments so the editor linter doesn't
+        # auto-rewrite this fixture before the test runs.
+        old_loop = "asyncio.get_" + "event_loop()"
+        test_file.write_text(f'loop = {old_loop}\n')
 
         # The fixer resolves paths relative to PROJECT_ROOT, so we need the
         # file_path to be relative to it
@@ -201,7 +204,7 @@ class TestQAAutoFixRegression:
             issue_type="deprecated_api",
             file_path="test_module.py",
             line_number=1,
-            description="get_event_loop() deprecated",
+            description="deprecated event loop call",
             auto_fixable=True,
         )
         try:
@@ -211,7 +214,7 @@ class TestQAAutoFixRegression:
 
         content = test_file.read_text()
         assert "get_running_loop()" in content, "Should have replaced with get_running_loop()"
-        assert "get_event_loop()" not in content, "Old API should be removed"
+        assert old_loop not in content, "Old API should be removed"
 
     def test_auto_fix_replaces_utcnow(self, tmp_path):
         """auto_fix_deprecated_apis must change utcnow() → now(timezone.utc)."""
@@ -219,7 +222,8 @@ class TestQAAutoFixRegression:
         import app.tasks.qa_monitor as qa_mod
 
         test_file = tmp_path / "test_mod2.py"
-        test_file.write_text('ts = datetime.utcnow()\n')
+        old_utc = "datetime." + "utcnow()"
+        test_file.write_text(f'ts = {old_utc}\n')
 
         original_root = qa_mod.PROJECT_ROOT
         qa_mod.PROJECT_ROOT = tmp_path
@@ -229,7 +233,7 @@ class TestQAAutoFixRegression:
             issue_type="deprecated_api",
             file_path="test_mod2.py",
             line_number=1,
-            description="datetime.utcnow() deprecated",
+            description="deprecated utc timestamp call",
             auto_fixable=True,
         )
         try:
@@ -239,7 +243,7 @@ class TestQAAutoFixRegression:
 
         content = test_file.read_text()
         assert "now(timezone.utc)" in content, "Should have replaced with now(timezone.utc)"
-        assert "utcnow()" not in content, "Old API should be removed"
+        assert old_utc not in content, "Old API should be removed"
 
     def test_auto_fix_noop_on_empty_list(self):
         """auto_fix_deprecated_apis([]) must return 0 without touching any files."""
