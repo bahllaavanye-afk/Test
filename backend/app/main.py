@@ -35,6 +35,60 @@ async def _supervised(coro_factory, name: str, restart_delay: int = 30):
             delay = min(delay * 2, 300)
 
 
+async def _slack_startup_catchup() -> None:
+    """
+    On startup: wait 30 s for the app to settle, then post CTO reviews for
+    the last 3 unreviewed messages per joined Slack channel.
+    Keeps the CTO agent live even without an explicit /slack/review-history call.
+    """
+    await asyncio.sleep(30)
+    from app.config import settings
+    from app.api.v1.notifications import _cto_review_message
+    import httpx
+
+    token = getattr(settings, "slack_bot_token", "") or ""
+    if not token:
+        return
+
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Get channels the bot is in
+            resp = await client.get(
+                "https://slack.com/api/conversations.list",
+                headers=headers,
+                params={"types": "public_channel,private_channel", "limit": 100},
+            )
+            data = resp.json()
+            channels = [c["id"] for c in data.get("channels", []) if c.get("is_member")]
+
+            for ch_id in channels[:10]:  # cap at 10 channels
+                resp = await client.get(
+                    "https://slack.com/api/conversations.history",
+                    headers=headers,
+                    params={"channel": ch_id, "limit": 3},
+                )
+                hist = resp.json()
+                for msg in hist.get("messages", []):
+                    if msg.get("bot_id") or msg.get("subtype"):
+                        continue
+                    text = msg.get("text", "")
+                    if not text or text.startswith("🤖") or len(text) < 5:
+                        continue
+                    ts = msg.get("ts", "")
+                    await _cto_review_message(
+                        channel_id=ch_id,
+                        user_id=msg.get("user", ""),
+                        text=text,
+                        thread_ts=ts,
+                        is_reply=False,
+                    )
+                    await asyncio.sleep(1)  # avoid rate limiting
+
+    except Exception as e:
+        logger.debug("Slack startup catch-up failed", error=str(e))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("QuantEdge starting up", mode=settings.trading_mode)
@@ -85,6 +139,11 @@ async def lifespan(app: FastAPI):
 
     bg_tasks = []
     app.state.bg_tasks = bg_tasks
+
+    # Startup Slack catch-up: review recent messages in all joined channels
+    # Runs once, 30s after startup, so it doesn't block the hot path
+    if getattr(settings, "slack_bot_token", ""):
+        asyncio.create_task(_slack_startup_catchup())
 
     bg_tasks.append(asyncio.create_task(_supervised(lambda: algo_agent.run(), "algo_agent")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: self_improver.run(), "self_improver")))

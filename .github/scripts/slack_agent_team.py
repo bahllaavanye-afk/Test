@@ -8060,6 +8060,20 @@ def seed_daily_tasks() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _tag_employees_for_content(text: str) -> str:
+    """Return a cc-line of relevant employee names based on message content, or empty string."""
+    _MAP = [
+        (("model", "lstm", "xgb", "train", "feature", "overfit", "drift", "ml ", "inference"), "ModelingEngineer"),
+        (("strategy", "backtest", "sharpe", "momentum", "signal", "alpha", "regime", "reversion"), "AlgoAgent"),
+        (("risk", "drawdown", "kelly", "position", "correlation", "vol "), "RiskMonitor"),
+        (("test", "bug", "error", "fail", "ci ", "pytest", "qa", "coverage"), "QAMonitor"),
+        (("deploy", "render", "redis", "database", "docker", "infra", "migration"), "DataEngineer"),
+    ]
+    text_lower = text.lower()
+    tags = [emp for kws, emp in _MAP if any(kw in text_lower for kw in kws)][:2]
+    return f"\n_cc: {' · '.join(tags)}_" if tags else ""
+
+
 def main() -> int:
     verify_zero_spend()
     token = os.environ.get("SLACK_BOT_TOKEN", "").strip()

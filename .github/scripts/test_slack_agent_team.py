@@ -498,9 +498,10 @@ def test_employee_provider_returns_none_when_no_result():
 # ===========================================================================
 
 def _make_summon(channel="alpha-research", thread_ts="1234567.000", question="What is Sharpe?"):
+    # No channel_id: forces code to call get_channel_id() which tests mock to None,
+    # keeping ch_id=None and routing through post_to_slack (the mocked path).
     return {
         "channel_name": channel,
-        "channel_id": "C_TEST",
         "thread_ts": thread_ts,
         "user": "U_HUMAN",
         "question": question,
