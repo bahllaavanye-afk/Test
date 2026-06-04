@@ -34,7 +34,7 @@ api.interceptors.response.use(
       const refreshToken = getStoredRefreshToken()
       if (refreshToken && !_refreshing) {
         _refreshing = axios
-          .post(`${BASE_URL}/api/v1/auth/refresh`, { refresh_token: refreshToken })
+          .post(`${BASE_URL}/api/v1/auth/refresh`, { refresh_token: refreshToken }, { timeout: 10000 })
           .then(r => {
             const { access_token, refresh_token } = r.data
             setToken(access_token)

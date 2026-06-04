@@ -1,0 +1,47 @@
+name: Slack — Post-Deploy Notification
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Post deploy notification to Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "SLACK_BOT_TOKEN not set — skipping notification"
+            exit 0
+          fi
+
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          AUTHOR=$(git log -1 --pretty=format:'%an')
+          FILES_CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -10 | tr '\n' ', ' | sed 's/,$//')
+
+          TEXT="🚀 *QuantEdge deployed to production*
+>*Commit:* \`$SHORT_SHA\` — $COMMIT_MSG
+>*By:* $AUTHOR
+>*Files:* ${FILES_CHANGED:-unknown}
+
+_CTO agent is live and reviewing all channels. <https://quantedge-api.onrender.com/health|Health check>_"
+
+          curl -sS -X POST \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            https://slack.com/api/chat.postMessage \
+            -d "{
+              \"channel\": \"engineering\",
+              \"text\": $(echo "$TEXT" | python3 -c 'import sys, json; print(json.dumps(sys.stdin.read()))'),
+              \"mrkdwn\": true
+            }" | python3 -c "import sys, json; d=json.load(sys.stdin); print('✓ posted' if d.get('ok') else f'✗ {d.get(\"error\")}')"

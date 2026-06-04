@@ -6,6 +6,13 @@ name: Slack Pulse — Keep Team Informed
 on:
   push:
     branches: [claude/advanced-trading-bot-d5Lmw, main]
+    # Ignore automated state-persist commits — they have [skip ci] in the message
+    # but also explicitly filter to code changes only to be safe
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/scripts/*.py"
+      - ".github/workflows/*.yml"
   schedule:
     - cron: "0 9 * * 1-5"    # Morning briefing Mon-Fri 9am UTC
     - cron: "0 17 * * 1-5"   # Evening update Mon-Fri 5pm UTC
@@ -18,7 +25,11 @@ concurrency:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -27,66 +38,50 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install httpx anthropic --quiet
+        run: |
+          pip install --quiet anthropic
+          # Free LLM providers + observability
+          pip install --quiet litellm langfuse google-generativeai groq || true
+          pip install --quiet cerebras-cloud-sdk || true
 
       - name: Post to Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
-          COMMIT_SHA: ${{ github.sha }}
-          ACTOR: ${{ github.actor }}
+          # Free LLM API keys
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Langfuse observability
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
+          ALLOW_PAID_APIS: "False"
         run: |
-          python3 << 'PYEOF'
-          import httpx, os, datetime
-
-          token   = os.environ.get("SLACK_BOT_TOKEN", "")
-          event   = os.environ.get("EVENT_NAME", "schedule")
-          commit  = os.environ.get("COMMIT_MSG", "")[:80]
-          sha     = os.environ.get("COMMIT_SHA", "")[:7]
-          actor   = os.environ.get("ACTOR", "AI")
-          now_utc = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
-          if not token:
-              print("No SLACK_BOT_TOKEN — exiting")
-              exit(0)
-
-          def post(channel, text):
-              try:
-                  r = httpx.post(
-                      "https://slack.com/api/chat.postMessage",
-                      headers={"Authorization": f"Bearer {token}"},
-                      json={"channel": channel, "text": text, "mrkdwn": True},
-                      timeout=10,
-                  )
-                  data = r.json()
-                  if not data.get("ok"):
-                      print(f"Slack error for {channel}: {data.get('error')}")
-                  else:
-                      print(f"Posted to {channel}")
-              except Exception as e:
-                  print(f"Slack error: {e}")
-
-          if event == "push":
-              msg = (
-                  f"🚀 *New Deploy* · `{sha}` by {actor}\n"
-                  f"_{commit}_\n"
-                  f"Render will auto-deploy within ~2 minutes."
-              )
-              post("#deploys", msg)
-              post("#engineering", msg)
-          else:
-              # Scheduled briefing
-              msg = (
-                  f"📊 *QuantEdge Daily Pulse* · {now_utc}\n"
-                  f"• Backend: Render auto-deploy active\n"
-                  f"• Strategies: 60+ running 24/7 across Equities, Crypto, Options, Polymarket\n"
-                  f"• ML: 7 models active (LSTM, XGBoost, SSM, Lorentzian, HMM, TFT, Ensemble)\n"
-                  f"• Risk: Kelly + HRP + CVaR + circuit breakers active\n"
-                  f"• Monitor: <https://dashboard.render.com|Render> | <https://quantedge.vercel.app|Frontend>\n"
-                  f"\n_Check #risk-alerts for circuit breaker events, #desk-crypto for crypto signals._"
-              )
-              post("#engineering", msg)
-              post("#ml-experiments", "📈 *ML Update:* All 7 models serving predictions. Check `/experiments` endpoint for latest metrics.")
-          PYEOF
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Push: quick mode handles event-specific deploy notifications dynamically
+            python .github/scripts/slack_agent_team.py quick
+          else
+            # Scheduled briefing: full agent run generates dynamic content from live data
+            python .github/scripts/slack_agent_team.py
+          fi
+      - name: Persist agent state
+        if: always()
+        run: |
+          git config user.email "agents@quantedge.ai"
+          git config user.name "QuantEdge Agent Team"
+          STATE_FILE="experiments/results/slack_state.json"
+          if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
+            git add "$STATE_FILE"
+            git commit -m "chore: persist agent state [skip ci]"
+            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+          fi

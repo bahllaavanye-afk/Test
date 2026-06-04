@@ -17,12 +17,53 @@ _pool: aioredis.ConnectionPool | None = None
 _redis_disabled = not settings.redis_url or settings.redis_url.strip() == ""
 
 
+def _redis_enabled() -> bool:
+    """Return True if a Redis URL is configured."""
+    return not _redis_disabled
+
+
+class _NoopPriceCache:
+    """Drop-in replacement for PriceCache when Redis is not configured.
+
+    All methods are async no-ops that return None/empty so that callers
+    need no conditional logic.
+    """
+
+    async def set_price(self, *args, **kwargs) -> None:
+        pass
+
+    async def get_price(self, *args, **kwargs):
+        return None
+
+    async def set_ohlcv(self, *args, **kwargs) -> None:
+        pass
+
+    async def get_ohlcv(self, *args, **kwargs):
+        return None
+
+    async def set_arb_opportunity(self, *args, **kwargs) -> None:
+        pass
+
+    async def publish(self, *args, **kwargs) -> None:
+        pass
+
+    async def cache_prediction(self, *args, **kwargs) -> None:
+        pass
+
+    async def get(self, key: str):
+        return None
+
+    async def set(self, key: str, value: str, ttl: int = 300) -> None:
+        pass
+
+    async def ping(self) -> None:
+        pass
+
+
 def get_pool() -> aioredis.ConnectionPool | None:
     if _redis_disabled:
         return None
     global _pool
-    if not _redis_enabled():
-        return None
     if _pool is None:
         _pool = aioredis.ConnectionPool.from_url(
             settings.redis_url,

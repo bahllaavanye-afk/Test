@@ -1,9 +1,14 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
+import os as _os
+
+# Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+_BACKEND_ENV = _os.path.join(_HERE, "..", ".env")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_BACKEND_ENV, extra="ignore")
 
     # App
     app_name: str = "QuantEdge"
@@ -18,9 +23,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
-    # Database — accepts postgres://, postgresql://, or postgresql+asyncpg://
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/quantedge"
-    alembic_database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/quantedge"
+    # Database — accepts sqlite+aiosqlite:// for local dev, or postgres:// for production.
+    # Defaults to SQLite so the app starts without any credentials.
+    database_url: str = "sqlite+aiosqlite:///./dev.db"
+    alembic_database_url: str = "sqlite:///./dev.db"
 
     @model_validator(mode="before")
     @classmethod
@@ -58,6 +64,9 @@ class Settings(BaseSettings):
     max_drawdown_pct: float = 0.10       # halt all at -10% drawdown
     arb_bucket_pct: float = 0.70         # 70% capital to arbitrage bucket
     ml_bucket_pct: float = 0.30          # 30% capital to ML bucket
+
+    # Anthropic — for CTO agent Slack review and alpha mining
+    anthropic_api_key: str = ""        # sk-ant-... from console.anthropic.com
 
     # Slack — bot token (preferred) or webhooks per channel
     slack_bot_token: str = ""          # xoxb-... (chat:write + chat:write.public scopes)

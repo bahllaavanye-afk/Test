@@ -171,7 +171,7 @@ class BinanceFundingRateFeatures:
     def compute_features(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
         """Sync wrapper — runs the async version via asyncio."""
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             if loop.is_running():
                 # Already inside an event loop (e.g., FastAPI) — create a task
                 import concurrent.futures

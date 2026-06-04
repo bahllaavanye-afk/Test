@@ -20,6 +20,8 @@ concurrency:
 jobs:
   ui-improvement:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 20
     permissions:
       contents: write

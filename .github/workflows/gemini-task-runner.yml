@@ -1,0 +1,78 @@
+name: Gemini Task Runner — free-LLM code changes
+
+# Picks up open issues labeled "gemini-task", sends each to Gemini Flash (or
+# Groq fallback), applies multi-file code changes, commits, and closes the issue.
+# This is how Claude offloads complex work to free LLMs instead of using paid API context.
+
+on:
+  issues:
+    types: [labeled]           # fires immediately when gemini-task label is added
+  schedule:
+    - cron: "*/20 * * * *"    # batch retry every 20 min for rate-limited issues
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths-ignore:
+      - "experiments/results/slack_state.json"  # don't re-run on state commits
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Run a specific issue number (leave blank for batch)"
+        required: false
+        type: string
+      task:
+        description: "Inline task description (skips issues)"
+        required: false
+        type: string
+
+concurrency:
+  group: gemini-task-runner
+  cancel-in-progress: false   # never cancel — tasks are idempotent but slow
+
+jobs:
+  run-task:
+    # Only fire on issue events when the label is "gemini-task"
+    if: >
+      github.event_name != 'issues' ||
+      github.event.label.name == 'gemini-task'
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet google-generativeai groq || true
+
+      - name: Run Gemini task runner
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALLOW_PAID_APIS: "False"
+        run: |
+          if [ -n "${{ inputs.task }}" ]; then
+            python .github/scripts/gemini_task_runner.py --task "${{ inputs.task }}"
+          elif [ -n "${{ inputs.issue_number }}" ]; then
+            python .github/scripts/gemini_task_runner.py --issue "${{ inputs.issue_number }}"
+          elif [ "${{ github.event_name }}" = "issues" ]; then
+            python .github/scripts/gemini_task_runner.py --issue "${{ github.event.issue.number }}"
+          else
+            python .github/scripts/gemini_task_runner.py
+          fi

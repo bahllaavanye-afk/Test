@@ -234,6 +234,8 @@ def scan_security_issues() -> list[SecurityIssue]:
     for py_file in BACKEND_DIR.rglob("app/**/*.py"):
         if "__pycache__" in str(py_file):
             continue
+        if py_file.name == "qa_monitor.py":
+            continue  # skip self — patterns here are regex strings, not actual usage
         try:
             content = py_file.read_text(errors="replace")
             for pattern, severity, issue_type, desc, auto_fixable in patterns:
@@ -270,8 +272,14 @@ def auto_fix_deprecated_apis(issues: list[SecurityIssue]) -> int:
                 continue
             content = file_path.read_text(errors="replace")
             original = content
-            content = content.replace("asyncio.get_running_loop()", "asyncio.get_running_loop()")
-            content = content.replace("datetime.now(timezone.utc)", "datetime.now(timezone.utc)")
+            # NOTE: search strings are built from fragments so editor linters that
+            # auto-rewrite deprecated APIs don't corrupt these literals on save.
+            _old_loop = "asyncio.get_" + "event_loop()"
+            _new_loop = "asyncio.get_running_loop()"
+            _old_utc = "datetime." + "utcnow()"
+            _new_utc = "datetime.now(timezone.utc)"
+            content = content.replace(_old_loop, _new_loop)
+            content = content.replace(_old_utc, _new_utc)
             if content != original:
                 file_path.write_text(content)
                 fixes_applied += 1

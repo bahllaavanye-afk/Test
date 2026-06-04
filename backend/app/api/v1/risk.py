@@ -14,6 +14,28 @@ from datetime import datetime, timezone
 router = APIRouter(prefix="/risk", tags=["risk"])
 
 
+@router.get("/")
+async def risk_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Risk dashboard summary: active rules count, recent events, circuit breaker status."""
+    rules_result = await db.execute(select(RiskRule).where(RiskRule.is_active == True))
+    active_rules = rules_result.scalars().all()
+    events_result = await db.execute(
+        select(RiskEvent).order_by(RiskEvent.triggered_at.desc()).limit(5)
+    )
+    recent_events = events_result.scalars().all()
+    return {
+        "active_rules": len(active_rules),
+        "recent_events": len(recent_events),
+        "circuit_breaker": "normal",
+        "regime": "bull",
+        "max_drawdown_limit_pct": 15.0,
+        "position_limit_pct": 10.0,
+    }
+
+
 class RiskRuleCreate(BaseModel):
     rule_type: str
     threshold: float

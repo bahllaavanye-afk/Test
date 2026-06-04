@@ -6,14 +6,34 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PYTHONDONTWRITEBYTECODE: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   UV_SYSTEM_PYTHON: "1"
 
 jobs:
+  test-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install uv + pytest
+        run: |
+          pip install uv --quiet
+          uv pip install --system pytest pytest-timeout
+
+      - name: Run Slack agent tests
+        run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short -x --timeout=30
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -30,6 +50,14 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+
+      - name: Cache uv environment
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('.github/workflows/test.yml') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
 
       - name: Install uv
         run: pip install uv==0.5.6
@@ -109,7 +137,7 @@ jobs:
         run: |
           set +e
           pytest tests/ \
-            -n auto --dist loadfile \
+            -n 4 --dist loadfile \
             --timeout=60 \
             --tb=short \
             --color=no \

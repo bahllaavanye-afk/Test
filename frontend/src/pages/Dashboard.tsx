@@ -273,7 +273,7 @@ export default function Dashboard() {
             <p className="text-xs text-[#555]">No sentiment data available</p>
           ) : (
             <div className="space-y-2">
-              {(sentiment.results ?? []).slice(0, 5).map((item: any, i: number) => {
+              {(Array.isArray(sentiment.results) ? sentiment.results : []).slice(0, 5).map((item: any, i: number) => {
                 const maxMentions = sentiment.results?.[0]?.mentions_24h ?? 1
                 const pct = Math.round(((item.mentions_24h ?? 0) / Math.max(maxMentions, 1)) * 100)
                 return (

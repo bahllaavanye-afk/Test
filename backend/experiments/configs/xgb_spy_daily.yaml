@@ -1,0 +1,49 @@
+experiment:
+  name: "xgb_spy_daily_v1"
+  model: "xgboost"
+  symbol: "SPY"
+  exchange: "alpaca"
+  interval: "1d"
+
+data:
+  train_start: "2018-01-01"
+  train_end: "2023-06-30"
+  val_start: "2023-07-01"
+  val_end: "2024-03-31"
+  test_start: "2024-04-01"
+  test_end: "2024-12-31"
+
+features:
+  technical: ["rsi_14", "macd_hist", "bb_pct_b", "atr_pct", "obv_diff", "adx_14", "cci_20", "mfi_14"]
+  cross_asset: ["vix_level", "yield_10y", "dxy_return", "gold_return", "spy_volume_ratio"]
+  lookback: 20
+
+model_params:
+  max_depth: 6
+  n_estimators: 500
+  learning_rate: 0.01
+  subsample: 0.8
+  colsample_bytree: 0.8
+  min_child_weight: 3
+  gamma: 0.1
+  reg_alpha: 0.1
+  reg_lambda: 1.0
+  optuna_trials: 100
+
+training:
+  early_stopping_rounds: 50
+  eval_metric: "auc"
+  use_gpu: false
+
+strategy:
+  name: "ml_breakout"
+  confidence_threshold: 0.62
+  position_sizing: "hrp"
+  max_position_pct: 0.10
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null
+  run_id: null
+  trained_at: null

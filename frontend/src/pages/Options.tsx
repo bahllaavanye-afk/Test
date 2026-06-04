@@ -664,6 +664,8 @@ export default function Options() {
       api.get(`/options/chain/${underlying}`, {
         params: effectiveExpiry ? { expiration: effectiveExpiry } : {},
       }).then(r => r.data),
+    select: (data: unknown) =>
+      Array.isArray(data) ? data : ((data as { contracts?: OptionContract[] })?.contracts ?? []),
     enabled: !!underlying,
     staleTime: 30_000,
   })

@@ -24,23 +24,32 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # Simple in-memory brute-force protection (per IP, resets on restart)
 # Production: use Redis-backed counter with TTL via Upstash
 _login_attempts: dict[str, list[float]] = defaultdict(list)
-_MAX_ATTEMPTS = 10
-_WINDOW_SECONDS = 300  # 10 attempts per 5 minutes per IP
+
+# Per-endpoint limits (attempts per 60-second sliding window)
+# login: 20/minute, register: 10/minute, refresh: 30/minute
+_ENDPOINT_LIMITS: dict[str, int] = {
+    "login": 20,
+    "register": 10,
+    "refresh": 30,
+}
+_WINDOW_SECONDS = 60  # 1-minute sliding window
 
 
-def _check_rate_limit(ip: str) -> None:
+def _check_rate_limit(ip: str, endpoint: str = "login") -> None:
     import time
     now = time.time()
     window_start = now - _WINDOW_SECONDS
-    attempts = [t for t in _login_attempts[ip] if t > window_start]
-    _login_attempts[ip] = attempts
-    if len(attempts) >= _MAX_ATTEMPTS:
+    key = f"{ip}:{endpoint}"
+    attempts = [t for t in _login_attempts[key] if t > window_start]
+    _login_attempts[key] = attempts
+    max_attempts = _ENDPOINT_LIMITS.get(endpoint, 20)
+    if len(attempts) >= max_attempts:
         raise HTTPException(
             status_code=429,
-            detail="Too many login attempts. Try again in 5 minutes.",
-            headers={"Retry-After": "300"},
+            detail=f"Too many requests. Limit is {max_attempts}/minute.",
+            headers={"Retry-After": "60"},
         )
-    _login_attempts[ip].append(now)
+    _login_attempts[key].append(now)
 
 
 class LoginRequest(BaseModel):
@@ -66,7 +75,7 @@ class RefreshRequest(BaseModel):
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     # Same brute-force protection as /login — prevents enumeration and abuse
-    _check_rate_limit(request.client.host if request.client else "unknown")
+    _check_rate_limit(request.client.host if request.client else "unknown", "register")
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")

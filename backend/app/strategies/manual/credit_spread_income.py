@@ -103,7 +103,7 @@ class CreditSpreadIncomeStrategy(AbstractStrategy):
         spot = float(data["close"].iloc[-1])
 
         # --- Step 1: Get VIX and IVR ---
-        vix_level, ivr = await asyncio.get_event_loop().run_in_executor(
+        vix_level, ivr = await asyncio.get_running_loop().run_in_executor(
             None, self._get_vix_and_ivr, symbol, data
         )
         if vix_level is None or ivr is None:

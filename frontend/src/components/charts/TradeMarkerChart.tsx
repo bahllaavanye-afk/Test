@@ -82,6 +82,7 @@ export default function TradeMarkerChart({ symbol, height = 360 }: TradeMarkerCh
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const crosshairHandlerRef = useRef<((param: any) => void) | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false, x: 0, y: 0, side: '', price: 0, pnl: null, qty: 0, strategy: null, time: '',
   })
@@ -219,8 +220,13 @@ export default function TradeMarkerChart({ symbol, height = 360 }: TradeMarkerCh
       }))
       candleSeriesRef.current!.setMarkers(lwMarkers)
 
+      // Remove previous crosshair handler before subscribing a new one
+      if (crosshairHandlerRef.current) {
+        chartRef.current!.unsubscribeCrosshairMove(crosshairHandlerRef.current)
+        crosshairHandlerRef.current = null
+      }
       // Crosshair hover → show tooltip when near a marker
-      chartRef.current!.subscribeCrosshairMove(param => {
+      crosshairHandlerRef.current = (param: any) => {
         if (!param.point || !param.time) {
           setTooltip(prev => ({ ...prev, visible: false }))
           return
@@ -242,7 +248,8 @@ export default function TradeMarkerChart({ symbol, height = 360 }: TradeMarkerCh
         } else {
           setTooltip(prev => ({ ...prev, visible: false }))
         }
-      })
+      }
+      chartRef.current!.subscribeCrosshairMove(crosshairHandlerRef.current)
     } else {
       candleSeriesRef.current!.setMarkers([])
     }

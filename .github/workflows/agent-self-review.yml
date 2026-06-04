@@ -1,0 +1,49 @@
+name: Agent Self-Review
+
+# Runs on every push to the agent branch when core agent files change.
+# Statically reviews slack_agent_team.py for quality violations — no LLM needed.
+# Exit 1 (blocking) only for CRITICAL issues: ALLOW_PAID_APIS=True, hardcoded secrets.
+# HARDCODED / SHORT_PROMPT issues are logged in the artifact but are non-blocking.
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - '.github/scripts/slack_agent_team.py'
+      - '.github/workflows/slack-realtime.yml'
+      - '.github/workflows/heartbeat.yml'
+
+concurrency:
+  group: agent-self-review-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  self-review:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install review deps
+        run: pip install anthropic --quiet
+
+      - name: Run automated agent quality review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python .github/scripts/review_agent_quality.py
+
+      - name: Upload review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-review-${{ github.sha }}
+          path: review_report.json

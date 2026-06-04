@@ -1,0 +1,45 @@
+experiment:
+  name: "lorentzian_knn_eth_1h_v1"
+  model: "lorentzian_knn"
+  symbol: "ETH/USDT"
+  exchange: "binance"
+  interval: "1h"
+
+data:
+  train_start: "2022-01-01"
+  train_end: "2023-12-31"
+  val_start: "2024-01-01"
+  val_end: "2024-06-30"
+  test_start: "2024-07-01"
+  test_end: "2024-12-31"
+
+features:
+  technical: ["rsi_14", "cci_20", "adx_14", "ema_diff_10_20", "sma_diff_10_50"]
+  lookback: 2000
+
+model_params:
+  k: 8
+  lookback: 2000
+  distance_metric: "lorentzian"
+  kernel_type: "rational_quadratic"
+  kernel_lookback: 8
+  kernel_relative_weight: 8.0
+  kernel_regression_level: 25
+
+training:
+  optuna_trials: 50
+  eval_metric: "sharpe"
+
+strategy:
+  name: "lorentzian_knn"
+  confidence_threshold: 0.60
+  position_sizing: "kelly_fractional"
+  kelly_fraction: 0.25
+  max_position_pct: 0.05
+
+results:
+  val_accuracy: null
+  val_sharpe: null
+  test_sharpe: null
+  run_id: null
+  trained_at: null

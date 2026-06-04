@@ -203,6 +203,42 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _slack_employee_report():
+        """Post hourly employee status to Slack #engineering."""
+        try:
+            from app.notifications.slack import slack
+            from app.main import app as _app
+            from datetime import datetime, timezone
+
+            algo = getattr(_app.state, "algo_agent", None)
+            research = getattr(_app.state, "research_scientist", None)
+            modeling = getattr(_app.state, "modeling_engineer", None)
+
+            lines = [f"*QuantEdge Hourly Status* — {datetime.now(timezone.utc).strftime('%H:%M UTC')}"]
+            if algo:
+                lb = algo.get_leaderboard()
+                best = lb[0] if lb else {}
+                lines.append(f"• AlgoAgent: {algo._total_runs} runs | top: {best.get('strategy','?')} sharpe={best.get('avg_sharpe',0):.3f}")
+            if research:
+                s = research.get_research_summary()
+                lines.append(f"• Research: {s.get('cycles_completed',0)} cycles | {s.get('total_findings',0)} findings | queue: {len(s.get('implement_queue',[]))} ideas")
+            if modeling:
+                e = modeling.get_engineering_summary()
+                lines.append(f"• Modeling: {e.get('promote_count',0)} promotions | {e.get('retrain_count',0)} retrains")
+
+            await slack.send("system", "system", "📊 Hourly Status", text="\n".join(lines))
+        except Exception as exc:
+            logger.debug("Slack employee report failed", error=str(exc))
+
+    scheduler.add_job(
+        _slack_employee_report,
+        "interval",
+        hours=1,
+        id="slack_employee_report",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler

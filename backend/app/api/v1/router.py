@@ -18,6 +18,8 @@ api_router.include_router(experiments.router)
 api_router.include_router(ml.router)
 api_router.include_router(risk.router)
 api_router.include_router(market_data.router)
+# Underscore-prefix alias so /market_data/* and /market-data/* both resolve
+api_router.include_router(market_data.router_underscore)
 api_router.include_router(analytics.router)
 api_router.include_router(agents.router)
 api_router.include_router(notifications.router)

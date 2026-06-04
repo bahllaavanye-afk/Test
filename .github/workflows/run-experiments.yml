@@ -21,6 +21,8 @@ permissions:
 jobs:
   run-experiments:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 45
 
     steps:

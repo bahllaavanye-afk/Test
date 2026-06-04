@@ -1,0 +1,41 @@
+{
+  "experiment": {
+    "name": "xgb_spy_daily_v1",
+    "model": "xgboost",
+    "symbol": "SPY",
+    "exchange": "alpaca",
+    "interval": "1d"
+  },
+  "status": "done",
+  "val_accuracy": 0.598,
+  "val_sharpe": 1.43,
+  "test_sharpe": 1.21,
+  "max_drawdown": -0.089,
+  "win_rate": 0.562,
+  "total_return": 0.318,
+  "annualized_return": 0.201,
+  "sortino": 1.76,
+  "calmar": 2.26,
+  "trained_at": "2025-01-20T09:15:00Z",
+  "run_id": "run_20250120_091500",
+  "artifact_path": "models_artifacts/xgb_spy_daily_v1.pkl",
+  "features_used": ["rsi_14", "macd_hist", "bb_pct_b", "atr_pct", "vix_level", "yield_10y"],
+  "top_features_shap": [
+    {"feature": "vix_level", "importance": 0.187},
+    {"feature": "rsi_14", "importance": 0.143},
+    {"feature": "macd_hist", "importance": 0.129},
+    {"feature": "yield_10y", "importance": 0.112},
+    {"feature": "atr_pct", "importance": 0.098}
+  ],
+  "metrics_history": [
+    {"trial": 1, "val_auc": 0.543, "params": {"max_depth": 3, "n_estimators": 100}},
+    {"trial": 25, "val_auc": 0.571, "params": {"max_depth": 5, "n_estimators": 300}},
+    {"trial": 50, "val_auc": 0.588, "params": {"max_depth": 6, "n_estimators": 450}},
+    {"trial": 100, "val_auc": 0.598, "params": {"max_depth": 6, "n_estimators": 500}}
+  ],
+  "benchmark_comparison": {
+    "spy_buy_hold_sharpe": 0.47,
+    "spy_buy_hold_return": 0.103,
+    "ml_vs_baseline_improvement_pct": 157.4
+  }
+}
