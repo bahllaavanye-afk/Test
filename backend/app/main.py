@@ -35,6 +35,13 @@ async def _supervised(coro_factory, name: str, restart_delay: int = 30):
             delay = min(delay * 2, 300)
 
 
+async def _validate_alpaca(broker) -> None:
+    from app.brokers.alpaca import validate_alpaca_connection
+    ok = await validate_alpaca_connection(broker)
+    if not ok:
+        logger.warning("Alpaca broker is not connected — strategy runner will use yfinance fallback")
+
+
 async def _slack_startup_catchup() -> None:
     """
     On startup: wait 30 s for the app to settle, then post CTO reviews for
@@ -158,6 +165,9 @@ async def lifespan(app: FastAPI):
     from app.brokers.alpaca import create_alpaca_broker
     alpaca_broker = create_alpaca_broker(paper=settings.is_paper)
     app.state.alpaca_broker = alpaca_broker
+
+    if alpaca_broker is not None:
+        asyncio.create_task(_validate_alpaca(alpaca_broker))
 
     # Load active strategies from DB; fall back to a sensible default set if DB
     # is not yet reachable at startup (e.g. first cold boot before migrations).

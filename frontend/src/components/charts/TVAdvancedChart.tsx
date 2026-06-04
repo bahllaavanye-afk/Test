@@ -78,3 +78,8 @@ export default function TVAdvancedChart({
     </div>
   )
 }
+
+// Named export alias so consumers can use either:
+//   import TVAdvancedChart from '...'           (default)
+//   import { TVAdvancedChart } from '...'       (named)
+export { TVAdvancedChart };

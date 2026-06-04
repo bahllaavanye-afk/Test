@@ -198,6 +198,7 @@ class AlpacaBroker(AbstractBroker):
             "cash": float(acct.cash),
             "buying_power": float(acct.buying_power),
             "portfolio_value": float(acct.portfolio_value),
+            "status": str(acct.status) if hasattr(acct, "status") else "ACTIVE",
         }
 
     # ── Market data — auto-routes equity vs crypto ────────────────────────────
@@ -251,3 +252,15 @@ class AlpacaBroker(AbstractBroker):
         except Exception as e:
             logger.warning("Alpaca get_historical failed", symbol=symbol, error=str(e))
             return []
+
+
+async def validate_alpaca_connection(broker: "AlpacaBroker") -> bool:
+    """Returns True if Alpaca API responds with an ACTIVE account."""
+    try:
+        account = await broker.get_account()
+        if account and account.get("status", "").upper() in ("ACTIVE",):
+            logger.info("Alpaca connection OK", status=account.get("status"))
+            return True
+    except Exception as e:
+        logger.warning("Alpaca connection check failed", error=str(e))
+    return False

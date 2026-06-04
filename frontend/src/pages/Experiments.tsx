@@ -1,12 +1,33 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
 
+interface Experiment {
+  id: string
+  name: string
+  status: 'done' | 'running' | 'failed' | 'pending'
+  val_accuracy: number | null
+  val_sharpe: number | null
+  test_sharpe: number | null
+  started_at: string | null
+  completed_at: string | null
+}
+
 export default function Experiments() {
-  const { data: exps } = useQuery({
+  const { data: exps } = useQuery<Experiment[]>({
     queryKey: ['experiments'],
     queryFn: () => api.get('/experiments/').then(r => r.data),
     refetchInterval: 5_000,
   })
+
+  const experiments: Experiment[] = exps ?? []
+
+  // Only consider done experiments with a non-null test_sharpe for best Sharpe
+  const completedWithSharpe = experiments.filter(
+    e => e.status === 'done' && e.test_sharpe !== null
+  )
+  const bestSharpe = completedWithSharpe.length > 0
+    ? Math.max(...completedWithSharpe.map(e => e.test_sharpe as number)).toFixed(2)
+    : '—'
 
   return (
     <div className="space-y-6">
@@ -17,10 +38,10 @@ export default function Experiments() {
 
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[
-          { label: 'Total Runs', value: exps?.length ?? 0, color: '#f5a623' },
-          { label: 'Completed', value: exps?.filter((e: any) => e.status === 'done').length ?? 0, color: '#00c853' },
-          { label: 'Running', value: exps?.filter((e: any) => e.status === 'running').length ?? 0, color: '#2979ff' },
-          { label: 'Best Sharpe', value: Math.max(0, ...(exps?.map((e: any) => e.test_sharpe ?? 0) ?? [])).toFixed(2), color: '#9C27B0' },
+          { label: 'Total Runs', value: experiments.length, color: '#f5a623' },
+          { label: 'Completed', value: experiments.filter(e => e.status === 'done').length, color: '#00c853' },
+          { label: 'Running', value: experiments.filter(e => e.status === 'running').length, color: '#2979ff' },
+          { label: 'Best Sharpe', value: bestSharpe, color: '#9C27B0' },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-3">
             <p className="text-xs text-[#888888]">{label}</p>
@@ -39,7 +60,7 @@ export default function Experiments() {
             </tr>
           </thead>
           <tbody>
-            {exps?.map((e: any) => (
+            {experiments.map(e => (
               <tr key={e.id} className="border-t border-[#1e1e1e] hover:bg-[#111111]/50 transition-colors">
                 <td className="px-4 py-3 text-xs font-mono text-[#e8e8e8]">{e.name}</td>
                 <td className="px-4 py-3">
@@ -51,15 +72,18 @@ export default function Experiments() {
                     {e.status === 'running' ? '● ' : ''}{e.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-xs">{e.val_accuracy ? `${(e.val_accuracy * 100).toFixed(1)}%` : '—'}</td>
-                <td className="px-4 py-3 text-xs">{e.val_sharpe?.toFixed(3) ?? '—'}</td>
-                <td className="px-4 py-3 text-xs text-[#00c853] font-bold">{e.test_sharpe?.toFixed(3) ?? '—'}</td>
+                <td className="px-4 py-3 text-xs">{e.val_accuracy != null ? `${(e.val_accuracy * 100).toFixed(1)}%` : '—'}</td>
+                <td className="px-4 py-3 text-xs">{e.val_sharpe != null ? e.val_sharpe.toFixed(3) : '—'}</td>
+                <td className="px-4 py-3 text-xs text-[#00c853] font-bold">{e.test_sharpe != null ? e.test_sharpe.toFixed(3) : '—'}</td>
                 <td className="px-4 py-3 text-xs text-[#888888]">{e.started_at ? new Date(e.started_at).toLocaleString() : '—'}</td>
                 <td className="px-4 py-3 text-xs text-[#888888]">{e.completed_at ? new Date(e.completed_at).toLocaleString() : '—'}</td>
               </tr>
             ))}
-            {!exps?.length && (
+            {experiments.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-xs text-[#888888]">No experiments yet. Run: python experiments/run_experiment.py --config lstm_btc_1h.yaml</td></tr>
+            )}
+            {experiments.length > 0 && completedWithSharpe.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-4 text-center text-xs text-[#555]">No completed experiments — Best Sharpe will appear once a run finishes</td></tr>
             )}
           </tbody>
         </table>

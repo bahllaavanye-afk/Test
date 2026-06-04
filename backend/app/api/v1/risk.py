@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.models.risk import RiskRule, RiskEvent
 from app.models.user import User
 from app.models.trade import Trade
-from pydantic import BaseModel, ConfigDict, ConfigDict
+from pydantic import BaseModel, ConfigDict
 import uuid
 from datetime import datetime, timezone
 
@@ -80,6 +80,21 @@ async def create_rule(
     await db.commit()
     await db.refresh(rule)
     return rule
+
+
+@router.delete("/rules/{rule_id}")
+async def delete_risk_rule(
+    rule_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from fastapi import HTTPException
+    rule = await db.get(RiskRule, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    await db.delete(rule)
+    await db.commit()
+    return {"deleted": rule_id}
 
 
 @router.get("/events")

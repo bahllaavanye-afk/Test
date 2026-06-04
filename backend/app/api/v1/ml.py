@@ -1,5 +1,6 @@
 """ML model management and prediction endpoints."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -69,6 +70,38 @@ async def list_signals(
     except Exception as exc:
         logger.warning("list_signals DB query failed", error=str(exc))
         return []
+
+
+@router.get("/predictions")
+async def get_predictions(
+    symbol: str = Query(..., description="Ticker symbol, e.g. SPY"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run ensemble ML prediction for a given symbol. Returns 503 if no models are trained."""
+    from app.ml.inference import get_inference_service
+    inference = get_inference_service()
+    if not inference.has_any_model():
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "No trained models available. Run training first via POST /api/v1/experiments/train"},
+        )
+    # Fetch recent market data for the symbol
+    try:
+        import yfinance as yf
+        import pandas as pd
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="6mo", interval="1d")
+        if df.empty or len(df) < 60:
+            return JSONResponse(status_code=422, content={"detail": f"Not enough historical data for {symbol}"})
+        df.columns = [c.lower() for c in df.columns]
+        result = await inference.predict(df, symbol)
+        if result is None:
+            return JSONResponse(status_code=422, content={"detail": f"Could not generate prediction for {symbol}"})
+        return {"symbol": symbol, **result}
+    except Exception as exc:
+        logger.error("Prediction endpoint error", symbol=symbol, error=str(exc))
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 @router.get("/models/{model_id}/activate")

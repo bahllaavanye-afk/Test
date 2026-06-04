@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import api from '../api/client'
 import { RegimeIndicator } from '../components/risk/RegimeIndicator'
 import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
-import LiveChartPlaceholder from '../components/charts/MockCandlestickChart'
+import { TVAdvancedChart } from '../components/charts/TVAdvancedChart'
 import NewsSentimentPanel from '../components/trading/NewsSentimentPanel'
 import TradeMarkerChart from '../components/charts/TradeMarkerChart'
 
@@ -158,7 +158,7 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-          <LiveChartPlaceholder symbol={chartSymbol} height={400} />
+          <TVAdvancedChart symbol={chartSymbol} />
         </div>
 
         <div className="space-y-3">
