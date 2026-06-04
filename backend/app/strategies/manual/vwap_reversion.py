@@ -57,11 +57,20 @@ class VWAPReversionStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 60.0    # 1-minute bars
 
+    DEFAULT_PARAMS = {
+        "vwap_period": 30,
+        "entry_std_bands": 1.5,
+        "exit_std_bands": 0.5,
+        "stop_pct": 1.0,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.band_std = float((params or {}).get("band_std", 1.5))
-        self.window = int((params or {}).get("window", 30))
-        self.stop_loss_pct = float((params or {}).get("stop_loss_pct", 0.01))
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.band_std = float(effective["entry_std_bands"])
+        self.window = int(effective["vwap_period"])
+        self.exit_std_bands = float(effective["exit_std_bands"])
+        self.stop_loss_pct = float(effective["stop_pct"]) / 100.0
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         close_col = "close" if "close" in data.columns else "Close"

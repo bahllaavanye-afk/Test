@@ -59,8 +59,18 @@ class FundingRateArbStrategy(AbstractStrategy):
     # Momentum proxy threshold (%) on 3-bar return
     PROXY_THRESHOLD = 0.04  # 4 %
 
+    DEFAULT_PARAMS = {
+        "min_funding_rate": 0.01,
+        "hedge_ratio": 1.0,
+        "max_position_usd": 5000,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.min_funding_rate = effective["min_funding_rate"]
+        self.hedge_ratio = effective["hedge_ratio"]
+        self.max_position_usd = effective["max_position_usd"]
 
     def description(self) -> str:
         return (

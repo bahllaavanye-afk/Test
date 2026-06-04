@@ -43,7 +43,20 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
     MIN_SIGNAL = 0.30     # minimum composite signal to enter (0–1 scale)
     STOP_MULT  = 3.0      # stop loss as multiple of daily ATR
 
+    DEFAULT_PARAMS = {
+        "fast_ema": 21,
+        "slow_ema": 63,
+        "atr_multiplier": 3.0,
+        "min_adx": 20,
+    }
+
     def __init__(self, params: dict | None = None):
+        super().__init__(params)
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.fast_ema = int(effective["fast_ema"])
+        self.slow_ema = int(effective["slow_ema"])
+        self.atr_multiplier = float(effective["atr_multiplier"])
+        self.min_adx = float(effective["min_adx"])
         p = params or {}
         self.target_vol = float(p.get("target_vol", self.TARGET_VOL))
         self.min_signal = float(p.get("min_signal", self.MIN_SIGNAL))
