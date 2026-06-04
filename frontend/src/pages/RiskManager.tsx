@@ -158,18 +158,11 @@ export default function RiskManager() {
         <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4 space-y-3">
           <h2 className="text-sm font-semibold">Active Rules</h2>
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {Array.isArray(rules) && rules.length > 0 ? rules.map((r: any) => (
-              <div key={r.id} className="text-xs p-2 bg-[#0a0a0a] rounded border border-[#1e1e1e] flex items-center justify-between gap-2">
-                <span className="font-mono text-[#e8e8e8]">{r.rule_type}</span>
-                <span className="text-[#f5a623] font-bold font-mono shrink-0">
-                  {(typeof r.threshold === 'number' ? r.threshold * 100 : 0).toFixed(0)}%
-                </span>
-                <span
-                  className="px-2 py-0.5 rounded text-[10px] font-semibold shrink-0"
-                  style={{ color: ACTION_COLORS[r.action] ?? '#888888', background: `${ACTION_COLORS[r.action] ?? '#888888'}20` }}
-                >
-                  {r.action}
-                </span>
+            {rules?.map((r: any) => (
+              <div key={r.id} className="flex justify-between text-xs p-2 bg-[#0a0a0a] rounded">
+                <span className="font-mono">{r.rule_type}</span>
+                <span className="text-[#f5a623]">{(typeof r.threshold === 'number' ? r.threshold * 100 : 0).toFixed(0)}%</span>
+                <span className={`${r.action === 'halt_all' ? 'text-[#ff1744]' : r.action === 'halt_bucket' ? 'text-[#f5a623]' : 'text-[#888888]'}`}>{r.action}</span>
               </div>
             )) : (
               <p className="text-xs text-[#555555] text-center py-3">No custom rules. Using defaults.</p>

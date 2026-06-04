@@ -272,14 +272,8 @@ def auto_fix_deprecated_apis(issues: list[SecurityIssue]) -> int:
                 continue
             content = file_path.read_text(errors="replace")
             original = content
-            # NOTE: search strings are built from fragments so editor linters that
-            # auto-rewrite deprecated APIs don't corrupt these literals on save.
-            _old_loop = "asyncio.get_" + "event_loop()"
-            _new_loop = "asyncio.get_running_loop()"
-            _old_utc = "datetime." + "utcnow()"
-            _new_utc = "datetime.now(timezone.utc)"
-            content = content.replace(_old_loop, _new_loop)
-            content = content.replace(_old_utc, _new_utc)
+            content = content.replace("asyncio.get_event_loop()", "asyncio.get_running_loop()")
+            content = content.replace("datetime.utcnow()", "datetime.now(timezone.utc)")
             if content != original:
                 file_path.write_text(content)
                 fixes_applied += 1
