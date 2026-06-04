@@ -8,8 +8,8 @@ jobs:
   notify-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    # Skip entirely if token not configured — avoids phantom failure entries
+    if: ${{ secrets.SLACK_BOT_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
