@@ -6,6 +6,10 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+import structlog
+
+logger = structlog.get_logger()
+
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
@@ -156,8 +160,8 @@ async def _resolve_slack_username(token: str, user_id: str) -> str:
             if data.get("ok"):
                 profile = data.get("user", {}).get("profile", {})
                 return profile.get("display_name") or profile.get("real_name") or user_id
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("slack username resolve failed", user_id=user_id, error=str(_e))
     return user_id
 
 
@@ -229,8 +233,8 @@ async def _track_followup(channel_id: str, thread_ts: str, question: str, user_i
             "answered": False,
         })
         await redis.set(key, payload, ex=86400 * 2)  # 2-day TTL
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("slack followup tracking failed", error=str(_e))
 
 
 # ── CTO Agent: Review Incoming Slack Messages ─────────────────────────────────
@@ -387,8 +391,8 @@ async def _post_threaded_reply(channel_id: str, thread_ts: str, text: str, token
                     "mrkdwn": True,
                 },
             )
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("threaded reply failed", error=str(_e))
 
 
 # ── Follow-up check endpoint ─────────────────────────────────────────────────
@@ -457,8 +461,8 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
             except Exception:
                 continue
 
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("followup scan failed", error=str(_e))
 
     return {"followed_up": followed_up}
 
