@@ -414,6 +414,7 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
     followed_up = 0
 
     try:
+        # Scan all open followup keys
         cursor = 0
         keys: list[str] = []
         while True:
@@ -435,7 +436,9 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
                     continue
                 asked_at = datetime.fromisoformat(item["asked_at"])
                 if asked_at > cutoff:
-                    continue
+                    continue  # too recent
+
+                # Generate follow-up nudge
 
                 r = ac.messages.create(
                     model="claude-haiku-4-5-20251001",
@@ -451,6 +454,7 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
                     f"🤖 *CTO follow-up:* {author}{nudge}",
                     token=token,
                 )
+                # Mark as answered so we don't spam
                 item["answered"] = True
                 await redis.set(key, json.dumps(item), ex=86400)
                 followed_up += 1
