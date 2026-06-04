@@ -184,12 +184,11 @@ def _maybe_reschedule(bot: Bot) -> None:
         runner = getattr(_app.state, "bot_runner", None)
         if runner is None:
             return
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            if bot.is_enabled:
-                loop.create_task(runner.reschedule(bot))
-            else:
-                loop.create_task(runner.unschedule(bot.id))
+        loop = asyncio.get_running_loop()
+        if bot.is_enabled:
+            loop.create_task(runner.reschedule(bot))
+        else:
+            loop.create_task(runner.unschedule(bot.id))
     except Exception as exc:
         logger.debug("Could not reschedule bot", bot_id=bot.id, error=str(exc))
 
@@ -202,8 +201,7 @@ def _maybe_unschedule(bot_id: str) -> None:
         runner = getattr(_app.state, "bot_runner", None)
         if runner is None:
             return
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(runner.unschedule(bot_id))
+        loop = asyncio.get_running_loop()
+        loop.create_task(runner.unschedule(bot_id))
     except Exception as exc:
         logger.debug("Could not unschedule bot", bot_id=bot_id, error=str(exc))
