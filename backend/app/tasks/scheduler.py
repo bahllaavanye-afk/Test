@@ -454,6 +454,30 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _bot_exit_checker():
+        """
+        Every 5 minutes: check all open bot paper positions for TP/SL hits
+        and create Trade records (Option Alpha-style trade history).
+        """
+        try:
+            from app.bots.engine import check_bot_exits
+            from app.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as db:
+                n = await check_bot_exits(db)
+            if n > 0:
+                logger.info("Bot exit checker: closed positions", count=n)
+        except Exception as exc:
+            logger.debug("Bot exit checker failed", error=str(exc))
+
+    scheduler.add_job(
+        _bot_exit_checker,
+        "interval",
+        minutes=5,
+        id="bot_exit_checker",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler
