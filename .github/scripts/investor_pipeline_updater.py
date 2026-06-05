@@ -2,15 +2,46 @@
 Investor Pipeline Updater — uses Gemini to auto-advance stages and generate
 outreach context for the CEO's OKR (Active investor pipeline >= 10, Series A by D90).
 """
-import os, json, sys
+import os, json, requests
 from datetime import datetime, timedelta
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 PIPELINE_FILE = "data/investor_pipeline.json"
 
 STAGE_ORDER = ["intro_email", "deck_sent", "first_call", "second_call", "diligence", "term_sheet", "closed"]
+
+def call_gemini(prompt: str) -> str:
+    if not GEMINI_API_KEY:
+        return ""
+    resp = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+        json={"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
+        timeout=30
+    )
+    if resp.status_code == 200:
+        try:
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except Exception:
+            pass
+    return ""
+
+def call_groq(prompt: str) -> str:
+    if not GROQ_API_KEY:
+        return ""
+    resp = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "max_tokens": 300},
+        timeout=30
+    )
+    if resp.status_code == 200:
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    return ""
+
+def llm(prompt: str) -> str:
+    return call_gemini(prompt) or call_groq(prompt) or "No LLM response"
 
 def load_pipeline():
     with open(PIPELINE_FILE) as f:
