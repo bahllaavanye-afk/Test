@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 import { useQuery } from '@tanstack/react-query'
 import { logout } from '../../store/slices/authSlice'
 import { callLogout } from '../../api/client'
 import api from '../../api/client'
-import { selectTradingMode, setMode } from '../../store/slices/tradingModeSlice'
 import { LogOut, Activity } from 'lucide-react'
 import { LiveIndicator } from '../ui/LiveIndicator'
 
