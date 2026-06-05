@@ -14,6 +14,7 @@ jobs:
           fetch-depth: 2
 
       - name: Post deploy notification to Slack
+        continue-on-error: true
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
