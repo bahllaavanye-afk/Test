@@ -1,13 +1,14 @@
 name: Claude ↔ Employee Conversations
 
 on:
-  schedule:
-    # Claude talks to all employees every 2 hours — no downtime
-    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       channel:
         description: "Channel to chat with (leave empty for ALL)"
+        required: false
+        default: ""
+      message_override:
+        description: "Override Claude's opening message (optional)"
         required: false
         default: ""
 
@@ -32,42 +33,19 @@ jobs:
       - name: Install deps
         run: pip install --quiet requests
 
-      - name: Pull latest agent memory
-        continue-on-error: true
-        run: |
-          git config user.email "agent-memory@quantedge.ai"
-          git config user.name "Agent Memory System"
-          git pull origin claude/advanced-trading-bot-d5Lmw --rebase || true
-
       - name: Run Claude ↔ Employee conversations
-        continue-on-error: true
         env:
-          SLACK_BOT_TOKEN:    ${{ secrets.SLACK_BOT_TOKEN }}
-          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY_1 }}
-          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY_1 }}
-          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
-          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
-          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
-          SAMBANOVA_API_KEY:  ${{ secrets.SAMBANOVA_API_KEY_1 }}
-          CEREBRAS_API_KEY:   ${{ secrets.CEREBRAS_API_KEY_1 }}
-          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY_1 }}
-          TOGETHER_API_KEY:   ${{ secrets.TOGETHER_API_KEY_1 }}
-          ALLOW_PAID_APIS:    "False"
-          PYTHONPATH:         ${{ github.workspace }}/backend
-          CHANNEL_OVERRIDE:   ${{ github.event.inputs.channel }}
+          SLACK_BOT_TOKEN:  ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY }}
+          PYTHONPATH:       ${{ github.workspace }}/backend
+          CHANNEL_OVERRIDE: ${{ github.event.inputs.channel }}
         run: |
           ARGS=""
           if [ -n "$CHANNEL_OVERRIDE" ]; then
             ARGS="--channel $CHANNEL_OVERRIDE"
           fi
           python .github/scripts/claude_conversations.py $ARGS --all
-
-      - name: Commit updated agent memory
-        continue-on-error: true
-        run: |
-          git add .github/state/agent_memory.json || true
-          git diff --cached --quiet || git commit -m "chore(memory): update agent memory state [skip ci]"
-          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true
 
       - name: Post conversation summary to GitHub step summary
         if: always()
