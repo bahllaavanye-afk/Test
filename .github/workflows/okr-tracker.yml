@@ -1,0 +1,66 @@
+name: OKR Tracker — Daily C-Suite Report
+
+on:
+  schedule:
+    - cron: "0 9 * * *"     # 09:00 UTC daily (after CRO VaR report)
+    - cron: "0 14 * * 1"    # 14:00 UTC Monday (C-suite strategy sync)
+  workflow_dispatch:
+    inputs:
+      report_type:
+        description: "Report type (daily or weekly)"
+        required: false
+        default: "daily"
+
+jobs:
+  generate-okr-report:
+    name: Generate and post OKR status report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: read
+      issues: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --quiet requests
+
+      - name: Run OKR tracker
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          ARGS=""
+          # Monday 14:00 run = weekly report
+          HOUR=$(date -u +%H)
+          DOW=$(date -u +%u)
+          if [ "$DOW" = "1" ] && [ "$HOUR" = "14" ]; then
+            ARGS="--weekly"
+          fi
+          if [ "${{ github.event.inputs.report_type }}" = "weekly" ]; then
+            ARGS="--weekly"
+          fi
+          python .github/scripts/okr_tracker.py $ARGS
+
+      - name: Post to GitHub step summary
+        if: always()
+        run: |
+          echo "## OKR Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran at: $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/okr_summary.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/okr_summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
