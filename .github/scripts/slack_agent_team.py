@@ -4289,7 +4289,7 @@ def alpha_dir_strategy_review() -> list[Post]:
 
 
 def ml_lead_results() -> list[Post]:
-    """ML Lead — post the freshest backtest/experiment result."""
+    """ML Lead — post the freshest backtest/experiment result with full context."""
     state = load_state()
     results = latest_backtest_results()
     if not results:
@@ -4302,20 +4302,57 @@ def ml_lead_results() -> list[Post]:
         )]
 
     r = results[0]
-    scaffold = (f"Latest experiment: *{r.get('strategy', '?')}* on `{r.get('symbol', '?')}` "
-                f"({r.get('strategy_type', '?')})\n"
-                f"• Sharpe: *{r.get('sharpe', 0):.2f}* (avg over {r.get('n_runs', 1)} runs)\n"
-                f"• Logged: `experiments/results/` at {r.get('timestamp', 'unknown')}\n\n"
-                f"Total experiments tracked: *{len(results)}*. Top 3 by Sharpe coming next.")
 
-    ai, provider = employee_provider_prompt(
-        "ml_lead",
-        (f"ML experiment result — strategy: {r.get('strategy','?')}, symbol: {r.get('symbol','?')}, "
-         f"Sharpe: {r.get('sharpe', 0):.2f}, runs: {r.get('n_runs',1)}, "
-         f"total experiments: {len(results)}. "
-         "In 2 sentences: what does this Sharpe suggest about the model, and what's the next tuning step?"),
-    state=state,
+    # Top 3 by Sharpe for the scaffold
+    top3 = sorted(results, key=lambda x: x.get("sharpe", 0), reverse=True)[:3]
+    top3_lines = "\n".join(
+        f"  {i+1}. *{x.get('strategy','?')}* `{x.get('symbol','?')}` — Sharpe {x.get('sharpe',0):.2f}"
+        for i, x in enumerate(top3)
     )
+
+    scaffold = (
+        f":microscope: *ML Experiment Update — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*\n"
+        f"Latest: *{r.get('strategy', '?')}* on `{r.get('symbol', '?')}` "
+        f"({r.get('strategy_type', '?')})\n"
+        f"• Sharpe: *{r.get('sharpe', 0):.2f}* · runs: {r.get('n_runs', 1)} "
+        f"· logged: {r.get('timestamp', 'unknown')}\n\n"
+        f"*Top 3 by Sharpe ({len(results)} total):*\n{top3_lines}"
+    )
+
+    # Gather richer context for the LLM — mirrors vp_eng_daily() pattern
+    ml_commits = [
+        c for c in git_recent_commits(since_hours=48, limit=20)
+        if any(kw in c["msg"].lower() for kw in ("ml", "model", "lstm", "train", "feature", "experiment", "backtest", "sharpe"))
+    ]
+    commit_subjects = "\n".join(f"- {c['msg']}" for c in ml_commits[:8]) or "- no recent ML commits"
+
+    pytest_res = run_pytest_lightweight()
+    if pytest_res.get("not_installed") or pytest_res.get("timed_out"):
+        test_line = f"test files: {count_tests()}"
+    else:
+        passed = pytest_res.get("passed", 0)
+        failed = pytest_res.get("failed", 0)
+        test_line = f"{'✅' if failed == 0 else '❌'} {passed} passed" + (f", {failed} failed" if failed else "")
+
+    # List available ML model files for context
+    ml_models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
+    model_files = [f.stem for f in ml_models_dir.glob("*.py") if not f.stem.startswith("_")] if ml_models_dir.exists() else []
+
+    context = (
+        f"Strategy: {r.get('strategy','?')}, symbol: {r.get('symbol','?')}, "
+        f"Sharpe: {r.get('sharpe', 0):.2f}, runs: {r.get('n_runs',1)}, "
+        f"total experiments in registry: {len(results)}.\n\n"
+        f"Top 3 experiments by Sharpe:\n"
+        + "\n".join(f"  {x.get('strategy','?')} {x.get('symbol','?')}: Sharpe={x.get('sharpe',0):.2f}" for x in top3)
+        + f"\n\nRecent ML-related commits:\n{commit_subjects}\n\n"
+        f"Test suite: {test_line}\n"
+        f"Available model files: {', '.join(model_files) or 'none'}\n\n"
+        "In 2-3 sentences: what does this Sharpe suggest about the model quality, "
+        "which model should be prioritised next, and what is the single highest-leverage tuning step? "
+        "Be concrete — mention the strategy name and a specific hyperparameter or feature."
+    )
+
+    ai, provider = employee_provider_prompt("ml_lead", context, state=state)
     text = scaffold + (f"\n\n{ai}" if ai else "")
     return [Post(
         channel="ml-experiments",

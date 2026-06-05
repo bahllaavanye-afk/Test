@@ -346,6 +346,49 @@ def _apply_file_change(fc: dict) -> tuple[bool, str]:
     return True, f"{rel_path}: applied"
 
 
+def verify_fix_applied(report: str) -> tuple[bool, str]:
+    """Verify the committed patch is sound: syntax-clean, non-empty, no LLM exhaustion.
+
+    Returns (ok, reason).  Called after a successful commit so HEAD~1 is the pre-fix state.
+    """
+    # 1. Detect LLM exhaustion markers — means no real work was done
+    _EXHAUSTION_MARKERS = [
+        "LLM exhausted",
+        "All free LLM providers exhausted",
+        "No changes made",
+        "too_complex",
+        "Rate limited",
+    ]
+    for marker in _EXHAUSTION_MARKERS:
+        if marker.lower() in report.lower():
+            return False, f"Report contains exhaustion marker: '{marker}'"
+
+    # 2. Ensure at least one file was committed
+    diff_stat = subprocess.run(
+        ["git", "diff", "--stat", "HEAD~1", "HEAD"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    ).stdout.strip()
+    if not diff_stat:
+        return False, "No files differ between HEAD~1 and HEAD — patch produced no real changes"
+
+    # 3. Python syntax check on every .py file touched in this commit
+    changed_py = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD~1", "HEAD", "--", "*.py"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    ).stdout.splitlines()
+    for rel in changed_py:
+        full = REPO_ROOT / rel
+        if not full.exists():
+            continue  # deleted file — skip
+        try:
+            ast.parse(full.read_text(encoding="utf-8"))
+        except SyntaxError as exc:
+            return False, f"Syntax error in {rel} after patch: {exc}"
+
+    summary = diff_stat.splitlines()[0] if diff_stat else "ok"
+    return True, f"Fix verified: {summary}"
+
+
 def execute_task(title: str, body: str) -> tuple[bool, str]:
     """Run a task through Gemini/Groq, apply changes, return (success, summary)."""
     print(f"[task] Running: {title[:80]}")
@@ -440,8 +483,16 @@ def main() -> int:
                 print(f"[gemini-runner] Rate-limited on issue #{issue_num} — leaving open for retry.")
                 return 0  # don't close issue, don't fail workflow
             if ok:
-                close_issue(issue_num, f"## ✅ Done\n\n{report}")
-                _slack_post("engineering", f":robot_face: *Gemini runner* closed issue #{issue_num}\n{report}")
+                ok, verify_msg = verify_fix_applied(report)
+                if ok:
+                    report = f"{verify_msg}\n\n" + report
+                    close_issue(issue_num, f"## ✅ Done\n\n{report}")
+                    _slack_post("engineering", f":robot_face: *Gemini runner* closed issue #{issue_num}\n{report[:300]}")
+                else:
+                    report = f"Verification failed: {verify_msg}\n\n" + report
+                    _gh("POST", f"/repos/{GH_REPO}/issues/{issue_num}/comments",
+                        {"body": f"## ⚠️ Verification failed — left open for retry\n\n{report}"})
+                    _slack_post("engineering", f":warning: *Gemini runner* — verification failed for #{issue_num}: {verify_msg}")
             else:
                 _gh("POST", f"/repos/{GH_REPO}/issues/{issue_num}/comments",
                     {"body": f"## ⚠️ Attempt failed — left open for retry\n\n{report}"})
@@ -465,18 +516,16 @@ def main() -> int:
             print(f"  [gemini-runner] Rate-limited on #{num} — leaving open for retry.")
             results.append((num, None, report[:200]))
             break  # stop processing; all keys throttled, no point continuing
+        verify_msg = ""
         if ok:
-            # Verify at least one staged file exists before declaring success
-            staged = subprocess.run(
-                ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
-                capture_output=True, text=True, cwd=REPO_ROOT,
-            ).stdout.strip()
-            if not staged:
-                ok = False
-                report = "Patch produced no committed changes — issue left open for retry.\n\n" + report
+            ok, verify_msg = verify_fix_applied(report)
+            if not ok:
+                report = f"Verification failed: {verify_msg}\n\n" + report
+            else:
+                report = f"{verify_msg}\n\n" + report
         if ok:
             close_issue(num, f"## ✅ Done\n\n{report}")
-            print(f"  [gemini-runner] Closed #{num} — fix verified ({staged.splitlines()[0] if staged else 'ok'})")
+            print(f"  [gemini-runner] Closed #{num} — {verify_msg or 'ok'}")
         else:
             # Add a failure comment but keep issue OPEN for the next run to retry
             _gh("POST", f"/repos/{GH_REPO}/issues/{num}/comments",
