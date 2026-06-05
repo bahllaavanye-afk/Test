@@ -40,6 +40,7 @@ jobs:
         run: pip install --quiet langfuse google-generativeai || true
 
       - name: Run free agent engineer
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}

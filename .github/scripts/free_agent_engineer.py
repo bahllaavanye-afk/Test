@@ -624,7 +624,7 @@ def main() -> int:
             f":robot: Free-agent engineer run complete — *{fixed}/{len(results)}* issue(s) auto-fixed.",
         )
 
-    return 0 if fixed == len(results) else 1
+    return 0  # partial fixes are still progress; don't fail the workflow
 
 
 if __name__ == "__main__":

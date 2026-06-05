@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import structlog
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bot import Bot
@@ -950,3 +951,181 @@ class BotEngine:
                 await db.rollback()
             except Exception:
                 pass
+
+
+# ---------------------------------------------------------------------------
+# Option Alpha-style exit checker — runs every 5 minutes via scheduler
+# ---------------------------------------------------------------------------
+
+async def _fetch_current_price(symbol: str, market_type: str = "equity") -> float | None:
+    """Fetch latest close price via Redis cache or yfinance fallback."""
+    try:
+        from app.redis_client import price_cache
+        raw = await price_cache.get(f"prices:{symbol}")
+        if raw:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            price = data.get("last") or data.get("close") or data.get("ask")
+            if price:
+                return float(price)
+    except Exception:
+        pass
+
+    try:
+        import yfinance as yf
+        yf_sym = _map_crypto_symbol(symbol) if market_type == "crypto" else symbol
+        ticker = yf.Ticker(yf_sym)
+        hist = ticker.history(period="2d", interval="1d")
+        if not hist.empty:
+            return float(hist["Close"].iloc[-1])
+    except Exception as exc:
+        logger.debug("Price fetch failed", symbol=symbol, error=str(exc))
+
+    return None
+
+
+async def check_bot_exits(db: AsyncSession) -> int:
+    """
+    Scan all open bot paper orders (status='paper') with TP or SL set.
+    Close positions that have hit their exit target and record a Trade.
+
+    This is the Option Alpha-style trade history mechanism — every bot
+    position gets a closed Trade record with entry/exit prices, P&L,
+    hold time, and bot name stored in strategy_name.
+
+    Returns number of exits triggered.
+    """
+    from app.models.order import Order
+    from app.models.trade import Trade
+
+    result = await db.execute(
+        select(Order).where(
+            Order.status == "paper",
+            or_(
+                Order.take_profit_price.isnot(None),
+                Order.stop_loss_price.isnot(None),
+            ),
+        )
+    )
+    open_orders = result.scalars().all()
+
+    if not open_orders:
+        return 0
+
+    now = datetime.now(timezone.utc)
+
+    # Batch price fetches by symbol
+    symbols: dict[str, str] = {}  # symbol → market_type
+    for order in open_orders:
+        raw = order.raw_payload or {}
+        market_type = raw.get("market_type", "equity")
+        symbols[order.symbol] = market_type
+
+    prices: dict[str, float] = {}
+    for symbol, market_type in symbols.items():
+        price = await _fetch_current_price(symbol, market_type)
+        if price is not None:
+            prices[symbol] = price
+
+    exits = 0
+    for order in open_orders:
+        current_price = prices.get(order.symbol)
+        if current_price is None:
+            continue
+
+        raw = order.raw_payload or {}
+        entry_price = float(raw.get("entry_price", 0))
+        if entry_price <= 0:
+            continue
+
+        tp = float(order.take_profit_price) if order.take_profit_price is not None else None
+        sl = float(order.stop_loss_price) if order.stop_loss_price is not None else None
+        side = order.side  # "buy" | "sell"
+
+        exit_reason: str | None = None
+        exit_price = current_price
+
+        if side == "buy":
+            if tp is not None and current_price >= tp:
+                exit_reason, exit_price = "take_profit", tp
+            elif sl is not None and current_price <= sl:
+                exit_reason, exit_price = "stop_loss", sl
+        else:  # sell / short
+            if tp is not None and current_price <= tp:
+                exit_reason, exit_price = "take_profit", tp
+            elif sl is not None and current_price >= sl:
+                exit_reason, exit_price = "stop_loss", sl
+
+        if exit_reason is None:
+            # Also close if the position has been open > 7 days (safety expiry)
+            opened_at = getattr(order, "created_at", None)
+            if opened_at:
+                age_days = (now - opened_at).total_seconds() / 86400
+                if age_days > 7:
+                    exit_reason = "expired"
+
+        if exit_reason is None:
+            continue
+
+        # Compute notional and quantity
+        notional = float(order.notional) if order.notional else 1000.0
+        qty = notional / entry_price
+
+        if side == "buy":
+            realized_pnl = (exit_price - entry_price) * qty
+        else:
+            realized_pnl = (entry_price - exit_price) * qty
+
+        opened_at = getattr(order, "created_at", now)
+        hold_seconds = int((now - opened_at).total_seconds()) if opened_at else None
+
+        trade = Trade(
+            id=str(uuid.uuid4()),
+            account_id=order.account_id,
+            strategy_id=order.strategy_id,
+            strategy_name=raw.get("bot_name"),
+            symbol=order.symbol,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            quantity=qty,
+            realized_pnl=realized_pnl,
+            fees=0.0,
+            opened_at=opened_at,
+            closed_at=now,
+            hold_seconds=hold_seconds,
+            raw_payload={
+                "exit_reason": exit_reason,
+                "bot_id": raw.get("bot_id"),
+                "bot_name": raw.get("bot_name"),
+                "order_id": order.id,
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+            },
+        )
+        db.add(trade)
+
+        order.status = "filled"
+        order.filled_qty = qty
+        order.avg_fill_price = exit_price
+        order.filled_at = now
+
+        exits += 1
+        logger.info(
+            "Bot position closed",
+            symbol=order.symbol,
+            side=side,
+            exit_reason=exit_reason,
+            entry=entry_price,
+            exit=exit_price,
+            pnl=realized_pnl,
+        )
+
+    if exits > 0:
+        try:
+            await db.commit()
+        except Exception as exc:
+            logger.error("Failed to commit bot exits", error=str(exc))
+            await db.rollback()
+            exits = 0
+
+    return exits

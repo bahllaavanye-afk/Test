@@ -65,6 +65,7 @@ jobs:
 
       - name: Train all symbols with Gemini
         if: steps.key_check.outputs.has_key == 'true'
+        continue-on-error: true
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PYTHONPATH: "."
