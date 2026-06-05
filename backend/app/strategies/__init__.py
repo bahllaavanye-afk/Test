@@ -20,6 +20,7 @@ from app.strategies.manual.skew_arb import SkewArbitrageStrategy
 from app.strategies.manual.gamma_exposure import GammaExposureStrategy
 from app.strategies.manual.kalman_pairs import KalmanPairsStrategy
 from app.strategies.manual.funding_rate_arb import FundingRateArbStrategy
+from app.strategies.manual.dex_cex_arb import DexCexArbStrategy
 from app.strategies.manual.liquidation_cascade_fade import LiquidationCascadeFadeStrategy
 from app.strategies.manual.vrp_systematic import VRPSystematicStrategy
 from app.strategies.manual.hmm_regime import HMMRegimeStrategy
@@ -131,6 +132,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "gamma_exposure": GammaExposureStrategy,
     "kalman_pairs": KalmanPairsStrategy,
     "funding_rate_arb": FundingRateArbStrategy,
+    "dex_cex_arb": DexCexArbStrategy,
     "liquidation_cascade_fade": LiquidationCascadeFadeStrategy,
     "vrp_systematic": VRPSystematicStrategy,
     "hmm_regime": HMMRegimeStrategy,

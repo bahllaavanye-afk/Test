@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
+import { getCompetitionReport, type BenchmarkEntry } from '../api/analytics'
 import CorrelationMatrix from '../components/analytics/CorrelationMatrix'
 import LWEquityCurve, { TradeMarker } from '../components/charts/LWEquityCurve'
 
@@ -130,6 +131,174 @@ function TearsheetSection({ data }: { data: any }) {
   )
 }
 
+// ─── Competition Section ─────────────────────────────────────────────────────
+
+type StatusSymbol = 'beat' | 'lost' | 'close'
+
+function statusIcon(delta: number | null): { symbol: StatusSymbol; label: string } {
+  if (delta === null) return { symbol: 'close', label: '~' }
+  if (Math.abs(delta) <= 0.1) return { symbol: 'close', label: '~' }
+  return delta > 0 ? { symbol: 'beat', label: '✓' } : { symbol: 'lost', label: '✗' }
+}
+
+function CompetitionRow({
+  bm,
+  ourSharpe,
+}: {
+  bm: BenchmarkEntry
+  ourSharpe: number
+}) {
+  const delta = bm.sharpe_delta
+  const { symbol, label } = statusIcon(delta)
+  const statusColor =
+    symbol === 'beat' ? '#00c853' : symbol === 'lost' ? '#ff1744' : '#f5a623'
+
+  return (
+    <tr className="border-b border-[#1a1a1a] last:border-0 hover:bg-[#1a1a1a] transition-colors">
+      <td className="py-2.5 pr-4 text-xs text-[#e8e8e8] font-mono">{bm.name}</td>
+      <td className="py-2.5 pr-4 text-right text-xs font-mono text-[#888888]">
+        {bm.sharpe.toFixed(2)}
+      </td>
+      <td className="py-2.5 pr-4 text-right text-xs font-mono" style={{ color: '#f5a623' }}>
+        {ourSharpe > 0 ? ourSharpe.toFixed(2) : '—'}
+      </td>
+      <td
+        className="py-2.5 pr-4 text-right text-xs font-mono font-bold"
+        style={{ color: delta !== null ? (delta >= 0 ? '#00c853' : '#ff1744') : '#555' }}
+      >
+        {delta !== null ? `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}` : '—'}
+      </td>
+      <td className="py-2.5 text-right">
+        <span
+          className="inline-block w-6 text-center text-sm font-black"
+          style={{ color: statusColor }}
+          title={symbol === 'beat' ? 'Beating' : symbol === 'lost' ? 'Behind' : 'Within 0.1'}
+        >
+          {label}
+        </span>
+      </td>
+    </tr>
+  )
+}
+
+function CompetitionSection() {
+  const { data, isError, isLoading } = useQuery({
+    queryKey: ['competition-report'],
+    queryFn: getCompetitionReport,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-[#555]">
+        <div className="w-5 h-5 border-2 border-[#f5a623]/30 border-t-[#f5a623] rounded-full animate-spin mr-2" />
+        Loading competition data...
+      </div>
+    )
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center space-y-2">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5">
+          <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+        </svg>
+        <p className="text-sm text-[#888888]">No performance data yet — run paper trading for 24h</p>
+        <p className="text-xs text-[#555]">Competition benchmarks will populate once trade history is available.</p>
+      </div>
+    )
+  }
+
+  const qs = data.quantedge.sharpe
+  const dataAvailable = data.quantedge.data_available
+  const benchmarkList = Object.values(data.benchmarks)
+  const isTopTier = qs >= 2.0
+
+  return (
+    <div className="space-y-4">
+      {/* Rank badge */}
+      {isTopTier && dataAvailable && (
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold"
+          style={{
+            backgroundColor: 'rgba(0,200,83,0.15)',
+            border: '1px solid rgba(0,200,83,0.4)',
+            color: '#00c853',
+          }}
+        >
+          <span>★</span>
+          Top 0.1% of systematic strategies
+        </div>
+      )}
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded p-3 text-center">
+          <p className="text-[10px] text-[#555] uppercase tracking-wider">Our Sharpe</p>
+          <p
+            className="text-2xl font-black mt-1"
+            style={{ color: dataAvailable ? (qs >= 2.0 ? '#00c853' : qs >= 1.0 ? '#f5a623' : '#ff1744') : '#555' }}
+          >
+            {dataAvailable ? qs.toFixed(2) : '—'}
+          </p>
+          <p className="text-[10px] text-[#555] mt-0.5">annualized</p>
+        </div>
+        <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded p-3 text-center">
+          <p className="text-[10px] text-[#555] uppercase tracking-wider">Benchmarks Beaten</p>
+          <p className="text-2xl font-black mt-1" style={{ color: '#f5a623' }}>
+            {dataAvailable ? `${data.benchmarks_beaten}/${data.total_benchmarks}` : '—'}
+          </p>
+          <p className="text-[10px] text-[#555] mt-0.5">on Sharpe ratio</p>
+        </div>
+        <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded p-3 text-center">
+          <p className="text-[10px] text-[#555] uppercase tracking-wider">Target Sharpe</p>
+          <p className="text-2xl font-black mt-1 text-[#2979ff]">
+            {data.target.sharpe.toFixed(1)}
+          </p>
+          <p className="text-[10px] text-[#555] mt-0.5">institutional grade</p>
+        </div>
+      </div>
+
+      {/* Benchmark table */}
+      <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded p-4">
+        {!dataAvailable && (
+          <div className="mb-3 px-3 py-2 rounded text-xs text-[#f5a623] bg-[#f5a623]/10 border border-[#f5a623]/20">
+            {data.rank_summary}
+          </div>
+        )}
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="text-[#555] uppercase tracking-wider border-b border-[#1e1e1e]">
+              <th className="text-left pb-2 pr-4">Benchmark</th>
+              <th className="text-right pb-2 pr-4">Sharpe</th>
+              <th className="text-right pb-2 pr-4">Our Sharpe</th>
+              <th className="text-right pb-2 pr-4">Delta</th>
+              <th className="text-right pb-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {benchmarkList.map(bm => (
+              <CompetitionRow key={bm.name} bm={bm} ourSharpe={qs} />
+            ))}
+          </tbody>
+        </table>
+        <div className="mt-3 pt-3 border-t border-[#1e1e1e] flex items-center gap-4 text-[10px] text-[#555]">
+          <span className="flex items-center gap-1">
+            <span style={{ color: '#00c853' }}>✓</span> Beating
+          </span>
+          <span className="flex items-center gap-1">
+            <span style={{ color: '#ff1744' }}>✗</span> Behind
+          </span>
+          <span className="flex items-center gap-1">
+            <span style={{ color: '#f5a623' }}>~</span> Within 0.1 Sharpe
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Components ─────────────────────────────────────────────────────────────
 
 function MetricCard({
@@ -250,7 +419,7 @@ function EquityCurveFromPoints({ points }: { points: { date: string; equity: num
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function Analytics() {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'tearsheet'>('analytics')
+  const [activeTab, setActiveTab] = useState<'analytics' | 'tearsheet' | 'competition'>('analytics')
 
   const { data: tearsheetRaw, isError: tearsheetError, isLoading: tearsheetLoading } = useQuery({
     queryKey: ['tearsheet'],
@@ -344,13 +513,13 @@ export default function Analytics() {
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-white">Analytics</h1>
             <div className="flex bg-[#111111] border border-[#1e1e1e] rounded-lg p-0.5">
-              {(['analytics', 'tearsheet'] as const).map(tab => (
+              {(['analytics', 'tearsheet', 'competition'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-3 py-1 rounded text-xs font-medium transition-all capitalize ${activeTab === tab ? 'bg-[#f5a623] text-black' : 'text-[#888888] hover:text-white'}`}
                 >
-                  {tab === 'tearsheet' ? 'Investor Tearsheet' : tab}
+                  {tab === 'tearsheet' ? 'Investor Tearsheet' : tab === 'competition' ? 'Competition' : tab}
                 </button>
               ))}
             </div>
@@ -752,6 +921,19 @@ export default function Analytics() {
           ) : tearsheetRaw ? (
             <TearsheetSection data={tearsheetRaw} />
           ) : null}
+        </div>
+      )}
+
+      {/* Competition tab content */}
+      {activeTab === 'competition' && (
+        <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-5">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-sm font-bold text-white">Competition Analysis</h2>
+              <p className="text-xs text-[#888888] mt-0.5">QuantEdge vs institutional benchmarks · Sharpe ratio comparison</p>
+            </div>
+          </div>
+          <CompetitionSection />
         </div>
       )}
 

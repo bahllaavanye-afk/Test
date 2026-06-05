@@ -11,6 +11,18 @@ from app.ml.features.wavelet_features import add_wavelet_features, WAVELET_FEATU
 from app.ml.features.multi_timeframe import add_multi_timeframe_features, MTF_FEATURE_COLS
 from app.ml.features.normalization import FeatureScaler
 
+# Social sentiment feature columns added for crypto market_type
+SOCIAL_SENTIMENT_FEATURE_COLS = [
+    "fear_greed_value",
+    "fear_greed_7d_avg",
+    "fear_greed_change",
+    "reddit_mentions",
+    "reddit_positive_ratio",
+    "reddit_avg_score",
+    "is_trending",
+    "sentiment_composite",
+]
+
 
 _BASE_FEATURE_COLS = [
     # Price-based
@@ -35,11 +47,18 @@ _BASE_FEATURE_COLS = [
     "adx",
 ]
 
-# Extended feature list: base 27 + advanced + wavelet + multi-timeframe
-FEATURE_COLS = _BASE_FEATURE_COLS + ADVANCED_FEATURE_COLS + WAVELET_FEATURE_COLS + MTF_FEATURE_COLS
+# Extended feature list: base 27 + advanced + wavelet + multi-timeframe + social sentiment (crypto)
+FEATURE_COLS = _BASE_FEATURE_COLS + ADVANCED_FEATURE_COLS + WAVELET_FEATURE_COLS + MTF_FEATURE_COLS + SOCIAL_SENTIMENT_FEATURE_COLS
 
 
-def engineer_features(df: pd.DataFrame, normalize: bool = False, scaler: FeatureScaler | None = None) -> pd.DataFrame:
+def engineer_features(
+    df: pd.DataFrame,
+    normalize: bool = False,
+    scaler: FeatureScaler | None = None,
+    market_type: str = "equity",
+    symbol: str = "",
+    social_sentiment: dict | None = None,
+) -> pd.DataFrame:
     """
     Apply all feature engineering to an OHLCV DataFrame.
 
@@ -47,6 +66,11 @@ def engineer_features(df: pd.DataFrame, normalize: bool = False, scaler: Feature
         df: OHLCV DataFrame with columns [open, high, low, close, volume]
         normalize: if True, apply StandardScaler
         scaler: pre-fitted FeatureScaler for inference
+        market_type: "crypto" or "equity" — enables crypto-specific features
+        symbol: ticker symbol (e.g. "BTC") used for crypto sentiment lookup
+        social_sentiment: pre-computed dict from SocialSentimentFeatures.compute_features().
+            If None and market_type=="crypto", features are left at neutral defaults.
+            Pass a pre-awaited result to avoid blocking the sync pipeline.
 
     Returns:
         DataFrame with added feature columns
@@ -59,6 +83,22 @@ def engineer_features(df: pd.DataFrame, normalize: bool = False, scaler: Feature
     except Exception as _wv_err:
         print(f"[engineer] wavelet features skipped: {_wv_err}", flush=True)
     df = add_multi_timeframe_features(df)
+
+    # ── Social sentiment features (crypto only) ────────────────────────────────
+    # For crypto symbols, enrich the feature matrix with social/sentiment signals.
+    # Callers in async contexts should pre-compute features via:
+    #   from app.ml.features.social_sentiment import SocialSentimentFeatures
+    #   sentiment_feats = await SocialSentimentFeatures().compute_features(symbol)
+    # and pass the result as social_sentiment=sentiment_feats.
+    if market_type == "crypto":
+        from app.ml.features.social_sentiment import SocialSentimentFeatures
+        _ssf = SocialSentimentFeatures()
+        if social_sentiment is None:
+            # Use neutral defaults when no live data is provided (e.g. batch backtest)
+            social_sentiment = {}
+        row = _ssf.to_dataframe_row(social_sentiment)
+        for col in SOCIAL_SENTIMENT_FEATURE_COLS:
+            df[col] = row.get(col, row[col] if col in row.index else 0.0)
 
     # Determine which feature cols are actually present (MTF cols depend on TF availability)
     active_cols = [c for c in FEATURE_COLS if c in df.columns]
