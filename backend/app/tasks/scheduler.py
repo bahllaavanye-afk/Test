@@ -420,6 +420,40 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _supabase_keepalive():
+        """
+        Ping the database every 5 days to prevent Supabase free-tier auto-pause.
+        Supabase pauses inactive projects after 7 days — this job fires at day 5
+        with a simple SELECT 1, keeping the project alive indefinitely.
+        Only runs when DATABASE_URL points to Supabase (contains 'supabase' or 'pooler').
+        """
+        from app.config import settings as _settings
+        db_url = _settings.database_url.lower()
+        if "supabase" not in db_url and "pooler" not in db_url:
+            return  # not a Supabase URL — no-op
+
+        try:
+            from app.database import AsyncSessionLocal
+            from sqlalchemy import text
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("SELECT 1"))
+            logger.info("Supabase keep-alive ping succeeded")
+        except Exception as exc:
+            logger.warning(
+                "Supabase keep-alive ping failed — project may be paused. "
+                "Go to supabase.com/dashboard and click Unpause to restore.",
+                error=str(exc),
+            )
+
+    scheduler.add_job(
+        _supabase_keepalive,
+        "interval",
+        days=5,
+        id="supabase_keepalive",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler

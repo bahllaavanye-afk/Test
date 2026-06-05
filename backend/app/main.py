@@ -339,7 +339,13 @@ def create_app() -> FastAPI:
                 await session.execute(__import__("sqlalchemy").text("SELECT 1"))
             checks["database"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
         except Exception as e:
-            checks["database"] = {"ok": False, "error": str(e)[:120]}
+            err_str = str(e)[:200]
+            hint = ""
+            if "supabase" in settings.database_url.lower() or "pooler" in settings.database_url.lower():
+                hint = (" | SUPABASE PROJECT MAY BE PAUSED — go to supabase.com/dashboard, "
+                        "find your project and click Unpause (free tier pauses after 7d inactivity). "
+                        "You have 90 days before data is lost.")
+            checks["database"] = {"ok": False, "error": err_str + hint}
 
         # Redis
         try:
