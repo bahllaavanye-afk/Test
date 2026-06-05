@@ -1,14 +1,15 @@
 name: Claude ↔ Employee Conversations
 
 on:
+  schedule:
+    # Claude talks to all employees 3× per day — 08:00, 14:00, 20:00 UTC
+    - cron: "0 8 * * *"
+    - cron: "0 14 * * *"
+    - cron: "0 20 * * *"
   workflow_dispatch:
     inputs:
       channel:
         description: "Channel to chat with (leave empty for ALL)"
-        required: false
-        default: ""
-      message_override:
-        description: "Override Claude's opening message (optional)"
         required: false
         default: ""
 

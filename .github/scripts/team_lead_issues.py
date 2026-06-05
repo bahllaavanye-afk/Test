@@ -11,21 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-
-# ── Key resolver: supports both plain and numbered secrets ────────────────────
-def _resolve_key(*names: str) -> str:
-    """Return first non-empty value from env, checking plain + numbered variants."""
-    for name in names:
-        v = os.environ.get(name, "")
-        if v:
-            return v
-        # Try _1 suffix if not already numbered
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v:
-                return v
-    return ""
-
 import re
 import subprocess
 import sys
@@ -38,8 +23,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GH_TOKEN = os.environ.get("GH_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
-GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 
 # ── Team lead definitions ──────────────────────────────────────────────────────
@@ -476,10 +461,8 @@ def main():
     args = parser.parse_args()
 
     if not GEMINI_API_KEY and not GROQ_API_KEY:
-        print("WARNING: No GEMINI_API_KEY or GROQ_API_KEY configured.")
-        print("Add GEMINI_API_KEY to GitHub Secrets → Settings → Secrets → Actions")
-        print("Exiting gracefully — no issues created without LLM.")
-        sys.exit(0)
+        print("ERROR: Set GEMINI_API_KEY or GROQ_API_KEY")
+        sys.exit(1)
 
     if not GH_TOKEN:
         print("ERROR: Set GH_TOKEN / GITHUB_TOKEN")
