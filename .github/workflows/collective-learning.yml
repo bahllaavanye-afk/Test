@@ -50,7 +50,7 @@ jobs:
         continue-on-error: true
         run: |
           git add .github/state/skill_library.json .github/state/agent_memory.json .github/state/task_registry.json 2>/dev/null || true
-          git diff --cached --quiet || git commit -m "learn: distill skills $(date -u +%H:%M) | $(python3 -c 'import json; d=json.load(open(".github/state/skill_library.json")); print(str(d[\"total\"])+\" skills\")' 2>/dev/null || echo '?')"
+          git diff --cached --quiet || git commit -m "learn: distill skills $(date -u +%H:%M) | $(python3 -c 'import json; d=json.load(open(\".github/state/skill_library.json\")); print(str(d[\"total\"])+\" skills\")' 2>/dev/null || echo '?')"
 
       - name: Push
         continue-on-error: true

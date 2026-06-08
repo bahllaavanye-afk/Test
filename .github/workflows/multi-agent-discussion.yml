@@ -74,12 +74,12 @@ jobs:
         run: |
           echo "## Multi-Agent Discussion — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           python3 -c "
-          import json, pathlib
-          m = json.loads(pathlib.Path('.github/state/agent_memory.json').read_text())
-          pl = m.get('peer_learnings', [])
-          pm = m.get('platform_metrics', {})
-          print(f'- Total discussions run: {pm.get(\"total_discussions\", 0)}')
-          print(f'- Peer learnings in memory: {len(pl)}')
-          if pl:
-              print(f'- Latest: {pl[-1][:100]}')
-          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+import json, pathlib
+m = json.loads(pathlib.Path('.github/state/agent_memory.json').read_text())
+pl = m.get('peer_learnings', [])
+pm = m.get('platform_metrics', {})
+print(f'- Total discussions run: {pm.get(\"total_discussions\", 0)}')
+print(f'- Peer learnings in memory: {len(pl)}')
+if pl:
+    print(f'- Latest: {pl[-1][:100]}')
+" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
