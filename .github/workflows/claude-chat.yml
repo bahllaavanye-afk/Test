@@ -2,10 +2,8 @@ name: Claude ↔ Employee Conversations
 
 on:
   schedule:
-    # Claude talks to all employees 3× per day — 08:00, 14:00, 20:00 UTC
-    - cron: "0 8 * * *"
-    - cron: "0 14 * * *"
-    - cron: "0 20 * * *"
+    # Claude talks to all employees every 2 hours — no downtime
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       channel:

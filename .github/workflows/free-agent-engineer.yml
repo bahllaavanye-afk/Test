@@ -7,7 +7,7 @@ on:
   issues:
     types: [labeled]   # fires when label "agent-fix-needed" is added
   schedule:
-    - cron: "0 */4 * * *"   # every 4 hours
+    - cron: "0 */2 * * *"   # every 2 hours
   workflow_dispatch:
 
 jobs:

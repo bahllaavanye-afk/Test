@@ -3,7 +3,7 @@ name: Frontend Design Agent — Continuous UI/UX Improvements
 on:
   schedule:
     # Every 6 hours — Priya Iyer (VP Frontend) is always improving the dashboard
-    - cron: "0 */2 * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       component:
@@ -43,22 +43,16 @@ jobs:
       - name: Run frontend design agent
         continue-on-error: true
         env:
-          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY_1 }}
-          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY_1 }}
-          DEEPSEEK_API_KEY:  ${{ secrets.DEEPSEEK_API_KEY_1 }}
-          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
-          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY }}
           ALLOW_PAID_APIS:  "False"
           COMPONENT_OVERRIDE: ${{ github.event.inputs.component || '' }}
         run: python .github/scripts/frontend_design_agent.py
 
       - name: Push commits
         continue-on-error: true
-        run: |
-          for i in 1 2 3 4; do
-            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-          done
-          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true
+        run: git push -u origin claude/advanced-trading-bot-d5Lmw
+
       - name: Post to step summary
         if: always()
         run: |
