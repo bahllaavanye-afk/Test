@@ -45,6 +45,9 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
 
       - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
         if: steps.key_check.outputs.has_key == 'true'
 
       - uses: actions/setup-python@v5
