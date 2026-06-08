@@ -121,20 +121,113 @@ async def get_performance(
     """Aggregate trade performance stats — scoped to current user's accounts."""
     account_ids = await _user_account_ids(db, current_user.id)
     if not account_ids:
-        return {"total_trades": 0, "avg_pnl": 0.0, "total_pnl": 0.0}
+        return {
+            "total_trades": 0,
+            "avg_pnl": 0.0,
+            "total_pnl": 0.0,
+            "win_rate": 0.0,
+            "sharpe_ratio": None,
+            "max_drawdown": None,
+        }
     result = await db.execute(
         select(
             func.count(Trade.id).label("total_trades"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(Trade.realized_pnl).label("total_pnl"),
+            func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
         ).where(Trade.account_id.in_(account_ids))
     )
     row = result.one()
+    total_trades = row.total_trades or 0
+    wins = int(row.wins or 0)
+    win_rate = round(wins / max(total_trades, 1), 4)
+
+    # Compute Sharpe and max drawdown from daily PnL series
+    sharpe_ratio: float | None = None
+    max_drawdown: float | None = None
+    try:
+        daily_result = await db.execute(
+            select(
+                func.date_trunc("day", Trade.closed_at).label("day"),
+                func.sum(Trade.realized_pnl).label("daily_pnl"),
+            )
+            .where(
+                Trade.account_id.in_(account_ids),
+                Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365),
+                Trade.realized_pnl.isnot(None),
+            )
+            .group_by(func.date_trunc("day", Trade.closed_at))
+            .order_by(func.date_trunc("day", Trade.closed_at))
+        )
+        daily_rows = daily_result.all()
+        if len(daily_rows) >= 5:
+            import numpy as np
+            daily_pnls = [float(r.daily_pnl) for r in daily_rows]
+            s = pd.Series(daily_pnls)
+            mean_r = s.mean()
+            std_r = s.std()
+            if std_r > 0:
+                sharpe_ratio = round(float(mean_r / std_r * (252 ** 0.5)), 4)
+            cum = s.cumsum()
+            rolling_max = cum.cummax()
+            dd = (cum - rolling_max)
+            max_drawdown = round(float(dd.min() / max(abs(float(cum.max())), 1) * 100), 2) if len(dd) > 0 else 0.0
+    except Exception:
+        pass
+
     return {
-        "total_trades": row.total_trades or 0,
+        "total_trades": total_trades,
         "avg_pnl": float(row.avg_pnl or 0),
         "total_pnl": float(row.total_pnl or 0),
+        "win_rate": win_rate,
+        "sharpe_ratio": sharpe_ratio,
+        "max_drawdown": max_drawdown,
     }
+
+
+@router.get("/daily-pnl")
+async def get_daily_pnl(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Daily P&L breakdown for desk headers and charts."""
+    account_ids = await _user_account_ids(db, current_user.id)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    if not account_ids:
+        return {"series": [], "total_pnl": 0.0, "today_pnl": 0.0}
+
+    result = await db.execute(
+        select(
+            func.date_trunc("day", Trade.closed_at).label("day"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+            func.count(Trade.id).label("n_trades"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .group_by(func.date_trunc("day", Trade.closed_at))
+        .order_by(func.date_trunc("day", Trade.closed_at))
+    )
+    rows = result.all()
+
+    today = datetime.now(timezone.utc).date()
+    today_pnl = 0.0
+    total_pnl = 0.0
+    series = []
+    for row in rows:
+        day_val = row.day
+        day_str = day_val.strftime("%Y-%m-%d") if hasattr(day_val, "strftime") else str(day_val)[:10]
+        pnl = float(row.daily_pnl or 0)
+        total_pnl += pnl
+        series.append({"date": day_str, "pnl": round(pnl, 2), "trades": row.n_trades})
+        if day_str == today.strftime("%Y-%m-%d"):
+            today_pnl = pnl
+
+    return {"series": series, "total_pnl": round(total_pnl, 2), "today_pnl": round(today_pnl, 2)}
 
 
 @router.get("/slippage")
@@ -1194,27 +1287,27 @@ async def get_system_status(
     open positions, today's P&L %, and strategies broken down by desk.
     """
     from sqlalchemy import desc
-    from app.models.strategy import Strategy
+    from app.strategies import STRATEGY_REGISTRY
 
     account_ids = await _user_account_ids(db, current_user.id)
 
-    # Strategy counts
-    strat_result = await db.execute(select(Strategy))
-    all_strategies = strat_result.scalars().all()
-    active_strategies = sum(1 for s in all_strategies if s.is_enabled)
+    # Strategy counts — use in-memory registry (DB strategies table may be empty on fresh deploy)
+    strategy_classes = list(STRATEGY_REGISTRY.values())
+    active_strategies = len(strategy_classes)  # all registered = active
 
     desk_map: dict[str, int] = {"equity": 0, "crypto": 0, "options": 0, "arbitrage": 0}
-    for s in all_strategies:
-        mt = (s.market_type or "").lower()
-        rb = (s.risk_bucket or "").lower()
+    for cls in strategy_classes:
+        mt = getattr(cls, "market_type", "").lower()
+        rb = getattr(cls, "risk_bucket", "").lower()
         if "arb" in rb or "arbitrage" in rb:
             desk_map["arbitrage"] += 1
         elif mt == "crypto":
             desk_map["crypto"] += 1
-        elif mt == "options" or "option" in mt:
+        elif mt in ("options", "option"):
             desk_map["options"] += 1
         else:
             desk_map["equity"] += 1
+    total_strategies = len(strategy_classes)
 
     # Last signal time — most recent order created
     last_signal_at: str | None = None
@@ -1269,7 +1362,7 @@ async def get_system_status(
 
     return {
         "active_strategies": active_strategies,
-        "total_strategies": len(all_strategies),
+        "total_strategies": total_strategies,
         "last_signal_at": last_signal_at,
         "regime": regime,
         "vix": round(float(vix), 2) if vix is not None else None,

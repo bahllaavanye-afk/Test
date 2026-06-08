@@ -88,6 +88,19 @@ async def register(body: RegisterRequest, request: Request, db: AsyncSession = D
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    # Auto-create paper account for new user
+    from app.models.account import Account
+    paper_account = Account(
+        user_id=user.id,
+        broker="alpaca",
+        mode="paper",
+        label="Paper Account",
+        extra_config={"equity": 100_000.0, "cash": 100_000.0},
+    )
+    db.add(paper_account)
+    await db.commit()
+
     return TokenResponse(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
