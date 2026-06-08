@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-08T16:54:52.330052+00:00",
+  "last_updated": "2026-06-08T16:54:58.434596+00:00",
   "conversations": {},
   "employee_context": {},
   "platform_metrics": {
@@ -46,11 +46,15 @@
         "ok": true,
         "detail": "0/4 key workflows found"
       }
-    }
+    },
+    "last_collective_learning": "2026-06-08T16:54:58.434596+00:00",
+    "total_agent_runs": 0,
+    "total_successes": 0
   },
   "thread_state": {},
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [],
-  "last_heartbeat": "2026-06-08T10:13:33.602602+00:00"
+  "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
+  "failure_traces": []
 }
