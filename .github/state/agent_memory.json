@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-08T16:54:12.733890+00:00",
+  "last_updated": "2026-06-08T16:54:52.330052+00:00",
   "conversations": {},
   "employee_context": {},
   "platform_metrics": {
@@ -14,7 +14,39 @@
     "signal_count_today": 0,
     "last_discussion": "2026-06-08T10:12:06.000423+00:00",
     "total_discussions": 1,
-    "heartbeat_count": 2
+    "heartbeat_count": 2,
+    "last_watchdog_run": "2026-06-08T16:54:52.330052+00:00",
+    "health_status": "3 failing",
+    "watchdog_checks": {
+      "Gemini LLM": {
+        "ok": false,
+        "detail": "HTTP 429"
+      },
+      "Groq LLM": {
+        "ok": true,
+        "detail": "ok"
+      },
+      "DeepSeek LLM": {
+        "ok": false,
+        "detail": "HTTP 402"
+      },
+      "Binance API": {
+        "ok": false,
+        "detail": "HTTP 451"
+      },
+      "State files": {
+        "ok": true,
+        "detail": "ok"
+      },
+      "Recent commits": {
+        "ok": true,
+        "detail": "last commit 1m ago"
+      },
+      "Workflows": {
+        "ok": true,
+        "detail": "0/4 key workflows found"
+      }
+    }
   },
   "thread_state": {},
   "daily_topics": {},
