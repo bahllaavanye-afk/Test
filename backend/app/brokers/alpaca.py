@@ -45,6 +45,14 @@ except ImportError:
     ALPACA_AVAILABLE = False
     logger.warning("alpaca-py not installed — Alpaca broker unavailable")
 
+# Bracket order support — imported lazily so missing symbols don't break the module
+try:
+    from alpaca.trading.requests import TakeProfitRequest, StopLossRequest
+    from alpaca.trading.enums import OrderClass
+    ALPACA_BRACKET_AVAILABLE = True
+except ImportError:
+    ALPACA_BRACKET_AVAILABLE = False
+
 
 TF_MAP = {
     "1m":  TimeFrame(1,  TimeFrameUnit.Minute),
@@ -122,6 +130,52 @@ class AlpacaBroker(AbstractBroker):
             # Crypto requires IOC or GTC (no DAY orders on 24/7 markets)
             if _is_crypto(request.symbol):
                 tif = TimeInForce.GTC
+
+            # Detect bracket order when stop_loss or take_profit are set
+            has_bracket = (request.stop_loss is not None or request.take_profit is not None)
+
+            if has_bracket and ALPACA_BRACKET_AVAILABLE:
+                try:
+                    tp_req = (
+                        TakeProfitRequest(limit_price=round(float(request.take_profit), 4))
+                        if request.take_profit is not None else None
+                    )
+                    sl_req = (
+                        StopLossRequest(stop_price=round(float(request.stop_loss), 4))
+                        if request.stop_loss is not None else None
+                    )
+                    req = MarketOrderRequest(
+                        symbol=request.symbol,
+                        qty=request.quantity,
+                        side=side,
+                        time_in_force=tif,
+                        order_class=OrderClass.BRACKET,
+                        take_profit=tp_req,
+                        stop_loss=sl_req,
+                    )
+                    logger.info(
+                        "Submitting bracket order",
+                        symbol=request.symbol,
+                        stop_loss=request.stop_loss,
+                        take_profit=request.take_profit,
+                    )
+                    order = await self._call(self.trading.submit_order, order_data=req)
+                    return OrderResult(
+                        broker_order_id=str(order.id),
+                        status=str(order.status),
+                        filled_qty=float(order.filled_qty or 0),
+                        avg_fill_price=(float(order.filled_avg_price)
+                                        if order.filled_avg_price else None),
+                        raw_payload={"id": str(order.id), "symbol": request.symbol,
+                                     "order_class": "bracket"},
+                    )
+                except Exception as bracket_exc:
+                    logger.warning(
+                        "Bracket order failed — falling back to plain market order",
+                        symbol=request.symbol,
+                        error=str(bracket_exc),
+                    )
+                    # Fall through to plain order below
 
             if request.order_type in ("market", "moc"):
                 req = MarketOrderRequest(
