@@ -1287,27 +1287,27 @@ async def get_system_status(
     open positions, today's P&L %, and strategies broken down by desk.
     """
     from sqlalchemy import desc
-    from app.models.strategy import Strategy
+    from app.strategies import STRATEGY_REGISTRY
 
     account_ids = await _user_account_ids(db, current_user.id)
 
-    # Strategy counts
-    strat_result = await db.execute(select(Strategy))
-    all_strategies = strat_result.scalars().all()
-    active_strategies = sum(1 for s in all_strategies if s.is_enabled)
+    # Strategy counts — use in-memory registry (DB strategies table may be empty on fresh deploy)
+    strategy_classes = list(STRATEGY_REGISTRY.values())
+    active_strategies = len(strategy_classes)  # all registered = active
 
     desk_map: dict[str, int] = {"equity": 0, "crypto": 0, "options": 0, "arbitrage": 0}
-    for s in all_strategies:
-        mt = (s.market_type or "").lower()
-        rb = (s.risk_bucket or "").lower()
+    for cls in strategy_classes:
+        mt = getattr(cls, "market_type", "").lower()
+        rb = getattr(cls, "risk_bucket", "").lower()
         if "arb" in rb or "arbitrage" in rb:
             desk_map["arbitrage"] += 1
         elif mt == "crypto":
             desk_map["crypto"] += 1
-        elif mt == "options" or "option" in mt:
+        elif mt in ("options", "option"):
             desk_map["options"] += 1
         else:
             desk_map["equity"] += 1
+    total_strategies = len(strategy_classes)
 
     # Last signal time — most recent order created
     last_signal_at: str | None = None
@@ -1362,7 +1362,7 @@ async def get_system_status(
 
     return {
         "active_strategies": active_strategies,
-        "total_strategies": len(all_strategies),
+        "total_strategies": total_strategies,
         "last_signal_at": last_signal_at,
         "regime": regime,
         "vix": round(float(vix), 2) if vix is not None else None,
