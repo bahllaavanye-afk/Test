@@ -11,7 +11,7 @@ name: Slack Team — bootstrap, invite admin, employee discussion
 
 on:
   schedule:
-    - cron: "15 9,13,17,21 * * *"   # 4x daily
+    - cron: "15 * * * *"   # 4x daily
   push:
     branches: [main]
     paths:
@@ -40,6 +40,9 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
@@ -78,7 +81,7 @@ jobs:
         if: env.SKIP != '1'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}

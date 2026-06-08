@@ -37,8 +37,8 @@ jobs:
 
       - name: Run automated agent quality review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
         run: python .github/scripts/review_agent_quality.py
 
       - name: Upload review report

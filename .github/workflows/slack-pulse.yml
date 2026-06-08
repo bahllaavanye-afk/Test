@@ -14,8 +14,7 @@ on:
       - ".github/scripts/*.py"
       - ".github/workflows/*.yml"
   schedule:
-    - cron: "0 9 * * 1-5"    # Morning briefing Mon-Fri 9am UTC
-    - cron: "0 17 * * 1-5"   # Evening update Mon-Fri 5pm UTC
+    - cron: "0 * * * *"       # Hourly, 24/7 — no downtime
   workflow_dispatch:
 
 concurrency:
@@ -32,6 +31,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
@@ -48,18 +50,21 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_ACTOR: ${{ github.actor }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           # Free LLM API keys
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 }}
+          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
+          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
+          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY_1 }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           # Langfuse observability
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
@@ -74,8 +79,8 @@ jobs:
             # Scheduled briefing: full agent run generates dynamic content from live data
             python .github/scripts/slack_agent_team.py
           fi
-      - name: Persist agent state
-        if: always()
+      - name: Push changes
+        continue-on-error: true
         run: |
           git config user.email "agents@quantedge.ai"
           git config user.name "QuantEdge Agent Team"
@@ -83,5 +88,8 @@ jobs:
           if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
             git add "$STATE_FILE"
             git commit -m "chore: persist agent state [skip ci]"
-            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+            done
+            git push -u origin claude/advanced-trading-bot-d5Lmw || true
           fi

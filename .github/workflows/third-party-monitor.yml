@@ -25,6 +25,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
@@ -38,7 +41,7 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           POST_DIGEST: ${{ github.event.inputs.post_digest || 'false' }}
         run: python .github/scripts/third_party_monitor.py
         continue-on-error: true   # Don't fail the workflow when a service is down
