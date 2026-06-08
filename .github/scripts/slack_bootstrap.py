@@ -22,6 +22,15 @@ from io import StringIO
 # ── Channel definitions (mirrors backend/app/integrations/slack_bot.py) ──────
 
 CHANNELS = [
+    # Public — core trading/signal channels (required by signal_runner.py and token_usage_monitor.py)
+    {"name": "signals",              "is_private": False, "topic": "Live trading signals across all desks"},
+    {"name": "trading",              "is_private": False, "topic": "Trade execution updates and order flow"},
+    {"name": "crypto",               "is_private": False, "topic": "Crypto desk — live prices, signals, positions"},
+    {"name": "equity",               "is_private": False, "topic": "Equity desk — US stocks, ETFs, options"},
+    {"name": "polymarket",           "is_private": False, "topic": "Polymarket prediction-market signals and arb"},
+    {"name": "token-usage",          "is_private": False, "topic": "LLM token usage monitoring and cost tracking"},
+    {"name": "general",              "is_private": False, "topic": "General discussion for all team members"},
+    {"name": "standup",              "is_private": False, "topic": "Daily standup updates from all squad members"},
     # Public — engineering ops
     {"name": "engineering-standup",  "is_private": False, "topic": "Daily standups from each squad (13:00 UTC)"},
     {"name": "alpha-research",       "is_private": False, "topic": "New strategy proposals + paper reviews"},

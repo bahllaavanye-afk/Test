@@ -97,8 +97,8 @@ jobs:
           REVIEW_PROVIDER: ${{ inputs.review_provider || 'auto' }}
         run: python .github/scripts/slack_agent_team.py review
 
-      - name: Persist state
-        if: always()
+      - name: Push changes
+        continue-on-error: true
         run: |
           git config user.email "agents@quantedge.ai"
           git config user.name "QuantEdge Agent Team"
@@ -106,5 +106,8 @@ jobs:
           if [ -f "$STATE" ] && ! git diff --quiet "$STATE" 2>/dev/null; then
             git add "$STATE"
             git commit -m "chore: persist review state [skip ci]"
-            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+            done
+            git push -u origin claude/advanced-trading-bot-d5Lmw || true
           fi
