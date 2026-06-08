@@ -3,7 +3,7 @@ name: Autonomous Strategy Generator
 on:
   schedule:
     # Run daily — proposes and commits new strategies every day at 05:00 UTC
-    - cron: "0 5 * * *"
+    - cron: "0 */3 * * *"
   workflow_dispatch:
     inputs:
       market_type:

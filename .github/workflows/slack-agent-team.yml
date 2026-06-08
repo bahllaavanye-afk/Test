@@ -10,7 +10,7 @@ name: Slack Agent Team — real engineering work, real reports
 #   2) Manual:    Actions tab → this workflow → Run workflow, paste a token.
 on:
   schedule:
-    - cron: "15 9,13,17,21 * * *"
+    - cron: "15 * * * *"
   workflow_dispatch:
     inputs:
       bot_token:

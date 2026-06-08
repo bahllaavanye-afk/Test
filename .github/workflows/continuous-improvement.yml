@@ -3,7 +3,7 @@ name: Continuous Improvement — Autonomous Code Quality (CTO OKR ≥50 commits/
 on:
   schedule:
     # Every 2 hours — 12 runs/day × 3 commits each = 36+ commits/day toward CTO OKR
-    - cron: "30 */2 * * *"
+    - cron: "30 * * * *"
   workflow_dispatch:
     inputs:
       n_files:

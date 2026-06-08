@@ -6,7 +6,7 @@ name: Notion ↔ GitHub Issues Sync
 
 on:
   schedule:
-    - cron: "0 */6 * * *"        # every 6 hours
+    - cron: "0 * * * *"        # every 6 hours
   issues:
     types: [opened, edited, closed, reopened, labeled]
   workflow_dispatch:

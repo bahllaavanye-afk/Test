@@ -14,8 +14,7 @@ on:
       - ".github/scripts/*.py"
       - ".github/workflows/*.yml"
   schedule:
-    - cron: "0 9 * * 1-5"    # Morning briefing Mon-Fri 9am UTC
-    - cron: "0 17 * * 1-5"   # Evening update Mon-Fri 5pm UTC
+    - cron: "0 * * * *"       # Hourly, 24/7 — no downtime
   workflow_dispatch:
 
 concurrency:

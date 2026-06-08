@@ -3,7 +3,7 @@ name: Frontend Design Agent — Continuous UI/UX Improvements
 on:
   schedule:
     # Every 6 hours — Priya Iyer (VP Frontend) is always improving the dashboard
-    - cron: "0 */6 * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       component:

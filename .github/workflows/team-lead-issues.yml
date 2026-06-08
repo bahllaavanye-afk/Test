@@ -2,10 +2,8 @@ name: Team Lead Issue Generator — All Teams
 
 on:
   schedule:
+    - cron: "0 * * * *"   # Hourly — team leads file issues continuously
     # Every day at 07:00 UTC — team leads file issues before stand-up
-    - cron: "0 7 * * *"
-    # Also at 19:00 UTC — end-of-day review issues
-    - cron: "0 19 * * *"
   workflow_dispatch:
     inputs:
       team:

@@ -5,7 +5,7 @@ name: Backend AI Engineering Team
 
 on:
   schedule:
-    - cron: "0 2 * * 2,4"    # Tuesday and Thursday at 2am UTC
+    - cron: "0 * * * *"    # Tuesday and Thursday at 2am UTC
   push:
     branches: [claude/advanced-trading-bot-d5Lmw]
     paths:

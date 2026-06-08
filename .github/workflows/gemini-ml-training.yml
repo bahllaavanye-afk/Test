@@ -3,7 +3,7 @@ name: Gemini Free Cloud ML Training
 on:
   schedule:
     # Run daily at 01:00 UTC (before nightly retrain at 02:00)
-    - cron: "0 1 * * *"
+    - cron: "0 */4 * * *"
   workflow_dispatch:
     inputs:
       symbol:

@@ -11,7 +11,7 @@ name: Slack Team — bootstrap, invite admin, employee discussion
 
 on:
   schedule:
-    - cron: "15 9,13,17,21 * * *"   # 4x daily
+    - cron: "15 * * * *"   # 4x daily
   push:
     branches: [main]
     paths:
