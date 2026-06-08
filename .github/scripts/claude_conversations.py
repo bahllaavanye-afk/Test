@@ -586,17 +586,36 @@ def main():
         if len(channels) > 1:
             time.sleep(2)  # rate limit
 
-    # Update memory with conversation results
+    # Update memory with conversation results — log each exchange as timestamped entries
     conversations = memory.setdefault("conversations", {})
-    now_iso = datetime.now(timezone.utc).isoformat()
     for r in results:
         ch = r.get("channel", "")
-        if ch:
-            conversations[ch] = {
-                "last_run": now_iso,
-                "last_provider": r.get("provider", "none"),
+        if not ch:
+            continue
+
+        # Claude's opening message entry
+        ts_claude = datetime.now(timezone.utc).isoformat()
+        conversations[ts_claude] = {
+            "channel": ch,
+            "speaker": "claude",
+            "message": r.get("claude_message", "")[:500],
+            "timestamp": ts_claude,
+            "provider": "claude",
+        }
+
+        # Employee response entry (only if we got a real response)
+        emp_text = r.get("employee_response", "")
+        if emp_text and "unavailable" not in emp_text.lower():
+            ts_emp = datetime.now(timezone.utc).isoformat()
+            conversations[ts_emp] = {
+                "channel": ch,
+                "speaker": r.get("employee", ch),
+                "message": emp_text[:500],
+                "timestamp": ts_emp,
+                "provider": r.get("provider", "none"),
                 "posted_to_slack": r.get("posted_to_slack", False),
             }
+
     memory["conversations"] = conversations
 
     # Save updated memory
