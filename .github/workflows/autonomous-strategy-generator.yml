@@ -54,7 +54,7 @@ jobs:
       - name: Generate new strategies via Gemini + Claude
         id: generate
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MARKET_TYPE: ${{ github.event.inputs.market_type || 'auto' }}
           N_STRATEGIES: ${{ github.event.inputs.n_strategies || '1' }}

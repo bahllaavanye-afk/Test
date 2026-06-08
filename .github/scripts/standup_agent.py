@@ -14,12 +14,27 @@ from __future__ import annotations
 
 import json
 import os
+
+# ── Key resolver: supports both plain and numbered secrets ────────────────────
+def _resolve_key(*names: str) -> str:
+    """Return first non-empty value from env, checking plain + numbered variants."""
+    for name in names:
+        v = os.environ.get(name, "")
+        if v:
+            return v
+        # Try _1 suffix if not already numbered
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v:
+                return v
+    return ""
+
 import sys
 import requests
 from datetime import datetime, timezone
 
 SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 GH_TOKEN       = os.environ.get("GH_TOKEN", "")
 GH_REPO        = os.environ.get("GH_REPO", "bahllaavanye-afk/test")

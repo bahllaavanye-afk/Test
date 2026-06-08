@@ -42,7 +42,7 @@ jobs:
             echo "has_key=true" >> "$GITHUB_OUTPUT"
           fi
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
 
       - uses: actions/checkout@v4
         if: steps.key_check.outputs.has_key == 'true'
@@ -67,7 +67,7 @@ jobs:
         if: steps.key_check.outputs.has_key == 'true'
         continue-on-error: true
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
           PYTHONPATH: "."
         run: |
           SYMBOL="${{ github.event.inputs.symbol || 'all' }}"

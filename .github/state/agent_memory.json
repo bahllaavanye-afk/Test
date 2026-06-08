@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "last_updated": "2026-06-08T00:00:00Z",
+  "conversations": {},
+  "employee_context": {},
+  "platform_metrics": {
+    "strategies_live": 68,
+    "commits_today": 0,
+    "open_issues": 0,
+    "experiments_run": 0,
+    "last_sharpe": 2.1,
+    "last_drawdown_pct": 12.3
+  },
+  "thread_state": {},
+  "daily_topics": {}
+}
