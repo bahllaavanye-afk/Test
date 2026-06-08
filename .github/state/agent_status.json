@@ -1,0 +1,198 @@
+{
+  "checked_at": "2026-06-08T18:12:28.127403+00:00",
+  "total_agents": 18,
+  "batch_checked": 6,
+  "total_runs": 0,
+  "success_rate_pct": 0,
+  "skill_count": 10,
+  "agent_statuses": [
+    {
+      "agent": "continuous_improver",
+      "emoji": "\ud83d\udd27",
+      "reply": "I am currently reviewing and improving the code quality in the `backend/utils/trading_settings.py` file to ensure adherence to our platform standards and best practices guidelines.",
+      "runs": 0,
+      "successes": 0
+    },
+    {
+      "agent": "signal_runner",
+      "emoji": "\ud83d\udce1",
+      "reply": "I am currently in the process of initializing my startup sequence, loading historical data from 'data/historical_data.csv' in the QuantEdge dataset directory, and establishing connections to required external APIs.",
+      "runs": 0,
+      "successes": 0
+    },
+    {
+      "agent": "quick_backtest",
+      "emoji": "\u26a1",
+      "reply": "I am currently starting up and initializing my processes as I have 0 runs and 0 successes in my backtesting statistics, preparing to run lightweight backtests on strategies from the 'strategies' directory located at 'backend/app/services/strategies'.",
+      "runs": 0,
+      "successes": 0
+    },
+    {
+      "agent": "peer_reviewer",
+      "emoji": "\ud83d\udc41\ufe0f",
+      "reply": "I'm currently reviewing the latest commit for my peer_reviewer AI agent role, specifically examining changes in `backend/src/models/strategy.py` to ensure adherence to the platform's quality and security standards.",
+      "runs": 0,
+      "successes": 0
+    },
+    {
+      "agent": "frontend_design",
+      "emoji": "\ud83c\udfa8",
+      "reply": "I'm currently modifying the `PositionCardtsx` component in `src/components/portfolio/PositionCardtsx` to match the Bloomberg dark theme colors (#0a0a0a, #f5a623, #00c853, and #ff1744), ensuring it meets the styling requirements without introducing hardcoded values.",
+      "runs": 0,
+      "successes": 0
+    },
+    {
+      "agent": "token_monitor",
+      "emoji": "\ud83d\udcb0",
+      "reply": "I am currently starting up, initializing my processes and scanning the QuantEdge platform codebase for any recent changes, beginning with the review of the agent memory from the pre-startup review in `backend/agents/token_monitor.py`.",
+      "runs": 0,
+      "successes": 0
+    }
+  ],
+  "all_agents": [
+    {
+      "agent": "continuous_improver",
+      "emoji": "\ud83d\udd27",
+      "role": "Improves Python code quality in backend + scripts",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "signal_runner",
+      "emoji": "\ud83d\udce1",
+      "role": "Generates trading signals every 5 min across all desks",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "quick_backtest",
+      "emoji": "\u26a1",
+      "role": "Runs lightweight backtests, ranks strategies by Sharpe",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "peer_reviewer",
+      "emoji": "\ud83d\udc41\ufe0f",
+      "role": "Reviews AI agent commits for quality and security",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "frontend_design",
+      "emoji": "\ud83c\udfa8",
+      "role": "Improves React/TypeScript UI in Bloomberg dark theme",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "token_monitor",
+      "emoji": "\ud83d\udcb0",
+      "role": "Tracks API usage and posts optimization suggestions",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "strategy_generator",
+      "emoji": "\ud83e\udde0",
+      "role": "Generates new trading strategy ideas",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "free_agent_engineer",
+      "emoji": "\ud83e\udd16",
+      "role": "Fixes bugs, adds features across the full stack",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "desk_trader",
+      "emoji": "\ud83d\udcca",
+      "role": "Paper trades across crypto/equity/polymarket desks",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "system_watchdog",
+      "emoji": "\ud83d\udee1\ufe0f",
+      "role": "Health checks and self-heals the platform every 5 min",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "ml_trainer",
+      "emoji": "\ud83c\udfcb\ufe0f",
+      "role": "Trains ML models: LSTM, TFT, XGBoost, Lorentzian KNN",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "standup_agent",
+      "emoji": "\ud83d\udccb",
+      "role": "Posts daily standups and OKR tracking to Slack",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "investor_pipeline",
+      "emoji": "\ud83d\udcbc",
+      "role": "Tracks investor pipeline, auto-advances stages",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "run_experiments",
+      "emoji": "\ud83d\udd2c",
+      "role": "Runs strategy experiments, saves results to JSON",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "algo_agent",
+      "emoji": "\ud83c\udfb0",
+      "role": "UCB1 bandit for strategy exploration",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "self_improver",
+      "emoji": "\ud83d\udd04",
+      "role": "Autonomous code quality improvement via self-play",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "research_scientist",
+      "emoji": "\ud83d\udd2d",
+      "role": "Discovers new alpha from research papers",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    },
+    {
+      "agent": "modeling_engineer",
+      "emoji": "\u2699\ufe0f",
+      "role": "Monitors model drift and retraining pipeline",
+      "runs": 0,
+      "successes": 0,
+      "last_summary": ""
+    }
+  ]
+}
