@@ -64,6 +64,16 @@ from app.strategies.manual.options_strategies import (
     EarningsIVCrushStrategy,
     WheelStrategy,
 )
+from app.strategies.manual.stat_arb_etf import StatArbETFStrategy
+from app.strategies.manual.bond_equity_rotation import BondEquityRotationStrategy
+from app.strategies.manual.put_call_ratio_contrarian import PutCallRatioContrarianStrategy
+from app.strategies.manual.crypto_basis_roll import CryptoBasisRollStrategy
+from app.strategies.manual.micro_cap_momentum import MicroCapMomentumStrategy
+from app.strategies.manual.event_driven_gap import EventDrivenGapStrategy
+from app.strategies.manual.vol_carry_short import VolCarryShortStrategy
+from app.strategies.manual.crypto_whale_momentum import CryptoWhaleMomentumStrategy
+from app.strategies.manual.interest_rate_differential import InterestRateDifferentialStrategy
+from app.strategies.manual.options_gamma_scalp import OptionsGammaScalpStrategy
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
 # xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
@@ -174,6 +184,17 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "long_call_momentum": LongCallMomentum,
     "earnings_iv_crush": EarningsIVCrushStrategy,
     "wheel": WheelStrategy,
+    # ── New strategies ────────────────────────────────────────────────────────
+    "stat_arb_etf": StatArbETFStrategy,
+    "bond_equity_rotation": BondEquityRotationStrategy,
+    "put_call_ratio_contrarian": PutCallRatioContrarianStrategy,
+    "crypto_basis_roll": CryptoBasisRollStrategy,
+    "micro_cap_momentum": MicroCapMomentumStrategy,
+    "event_driven_gap": EventDrivenGapStrategy,
+    "vol_carry_short": VolCarryShortStrategy,
+    "crypto_whale_momentum": CryptoWhaleMomentumStrategy,
+    "interest_rate_differential": InterestRateDifferentialStrategy,
+    "options_gamma_scalp": OptionsGammaScalpStrategy,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry
