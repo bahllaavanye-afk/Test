@@ -12,32 +12,33 @@ from __future__ import annotations
 
 import json
 import os
-
-# ── Key resolver: supports both plain and numbered secrets ────────────────────
-def _resolve_key(*names: str) -> str:
-    """Return first non-empty value from env, checking plain + numbered variants."""
-    for name in names:
-        v = os.environ.get(name, "")
-        if v:
-            return v
-        # Try _1 suffix if not already numbered
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v:
-                return v
-    return ""
-
 import sys
 import time
 import urllib.request
 import urllib.error
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+# ── Shared memory ──────────────────────────────────────────────────────────────
+
+STATE_FILE = Path(__file__).resolve().parents[2] / ".github" / "state" / "agent_memory.json"
+
+def load_memory() -> dict:
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except Exception:
+        return {"conversations": {}, "thread_state": {}, "employee_context": {}, "platform_metrics": {}}
+
+def save_memory(memory: dict):
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    memory["last_updated"] = datetime.now(timezone.utc).isoformat()
+    STATE_FILE.write_text(json.dumps(memory, indent=2))
 
 # ── Channel → Employee mapping ─────────────────────────────────────────────────
 
@@ -136,6 +137,101 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
             "free-agent-engineer (always exits 0), gemini-ml-training (training step resilient). "
             "slack-on-deploy also fixed. 37 workflows total running. "
             "Which pipeline step would you harden next?"
+        ),
+    },
+    "frontend": {
+        "emp_key": "frontend_lead",
+        "name": "Frontend Lead",
+        "emoji": "🎨",
+        "slack_name": "Frontend · Priya Iyer",
+        "claude_opener": (
+            "Priya, the Bloomberg dark theme is live on all pages. LWCharts equity curves, "
+            "comparison chart, and drawdown monitor are all rendering. "
+            "The frontend design agent commits improvements every 2h. "
+            "What UX improvement would have the biggest investor impact?"
+        ),
+    },
+    "data-engineering": {
+        "emp_key": "data_lead",
+        "name": "Data Engineering Lead",
+        "emoji": "🗄️",
+        "slack_name": "Data-Eng · Jiwoo Park",
+        "claude_opener": (
+            "Jiwoo, real-time feeds from Alpaca + Binance WebSocket are live. "
+            "Redis price cache TTL is set. Historical OHLCV pipeline runs nightly. "
+            "Where is the biggest data quality risk right now — stale cache or feed interruptions?"
+        ),
+    },
+    "alpha-research": {
+        "emp_key": "alpha_researcher",
+        "name": "Alpha Researcher",
+        "emoji": "⚗️",
+        "slack_name": "Alpha · Aleksandr Petrov",
+        "claude_opener": (
+            "Aleksandr, 68 strategies live: 43 manual + 25 ML-enhanced. "
+            "Walk-forward validation enforced on all. Top performers: pairs_trading Sharpe 2.1, "
+            "poly_binary_arb near risk-free. Strategy generator commits 8 new strategies daily. "
+            "Which factor has the most unexploited alpha right now?"
+        ),
+    },
+    "execution": {
+        "emp_key": "exec_lead",
+        "name": "Execution Lead",
+        "emoji": "⚡",
+        "slack_name": "Execution · Ying Chen",
+        "claude_opener": (
+            "Ying, TWAP/VWAP/LimitFirst/Iceberg all implemented. Smart router selects algo by "
+            "order size and urgency. PPO RL execution agent trained for minimizing implementation shortfall. "
+            "Slippage tracker logs every fill vs signal price. "
+            "What execution edge are we leaving on the table right now?"
+        ),
+    },
+    "security": {
+        "emp_key": "security_lead",
+        "name": "Security Lead",
+        "emoji": "🔐",
+        "slack_name": "Security · Naoko Tanaka",
+        "claude_opener": (
+            "Naoko, JWT auth on all endpoints, AES-256 broker key encryption, rate limiting via slowapi. "
+            "No raw SQL (ORM only), CSP headers on Vercel, secret scanning active. "
+            "TRADING_MODE is paper-only, enforced server-side. "
+            "What's the highest-priority security gap to close before Series A diligence?"
+        ),
+    },
+    "product": {
+        "emp_key": "product_lead",
+        "name": "Product Manager",
+        "emoji": "📋",
+        "slack_name": "Product · Sarah Kim",
+        "claude_opener": (
+            "Sarah, OKR 1 (CEO): investor pipeline at 10 contacts, Series A target D90. "
+            "OKR 1 (CTO): 50+ commits/day via continuous improvement bots. "
+            "Tearsheet endpoint live for investor pitch. "
+            "What's the single most investor-impressive feature we could ship this week?"
+        ),
+    },
+    "devops": {
+        "emp_key": "devops_dir",
+        "name": "DevOps Director",
+        "emoji": "🚀",
+        "slack_name": "DevOps · Liu Wei",
+        "claude_opener": (
+            "Liu, 42 GitHub Actions workflows deployed, all running hourly. Render backend + Vercel frontend live. "
+            "Agent heartbeat monitors every 30 min. P0 watchdog alerts every hour. "
+            "UptimeRobot pings /health every 5 min. "
+            "What's the weakest link in our deployment pipeline?"
+        ),
+    },
+    "ml-infra": {
+        "emp_key": "ml_infra",
+        "name": "ML Infrastructure Lead",
+        "emoji": "🏗️",
+        "slack_name": "ML-Infra · Felix Andersen",
+        "claude_opener": (
+            "Felix, Gemini cloud training runs every 4h across all symbols. "
+            "LSTM, TFT, XGBoost, LightGBM, SSM, Lorentzian KNN, Ensemble all in registry. "
+            "62 experiment configs, walk-forward validation enforced. "
+            "How should we prioritize model retraining frequency vs training cost?"
         ),
     },
 }
@@ -282,6 +378,96 @@ def ensure_in_channel(channel_id: str) -> None:
     slack_api("conversations.join", {"channel": channel_id})
 
 
+# ── Thread follow-up helpers ───────────────────────────────────────────────────
+
+def get_channel_history(channel_id: str, limit: int = 10) -> list[dict]:
+    """Read recent messages from a Slack channel."""
+    if not SLACK_TOKEN:
+        return []
+    try:
+        req = urllib.request.Request(
+            f"https://slack.com/api/conversations.history?channel={channel_id}&limit={limit}",
+            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
+            method="GET"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            return data.get("messages", []) if data.get("ok") else []
+    except Exception:
+        return []
+
+def get_thread_replies(channel_id: str, thread_ts: str) -> list[dict]:
+    """Read replies in a specific thread."""
+    if not SLACK_TOKEN:
+        return []
+    try:
+        url = f"https://slack.com/api/conversations.replies?channel={channel_id}&ts={thread_ts}&limit=20"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {SLACK_TOKEN}"}, method="GET")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            return data.get("messages", [])[1:] if data.get("ok") else []  # skip root message
+    except Exception:
+        return []
+
+def follow_up_on_threads(memory: dict):
+    """Read recent threads in all channels and have employees respond to new messages."""
+    if not SLACK_TOKEN:
+        return
+
+    thread_state = memory.setdefault("thread_state", {})
+
+    for channel_name, config in CHANNEL_EMPLOYEES.items():
+        ch_id = get_channel_id(channel_name)
+        if not ch_id:
+            continue
+
+        # Get recent channel messages
+        messages = get_channel_history(ch_id, limit=5)
+
+        for msg in messages:
+            ts = msg.get("ts", "")
+            reply_count = msg.get("reply_count", 0)
+
+            if not ts or reply_count == 0:
+                continue
+
+            state_key = f"{channel_name}:{ts}"
+            last_seen_reply = thread_state.get(state_key, {}).get("last_reply_count", 0)
+
+            # Only respond if there are new replies we haven't seen
+            if reply_count <= last_seen_reply:
+                continue
+
+            replies = get_thread_replies(ch_id, ts)
+            if not replies:
+                continue
+
+            # Get the latest reply text
+            latest_reply = replies[-1].get("text", "")
+            if not latest_reply:
+                continue
+
+            # Have the employee respond to the latest message in the thread
+            emp_key = config["emp_key"]
+            context = f"In your Slack channel, someone just said: \"{latest_reply}\"\n\nRespond briefly as yourself. Max 80 words."
+            emp_text, provider = get_employee_response(emp_key, context)
+
+            if emp_text and "unavailable" not in emp_text.lower():
+                reply_payload = {
+                    "channel": ch_id,
+                    "text": emp_text,
+                    "thread_ts": ts,
+                    "username": config["slack_name"],
+                }
+                slack_api("chat.postMessage", reply_payload)
+                print(f"  ↩ Follow-up in #{channel_name} thread by {config['slack_name']}")
+
+            # Update state
+            thread_state[state_key] = {"last_reply_count": reply_count}
+
+    memory["thread_state"] = thread_state
+
+
 # ── Main conversation loop ─────────────────────────────────────────────────────
 
 def run_conversation(channel_name: str) -> dict:
@@ -370,6 +556,14 @@ def main():
         print("WARNING: No GEMINI_API_KEY or GROQ_API_KEY — employees will use fallback responses")
         print("To enable real Gemini responses: add GEMINI_API_KEY to GitHub Secrets → Settings → Secrets → Actions")
 
+    # Load shared memory
+    memory = load_memory()
+    print(f"[memory] loaded — last_updated: {memory.get('last_updated', 'never')}")
+
+    # Follow up on existing threads before posting new conversations
+    print("\n[thread follow-ups] checking for new replies in all channels...")
+    follow_up_on_threads(memory)
+
     channels = list(CHANNEL_EMPLOYEES.keys()) if args.all else (
         [args.channel] if args.channel else list(CHANNEL_EMPLOYEES.keys())
     )
@@ -380,6 +574,23 @@ def main():
         results.append(result)
         if len(channels) > 1:
             time.sleep(2)  # rate limit
+
+    # Update memory with conversation results
+    conversations = memory.setdefault("conversations", {})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for r in results:
+        ch = r.get("channel", "")
+        if ch:
+            conversations[ch] = {
+                "last_run": now_iso,
+                "last_provider": r.get("provider", "none"),
+                "posted_to_slack": r.get("posted_to_slack", False),
+            }
+    memory["conversations"] = conversations
+
+    # Save updated memory
+    save_memory(memory)
+    print(f"[memory] saved to {STATE_FILE}")
 
     print(f"\n{'='*60}")
     print(f"CONVERSATION SUMMARY — {len(results)} channels")

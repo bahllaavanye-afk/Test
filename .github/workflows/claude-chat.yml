@@ -32,6 +32,13 @@ jobs:
       - name: Install deps
         run: pip install --quiet requests
 
+      - name: Pull latest agent memory
+        continue-on-error: true
+        run: |
+          git config user.email "agent-memory@quantedge.ai"
+          git config user.name "Agent Memory System"
+          git pull origin claude/advanced-trading-bot-d5Lmw --rebase || true
+
       - name: Run Claude ↔ Employee conversations
         continue-on-error: true
         env:
@@ -46,6 +53,13 @@ jobs:
             ARGS="--channel $CHANNEL_OVERRIDE"
           fi
           python .github/scripts/claude_conversations.py $ARGS --all
+
+      - name: Commit updated agent memory
+        continue-on-error: true
+        run: |
+          git add .github/state/agent_memory.json || true
+          git diff --cached --quiet || git commit -m "chore(memory): update agent memory state [skip ci]"
+          git push -u origin claude/advanced-trading-bot-d5Lmw || true
 
       - name: Post conversation summary to GitHub step summary
         if: always()
