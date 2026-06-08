@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-08T10:12:06.000423+00:00",
+  "last_updated": "2026-06-08T16:54:12.733890+00:00",
   "conversations": {},
   "employee_context": {},
   "platform_metrics": {
@@ -10,7 +10,7 @@
     "experiments_run": 0,
     "last_sharpe": 2.1,
     "last_drawdown_pct": 12.3,
-    "last_signal_run": "2026-06-08T09:14:51.170850+00:00",
+    "last_signal_run": "2026-06-08T16:54:10.576681+00:00",
     "signal_count_today": 0,
     "last_discussion": "2026-06-08T10:12:06.000423+00:00",
     "total_discussions": 1,
