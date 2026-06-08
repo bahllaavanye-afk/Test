@@ -45,6 +45,8 @@ jobs:
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
           GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY_1 }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_1 }}
+          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
+          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/heartbeat_monitor.py
 
