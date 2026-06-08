@@ -49,6 +49,9 @@ CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "")
 # SambaNova (20M free tokens/day)
 SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY", "")
 
+# DeepSeek (free credits on signup, $0.27/1M input — OpenAI-compatible)
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
 
@@ -108,6 +111,10 @@ class MultiAgentLLM:
             return result
         # Try SambaNova
         result = self._call_sambanova(prompt, max_tokens)
+        if result:
+            return result
+        # Try DeepSeek (OpenAI-compatible, very cheap)
+        result = self._call_deepseek(prompt, max_tokens)
         if result:
             return result
         return "[no LLM response — add GEMINI_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, or SAMBANOVA_API_KEY to GitHub Secrets]"
@@ -210,6 +217,23 @@ class MultiAgentLLM:
             print(f"SambaNova error: {e}")
         return ""
 
+    def _call_deepseek(self, prompt: str, max_tokens: int) -> str:
+        if not DEEPSEEK_API_KEY:
+            return ""
+        try:
+            resp = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
+                json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
+                      "max_tokens": max_tokens},
+                timeout=30
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"DeepSeek error: {e}")
+        return ""
+
     def _alert_quota_exhausted(self):
         """Post Slack alert so owner knows to add a new Gemini key."""
         msg = (
@@ -218,6 +242,7 @@ class MultiAgentLLM:
             "• Add `GEMINI_API_KEY_2` → https://aistudio.google.com (free)\n"
             "• Add `CEREBRAS_API_KEY` → https://cloud.cerebras.ai (free, 1M tok/day)\n"
             "• Add `SAMBANOVA_API_KEY` → https://cloud.sambanova.ai (free, 20M tok/day)\n"
+            "• Add `DEEPSEEK_API_KEY` → https://platform.deepseek.com (free credits, $0.27/1M)\n"
             "• Add `PERPLEXITY_API_KEY` → https://www.perplexity.ai/settings/api (paid but cheap)\n"
             f"_Current pool: {len(GEMINI_KEYS)} Gemini, {len(GROQ_KEYS)} Groq_"
         )
@@ -244,6 +269,7 @@ class MultiAgentLLM:
             "cerebras_available": bool(CEREBRAS_API_KEY),
             "perplexity_available": bool(PERPLEXITY_API_KEY),
             "sambanova_available": bool(SAMBANOVA_API_KEY),
+            "deepseek_available": bool(DEEPSEEK_API_KEY),
             "call_count_this_session": self._call_count,
             "quota_alert_sent": self._quota_alert_sent,
         }
@@ -343,6 +369,7 @@ if __name__ == "__main__":
     print(f"Cerebras configured: {bool(CEREBRAS_API_KEY)}")
     print(f"Perplexity configured: {bool(PERPLEXITY_API_KEY)}")
     print(f"SambaNova configured: {bool(SAMBANOVA_API_KEY)}")
+    print(f"DeepSeek configured: {bool(DEEPSEEK_API_KEY)}")
     llm = MultiAgentLLM()
     result = llm.call("Say 'QuantEdge multi-agent system online' in exactly those words.", max_tokens=20)
     print(f"LLM test: {result}")

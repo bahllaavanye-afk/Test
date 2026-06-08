@@ -44,6 +44,7 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           GEMINI_API_KEY:  ${{ secrets.GEMINI_API_KEY_1 }}
           GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY_1 }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_1 }}
           GH_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
           GH_REPO:         ${{ github.repository }}
           ALLOW_PAID_APIS: "False"
