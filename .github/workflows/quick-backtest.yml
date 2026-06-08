@@ -1,0 +1,68 @@
+name: Quick Backtest Runner — Every 15 Minutes
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    name: Run backtests across all desks
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests numpy yfinance
+
+      - name: Configure git
+        run: |
+          git config user.email "backtest@quantedge.ai"
+          git config user.name "QuantEdge Backtest Runner"
+
+      - name: Run backtests
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/quick_backtest_runner.py
+
+      - name: Save results to state
+        continue-on-error: true
+        run: |
+          if [ -f /tmp/quick_backtest_summary.json ]; then
+            mkdir -p .github/state
+            cp /tmp/quick_backtest_summary.json .github/state/last_backtest.json
+            git add .github/state/last_backtest.json
+            git diff --cached --quiet || git commit -m "backtest: update results $(date -u +%H:%M)"
+          fi
+
+      - name: Push results
+        continue-on-error: true
+        run: |
+          for i in 1 2 3 4; do
+            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+          done
+          git push -u origin claude/advanced-trading-bot-d5Lmw || true
+
+      - name: Step summary
+        if: always()
+        run: |
+          echo "## Backtest Run — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/quick_backtest_summary.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/quick_backtest_summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

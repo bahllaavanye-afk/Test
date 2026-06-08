@@ -50,7 +50,16 @@ CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "")
 SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY", "")
 
 # DeepSeek (free credits on signup, $0.27/1M input — OpenAI-compatible)
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+# Supports up to 3 keys with automatic rotation
+DEEPSEEK_KEYS: list[str] = [
+    k for k in [
+        os.environ.get("DEEPSEEK_API_KEY", ""),
+        os.environ.get("DEEPSEEK_API_KEY_1", ""),
+        os.environ.get("DEEPSEEK_API_KEY_2", ""),
+        os.environ.get("DEEPSEEK_API_KEY_3", ""),
+    ] if k
+]
+DEEPSEEK_API_KEY = DEEPSEEK_KEYS[0] if DEEPSEEK_KEYS else ""  # backward compat
 
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
@@ -75,6 +84,7 @@ class MultiAgentLLM:
         self._gemini_exhausted: set[str] = set()
         self._groq_key_idx = 0
         self._groq_model_idx = 0
+        self._deepseek_key_idx = 0
         self._call_count = 0
         self._quota_alert_sent = False
 
@@ -218,20 +228,27 @@ class MultiAgentLLM:
         return ""
 
     def _call_deepseek(self, prompt: str, max_tokens: int) -> str:
-        if not DEEPSEEK_API_KEY:
+        if not DEEPSEEK_KEYS:
             return ""
-        try:
-            resp = requests.post(
-                "https://api.deepseek.com/chat/completions",
-                headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
-                      "max_tokens": max_tokens},
-                timeout=30
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"DeepSeek error: {e}")
+        # Rotate through all 3 DeepSeek keys
+        for attempt in range(len(DEEPSEEK_KEYS)):
+            key = DEEPSEEK_KEYS[(self._deepseek_key_idx + attempt) % len(DEEPSEEK_KEYS)]
+            try:
+                resp = requests.post(
+                    "https://api.deepseek.com/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
+                          "max_tokens": max_tokens},
+                    timeout=30
+                )
+                if resp.status_code == 200:
+                    self._deepseek_key_idx = (self._deepseek_key_idx + 1) % len(DEEPSEEK_KEYS)
+                    return resp.json()["choices"][0]["message"]["content"].strip()
+                if resp.status_code == 429:
+                    print(f"DeepSeek key ...{key[-6:]} rate limited, trying next key")
+                    continue
+            except Exception as e:
+                print(f"DeepSeek error (key ...{key[-6:]}): {e}")
         return ""
 
     def _alert_quota_exhausted(self):
@@ -244,7 +261,7 @@ class MultiAgentLLM:
             "• Add `SAMBANOVA_API_KEY` → https://cloud.sambanova.ai (free, 20M tok/day)\n"
             "• Add `DEEPSEEK_API_KEY` → https://platform.deepseek.com (free credits, $0.27/1M)\n"
             "• Add `PERPLEXITY_API_KEY` → https://www.perplexity.ai/settings/api (paid but cheap)\n"
-            f"_Current pool: {len(GEMINI_KEYS)} Gemini, {len(GROQ_KEYS)} Groq_"
+            f"_Current pool: {len(GEMINI_KEYS)} Gemini, {len(GROQ_KEYS)} Groq, {len(DEEPSEEK_KEYS)} DeepSeek_"
         )
         if not SLACK_TOKEN:
             print(msg)

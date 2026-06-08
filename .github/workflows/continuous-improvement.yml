@@ -2,8 +2,8 @@ name: Continuous Improvement — Autonomous Code Quality (CTO OKR ≥50 commits/
 
 on:
   schedule:
-    # Every 2 hours — 12 runs/day × 3 commits each = 36+ commits/day toward CTO OKR
-    - cron: "30 * * * *"
+    # Every 30 minutes — 48 runs/day × 3 commits each = 144+ commits/day toward CTO OKR
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       n_files:
@@ -13,7 +13,7 @@ on:
 
 jobs:
   improve:
-    name: Gemini improves 3 files and commits
+    name: Gemini improves 5 files and commits
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -48,7 +48,7 @@ jobs:
           GH_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
           GH_REPO:        ${{ github.repository }}
           ALLOW_PAID_APIS: "False"
-          N_FILES:        ${{ github.event.inputs.n_files || '3' }}
+          N_FILES:        ${{ github.event.inputs.n_files || '5' }}
           PYTHONPATH:     ${{ github.workspace }}/backend
         run: python .github/scripts/continuous_improver.py
 
