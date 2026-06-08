@@ -55,9 +55,9 @@ jobs:
 
       - name: Install deps
         if: steps.key_check.outputs.has_key == 'true'
+        working-directory: ${{ github.workspace }}
         run: |
-          pip install uv --quiet
-          uv pip install --system \
+          pip install --quiet \
             'google-generativeai>=0.8.0' \
             'yfinance>=0.2.0' 'pandas>=2.2.0' 'numpy>=1.26.0' \
             'pydantic-settings>=2.6.0' 'python-dotenv>=1.0.1' \
