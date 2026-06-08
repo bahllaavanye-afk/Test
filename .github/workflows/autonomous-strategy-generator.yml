@@ -56,7 +56,7 @@ jobs:
         id: generate
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           MARKET_TYPE: ${{ github.event.inputs.market_type || 'auto' }}
           N_STRATEGIES: ${{ github.event.inputs.n_strategies || '1' }}
         run: python .github/scripts/strategy_generator.py

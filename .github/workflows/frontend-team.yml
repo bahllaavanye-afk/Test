@@ -46,7 +46,7 @@ jobs:
 
       - name: Run Frontend AI Team
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           FOCUS: ${{ github.event.inputs.focus || 'overall UI quality, animations, and UX polish' }}
           GIT_AUTHOR_NAME: "QuantEdge-Frontend-AI[bot]"

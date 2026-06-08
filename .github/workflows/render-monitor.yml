@@ -43,7 +43,7 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           GIT_AUTHOR_NAME: "QuantEdge-AI[bot]"
           GIT_AUTHOR_EMAIL: "ai@quantedge.io"

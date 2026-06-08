@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../api/client'
 
@@ -7,6 +7,10 @@ const STATUS_STEPS = ['queued', 'loading_data', 'running', 'computing_metrics', 
 function getStepIndex(status: string): number {
   if (status === 'completed') return STATUS_STEPS.indexOf('done')
   return STATUS_STEPS.indexOf(status)
+}
+
+function isTerminal(status: string): boolean {
+  return status === 'done' || status === 'completed' || status === 'failed'
 }
 
 function RunProgressBar({ status }: { status: string }) {
@@ -60,11 +64,47 @@ export default function BacktestLab() {
     initial_equity: 100000,
   })
 
-  const { data: runs } = useQuery({
+  // Track the active run ID for polling
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const pollIntervalRef = useRef<number | null>(null)
+
+  const { data: runs, refetch: refetchRuns } = useQuery({
     queryKey: ['backtests'],
     queryFn: () => api.get('/backtests/').then(r => r.data),
-    refetchInterval: 5_000,
   })
+
+  // Poll specific run by ID every 3s until terminal
+  useEffect(() => {
+    if (!activeRunId) return
+    if (pollIntervalRef.current !== null) window.clearInterval(pollIntervalRef.current)
+
+    pollIntervalRef.current = window.setInterval(async () => {
+      try {
+        const result = await api.get(`/backtests/${activeRunId}`).then(r => r.data)
+        // Update the backtests list cache
+        qc.setQueryData(['backtests'], (old: any[]) => {
+          if (!Array.isArray(old)) return old
+          const idx = old.findIndex((r: any) => r.id === activeRunId)
+          if (idx === -1) return [result, ...old]
+          const updated = [...old]
+          updated[idx] = result
+          return updated
+        })
+        if (isTerminal(result.status)) {
+          window.clearInterval(pollIntervalRef.current!)
+          pollIntervalRef.current = null
+          setActiveRunId(null)
+          refetchRuns()
+        }
+      } catch {
+        // ignore transient errors
+      }
+    }, 3_000)
+
+    return () => {
+      if (pollIntervalRef.current !== null) window.clearInterval(pollIntervalRef.current)
+    }
+  }, [activeRunId, qc, refetchRuns])
 
   const { data: strategies } = useQuery({
     queryKey: ['strategies'],
@@ -75,7 +115,15 @@ export default function BacktestLab() {
 
   const runMutation = useMutation({
     mutationFn: () => api.post('/backtests/', form).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['backtests'] }),
+    onSuccess: (newRun: any) => {
+      // Add the new run to the list immediately
+      qc.setQueryData(['backtests'], (old: any[]) => {
+        if (!Array.isArray(old)) return [newRun]
+        return [newRun, ...old]
+      })
+      // Start polling the specific run ID
+      setActiveRunId(newRun.id)
+    },
   })
 
   const field = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))

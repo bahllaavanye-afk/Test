@@ -51,7 +51,7 @@ jobs:
 
       - name: Run backend team audit
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           FOCUS: ${{ github.event.inputs.focus || 'bugs, security, performance, correctness' }}
         run: python .github/scripts/backend_team.py

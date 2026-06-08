@@ -103,11 +103,45 @@ async def list_events(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(RiskEvent).order_by(RiskEvent.triggered_at.desc()).limit(limit)
+        select(RiskEvent)
+        .options(selectinload(RiskEvent.rule))
+        .order_by(RiskEvent.triggered_at.desc())
+        .limit(limit)
     )
     events = result.scalars().all()
-    return [{"id": e.id, "event_type": e.rule_id, "details": e.notes, "created_at": e.triggered_at} for e in events]
+    return [
+        {
+            "id": e.id,
+            "event_type": (e.rule.rule_type if e.rule else None) or e.action_taken or "risk_event",
+            "details": e.notes,
+            "created_at": e.triggered_at,
+        }
+        for e in events
+    ]
+
+
+@router.get("/circuit-breaker")
+async def get_circuit_breaker_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return current circuit breaker state for the dashboard."""
+    # Check if any halt_all rules have been triggered recently
+    from sqlalchemy import desc
+    result = await db.execute(
+        select(RiskEvent)
+        .order_by(desc(RiskEvent.triggered_at))
+        .limit(1)
+    )
+    latest = result.scalar_one_or_none()
+    is_tripped = latest is not None and latest.resolved_at is None and latest.action_taken in ("halt_all", "halt_bucket")
+    return {
+        "status": "tripped" if is_tripped else "normal",
+        "tripped": is_tripped,
+        "last_event_at": latest.triggered_at.isoformat() if latest else None,
+    }
 
 
 @router.get("/var")
