@@ -15,14 +15,31 @@ from datetime import datetime, timezone
 from pathlib import Path
 import requests
 
-sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post as _lc_slack_post, memory_write
-
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
 
-SLACK_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
+
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v:
+            return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v:
+                return v
+    return ""
+
+
+GROQ_KEY    = _resolve_key("GROQ_API_KEY")
+DEEPSEEK_KEYS = [k for k in [
+    _resolve_key("DEEPSEEK_API_KEY"),
+    os.environ.get("DEEPSEEK_API_KEY_2", ""),
+    os.environ.get("DEEPSEEK_API_KEY_3", ""),
+] if k]
+GEMINI_KEY  = _resolve_key("GEMINI_API_KEY")
+SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 
 REPO_ROOT   = Path(__file__).resolve().parents[2]
 MEMORY_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
@@ -55,6 +72,51 @@ def _read_json(path: Path) -> dict:
         return json.loads(path.read_text())
     except Exception:
         return {}
+
+
+def call_llm(messages: list[dict], max_tokens: int = 800) -> str:
+    """Groq → DeepSeek (3 keys) → Gemini."""
+    if GROQ_KEY:
+        try:
+            r = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+                json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": max_tokens},
+                timeout=25,
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"Groq: {e}")
+
+    for key in DEEPSEEK_KEYS:
+        try:
+            r = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "deepseek-chat", "messages": messages, "max_tokens": max_tokens},
+                timeout=30,
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"DeepSeek: {e}")
+
+    if GEMINI_KEY:
+        try:
+            prompt = "\n".join(m["content"] for m in messages)
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}",
+                json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                      "generationConfig": {"maxOutputTokens": max_tokens}},
+                timeout=30,
+            )
+            if r.status_code == 200:
+                return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except Exception as e:
+            print(f"Gemini: {e}")
+
+    return "⚠️ No LLM available — all API keys exhausted or not set in GitHub Secrets."
 
 
 def post_slack(channel: str, text: str, username: str, icon: str = "robot_face") -> bool:
@@ -125,7 +187,12 @@ def main():
         if agent_stats.get("last_summary"):
             system_parts += [f"Last task: {agent_stats['last_summary'][:120]}"]
 
-    reply = llm(user_message, system="\n".join(system_parts), max_tokens=800, inject_company_context=False)
+    messages = [
+        {"role": "system", "content": "\n".join(system_parts)},
+        {"role": "user", "content": user_message},
+    ]
+
+    reply = call_llm(messages, max_tokens=800)
     print(f"Reply ({len(reply)} chars): {reply[:100]}…")
 
     # Post to Slack

@@ -42,7 +42,6 @@ interface Memory {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const AGENT_EMOJI: Record<string, string> = {
-  // Automation agents
   continuous_improver: '🔧', signal_runner: '📡', quick_backtest: '⚡',
   peer_reviewer: '👁️', frontend_design: '🎨', token_monitor: '🪙',
   strategy_generator: '🧠', free_agent_engineer: '🤖', desk_trader: '📊',
@@ -50,30 +49,6 @@ const AGENT_EMOJI: Record<string, string> = {
   investor_pipeline: '💼', run_experiments: '🔬',
   algo_agent: '🎲', self_improver: '♻️', research_scientist: '🔭',
   modeling_engineer: '⚙️',
-  // QuantEdge employees
-  vp_eng: '🏗️', alpha_dir: '📈', ml_lead: '🧬', risk_eng: '🛡️',
-  backend_lead: '⚙️', qa_dir: '✅', devops_dir: '🚀', exec_eng: '⚡',
-  poly_desk: '🎯', ml_researcher: '🔬', vp_research: '🔭',
-  quant_researcher: '📊', cro: '⚖️', frontend_lead: '🎨',
-  equity_lead: '📈', fixed_income_desk: '💵', macro_researcher: '🌐',
-  stat_arb_desk: '⚖️', vol_trader: '🌊', momentum_quant: '🚀',
-  alt_data_lead: '🛰️', model_validator: '🔍', feature_engineer: '🧮',
-  crypto_quant: '₿', derivatives_desk: '📐', arb_trader: '🔄',
-  portfolio_manager: '💼', market_maker: '📋', regime_analyst: '🔮',
-  backtest_engineer: '📉', data_engineer_2: '🗄️', infra_lead: '☁️',
-}
-
-// Employee domain and LLM assignment (mirrors deep_code_review.py AGENTS)
-const EMPLOYEE_DOMAIN: Record<string, { domain: string; llm: string; channel: string }> = {
-  alpha_dir:    { domain: 'strategies',      llm: 'gemini',     channel: '#desk-research' },
-  ml_lead:      { domain: 'ml-models',       llm: 'sambanova',  channel: '#ml-research' },
-  exec_eng:     { domain: 'execution',       llm: 'cerebras',   channel: '#desk-equities' },
-  risk_eng:     { domain: 'risk',            llm: 'groq',       channel: '#risk' },
-  backend_lead: { domain: 'api-backend',     llm: 'deepseek',   channel: '#engineering' },
-  devops_dir:   { domain: 'tasks-scheduler', llm: 'together',   channel: '#engineering' },
-  frontend_lead:{ domain: 'frontend',        llm: 'hyperbolic', channel: '#frontend' },
-  vp_eng:       { domain: 'infrastructure',  llm: 'nvidia_nim', channel: '#engineering' },
-  cro:          { domain: 'synthesis',       llm: 'gemini',     channel: '#engineering' },
 }
 
 function timeAgo(iso: string | null): string {
@@ -395,80 +370,6 @@ function TaskPanel({
   )
 }
 
-interface CodeReview {
-  domain: string
-  employee: string
-  provider: string
-  grade: string
-  date: string
-  top_priority: string
-}
-
-function CodeReviewPanel() {
-  const { data } = useQuery<{ reviews: CodeReview[] }>({
-    queryKey: ['agents', 'code-reviews'],
-    queryFn: () => api.get('/agents/code-reviews').then(r => r.data),
-    refetchInterval: 300_000,
-  })
-
-  const reviews = data?.reviews ?? []
-  const gradeColor = (g: string) => {
-    if (!g || g === '?') return '#555'
-    if (g.startsWith('A')) return '#00c853'
-    if (g.startsWith('B')) return '#69f0ae'
-    if (g.startsWith('C')) return '#f5a623'
-    if (g.startsWith('D')) return '#ff6d00'
-    return '#ff1744'
-  }
-
-  return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 16 }}>
-      <div style={{ color: '#888', fontSize: 11, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
-        Employee Code Reviews · {reviews.length > 0 ? `Last: ${reviews[0]?.date ?? '—'}` : 'No reviews yet'}
-      </div>
-      {Object.entries(EMPLOYEE_DOMAIN).filter(([k]) => k !== 'cro').map(([emp, info]) => {
-        const review = reviews.find(r => r.employee === emp || r.domain === info.domain)
-        return (
-          <div key={emp} style={{
-            padding: '10px 12px', marginBottom: 8, background: '#111',
-            borderRadius: 6, border: '1px solid #1e1e1e',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 14 }}>{AGENT_EMOJI[emp] ?? '🤖'}</span>
-              <span style={{ color: '#e8e8e8', fontSize: 11, fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
-                {emp}
-              </span>
-              <span style={{ color: '#555', fontSize: 10 }}>→ {info.domain}</span>
-              <span style={{
-                marginLeft: 'auto',
-                fontSize: 14, fontWeight: 800,
-                color: gradeColor(review?.grade ?? ''),
-                fontFamily: 'JetBrains Mono, monospace',
-              }}>
-                {review?.grade ?? '—'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#555' }}>
-              <span>via <span style={{ color: '#f5a623' }}>{info.llm}</span></span>
-              <span style={{ color: info.channel.includes('research') ? '#9c27b0' : '#2196F3' }}>{info.channel}</span>
-            </div>
-            {review?.top_priority && (
-              <div style={{ marginTop: 6, color: '#888', fontSize: 10, lineHeight: 1.4 }}>
-                {review.top_priority.slice(0, 90)}{review.top_priority.length > 90 ? '…' : ''}
-              </div>
-            )}
-          </div>
-        )
-      })}
-      {reviews.length === 0 && (
-        <div style={{ color: '#444', fontSize: 12, textAlign: 'center', padding: '30px 0' }}>
-          Run deep-code-review workflow to see employee grades
-        </div>
-      )}
-    </div>
-  )
-}
-
 function MemoryPanel({ memory, skills }: { memory: Memory | null; skills: string[] }) {
   const [tab, setTab] = useState<'skills' | 'failures' | 'learnings' | 'metrics'>('skills')
 
@@ -593,7 +494,7 @@ function MemoryPanel({ memory, skills }: { memory: Memory | null; skills: string
 
 export default function AgentDashboard() {
   const [selectedAgent, setSelectedAgent] = useState('free_agent_engineer')
-  const [rightTab, setRightTab] = useState<'memory' | 'tasks' | 'reviews'>('reviews')
+  const [rightTab, setRightTab] = useState<'memory' | 'tasks'>('memory')
   const qc = useQueryClient()
 
   const { data: roster = [] } = useQuery<AgentRoster[]>({
@@ -664,7 +565,7 @@ export default function AgentDashboard() {
             🤖 Agent Command Center
           </div>
           <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-            30+ employees · 8 LLM providers · 24/7 code review · assign tasks · shared memory
+            Assign tasks · Chat with any agent · Monitor collective intelligence
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 24 }}>
@@ -715,20 +616,15 @@ export default function AgentDashboard() {
         {/* Right: Memory + Tasks */}
         <div style={{ width: 340, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid #1e1e1e' }}>
-            <button style={tabBtnStyle(rightTab === 'reviews')} onClick={() => setRightTab('reviews')}>
-              Reviews
-            </button>
             <button style={tabBtnStyle(rightTab === 'memory')} onClick={() => setRightTab('memory')}>
-              Memory
+              Shared Memory
             </button>
             <button style={tabBtnStyle(rightTab === 'tasks')} onClick={() => setRightTab('tasks')}>
               Tasks ({Object.keys(tasksData?.active ?? {}).length})
             </button>
           </div>
           <div style={{ flex: 1, overflow: 'hidden' }}>
-            {rightTab === 'reviews' ? (
-              <CodeReviewPanel />
-            ) : rightTab === 'memory' ? (
+            {rightTab === 'memory' ? (
               <MemoryPanel
                 memory={memory ?? null}
                 skills={skillsData?.skills ?? []}
