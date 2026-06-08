@@ -9,6 +9,10 @@ function getStepIndex(status: string): number {
   return STATUS_STEPS.indexOf(status)
 }
 
+function isTerminal(status: string): boolean {
+  return status === 'done' || status === 'completed' || status === 'failed'
+}
+
 function RunProgressBar({ status }: { status: string }) {
   const stepIdx = getStepIndex(status)
   const isFailed = status === 'failed'
@@ -101,13 +105,6 @@ export default function BacktestLab() {
       if (pollIntervalRef.current !== null) window.clearInterval(pollIntervalRef.current)
     }
   }, [activeRunId, qc, refetchRuns])
-
-  const { data: strategies } = useQuery({
-    queryKey: ['strategies'],
-    queryFn: () => api.get('/strategies/').then(r => r.data),
-    staleTime: 300_000,
-    retry: false,
-  })
 
   const { data: strategies } = useQuery({
     queryKey: ['strategies'],

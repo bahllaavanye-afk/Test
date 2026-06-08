@@ -330,14 +330,33 @@ async def get_polymarket_markets(
                 question = m.get("question", "") or m.get("description", "")
                 if filter and filter.lower() not in question.lower():
                     continue
+                # Determine category from tags or market group
+                tags = m.get("tags", []) or []
+                tag_names = [t.get("slug", t) if isinstance(t, dict) else str(t) for t in tags]
+                category = "other"
+                for tag in tag_names:
+                    tl = tag.lower()
+                    if any(k in tl for k in ("politi", "election", "govern")):
+                        category = "politics"
+                        break
+                    if any(k in tl for k in ("crypto", "bitcoin", "ethereum", "btc", "eth")):
+                        category = "crypto"
+                        break
+                    if any(k in tl for k in ("sport", "nba", "nfl", "soccer", "football", "baseball")):
+                        category = "sports"
+                        break
+                    if any(k in tl for k in ("econ", "fed", "rate", "inflation", "gdp", "market")):
+                        category = "economics"
+                        break
                 result.append({
                     "id": m.get("condition_id") or m.get("id", ""),
-                    "question": question,
-                    "end_date": m.get("end_date_iso") or m.get("end_date"),
-                    "yes_price": float(m.get("outcomePrices", ["0"])[0]) if m.get("outcomePrices") else None,
-                    "no_price": float(m.get("outcomePrices", ["0", "0"])[1]) if len(m.get("outcomePrices", [])) > 1 else None,
-                    "volume": float(m.get("volume", 0) or 0),
+                    "title": question,
+                    "end_date": m.get("end_date_iso") or m.get("end_date") or "",
+                    "yes_price": float(m.get("outcomePrices", ["0"])[0]) if m.get("outcomePrices") else 0.0,
+                    "no_price": float(m.get("outcomePrices", ["0", "0"])[1]) if len(m.get("outcomePrices", [])) > 1 else 0.0,
+                    "volume_24h": float(m.get("volume24hr", 0) or m.get("volume", 0) or 0),
                     "liquidity": float(m.get("liquidity", 0) or 0),
+                    "category": category,
                     "active": m.get("active", True),
                     "closed": m.get("closed", False),
                 })

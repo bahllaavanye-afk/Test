@@ -92,7 +92,7 @@ jobs:
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
           ALLOW_PAID_REVIEW: "true"   # Claude Haiku for review only (~$0.001/run)
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: "disabled"
           REVIEW_HOURS: ${{ inputs.review_hours || '6' }}
           AUTO_REVERT: ${{ inputs.auto_revert || 'false' }}
           REVIEW_PROVIDER: ${{ inputs.review_provider || 'auto' }}
