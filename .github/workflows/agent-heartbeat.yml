@@ -1,0 +1,59 @@
+name: Agent Heartbeat — Zero-Downtime Monitor
+
+# Runs every 30 minutes to verify all critical agents are alive.
+# If Claude runs out of credits or goes offline, this workflow keeps running
+# because it uses only GitHub Actions + Gemini/Groq (no Claude dependency).
+# Posts Slack alert if any scheduled workflow hasn't run in > 3 hours.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes, 24/7
+  workflow_dispatch: {}
+
+jobs:
+  heartbeat:
+    name: Verify all agents alive + post status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Check agent health + LLM quota
+        continue-on-error: true
+        env:
+          GH_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:         ${{ github.repository }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY:  ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY }}
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/heartbeat_monitor.py
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Agent Heartbeat" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checked at: $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/heartbeat_report.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/heartbeat_report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
