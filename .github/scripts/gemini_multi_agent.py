@@ -18,32 +18,16 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 import requests
-
-sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import slack_post as _lc_slack_post
-
-
-def _resolve_key(*names: str) -> str:
-    for name in names:
-        v = os.environ.get(name, "")
-        if v: return v
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v: return v
-    return ""
-
 
 # ── Key pool — add GEMINI_API_KEY_2, _3 in GitHub Secrets to scale ───────────
 
 GEMINI_KEYS: list[str] = [
     k for k in [
-        _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1"),
+        os.environ.get("GEMINI_API_KEY", ""),
         os.environ.get("GEMINI_API_KEY_2", ""),
         os.environ.get("GEMINI_API_KEY_3", ""),
     ] if k
@@ -51,30 +35,10 @@ GEMINI_KEYS: list[str] = [
 
 GROQ_KEYS: list[str] = [
     k for k in [
-        _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1"),
+        os.environ.get("GROQ_API_KEY", ""),
         os.environ.get("GROQ_API_KEY_2", ""),
     ] if k
 ]
-
-# Perplexity (has free tier via pplx-api)
-PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
-
-# Cerebras (1M free tokens/day — ultra-fast)
-CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "")
-
-# SambaNova (20M free tokens/day)
-SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY", "")
-
-# DeepSeek (free credits on signup, $0.27/1M input — OpenAI-compatible)
-# Supports up to 3 keys with automatic rotation
-DEEPSEEK_KEYS: list[str] = [
-    k for k in [
-        _resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1"),
-        os.environ.get("DEEPSEEK_API_KEY_2", ""),
-        os.environ.get("DEEPSEEK_API_KEY_3", ""),
-    ] if k
-]
-DEEPSEEK_API_KEY = DEEPSEEK_KEYS[0] if DEEPSEEK_KEYS else ""  # backward compat
 
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
@@ -99,7 +63,6 @@ class MultiAgentLLM:
         self._gemini_exhausted: set[str] = set()
         self._groq_key_idx = 0
         self._groq_model_idx = 0
-        self._deepseek_key_idx = 0
         self._call_count = 0
         self._quota_alert_sent = False
 
@@ -111,38 +74,21 @@ class MultiAgentLLM:
         temperature: float = 0.7,
     ) -> str:
         self._call_count += 1
-        # Try Gemini keys first
+        # Try Gemini keys in order
         for key in GEMINI_KEYS:
             if key in self._gemini_exhausted:
                 continue
             result = self._call_gemini(key, prompt, max_tokens, temperature)
             if result:
                 return result
-        # Gemini exhausted
+
+        # All Gemini keys exhausted — alert once
         if GEMINI_KEYS and not self._quota_alert_sent:
             self._quota_alert_sent = True
             self._alert_quota_exhausted()
-        # Try Cerebras (fastest)
-        result = self._call_cerebras(prompt, max_tokens)
-        if result:
-            return result
-        # Try Groq
-        result = self._call_groq(prompt, max_tokens)
-        if result:
-            return result
-        # Try Perplexity
-        result = self._call_perplexity(prompt, max_tokens)
-        if result:
-            return result
-        # Try SambaNova
-        result = self._call_sambanova(prompt, max_tokens)
-        if result:
-            return result
-        # Try DeepSeek (OpenAI-compatible, very cheap)
-        result = self._call_deepseek(prompt, max_tokens)
-        if result:
-            return result
-        return "[no LLM response — add GEMINI_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, or SAMBANOVA_API_KEY to GitHub Secrets]"
+
+        # Fall back to Groq
+        return self._call_groq(prompt, max_tokens) or "[no LLM response — check API keys]"
 
     def _call_gemini(self, key: str, prompt: str, max_tokens: int, temperature: float) -> str:
         try:
@@ -194,95 +140,30 @@ class MultiAgentLLM:
             print(f"Groq error ({model}): {e}")
         return ""
 
-    def _call_perplexity(self, prompt: str, max_tokens: int) -> str:
-        if not PERPLEXITY_API_KEY:
-            return ""
-        try:
-            resp = requests.post(
-                "https://api.perplexity.ai/chat/completions",
-                headers={"Authorization": f"Bearer {PERPLEXITY_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.1-sonar-small-128k-online", "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-                timeout=25
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"Perplexity error: {e}")
-        return ""
-
-    def _call_cerebras(self, prompt: str, max_tokens: int) -> str:
-        if not CEREBRAS_API_KEY:
-            return ""
-        try:
-            resp = requests.post(
-                "https://api.cerebras.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.3-70b", "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-                timeout=20
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"Cerebras error: {e}")
-        return ""
-
-    def _call_sambanova(self, prompt: str, max_tokens: int) -> str:
-        if not SAMBANOVA_API_KEY:
-            return ""
-        try:
-            resp = requests.post(
-                "https://api.sambanova.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {SAMBANOVA_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "Meta-Llama-3.1-8B-Instruct", "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-                timeout=20
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"SambaNova error: {e}")
-        return ""
-
-    def _call_deepseek(self, prompt: str, max_tokens: int) -> str:
-        if not DEEPSEEK_KEYS:
-            return ""
-        # Rotate through all 3 DeepSeek keys
-        for attempt in range(len(DEEPSEEK_KEYS)):
-            key = DEEPSEEK_KEYS[(self._deepseek_key_idx + attempt) % len(DEEPSEEK_KEYS)]
-            try:
-                resp = requests.post(
-                    "https://api.deepseek.com/chat/completions",
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
-                          "max_tokens": max_tokens},
-                    timeout=30
-                )
-                if resp.status_code == 200:
-                    self._deepseek_key_idx = (self._deepseek_key_idx + 1) % len(DEEPSEEK_KEYS)
-                    return resp.json()["choices"][0]["message"]["content"].strip()
-                if resp.status_code == 429:
-                    print(f"DeepSeek key ...{key[-6:]} rate limited, trying next key")
-                    continue
-            except Exception as e:
-                print(f"DeepSeek error (key ...{key[-6:]}): {e}")
-        return ""
-
     def _alert_quota_exhausted(self):
         """Post Slack alert so owner knows to add a new Gemini key."""
         msg = (
-            "⚠️ *All Gemini keys exhausted — falling back to Cerebras/Groq/Perplexity/SambaNova*\n"
-            "Zero downtime. To restore capacity:\n"
-            "• Add `GEMINI_API_KEY_2` → https://aistudio.google.com (free)\n"
-            "• Add `CEREBRAS_API_KEY` → https://cloud.cerebras.ai (free, 1M tok/day)\n"
-            "• Add `SAMBANOVA_API_KEY` → https://cloud.sambanova.ai (free, 20M tok/day)\n"
-            "• Add `DEEPSEEK_API_KEY` → https://platform.deepseek.com (free credits, $0.27/1M)\n"
-            "• Add `PERPLEXITY_API_KEY` → https://www.perplexity.ai/settings/api (paid but cheap)\n"
-            f"_Current pool: {len(GEMINI_KEYS)} Gemini, {len(GROQ_KEYS)} Groq, {len(DEEPSEEK_KEYS)} DeepSeek_"
+            "⚠️ *All Gemini API keys exhausted for today*\n"
+            "Platform continues on Groq fallback — zero downtime.\n\n"
+            "*To restore full Gemini capacity:*\n"
+            "1. Go to https://aistudio.google.com → get a new free API key\n"
+            "2. Add it to GitHub Secrets as `GEMINI_API_KEY_2` (or `_3`)\n"
+            "3. Gemini resets at midnight UTC — capacity auto-restores tomorrow\n\n"
+            "_Current key pool: " + str(len(GEMINI_KEYS)) + " Gemini key(s), " + str(len(GROQ_KEYS)) + " Groq key(s)_"
         )
         if not SLACK_TOKEN:
             print(msg)
             return
         for ch in ["engineering", "incidents"]:
-            _lc_slack_post(f"#{ch}", msg)
+            try:
+                requests.post(
+                    "https://slack.com/api/chat.postMessage",
+                    headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
+                    json={"channel": ch, "text": msg, "mrkdwn": True},
+                    timeout=10,
+                )
+            except Exception:
+                pass
         print("✓ Quota alert posted to Slack")
 
     def status(self) -> dict:
@@ -290,10 +171,6 @@ class MultiAgentLLM:
             "gemini_keys_available": len(GEMINI_KEYS) - len(self._gemini_exhausted),
             "gemini_keys_exhausted": len(self._gemini_exhausted),
             "groq_keys_available": len(GROQ_KEYS),
-            "cerebras_available": bool(CEREBRAS_API_KEY),
-            "perplexity_available": bool(PERPLEXITY_API_KEY),
-            "sambanova_available": bool(SAMBANOVA_API_KEY),
-            "deepseek_available": bool(DEEPSEEK_API_KEY),
             "call_count_this_session": self._call_count,
             "quota_alert_sent": self._quota_alert_sent,
         }
@@ -317,7 +194,7 @@ def build_platform_context(gh_token: str = "") -> dict:
             "allow_paid_apis": False,
             "trading_mode": "paper",
             "never_ask_for_keys": True,
-            "free_apis_only": ["Gemini free tier", "Groq free tier", "Cerebras free tier", "SambaNova free tier", "Binance public REST", "yfinance", "GitHub API"],
+            "free_apis_only": ["Gemini free tier", "Groq free tier", "Binance public REST", "yfinance", "GitHub API"],
         },
     }
 
@@ -390,10 +267,6 @@ if __name__ == "__main__":
     # Self-test
     print(f"Gemini keys configured: {len(GEMINI_KEYS)}")
     print(f"Groq keys configured: {len(GROQ_KEYS)}")
-    print(f"Cerebras configured: {bool(CEREBRAS_API_KEY)}")
-    print(f"Perplexity configured: {bool(PERPLEXITY_API_KEY)}")
-    print(f"SambaNova configured: {bool(SAMBANOVA_API_KEY)}")
-    print(f"DeepSeek configured: {bool(DEEPSEEK_API_KEY)}")
     llm = MultiAgentLLM()
     result = llm.call("Say 'QuantEdge multi-agent system online' in exactly those words.", max_tokens=20)
     print(f"LLM test: {result}")
