@@ -1,0 +1,46 @@
+name: Peer Review — Multi-Agent Code Review
+
+on:
+  schedule:
+    # Runs every 3 hours — reviews last 5 agent commits
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+
+jobs:
+  peer-review:
+    name: Agent B reviews Agent A commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 20
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Configure git
+        run: |
+          git config user.email "reviewer@quantedge.ai"
+          git config user.name "Peer Reviewer"
+
+      - name: Run peer reviewer
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY_1 }}
+          GH_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:          ${{ github.repository }}
+          ALLOW_PAID_APIS:  "False"
+        run: python .github/scripts/peer_reviewer.py
