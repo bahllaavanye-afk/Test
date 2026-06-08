@@ -9,8 +9,10 @@
     "TRADING_MODE must always be paper \u2014 never set to live",
     "Test files in backend/tests/ \u2014 always run pytest after modifying backend code",
     "Bloomberg dark theme: #0a0a0a bg, #f5a623 accent, #00c853 profit, #ff1744 loss",
-    "All React components must be const arrow functions \u2014 no class components"
+    "All React components must be const arrow functions \u2014 no class components",
+    "Here are 3 reusable patterns or skills extracted from the given learnings:",
+    "1. **Improve Code Quality**: Continuously review and refactor code to adhere to platform standards and ensure high quality."
   ],
-  "last_updated": "2026-06-08T16:54:58.434596+00:00",
-  "total": 10
+  "last_updated": "2026-06-08T22:20:25.156783+00:00",
+  "total": 12
 }
