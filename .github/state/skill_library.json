@@ -1,6 +1,7 @@
 {
   "version": 1,
   "last_updated": "2026-06-08T00:00:00Z",
+  "total": 10,
   "skills": [
     "Files > 8000 chars cause LLM truncation — always truncate before sending to LLM",
     "Syntax check compiled code before writing to disk — prevents broken commits",
