@@ -3,16 +3,49 @@ import { useNavigate } from 'react-router-dom'
 import { useScrollReveal } from '../hooks/useScrollReveal'
 import '../styles/animations.css'
 
-/* ── Data ─────────────────────────────────────────────── */
+/* ── Live Metrics Hook ────────────────────────────────── */
 
-const METRICS = [
-  { label: 'Sharpe Ratio', value: 2.1, suffix: '+', decimals: 1, color: 'var(--green)' },
-  { label: 'Max Drawdown', value: 15, prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
-  { label: 'Win Rate', value: 68, prefix: '~', suffix: '%', decimals: 0, color: 'var(--blue)' },
-  { label: 'Strategies', value: 60, suffix: '+', decimals: 0, color: 'var(--purple)' },
-  { label: 'ML Models', value: 7, suffix: '', decimals: 0, color: 'var(--green)' },
-  { label: 'Uptime', value: null, display: '24/7', color: 'var(--accent)' },
-]
+const API_URL = import.meta.env.VITE_API_URL || 'https://quantedge-api.onrender.com/api/v1'
+
+type Metric = {
+  label: string
+  value: number | null
+  suffix?: string
+  prefix?: string
+  decimals?: number
+  color: string
+  display?: string
+}
+
+function useLiveMetrics(): Metric[] {
+  const [metrics, setMetrics] = useState<Metric[]>([
+    { label: 'Sharpe Ratio', value: 2.1, suffix: '+', decimals: 1, color: 'var(--green)' },
+    { label: 'Max Drawdown', value: 15, prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
+    { label: 'Win Rate', value: 68, prefix: '~', suffix: '%', decimals: 0, color: 'var(--blue)' },
+    { label: 'Strategies', value: 68, suffix: '+', decimals: 0, color: 'var(--purple)' },
+    { label: 'ML Models', value: 7, suffix: '', decimals: 0, color: 'var(--green)' },
+    { label: 'Uptime', value: null, display: '24/7', color: 'var(--accent)' },
+  ])
+
+  useEffect(() => {
+    fetch(`${API_URL}/analytics/live-stats`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        setMetrics(prev => prev.map(m => {
+          if (m.label === 'Sharpe Ratio' && data.sharpe_ratio) return { ...m, value: data.sharpe_ratio }
+          if (m.label === 'Max Drawdown' && data.max_drawdown_pct) return { ...m, value: data.max_drawdown_pct }
+          if (m.label === 'Win Rate' && data.win_rate_pct) return { ...m, value: data.win_rate_pct }
+          if (m.label === 'Strategies' && data.strategy_count) return { ...m, value: data.strategy_count }
+          if (m.label === 'ML Models' && data.model_count) return { ...m, value: data.model_count }
+          return m
+        }))
+      })
+      .catch(() => {}) // keep defaults on error
+  }, [])
+
+  return metrics
+}
 
 const FEATURES = [
   { title: 'Multi-Broker Execution', desc: 'Simultaneous execution across Alpaca, TradeStation, Binance, and Polymarket with smart TWAP/VWAP order routing.', icon: '⚡', color: 'var(--green)' },
@@ -78,7 +111,7 @@ function useCountUp(target: number | null, duration = 1800) {
   return { count, ref }
 }
 
-function MetricCount({ m }: { m: typeof METRICS[number] }) {
+function MetricCount({ m }: { m: Metric }) {
   const { count, ref } = useCountUp(m.value)
   return (
     <span
@@ -221,6 +254,7 @@ function ScanLine() {
 export default function Landing() {
   const navigate = useNavigate()
   useScrollReveal()
+  const METRICS = useLiveMetrics()
 
   return (
     <div
