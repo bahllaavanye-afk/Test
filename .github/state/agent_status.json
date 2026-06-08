@@ -1,50 +1,50 @@
 {
-  "checked_at": "2026-06-10T11:06:06.519219+00:00",
+  "checked_at": "2026-06-08T18:12:28.127403+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 18,
+  "skill_count": 10,
   "agent_statuses": [
     {
-      "agent": "investor_pipeline",
-      "emoji": "\ud83d\udcbc",
-      "reply": "[LLM unavailable \u2014 all providers failed]",
+      "agent": "continuous_improver",
+      "emoji": "\ud83d\udd27",
+      "reply": "I am currently reviewing and improving the code quality in the `backend/utils/trading_settings.py` file to ensure adherence to our platform standards and best practices guidelines.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "run_experiments",
-      "emoji": "\ud83d\udd2c",
-      "reply": "[LLM unavailable \u2014 all providers failed]",
+      "agent": "signal_runner",
+      "emoji": "\ud83d\udce1",
+      "reply": "I am currently in the process of initializing my startup sequence, loading historical data from 'data/historical_data.csv' in the QuantEdge dataset directory, and establishing connections to required external APIs.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "algo_agent",
-      "emoji": "\ud83c\udfb0",
-      "reply": "[LLM unavailable \u2014 all providers failed]",
+      "agent": "quick_backtest",
+      "emoji": "\u26a1",
+      "reply": "I am currently starting up and initializing my processes as I have 0 runs and 0 successes in my backtesting statistics, preparing to run lightweight backtests on strategies from the 'strategies' directory located at 'backend/app/services/strategies'.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "self_improver",
-      "emoji": "\ud83d\udd04",
-      "reply": "[LLM unavailable \u2014 all providers failed]",
+      "agent": "peer_reviewer",
+      "emoji": "\ud83d\udc41\ufe0f",
+      "reply": "I'm currently reviewing the latest commit for my peer_reviewer AI agent role, specifically examining changes in `backend/src/models/strategy.py` to ensure adherence to the platform's quality and security standards.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "research_scientist",
-      "emoji": "\ud83d\udd2d",
-      "reply": "[LLM unavailable \u2014 all providers failed]",
+      "agent": "frontend_design",
+      "emoji": "\ud83c\udfa8",
+      "reply": "I'm currently modifying the `PositionCardtsx` component in `src/components/portfolio/PositionCardtsx` to match the Bloomberg dark theme colors (#0a0a0a, #f5a623, #00c853, and #ff1744), ensuring it meets the styling requirements without introducing hardcoded values.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "modeling_engineer",
-      "emoji": "\u2699\ufe0f",
-      "reply": "[LLM unavailable \u2014 all providers failed]",
+      "agent": "token_monitor",
+      "emoji": "\ud83d\udcb0",
+      "reply": "I am currently starting up, initializing my processes and scanning the QuantEdge platform codebase for any recent changes, beginning with the review of the agent memory from the pre-startup review in `backend/agents/token_monitor.py`.",
       "runs": 0,
       "successes": 0
     }
