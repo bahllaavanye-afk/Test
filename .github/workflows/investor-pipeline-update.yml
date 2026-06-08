@@ -55,4 +55,4 @@ jobs:
           git config user.name "CEO Agent (Anika Sharma)"
           git add data/investor_pipeline.json
           git diff --staged --quiet || git commit -m "chore(okr): update investor pipeline [CEO OKR 1]"
-          git push -u origin claude/advanced-trading-bot-d5Lmw || true
+          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true

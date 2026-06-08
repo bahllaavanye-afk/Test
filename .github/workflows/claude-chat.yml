@@ -60,7 +60,7 @@ jobs:
         run: |
           git add .github/state/agent_memory.json || true
           git diff --cached --quiet || git commit -m "chore(memory): update agent memory state [skip ci]"
-          git push -u origin claude/advanced-trading-bot-d5Lmw || true
+          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true
 
       - name: Post conversation summary to GitHub step summary
         if: always()

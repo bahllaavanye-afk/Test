@@ -5,6 +5,15 @@ outreach context for the CEO's OKR (Active investor pipeline >= 10, Series A by 
 import os, json, requests
 from datetime import datetime, timedelta
 
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
 GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
 

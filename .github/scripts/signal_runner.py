@@ -5,33 +5,10 @@ Runs all strategy signal logic without executing orders (paper mode).
 Posts signals + P&L summary to Slack #signals channel.
 """
 from __future__ import annotations
-import os, sys, json, importlib.util, glob, time
+import os, sys, json, importlib.util, glob
 from datetime import datetime, timezone
 from pathlib import Path
 import requests
-
-_NO_SIGNAL_DEDUP  = Path(__file__).resolve().parents[2] / ".github" / "state" / "signal_runner_dedup.json"
-_NO_SIGNAL_COOLDOWN = 3600  # post "no signals" at most once per hour
-
-
-def _should_post_no_signals() -> bool:
-    try:
-        if _NO_SIGNAL_DEDUP.exists():
-            d = json.loads(_NO_SIGNAL_DEDUP.read_text())
-            return (time.time() - d.get("last_no_signal_ts", 0)) >= _NO_SIGNAL_COOLDOWN
-    except Exception:
-        pass
-    return True
-
-
-def _record_no_signal_post() -> None:
-    _NO_SIGNAL_DEDUP.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        d = json.loads(_NO_SIGNAL_DEDUP.read_text()) if _NO_SIGNAL_DEDUP.exists() else {}
-    except Exception:
-        d = {}
-    d["last_no_signal_ts"] = time.time()
-    _NO_SIGNAL_DEDUP.write_text(json.dumps(d))
 
 def _resolve_key(*names: str) -> str:
     for name in names:
@@ -42,18 +19,9 @@ def _resolve_key(*names: str) -> str:
             if v: return v
     return ""
 
-SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
-GROQ_KEY       = _resolve_key("GROQ_API_KEY")
-DEEPSEEK_KEYS  = [k for k in [
-    _resolve_key("DEEPSEEK_API_KEY"),
-    os.environ.get("DEEPSEEK_API_KEY_2", ""),
-    os.environ.get("DEEPSEEK_API_KEY_3", ""),
-] if k]
-SAMBANOVA_KEY  = _resolve_key("SAMBANOVA_API_KEY")
-CEREBRAS_KEY   = _resolve_key("CEREBRAS_API_KEY")
-HYPERBOLIC_KEY = _resolve_key("HYPERBOLIC_API_KEY")
-TOGETHER_KEY   = _resolve_key("TOGETHER_API_KEY")
-GEMINI_KEY     = _resolve_key("GEMINI_API_KEY")
+SLACK_TOKEN     = os.environ.get("SLACK_BOT_TOKEN", "")
+GEMINI_API_KEY  = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
+GROQ_API_KEY    = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
@@ -63,58 +31,20 @@ STATE_FILE = Path(__file__).resolve().parents[2] / ".github" / "state" / "agent_
 
 # ── Price feeds (public, no auth) ─────────────────────────────────────────────
 
-# CoinGecko coin IDs for mapping (fallback when Binance is geo-blocked / HTTP 451)
-COINGECKO_IDS = {
-    "BTC": "bitcoin", "ETH": "ethereum", "BNB": "binancecoin",
-    "SOL": "solana", "XRP": "ripple", "ADA": "cardano",
-    "AVAX": "avalanche-2", "DOGE": "dogecoin"
-}
-
-
-def _get_crypto_prices_coingecko() -> dict[str, float]:
-    """CoinGecko free API — no auth, no geo-block."""
-    ids = ",".join(COINGECKO_IDS.values())
-    try:
-        resp = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": ids, "vs_currencies": "usd"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            prices = {}
-            for sym, cg_id in COINGECKO_IDS.items():
-                if cg_id in data and "usd" in data[cg_id]:
-                    prices[sym] = float(data[cg_id]["usd"])
-            return prices
-    except Exception as e:
-        print(f"CoinGecko price fetch error: {e}")
-    return {}
-
-
 def get_crypto_prices() -> dict[str, float]:
-    """CoinGecko primary (no geo-block), Binance fallback."""
-    # Try CoinGecko first — works on GitHub Actions US runners, no HTTP 451
-    prices = _get_crypto_prices_coingecko()
-    if prices:
-        print(f"  Prices via CoinGecko ({len(prices)} symbols)")
-        return prices
-
-    # Fall back to Binance if CoinGecko fails
+    """Binance public REST — no API key needed."""
     symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
                "ADAUSDT", "AVAXUSDT", "DOGEUSDT"]
-    prices = {}  # fresh dict — do not reuse CoinGecko empty dict
+    prices = {}
     try:
         resp = requests.get(
             "https://api.binance.com/api/v3/ticker/price",
             params={"symbols": json.dumps(symbols)},
-            timeout=10,
+            timeout=10
         )
         if resp.status_code == 200:
             for item in resp.json():
                 prices[item["symbol"].replace("USDT", "")] = float(item["price"])
-        elif resp.status_code == 451:
-            print("Binance price fetch: HTTP 451 (geo-blocked) — CoinGecko fallback unavailable")
     except Exception as e:
         print(f"Binance price fetch error: {e}")
     return prices
@@ -136,7 +66,7 @@ def get_equity_prices() -> dict[str, float]:
     return prices
 
 def get_funding_rates() -> dict[str, float]:
-    """Binance futures funding rates — crypto desk signal. Returns empty dict on 451."""
+    """Binance futures funding rates — crypto desk signal."""
     rates = {}
     try:
         resp = requests.get(
@@ -148,10 +78,6 @@ def get_funding_rates() -> dict[str, float]:
                 sym = item.get("symbol", "")
                 if sym.endswith("USDT") and item.get("lastFundingRate"):
                     rates[sym.replace("USDT", "")] = float(item["lastFundingRate"])
-        elif resp.status_code == 451:
-            # Binance geo-blocks US IPs (GitHub Actions runners) — funding rates are
-            # optional; return empty dict gracefully so other signals still run.
-            print("Binance futures: HTTP 451 (geo-blocked) — skipping funding rates")
     except Exception as e:
         print(f"Funding rate error: {e}")
     return rates
@@ -176,121 +102,62 @@ def funding_rate_signal(rates: dict[str, float]) -> list[dict]:
     return signals
 
 def momentum_signal(prices: dict[str, float]) -> list[dict]:
-    """Crypto 24h momentum — Binance primary, CoinGecko fallback on HTTP 451."""
+    """Crypto 24h momentum using Binance ticker stats."""
     signals = []
     try:
         resp = requests.get("https://api.binance.com/api/v3/ticker/24hr", timeout=10)
-        if resp.status_code == 200:
-            for item in resp.json():
-                sym = item.get("symbol", "")
-                if not sym.endswith("USDT"):
-                    continue
-                chg = float(item.get("priceChangePercent", 0))
-                vol_usd = float(item.get("quoteVolume", 0))
-                if vol_usd < 10_000_000:  # min $10M volume
-                    continue
-                base = sym.replace("USDT", "")
-                if abs(chg) > 5:
-                    signals.append({
-                        "strategy": "momentum",
-                        "desk": "crypto",
-                        "symbol": base,
-                        "direction": "LONG" if chg > 0 else "SHORT",
-                        "strength": min(100, int(abs(chg) * 5)),
-                        "reason": f"{chg:+.1f}% 24h change, ${vol_usd/1e6:.0f}M volume",
-                    })
-            return signals[:3]
-        elif resp.status_code == 451:
-            print("Binance 24hr ticker: HTTP 451 (geo-blocked) — falling back to CoinGecko 24h change")
+        if resp.status_code != 200:
+            return signals
+        for item in resp.json():
+            sym = item.get("symbol", "")
+            if not sym.endswith("USDT"):
+                continue
+            chg = float(item.get("priceChangePercent", 0))
+            vol_usd = float(item.get("quoteVolume", 0))
+            if vol_usd < 10_000_000:  # min $10M volume
+                continue
+            base = sym.replace("USDT", "")
+            if abs(chg) > 5:
+                signals.append({
+                    "strategy": "momentum",
+                    "desk": "crypto",
+                    "symbol": base,
+                    "direction": "LONG" if chg > 0 else "SHORT",
+                    "strength": min(100, int(abs(chg) * 5)),
+                    "reason": f"{chg:+.1f}% 24h change, ${vol_usd/1e6:.0f}M volume",
+                })
     except Exception as e:
-        print(f"Momentum signal error (Binance): {e}")
-
-    # CoinGecko fallback: bitcoin, ethereum, solana, ripple with 24h change
-    try:
-        cg_resp = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={
-                "ids": "bitcoin,ethereum,solana,ripple",
-                "vs_currencies": "usd",
-                "include_24hr_change": "true",
-            },
-            timeout=10,
-        )
-        if cg_resp.status_code == 200:
-            CG_SYM = {
-                "bitcoin": "BTC", "ethereum": "ETH", "solana": "SOL", "ripple": "XRP",
-                "binancecoin": "BNB", "cardano": "ADA", "avalanche-2": "AVAX", "dogecoin": "DOGE",
-            }
-            cg_data = cg_resp.json()  # parse once, not per-iteration
-            for cg_id, sym in CG_SYM.items():
-                item = cg_data.get(cg_id, {})
-                chg = item.get("usd_24h_change")
-                if chg is None:
-                    continue
-                chg = float(chg)
-                if abs(chg) > 5:
-                    signals.append({
-                        "strategy": "momentum",
-                        "desk": "crypto",
-                        "symbol": sym,
-                        "direction": "LONG" if chg > 0 else "SHORT",
-                        "strength": min(100, int(abs(chg) * 5)),
-                        "reason": f"{chg:+.1f}% 24h change (CoinGecko)",
-                    })
-    except Exception as e:
-        print(f"Momentum signal error (CoinGecko fallback): {e}")
+        print(f"Momentum signal error: {e}")
     return signals[:3]
 
 def stat_arb_signal() -> list[dict]:
-    """BTC-ETH spread signal — Binance primary, CoinGecko fallback on HTTP 451."""
+    """BTC-ETH spread signal from Binance."""
     signals = []
-    btc = eth = 0.0
-    source = "Binance"
     try:
         r = requests.get("https://api.binance.com/api/v3/ticker/price",
                          params={"symbols": '["BTCUSDT","ETHUSDT"]'}, timeout=8)
-        if r.status_code == 200:
-            prices = {d["symbol"]: float(d["price"]) for d in r.json()}
-            btc = prices.get("BTCUSDT", 0.0)
-            eth = prices.get("ETHUSDT", 0.0)
-        elif r.status_code == 451:
-            print("Binance stat arb: HTTP 451 (geo-blocked) — falling back to CoinGecko")
+        if r.status_code != 200:
+            return signals
+        prices = {d["symbol"]: float(d["price"]) for d in r.json()}
+        btc = prices.get("BTCUSDT", 0)
+        eth = prices.get("ETHUSDT", 0)
+        if btc and eth:
+            ratio = btc / eth
+            # Historical average ~15-20
+            if ratio > 25:
+                signals.append({
+                    "strategy": "btc_eth_stat_arb", "desk": "crypto",
+                    "symbol": "BTC/ETH", "direction": "SHORT BTC / LONG ETH",
+                    "strength": 75, "reason": f"BTC/ETH ratio {ratio:.1f} > historical ~18",
+                })
+            elif ratio < 12:
+                signals.append({
+                    "strategy": "btc_eth_stat_arb", "desk": "crypto",
+                    "symbol": "BTC/ETH", "direction": "LONG BTC / SHORT ETH",
+                    "strength": 75, "reason": f"BTC/ETH ratio {ratio:.1f} < historical ~18",
+                })
     except Exception as e:
-        print(f"Stat arb error (Binance): {e}")
-
-    # CoinGecko fallback if Binance prices unavailable
-    if not (btc and eth):
-        try:
-            cg = requests.get(
-                "https://api.coingecko.com/api/v3/simple/price",
-                params={"ids": "bitcoin,ethereum", "vs_currencies": "usd"},
-                timeout=8,
-            )
-            if cg.status_code == 200:
-                data = cg.json()
-                btc = float(data.get("bitcoin", {}).get("usd", 0) or 0)
-                eth = float(data.get("ethereum", {}).get("usd", 0) or 0)
-                source = "CoinGecko"
-        except Exception as e:
-            print(f"Stat arb error (CoinGecko fallback): {e}")
-
-    if btc and eth:
-        ratio = btc / eth
-        # Historical average ~15-20
-        if ratio > 25:
-            signals.append({
-                "strategy": "btc_eth_stat_arb", "desk": "crypto",
-                "symbol": "BTC/ETH", "direction": "SHORT BTC / LONG ETH",
-                "strength": 75,
-                "reason": f"BTC/ETH ratio {ratio:.1f} > historical ~18 (via {source})",
-            })
-        elif ratio < 12:
-            signals.append({
-                "strategy": "btc_eth_stat_arb", "desk": "crypto",
-                "symbol": "BTC/ETH", "direction": "LONG BTC / SHORT ETH",
-                "strength": 75,
-                "reason": f"BTC/ETH ratio {ratio:.1f} < historical ~18 (via {source})",
-            })
+        print(f"Stat arb error: {e}")
     return signals
 
 def polymarket_arb_signal() -> list[dict]:
@@ -356,30 +223,9 @@ def post_slack(channel: str, text: str) -> bool:
         print(f"Slack error: {e}")
         return False
 
-def _load_strategy_gates() -> dict:
-    """Load regime-based strategy gates from company_brain.json."""
-    brain_file = Path(__file__).resolve().parents[2] / ".github" / "state" / "company_brain.json"
-    try:
-        if brain_file.exists():
-            brain = json.loads(brain_file.read_text())
-            gates = brain.get("core", {}).get("strategy_gates", {})
-            if gates:
-                return gates
-    except Exception:
-        pass
-    return {"directional": True, "min_confidence": 0.60, "size_multiplier": 1.0}
-
-
 def main():
     now = datetime.now(timezone.utc)
     print(f"[{now.strftime('%H:%M UTC')}] Signal runner — all desks")
-
-    # Load regime-based strategy gates from morning opinion
-    gates = _load_strategy_gates()
-    directional_ok = gates.get("directional", True)
-    min_confidence = gates.get("min_confidence", 0.60)
-    size_mult = gates.get("size_multiplier", 1.0)
-    print(f"  Strategy gates: directional={directional_ok} | min_conf={min_confidence:.0%} | size_mult={size_mult:.2f}×")
 
     # Gather market data
     crypto_prices = get_crypto_prices()
@@ -390,23 +236,12 @@ def main():
     print(f"  Equity prices: {len(equity_prices)} symbols")
     print(f"  Funding rates: {len(funding_rates)} symbols")
 
-    # Generate signals across all desks — directional strategies gated by regime
+    # Generate signals across all desks
     all_signals = []
-    # Arbitrage strategies always run regardless of regime
     all_signals.extend(funding_rate_signal(funding_rates))
+    all_signals.extend(momentum_signal(crypto_prices))
+    all_signals.extend(stat_arb_signal())
     all_signals.extend(polymarket_arb_signal())
-    # Directional strategies only run in bull/neutral regimes
-    if directional_ok:
-        all_signals.extend(momentum_signal(crypto_prices))
-        all_signals.extend(stat_arb_signal())
-    else:
-        print("  [regime gate] Directional strategies SKIPPED (bear regime active)")
-
-    # Apply confidence threshold filter
-    pre_filter = len(all_signals)
-    all_signals = [s for s in all_signals if s.get("strength", 0) >= int(min_confidence * 100)]
-    if len(all_signals) < pre_filter:
-        print(f"  [regime gate] Filtered {pre_filter - len(all_signals)} low-confidence signals")
 
     print(f"  Signals generated: {len(all_signals)}")
 
@@ -444,11 +279,7 @@ def main():
         post_slack("signals", msg)
         post_slack("trading", msg[:500] + "..." if len(msg) > 500 else msg)
     else:
-        if _should_post_no_signals():
-            post_slack("signals", f"*{now.strftime('%H:%M UTC')}* — No high-confidence signals across any desk. Markets stable.")
-            _record_no_signal_post()
-        else:
-            print("[signal-runner] No signals — skipping post (cooldown active)")
+        post_slack("signals", f"*{now.strftime('%H:%M UTC')}* — No high-confidence signals across any desk. Markets stable.")
 
     # Summary
     summary = {
