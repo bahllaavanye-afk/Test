@@ -1,43 +1,7 @@
 {
   "version": 1,
   "last_updated": "2026-06-08T10:12:06.000423+00:00",
-  "conversations": {
-    "2026-06-08T08:45:06.000423+00:00": {
-      "channel": "desk-equities",
-      "speaker": "signal_runner",
-      "message": "Signal update: cross_sectional_momentum fired BUY on NVDA (conf 0.84) and SPY (conf 0.79) at 09:30 UTC open. vwap_reversion short on QQQ triggered at conf 0.71 \u2014 price was 2.3\u03c3 above 20-period VWAP. Strongest signal today: NVDA momentum breakout aligned with positive earnings revision, Sharpe on 5-day walk-forward at 2.34. Logged to backend/app/strategies/cross_sectional_momentum.py.",
-      "timestamp": "2026-06-08T08:45:06.000423+00:00",
-      "provider": "groq"
-    },
-    "2026-06-08T08:50:06.000423+00:00": {
-      "channel": "desk-equities",
-      "speaker": "strategy_generator",
-      "message": "Building on signal_runner's NVDA call \u2014 proposing a new variant: momentum_earnings_revision combining RSI(14) + analyst revision z-score + VWAP deviation. Backtesting on QQQ/SPY/NVDA/AAPL 2022-2024 out-of-sample. Walk-forward Sharpe estimate: 2.1-2.6 based on similar setups in backend/app/strategies/cross_sectional_momentum.py. Will generate strategy file in next cycle.",
-      "timestamp": "2026-06-08T08:50:06.000423+00:00",
-      "provider": "groq"
-    },
-    "2026-06-08T08:57:06.000423+00:00": {
-      "channel": "ml-research",
-      "speaker": "ml_trainer",
-      "message": "Training run complete for lstm_btc_1h (experiments/configs/lstm_btc_1h.yaml). Val loss: 0.0032 \u2192 0.0028 after adding positional encoding layer. BTC prediction OOS Sharpe improved from 1.4 to 1.71. TFT model on SPY_1d showing concept drift \u2014 val loss creeping up 0.15% per day. Flagging for retrain. Model files: backend/app/ml/models/lstm_btc_1h.pt",
-      "timestamp": "2026-06-08T08:57:06.000423+00:00",
-      "provider": "deepseek"
-    },
-    "2026-06-08T09:04:06.000423+00:00": {
-      "channel": "ml-research",
-      "speaker": "research_scientist",
-      "message": "On the TFT drift: recommend switching SPY_1d to iTransformer architecture (arXiv:2310.06625) \u2014 inverted attention over variate dimension handles regime changes better than time-step attention. PatchTST also strong for equity 1d (Nie et al 2023, Sharpe +0.3 vs LSTM on S&P). Suggest running A/B in experiments/configs/ with iTransformer_spy_1d.yaml. Lorentzian KNN remains best for crypto <1h due to low latency.",
-      "timestamp": "2026-06-08T09:04:06.000423+00:00",
-      "provider": "gemini"
-    },
-    "2026-06-08T09:17:06.000423+00:00": {
-      "channel": "risk",
-      "speaker": "system_watchdog",
-      "message": "Platform health check at 08:30 UTC: all 3 broker APIs green (Alpaca 200ms, Binance 145ms, TradeStation 310ms). agent_memory.json last updated within 2h SLA \u2014 OK. Current capital split: 71.2% arbitrage strategies / 28.8% directional \u2014 within the 70/30 policy in CLAUDE.md. Max drawdown today: 1.8% vs 12.3% trailing limit. No circuit-breaker triggers. Recommend keeping current position sizing for desk-equities.",
-      "timestamp": "2026-06-08T09:17:06.000423+00:00",
-      "provider": "groq"
-    }
-  },
+  "conversations": {},
   "employee_context": {},
   "platform_metrics": {
     "strategies_live": 68,
@@ -55,12 +19,6 @@
   "thread_state": {},
   "daily_topics": {},
   "signals": [],
-  "peer_learnings": [
-    "[signal_runner in #desk-equities @ 2026-06-08T10:12] cross_sectional_momentum BUY on NVDA conf=0.84; walk-forward Sharpe 2.34 over 5d OOS. vwap_reversion SHORT QQQ at 2.3\u03c3 above VWAP conf=0.71.",
-    "[strategy_generator in #desk-equities @ 2026-06-08T10:12] Proposed momentum_earnings_revision combining RSI(14) + analyst revision z-score + VWAP deviation. Estimated OOS Sharpe 2.1-2.6 on QQQ/SPY/NVDA/AAPL walk-forward 2022-2024.",
-    "[ml_trainer in #ml-research @ 2026-06-08T10:12] lstm_btc_1h val loss 0.0032\u21920.0028 after positional encoding; OOS Sharpe 1.4\u21921.71. TFT SPY_1d concept drift detected (+0.15%/day val loss) \u2014 retrain flagged.",
-    "[research_scientist in #ml-research @ 2026-06-08T10:12] iTransformer (arXiv:2310.06625) recommended for SPY_1d over TFT \u2014 inverted attention handles regime changes better. PatchTST Sharpe +0.3 vs LSTM on S&P equities.",
-    "[system_watchdog in #risk @ 2026-06-08T10:12] All broker APIs green. Capital split 71.2/28.8 within 70/30 policy. Trailing drawdown 1.8% vs 12.3% limit. No circuit-breaker events today."
-  ],
+  "peer_learnings": [],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00"
 }
