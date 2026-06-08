@@ -1,18 +1,13 @@
-name: Multi-Agent Discussion — Every 2 Hours
+name: Memory Consolidator — Nightly Knowledge Distillation
 
 on:
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 2 * * *"    # 2 AM UTC daily
   workflow_dispatch:
-    inputs:
-      channel:
-        description: "Force a specific channel (engineering/desk-equities/ml-research/risk)"
-        required: false
-        default: ""
 
 jobs:
-  discuss:
-    name: Agents collaborate in Slack thread
+  consolidate:
+    name: Distil 200 learnings into topic knowledge base
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -24,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: claude/advanced-trading-bot-d5Lmw
-          fetch-depth: 5
+          fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
@@ -36,12 +31,11 @@ jobs:
 
       - name: Configure git
         run: |
-          git config user.email "discussion@quantedge.ai"
-          git config user.name "QuantEdge Discussion Bot"
+          git config user.email "memory@quantedge.ai"
+          git config user.name "QuantEdge Memory Bot"
 
-      - name: Run multi-agent discussion
+      - name: Run memory consolidation
         env:
-          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY_1 }}
           GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY_1 }}
           DEEPSEEK_API_KEY:     ${{ secrets.DEEPSEEK_API_KEY_1 }}
           DEEPSEEK_API_KEY_2:   ${{ secrets.DEEPSEEK_API_KEY_2 }}
@@ -50,16 +44,15 @@ jobs:
           CEREBRAS_API_KEY:     ${{ secrets.CEREBRAS_API_KEY_1 }}
           HYPERBOLIC_API_KEY:   ${{ secrets.HYPERBOLIC_API_KEY_1 }}
           TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
-          SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
-          FORCE_CHANNEL:        ${{ github.event.inputs.channel }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY_1 }}
           ALLOW_PAID_APIS:      "False"
-        run: python .github/scripts/multi_agent_discussion.py
+        run: python .github/scripts/memory_consolidator.py
 
-      - name: Commit updated memory
+      - name: Commit
         continue-on-error: true
         run: |
-          git add .github/state/agent_memory.json 2>/dev/null || true
-          git diff --cached --quiet || git commit -m "discuss: peer learnings updated $(date -u +%H:%M)"
+          git add .github/state/knowledge_base.json .github/state/skill_library.json 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "memory: nightly knowledge consolidation $(date -u +%Y-%m-%d)"
 
       - name: Push
         continue-on-error: true
@@ -69,17 +62,19 @@ jobs:
           done
           git push -u origin claude/advanced-trading-bot-d5Lmw || true
 
-      - name: Step summary
+      - name: Summary
         if: always()
         run: |
-          echo "## Multi-Agent Discussion — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Memory Consolidation — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           python3 -c "
           import json, pathlib
-          m = json.loads(pathlib.Path('.github/state/agent_memory.json').read_text())
-          pl = m.get('peer_learnings', [])
-          pm = m.get('platform_metrics', {})
-          print(f'- Total discussions run: {pm.get(\"total_discussions\", 0)}')
-          print(f'- Peer learnings in memory: {len(pl)}')
-          if pl:
-              print(f'- Latest: {pl[-1][:100]}')
+          try:
+              kb = json.loads(pathlib.Path('.github/state/knowledge_base.json').read_text())
+              print(f'- Learnings processed: {kb.get(\"total_learnings_processed\", 0)}')
+              print(f'- Topics: {list(kb.get(\"topics\", {}).keys())}')
+              for t, d in kb.get(\"topics\", {}).items():
+                  print(f'\n### {t} ({d[\"source_count\"]} entries)')
+                  print(d[\"summary\"][:200])
+          except Exception as e:
+              print(f'Error: {e}')
           " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
