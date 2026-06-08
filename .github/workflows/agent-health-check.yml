@@ -1,0 +1,61 @@
+name: Agent Health Check
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Configure git
+        run: |
+          git config user.email "health-bot@quantedge.ai"
+          git config user.name "QuantEdge Health Bot"
+
+      - name: Run health check
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/agent_health_monitor.py --dry-run
+
+      - name: Update heartbeat
+        run: |
+          python -c "
+import json, datetime
+from pathlib import Path
+p = Path('.github/state/agent_memory.json')
+d = json.loads(p.read_text()) if p.exists() else {}
+d['last_health_check'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+d.setdefault('platform_metrics', {})['health_check_count'] = d.get('platform_metrics', {}).get('health_check_count', 0) + 1
+p.write_text(json.dumps(d, indent=2))
+print('Heartbeat updated')
+"
+
+      - name: Commit heartbeat
+        continue-on-error: true
+        run: |
+          git add .github/state/agent_memory.json
+          git diff --cached --quiet || git commit -m "chore(health): heartbeat $(date -u +%H:%M)"
+          for i in 1 2 3 4; do
+            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+          done
+          git push -u origin claude/advanced-trading-bot-d5Lmw || true
