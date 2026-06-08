@@ -478,6 +478,49 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _position_monitor():
+        """
+        Every 30 seconds: check all open positions for exit conditions
+        (stop-loss, take-profit, trailing stop, time-based, regime, etc.)
+        and submit close orders when triggered.
+        """
+        try:
+            from app.tasks.position_monitor import start_position_monitor
+            from app.redis_client import get_redis
+            from app.database import AsyncSessionLocal
+
+            # Build broker best-effort (same pattern as strategy_runner)
+            _broker = None
+            try:
+                from app.config import settings as _settings
+                if _settings.alpaca_api_key and _settings.alpaca_secret_key:
+                    from app.brokers.alpaca import AlpacaBroker
+                    _broker = AlpacaBroker(
+                        api_key=_settings.alpaca_api_key,
+                        secret_key=_settings.alpaca_secret_key,
+                        paper=(_settings.trading_mode != "live"),
+                    )
+            except Exception as _exc:
+                logger.debug("PositionMonitor: broker unavailable", error=str(_exc))
+
+            _redis = get_redis()
+            await start_position_monitor(
+                broker=_broker,
+                redis_client=_redis,
+                db_session_factory=AsyncSessionLocal,
+            )
+        except Exception as exc:
+            logger.debug("Position monitor tick failed", error=str(exc))
+
+    scheduler.add_job(
+        _position_monitor,
+        "interval",
+        seconds=30,
+        id="position_monitor",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler
