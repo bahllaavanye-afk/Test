@@ -352,8 +352,8 @@ def main():
     args = parser.parse_args()
 
     if not GEMINI_API_KEY and not GROQ_API_KEY:
-        print("ERROR: Set GEMINI_API_KEY or GROQ_API_KEY in GitHub Secrets")
-        sys.exit(1)
+        print("WARNING: No GEMINI_API_KEY or GROQ_API_KEY — employees will use fallback responses")
+        print("To enable real Gemini responses: add GEMINI_API_KEY to GitHub Secrets → Settings → Secrets → Actions")
 
     channels = list(CHANNEL_EMPLOYEES.keys()) if args.all else (
         [args.channel] if args.channel else list(CHANNEL_EMPLOYEES.keys())

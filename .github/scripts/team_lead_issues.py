@@ -461,8 +461,10 @@ def main():
     args = parser.parse_args()
 
     if not GEMINI_API_KEY and not GROQ_API_KEY:
-        print("ERROR: Set GEMINI_API_KEY or GROQ_API_KEY")
-        sys.exit(1)
+        print("WARNING: No GEMINI_API_KEY or GROQ_API_KEY configured.")
+        print("Add GEMINI_API_KEY to GitHub Secrets → Settings → Secrets → Actions")
+        print("Exiting gracefully — no issues created without LLM.")
+        sys.exit(0)
 
     if not GH_TOKEN:
         print("ERROR: Set GH_TOKEN / GITHUB_TOKEN")
