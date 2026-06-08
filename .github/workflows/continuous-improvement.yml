@@ -1,0 +1,68 @@
+name: Continuous Improvement — Autonomous Code Quality (CTO OKR ≥50 commits/day)
+
+on:
+  schedule:
+    # Every 2 hours — 12 runs/day × 3 commits each = 36+ commits/day toward CTO OKR
+    - cron: "30 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      n_files:
+        description: "Number of files to improve per run (1-5)"
+        required: false
+        default: "3"
+
+jobs:
+  improve:
+    name: Gemini improves 3 files and commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Configure git
+        run: |
+          git config user.email "ai-improver@quantedge.ai"
+          git config user.name "QuantEdge Continuous Improver"
+
+      - name: Run continuous improver
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY:   ${{ secrets.GROQ_API_KEY }}
+          GH_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:        ${{ github.repository }}
+          ALLOW_PAID_APIS: "False"
+          N_FILES:        ${{ github.event.inputs.n_files || '3' }}
+          PYTHONPATH:     ${{ github.workspace }}/backend
+        run: python .github/scripts/continuous_improver.py
+
+      - name: Push commits
+        continue-on-error: true
+        run: git push -u origin claude/advanced-trading-bot-d5Lmw
+
+      - name: Post to step summary
+        if: always()
+        run: |
+          echo "## Continuous Improvement Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran at: $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/continuous_improvement_summary.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/continuous_improvement_summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

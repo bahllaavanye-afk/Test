@@ -1,0 +1,65 @@
+name: Frontend Design Agent — Continuous UI/UX Improvements
+
+on:
+  schedule:
+    # Every 6 hours — Priya Iyer (VP Frontend) is always improving the dashboard
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Specific component to improve (leave empty for auto)"
+        required: false
+        default: ""
+
+jobs:
+  design-improve:
+    name: Gemini improves frontend components
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Configure git
+        run: |
+          git config user.email "frontend-agent@quantedge.ai"
+          git config user.name "Frontend Design Agent (Priya Iyer)"
+
+      - name: Run frontend design agent
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY }}
+          ALLOW_PAID_APIS:  "False"
+          COMPONENT_OVERRIDE: ${{ github.event.inputs.component || '' }}
+        run: python .github/scripts/frontend_design_agent.py
+
+      - name: Push commits
+        continue-on-error: true
+        run: git push -u origin claude/advanced-trading-bot-d5Lmw
+
+      - name: Post to step summary
+        if: always()
+        run: |
+          echo "## Frontend Design Agent Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran at: $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/frontend_design_summary.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/frontend_design_summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
