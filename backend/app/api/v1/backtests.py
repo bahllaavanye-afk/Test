@@ -1,12 +1,12 @@
 """Backtest trigger and result retrieval endpoints."""
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, Depends, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.api.limiter import limiter
-from app.models.backtest import BacktestRun, BacktestResult
+from app.models.backtest import BacktestRun
 from app.models.user import User
 from app.backtest.stress_test import STRESS_SCENARIOS
 from pydantic import BaseModel, ConfigDict
@@ -100,7 +100,9 @@ async def list_backtests(
 
 
 @router.post("/")
+@limiter.limit("5/minute")
 async def trigger_backtest(
+    request: Request,
     body: BacktestRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
