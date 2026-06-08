@@ -16,6 +16,21 @@ from __future__ import annotations
 
 import json
 import os
+
+# ── Key resolver: supports both plain and numbered secrets ────────────────────
+def _resolve_key(*names: str) -> str:
+    """Return first non-empty value from env, checking plain + numbered variants."""
+    for name in names:
+        v = os.environ.get(name, "")
+        if v:
+            return v
+        # Try _1 suffix if not already numbered
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v:
+                return v
+    return ""
+
 import sys
 import requests
 from datetime import datetime, timedelta, timezone
@@ -32,7 +47,7 @@ GEMINI_KEYS = [
         os.environ.get("GEMINI_API_KEY_3", ""),
     ] if k
 ]
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
 
 if ALLOW_PAID_APIS.lower() == "true":
     print("SECURITY: ALLOW_PAID_APIS must be False")

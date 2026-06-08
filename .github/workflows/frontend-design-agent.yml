@@ -43,8 +43,8 @@ jobs:
       - name: Run frontend design agent
         continue-on-error: true
         env:
-          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
-          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY_1 }}
           ALLOW_PAID_APIS:  "False"
           COMPONENT_OVERRIDE: ${{ github.event.inputs.component || '' }}
         run: python .github/scripts/frontend_design_agent.py

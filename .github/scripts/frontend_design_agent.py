@@ -10,6 +10,21 @@ from __future__ import annotations
 import glob
 import json
 import os
+
+# ── Key resolver: supports both plain and numbered secrets ────────────────────
+def _resolve_key(*names: str) -> str:
+    """Return first non-empty value from env, checking plain + numbered variants."""
+    for name in names:
+        v = os.environ.get(name, "")
+        if v:
+            return v
+        # Try _1 suffix if not already numbered
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v:
+                return v
+    return ""
+
 import random
 import subprocess
 import sys
@@ -17,7 +32,7 @@ from datetime import datetime, timezone
 
 import requests
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 COMPONENT_OVERRIDE = os.environ.get("COMPONENT_OVERRIDE", "").strip()

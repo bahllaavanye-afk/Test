@@ -1,24 +1,16 @@
 {
   "version": 1,
-  "last_updated": "2026-06-08T10:12:06.000423+00:00",
+  "last_updated": "2026-06-08T00:00:00Z",
   "conversations": {},
   "employee_context": {},
   "platform_metrics": {
     "strategies_live": 68,
-    "commits_today": 23,
+    "commits_today": 0,
     "open_issues": 0,
     "experiments_run": 0,
     "last_sharpe": 2.1,
-    "last_drawdown_pct": 12.3,
-    "last_signal_run": "2026-06-08T09:14:51.170850+00:00",
-    "signal_count_today": 0,
-    "last_discussion": "2026-06-08T10:12:06.000423+00:00",
-    "total_discussions": 1,
-    "heartbeat_count": 2
+    "last_drawdown_pct": 12.3
   },
   "thread_state": {},
-  "daily_topics": {},
-  "signals": [],
-  "peer_learnings": [],
-  "last_heartbeat": "2026-06-08T10:13:33.602602+00:00"
+  "daily_topics": {}
 }
