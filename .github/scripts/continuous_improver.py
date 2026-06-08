@@ -21,6 +21,11 @@ def _resolve_key(*names: str) -> str:
 
 GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY   = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+DEEPSEEK_KEYS  = [k for k in [
+    _resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1"),
+    os.environ.get("DEEPSEEK_API_KEY_2", ""),
+    os.environ.get("DEEPSEEK_API_KEY_3", ""),
+] if k]
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
@@ -77,6 +82,12 @@ def record_success(mem: dict, file_path: str, improvement_type: str, tests_passe
     s["successes"] += 1
     if tests_passed:
         s["test_pass"] += 1
+    # Share with peer agents via collective memory
+    now = datetime.now(timezone.utc).isoformat()
+    mem.setdefault("peer_learnings", [])
+    short = file_path.replace("backend/app/", "").replace("backend/tests/", "test/")
+    mem["peer_learnings"].append(f"[continuous_improver @ {now[:16]}] {improvement_type} on {short}: tests={'pass' if tests_passed else 'skip'}")
+    mem["peer_learnings"] = mem["peer_learnings"][-200:]
 
 # ── LLM helpers ──────────────────────────────────────────────────────────────
 
@@ -111,8 +122,25 @@ def call_groq(prompt: str, max_tokens: int = 2048) -> str:
         print(f"Groq error: {e}")
     return ""
 
+def call_deepseek(prompt: str, max_tokens: int = 2048) -> str:
+    for key in DEEPSEEK_KEYS:
+        try:
+            resp = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
+                      "max_tokens": max_tokens},
+                timeout=40
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"DeepSeek error: {e}")
+    return ""
+
 def llm(prompt: str, max_tokens: int = 2048) -> str:
-    return call_gemini(prompt, max_tokens) or call_groq(prompt, max_tokens) or ""
+    # Priority: Gemini (best quality) → Groq (fast/free) → DeepSeek (3 keys)
+    return call_gemini(prompt, max_tokens) or call_groq(prompt, max_tokens) or call_deepseek(prompt, max_tokens) or ""
 
 # ── File selection ────────────────────────────────────────────────────────────
 
