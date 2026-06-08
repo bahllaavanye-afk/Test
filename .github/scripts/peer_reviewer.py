@@ -60,18 +60,24 @@ def llm(prompt: str) -> str:
     return ""
 
 def get_recent_agent_commits(n: int = 5) -> list[dict]:
+    # Review ALL recent commits on the branch — no author filter.
+    # The peer reviewer should catch issues regardless of who committed.
     result = subprocess.run(
-        ["git", "log", "--oneline", f"-{n}",
-         "--author=QuantEdge AI", "--author=Frontend Design Agent",
-         "--format=%H|%s|%ai"],
+        ["git", "log", f"-{n}", "--format=%H|%s|%ai|%an"],
         capture_output=True, text=True
     )
     commits = []
     for line in result.stdout.strip().split("\n"):
-        if "|" not in line: continue
-        parts = line.split("|", 2)
-        if len(parts) == 3:
-            commits.append({"sha": parts[0], "subject": parts[1], "date": parts[2]})
+        if "|" not in line:
+            continue
+        parts = line.split("|", 3)
+        if len(parts) >= 3:
+            commits.append({
+                "sha": parts[0].strip(),
+                "subject": parts[1].strip(),
+                "date": parts[2].strip(),
+                "author": parts[3].strip() if len(parts) > 3 else "unknown",
+            })
     return commits
 
 def get_diff(sha: str) -> str:

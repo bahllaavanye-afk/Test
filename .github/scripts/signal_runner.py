@@ -19,9 +19,18 @@ def _resolve_key(*names: str) -> str:
             if v: return v
     return ""
 
-SLACK_TOKEN     = os.environ.get("SLACK_BOT_TOKEN", "")
-GEMINI_API_KEY  = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY    = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
+GROQ_KEY       = _resolve_key("GROQ_API_KEY")
+DEEPSEEK_KEYS  = [k for k in [
+    _resolve_key("DEEPSEEK_API_KEY"),
+    os.environ.get("DEEPSEEK_API_KEY_2", ""),
+    os.environ.get("DEEPSEEK_API_KEY_3", ""),
+] if k]
+SAMBANOVA_KEY  = _resolve_key("SAMBANOVA_API_KEY")
+CEREBRAS_KEY   = _resolve_key("CEREBRAS_API_KEY")
+HYPERBOLIC_KEY = _resolve_key("HYPERBOLIC_API_KEY")
+TOGETHER_KEY   = _resolve_key("TOGETHER_API_KEY")
+GEMINI_KEY     = _resolve_key("GEMINI_API_KEY")
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
