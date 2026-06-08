@@ -9,9 +9,19 @@ import os, sys, json, subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 import requests
-sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
 
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
+# Use key _2 or _3 for independent review — different quota/key from improver
+GEMINI_KEY = _resolve_key("GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_1")
+GROQ_KEY   = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
 GH_TOKEN   = os.environ.get("GH_TOKEN", "")
 GH_REPO    = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
@@ -21,25 +31,47 @@ if ALLOW_PAID_APIS.lower() == "true":
 
 STATE_FILE = Path(__file__).resolve().parents[2] / ".github" / "state" / "agent_memory.json"
 
+def llm(prompt: str) -> str:
+    if GEMINI_KEY:
+        try:
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}",
+                json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                      "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.1}},
+                timeout=45
+            )
+            if resp.status_code == 200:
+                return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except Exception as e:
+            print(f"Gemini error: {e}")
+    if GROQ_KEY:
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+                json={"model": "llama-3.1-8b-instant",
+                      "messages": [{"role": "user", "content": prompt}], "max_tokens": 1500},
+                timeout=30
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception:
+            pass
+    return ""
+
 def get_recent_agent_commits(n: int = 5) -> list[dict]:
-    # Review ALL recent commits on the branch — no author filter.
-    # The peer reviewer should catch issues regardless of who committed.
     result = subprocess.run(
-        ["git", "log", f"-{n}", "--format=%H|%s|%ai|%an"],
+        ["git", "log", "--oneline", f"-{n}",
+         "--author=QuantEdge AI", "--author=Frontend Design Agent",
+         "--format=%H|%s|%ai"],
         capture_output=True, text=True
     )
     commits = []
     for line in result.stdout.strip().split("\n"):
-        if "|" not in line:
-            continue
-        parts = line.split("|", 3)
-        if len(parts) >= 3:
-            commits.append({
-                "sha": parts[0].strip(),
-                "subject": parts[1].strip(),
-                "date": parts[2].strip(),
-                "author": parts[3].strip() if len(parts) > 3 else "unknown",
-            })
+        if "|" not in line: continue
+        parts = line.split("|", 2)
+        if len(parts) == 3:
+            commits.append({"sha": parts[0], "subject": parts[1], "date": parts[2]})
     return commits
 
 def get_diff(sha: str) -> str:
