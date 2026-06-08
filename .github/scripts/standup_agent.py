@@ -14,6 +14,23 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
+
+REPO_ROOT  = Path(__file__).resolve().parents[2]
+MEMORY_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
+SKILL_FILE  = REPO_ROOT / ".github" / "state" / "skill_library.json"
+
+def _load_memory() -> dict:
+    try:
+        return json.loads(MEMORY_FILE.read_text())
+    except Exception:
+        return {}
+
+def _load_skills() -> list:
+    try:
+        return json.loads(SKILL_FILE.read_text()).get("skills", [])
+    except Exception:
+        return []
 
 # ── Key resolver: supports both plain and numbered secrets ────────────────────
 def _resolve_key(*names: str) -> str:
@@ -166,23 +183,42 @@ def run_all_hands_standup(ctx: dict):
     issues = ctx.get("open_agent_issues", 0)
     date_str = datetime.now(timezone.utc).strftime("%A %B %d, %Y")
 
-    prompt = f"""You are the CTO of QuantEdge AI, a cutting-edge quant trading platform startup.
-It is {date_str}. Write a brief (4-5 bullets) all-hands standup message for your 92-person engineering team.
-Tone: energetic, data-driven, focused. Include:
-- 1 technical achievement from recent commits
-- 1 priority for today
-- 1 metric or goal reminder
-- 1 motivational close
+    mem = _load_memory()
+    skills = _load_skills()
+    stats = mem.get("improvement_stats", {})
+    total_runs = sum(v.get("runs", 0) for v in stats.values())
+    total_success = sum(v.get("successes", 0) for v in stats.values())
+    sr_pct = round(total_success / total_runs * 100) if total_runs else 0
+    top_agents = sorted(stats.items(), key=lambda x: x[1].get("successes", 0), reverse=True)[:3]
+    top_agents_str = ", ".join(f"{a} ({v.get('successes',0)} tasks)" for a, v in top_agents)
+    active_skills = len(skills)
+    recent_learnings = "\n".join(f"- {l}" for l in mem.get("peer_learnings", [])[-3:])
+    failure_count = len(mem.get("failure_traces", []))
 
-Recent commits:
-{recent}
-Open agent-fix issues: {issues}
+    prompt = f"""You are the CTO of QuantEdge AI, an institutional-grade quant trading platform startup.
+It is {date_str}. Write a brief (4-5 bullets) all-hands standup for your 92-person engineering team.
 
-Write in plain Slack markdown. No headers. Keep it under 150 words."""
+REAL PLATFORM DATA (use this, not made-up numbers):
+- Autonomous agents completed {total_runs} tasks total, {sr_pct}% success rate
+- Top agents today: {top_agents_str or 'all agents active'}
+- Skill library: {active_skills} learned patterns in Voyager memory
+- Open fix issues: {issues}
+- Recent commits: {recent}
+- Recent team learnings: {recent_learnings or 'agents actively learning'}
+- Failure traces to learn from: {failure_count}
+
+Write 4-5 bullets. Tone: energetic, data-driven. Reference the real stats above.
+Under 150 words. Slack markdown. No headers."""
 
     content = llm(prompt)
     if not content:
-        content = f"*QuantEdge All-Hands Standup — {date_str}*\n• Continuous improvement bots committed overnight\n• Priority today: strategy quality + ML experiments\n• Target: 50+ commits/day, zero P0 breaches\n• Every commit matters — keep shipping."
+        content = (
+            f"• Agents completed {total_runs} tasks ({sr_pct}% success rate) — collective intelligence growing\n"
+            f"• Top contributors: {top_agents_str or 'all agents active'}\n"
+            f"• Skill library at {active_skills} patterns — every failure teaches us something new\n"
+            f"• Priority today: {recent or 'drive strategy quality and ML experiments'}\n"
+            f"• Target: 50+ commits/day, zero P0 breaches — keep shipping."
+        )
 
     message = f"*📋 All-Hands Standup — {date_str}*\n\n{content}\n\n_— CTO · QuantEdge AI_"
 
@@ -220,14 +256,33 @@ Be specific to {squad}. Tone: direct, technical, fast."""
     print(f"✓ Squad standups posted to {len(squads)} channels")
 
 def run_alpha_review(ctx: dict):
-    prompt = """You are Marcus Polk, VP Research at QuantEdge (ex-Renaissance Technologies).
-Write the daily alpha review post for 17:00 UTC. Include:
-- 1-2 strategy ideas presented by the Alpha Research team today
-- Brief IC/Sharpe target for each
-- 1 paper from SSRN or arXiv you're tracking
-- Next action for each idea
+    mem = _load_memory()
+    recent_learnings = mem.get("peer_learnings", [])[-5:]
+    skills = _load_skills()[-5:]
+    backtest_file = REPO_ROOT / ".github" / "state" / "last_backtest.json"
+    backtest_str = ""
+    try:
+        if backtest_file.exists():
+            bdata = json.loads(backtest_file.read_text())
+            backtest_str = f"Best recent: {bdata.get('best_strategy','?')} Sharpe={bdata.get('best_sharpe','?')}"
+    except Exception:
+        pass
 
-Keep it under 120 words. Tone: academic yet decisive. Use Slack markdown."""
+    prompt = f"""You are Marcus Polk, VP Research at QuantEdge (ex-Renaissance Technologies).
+Write the daily alpha review post for 17:00 UTC.
+
+REAL DATA FROM TODAY:
+- Recent agent learnings: {'; '.join(recent_learnings) or 'agents actively running experiments'}
+- Active skill patterns: {'; '.join(skills) or 'building skill library'}
+- Backtest results: {backtest_str or 'running backtests across strategies'}
+
+Include based on the above:
+- 1-2 strategy improvement ideas informed by what agents learned
+- Brief IC/Sharpe target for each
+- 1 research direction worth pursuing
+- Next concrete action
+
+Under 120 words. Tone: academic yet decisive. Use Slack markdown."""
     content = llm(prompt, max_tokens=300)
     if not content:
         content = "• Momentum factor refresh showing improved 12-1 month signal on crypto\n• Evaluating PCA stat-arb on ETF pairs for equity desk\n• Tracking: 'Conditional momentum in crypto' (arXiv 2024)\n• Action: backtest both on 2023-2025 OOS data this week"
@@ -237,20 +292,48 @@ Keep it under 120 words. Tone: academic yet decisive. Use Slack markdown."""
     print("✓ Alpha review posted")
 
 def run_risk_eod(ctx: dict):
-    prompt = """You are Marina Volkov, CRO at QuantEdge. Write the Risk EOD report for 20:30 UTC.
-Include (make up plausible paper-trading values):
-- Portfolio VaR (95%, 1-day) as % of AUM
-- CVaR (tail risk)
-- Current regime (HMM state: bull/sideways/bear)
-- Max drawdown today
-- Capital allocation: arb% vs directional%
-- Any risk events or circuit breaker triggers (none expected)
-- Status: GREEN / YELLOW / RED
+    mem = _load_memory()
+    pm = mem.get("platform_metrics", {})
+    regime = pm.get("current_regime", "unknown")
+    stats = mem.get("improvement_stats", {})
+    total_runs = sum(v.get("runs", 0) for v in stats.values())
+    failures_today = len([f for f in mem.get("failure_traces", [])
+                          if f.get("timestamp", "") > datetime.now(timezone.utc).strftime("%Y-%m-%d")])
+    backtest_data = {}
+    try:
+        import glob
+        results = glob.glob(str(REPO_ROOT / ".github" / "state" / "last_backtest.json"))
+        if results:
+            backtest_data = json.loads(Path(results[0]).read_text())
+    except Exception:
+        pass
+    best_sharpe = backtest_data.get("best_sharpe", "N/A")
+    best_strategy = backtest_data.get("best_strategy", "N/A")
 
+    prompt = f"""You are Marina Volkov, CRO at QuantEdge. Write the Risk EOD report for 20:30 UTC.
+
+REAL PLATFORM DATA:
+- Market regime (HMM): {regime}
+- Agent failures today: {failures_today}
+- Total agent runs: {total_runs}
+- Best backtest strategy: {best_strategy} (Sharpe: {best_sharpe})
+- Capital allocation policy: 70% arbitrage, 30% directional (hardcoded risk budget)
+- Platform status: paper trading mode (no real capital at risk)
+
+Write a professional EOD risk report. Use the real data above.
+Do NOT make up VaR numbers — say "paper mode: no AUM at risk" for financial figures.
+Include: regime status, circuit breaker status (none — paper mode), allocation status, agent health.
 Under 120 words. Slack markdown."""
     content = llm(prompt, max_tokens=300)
     if not content:
-        content = "VaR(95%): 0.82% AUM | CVaR: 1.24%\nRegime: Bull (HMM state 2)\nMax DD today: -0.3%\nAllocation: 71% arb / 29% directional\nCircuit breakers: None triggered\nStatus: 🟢 GREEN"
+        content = (
+            f"*Paper Mode* — No real capital at risk\n"
+            f"Regime: {regime} (HMM detector)\n"
+            f"Allocation: 70% arb / 30% directional (policy compliant)\n"
+            f"Agent failures today: {failures_today} | Total runs: {total_runs}\n"
+            f"Best strategy: {best_strategy} (Sharpe {best_sharpe})\n"
+            f"Circuit breakers: None triggered | Status: 🟢 GREEN"
+        )
     msg = f"*🛡️ Risk EOD Report — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*\n\n{content}\n\n_— Marina Volkov, CRO_"
     post_slack("risk", msg, username="CRO · Marina Volkov", icon="shield")
     post_slack("engineering", msg, username="CRO · Marina Volkov", icon="shield")
