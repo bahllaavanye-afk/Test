@@ -23,11 +23,22 @@ from datetime import datetime, timezone
 
 import requests
 
+
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
+
 # ── Key pool — add GEMINI_API_KEY_2, _3 in GitHub Secrets to scale ───────────
 
 GEMINI_KEYS: list[str] = [
     k for k in [
-        os.environ.get("GEMINI_API_KEY", ""),
+        _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1"),
         os.environ.get("GEMINI_API_KEY_2", ""),
         os.environ.get("GEMINI_API_KEY_3", ""),
     ] if k
@@ -35,7 +46,7 @@ GEMINI_KEYS: list[str] = [
 
 GROQ_KEYS: list[str] = [
     k for k in [
-        os.environ.get("GROQ_API_KEY", ""),
+        _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1"),
         os.environ.get("GROQ_API_KEY_2", ""),
     ] if k
 ]
@@ -53,8 +64,7 @@ SAMBANOVA_API_KEY = os.environ.get("SAMBANOVA_API_KEY", "")
 # Supports up to 3 keys with automatic rotation
 DEEPSEEK_KEYS: list[str] = [
     k for k in [
-        os.environ.get("DEEPSEEK_API_KEY", ""),
-        os.environ.get("DEEPSEEK_API_KEY_1", ""),
+        _resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1"),
         os.environ.get("DEEPSEEK_API_KEY_2", ""),
         os.environ.get("DEEPSEEK_API_KEY_3", ""),
     ] if k

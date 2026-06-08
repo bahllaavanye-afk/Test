@@ -30,6 +30,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
+
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
@@ -265,13 +276,13 @@ def _probe_groq(api_key: str) -> str:
 
 def _probe_llm_providers() -> dict[str, str]:
     results: dict[str, str] = {}
-    gk = os.environ.get("GEMINI_API_KEY", "").strip()
+    gk = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1").strip()
     if gk:
         results["gemini"] = _probe_gemini(gk)
     else:
         results["gemini"] = "no_key"
 
-    rk = os.environ.get("GROQ_API_KEY", "").strip()
+    rk = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1").strip()
     if rk:
         results["groq"] = _probe_groq(rk)
     else:

@@ -39,6 +39,17 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
+
 # ── Safety ────────────────────────────────────────────────────────────────────
 ALLOW_PAID_APIS: bool = False
 _env = os.environ.get("ALLOW_PAID_APIS", "False").strip().lower()

@@ -92,7 +92,8 @@ jobs:
           path: /tmp/health_report.json
           retention-days: 7
 
-      - name: Commit auto-healed changes
+      - name: Push changes
+        continue-on-error: true
         if: always()
         run: |
           git config user.email "health-monitor@quantedge.ai"
@@ -102,5 +103,8 @@ jobs:
           else
             git add -u
             git commit -m "chore: auto-heal from health monitor run $(date -u +'%Y-%m-%dT%H:%M') [skip ci]"
-            git push origin HEAD:${{ github.ref_name }} || echo "Push skipped (branch protected)"
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+            done
+            git push -u origin claude/advanced-trading-bot-d5Lmw || true
           fi

@@ -10,48 +10,76 @@ Architecture based on:
 - Constitutional AI: self-critique and revision
 """
 from __future__ import annotations
-import fcntl
-import json
-import os
-import sys
-import tempfile
+import os, sys, json
 from datetime import datetime, timezone
 from pathlib import Path
+import requests
 
-sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
 
-
-def _locked_json_write(path: Path, data: dict) -> None:
-    """Atomic JSON write with exclusive flock to prevent concurrent-write corruption."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_suffix(".lock")
-    with open(lock_path, "w") as lf:
-        fcntl.flock(lf, fcntl.LOCK_EX)
-        try:
-            tmp = path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data, indent=2))
-            os.replace(tmp, path)
-        finally:
-            fcntl.flock(lf, fcntl.LOCK_UN)
-
+GEMINI_API_KEY  = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
+GROQ_API_KEY    = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+DEEPSEEK_KEYS   = [k for k in [_resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1"),
+    os.environ.get("DEEPSEEK_API_KEY_2",""), os.environ.get("DEEPSEEK_API_KEY_3","")] if k]
+SLACK_TOKEN     = os.environ.get("SLACK_BOT_TOKEN", "")
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
 
-REPO_ROOT    = Path(__file__).resolve().parents[2]
-STATE_FILE   = REPO_ROOT / ".github" / "state" / "agent_memory.json"
-SKILL_FILE   = REPO_ROOT / ".github" / "state" / "skill_library.json"
-TASK_FILE    = REPO_ROOT / ".github" / "state" / "task_registry.json"
-BRAIN_FILE   = REPO_ROOT / ".github" / "state" / "company_brain.json"
+REPO_ROOT  = Path(__file__).resolve().parents[2]
+STATE_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
+SKILL_FILE = REPO_ROOT / ".github" / "state" / "skill_library.json"
+TASK_FILE  = REPO_ROOT / ".github" / "state" / "task_registry.json"
 
 
 def call_llm(prompt: str) -> str:
-    """Delegate to shared llm_common infrastructure."""
-    result = llm(prompt, max_tokens=600, inject_company_context=False)
-    if result and not result.startswith("[LLM unavailable"):
-        return result
+    """Try providers in order: Groq → DeepSeek → Gemini."""
+    # Groq first (fastest, free)
+    if GROQ_API_KEY:
+        try:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={"model": "llama-3.1-8b-instant", "messages": [{"role":"user","content":prompt}],
+                      "max_tokens": 600},
+                timeout=20)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"Groq: {e}")
+
+    # DeepSeek
+    for key in DEEPSEEK_KEYS:
+        try:
+            r = requests.post("https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "deepseek-chat", "messages": [{"role":"user","content":prompt}],
+                      "max_tokens": 600},
+                timeout=25)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"DeepSeek: {e}")
+
+    # Gemini fallback
+    if GEMINI_API_KEY:
+        try:
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+                json={"contents":[{"role":"user","parts":[{"text":prompt}]}],
+                      "generationConfig":{"maxOutputTokens":600}},
+                timeout=25)
+            if r.status_code == 200:
+                return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except Exception as e:
+            print(f"Gemini: {e}")
     return ""
 
 
@@ -221,37 +249,14 @@ def main():
     mem["platform_metrics"]["last_collective_learning"] = now.isoformat()
     mem["platform_metrics"]["total_agent_runs"] = total_runs
     mem["platform_metrics"]["total_successes"] = total_successes
-    _locked_json_write(STATE_FILE, mem)
+    STATE_FILE.write_text(json.dumps(mem, indent=2))
 
     skill_data = {"skills": current_skills, "last_updated": now.isoformat(), "total": len(current_skills)}
-    _locked_json_write(SKILL_FILE, skill_data)
+    SKILL_FILE.write_text(json.dumps(skill_data, indent=2))
 
     TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
     tasks["last_updated"] = now.isoformat()
-    _locked_json_write(TASK_FILE, tasks)
-
-    # Write learnings to shared company_brain.json
-    try:
-        brain = json.loads(BRAIN_FILE.read_text()) if BRAIN_FILE.exists() else {}
-        brain.setdefault("learnings", [])
-        brain.setdefault("agent_insights", {})
-        for skill in added:
-            entry = {"source": "collective_learner", "skill": skill, "timestamp": now.isoformat()}
-            brain["learnings"].append(entry)
-        # Keep learnings bounded (last 500)
-        brain["learnings"] = brain["learnings"][-500:]
-        brain["agent_insights"]["collective_learner"] = {
-            "last_run": now.isoformat(),
-            "total_agent_runs": total_runs,
-            "total_successes": total_successes,
-            "skills_total": len(current_skills),
-            "skills_added_this_run": len(added),
-        }
-        brain["last_updated"] = now.isoformat()
-        _locked_json_write(BRAIN_FILE, brain)
-        print(f"  company_brain.json updated (+{len(added)} learnings)")
-    except Exception as e:
-        print(f"  company_brain write error: {e}")
+    TASK_FILE.write_text(json.dumps(tasks, indent=2))
 
     # Post to Slack if new skills were learned
     if added:

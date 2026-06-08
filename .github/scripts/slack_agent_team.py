@@ -66,6 +66,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATE_PATH = REPO_ROOT / "experiments" / "results" / "slack_state.json"
 
 
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Multi-agent routing — system prompt + cost policy constants
 # (defined here so they are available as default argument values below)
@@ -82,6 +92,9 @@ _QUANT_SYSTEM = (
 # ── Cost policy — absolutely no paid API calls ────────────────────────────────
 # Changing this to True requires an explicit code review approval.
 ALLOW_PAID_APIS: bool = False
+
+if os.environ.get("ALLOW_PAID_APIS", "False").lower() == "true":
+    sys.exit(1)
 
 # Hard per-call token cap — prevents runaway generation on any provider
 MAX_TOKENS_PER_CALL: int = 500

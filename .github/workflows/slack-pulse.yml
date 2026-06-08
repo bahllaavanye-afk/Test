@@ -79,8 +79,8 @@ jobs:
             # Scheduled briefing: full agent run generates dynamic content from live data
             python .github/scripts/slack_agent_team.py
           fi
-      - name: Persist agent state
-        if: always()
+      - name: Push changes
+        continue-on-error: true
         run: |
           git config user.email "agents@quantedge.ai"
           git config user.name "QuantEdge Agent Team"
@@ -88,5 +88,8 @@ jobs:
           if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
             git add "$STATE_FILE"
             git commit -m "chore: persist agent state [skip ci]"
-            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+            done
+            git push -u origin claude/advanced-trading-bot-d5Lmw || true
           fi

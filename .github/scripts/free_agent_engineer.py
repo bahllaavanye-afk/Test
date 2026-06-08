@@ -30,6 +30,17 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
+
 # ─── Safety constants ─────────────────────────────────────────────────────────
 
 ALLOW_PAID_APIS: bool = False          # NEVER set to True
@@ -68,8 +79,8 @@ GITHUB_API = "https://api.github.com"
 
 GH_TOKEN: str = os.environ.get("GH_TOKEN", "")
 GH_REPO: str = os.environ.get("GH_REPO", "")
-GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
-GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
+GEMINI_API_KEY: str = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
+GROQ_API_KEY: str = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
 SLACK_BOT_TOKEN: str = os.environ.get("SLACK_BOT_TOKEN", "")
 
 # Validate safety flag — abort if someone tries to enable paid APIs

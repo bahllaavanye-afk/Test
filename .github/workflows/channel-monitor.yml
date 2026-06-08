@@ -55,8 +55,8 @@ jobs:
         run: |
           python .github/scripts/channel_monitor.py
 
-      - name: Persist state
-        if: always()
+      - name: Push changes
+        continue-on-error: true
         run: |
           git config user.email "channel-monitor@quantedge.ai"
           git config user.name "QuantEdge Channel Monitor"
@@ -64,5 +64,8 @@ jobs:
           if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
             git add "$STATE_FILE"
             git commit -m "chore: persist channel monitor state [skip ci]"
-            git push origin HEAD:claude/advanced-trading-bot-d5Lmw || true
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+            done
+            git push -u origin claude/advanced-trading-bot-d5Lmw || true
           fi
