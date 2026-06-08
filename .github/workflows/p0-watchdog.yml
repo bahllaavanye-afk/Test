@@ -1,0 +1,38 @@
+name: P0 Watchdog — SLA Monitor
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # Every hour, 24/7
+  workflow_dispatch: {}
+
+jobs:
+  watch-p0:
+    name: Check P0 SLA compliance (CTO OKR)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --quiet requests
+
+      - name: Run P0 watchdog
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/p0_watchdog.py

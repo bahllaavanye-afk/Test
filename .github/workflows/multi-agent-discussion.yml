@@ -1,0 +1,85 @@
+name: Multi-Agent Discussion — Every 2 Hours
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Force a specific channel (engineering/desk-equities/ml-research/risk)"
+        required: false
+        default: ""
+
+jobs:
+  discuss:
+    name: Agents collaborate in Slack thread
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 5
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Configure git
+        run: |
+          git config user.email "discussion@quantedge.ai"
+          git config user.name "QuantEdge Discussion Bot"
+
+      - name: Run multi-agent discussion
+        env:
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY_1 }}
+          DEEPSEEK_API_KEY:     ${{ secrets.DEEPSEEK_API_KEY_1 }}
+          DEEPSEEK_API_KEY_2:   ${{ secrets.DEEPSEEK_API_KEY_2 }}
+          DEEPSEEK_API_KEY_3:   ${{ secrets.DEEPSEEK_API_KEY_3 }}
+          SAMBANOVA_API_KEY:    ${{ secrets.SAMBANOVA_API_KEY_1 }}
+          CEREBRAS_API_KEY:     ${{ secrets.CEREBRAS_API_KEY_1 }}
+          HYPERBOLIC_API_KEY:   ${{ secrets.HYPERBOLIC_API_KEY_1 }}
+          TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
+          SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
+          FORCE_CHANNEL:        ${{ github.event.inputs.channel }}
+          ALLOW_PAID_APIS:      "False"
+        run: python .github/scripts/multi_agent_discussion.py
+
+      - name: Commit updated memory
+        continue-on-error: true
+        run: |
+          git add .github/state/agent_memory.json 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "discuss: peer learnings updated $(date -u +%H:%M)"
+
+      - name: Push
+        continue-on-error: true
+        run: |
+          for i in 1 2 3 4; do
+            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+          done
+          git push -u origin claude/advanced-trading-bot-d5Lmw || true
+
+      - name: Step summary
+        if: always()
+        run: |
+          echo "## Multi-Agent Discussion — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          python3 -c "
+          import json, pathlib
+          m = json.loads(pathlib.Path('.github/state/agent_memory.json').read_text())
+          pl = m.get('peer_learnings', [])
+          pm = m.get('platform_metrics', {})
+          print(f'- Total discussions run: {pm.get(\"total_discussions\", 0)}')
+          print(f'- Peer learnings in memory: {len(pl)}')
+          if pl:
+              print(f'- Latest: {pl[-1][:100]}')
+          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

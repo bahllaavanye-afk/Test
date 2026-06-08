@@ -1,0 +1,73 @@
+name: System Watchdog — Every 5 Minutes (Self-Healing)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  watchdog:
+    name: Health check + auto-heal
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Configure git
+        run: |
+          git config user.email "watchdog@quantedge.ai"
+          git config user.name "QuantEdge Watchdog"
+
+      - name: Run watchdog + self-heal
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN:    ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY_1 }}
+          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
+          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
+          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
+          GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:            ${{ github.repository }}
+          ALLOW_PAID_APIS:    "False"
+        run: python .github/scripts/system_watchdog.py
+
+      - name: Commit any self-healed state
+        continue-on-error: true
+        run: |
+          git add .github/state/ 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "watchdog: auto-heal state files $(date -u +%H:%M)"
+
+      - name: Push
+        continue-on-error: true
+        run: |
+          for i in 1 2 3 4; do
+            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+          done
+          git push -u origin claude/advanced-trading-bot-d5Lmw || true
+
+      - name: Step summary
+        if: always()
+        run: |
+          echo "## Watchdog — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/watchdog_summary.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/watchdog_summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

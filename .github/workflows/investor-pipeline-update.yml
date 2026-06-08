@@ -1,0 +1,58 @@
+name: Investor Pipeline — CEO OKR Update
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"   # Every Monday at 08:00 UTC
+  workflow_dispatch:
+    inputs:
+      investor_name:
+        description: "Investor name to add/update"
+        required: false
+      stage:
+        description: "Stage (intro_email/deck_sent/first_call/second_call/diligence/term_sheet)"
+        required: false
+      notes:
+        description: "Notes"
+        required: false
+
+jobs:
+  update-pipeline:
+    name: Update investor pipeline and advance stages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --quiet requests
+
+      - name: Auto-advance pipeline stages via Gemini
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          INVESTOR_NAME: ${{ github.event.inputs.investor_name || '' }}
+          STAGE: ${{ github.event.inputs.stage || '' }}
+          NOTES: ${{ github.event.inputs.notes || '' }}
+        run: python .github/scripts/investor_pipeline_updater.py
+
+      - name: Commit pipeline update
+        run: |
+          git config user.email "ceo-agent@quantedge.ai"
+          git config user.name "CEO Agent (Anika Sharma)"
+          git add data/investor_pipeline.json
+          git diff --staged --quiet || git commit -m "chore(okr): update investor pipeline [CEO OKR 1]"
+          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true
