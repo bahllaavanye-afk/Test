@@ -33,6 +33,7 @@ jobs:
         run: pip install --quiet requests
 
       - name: Run Claude ↔ Employee conversations
+        continue-on-error: true
         env:
           SLACK_BOT_TOKEN:  ${{ secrets.SLACK_BOT_TOKEN }}
           GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
