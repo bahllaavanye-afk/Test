@@ -327,6 +327,18 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
         new_learnings.append(
             f"[{agent_name} in #{channel} @ {now.strftime('%Y-%m-%dT%H:%M')}] {reply[:150]}"
         )
+
+        # Log to conversations dict (keyed by timestamp for deduplication)
+        conv_ts = datetime.now(timezone.utc).isoformat()
+        mem.setdefault("conversations", {})[conv_ts] = {
+            "channel": channel,
+            "speaker": agent_name,
+            "message": reply[:500],
+            "timestamp": conv_ts,
+            "provider": "llm",
+            "round": topic,
+        }
+
         print(f"  {agent_name}: {reply[:80]}…")
 
     print(f"  Discussion complete: {len(new_learnings)} learnings added")
