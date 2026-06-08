@@ -68,18 +68,18 @@ jobs:
         run: |
           echo "## Agent Status Check — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           python3 -c "
-import json, pathlib
-try:
-    s = json.loads(pathlib.Path('.github/state/agent_status.json').read_text())
-    print(f'- Total agents: {s[\"total_agents\"]}')
-    print(f'- Batch checked: {s[\"batch_checked\"]}')
-    print(f'- Total runs across all agents: {s[\"total_runs\"]}')
-    print(f'- Platform success rate: {s[\"success_rate_pct\"]}%')
-    print(f'- Shared skills: {s[\"skill_count\"]}')
-    print()
-    print('### Agent Reports')
-    for a in s.get('agent_statuses', []):
-        print(f'- {a[\"emoji\"]} **{a[\"agent\"]}**: {a[\"reply\"][:100]}')
-except Exception as e:
-    print(f'Could not parse status: {e}')
-" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          import json, pathlib
+          try:
+              s = json.loads(pathlib.Path('.github/state/agent_status.json').read_text())
+              print(f'- Total agents: {s[\"total_agents\"]}')
+              print(f'- Batch checked: {s[\"batch_checked\"]}')
+              print(f'- Total runs across all agents: {s[\"total_runs\"]}')
+              print(f'- Platform success rate: {s[\"success_rate_pct\"]}%')
+              print(f'- Shared skills: {s[\"skill_count\"]}')
+              print()
+              print('### Agent Reports')
+              for a in s.get('agent_statuses', []):
+                  print(f'- {a[\"emoji\"]} **{a[\"agent\"]}**: {a[\"reply\"][:100]}')
+          except Exception as e:
+              print(f'Could not parse status: {e}')
+          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

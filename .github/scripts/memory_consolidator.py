@@ -14,29 +14,13 @@ Architecture: Reflexion distillation (Shinn 2023) + knowledge condensation.
 All LLM calls use free tier only. No paid APIs.
 """
 from __future__ import annotations
-import fcntl
 import json
 import os
 import sys
-import tempfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 import requests
-
-
-def _locked_json_write(path: Path, data: dict) -> None:
-    """Atomic JSON write with exclusive flock to prevent concurrent-write corruption."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_suffix(".lock")
-    with open(lock_path, "w") as lf:
-        fcntl.flock(lf, fcntl.LOCK_EX)
-        try:
-            tmp = path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data, indent=2))
-            os.replace(tmp, path)
-        finally:
-            fcntl.flock(lf, fcntl.LOCK_UN)
 
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
@@ -72,7 +56,6 @@ STATE_DIR  = REPO_ROOT / ".github" / "state"
 MEMORY_FILE   = STATE_DIR / "agent_memory.json"
 SKILL_FILE    = STATE_DIR / "skill_library.json"
 KB_FILE       = STATE_DIR / "knowledge_base.json"
-BRAIN_FILE    = STATE_DIR / "company_brain.json"
 
 
 # Topic keywords for bucketing — pure string matching, no GPU needed
@@ -276,7 +259,7 @@ def main():
 
     # Write knowledge base
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    _locked_json_write(KB_FILE, kb)
+    KB_FILE.write_text(json.dumps(kb, indent=2))
 
     # Inject top consolidated knowledge back into skill_library (so all agents get it)
     try:
@@ -300,34 +283,8 @@ def main():
         skill_data["skills"] = list(existing_skills)[-200:]
         skill_data["last_updated"] = now.isoformat()
         skill_data["total"] = len(skill_data["skills"])
-        _locked_json_write(SKILL_FILE, skill_data)
+        SKILL_FILE.write_text(json.dumps(skill_data, indent=2))
         print(f"  Added {len(new_skills)} new skills to skill_library.json")
-
-    # Write consolidated knowledge to shared company_brain.json
-    try:
-        brain = json.loads(BRAIN_FILE.read_text()) if BRAIN_FILE.exists() else {}
-        brain.setdefault("learnings", [])
-        brain.setdefault("agent_insights", {})
-        # Record each new skill distilled this run
-        for skill in new_skills:
-            brain["learnings"].append({
-                "source": "memory_consolidator",
-                "skill": skill,
-                "timestamp": now.isoformat(),
-            })
-        # Keep learnings bounded (last 500)
-        brain["learnings"] = brain["learnings"][-500:]
-        brain["agent_insights"]["memory_consolidator"] = {
-            "last_run": now.isoformat(),
-            "topics_consolidated": len(by_topic),
-            "llm_calls": llm_calls,
-            "new_skills_injected": len(new_skills),
-        }
-        brain["last_updated"] = now.isoformat()
-        _locked_json_write(BRAIN_FILE, brain)
-        print(f"  company_brain.json updated (+{len(new_skills)} skills)")
-    except Exception as e:
-        print(f"  company_brain write error: {e}")
 
     print(
         f"✓ Consolidation complete: {len(by_topic)} topics, "

@@ -48,6 +48,8 @@ jobs:
           DEEPSEEK_API_KEY_3:   ${{ secrets.DEEPSEEK_API_KEY_3 }}
           SAMBANOVA_API_KEY:    ${{ secrets.SAMBANOVA_API_KEY_1 }}
           CEREBRAS_API_KEY:     ${{ secrets.CEREBRAS_API_KEY_1 }}
+          HYPERBOLIC_API_KEY:   ${{ secrets.HYPERBOLIC_API_KEY_1 }}
+          TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
           SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
           FORCE_CHANNEL:        ${{ github.event.inputs.channel }}
           ALLOW_PAID_APIS:      "False"
