@@ -1,0 +1,47 @@
+name: Signal Runner — Every 5 Minutes (All Desks)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  signals:
+    name: Run signals across all desks
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests yfinance
+
+      - name: Run signal runner
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY:  ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY_1 }}
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/signal_runner.py
+
+      - name: Post step summary
+        if: always()
+        run: |
+          echo "## Signal Runner — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/signal_runner_summary.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/signal_runner_summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

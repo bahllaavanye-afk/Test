@@ -66,4 +66,4 @@ jobs:
           git config user.email "bot@quantedge.ai"
           git add experiments/results/strategy_ranking_*.json || true
           git diff --cached --quiet || git commit -m "chore: strategy health ranking $(date -u +%Y-%m-%d)"
-          git push origin claude/advanced-trading-bot-d5Lmw || true
+          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true
