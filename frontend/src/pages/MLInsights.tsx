@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
 import api from '../api/client'
 
 interface MLModel {
@@ -55,6 +56,13 @@ export default function MLInsights() {
   const avgAccuracy = completedExps.length > 0
     ? completedExps.reduce((sum, e) => sum + (e.val_accuracy ?? 0), 0) / completedExps.length
     : 0
+
+  const [optimizeResult, setOptimizeResult] = useState<Record<string, unknown> | null>(null)
+  const optimizeMutation = useMutation({
+    mutationFn: (symbol: string) =>
+      api.post('/ml/ensemble/optimize-weights', { symbol, n_splits: 5, lookback_days: 365 }).then(r => r.data),
+    onSuccess: (data) => setOptimizeResult(data),
+  })
 
   const MODEL_TYPE_LABELS: Record<string, string> = {
     lstm: 'LSTM (Bidirectional + Attention)',
@@ -203,6 +211,51 @@ export default function MLInsights() {
                   ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* Ensemble Weight Optimizer */}
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-4">
+        <h2 className="text-sm font-semibold mb-3 text-[#888888] uppercase tracking-wider">
+          Walk-Forward Ensemble Optimization
+        </h2>
+        <p className="text-xs text-[#888888] mb-3">
+          Runs SLSQP walk-forward optimization across 5 folds to find the Sharpe-maximising blend
+          of LSTM · XGBoost · Lorentzian weights. Updates in-memory immediately.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => optimizeMutation.mutate('SPY')}
+            disabled={optimizeMutation.isPending || !activeModels.length}
+            className="px-4 py-2 text-xs font-semibold rounded border border-[#f5a623] text-[#f5a623] hover:bg-[#f5a623]/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {optimizeMutation.isPending ? 'Optimising…' : 'Optimize Weights (SPY, 1y)'}
+          </button>
+          {!activeModels.length && (
+            <span className="text-xs text-[#555]">No active models — train first</span>
+          )}
+          {optimizeMutation.isError && (
+            <span className="text-xs text-[#ff1744]">
+              {(optimizeMutation.error as Error)?.message ?? 'Optimization failed'}
+            </span>
+          )}
+        </div>
+        {optimizeResult && (
+          <div className="mt-3 border border-[#1e1e1e] rounded p-3 text-xs font-mono">
+            <p className="text-[#888888] mb-2">
+              Optimal weights for <span className="text-[#f5a623]">{String((optimizeResult as Record<string, unknown>).symbol)}</span>
+              {' · '}
+              {String((optimizeResult as Record<string, unknown>).n_splits)} folds
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {Object.entries((optimizeResult as Record<string, unknown>).optimal_weights as Record<string, number> ?? {}).map(([model, w]) => (
+                <div key={model} className="bg-[#0a0a0a] rounded p-2">
+                  <p className="text-[#888888]">{model}</p>
+                  <p className="text-[#00c853] font-bold">{(w * 100).toFixed(1)}%</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
