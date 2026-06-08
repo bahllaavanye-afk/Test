@@ -33,8 +33,13 @@ def _resolve_key(*names: str) -> str:
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+GEMINI_API_KEY    = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
+GROQ_API_KEY      = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+DEEPSEEK_API_KEY  = _resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1")
+SAMBANOVA_API_KEY = _resolve_key("SAMBANOVA_API_KEY", "SAMBANOVA_API_KEY_1")
+CEREBRAS_API_KEY  = _resolve_key("CEREBRAS_API_KEY", "CEREBRAS_API_KEY_1")
+HYPERBOLIC_API_KEY = _resolve_key("HYPERBOLIC_API_KEY", "HYPERBOLIC_API_KEY_1")
+TOGETHER_API_KEY  = _resolve_key("TOGETHER_API_KEY", "TOGETHER_API_KEY_1")
 
 # ── Shared memory ──────────────────────────────────────────────────────────────
 
@@ -132,9 +137,9 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emoji": "🔧",
         "slack_name": "Backend-Lead · Anna Hoffmann",
         "claude_opener": (
-            "Anna, FastAPI backend is live on Render. 68 strategies registered, "
+            "Anna, FastAPI backend is live on Render. 78 strategies registered (28 arb, 44 equity, 6 crypto). "
             "APScheduler running 10 jobs (snapshot, retrain, order_sync, bot_exit_checker, etc.). "
-            "New: check_bot_exits() creates Trade records every 5min at TP/SL. "
+            "490 tests passing, TypeScript clean. check_bot_exits() creates Trade records every 5min at TP/SL. "
             "What's the highest-priority backend tech debt you'd tackle next?"
         ),
     },
@@ -144,10 +149,10 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emoji": "🚨",
         "slack_name": "DevOps-Dir · Kenji Watanabe",
         "claude_opener": (
-            "Kenji, 3 workflows just got fixed: desk-trading (continue-on-error), "
-            "free-agent-engineer (always exits 0), gemini-ml-training (training step resilient). "
-            "slack-on-deploy also fixed. 37 workflows total running. "
-            "Which pipeline step would you harden next?"
+            "Kenji, 60 GitHub Actions workflows running on main branch: signal-runner every 5min, "
+            "system-watchdog every 5min, quick-backtest every 15min, continuous-improvement every 30min, "
+            "slack-agent-team 4x/day. All 7 LLM providers configured. "
+            "Which workflow is the highest single point of failure right now?"
         ),
     },
     "frontend": {
@@ -179,9 +184,9 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emoji": "⚗️",
         "slack_name": "Alpha · Aleksandr Petrov",
         "claude_opener": (
-            "Aleksandr, 68 strategies live: 43 manual + 25 ML-enhanced. "
-            "Walk-forward validation enforced on all. Top performers: pairs_trading Sharpe 2.1, "
-            "poly_binary_arb near risk-free. Strategy generator commits 8 new strategies daily. "
+            "Aleksandr, 78 strategies live: 44 equity + 28 arb + 6 crypto. "
+            "Walk-forward validation enforced on all. poly_binary_arb near risk-free, "
+            "avellaneda_stoikov_mm live, HMM regime gating directional strategies in bear markets. "
             "Which factor has the most unexploited alpha right now?"
         ),
     },
@@ -312,8 +317,148 @@ def call_groq(system_prompt: str, user_message: str) -> str | None:
         return None
 
 
+def call_deepseek(system_prompt: str, user_message: str) -> str | None:
+    """DeepSeek V3 (free tier)."""
+    key = DEEPSEEK_API_KEY
+    if not key:
+        return None
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.7,
+    }
+    req = urllib.request.Request(
+        "https://api.deepseek.com/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[deepseek] error: {e}")
+        return None
+
+
+def call_sambanova(system_prompt: str, user_message: str) -> str | None:
+    """SambaNova Cloud (free tier)."""
+    key = SAMBANOVA_API_KEY
+    if not key:
+        return None
+    payload = {
+        "model": "Meta-Llama-3.1-8B-Instruct",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.7,
+    }
+    req = urllib.request.Request(
+        "https://api.sambanova.ai/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[sambanova] error: {e}")
+        return None
+
+
+def call_cerebras(system_prompt: str, user_message: str) -> str | None:
+    """Cerebras Llama (free tier)."""
+    key = CEREBRAS_API_KEY
+    if not key:
+        return None
+    payload = {
+        "model": "llama3.1-8b",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.7,
+    }
+    req = urllib.request.Request(
+        "https://api.cerebras.ai/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[cerebras] error: {e}")
+        return None
+
+
+def call_hyperbolic(system_prompt: str, user_message: str) -> str | None:
+    """Hyperbolic (free tier)."""
+    key = HYPERBOLIC_API_KEY
+    if not key:
+        return None
+    payload = {
+        "model": "meta-llama/Llama-3.2-3B-Instruct",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.7,
+    }
+    req = urllib.request.Request(
+        "https://api.hyperbolic.xyz/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[hyperbolic] error: {e}")
+        return None
+
+
+def call_together(system_prompt: str, user_message: str) -> str | None:
+    """Together AI (free tier)."""
+    key = TOGETHER_API_KEY
+    if not key:
+        return None
+    payload = {
+        "model": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.7,
+    }
+    req = urllib.request.Request(
+        "https://api.together.xyz/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[together] error: {e}")
+        return None
+
+
 def get_employee_response(emp_key: str, context: str) -> tuple[str, str]:
-    """Get a Gemini (or Groq fallback) response for the employee. Returns (text, provider)."""
+    """7-provider cascade for employee response. Returns (text, provider)."""
     sys.path.insert(0, str(REPO_ROOT / ".github" / "scripts"))
     try:
         from slack_agent_team import _EMPLOYEE_PERSONAS
@@ -328,16 +473,25 @@ def get_employee_response(emp_key: str, context: str) -> tuple[str, str]:
         f"numbers. Max 120 words. Slack format (*bold* for emphasis). No headers."
     )
 
-    text = call_gemini(persona, user_msg)
-    if text:
-        return text, "Gemini 2.0 Flash"
-
-    text = call_groq(persona, user_msg)
-    if text:
-        return text, "Groq Llama-3.1-8b"
+    # Full 7-provider cascade — first success wins
+    for fn, name in [
+        (call_gemini,    "Gemini 2.0 Flash"),
+        (call_cerebras,  "Cerebras Llama-3.1"),
+        (call_groq,      "Groq Llama-3.1"),
+        (call_deepseek,  "DeepSeek V3"),
+        (call_sambanova, "SambaNova Llama-3.1"),
+        (call_hyperbolic,"Hyperbolic Llama-3.2"),
+        (call_together,  "Together Llama-3.2"),
+    ]:
+        try:
+            text = fn(persona, user_msg)
+            if text:
+                return text, name
+        except Exception:
+            continue
 
     return (
-        "⚠️ All free LLM providers unavailable — check GEMINI_API_KEY / GROQ_API_KEY in GitHub Secrets.",
+        "⚠️ All 7 free LLM providers unavailable — check secrets in GitHub Actions.",
         "none",
     )
 
