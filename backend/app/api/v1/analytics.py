@@ -1182,6 +1182,103 @@ async def get_live_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/system-status")
+async def get_system_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Aggregate system health status for the dashboard.
+
+    Returns active strategy counts, last signal time, regime, VIX,
+    open positions, today's P&L %, and strategies broken down by desk.
+    """
+    from sqlalchemy import desc
+    from app.models.strategy import Strategy
+
+    account_ids = await _user_account_ids(db, current_user.id)
+
+    # Strategy counts
+    strat_result = await db.execute(select(Strategy))
+    all_strategies = strat_result.scalars().all()
+    active_strategies = sum(1 for s in all_strategies if s.is_enabled)
+
+    desk_map: dict[str, int] = {"equity": 0, "crypto": 0, "options": 0, "arbitrage": 0}
+    for s in all_strategies:
+        mt = (s.market_type or "").lower()
+        rb = (s.risk_bucket or "").lower()
+        if "arb" in rb or "arbitrage" in rb:
+            desk_map["arbitrage"] += 1
+        elif mt == "crypto":
+            desk_map["crypto"] += 1
+        elif mt == "options" or "option" in mt:
+            desk_map["options"] += 1
+        else:
+            desk_map["equity"] += 1
+
+    # Last signal time — most recent order created
+    last_signal_at: str | None = None
+    if account_ids:
+        sig_result = await db.execute(
+            select(Order.created_at)
+            .where(Order.account_id.in_(account_ids))
+            .order_by(desc(Order.created_at))
+            .limit(1)
+        )
+        sig_row = sig_result.scalar_one_or_none()
+        if sig_row:
+            ts = sig_row
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            last_signal_at = ts.isoformat()
+
+    # Open positions count
+    open_positions = 0
+    if account_ids:
+        pos_result = await db.execute(
+            select(func.count(Position.id)).where(Position.account_id.in_(account_ids))
+        )
+        open_positions = int(pos_result.scalar_one() or 0)
+
+    # Today's P&L %
+    today_pnl_pct = 0.0
+    if account_ids:
+        today = datetime.now(timezone.utc).date()
+        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+        today_pnl_result = await db.execute(
+            select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
+                Trade.account_id.in_(account_ids),
+                Trade.closed_at >= today_start,
+            )
+        )
+        today_pnl = float(today_pnl_result.scalar_one())
+        # Express as % of a $100k baseline
+        today_pnl_pct = round(today_pnl / 100_000.0 * 100.0, 4)
+
+    # Regime from macro snapshot (best-effort)
+    regime: int | None = None
+    vix: float | None = None
+    try:
+        from app.ml.features.macro_signals import get_macro_snapshot_cached
+        macro = await get_macro_snapshot_cached()
+        vix = macro.get("vix")
+        bias = macro.get("macro_bias", "neutral")
+        regime = 1 if bias == "risk_on" else (-1 if bias == "risk_off" else 0)
+    except Exception:
+        pass
+
+    return {
+        "active_strategies": active_strategies,
+        "total_strategies": len(all_strategies),
+        "last_signal_at": last_signal_at,
+        "regime": regime,
+        "vix": round(float(vix), 2) if vix is not None else None,
+        "open_positions": open_positions,
+        "today_pnl_pct": today_pnl_pct,
+        "strategies_by_desk": desk_map,
+    }
+
+
 @router.get("/competition-report")
 async def get_competition_report(
     db: AsyncSession = Depends(get_db),

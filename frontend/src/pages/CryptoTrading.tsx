@@ -1,8 +1,82 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import TVAdvancedChart from '../components/charts/TVAdvancedChart'
 import AdvancedOrderForm from '../components/trading/AdvancedOrderForm'
 import api from '../api/client'
+
+// ─── Desk P&L Header ─────────────────────────────────────────────────────────
+function DeskPnLHeader() {
+  const { data: sysStatus } = useQuery({
+    queryKey: ['system-status'],
+    queryFn: () => api.get('/analytics/system-status').then(r => r.data).catch(() => null),
+    refetchInterval: 30_000,
+  })
+  const { data: perf } = useQuery({
+    queryKey: ['performance'],
+    queryFn: () => api.get('/analytics/performance').then(r => r.data).catch(() => null),
+    refetchInterval: 30_000,
+  })
+
+  const cryptoCount = sysStatus?.strategies_by_desk?.crypto ?? null
+  const todayPnlPct = sysStatus?.today_pnl_pct ?? null
+  const totalPnl = perf?.total_pnl ?? null
+
+  function pnlColor(v: number | null | undefined) {
+    if (v == null) return '#555'
+    return v >= 0 ? '#00c853' : '#ff1744'
+  }
+  function fmtPnl(v: number | null | undefined) {
+    if (v == null) return '—'
+    return `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`
+  }
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-2.5 bg-[#0a0a0a] border-b border-[#1e1e1e]">
+      <div className="flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#f7931a] animate-pulse" />
+        <span className="text-xs font-bold text-[#f7931a]">Crypto Desk</span>
+      </div>
+
+      {cryptoCount != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Active Strategies</span>
+            <span className="text-xs font-mono font-bold text-[#f7931a]">{cryptoCount}</span>
+          </div>
+        </>
+      )}
+
+      {todayPnlPct != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Today P&L</span>
+            <span className="text-xs font-mono font-bold" style={{ color: todayPnlPct >= 0 ? '#00c853' : '#ff1744' }}>
+              {todayPnlPct >= 0 ? '+' : ''}{todayPnlPct.toFixed(2)}%
+            </span>
+          </div>
+        </>
+      )}
+
+      {totalPnl != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Total P&L</span>
+            <span className="text-xs font-mono font-bold" style={{ color: pnlColor(totalPnl) }}>
+              {fmtPnl(totalPnl)}
+            </span>
+          </div>
+        </>
+      )}
+
+      <span className="ml-auto text-[10px] text-[#333] font-mono uppercase tracking-wider">
+        CRYPTO · PAPER
+      </span>
+    </div>
+  )
+}
 
 type Interval = '1' | '5' | '15' | '60' | '240' | 'D'
 
@@ -182,6 +256,7 @@ export default function CryptoTrading() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] bg-[#0a0a0a]">
+      <DeskPnLHeader />
       {/* ── Pair + Interval Bar ── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e1e1e] bg-[#0d0d0d] flex-wrap">
         {CRYPTO_PAIRS.map(pair => (

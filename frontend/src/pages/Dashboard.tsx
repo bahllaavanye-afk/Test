@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSelector, useDispatch } from 'react-redux'
+import { Link } from 'react-router-dom'
 import api from '../api/client'
 import { RegimeIndicator } from '../components/risk/RegimeIndicator'
 import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
@@ -21,12 +22,207 @@ function biasColor(bias: string | undefined): string {
   return '#f5a623'
 }
 
-function MetricCard({ label, value, sub, color = 'var(--accent)', glowClass = '' }: { label: string; value: string; sub?: string; color?: string; glowClass?: string }) {
-  return (
-    <div className={`kpi-card ${glowClass}`}>
+function MetricCard({ label, value, sub, color = 'var(--accent)', glowClass = '', href }: { label: string; value: string; sub?: string; color?: string; glowClass?: string; href?: string }) {
+  const inner = (
+    <div className={`kpi-card ${glowClass} transition-all duration-200 ${href ? 'hover:border-[#f5a623]/40 cursor-pointer' : ''}`}>
       <p className="section-header" style={{marginBottom:8}}>{label}</p>
       <p className="mono-num" style={{fontSize:22,fontWeight:700,color,lineHeight:1}}>{value}</p>
       {sub && <p style={{fontSize:10,color:'var(--muted)',marginTop:4}}>{sub}</p>}
+    </div>
+  )
+  if (href) return <Link to={href}>{inner}</Link>
+  return inner
+}
+
+function SkeletonRow({ count = 1 }: { count?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />
+      ))}
+    </div>
+  )
+}
+
+// ── System Status Row ───────────────────────────────────────────────────────
+function SystemStatusRow() {
+  const { data: status, isLoading } = useQuery({
+    queryKey: ['system-status'],
+    queryFn: () => api.get('/analytics/system-status').then(r => r.data),
+    refetchInterval: 15_000,
+  })
+
+  const regimeLabel = status?.regime === 1 ? 'RISK ON' : status?.regime === -1 ? 'RISK OFF' : 'NEUTRAL'
+  const regimeColor = status?.regime === 1 ? '#00c853' : status?.regime === -1 ? '#ff1744' : '#f5a623'
+
+  const lastSignal = status?.last_signal_at
+    ? (() => {
+        const diff = Math.round((Date.now() - new Date(status.last_signal_at).getTime()) / 60000)
+        return diff < 60 ? `${diff}m ago` : `${Math.round(diff / 60)}h ago`
+      })()
+    : '—'
+
+  const deskItems = status?.strategies_by_desk
+    ? Object.entries(status.strategies_by_desk as Record<string, number>)
+    : []
+
+  return (
+    <div className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg px-4 py-3">
+      <div className="flex items-center gap-6 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00c853] animate-pulse" />
+          <span className="text-[10px] text-[#555] uppercase tracking-wider">System Status</span>
+        </div>
+
+        {isLoading ? (
+          <div className="flex gap-4">
+            {[1,2,3,4].map(i => <div key={i} className="w-20 h-4 bg-[#1e1e1e] rounded animate-pulse" />)}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[#555]">Active Strategies</span>
+              <span className="text-xs font-bold font-mono text-[#f5a623]">
+                {status?.active_strategies ?? '—'} / {status?.total_strategies ?? '—'}
+              </span>
+            </div>
+
+            <div className="h-3 w-px bg-[#1e1e1e]" />
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[#555]">Last Signal</span>
+              <span className="text-xs font-mono text-[#e8e8e8]">{lastSignal}</span>
+            </div>
+
+            <div className="h-3 w-px bg-[#1e1e1e]" />
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[#555]">Regime</span>
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ color: regimeColor, background: `${regimeColor}18` }}>
+                {regimeLabel}
+              </span>
+            </div>
+
+            {status?.vix != null && (
+              <>
+                <div className="h-3 w-px bg-[#1e1e1e]" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-[#555]">VIX</span>
+                  <span className="text-xs font-bold font-mono" style={{ color: vixColor(status.vix) }}>
+                    {status.vix.toFixed(1)}
+                  </span>
+                </div>
+              </>
+            )}
+
+            <div className="h-3 w-px bg-[#1e1e1e]" />
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[#555]">Open Positions</span>
+              <span className="text-xs font-bold font-mono text-[#2196f3]">{status?.open_positions ?? '—'}</span>
+            </div>
+
+            {deskItems.length > 0 && (
+              <>
+                <div className="h-3 w-px bg-[#1e1e1e]" />
+                <div className="flex items-center gap-3">
+                  {deskItems.map(([desk, count]) => (
+                    <div key={desk} className="flex items-center gap-1">
+                      <span className="text-[10px] text-[#444] capitalize">{desk}</span>
+                      <span className="text-xs font-mono text-[#888]">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Top Movers (by % P&L) ───────────────────────────────────────────────────
+function TopMovers({ positions }: { positions: any[] | undefined }) {
+  if (!positions || positions.length === 0) return null
+
+  const sorted = [...positions]
+    .filter(p => p.avg_cost > 0 && p.current_price != null)
+    .map(p => ({
+      symbol: p.symbol,
+      pct: ((p.current_price - p.avg_cost) / p.avg_cost * 100) * (p.side === 'short' ? -1 : 1),
+      pnl: p.unrealized_pnl ?? 0,
+    }))
+    .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+    .slice(0, 3)
+
+  if (sorted.length === 0) return null
+
+  return (
+    <div className="kpi-card">
+      <p className="section-header" style={{ marginBottom: 10 }}>Top Movers</p>
+      <div className="space-y-2">
+        {sorted.map(p => (
+          <div key={p.symbol} className="flex items-center justify-between">
+            <span className="text-xs font-bold font-mono text-[#f5a623]">{p.symbol}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono" style={{ color: p.pnl >= 0 ? '#00c853' : '#ff1744' }}>
+                {p.pnl >= 0 ? '+' : '-'}${Math.abs(p.pnl).toFixed(2)}
+              </span>
+              <span className="text-xs font-bold font-mono px-1.5 py-0.5 rounded"
+                style={{ color: p.pct >= 0 ? '#00c853' : '#ff1744', background: p.pct >= 0 ? 'rgba(0,200,83,0.12)' : 'rgba(255,23,68,0.12)' }}>
+                {p.pct >= 0 ? '+' : ''}{p.pct.toFixed(2)}%
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Risk Gauge (portfolio drawdown) ────────────────────────────────────────
+function RiskGauge() {
+  const { data: tearsheet } = useQuery({
+    queryKey: ['tearsheet-drawdown'],
+    queryFn: () => api.get('/analytics/tearsheet?days=90').then(r => r.data).catch(() => null),
+    refetchInterval: 300_000,
+    retry: false,
+  })
+
+  const dd = tearsheet?.max_drawdown_pct ?? 0
+  const ddAbs = Math.abs(dd)
+  // Scale: 0% = safe (green), 10% = caution (yellow), 20%+ = danger (red)
+  const pct = Math.min(ddAbs / 20, 1) * 100
+  const gaugeColor = ddAbs < 5 ? '#00c853' : ddAbs < 10 ? '#f5a623' : '#ff1744'
+
+  return (
+    <div className="kpi-card">
+      <div className="flex items-center justify-between mb-2">
+        <p className="section-header" style={{ marginBottom: 0 }}>Risk Gauge</p>
+        <span className="text-[10px] text-[#555]">Max Drawdown (90d)</span>
+      </div>
+      {!tearsheet ? (
+        <div className="h-8 bg-[#1e1e1e] rounded animate-pulse" />
+      ) : (
+        <>
+          <div className="flex items-end gap-2 mb-2">
+            <span className="text-xl font-bold font-mono" style={{ color: gaugeColor }}>
+              {dd.toFixed(2)}%
+            </span>
+            <span className="text-xs text-[#555] mb-0.5">drawdown</span>
+          </div>
+          <div className="h-2 bg-[#1e1e1e] rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${pct}%`, background: gaugeColor, boxShadow: `0 0 6px ${gaugeColor}60` }} />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[9px] text-[#333]">0%</span>
+            <span className="text-[9px] text-[#333]">10%</span>
+            <span className="text-[9px] text-[#333]">20%+</span>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -135,11 +331,13 @@ export default function Dashboard() {
         </div>
       )}
 
+      <SystemStatusRow />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Total P&L" value={perf ? `$${totalPnl.toFixed(2)}` : '—'} sub={perf ? `${perf.total_trades ?? 0} trades` : 'Connect Alpaca to see P&L'} color={perf ? (totalPnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)'} glowClass={perf ? (totalPnl >= 0 ? 'glow-green' : 'glow-red') : ''} />
-        <MetricCard label="Open Positions" value={Array.isArray(positions) ? String(positions.length) : '—'} sub="live positions" color="var(--blue)" glowClass="glow-blue" />
-        <MetricCard label="Active Strategies" value={String(activeCount)} sub="running 24/7" color="var(--accent)" glowClass="glow-accent" />
-        <MetricCard label="Target Sharpe" value=">2.0" sub="vs SPY 0.47" color="var(--purple)" />
+        <MetricCard label="Total P&L" value={perf ? `$${totalPnl.toFixed(2)}` : '—'} sub={perf ? `${perf.total_trades ?? 0} trades` : 'Connect Alpaca to see P&L'} color={perf ? (totalPnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)'} glowClass={perf ? (totalPnl >= 0 ? 'glow-green' : 'glow-red') : ''} href="/pnl" />
+        <MetricCard label="Open Positions" value={Array.isArray(positions) ? String(positions.length) : '—'} sub="live positions" color="var(--blue)" glowClass="glow-blue" href="/equity" />
+        <MetricCard label="Active Strategies" value={String(activeCount)} sub="running 24/7" color="var(--accent)" glowClass="glow-accent" href="/comparison" />
+        <MetricCard label="Target Sharpe" value=">2.0" sub="vs SPY 0.47" color="var(--purple)" href="/analytics" />
       </div>
 
       <RegimeIndicator />
@@ -240,11 +438,19 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── Top Movers + Risk Gauge ── */}
+      {Array.isArray(positions) && positions.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <TopMovers positions={positions} />
+          <RiskGauge />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="kpi-card">
           <p className="section-header" style={{marginBottom:12}}>Macro Signals</p>
           {!macro ? (
-            <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />)}</div>
+            <SkeletonRow count={4} />
           ) : (
             <div className="space-y-2">
               <div className="flex justify-between items-center">
@@ -280,7 +486,7 @@ export default function Dashboard() {
         <div className="kpi-card">
           <p className="section-header" style={{marginBottom:12}}>Reddit Buzz (WSB)</p>
           {!sentiment ? (
-            <div className="space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="h-5 bg-[#1e1e1e] rounded animate-pulse" />)}</div>
+            <SkeletonRow count={5} />
           ) : sentiment.error ? (
             <p className="text-xs text-[#888888]">Sentiment unavailable</p>
           ) : (Array.isArray(sentiment.results) && sentiment.results.length === 0) ? (

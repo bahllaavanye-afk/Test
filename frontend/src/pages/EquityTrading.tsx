@@ -215,6 +215,79 @@ function OrdersFeed() {
 }
 
 
+// ─── Desk P&L Header ─────────────────────────────────────────────────────────
+function DeskPnLHeader({ desk }: { desk: 'equity' | 'crypto' | 'options' | 'arbitrage' }) {
+  const { data: sysStatus } = useQuery({
+    queryKey: ['system-status'],
+    queryFn: () => api.get('/analytics/system-status').then(r => r.data).catch(() => null),
+    refetchInterval: 30_000,
+  })
+  const { data: perf } = useQuery({
+    queryKey: ['performance'],
+    queryFn: () => api.get('/analytics/performance').then(r => r.data).catch(() => null),
+    refetchInterval: 30_000,
+  })
+
+  const deskCount = sysStatus?.strategies_by_desk?.[desk] ?? null
+  const todayPnlPct = sysStatus?.today_pnl_pct ?? null
+  const totalPnl = perf?.total_pnl ?? null
+
+  const DESK_LABEL: Record<string, string> = {
+    equity: 'Equity Desk', crypto: 'Crypto Desk', options: 'Options Desk', arbitrage: 'Arbitrage Desk',
+  }
+  const DESK_COLOR: Record<string, string> = {
+    equity: '#00c853', crypto: '#f7931a', options: '#9c27b0', arbitrage: '#2196f3',
+  }
+  const color = DESK_COLOR[desk] ?? '#f5a623'
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-2.5 bg-[#0a0a0a] border-b border-[#1e1e1e]">
+      <div className="flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color }} />
+        <span className="text-xs font-bold" style={{ color }}>{DESK_LABEL[desk]}</span>
+      </div>
+
+      {deskCount != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Active Strategies</span>
+            <span className="text-xs font-mono font-bold" style={{ color }}>{deskCount}</span>
+          </div>
+        </>
+      )}
+
+      {todayPnlPct != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Today P&L</span>
+            <span className="text-xs font-mono font-bold" style={{ color: todayPnlPct >= 0 ? '#00c853' : '#ff1744' }}>
+              {todayPnlPct >= 0 ? '+' : ''}{todayPnlPct.toFixed(2)}%
+            </span>
+          </div>
+        </>
+      )}
+
+      {totalPnl != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Total P&L</span>
+            <span className="text-xs font-mono font-bold" style={{ color: pnlColor(totalPnl) }}>
+              {fmtPnl(totalPnl)}
+            </span>
+          </div>
+        </>
+      )}
+
+      <span className="ml-auto text-[10px] text-[#333] font-mono uppercase tracking-wider">
+        {desk.toUpperCase()} · PAPER
+      </span>
+    </div>
+  )
+}
+
 // ─── Account Summary Bar ──────────────────────────────────────────────────────
 function AccountBar() {
   const { data: accounts } = useQuery({
@@ -276,6 +349,7 @@ export default function EquityTrading() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] bg-[#0a0a0a]">
+      <DeskPnLHeader desk="equity" />
       <AccountBar />
 
       {/* ── Symbol + Interval Bar ── */}
