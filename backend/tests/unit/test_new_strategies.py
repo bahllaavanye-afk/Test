@@ -8,6 +8,15 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.strategies import STRATEGY_REGISTRY
+from app.strategies.base import BacktestSignals
+
+
+def _entries(sig) -> pd.Series:
+    """Normalise both BacktestSignals and legacy pd.Series into an entries Series."""
+    if isinstance(sig, BacktestSignals):
+        return sig.entries
+    # Legacy: float Series where 1 = long entry, -1 = short entry, 0 = flat
+    return sig > 0
 
 
 ET = ZoneInfo("America/New_York")
@@ -74,36 +83,32 @@ class TestOpeningRangeBreakout:
         assert inst.strategy_type == "manual"
         assert inst.risk_bucket == "directional"
 
-    def test_backtest_signals_returns_series(self, intraday_ohlcv):
+    def test_backtest_signals_returns_backtestsignals(self, intraday_ohlcv):
         inst = self._get()
         signals = inst.backtest_signals(intraday_ohlcv)
         assert signals is not None
-        assert isinstance(signals, pd.Series)
+        assert isinstance(signals, BacktestSignals)
+        assert isinstance(signals.entries, pd.Series)
+        assert isinstance(signals.exits, pd.Series)
 
-    def test_backtest_signals_valid_values(self, intraday_ohlcv):
+    def test_backtest_signals_bool_dtype(self, intraday_ohlcv):
         inst = self._get()
         signals = inst.backtest_signals(intraday_ohlcv)
-        valid = {-1, 0, 1, np.nan}
-        for v in signals.dropna():
-            assert v in valid, f"Invalid signal value: {v}"
+        assert signals.entries.dtype == bool, "entries must be bool Series"
+        assert signals.exits.dtype == bool, "exits must be bool Series"
 
     def test_no_lookahead_bias(self, intraday_ohlcv):
-        """Signals must be shifted — first signal must be NaN or 0."""
+        """First bar cannot have an entry — range not yet established."""
         inst = self._get()
         signals = inst.backtest_signals(intraday_ohlcv)
-        # The very first bar cannot have a confirmed breakout signal
-        first_nonzero = signals.dropna()
-        if len(first_nonzero) > 0:
-            # Signal at bar t is based on data up to bar t-1
-            first_signal_bar = signals.first_valid_index()
-            signal_position = signals.index.get_loc(first_signal_bar)
-            assert signal_position > 0, "Signal at bar 0 is lookahead bias"
+        assert not signals.entries.iloc[0], "Entry at bar 0 is lookahead bias"
 
     def test_backtest_signals_daily_fallback(self, daily_ohlcv):
-        """Strategy must not crash on daily data (may return all-zero signals)."""
+        """Strategy must not crash on daily data (may return all-False signals)."""
         inst = self._get()
         signals = inst.backtest_signals(daily_ohlcv)
         assert signals is not None
+        assert isinstance(signals, BacktestSignals)
 
 
 # ── VWAPReversion ─────────────────────────────────────────────────────────────
@@ -124,18 +129,18 @@ class TestVWAPReversion:
         assert inst.strategy_type == "manual"
         assert inst.risk_bucket == "directional"
 
-    def test_backtest_signals_returns_series(self, intraday_ohlcv):
+    def test_backtest_signals_returns_valid_type(self, intraday_ohlcv):
         inst = self._get()
         signals = inst.backtest_signals(intraday_ohlcv)
-        assert isinstance(signals, pd.Series)
-        assert len(signals) == len(intraday_ohlcv)
+        assert isinstance(signals, (BacktestSignals, pd.Series))
+        entries = _entries(signals)
+        assert len(entries) == len(intraday_ohlcv)
 
-    def test_signals_valid_range(self, intraday_ohlcv):
+    def test_signals_no_nan_in_entries(self, intraday_ohlcv):
         inst = self._get()
         signals = inst.backtest_signals(intraday_ohlcv)
-        valid = {-1, 0, 1, np.nan}
-        for v in signals.dropna():
-            assert v in valid
+        entries = _entries(signals)
+        assert not entries.isna().any(), "entries must have no NaN"
 
     def test_no_signal_without_volume(self):
         """VWAP is undefined without volume — must not crash."""
@@ -172,18 +177,21 @@ class TestCrossSectionalMomentum:
         assert inst.strategy_type == "manual"
         assert inst.risk_bucket == "directional"
 
-    def test_backtest_signals_returns_series(self, daily_ohlcv):
+    def test_backtest_signals_returns_valid_type(self, daily_ohlcv):
         inst = self._get()
         signals = inst.backtest_signals(daily_ohlcv)
-        assert isinstance(signals, pd.Series)
+        assert isinstance(signals, (BacktestSignals, pd.Series))
+        entries = _entries(signals)
+        assert len(entries) == len(daily_ohlcv)
 
     def test_signals_are_shifted(self, daily_ohlcv):
-        """Monthly rebalance signals must not appear before 12+1 months of data."""
+        """Monthly rebalance signals must not appear before enough data."""
         inst = self._get()
         signals = inst.backtest_signals(daily_ohlcv)
-        # Must have at least some non-null signals
-        non_null = signals.dropna()
-        assert len(non_null) >= 0  # May be empty if not enough data
+        entries = _entries(signals)
+        if entries.any():
+            first_entry_pos = int(entries.values.argmax())
+            assert first_entry_pos > 0, "Entry at bar 0 is lookahead bias"
 
 
 # ── Strategy registry completeness ───────────────────────────────────────────
