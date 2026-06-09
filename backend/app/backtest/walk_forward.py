@@ -1,9 +1,14 @@
 """Walk-forward validation: train on N years, test on M months, roll forward."""
+
 from __future__ import annotations
 import pandas as pd
 from dataclasses import dataclass, field
 from app.backtest.engine import run_backtest, BacktestMetrics
 
+TIMEFRAME_TRAIN = 2  # years of training data
+TIMEFRAME_TEST = 6  # months of testing data
+
+MAX_EQUIITY = 100_000
 
 @dataclass
 class WalkForwardResult:
@@ -16,18 +21,15 @@ class WalkForwardResult:
 def walk_forward(
     signals_fn,               # callable(train_df, test_df) -> pd.Series of signals on test_df
     prices: pd.Series,
-    train_years: int = 2,
-    test_months: int = 6,
-    initial_equity: float = 100_000,
 ) -> WalkForwardResult:
     """
     Rolls a train/test window across entire history.
     signals_fn receives (train_prices, test_prices) and must return signals for test period only.
     """
-    train_bars = train_years * 252
-    test_bars = test_months * 21
+    train_bars = TIMEFRAME_TRAIN * 252
+    test_bars = TIMEFRAME_TEST * 21
     result = WalkForwardResult()
-    equity_carry = initial_equity
+    equity_carry = MAX_EQUIITY
 
     i = train_bars
     while i + test_bars <= len(prices):
