@@ -521,6 +521,86 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    # ── Self-improving infrastructure ────────────────────────────────────────
+
+    async def _self_improving_cycle():
+        """Hourly: evaluate strategy performance, auto-disable losers, get LLM suggestions."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.redis_client import get_redis
+            from app.tasks.self_improving_loop import SelfImprovingLoop
+            loop = SelfImprovingLoop(AsyncSessionLocal, get_redis())
+            await loop.run_cycle()
+        except Exception as exc:
+            logger.debug("Self-improving cycle failed", error=str(exc))
+
+    scheduler.add_job(
+        _self_improving_cycle,
+        "interval",
+        hours=1,
+        minutes=15,  # offset from snapshot to avoid DB contention
+        id="self_improving_cycle",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    async def _research_pipeline():
+        """Every 4 hours: LLM-driven research → experiment config generation."""
+        try:
+            from app.redis_client import get_redis
+            from app.tasks.research_pipeline import ResearchPipeline
+            pipeline = ResearchPipeline(get_redis())
+            await pipeline.run()
+        except Exception as exc:
+            logger.debug("Research pipeline failed", error=str(exc))
+
+    scheduler.add_job(
+        _research_pipeline,
+        "interval",
+        hours=4,
+        id="research_pipeline",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    async def _ai_strategy_generator():
+        """Every 6 hours: AI-driven strategy proposal generation → staging area."""
+        try:
+            from app.redis_client import get_redis
+            from app.tasks.ai_strategy_generator import AIStrategyGenerator
+            gen = AIStrategyGenerator(get_redis())
+            await gen.run()
+        except Exception as exc:
+            logger.debug("AI strategy generator failed", error=str(exc))
+
+    scheduler.add_job(
+        _ai_strategy_generator,
+        "interval",
+        hours=6,
+        id="ai_strategy_generator",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    async def _scanner_sweep():
+        """Every 5 minutes: run all desk scanners and publish top picks to Redis."""
+        try:
+            from app.redis_client import get_redis
+            from app.tasks.stock_scanners import ScannerOrchestrator
+            orchestrator = ScannerOrchestrator(redis_client=get_redis())
+            await orchestrator.run_all()
+        except Exception as exc:
+            logger.debug("Scanner sweep failed", error=str(exc))
+
+    scheduler.add_job(
+        _scanner_sweep,
+        "interval",
+        minutes=5,
+        id="scanner_sweep",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler
