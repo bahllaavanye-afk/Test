@@ -20,6 +20,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import anthropic
@@ -30,6 +31,31 @@ BRANCH       = "claude/advanced-trading-bot-d5Lmw"
 SLACK_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
 API_KEY      = os.environ.get("ANTHROPIC_API_KEY", "")
 FOCUS        = os.environ.get("FOCUS", "bugs, security, performance, correctness")
+
+_DEDUP_FILE  = REPO_ROOT / ".github" / "state" / "backend_team_dedup.json"
+_CLEAN_COOLDOWN_SECS = 14400  # 4 hours — only post "all clean" once per 4h
+
+
+def _already_posted_clean() -> bool:
+    """Return True if we posted 'all systems clean' within the cooldown window."""
+    try:
+        if _DEDUP_FILE.exists():
+            d = json.loads(_DEDUP_FILE.read_text())
+            last = d.get("last_clean_post", 0)
+            return (time.time() - last) < _CLEAN_COOLDOWN_SECS
+    except Exception:
+        pass
+    return False
+
+
+def _record_clean_post() -> None:
+    _DEDUP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        d = json.loads(_DEDUP_FILE.read_text()) if _DEDUP_FILE.exists() else {}
+    except Exception:
+        d = {}
+    d["last_clean_post"] = time.time()
+    _DEDUP_FILE.write_text(json.dumps(d))
 
 # Files the backend team can safely auto-fix
 SAFE_TO_FIX = [
@@ -271,7 +297,11 @@ Rules:
 
     # Report to Slack
     if not findings and not patched:
-        slack("#engineering", f"✅ *Backend AI Team:* All systems clean\n_{summary}_")
+        if not _already_posted_clean():
+            slack("#engineering", f"✅ *Backend AI Team:* All systems clean\n_{summary}_")
+            _record_clean_post()
+        else:
+            print("[backend-team] All clean — skipping Slack post (cooldown active)")
         return
 
     ICONS = {"critical": "🚨", "high": "🔴", "medium": "🟡", "low": "🔵"}

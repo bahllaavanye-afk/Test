@@ -29,6 +29,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm as _llm_shared, slack_post, memory_write
+
 REPO_ROOT   = Path(__file__).parent.parent
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 ALPACA_KEY  = os.environ.get("ALPACA_API_KEY", "")
@@ -47,69 +50,19 @@ EQUITY_UNIVERSE = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL"
 CRYPTO_UNIVERSE = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
 
 
-# ── Free LLM cascade ──────────────────────────────────────────────────────────
-
 def _llm(prompt: str, max_tokens: int = 600) -> str | None:
-    providers = [
-        ("gemini",    os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", "")),
-         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.0-flash"),
-        ("groq",      os.environ.get("GROQ_API_KEY", ""),
-         "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile"),
-        ("deepseek",  os.environ.get("DEEPSEEK_API_KEY", ""),
-         "https://api.deepseek.com/v1/chat/completions", "deepseek-chat"),
-        ("together",  os.environ.get("TOGETHER_API_KEY", ""),
-         "https://api.together.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-        ("cerebras",  os.environ.get("CEREBRAS_API_KEY", ""),
-         "https://api.cerebras.ai/v1/chat/completions", "llama-3.3-70b"),
-        ("sambanova", os.environ.get("SAMBANOVA_API_KEY", ""),
-         "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.3-70B-Instruct"),
-        ("hyperbolic", os.environ.get("HYPERBOLIC_API_KEY", ""),
-         "https://api.hyperbolic.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct"),
-    ]
-    for name, key, url, model in providers:
-        if not key or key in ("disabled", ""):
-            continue
-        try:
-            payload = json.dumps({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens, "temperature": 0.2,
-            }).encode()
-            req = urllib.request.Request(url, data=payload, headers={
-                "Authorization": f"Bearer {key}", "Content-Type": "application/json",
-            })
-            with urllib.request.urlopen(req, timeout=45) as resp:
-                data = json.loads(resp.read())
-            text = data["choices"][0]["message"]["content"]
-            print(f"[quant-firm] LLM: {name}")
-            return text
-        except Exception as e:
-            print(f"[quant-firm] {name}: {e}")
+    result = _llm_shared(prompt, max_tokens=max_tokens, inject_company_context=False)
+    if result and not result.startswith("[LLM unavailable"):
+        return result
     return None
 
-
-# ── Slack helpers ─────────────────────────────────────────────────────────────
 
 def slack(channel: str, msg: str, thread_ts: str | None = None) -> str | None:
     if not SLACK_TOKEN:
         print(f"[Slack #{channel}] {msg[:100]}")
         return None
-    payload: dict = {"channel": f"#{channel}", "text": msg, "mrkdwn": True}
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    try:
-        data = json.dumps(payload).encode()
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage", data=data,
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}",
-                     "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read())
-        return result.get("ts")
-    except Exception as e:
-        print(f"Slack error: {e}")
-        return None
+    resp = slack_post(f"#{channel}", msg, thread_ts)
+    return resp.get("ts")
 
 
 # ── Market data (free) ────────────────────────────────────────────────────────
@@ -436,6 +389,14 @@ class ExecutionDesk:
             status = f"✅ filled" if order and order.get("id") else "⏭ skipped (crypto/no key)"
             executed.append(h)
             print(f"[quant-firm] {symbol} {side} ${notional:.2f} → {status}")
+            memory_write("trade_outcomes", {
+                "strategy": "quant_firm_pipeline",
+                "symbol": symbol,
+                "side": side,
+                "notional": notional,
+                "outcome": status,
+                "order_id": order.get("id", "none") if order else "none",
+            })
 
         if executed:
             lines = ["🚀 *Execution Desk:* Orders placed (paper)"]

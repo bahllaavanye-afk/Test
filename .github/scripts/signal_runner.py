@@ -5,10 +5,33 @@ Runs all strategy signal logic without executing orders (paper mode).
 Posts signals + P&L summary to Slack #signals channel.
 """
 from __future__ import annotations
-import os, sys, json, importlib.util, glob
+import os, sys, json, importlib.util, glob, time
 from datetime import datetime, timezone
 from pathlib import Path
 import requests
+
+_NO_SIGNAL_DEDUP  = Path(__file__).resolve().parents[2] / ".github" / "state" / "signal_runner_dedup.json"
+_NO_SIGNAL_COOLDOWN = 3600  # post "no signals" at most once per hour
+
+
+def _should_post_no_signals() -> bool:
+    try:
+        if _NO_SIGNAL_DEDUP.exists():
+            d = json.loads(_NO_SIGNAL_DEDUP.read_text())
+            return (time.time() - d.get("last_no_signal_ts", 0)) >= _NO_SIGNAL_COOLDOWN
+    except Exception:
+        pass
+    return True
+
+
+def _record_no_signal_post() -> None:
+    _NO_SIGNAL_DEDUP.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        d = json.loads(_NO_SIGNAL_DEDUP.read_text()) if _NO_SIGNAL_DEDUP.exists() else {}
+    except Exception:
+        d = {}
+    d["last_no_signal_ts"] = time.time()
+    _NO_SIGNAL_DEDUP.write_text(json.dumps(d))
 
 def _resolve_key(*names: str) -> str:
     for name in names:
@@ -288,7 +311,11 @@ def main():
         post_slack("signals", msg)
         post_slack("trading", msg[:500] + "..." if len(msg) > 500 else msg)
     else:
-        post_slack("signals", f"*{now.strftime('%H:%M UTC')}* — No high-confidence signals across any desk. Markets stable.")
+        if _should_post_no_signals():
+            post_slack("signals", f"*{now.strftime('%H:%M UTC')}* — No high-confidence signals across any desk. Markets stable.")
+            _record_no_signal_post()
+        else:
+            print("[signal-runner] No signals — skipping post (cooldown active)")
 
     # Summary
     summary = {

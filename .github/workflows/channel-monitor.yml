@@ -61,7 +61,7 @@ jobs:
         run: |
           git config user.email "channel-monitor@quantedge.ai"
           git config user.name "QuantEdge Channel Monitor"
-          STATE_FILE="experiments/results/slack_state.json"
+          STATE_FILE=".github/state/slack_state.json"
           if [ -f "$STATE_FILE" ] && ! git diff --quiet "$STATE_FILE" 2>/dev/null; then
             git add "$STATE_FILE"
             git commit -m "chore: persist channel monitor state [skip ci]"

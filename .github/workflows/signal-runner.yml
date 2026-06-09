@@ -53,7 +53,7 @@ jobs:
       - name: Commit updated signals
         continue-on-error: true
         run: |
-          git add .github/state/agent_memory.json 2>/dev/null || true
+          git add .github/state/agent_memory.json .github/state/signal_runner_dedup.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "signals: $(date -u +%H:%M) | $(python3 -c 'import json; d=json.load(open("/tmp/signal_runner_summary.json")); print(str(d.get("signals",0))+" signals across "+",".join(d.get("by_desk",{}).keys()))' 2>/dev/null || echo '?')"
 
       - name: Push
