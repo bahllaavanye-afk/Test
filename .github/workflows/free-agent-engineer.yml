@@ -31,7 +31,6 @@ jobs:
         with:
           ref: claude/advanced-trading-bot-d5Lmw
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-python@v5
         with:
