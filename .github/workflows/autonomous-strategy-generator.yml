@@ -35,7 +35,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: claude/advanced-trading-bot-d5Lmw
-          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
