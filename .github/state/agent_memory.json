@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-09T10:47:26.564653+00:00",
+  "last_updated": "2026-06-09T10:47:44.143692+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -59,7 +59,7 @@
     "experiments_run": 0,
     "last_sharpe": 2.1,
     "last_drawdown_pct": 12.3,
-    "last_signal_run": "2026-06-08T16:54:10.576681+00:00",
+    "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
     "last_discussion": "2026-06-08T23:51:55.982437+00:00",
     "total_discussions": 3,
