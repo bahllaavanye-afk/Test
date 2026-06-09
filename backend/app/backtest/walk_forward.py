@@ -21,15 +21,13 @@ class WalkForwardResult:
 def walk_forward(
     signals_fn,               # callable(train_df, test_df) -> pd.Series of signals on test_df
     prices: pd.Series,
-    train_years: int | None = None,
-    test_months: int | None = None,
 ) -> WalkForwardResult:
     """
     Rolls a train/test window across entire history.
     signals_fn receives (train_prices, test_prices) and must return signals for test period only.
     """
-    train_bars = (train_years if train_years is not None else TIMEFRAME_TRAIN) * 252
-    test_bars = (test_months if test_months is not None else TIMEFRAME_TEST) * 21
+    train_bars = TIMEFRAME_TRAIN * 252
+    test_bars = TIMEFRAME_TEST * 21
     result = WalkForwardResult()
     equity_carry = MAX_EQUIITY
 
