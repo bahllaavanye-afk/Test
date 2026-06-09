@@ -2,24 +2,34 @@
 Shared LLM infrastructure for ALL .github/scripts/*.py agents.
 
 This replaces 14 copies of the same 7-provider cascade function.
-Every script should: from llm_common import llm, memory, company_context
+Every script should: from llm_common import llm, llm_chat, memory_write, memory_read
 
-Token reduction strategies built in:
-  1. Provider cascade: fastest/cheapest first (Gemini → Groq → DeepSeek → ...)
-  2. Response cache: 24h TTL keyed by prompt hash — identical prompts cost zero
-  3. Delta prompting: callers pass only what changed, not full context each time
-  4. Company context: pre-built shared context injected at <1000 tokens per call
-  5. Auto-compression: prompts >8000 tokens get compressed before sending
+HOW CONTEXT IS SHARED ACROSS LLMs:
+  Model weights are NOT shared — Gemini, Groq, DeepSeek, Cerebras are separate companies.
+  What IS shared is external context injected into every prompt:
 
-Memory architecture (Letta-style, shared across ALL agents):
-  - CORE: stable facts (current regime, top strategies, best models)
-  - EPISODIC: recent 200 events + lessons (rolling window)
-  - SKILL: reusable solutions discovered by agents
-  - SCRATCH: per-call ephemeral context (not persisted)
+  1. company_brain.json — single shared JSON file, read by every agent before calling any LLM.
+     Contains: regime, top strategies, recent lessons, Slack insights, trade outcomes.
+     Built by company_brain.py every 15 minutes from all sources.
 
-All read from / write to:
-  - .github/state/company_brain.json (GitHub Actions — flat file, no Redis)
-  - GitHub Gists (optional persistence across forks)
+  2. ConversationStore (in memory_manager.py) — persists conversation history as OpenAI
+     messages arrays. Any provider can load and continue a conversation started by another,
+     because all providers accept the same {"role":..., "content":...} format.
+
+  3. SemanticRetriever (in memory_manager.py) — TF-IDF search over company_brain.json
+     to inject RELEVANT past context, not just the 5 most recent entries.
+
+  4. llm_chat() — the multi-turn version of llm(). Pass a ConversationStore and it:
+     - Loads the full conversation history
+     - Adds your message
+     - Calls the best available provider
+     - Saves the reply back to the store
+     So the next call (by any provider) continues seamlessly.
+
+Token reduction:
+  - 24h response cache keyed by prompt hash
+  - Auto-compression for prompts >8000 tokens
+  - Semantic retrieval: only relevant context injected, not all memory
 """
 from __future__ import annotations
 
@@ -27,17 +37,26 @@ import hashlib
 import json
 import logging
 import os
-import re
 import sys
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from memory_manager import ConversationStore
 
 logger = logging.getLogger(__name__)
 
-# ── State file ────────────────────────────────────────────────────────────────
+# Lazy import — memory_manager lives in the same directory.
+# Falls back gracefully if not found (e.g. running outside .github/scripts/).
+try:
+    sys.path.insert(0, str(Path(__file__).parent))
+    from memory_manager import build_context as _build_context, ConversationStore as _ConversationStore
+    _MEMORY_MANAGER_OK = True
+except Exception:  # noqa: BLE001
+    _MEMORY_MANAGER_OK = False
+    _ConversationStore = None  # type: ignore[assignment,misc]
 
 _STATE_DIR = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / ".github" / "state"
 _STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -160,9 +179,13 @@ def llm(
     """
     _load_cache()
 
-    # Optionally inject shared company context
+    # Optionally inject shared company context (semantic retrieval if available,
+    # otherwise fall back to recency-based snapshot).
     if inject_company_context:
-        ctx = get_company_context(max_tokens=600)
+        if _MEMORY_MANAGER_OK:
+            ctx = _build_context(prompt)
+        else:
+            ctx = get_company_context(max_tokens=600)
         if ctx:
             prompt = f"{ctx}\n\n---\n\n{prompt}"
 
@@ -230,6 +253,117 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
         return result["candidates"][0]["content"]["parts"][0]["text"].strip()
     else:
         return result["choices"][0]["message"]["content"].strip()
+
+
+def _call_provider_messages(
+    provider: dict,
+    messages: list[dict],
+    max_tokens: int,
+    temperature: float,
+) -> str:
+    """
+    Call a provider with a full OpenAI-style messages array.
+    Used by llm_chat() so that multi-turn history is preserved verbatim.
+    All 7 providers accept this format; Gemini needs a small shape translation.
+    """
+    key = os.environ[provider["key_env"]]
+    url = provider["url"]
+
+    if provider["fmt"] == "gemini":
+        # Gemini uses {role: "user"|"model", parts: [{text: ...}]}
+        # System message is prepended to the first user turn.
+        system_content = next((m["content"] for m in messages if m["role"] == "system"), "")
+        gemini_contents: list[dict] = []
+        first_user = True
+        for m in messages:
+            if m["role"] == "system":
+                continue
+            role = "model" if m["role"] == "assistant" else "user"
+            content = m["content"]
+            if first_user and role == "user" and system_content:
+                content = f"{system_content}\n\n{content}"
+                first_user = False
+            gemini_contents.append({"role": role, "parts": [{"text": content}]})
+        url_with_key = f"{url}?key={key}"
+        body: dict = {
+            "contents": gemini_contents,
+            "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
+        }
+        headers: dict = {"Content-Type": "application/json"}
+    else:
+        url_with_key = url
+        body = {
+            "model": provider.get("model", "llama-3.3-70b-versatile"),
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}",
+        }
+
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        result = json.loads(resp.read())
+
+    if provider["fmt"] == "gemini":
+        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    return result["choices"][0]["message"]["content"].strip()
+
+
+def llm_chat(
+    store: "ConversationStore",
+    user_message: str,
+    system: str = "You are a helpful AI agent at QuantEdge, a quantitative trading firm.",
+    max_tokens: int = 400,
+    temperature: float = 0.7,
+) -> str:
+    """
+    Multi-turn conversation that works across ALL free LLM providers.
+
+    How cross-provider context sharing works:
+      1. ConversationStore saves history in the universal OpenAI messages format.
+      2. This function appends user_message, builds the full messages array,
+         and sends it to whichever provider is currently available.
+      3. The reply is saved back. Next call — even to a DIFFERENT provider — sees
+         the complete history and continues naturally.
+
+    Example:
+        store = ConversationStore("regime_analysis")
+        reply1 = llm_chat(store, "What regime are we in?")    # Gemini answers
+        reply2 = llm_chat(store, "How should I size positions?")  # Groq continues seamlessly
+
+    Args:
+        store: A ConversationStore instance (persisted to .github/state/conversations/).
+        user_message: The new user turn to add.
+        system: System prompt (stable across all turns).
+        max_tokens: Response length cap.
+        temperature: Sampling temperature.
+
+    Returns:
+        The assistant's reply text, also saved into store.
+    """
+    store.add("user", user_message)
+    messages = store.build_messages(system)
+
+    for provider in _PROVIDERS:
+        key = os.environ.get(provider["key_env"], "")
+        if not key or key == "disabled":
+            continue
+        try:
+            result = _call_provider_messages(provider, messages, max_tokens, temperature)
+            if result:
+                store.add("assistant", result)
+                return result
+        except Exception as e:
+            logger.debug("Provider %s failed in llm_chat: %s", provider["name"], e)
+            continue
+
+    reply = "[LLM unavailable — all providers failed]"
+    store.add("assistant", reply)
+    return reply
 
 
 # ── Shared memory (company brain) ─────────────────────────────────────────────
