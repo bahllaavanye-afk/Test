@@ -40,6 +40,17 @@ CHANNELS = [
     {"name": "deploys",              "is_private": False, "topic": "Deploy notifications"},
     {"name": "ci-failures",          "is_private": False, "topic": "CI test failures (auto-routed)"},
     {"name": "ml-experiments",       "is_private": False, "topic": "Training run results, model leaderboard"},
+    # Public — team channels (required by claude_conversations.py CHANNEL_EMPLOYEES)
+    {"name": "risk",                 "is_private": False, "topic": "Risk management — VaR, Kelly, circuit breakers"},
+    {"name": "ml-research",         "is_private": False, "topic": "ML research — experiments, model architectures, results"},
+    {"name": "backend",             "is_private": False, "topic": "Backend platform — FastAPI, strategies, DB"},
+    {"name": "frontend",            "is_private": False, "topic": "Frontend — React dashboard, TradingView, UX"},
+    {"name": "data-engineering",    "is_private": False, "topic": "Data pipelines — feeds, OHLCV, Redis cache"},
+    {"name": "execution",           "is_private": False, "topic": "Order execution — TWAP/VWAP, slippage, smart routing"},
+    {"name": "security",            "is_private": False, "topic": "Security — JWT, secrets, audit trail"},
+    {"name": "product",             "is_private": False, "topic": "Product management — OKRs, roadmap, investor metrics"},
+    {"name": "devops",              "is_private": False, "topic": "DevOps — Render, Vercel, CI/CD, monitoring"},
+    {"name": "ml-infra",            "is_private": False, "topic": "ML infrastructure — GPU training, model registry, inference"},
     # Public — general
     {"name": "engineering",          "is_private": False, "topic": "All engineers"},
     {"name": "announcements",        "is_private": False, "topic": "Company-wide announcements (CEO only posts)"},

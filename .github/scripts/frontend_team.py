@@ -77,18 +77,7 @@ def apply_and_push(files: list[dict]) -> bool:
     return True
 
 
-def main() -> None:
-    if not API_KEY:
-        print("No ANTHROPIC_API_KEY")
-        return
-
-    context = read_files()
-    client = anthropic.Anthropic(api_key=API_KEY)
-
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=8096,
-        system="""You are QuantEdge's senior frontend engineer. Review the UI files and make targeted improvements.
+FRONTEND_SYSTEM = """You are QuantEdge's senior frontend engineer. Review the UI files and make targeted improvements.
 Focus on: animations, micro-interactions, visual polish, sci-fi terminal aesthetic.
 
 Return ONLY JSON (no prose):
@@ -103,7 +92,68 @@ Rules:
 - Preserve all existing TypeScript types and logic
 - Keep animations smooth (CSS transforms, opacity, not layout)
 - No external library imports — only what's already in package.json
-- CSS variables from index.css only (--bg, --surface, --green, --accent, --red, --blue, --purple, --muted)""",
+- CSS variables from index.css only (--bg, --surface, --green, --accent, --red, --blue, --purple, --muted)"""
+
+
+def _run_gemini_review() -> None:
+    """Use Gemini (free) to review frontend when Anthropic API key is disabled."""
+    import urllib.request
+
+    gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
+    if not gemini_key:
+        print("No GEMINI_API_KEY either — frontend review skipped")
+        slack("⚠️ *Frontend AI Team:* Skipped (no LLM key available)")
+        return
+
+    print("Frontend AI Team starting review via Gemini...")
+    context = read_files()
+    prompt = (
+        f"You are QuantEdge's senior frontend engineer.\n"
+        f"Focus: {FOCUS}\n\n"
+        f"Review these UI files and return a brief JSON report.\n"
+        f"Format: {{\"summary\": \"2 sentence assessment\", \"findings\": [{{\"file\": \"...\", \"issue\": \"...\"}}]}}\n\n"
+        f"Files:\n{context[:6000]}"
+    )
+    try:
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.2},
+        }).encode()
+        req = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL) or re.search(r"(\{.*\})", text, re.DOTALL)
+        result = json.loads(m.group(1)) if m else {"findings": [], "summary": text[:200]}
+        summary = result.get("summary", "Gemini review complete")
+        findings = result.get("findings", [])
+        print(f"Summary: {summary}\nFindings: {len(findings)}")
+        lines = [f"🎨 *Frontend AI Audit (Gemini)* — {len(findings)} findings", f"_{summary}_"]
+        for f in findings[:5]:
+            lines.append(f"• `{f.get('file', '?')}`: {f.get('issue', '?')}")
+        slack("\n".join(lines))
+    except Exception as exc:
+        print(f"Gemini review failed: {exc}")
+        slack(f"⚠️ *Frontend AI Team:* Gemini review failed: {exc}")
+
+
+def main() -> None:
+    if not API_KEY or API_KEY == "disabled":
+        print("No ANTHROPIC_API_KEY (or set to 'disabled') — frontend team uses Gemini fallback")
+        _run_gemini_review()
+        return
+
+    context = read_files()
+    client = anthropic.Anthropic(api_key=API_KEY)
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=8096,
+        system=FRONTEND_SYSTEM,
         messages=[{"role": "user", "content": f"Focus: {FOCUS}\n\nCurrent files:\n{context}"}],
     )
     text = response.content[0].text

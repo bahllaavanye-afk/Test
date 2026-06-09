@@ -518,12 +518,37 @@ def slack_api(method: str, payload: dict) -> dict:
 
 def get_channel_id(channel_name: str) -> str | None:
     name = channel_name.lstrip("#")
-    for method in ("conversations.list", ):
-        resp = slack_api(method, {"limit": 200, "types": "public_channel,private_channel"})
+    # Try up to 1000 channels (paginated)
+    cursor = ""
+    while True:
+        payload: dict = {"limit": 200, "types": "public_channel,private_channel"}
+        if cursor:
+            payload["cursor"] = cursor
+        resp = slack_api("conversations.list", payload)
         if resp.get("ok"):
             for ch in resp.get("channels", []):
                 if ch.get("name") == name:
                     return ch["id"]
+            cursor = resp.get("response_metadata", {}).get("next_cursor", "")
+            if not cursor:
+                break
+        else:
+            break
+    return None
+
+
+def get_or_create_channel(channel_name: str) -> str | None:
+    """Return channel ID, auto-creating the public channel if it doesn't exist yet."""
+    ch_id = get_channel_id(channel_name)
+    if ch_id:
+        return ch_id
+    name = channel_name.lstrip("#")
+    resp = slack_api("conversations.create", {"name": name, "is_private": False})
+    if resp.get("ok"):
+        ch_id = resp.get("channel", {}).get("id")
+        print(f"  ✅ Created missing channel #{name} → {ch_id}")
+        return ch_id
+    print(f"  ⚠️  Could not create #{name}: {resp.get('error')} (need channels:manage scope)")
     return None
 
 
@@ -659,9 +684,9 @@ def run_conversation(channel_name: str) -> dict:
     ch_id = None
 
     if SLACK_TOKEN:
-        ch_id = get_channel_id(channel_name)
+        ch_id = get_or_create_channel(channel_name)
         if not ch_id:
-            print(f"⚠️  Channel #{channel_name} not found — bot may not be in it")
+            print(f"⚠️  Channel #{channel_name} not found/created — skipping Slack post")
         else:
             ensure_in_channel(ch_id)
             result = post_message(
