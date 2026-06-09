@@ -74,6 +74,20 @@ from app.strategies.manual.vol_carry_short import VolCarryShortStrategy
 from app.strategies.manual.crypto_whale_momentum import CryptoWhaleMomentumStrategy
 from app.strategies.manual.interest_rate_differential import InterestRateDifferentialStrategy
 from app.strategies.manual.options_gamma_scalp import OptionsGammaScalpStrategy
+from app.strategies.manual.tv_indicators import (
+    EMAStackStrategy,
+    SqueezeProStrategy,
+    WaveTrendStrategy,
+    HullSuiteStrategy,
+    SupertrendRsiComboStrategy,
+    KamaRocStrategy,
+    VwapBandsStrategy,
+    IchimokuCloudStrategy,
+    MacdDivergenceStrategy,
+    AdxDmiStrategy,
+    StochRsiMacdStrategy,
+    ElliottWaveProxyStrategy,
+)
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
 # xgboost, lightgbm, optuna, shap, vectorbt). In environments where these aren't
@@ -195,6 +209,19 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "crypto_whale_momentum": CryptoWhaleMomentumStrategy,
     "interest_rate_differential": InterestRateDifferentialStrategy,
     "options_gamma_scalp": OptionsGammaScalpStrategy,
+    # ── TradingView Indicator Desk ────────────────────────────────────────────
+    "ema_stack_tv": EMAStackStrategy,
+    "squeeze_pro_tv": SqueezeProStrategy,
+    "wave_trend_tv": WaveTrendStrategy,
+    "hull_suite_tv": HullSuiteStrategy,
+    "supertrend_rsi_tv": SupertrendRsiComboStrategy,
+    "kama_roc_tv": KamaRocStrategy,
+    "vwap_bands_tv": VwapBandsStrategy,
+    "ichimoku_cloud_tv": IchimokuCloudStrategy,
+    "macd_divergence_tv": MacdDivergenceStrategy,
+    "adx_dmi_tv": AdxDmiStrategy,
+    "stoch_rsi_macd_tv": StochRsiMacdStrategy,
+    "elliott_wave_proxy_tv": ElliottWaveProxyStrategy,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry
