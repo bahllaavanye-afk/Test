@@ -56,11 +56,11 @@ jobs:
           PYTHONPATH:         ${{ github.workspace }}/backend
           CHANNEL_OVERRIDE:   ${{ github.event.inputs.channel }}
         run: |
-          ARGS=""
           if [ -n "$CHANNEL_OVERRIDE" ]; then
-            ARGS="--channel $CHANNEL_OVERRIDE"
+            python .github/scripts/claude_conversations.py --channel "$CHANNEL_OVERRIDE"
+          else
+            python .github/scripts/claude_conversations.py --all
           fi
-          python .github/scripts/claude_conversations.py $ARGS --all
 
       - name: Commit updated agent memory
         continue-on-error: true
