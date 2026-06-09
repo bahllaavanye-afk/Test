@@ -33,6 +33,7 @@ const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Releases = lazy(() => import('./pages/Releases'))
 const BotBuilder = lazy(() => import('./pages/BotBuilder'))
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
+const Scanners = lazy(() => import('./pages/Scanners'))
 
 function PageLoader() {
   return (
@@ -102,6 +103,7 @@ export default function App() {
           <Route path="releases" element={<Releases />} />
           <Route path="bots" element={<BotBuilder />} />
           <Route path="agents" element={<AgentDashboard />} />
+          <Route path="scanners" element={<Scanners />} />
         </Route>
       </Routes>
     </Suspense>
