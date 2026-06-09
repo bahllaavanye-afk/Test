@@ -251,9 +251,12 @@ def run_proactive_insights() -> None:
     if not SLACK_TOKEN:
         print("No SLACK_BOT_TOKEN — skipping proactive insights")
         return
-    if not ANTHROPIC_API_KEY:
-        print("No ANTHROPIC_API_KEY — cannot call QuantEdge AI")
-        return
+    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == "disabled":
+        gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
+        groq_key = os.environ.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY_1", ""))
+        if not gemini_key and not groq_key:
+            print("No LLM keys available — skipping proactive insights")
+            return
 
     hour = datetime.now(timezone.utc).hour
     # Morning (9am UTC): full briefing. Afternoon (13, 17): quick updates. Evening (21): recap.
