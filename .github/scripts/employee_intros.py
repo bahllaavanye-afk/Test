@@ -17,12 +17,19 @@ Run daily via GitHub Actions.
 """
 from __future__ import annotations
 
-import json, os, re, sys, time, urllib.request
+import json
+import os
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Use shared LLM infrastructure — no more copy-paste cascade
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, slack_read_thread, memory_write, get_company_context
+
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-ALLOW_PAID  = os.environ.get("ALLOW_PAID_APIS", "False")
+ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID.lower() == "true":
     sys.exit(1)
 
@@ -130,81 +137,33 @@ EMPLOYEES = [
     },
 ]
 
-# ── Free LLM cascade ──────────────────────────────────────────────────────────
-
-def _llm(prompt: str, max_tokens: int = 200) -> str | None:
-    providers = [
-        ("gemini",    os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", "")),
-         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.0-flash"),
-        ("groq",      os.environ.get("GROQ_API_KEY", ""),
-         "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile"),
-        ("deepseek",  os.environ.get("DEEPSEEK_API_KEY", ""),
-         "https://api.deepseek.com/v1/chat/completions", "deepseek-chat"),
-        ("together",  os.environ.get("TOGETHER_API_KEY", ""),
-         "https://api.together.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-        ("cerebras",  os.environ.get("CEREBRAS_API_KEY", ""),
-         "https://api.cerebras.ai/v1/chat/completions", "llama-3.3-70b"),
-        ("sambanova", os.environ.get("SAMBANOVA_API_KEY", ""),
-         "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.3-70B-Instruct"),
-        ("hyperbolic", os.environ.get("HYPERBOLIC_API_KEY", ""),
-         "https://api.hyperbolic.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct"),
-    ]
-    for pname, key, url, model in providers:
-        if not key or key in ("disabled", ""):
-            continue
-        try:
-            payload = json.dumps({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-                "temperature": 0.8,   # higher temp for personality variety
-            }).encode()
-            req = urllib.request.Request(url, data=payload, headers={
-                "Authorization": f"Bearer {key}", "Content-Type": "application/json",
-            })
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"[intros] {pname}: {e}")
-    return None
-
-
-# ── Slack API helpers ─────────────────────────────────────────────────────────
-
-def _slack(method: str, payload: dict) -> dict:
-    if not SLACK_TOKEN:
-        return {}
-    try:
-        data = json.dumps(payload).encode()
-        req = urllib.request.Request(
-            f"https://slack.com/api/{method}", data=data,
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}",
-                     "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        print(f"[intros] Slack {method}: {e}")
-        return {}
-
+# ── Slack helpers — delegates to llm_common ───────────────────────────────────
 
 def resolve_channels() -> dict[str, str]:
     """Return {channel_name: channel_id} for all channels."""
-    result = _slack("conversations.list", {
-        "exclude_archived": True,
-        "types": "public_channel,private_channel",
-        "limit": 200,
-    })
-    return {ch["name"]: ch["id"] for ch in result.get("channels", [])}
+    import urllib.request
+    if not SLACK_TOKEN:
+        return {}
+    try:
+        req = urllib.request.Request(
+            "https://slack.com/api/conversations.list?limit=200&types=public_channel,private_channel",
+            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            return {ch["name"]: ch["id"] for ch in data.get("channels", [])}
+    except Exception:
+        return {}
 
 
 def post(channel_id: str, text: str, thread_ts: str | None = None) -> str | None:
-    payload: dict = {"channel": channel_id, "text": text, "mrkdwn": True}
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    result = _slack("chat.postMessage", payload)
-    return result.get("ts")
+    result = slack_post(channel_id, text, thread_ts=thread_ts)
+    return result.get("ts") if result else None
+
+
+def read_thread(channel_id: str, thread_ts: str) -> list[dict]:
+    """Read actual Slack thread so replies see what was really said."""
+    return slack_read_thread(channel_id, thread_ts, limit=15)
 
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
@@ -261,7 +220,7 @@ Sound natural, like a real colleague wrapping up a brief Slack thread."""
 # ── Main conversation engine ──────────────────────────────────────────────────
 
 def run_channel_conversations(channel_name: str, channel_id: str, members: list[dict]) -> None:
-    """Run full 2-round intro conversation for all members in a channel."""
+    """Run full 2-round intro conversation. Thread history injected into each round for genuine continuity."""
     if len(members) < 2:
         print(f"[intros] #{channel_name}: only {len(members)} member(s), skipping")
         return
@@ -269,38 +228,59 @@ def run_channel_conversations(channel_name: str, channel_id: str, members: list[
     print(f"\n[intros] #{channel_name}: {len(members)} members")
 
     # Round 0: Each member posts their intro
-    intros: list[dict] = []   # {employee, text, thread_ts}
+    intros: list[dict] = []
 
     for emp in members:
         prompt = build_intro_prompt(emp, channel_name, members)
-        text = _llm(prompt, max_tokens=150)
-        if not text:
+        text = llm(
+            prompt,
+            system=f"You are {emp['name']}, {emp['title']} at QuantEdge. Sound like a real person on Slack.",
+            max_tokens=150,
+            temperature=0.85,
+            inject_company_context=True,
+        )
+        if not text or "unavailable" in text:
             print(f"[intros]   {emp['name']}: LLM failed, skipping")
             continue
 
-        # Format: *Name | Title*\n text
         formatted = f"*{emp['name']}* | _{emp['title']}_\n{text}"
         ts = post(channel_id, formatted)
         if ts:
             intros.append({"employee": emp, "text": text, "thread_ts": ts})
             print(f"[intros]   {emp['name']}: intro posted (ts={ts})")
-        time.sleep(1.5)   # rate limit
+        time.sleep(1.5)
 
     if not intros:
         return
 
     time.sleep(2)
 
-    # Round 1: Every other member replies to each intro
+    # Round 1: Every other member replies — reads ACTUAL thread first (genuine multi-turn)
     for intro in intros:
         author = intro["employee"]
         repliers = [m for m in members if m["id"] != author["id"]]
 
-        replies: list[dict] = []   # {employee, text}
-        for replier in repliers[:3]:   # max 3 replies per intro to avoid noise
+        # Read actual thread (may have external replies we didn't generate)
+        actual_thread = read_thread(channel_id, intro["thread_ts"])
+        thread_context = "\n".join(
+            f"{m.get('username', 'colleague')}: {m.get('text', '')[:120]}"
+            for m in actual_thread[1:]  # skip root message
+        )[:600]
+
+        replies: list[dict] = []
+        for replier in repliers[:3]:
             prompt = build_reply_prompt(replier, author, intro["text"], channel_name)
-            reply_text = _llm(prompt, max_tokens=120)
-            if not reply_text:
+            if thread_context:
+                prompt += f"\n\nThread so far:\n{thread_context}"
+
+            reply_text = llm(
+                prompt,
+                system=f"You are {replier['name']}, {replier['title']} at QuantEdge.",
+                max_tokens=120,
+                temperature=0.85,
+                inject_company_context=False,  # already got it in Round 0
+            )
+            if not reply_text or "unavailable" in reply_text:
                 continue
 
             formatted = f"*{replier['name']}:* {reply_text}"
@@ -314,17 +294,39 @@ def run_channel_conversations(channel_name: str, channel_id: str, members: list[
 
         time.sleep(2)
 
-        # Round 2: Original poster follows up to the most interesting reply
-        best_reply = replies[0]   # pick first (or could pick longest/most specific)
+        # Round 2: Original poster follows up — reads full thread AGAIN for true continuity
+        actual_thread_r2 = read_thread(channel_id, intro["thread_ts"])
+        full_thread_context = "\n".join(
+            f"{m.get('username', 'colleague')}: {m.get('text', '')[:120]}"
+            for m in actual_thread_r2[1:]
+        )[:800]
+
+        best_reply = replies[0]
         prompt = build_followup_prompt(
             author, best_reply["employee"], best_reply["text"],
-            channel_name, [r["text"] for r in replies]
+            channel_name, [r["text"] for r in replies],
         )
-        followup = _llm(prompt, max_tokens=120)
-        if followup:
+        if full_thread_context:
+            prompt += f"\n\nFull thread context:\n{full_thread_context}"
+
+        followup = llm(
+            prompt,
+            system=f"You are {author['name']}, {author['title']} at QuantEdge.",
+            max_tokens=120,
+            temperature=0.85,
+            inject_company_context=False,
+        )
+        if followup and "unavailable" not in followup:
             formatted = f"*{author['name']}:* {followup}"
             post(channel_id, formatted, thread_ts=intro["thread_ts"])
             print(f"[intros]   {author['name']}: follow-up posted")
+
+            # Write to company brain — what did employees actually discuss?
+            memory_write("slack_insights", {
+                "summary": f"#{channel_name}: {author['name']} and team discussed: {intro['text'][:100]}",
+                "participants": [m["name"] for m in members],
+                "channel": channel_name,
+            })
         time.sleep(1.5)
 
 

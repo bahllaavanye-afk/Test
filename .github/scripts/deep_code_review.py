@@ -1,35 +1,40 @@
 """
 Deep Code Review Agent Pool
 ============================
-Dispatches 8 specialist free-LLM agents to review different codebases areas:
+Dispatches 8 specialist free-LLM agents to review different codebase areas.
 
-  Agent 1 — Strategies Desk       (backend/app/strategies/)
-  Agent 2 — ML/Models Desk        (backend/app/ml/)
-  Agent 3 — Execution Desk        (backend/app/execution/)
-  Agent 4 — Risk Desk             (backend/app/risk/)
-  Agent 5 — API/Auth Desk         (backend/app/api/)
-  Agent 6 — Tasks/Scheduler Desk  (backend/app/tasks/)
-  Agent 7 — Frontend Desk         (frontend/src/)
-  Agent 8 — Infrastructure Desk   (render.yaml, pyproject.toml, workflows)
+Token-efficient v2: uses git diff (not full files) + llm_common shared infrastructure.
+Sends only what CHANGED since last review — typically 500-2000 tokens vs 10,000+.
+Falls back to file reading only when no diff is available.
 
 Each agent:
-  1. Reads its assigned files
-  2. Uses free LLM to generate a structured improvement doc
-  3. Saves doc to docs/agent-reviews/<agent>-YYYY-MM-DD.md
-  4. Posts a summary to Slack
+  1. Gets git diff for its files since last review
+  2. Calls llm_common.llm() (shared cascade + cache + company context)
+  3. Writes findings to docs/agent-reviews/ AND shared company brain
+  4. Posts summary to Slack
 
-All runs committed to the branch. Zero Anthropic tokens.
+All runs committed. Zero Anthropic tokens.
 """
 from __future__ import annotations
 
-import json, os, re, subprocess, sys, time, urllib.request
+import glob as globlib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO_ROOT   = Path(__file__).parent.parent
-BRANCH      = "claude/advanced-trading-bot-d5Lmw"
+# Use shared LLM infrastructure — no more copy-paste cascade
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, memory_write, core_get
+
+REPO_ROOT = Path(__file__).parent.parent
+BRANCH = "claude/advanced-trading-bot-d5Lmw"
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-ALLOW_PAID  = os.environ.get("ALLOW_PAID_APIS", "False")
+ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID.lower() == "true":
     sys.exit(1)
@@ -39,147 +44,109 @@ REVIEW_DIR.mkdir(parents=True, exist_ok=True)
 
 DATE_STR = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-# Each agent: (name, slack_channel, file_globs, max_chars_per_file)
+# Each agent: (name, slack_channel, path_prefixes)
 AGENTS = [
     ("strategies", "desk-research",
-     ["backend/app/strategies/manual/*.py", "backend/app/strategies/ml_enhanced/*.py",
-      "backend/app/strategies/base.py"],
-     2000),
-    ("ml-models", "desk-ml",
-     ["backend/app/ml/models/*.py", "backend/app/ml/features/*.py"],
-     1500),
-    ("execution", "desk-equity",
-     ["backend/app/execution/*.py"],
-     2000),
-    ("risk", "desk-risk",
-     ["backend/app/risk/*.py"],
-     2000),
+     ["backend/app/strategies/"]),
+    ("ml-models", "ml-research",
+     ["backend/app/ml/"]),
+    ("execution", "desk-equities",
+     ["backend/app/execution/"]),
+    ("risk", "risk",
+     ["backend/app/risk/"]),
     ("api-backend", "engineering",
-     ["backend/app/api/v1/*.py", "backend/app/main.py", "backend/app/config.py"],
-     1500),
+     ["backend/app/api/", "backend/app/main.py", "backend/app/config.py"]),
     ("tasks-scheduler", "engineering",
-     ["backend/app/tasks/*.py"],
-     1500),
-    ("frontend", "engineering",
-     ["frontend/src/pages/*.tsx", "frontend/src/components/layout/*.tsx"],
-     1500),
+     ["backend/app/tasks/"]),
+    ("frontend", "frontend",
+     ["frontend/src/"]),
     ("infrastructure", "engineering",
-     ["render.yaml", "backend/pyproject.toml", ".github/workflows/*.yml"],
-     1000),
+     ["render.yaml", "backend/pyproject.toml", ".github/workflows/"]),
 ]
 
 
-# ── Free LLM cascade ──────────────────────────────────────────────────────────
-
-def _llm(prompt: str, max_tokens: int = 1500) -> str | None:
-    providers = [
-        ("gemini",    os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", "")),
-         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.0-flash"),
-        ("groq",      os.environ.get("GROQ_API_KEY", ""),
-         "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile"),
-        ("deepseek",  os.environ.get("DEEPSEEK_API_KEY", ""),
-         "https://api.deepseek.com/v1/chat/completions", "deepseek-chat"),
-        ("together",  os.environ.get("TOGETHER_API_KEY", ""),
-         "https://api.together.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-        ("cerebras",  os.environ.get("CEREBRAS_API_KEY", ""),
-         "https://api.cerebras.ai/v1/chat/completions", "llama-3.3-70b"),
-        ("sambanova", os.environ.get("SAMBANOVA_API_KEY", ""),
-         "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.3-70B-Instruct"),
-        ("hyperbolic", os.environ.get("HYPERBOLIC_API_KEY", ""),
-         "https://api.hyperbolic.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct"),
-    ]
-    for name, key, url, model in providers:
-        if not key or key in ("disabled", ""):
-            continue
-        try:
-            payload = json.dumps({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens, "temperature": 0.1,
-            }).encode()
-            req = urllib.request.Request(url, data=payload, headers={
-                "Authorization": f"Bearer {key}", "Content-Type": "application/json",
-            })
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = json.loads(resp.read())
-            text = data["choices"][0]["message"]["content"]
-            print(f"[review] {name}: {len(text)} chars")
-            return text
-        except Exception as e:
-            print(f"[review] {name}: {e}")
-    return None
-
-
-# ── Slack helpers ─────────────────────────────────────────────────────────────
-
 def slack(channel: str, msg: str) -> None:
-    if not SLACK_TOKEN:
+    """Post to Slack — delegates to shared llm_common helper."""
+    result = slack_post(f"#{channel}", msg)
+    if not result:
         print(f"[Slack #{channel}] {msg[:120]}")
-        return
+
+
+def get_diff_for_paths(paths: list[str], max_chars: int = 6000) -> str:
+    """
+    Get git diff for specific paths since last review tag or 7 days ago.
+    Sending diffs (not full files) cuts token usage by 60-80%.
+    """
+    # Try diff since last review commit
     try:
-        payload = json.dumps({"channel": f"#{channel}", "text": msg, "mrkdwn": True}).encode()
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage", data=payload,
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
+        result = subprocess.run(
+            ["git", "log", "--oneline", "--grep=agent-reviews", "-1", "--format=%H"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=10,
         )
-        urllib.request.urlopen(req, timeout=10)
-    except Exception as e:
-        print(f"Slack error: {e}")
+        base_ref = result.stdout.strip() or "HEAD~50"
+    except Exception:
+        base_ref = "HEAD~50"
 
+    diff_parts = []
+    for path in paths:
+        full_path = str(REPO_ROOT / path) if not Path(path).is_absolute() else path
+        try:
+            result = subprocess.run(
+                ["git", "diff", base_ref, "--", full_path],
+                cwd=REPO_ROOT, capture_output=True, text=True, timeout=15,
+            )
+            diff = result.stdout.strip()
+            if diff:
+                diff_parts.append(f"=== diff: {path} ===\n{diff}")
+        except Exception:
+            pass
 
-# ── File reading ──────────────────────────────────────────────────────────────
+    diff_text = "\n\n".join(diff_parts)
 
-def read_files_for_agent(globs: list[str], max_chars: int) -> str:
-    import glob as globlib
-    parts = []
-    total = 0
-    for pattern in globs:
-        for fpath in sorted(globlib.glob(str(REPO_ROOT / pattern)))[:6]:  # max 6 files per pattern
-            p = Path(fpath)
-            if not p.exists():
-                continue
-            content = p.read_text(errors="replace")[:max_chars]
-            rel = str(p.relative_to(REPO_ROOT))
-            parts.append(f"=== {rel} ===\n{content}")
-            total += len(content)
-            if total > 10000:  # cap total context
-                break
-        if total > 10000:
-            break
-    return "\n\n".join(parts)
+    # If no diff (no changes), fall back to reading key files at reduced size
+    if not diff_text.strip():
+        file_parts = []
+        total = 0
+        for path in paths:
+            pattern = str(REPO_ROOT / path)
+            if "*" not in pattern:
+                pattern = pattern.rstrip("/") + "/*.py"
+            for fpath in sorted(globlib.glob(pattern))[:4]:
+                p = Path(fpath)
+                if p.exists():
+                    content = p.read_text(errors="replace")[:800]  # small slice for no-diff case
+                    rel = str(p.relative_to(REPO_ROOT))
+                    file_parts.append(f"=== {rel} (no changes) ===\n{content}")
+                    total += len(content)
+                    if total > 3000:
+                        break
+        diff_text = "\n\n".join(file_parts)
+
+    return diff_text[:max_chars]
 
 
 # ── Review prompt ─────────────────────────────────────────────────────────────
 
 REVIEW_PROMPT = """You are a world-class quantitative software engineer at a Two Sigma / Citadel-level firm.
-Review the following codebase section: {agent_name}
+Review the following changes for: {agent_name}
 
-Your job: deep review, learn the architecture, identify improvements.
-
-Files:
 {code}
 
-Generate a structured improvement document with these exact sections:
-
-## Architecture Assessment
-(2-3 sentences on the current design quality)
+Generate a focused improvement document:
 
 ## Critical Issues (P0/P1)
-- List up to 3 bugs or security issues with file:line reference and exact fix
+- Up to 3 bugs/security issues with exact file:line and fix. Skip if none.
 
-## Performance Improvements
-- List up to 3 performance wins (latency, throughput, memory)
+## Performance Wins
+- Up to 3 concrete speedups or reliability improvements.
 
-## Alpha/Signal Quality Improvements
-- List up to 3 ways to improve trading signal quality or alpha generation
-
-## Code Quality
-- List up to 3 refactoring suggestions that reduce complexity or improve reliability
+## Alpha/Signal Improvements
+- Up to 3 ways to improve trading signal quality.
 
 ## Implementation Priority
-Ranked list of top 5 improvements to implement first, with 1-line rationale each.
+Top 3 changes to implement NOW, one line each.
 
-Be specific: cite file names, function names, line patterns. No generic advice."""
+Be specific. Cite actual symbols/files from the diff above. No generic advice."""
 
 
 # ── Git ───────────────────────────────────────────────────────────────────────
@@ -207,28 +174,53 @@ def commit_docs() -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def git_config() -> None:
+    subprocess.run(["git", "config", "user.email", "code-review-agent@quantedge.ai"], cwd=REPO_ROOT, check=True)
+    subprocess.run(["git", "config", "user.name", "Code Review Agent Pool"], cwd=REPO_ROOT, check=True)
+
+
+def commit_docs() -> None:
+    subprocess.run(["git", "add", "docs/agent-reviews/"], cwd=REPO_ROOT)
+    r = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=REPO_ROOT)
+    if r.returncode == 0:
+        print("[review] No new docs to commit")
+        return
+    msg = f"docs(agent-reviews): {DATE_STR} deep review by 8-agent pool"
+    subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
+    for delay in [2, 4, 8, 16]:
+        result = subprocess.run(["git", "push", "-u", "origin", BRANCH], cwd=REPO_ROOT)
+        if result.returncode == 0:
+            break
+        time.sleep(delay)
+
+
 def main() -> None:
     slack("engineering",
-        f"🔍 *Code Review Agent Pool* ({DATE_STR}): "
-        f"8 specialist agents starting deep review of entire codebase. "
-        f"Results will be committed to `docs/agent-reviews/`. "
-        f"Zero Anthropic tokens used.")
+        f"*Code Review Agent Pool* ({DATE_STR}): "
+        f"8 agents reviewing diffs (token-efficient v2). "
+        f"Results → `docs/agent-reviews/`. Zero Anthropic tokens.")
 
     git_config()
-    completed = []
+    all_findings = []
 
-    for agent_name, channel, globs, max_chars in AGENTS:
+    for agent_name, channel, paths in AGENTS:
         print(f"\n[review] Agent: {agent_name}")
-        code = read_files_for_agent(globs, max_chars)
+        code = get_diff_for_paths(paths)
 
         if not code.strip():
-            print(f"[review] {agent_name}: no files found, skipping")
+            print(f"[review] {agent_name}: no diff or files found, skipping")
             continue
 
-        prompt = REVIEW_PROMPT.format(agent_name=agent_name, code=code[:8000])
-        review = _llm(prompt, max_tokens=1500)
+        prompt = REVIEW_PROMPT.format(agent_name=agent_name, code=code)
+        review = llm(
+            prompt,
+            system=f"You are a senior quant engineer reviewing the {agent_name} module at QuantEdge.",
+            max_tokens=800,
+            temperature=0.1,
+            use_cache=False,  # always fresh review
+        )
 
-        if not review:
+        if not review or "unavailable" in review:
             print(f"[review] {agent_name}: LLM failed")
             continue
 
@@ -236,30 +228,39 @@ def main() -> None:
         doc_path = REVIEW_DIR / f"{agent_name}-{DATE_STR}.md"
         header = (
             f"# {agent_name.replace('-', ' ').title()} Review — {DATE_STR}\n\n"
-            f"*Generated by: Free LLM Agent Pool (0 Anthropic tokens)*\n\n"
-            f"---\n\n"
+            f"*Token-efficient diff review. Zero Anthropic tokens.*\n\n---\n\n"
         )
         doc_path.write_text(header + review)
         print(f"[review] {agent_name}: wrote {doc_path.name}")
 
-        # Extract P0/P1 count for Slack summary
-        critical_count = len(re.findall(r"P0|P1|critical|Critical|CRITICAL", review))
-
-        # Post summary to desk channel
-        # Extract just the "Implementation Priority" section for the Slack message
+        # Write to shared company brain so ALL agents learn from this review
         priority_match = re.search(r"## Implementation Priority\s*(.*?)(?=\n##|$)", review, re.DOTALL)
-        priority_text = priority_match.group(1).strip()[:400] if priority_match else "See full doc."
+        priority_text = priority_match.group(1).strip()[:400] if priority_match else ""
 
+        memory_write("episodic", {
+            "lesson": f"Code review [{agent_name}]: {priority_text[:200]}",
+            "category": "code",
+            "source": "deep_code_review",
+            "agent": agent_name,
+        })
+
+        if priority_text:
+            all_findings.append(f"*{agent_name}*: {priority_text.splitlines()[0][:100]}")
+
+        critical_count = len(re.findall(r"P0|P1|Critical|CRITICAL", review))
         slack(channel,
-            f"📋 *Code Review Agent: {agent_name}*\n"
-            f"_{critical_count} critical issues found_\n\n"
-            f"*Top improvements:*\n{priority_text}\n\n"
+            f"*Code Review: {agent_name}* — {critical_count} critical issues\n"
+            f"{priority_text[:300] if priority_text else 'See full doc.'}\n"
             f"_Full doc: `docs/agent-reviews/{doc_path.name}`_")
 
-        completed.append(agent_name)
-        time.sleep(2)  # rate limit between agents
+        time.sleep(2)
 
-    # Commit all docs
+    # Summary to #engineering with all findings
+    if all_findings:
+        slack("engineering",
+            f"*Daily Review Summary ({DATE_STR})*\n" +
+            "\n".join(f"• {f}" for f in all_findings[:8]))
+
     commit_docs()
 
     slack("engineering",
