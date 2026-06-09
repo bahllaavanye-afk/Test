@@ -16,8 +16,9 @@
     "git pull --rebase before committing \u2014 prevents push rejections",
     "Here are 3 reusable patterns or skills extracted from the given learnings:",
     "2. **Monitor Model Drift**: Regularly check and update machine learning models to prevent degradation and maintain performance.",
-    "All API keys use numbered suffixes _1/_2/_3 \u2014 use _resolve_key() helper"
+    "All API keys use numbered suffixes _1/_2/_3 \u2014 use _resolve_key() helper",
+    "constants on backtest/walk_forward.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-09T18:33:57.458257+00:00",
+  "last_updated": "2026-06-09T18:34:05.091008+00:00",
   "total": 17
 }
