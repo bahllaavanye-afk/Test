@@ -1,0 +1,54 @@
+name: Research → Trade Pipeline (24/7)
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes, all day
+  workflow_dispatch:
+
+concurrency:
+  group: research-to-trade
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  pipeline:
+    name: Research → Signal → Risk → Trade → Monitor
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install uv --quiet
+          uv pip install --system \
+            'httpx>=0.27.0' 'pandas>=2.2.0' 'numpy>=1.26.0' \
+            'yfinance>=0.2.40' 'requests>=2.32.0'
+
+      - name: Run research-to-trade pipeline
+        env:
+          ANTHROPIC_API_KEY: "disabled"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL: "https://paper-api.alpaca.markets"
+          TRADING_MODE: "paper"
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/research_to_trade.py
