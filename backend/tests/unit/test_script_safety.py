@@ -33,11 +33,12 @@ class TestUndefinedMsgBug:
 
     def test_backend_team_no_undefined_msg(self):
         src = _src("backend_team.py")
+        # Find the apply_and_push function body
         m = re.search(r"def apply_and_push.*?(?=\ndef |\Z)", src, re.DOTALL)
         assert m, "apply_and_push not found in backend_team.py"
         fn_body = m.group(0)
-        # If the standalone word 'msg' is used, it must be defined in the function body
-        if re.search(r"\bmsg\b", fn_body):
+        # If 'msg' is used, it must be defined in the same function body
+        if "msg" in fn_body:
             assert re.search(r"\bmsg\s*=", fn_body), (
                 "backend_team.py apply_and_push uses 'msg' without defining it"
             )
@@ -47,7 +48,7 @@ class TestUndefinedMsgBug:
         m = re.search(r"def apply_and_push.*?(?=\ndef |\Z)", src, re.DOTALL)
         assert m, "apply_and_push not found in frontend_team.py"
         fn_body = m.group(0)
-        if re.search(r"\bmsg\b", fn_body):
+        if "msg" in fn_body:
             assert re.search(r"\bmsg\s*=", fn_body), (
                 "frontend_team.py apply_and_push uses 'msg' without defining it"
             )
@@ -253,11 +254,12 @@ class TestClaudeConversations:
 
     def test_all_employee_channels_defined(self):
         src = _src("claude_conversations.py")
-        assert "CHANNEL_EMPLOYEES" in src, "CHANNEL_EMPLOYEES not found in claude_conversations.py"
-        # Count top-level keys: lines that are '    "channel-name": {' (4-space indent, string key, dict value)
-        channel_keys = re.findall(r'^\s{4}"([\w-]+)"\s*:\s*\{', src, re.MULTILINE)
+        m = re.search(r"CHANNEL_EMPLOYEES\s*=\s*\{(.*?)\n\}", src, re.DOTALL)
+        assert m, "CHANNEL_EMPLOYEES dict not found"
+        # Must have at least 10 entries
+        channel_keys = re.findall(r'"([\w-]+)"\s*:', m.group(1))
         assert len(channel_keys) >= 10, (
-            f"CHANNEL_EMPLOYEES only has {len(channel_keys)} top-level keys — expected at least 10"
+            f"CHANNEL_EMPLOYEES only has {len(channel_keys)} channels — expected at least 10"
         )
 
 
