@@ -17,8 +17,6 @@ jobs:
     name: Review Slack Messages & Respond
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    permissions:
-      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -32,11 +30,6 @@ jobs:
       - name: Install deps
         run: pip install uv --quiet && uv pip install --system 'requests>=2.32.0'
 
-      - name: Configure git
-        run: |
-          git config user.email "agents@quantedge.ai"
-          git config user.name "QuantEdge Agent Team"
-
       - name: Run Slack review loop
         env:
           ANTHROPIC_API_KEY: "disabled"
@@ -48,21 +41,6 @@ jobs:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
           HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
-          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
-          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/slack_review_loop.py
-
-      - name: Persist review state
-        continue-on-error: true
-        run: |
-          STATE=".github/state/slack_review_state.json"
-          if [ -f "$STATE" ]; then
-            git add "$STATE"
-            git diff --cached --quiet || git commit -m "chore: persist slack-review state [skip ci]"
-            for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-            done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
-          fi

@@ -27,16 +27,67 @@ from typing import Any
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+# ── Free LLM cascade ──────────────────────────────────────────────────────────
+
+def _free_llm(prompt: str, max_tokens: int = 800, temperature: float = 0.3) -> str | None:
+    """Try all free LLM providers in cascade. Return first successful response."""
+    providers = [
+        ("gemini",    os.getenv("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY_1", "")),
+         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.0-flash"),
+        ("groq",      os.getenv("GROQ_API_KEY", ""),
+         "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile"),
+        ("deepseek",  os.getenv("DEEPSEEK_API_KEY", ""),
+         "https://api.deepseek.com/v1/chat/completions", "deepseek-chat"),
+        ("together",  os.getenv("TOGETHER_API_KEY", ""),
+         "https://api.together.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+        ("cerebras",  os.getenv("CEREBRAS_API_KEY", ""),
+         "https://api.cerebras.ai/v1/chat/completions", "llama-3.3-70b"),
+        ("sambanova", os.getenv("SAMBANOVA_API_KEY", ""),
+         "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.3-70B-Instruct"),
+    ]
+    import urllib.request
+    for name, key, url, model in providers:
+        if not key or key in ("", "disabled"):
+            continue
+        try:
+            payload = json.dumps({
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }).encode()
+            req = urllib.request.Request(url, data=payload,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                data = json.loads(resp.read())
+            text = data["choices"][0]["message"]["content"]
+            print(f"  [LLM] Response from {name} ({len(text)} chars)")
+            return text
+        except Exception as e:
+            print(f"  [LLM] {name} failed: {e}")
+    return None
 
 
-# ── Slack wrapper (preserves thread_ts return behaviour) ──────────────────────
+# ── Slack ─────────────────────────────────────────────────────────────────────
+
+SLACK_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
 
 def slack(channel: str, text: str, thread_ts: str | None = None) -> str | None:
     """Post to Slack, return thread_ts for threading replies."""
-    resp = slack_post(channel, text, thread_ts)
-    return resp.get("ts")
+    if not SLACK_TOKEN:
+        return None
+    try:
+        payload: dict = {"channel": channel, "text": text, "mrkdwn": True}
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
+        with httpx.Client(timeout=10) as client:
+            r = client.post("https://slack.com/api/chat.postMessage",
+                headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
+                json=payload)
+            return r.json().get("ts")
+    except Exception as e:
+        print(f"  [Slack] {e}")
+        return None
 
 
 # ── Market data ───────────────────────────────────────────────────────────────
@@ -135,7 +186,7 @@ Generate 3 specific, actionable paper trade ideas right now. Each must be:
 Respond as JSON array only:
 [{{"symbol":"SPY","side":"long","entry_price":450.00,"confidence":75,"rationale":"RSI oversold + EMA support","risk_pct":1.0}}]"""
 
-        response = llm(prompt, max_tokens=600, inject_company_context=False)
+        response = _free_llm(prompt, max_tokens=600)
         ideas = []
         if response:
             try:
@@ -328,14 +379,6 @@ class TradeAgent:
                     idea["order_status"] = order.get("status", "?")
                     filled.append(idea)
                     print(f"  [Trade] {symbol} {order_side} qty={qty}: {order.get('status')}")
-                    memory_write("trade_outcomes", {
-                        "strategy": "research_to_trade",
-                        "symbol": symbol,
-                        "side": order_side,
-                        "qty": qty,
-                        "outcome": order.get("status", "?"),
-                        "order_id": order.get("id", "?"),
-                    })
                 else:
                     idea["order_id"] = None
                     idea["order_status"] = f"error_{r.status_code}: {r.text[:80]}"
@@ -431,11 +474,9 @@ Review this pipeline cycle (2-3 sentences max):
 
 Sign off as "Lead Reviewer" if approved, "Lead Reviewer [REVIEW NEEDED]" if issues found."""
 
-        verdict = llm(prompt, max_tokens=200, inject_company_context=False)
-        if not verdict or verdict.startswith("[LLM unavailable"):
+        verdict = _free_llm(prompt, max_tokens=200)
+        if not verdict:
             verdict = "Lead Reviewer: Pipeline completed. LLM review unavailable — manual check recommended."
-
-        memory_write("episodic", {"lesson": f"LeadReviewer verdict: {verdict[:200]}"})
 
         # Post to both research and lead channels
         icon = "✅" if "[REVIEW NEEDED]" not in verdict else "⚠️"
