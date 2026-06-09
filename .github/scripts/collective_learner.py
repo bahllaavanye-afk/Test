@@ -13,22 +13,10 @@ from __future__ import annotations
 import os, sys, json
 from datetime import datetime, timezone
 from pathlib import Path
-import requests
 
-def _resolve_key(*names: str) -> str:
-    for name in names:
-        v = os.environ.get(name, "")
-        if v: return v
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v: return v
-    return ""
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, memory_write
 
-GEMINI_API_KEY  = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY    = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
-DEEPSEEK_KEYS   = [k for k in [_resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1"),
-    os.environ.get("DEEPSEEK_API_KEY_2",""), os.environ.get("DEEPSEEK_API_KEY_3","")] if k]
-SLACK_TOKEN     = os.environ.get("SLACK_BOT_TOKEN", "")
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
@@ -41,45 +29,10 @@ TASK_FILE  = REPO_ROOT / ".github" / "state" / "task_registry.json"
 
 
 def call_llm(prompt: str) -> str:
-    """Try providers in order: Groq → DeepSeek → Gemini."""
-    # Groq first (fastest, free)
-    if GROQ_API_KEY:
-        try:
-            r = requests.post("https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.1-8b-instant", "messages": [{"role":"user","content":prompt}],
-                      "max_tokens": 600},
-                timeout=20)
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"Groq: {e}")
-
-    # DeepSeek
-    for key in DEEPSEEK_KEYS:
-        try:
-            r = requests.post("https://api.deepseek.com/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": "deepseek-chat", "messages": [{"role":"user","content":prompt}],
-                      "max_tokens": 600},
-                timeout=25)
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"DeepSeek: {e}")
-
-    # Gemini fallback
-    if GEMINI_API_KEY:
-        try:
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
-                json={"contents":[{"role":"user","parts":[{"text":prompt}]}],
-                      "generationConfig":{"maxOutputTokens":600}},
-                timeout=25)
-            if r.status_code == 200:
-                return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except Exception as e:
-            print(f"Gemini: {e}")
+    """Delegate to shared llm_common infrastructure."""
+    result = llm(prompt, max_tokens=600, inject_company_context=False)
+    if result and not result.startswith("[LLM unavailable"):
+        return result
     return ""
 
 

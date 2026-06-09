@@ -15,34 +15,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 import requests
 
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post as _lc_slack_post, memory_write
+
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
 
-
-def _resolve_key(*names: str) -> str:
-    for name in names:
-        v = os.environ.get(name, "")
-        if v:
-            return v
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v:
-                return v
-    return ""
-
-
-GROQ_KEY      = _resolve_key("GROQ_API_KEY")
-DEEPSEEK_KEYS = [k for k in [
-    _resolve_key("DEEPSEEK_API_KEY"),
-    os.environ.get("DEEPSEEK_API_KEY_2", ""),
-    os.environ.get("DEEPSEEK_API_KEY_3", ""),
-] if k]
-GEMINI_KEY    = _resolve_key("GEMINI_API_KEY")
-SAMBANOVA_KEY = _resolve_key("SAMBANOVA_API_KEY")
-CEREBRAS_KEY  = _resolve_key("CEREBRAS_API_KEY")
-HYPERBOLIC_KEY = _resolve_key("HYPERBOLIC_API_KEY")
-TOGETHER_KEY  = _resolve_key("TOGETHER_API_KEY")
 SLACK_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
 
 REPO_ROOT   = Path(__file__).resolve().parents[2]
@@ -76,103 +55,6 @@ def _read_json(path: Path) -> dict:
         return json.loads(path.read_text())
     except Exception:
         return {}
-
-
-def call_llm(messages: list[dict], max_tokens: int = 800) -> str:
-    """Groq → DeepSeek → SambaNova → Cerebras → Hyperbolic → Together → Gemini."""
-    if GROQ_KEY:
-        try:
-            r = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": max_tokens},
-                timeout=25,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"Groq: {e}")
-
-    for key in DEEPSEEK_KEYS:
-        try:
-            r = requests.post(
-                "https://api.deepseek.com/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": "deepseek-chat", "messages": messages, "max_tokens": max_tokens},
-                timeout=30,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"DeepSeek: {e}")
-
-    if SAMBANOVA_KEY:
-        try:
-            r = requests.post(
-                "https://api.sambanova.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {SAMBANOVA_KEY}", "Content-Type": "application/json"},
-                json={"model": "Meta-Llama-3.1-8B-Instruct", "messages": messages, "max_tokens": max_tokens},
-                timeout=25,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"SambaNova: {e}")
-
-    if CEREBRAS_KEY:
-        try:
-            r = requests.post(
-                "https://api.cerebras.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {CEREBRAS_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama3.1-8b", "messages": messages, "max_tokens": max_tokens},
-                timeout=20,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"Cerebras: {e}")
-
-    if HYPERBOLIC_KEY:
-        try:
-            r = requests.post(
-                "https://api.hyperbolic.xyz/v1/chat/completions",
-                headers={"Authorization": f"Bearer {HYPERBOLIC_KEY}", "Content-Type": "application/json"},
-                json={"model": "meta-llama/Llama-3.2-3B-Instruct", "messages": messages, "max_tokens": max_tokens},
-                timeout=25,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"Hyperbolic: {e}")
-
-    if TOGETHER_KEY:
-        try:
-            r = requests.post(
-                "https://api.together.xyz/v1/chat/completions",
-                headers={"Authorization": f"Bearer {TOGETHER_KEY}", "Content-Type": "application/json"},
-                json={"model": "meta-llama/Llama-3.2-3B-Instruct-Turbo", "messages": messages, "max_tokens": max_tokens},
-                timeout=25,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"Together: {e}")
-
-    if GEMINI_KEY:
-        try:
-            prompt = "\n".join(m["content"] for m in messages)
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}",
-                json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                      "generationConfig": {"maxOutputTokens": max_tokens}},
-                timeout=30,
-            )
-            if r.status_code == 200:
-                return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except Exception as e:
-            print(f"Gemini: {e}")
-
-    return "⚠️ No LLM available — add at least one key in GitHub Secrets: GROQ_API_KEY_1, GEMINI_API_KEY_1, DEEPSEEK_API_KEY_1, SAMBANOVA_API_KEY_1, CEREBRAS_API_KEY_1, HYPERBOLIC_API_KEY_1, or TOGETHER_API_KEY_1"
 
 
 def post_slack(channel: str, text: str, username: str, icon: str = "robot_face") -> bool:
@@ -243,12 +125,7 @@ def main():
         if agent_stats.get("last_summary"):
             system_parts += [f"Last task: {agent_stats['last_summary'][:120]}"]
 
-    messages = [
-        {"role": "system", "content": "\n".join(system_parts)},
-        {"role": "user", "content": user_message},
-    ]
-
-    reply = call_llm(messages, max_tokens=800)
+    reply = llm(user_message, system="\n".join(system_parts), max_tokens=800, inject_company_context=False)
     print(f"Reply ({len(reply)} chars): {reply[:100]}…")
 
     # Post to Slack

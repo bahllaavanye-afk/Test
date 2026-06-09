@@ -17,6 +17,8 @@ jobs:
     name: Review Slack Messages & Respond
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +31,11 @@ jobs:
 
       - name: Install deps
         run: pip install uv --quiet && uv pip install --system 'requests>=2.32.0'
+
+      - name: Configure git
+        run: |
+          git config user.email "agents@quantedge.ai"
+          git config user.name "QuantEdge Agent Team"
 
       - name: Run Slack review loop
         env:
@@ -44,3 +51,16 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/slack_review_loop.py
+
+      - name: Persist review state
+        continue-on-error: true
+        run: |
+          STATE=".github/state/slack_review_state.json"
+          if [ -f "$STATE" ]; then
+            git add "$STATE"
+            git diff --cached --quiet || git commit -m "chore: persist slack-review state [skip ci]"
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+            done
+            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+          fi

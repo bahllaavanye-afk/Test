@@ -12,7 +12,7 @@ on:
   push:
     branches: [claude/advanced-trading-bot-d5Lmw]
     paths-ignore:
-      - "experiments/results/slack_state.json"  # don't re-run on state commits
+      - ".github/state/slack_state.json"  # don't re-run on state commits
   workflow_dispatch:
     inputs:
       issue_number:

@@ -19,11 +19,14 @@ import json, os, re, sys, time, hashlib, urllib.request
 from pathlib import Path
 from datetime import datetime, timezone
 
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, memory_write
+
 REPO_ROOT   = Path(__file__).parent.parent
 BRANCH      = "claude/advanced-trading-bot-d5Lmw"
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 ALLOW_PAID  = os.environ.get("ALLOW_PAID_APIS", "False")
-STATE_FILE  = Path("/tmp/slack_review_state.json")   # ephemeral per-run
+STATE_FILE  = REPO_ROOT / ".github" / "state" / "slack_review_state.json"
 
 if ALLOW_PAID.lower() == "true":
     sys.exit(1)
@@ -38,52 +41,10 @@ CHANNELS = [
 MSG_LOOKBACK = 10
 
 
-# ── Free LLM cascade ──────────────────────────────────────────────────────────
-
 def _free_llm(prompt: str, max_tokens: int = 512) -> str | None:
-    providers = [
-        ("gemini",    os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", "")),
-         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-         "gemini-2.0-flash"),
-        ("groq",      os.environ.get("GROQ_API_KEY", ""),
-         "https://api.groq.com/openai/v1/chat/completions",
-         "llama-3.3-70b-versatile"),
-        ("deepseek",  os.environ.get("DEEPSEEK_API_KEY", ""),
-         "https://api.deepseek.com/v1/chat/completions",
-         "deepseek-chat"),
-        ("together",  os.environ.get("TOGETHER_API_KEY", ""),
-         "https://api.together.xyz/v1/chat/completions",
-         "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-        ("cerebras",  os.environ.get("CEREBRAS_API_KEY", ""),
-         "https://api.cerebras.ai/v1/chat/completions",
-         "llama-3.3-70b"),
-        ("sambanova", os.environ.get("SAMBANOVA_API_KEY", ""),
-         "https://api.sambanova.ai/v1/chat/completions",
-         "Meta-Llama-3.3-70B-Instruct"),
-        ("hyperbolic", os.environ.get("HYPERBOLIC_API_KEY", ""),
-         "https://api.hyperbolic.xyz/v1/chat/completions",
-         "meta-llama/Llama-3.3-70B-Instruct"),
-    ]
-    for name, key, url, model in providers:
-        if not key or key in ("disabled", ""):
-            continue
-        try:
-            payload = json.dumps({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-                "temperature": 0.2,
-            }).encode()
-            req = urllib.request.Request(
-                url, data=payload,
-                headers={"Authorization": f"Bearer {key}",
-                         "Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            print(f"[slack-review] {name} failed: {e}")
+    result = llm(prompt, max_tokens=max_tokens, inject_company_context=False)
+    if result and not result.startswith("[LLM unavailable"):
+        return result
     return None
 
 
@@ -178,6 +139,12 @@ def classify_message(text: str, channel: str) -> dict:
         "Pipeline started", "Auto-fixed", "✅", "⚠️ *Backend AI Team",
         "🤖", "auto-fix", "cron job", "workflow run", "Heartbeat",
         "standup", "All systems clean", "Backend AI Audit", "Backend AI Team",
+        "All systems nominal", "Agent Review", "Lead Review",
+        "Slack Review Loop", "Signal Runner", "P&L Report",
+        "Alpha Review", "Standup —", "Squad Standup", "All-Hands",
+        "Strategy Review —", "Risk EOD", "[skip ci]", "Agent Health",
+        "Collective Learning", "Backend AI Team", "QuantEdge Bot",
+        "[Agent Review]", "[Lead Review]", "🔄 *Slack Review",
     ]
     for pat in skip_patterns:
         if pat in text:
@@ -245,6 +212,7 @@ def load_state() -> set[str]:
 def save_state(seen: set[str]) -> None:
     # Keep only last 500 message IDs
     ids = list(seen)[-500:]
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(ids))
 
 
@@ -312,6 +280,12 @@ def main() -> None:
                 post_reply(ch_id, ts, f"{prefix} {response}")
                 responded += 1
                 time.sleep(1)  # rate limit
+                if priority == "high":
+                    memory_write("slack_insights", {
+                        "summary": f"#{ch_name} [{category}]: {text[:120]}",
+                        "channel": ch_name,
+                        "response_snippet": response[:200],
+                    })
 
     save_state(seen)
     print(f"[slack-review] Processed {processed} new messages, responded to {responded}")

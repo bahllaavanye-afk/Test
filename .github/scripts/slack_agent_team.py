@@ -63,7 +63,7 @@ except ImportError:
     _LITELLM_AVAILABLE = False
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-STATE_PATH = REPO_ROOT / "experiments" / "results" / "slack_state.json"
+STATE_PATH = REPO_ROOT / ".github" / "state" / "slack_state.json"
 
 
 def _resolve_key(*names: str) -> str:

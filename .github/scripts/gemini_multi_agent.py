@@ -18,10 +18,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import slack_post as _lc_slack_post
 
 
 def _resolve_key(*names: str) -> str:
@@ -277,15 +282,7 @@ class MultiAgentLLM:
             print(msg)
             return
         for ch in ["engineering", "incidents"]:
-            try:
-                requests.post(
-                    "https://slack.com/api/chat.postMessage",
-                    headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-                    json={"channel": ch, "text": msg, "mrkdwn": True},
-                    timeout=10,
-                )
-            except Exception:
-                pass
+            _lc_slack_post(f"#{ch}", msg)
         print("✓ Quota alert posted to Slack")
 
     def status(self) -> dict:

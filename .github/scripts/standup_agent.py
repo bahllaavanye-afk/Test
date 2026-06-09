@@ -195,8 +195,9 @@ def run_all_hands_standup(ctx: dict):
     recent_learnings = "\n".join(f"- {l}" for l in mem.get("peer_learnings", [])[-3:])
     failure_count = len(mem.get("failure_traces", []))
 
+    run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")  # unique per hour, busts 24h cache
     prompt = f"""You are the CTO of QuantEdge AI, an institutional-grade quant trading platform startup.
-It is {date_str}. Write a brief (4-5 bullets) all-hands standup for your 92-person engineering team.
+It is {date_str} (run-id:{run_id}). Write a brief (4-5 bullets) all-hands standup for your 92-person engineering team.
 
 REAL PLATFORM DATA (use this, not made-up numbers):
 - Autonomous agents completed {total_runs} tasks total, {sr_pct}% success rate
@@ -240,9 +241,10 @@ def run_squad_standups(ctx: dict):
         ("incidents",       "DevOps / SRE",         "Kenji Watanabe",    "🚨"),
     ]
     date_str = datetime.now(timezone.utc).strftime("%a %b %d")
+    run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
     for channel, squad, lead, icon in squads:
         prompt = f"""You are {lead}, squad lead for {squad} at QuantEdge (quant trading platform startup).
-Write a brief squad standup for {date_str} (3 bullets max, under 80 words):
+Write a brief squad standup for {date_str} (3 bullets max, under 80 words) [run-id:{run_id}]:
 - What the squad shipped/completed yesterday
 - Today's main focus
 - Any blockers or dependencies on other squads
