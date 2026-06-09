@@ -601,6 +601,66 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    # ── Agent Bus + Knowledge Loop (event-driven, always-on) ────────────────
+
+    async def _start_agent_bus_and_knowledge_loop():
+        """Start the Redis Streams event bus and the continuous knowledge loop."""
+        try:
+            from app.redis_client import get_redis
+            from app.tasks.agent_bus import get_bus
+            from app.tasks.knowledge_loop import get_knowledge_loop
+
+            redis = get_redis()
+            bus = get_bus(redis)
+            knowledge_loop = get_knowledge_loop(redis)
+
+            # Knowledge loop subscribes to all topics first, then bus starts dispatching
+            await knowledge_loop.start()
+            await bus.start()
+
+            logger.info("Agent bus + knowledge loop running — company learns from every event")
+        except Exception as exc:
+            logger.warning("Agent bus / knowledge loop failed to start", error=str(exc))
+
+    asyncio.create_task(_start_agent_bus_and_knowledge_loop())
+
+    # ── Task Queue Worker ────────────────────────────────────────────────────
+
+    async def _start_task_queue_worker():
+        """Start the durable task queue worker."""
+        try:
+            from app.redis_client import get_redis
+            from app.tasks.task_queue import get_task_queue
+            queue = get_task_queue(get_redis())
+            asyncio.create_task(queue.run_worker())
+            logger.info("Task queue worker started")
+        except Exception as exc:
+            logger.warning("Task queue worker failed to start", error=str(exc))
+
+    asyncio.create_task(_start_task_queue_worker())
+
+    # ── Strategy Auction (hourly capital reallocation) ───────────────────────
+
+    async def _run_strategy_auction():
+        """Hourly: run UCB1 auction, reallocate capital to proven strategies."""
+        try:
+            from app.redis_client import get_redis
+            from app.tasks.strategy_auction import get_auction
+            auction = get_auction(get_redis())
+            allocations = await auction.run_auction()
+            logger.info("Strategy auction complete", strategy_count=len(allocations))
+        except Exception as exc:
+            logger.debug("Strategy auction failed", error=str(exc))
+
+    scheduler.add_job(
+        _run_strategy_auction,
+        "interval",
+        hours=1,
+        id="strategy_auction",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler
