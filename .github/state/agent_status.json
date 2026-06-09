@@ -1,50 +1,50 @@
 {
-  "checked_at": "2026-06-09T11:44:53.182078+00:00",
+  "checked_at": "2026-06-09T19:36:03.864644+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 13,
+  "skill_count": 18,
   "agent_statuses": [
     {
-      "agent": "investor_pipeline",
-      "emoji": "\ud83d\udcbc",
-      "reply": "I'm actively reviewing and refactoring the existing code to adhere to platform standards, specifically focusing on updating the `InvestorPipeline.js` file in the `src/core/` directory.",
+      "agent": "strategy_generator",
+      "emoji": "\ud83e\udde0",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "run_experiments",
-      "emoji": "\ud83d\udd2c",
-      "reply": "[Offline \u2014 set GROQ_API_KEY_1 in Secrets] Last known: awaiting API key setup",
+      "agent": "free_agent_engineer",
+      "emoji": "\ud83e\udd16",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "algo_agent",
-      "emoji": "\ud83c\udfb0",
-      "reply": "I am currently implementing the UCB1 bandit algorithm to explore a quantitative trading strategy, with my main focus being on initializing the algorithm's parameters from the `ucb1_bandit.js` file within the `algorithms` directory.",
+      "agent": "desk_trader",
+      "emoji": "\ud83d\udcca",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "self_improver",
-      "emoji": "\ud83d\udd04",
-      "reply": "[Offline \u2014 set GROQ_API_KEY_1 in Secrets] Last known: awaiting API key setup",
+      "agent": "system_watchdog",
+      "emoji": "\ud83d\udee1\ufe0f",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "research_scientist",
-      "emoji": "\ud83d\udd2d",
-      "reply": "[Offline \u2014 set GROQ_API_KEY_1 in Secrets] Last known: awaiting API key setup",
+      "agent": "ml_trainer",
+      "emoji": "\ud83c\udfcb\ufe0f",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "modeling_engineer",
-      "emoji": "\u2699\ufe0f",
-      "reply": "I am actively monitoring the model drift pipeline, triggered by a recommendation to retrain the LSTM model by referencing the `LSTM_model_retraining.ipynb` file located in `/home/modeling_engineer/model-development/retrain_models/`.",
+      "agent": "standup_agent",
+      "emoji": "\ud83d\udccb",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     }
