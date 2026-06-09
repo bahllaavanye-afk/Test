@@ -129,52 +129,87 @@ def apply_and_push(files: list[dict]) -> list[str]:
     return patched
 
 
+def _call_free_llm(prompt: str, max_tokens: int = 1024) -> str | None:
+    """Try free LLM providers in cascade order; return first successful response text."""
+    providers = [
+        ("gemini", os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", "")),
+         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.0-flash"),
+        ("groq", os.environ.get("GROQ_API_KEY", ""),
+         "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile"),
+        ("deepseek", os.environ.get("DEEPSEEK_API_KEY", ""),
+         "https://api.deepseek.com/v1/chat/completions", "deepseek-chat"),
+        ("together", os.environ.get("TOGETHER_API_KEY", ""),
+         "https://api.together.xyz/v1/chat/completions", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+        ("cerebras", os.environ.get("CEREBRAS_API_KEY", ""),
+         "https://api.cerebras.ai/v1/chat/completions", "llama-3.3-70b"),
+        ("sambanova", os.environ.get("SAMBANOVA_API_KEY", ""),
+         "https://api.sambanova.ai/v1/chat/completions", "Meta-Llama-3.3-70B-Instruct"),
+    ]
+    import urllib.request
+    for name, key, url, model in providers:
+        if not key or key in ("disabled", ""):
+            continue
+        try:
+            payload = json.dumps({
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": 0.2,
+            }).encode()
+            req = urllib.request.Request(url, data=payload,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+            content = data["choices"][0]["message"]["content"]
+            print(f"Free LLM response from {name}")
+            return content
+        except Exception as e:
+            print(f"Provider {name} failed: {e}")
+            continue
+    return None
+
+
 def _run_gemini_audit() -> None:
-    """Use Gemini (free) to audit the backend when Anthropic API key is disabled."""
+    """Use free LLM cascade to audit the backend when Anthropic API key is disabled."""
     gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
-    if not gemini_key:
-        print("No GEMINI_API_KEY either — backend audit skipped")
+    has_any_key = any(os.environ.get(k, "") not in ("", "disabled") for k in [
+        "GEMINI_API_KEY", "GEMINI_API_KEY_1", "GROQ_API_KEY", "DEEPSEEK_API_KEY",
+        "TOGETHER_API_KEY", "CEREBRAS_API_KEY", "SAMBANOVA_API_KEY",
+    ])
+    if not has_any_key:
+        print("No free LLM keys configured — backend audit skipped")
         slack("#engineering", "⚠️ *Backend AI Team:* Skipped (no LLM key available)")
         return
 
-    print("Backend AI Team starting audit via Gemini...")
-    context = read_files(AUDIT_FILES + SAFE_TO_FIX)
+    print("Backend AI Team starting audit via free LLM cascade...")
     prompt = (
         f"You are QuantEdge's senior backend engineer.\n"
         f"Focus: {FOCUS}\n\n"
         f"Review these files and return a brief JSON audit report with findings.\n"
-        f"Format: {{\"findings\": [{{\"severity\": \"high|medium|low\", \"file\": \"...\", \"issue\": \"...\"}}], "
-        f"\"summary\": \"2 sentence assessment\"}}\n\n"
+        f'Format: {{"findings": [{{"severity": "high|medium|low", "file": "...", "issue": "..."}}], '
+        f'"summary": "2 sentence assessment"}}\n\n'
         f"Files:\n{context[:6000]}"
     )
+    text = _call_free_llm(prompt, max_tokens=1024)
+    if not text:
+        print("All free LLM providers failed — audit skipped")
+        slack("#engineering", "⚠️ *Backend AI Team:* All LLM providers failed")
+        return
     try:
-        import urllib.request
-        payload = json.dumps({
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.2},
-        }).encode()
-        req = urllib.request.Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
         m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL) or re.search(r"(\{.*\})", text, re.DOTALL)
         result = json.loads(m.group(1)) if m else {"findings": [], "summary": text[:200]}
         findings = result.get("findings", [])
-        summary = result.get("summary", "Gemini audit complete")
+        summary = result.get("summary", "Free LLM audit complete")
         print(f"Summary: {summary}\nFindings: {len(findings)}")
-        lines = [f"🔍 *Backend AI Audit (Gemini)* — {len(findings)} findings", f"_{summary}_"]
+        lines = [f"🔍 *Backend AI Audit (Free LLM)* — {len(findings)} findings", f"_{summary}_"]
         for f in findings[:6]:
             sev = f.get("severity", "medium").upper()
             icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🔵"}.get(sev, "❓")
             lines.append(f"{icon} `{f.get('file', '?')}`: {f.get('issue', '?')}")
         slack("#engineering", "\n".join(lines))
     except Exception as exc:
-        print(f"Gemini audit failed: {exc}")
-        slack("#engineering", f"⚠️ *Backend AI Team:* Gemini audit failed: {exc}")
+        print(f"Free LLM audit parse failed: {exc}")
+        slack("#engineering", f"⚠️ *Backend AI Team:* Audit parse failed: {exc}")
 
 
 def main() -> None:

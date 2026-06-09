@@ -56,6 +56,12 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
           ANTHROPIC_API_KEY: "disabled"
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
           MARKET_TYPE: ${{ github.event.inputs.market_type || 'auto' }}
           N_STRATEGIES: ${{ github.event.inputs.n_strategies || '1' }}
         run: python .github/scripts/strategy_generator.py
