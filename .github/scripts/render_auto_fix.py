@@ -168,7 +168,7 @@ def git_commit_and_push(reason: str) -> bool:
             print("No changes to commit")
             return False
 
-        subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
+        subprocess.run(["git", "commit", "-m", reason], cwd=REPO_ROOT, check=True)
         subprocess.run(
             ["git", "push", "origin", BRANCH],
             cwd=REPO_ROOT, check=True,
@@ -219,7 +219,7 @@ def _gemini_autofix(logs: str, deploy_id: str, commit_msg: str) -> None:
         fix_desc = result.get("fix_description", "")
         files = result.get("files", [])
         print(f"Gemini diagnosis: {root_cause}")
-        if apply_patches(files):
+        if apply_fix(json.dumps({"root_cause": root_cause, "files": files})):
             pushed = git_commit_and_push(f"fix(render): {root_cause[:60]}")
             if pushed:
                 slack(f"🤖 *Render Auto-Fix (Gemini):* {root_cause}\n✅ {fix_desc}\nPushed fix — awaiting re-deploy.")

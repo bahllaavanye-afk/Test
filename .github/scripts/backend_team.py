@@ -97,7 +97,8 @@ def apply_and_push(files: list[dict]) -> list[str]:
     if r.returncode == 0:
         return []
 
-    subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
+    commit_msg = f"fix(auto): backend team auto-fix [{', '.join(patched)}]"
+    subprocess.run(["git", "commit", "-m", commit_msg], cwd=REPO_ROOT, check=True)
     subprocess.run(["git", "push", "origin", BRANCH], cwd=REPO_ROOT, check=True)
     return patched
 
