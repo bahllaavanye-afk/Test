@@ -3,7 +3,7 @@ name: Strategy Health Ranking
 on:
   schedule:
     # 22:00 UTC weekdays — after market close + P&L report
-    - cron: "0 * * * *"
+    - cron: "0 22 * * 1-5"
   workflow_dispatch:
     inputs:
       strategy:
