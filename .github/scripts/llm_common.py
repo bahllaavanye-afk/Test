@@ -2,65 +2,42 @@
 Shared LLM infrastructure for ALL .github/scripts/*.py agents.
 
 This replaces 14 copies of the same 7-provider cascade function.
-Every script should: from llm_common import llm, llm_chat, memory_write, memory_read
+Every script should: from llm_common import llm, memory, company_context
 
-HOW CONTEXT IS SHARED ACROSS LLMs:
-  Model weights are NOT shared — Gemini, Groq, DeepSeek, Cerebras are separate companies.
-  What IS shared is external context injected into every prompt:
+Token reduction strategies built in:
+  1. Provider cascade: fastest/cheapest first (Gemini → Groq → DeepSeek → ...)
+  2. Response cache: 24h TTL keyed by prompt hash — identical prompts cost zero
+  3. Delta prompting: callers pass only what changed, not full context each time
+  4. Company context: pre-built shared context injected at <1000 tokens per call
+  5. Auto-compression: prompts >8000 tokens get compressed before sending
 
-  1. company_brain.json — single shared JSON file, read by every agent before calling any LLM.
-     Contains: regime, top strategies, recent lessons, Slack insights, trade outcomes.
-     Built by company_brain.py every 15 minutes from all sources.
+Memory architecture (Letta-style, shared across ALL agents):
+  - CORE: stable facts (current regime, top strategies, best models)
+  - EPISODIC: recent 200 events + lessons (rolling window)
+  - SKILL: reusable solutions discovered by agents
+  - SCRATCH: per-call ephemeral context (not persisted)
 
-  2. ConversationStore (in memory_manager.py) — persists conversation history as OpenAI
-     messages arrays. Any provider can load and continue a conversation started by another,
-     because all providers accept the same {"role":..., "content":...} format.
-
-  3. SemanticRetriever (in memory_manager.py) — TF-IDF search over company_brain.json
-     to inject RELEVANT past context, not just the 5 most recent entries.
-
-  4. llm_chat() — the multi-turn version of llm(). Pass a ConversationStore and it:
-     - Loads the full conversation history
-     - Adds your message
-     - Calls the best available provider
-     - Saves the reply back to the store
-     So the next call (by any provider) continues seamlessly.
-
-Token reduction:
-  - 24h response cache keyed by prompt hash
-  - Auto-compression for prompts >8000 tokens
-  - Semantic retrieval: only relevant context injected, not all memory
+All read from / write to:
+  - .github/state/company_brain.json (GitHub Actions — flat file, no Redis)
+  - GitHub Gists (optional persistence across forks)
 """
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import logging
 import os
+import re
 import sys
-import tempfile
-import threading
 import time
+import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from memory_manager import ConversationStore
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Lazy import — memory_manager lives in the same directory.
-# Falls back gracefully if not found (e.g. running outside .github/scripts/).
-try:
-    sys.path.insert(0, str(Path(__file__).parent))
-    from memory_manager import build_context as _build_context, ConversationStore as _ConversationStore
-    _MEMORY_MANAGER_OK = True
-except Exception:  # noqa: BLE001
-    _MEMORY_MANAGER_OK = False
-    _ConversationStore = None  # type: ignore[assignment,misc]
+# ── State file ────────────────────────────────────────────────────────────────
 
 _STATE_DIR = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / ".github" / "state"
 _STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -125,23 +102,7 @@ _PROVIDERS = [
         "model": "meta-llama/Llama-3.3-70B-Instruct",
         "rpm_free": 60,
     },
-    {
-        "name": "nvidia_nim",
-        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
-        # Key stored in GitHub as NVIDIA_AGENTS_API_KEYS
-        # Models available free: meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct,
-        #   mistralai/mixtral-8x22b-instruct-v0.1, deepseek-ai/deepseek-r1, qwen/qwen2.5-72b-instruct
-        # Using Nemotron-70B: NVIDIA's best instruction-following model, optimized for agents
-        "key_env": "NVIDIA_AGENTS_API_KEYS",
-        "key_env_alt": "NVIDIA_NIM_API_KEY",
-        "fmt": "openai",
-        "model": "nvidia/llama-3.1-nemotron-70b-instruct",
-        "rpm_free": 40,
-    },
 ]
-
-# Providers to race in parallel (first N by index). Others are sequential fallbacks.
-_PARALLEL_RACE_N = 3
 
 # ── Response cache ────────────────────────────────────────────────────────────
 
@@ -199,21 +160,9 @@ def llm(
     """
     _load_cache()
 
-    # Cache key uses the BASE prompt (before context injection) so that the same
-    # query deduplicates regardless of what's currently in the brain.
-    ck = _cache_key(prompt, system, max_tokens)
-    if use_cache and ck in _cache_mem:
-        entry = _cache_mem[ck]
-        if time.time() - entry.get("ts", 0) < _CACHE_TTL:
-            return entry["text"]
-
-    # Optionally inject shared company context (semantic retrieval if available,
-    # otherwise fall back to recency-based snapshot from TTL-cached brain).
+    # Optionally inject shared company context
     if inject_company_context:
-        if _MEMORY_MANAGER_OK:
-            ctx = _build_context(prompt)
-        else:
-            ctx = get_company_context(max_tokens=600)
+        ctx = get_company_context(max_tokens=600)
         if ctx:
             prompt = f"{ctx}\n\n---\n\n{prompt}"
 
@@ -221,132 +170,33 @@ def llm(
     if len(prompt) > 32000:
         prompt = prompt[:28000] + "\n\n[...truncated for token efficiency...]"
 
-    # Race the first N providers in parallel; fall back sequentially for the rest.
-    result, provider_name = _call_parallel_race(system, prompt, max_tokens, temperature)
-    if result:
-        _cache_mem[ck] = {"text": result, "ts": time.time(), "provider": provider_name}
-        _save_cache()
-        return result
+    # Check cache
+    ck = _cache_key(prompt, system, max_tokens)
+    if use_cache and ck in _cache_mem:
+        entry = _cache_mem[ck]
+        if time.time() - entry.get("ts", 0) < _CACHE_TTL:
+            return entry["text"]
+
+    # Try providers in order
+    for provider in _PROVIDERS:
+        key = os.environ.get(provider["key_env"], "")
+        if not key or key == "disabled":
+            continue
+        try:
+            result = _call_provider(provider, system, prompt, max_tokens, temperature)
+            if result:
+                _cache_mem[ck] = {"text": result, "ts": time.time(), "provider": provider["name"]}
+                _save_cache()
+                return result
+        except Exception as e:
+            logger.debug("Provider %s failed: %s", provider["name"], e)
+            continue
 
     return "[LLM unavailable — all providers failed]"
 
 
-def llm_with_provider(
-    prompt: str,
-    provider_name: str,
-    system: str = "You are a helpful AI agent at QuantEdge, a quantitative trading firm.",
-    max_tokens: int = 400,
-    temperature: float = 0.7,
-    inject_company_context: bool = False,
-) -> str:
-    """
-    Call a SPECIFIC named provider (e.g. 'gemini', 'groq', 'nvidia_nim').
-    Used when you want each agent pinned to an independent LLM so reviews are truly independent.
-    Falls back to the cascade if the named provider is unavailable.
-    Returns (response_text, actual_provider_name) tuple.
-    """
-    provider = next((p for p in _PROVIDERS if p["name"] == provider_name), None)
-
-    if inject_company_context:
-        ctx = get_company_context(max_tokens=400)
-        if ctx:
-            prompt = f"{ctx}\n\n---\n\n{prompt}"
-
-    if len(prompt) > 32000:
-        prompt = prompt[:28000] + "\n\n[...truncated...]"
-
-    if provider and _has_key(provider):
-        try:
-            result = _call_provider(provider, system, prompt, max_tokens, temperature)
-            if result:
-                return result, provider_name
-        except Exception as e:
-            logger.warning("Provider %s failed in llm_with_provider: %s", provider_name, e)
-
-    # Fall back to cascade
-    result, used = _call_parallel_race(system, prompt, max_tokens, temperature)
-    return (result or "[LLM unavailable]", used or "cascade")
-
-
-def _has_key(p: dict) -> bool:
-    """Check if a provider has an API key configured (supports primary + alt env var)."""
-    v = os.environ.get(p["key_env"], "")
-    if v and v != "disabled":
-        return True
-    alt = p.get("key_env_alt", "")
-    if alt:
-        v2 = os.environ.get(alt, "")
-        return bool(v2) and v2 != "disabled"
-    return False
-
-
-def _call_parallel_race(
-    system: str, prompt: str, max_tokens: int, temperature: float
-) -> tuple[str | None, str | None]:
-    """
-    Race the first _PARALLEL_RACE_N available providers in parallel threads.
-    Returns (response_text, provider_name) for the first successful response.
-    Falls back to sequential for remaining providers if the race fails.
-    """
-    available = [p for p in _PROVIDERS if _has_key(p)]
-    if not available:
-        return None, None
-
-    race_pool = available[:_PARALLEL_RACE_N]
-    sequential_tail = available[_PARALLEL_RACE_N:]
-
-    # Phase 1: parallel race
-    _result: list[str | None] = [None]
-    _winner: list[str | None] = [None]
-    _done = threading.Event()
-
-    def _try(provider: dict) -> None:
-        if _done.is_set():
-            return
-        try:
-            r = _call_provider(provider, system, prompt, max_tokens, temperature)
-            if r and not _done.is_set():
-                _done.set()
-                _result[0] = r
-                _winner[0] = provider["name"]
-        except Exception as e:
-            logger.debug("Provider %s failed (race): %s", provider["name"], e)
-
-    with ThreadPoolExecutor(max_workers=len(race_pool)) as ex:
-        futs = [ex.submit(_try, p) for p in race_pool]
-        _done.wait(timeout=32)
-        # Cancel pending futures — we already have a winner
-        for f in futs:
-            f.cancel()
-
-    if _result[0]:
-        return _result[0], _winner[0]
-
-    # Phase 2: sequential fallback for remaining providers
-    for provider in sequential_tail:
-        try:
-            r = _call_provider(provider, system, prompt, max_tokens, temperature)
-            if r:
-                return r, provider["name"]
-        except Exception as e:
-            logger.debug("Provider %s failed (sequential): %s", provider["name"], e)
-
-    return None, None
-
-
-def _provider_key(provider: dict) -> str:
-    """Return API key for a provider, checking primary env var then optional alt."""
-    key = os.environ.get(provider["key_env"], "")
-    if not key or key == "disabled":
-        alt = provider.get("key_env_alt", "")
-        key = os.environ.get(alt, "") if alt else ""
-    if not key or key == "disabled":
-        raise KeyError(f"No API key for provider {provider['name']}")
-    return key
-
-
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
-    key = _provider_key(provider)
+    key = os.environ[provider["key_env"]]
     url = provider["url"]
 
     if provider["fmt"] == "gemini":
@@ -382,116 +232,6 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
         return result["choices"][0]["message"]["content"].strip()
 
 
-def _call_provider_messages(
-    provider: dict,
-    messages: list[dict],
-    max_tokens: int,
-    temperature: float,
-) -> str:
-    """
-    Call a provider with a full OpenAI-style messages array.
-    Used by llm_chat() so that multi-turn history is preserved verbatim.
-    All 7 providers accept this format; Gemini needs a small shape translation.
-    """
-    key = _provider_key(provider)
-    url = provider["url"]
-
-    if provider["fmt"] == "gemini":
-        # Gemini uses {role: "user"|"model", parts: [{text: ...}]}
-        # System message is prepended to the first user turn.
-        system_content = next((m["content"] for m in messages if m["role"] == "system"), "")
-        gemini_contents: list[dict] = []
-        first_user = True
-        for m in messages:
-            if m["role"] == "system":
-                continue
-            role = "model" if m["role"] == "assistant" else "user"
-            content = m["content"]
-            if first_user and role == "user" and system_content:
-                content = f"{system_content}\n\n{content}"
-                first_user = False
-            gemini_contents.append({"role": role, "parts": [{"text": content}]})
-        url_with_key = f"{url}?key={key}"
-        body: dict = {
-            "contents": gemini_contents,
-            "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
-        }
-        headers: dict = {"Content-Type": "application/json"}
-    else:
-        url_with_key = url
-        body = {
-            "model": provider.get("model", "llama-3.3-70b-versatile"),
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-        }
-
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        result = json.loads(resp.read())
-
-    if provider["fmt"] == "gemini":
-        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    return result["choices"][0]["message"]["content"].strip()
-
-
-def llm_chat(
-    store: "ConversationStore",
-    user_message: str,
-    system: str = "You are a helpful AI agent at QuantEdge, a quantitative trading firm.",
-    max_tokens: int = 400,
-    temperature: float = 0.7,
-) -> str:
-    """
-    Multi-turn conversation that works across ALL free LLM providers.
-
-    How cross-provider context sharing works:
-      1. ConversationStore saves history in the universal OpenAI messages format.
-      2. This function appends user_message, builds the full messages array,
-         and sends it to whichever provider is currently available.
-      3. The reply is saved back. Next call — even to a DIFFERENT provider — sees
-         the complete history and continues naturally.
-
-    Example:
-        store = ConversationStore("regime_analysis")
-        reply1 = llm_chat(store, "What regime are we in?")    # Gemini answers
-        reply2 = llm_chat(store, "How should I size positions?")  # Groq continues seamlessly
-
-    Args:
-        store: A ConversationStore instance (persisted to .github/state/conversations/).
-        user_message: The new user turn to add.
-        system: System prompt (stable across all turns).
-        max_tokens: Response length cap.
-        temperature: Sampling temperature.
-
-    Returns:
-        The assistant's reply text, also saved into store.
-    """
-    store.add("user", user_message)
-    messages = store.build_messages(system)
-
-    for provider in _PROVIDERS:
-        if not _has_key(provider):
-            continue
-        try:
-            result = _call_provider_messages(provider, messages, max_tokens, temperature)
-            if result:
-                store.add("assistant", result)
-                return result
-        except Exception as e:
-            logger.debug("Provider %s failed in llm_chat: %s", provider["name"], e)
-            continue
-
-    reply = "[LLM unavailable — all providers failed]"
-    store.add("assistant", reply)
-    return reply
-
-
 # ── Shared memory (company brain) ─────────────────────────────────────────────
 
 _DEFAULT_BRAIN: dict = {
@@ -511,53 +251,18 @@ _DEFAULT_BRAIN: dict = {
 }
 
 
-_brain_cache: dict = {}
-_brain_cache_ts: float = 0.0
-_brain_cache_lock = threading.Lock()
-_BRAIN_CACHE_TTL = 60.0  # seconds — avoids disk read on every context injection
-
-
 def _load_brain() -> dict:
-    global _brain_cache, _brain_cache_ts
-    now = time.time()
-    with _brain_cache_lock:
-        if _brain_cache and now - _brain_cache_ts < _BRAIN_CACHE_TTL:
-            return json.loads(json.dumps(_brain_cache))
-        try:
-            if _BRAIN_FILE.exists():
-                loaded = json.loads(_BRAIN_FILE.read_text())
-                _brain_cache = loaded
-                _brain_cache_ts = now
-                return json.loads(json.dumps(loaded))
-        except Exception:
-            pass
-        fallback = json.loads(json.dumps(_DEFAULT_BRAIN))
-        _brain_cache = fallback
-        _brain_cache_ts = now
-        return json.loads(json.dumps(fallback))
-
-
-def _locked_json_write(path: Path, data: dict) -> None:
-    """Atomic JSON write with exclusive flock — prevents concurrent-write corruption."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_suffix(".lock")
-    with open(lock_path, "w") as lf:
-        fcntl.flock(lf, fcntl.LOCK_EX)
-        try:
-            tmp = path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data, indent=2))
-            os.replace(tmp, path)
-        finally:
-            fcntl.flock(lf, fcntl.LOCK_UN)
+    try:
+        if _BRAIN_FILE.exists():
+            return json.loads(_BRAIN_FILE.read_text())
+    except Exception:
+        pass
+    return json.loads(json.dumps(_DEFAULT_BRAIN))
 
 
 def _save_brain(brain: dict) -> None:
-    global _brain_cache, _brain_cache_ts
     try:
-        _locked_json_write(_BRAIN_FILE, brain)
-        with _brain_cache_lock:
-            _brain_cache = json.loads(json.dumps(brain))
-            _brain_cache_ts = time.time()
+        _BRAIN_FILE.write_text(json.dumps(brain, indent=2))
     except Exception as e:
         logger.debug("_save_brain failed: %s", e)
 
