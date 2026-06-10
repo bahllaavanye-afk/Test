@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781133054.6498318,
+    "last_updated": 1781133434.345829,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,9 +109,9 @@
       "size_multiplier": 0.75
     },
     "opinion_score": -1,
-    "macro_score": 1,
-    "vix": 19.87,
-    "market_scan_ts": 1781133054.6468503,
+    "macro_score": 0,
+    "vix": 22.22,
+    "market_scan_ts": 1781133434.3424914,
     "sector_leaders": [
       "Healthcare",
       "Cons. Staples",
@@ -224,6 +224,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
       "ts": 1781133054.650436
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Healthcare",
+        "Cons. Staples",
+        "Financials"
+      ],
+      "gap_count": 3,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
+      "ts": 1781133434.3465724
     }
   ]
 }
