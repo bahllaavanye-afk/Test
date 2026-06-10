@@ -130,12 +130,11 @@ class MacroRiskBarometerStrategy(AbstractStrategy):
         elif score == 2:
             trade_sym = "SPY"
             side = "buy"
-            confidence = 0.75
+            confidence = 0.72
         elif score == 0:
-            # Full risk-off — defensive TLT. Less certain than a consensus risk-on call.
             trade_sym = "TLT"
             side = "buy"
-            confidence = 0.68
+            confidence = 0.80
         else:
             return None  # score == 1: ambiguous
 

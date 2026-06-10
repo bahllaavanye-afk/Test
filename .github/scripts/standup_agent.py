@@ -32,27 +32,13 @@ def _load_skills() -> list:
     except Exception:
         return []
 
-# ── Key resolver: supports both plain and numbered secrets ────────────────────
-def _resolve_key(*names: str) -> str:
-    """Return first non-empty value from env, checking plain + numbered variants."""
-    for name in names:
-        v = os.environ.get(name, "")
-        if v:
-            return v
-        # Try _1 suffix if not already numbered
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v:
-                return v
-    return ""
-
 import sys
 import requests
 from datetime import datetime, timezone
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, memory_write
 
 SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
-GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 GH_TOKEN       = os.environ.get("GH_TOKEN", "")
 GH_REPO        = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
 EVENT_TYPE     = os.environ.get("EVENT_TYPE", "auto")
@@ -61,76 +47,6 @@ ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
     print("SECURITY: ALLOW_PAID_APIS must be False")
     sys.exit(1)
-
-# ── LLM with quota monitoring ─────────────────────────────────────────────────
-
-_gemini_quota_hit = False
-
-def call_gemini(prompt: str, max_tokens: int = 600) -> str:
-    global _gemini_quota_hit
-    if not GEMINI_API_KEY or _gemini_quota_hit:
-        return ""
-    try:
-        resp = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
-            json={
-                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.8}
-            },
-            timeout=30
-        )
-        if resp.status_code == 429:
-            print("⚠️  Gemini daily quota reached — switching to Groq for all remaining calls")
-            _gemini_quota_hit = True
-            _alert_quota_hit()
-            return ""
-        if resp.status_code == 200:
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as e:
-        print(f"Gemini error: {e}")
-    return ""
-
-def _alert_quota_hit():
-    """Post Slack alert when Gemini quota is exhausted."""
-    if not SLACK_TOKEN:
-        return
-    msg = (
-        "⚠️ *Gemini API daily quota reached* — all agent calls switching to Groq fallback.\n"
-        "Platform continues with zero downtime. Add GEMINI_API_KEY_2 to GitHub Secrets to scale capacity."
-    )
-    for ch in ["engineering", "incidents"]:
-        try:
-            requests.post(
-                "https://slack.com/api/chat.postMessage",
-                headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-                json={"channel": ch, "text": msg, "mrkdwn": True},
-                timeout=10
-            )
-        except Exception:
-            pass
-
-def call_groq(prompt: str, max_tokens: int = 600) -> str:
-    if not GROQ_API_KEY:
-        return ""
-    try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens
-            },
-            timeout=25
-        )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print(f"Groq error: {e}")
-    return ""
-
-def llm(prompt: str, max_tokens: int = 600) -> str:
-    return call_gemini(prompt, max_tokens) or call_groq(prompt, max_tokens) or ""
 
 # ── GitHub context ────────────────────────────────────────────────────────────
 

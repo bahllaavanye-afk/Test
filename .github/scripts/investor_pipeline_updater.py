@@ -2,55 +2,15 @@
 Investor Pipeline Updater — uses Gemini to auto-advance stages and generate
 outreach context for the CEO's OKR (Active investor pipeline >= 10, Series A by D90).
 """
-import os, json, requests
+import os, json, sys
 from datetime import datetime, timedelta
-
-def _resolve_key(*names: str) -> str:
-    for name in names:
-        v = os.environ.get(name, "")
-        if v: return v
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v: return v
-    return ""
-
-GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, memory_write
 
 PIPELINE_FILE = "data/investor_pipeline.json"
 
 STAGE_ORDER = ["intro_email", "deck_sent", "first_call", "second_call", "diligence", "term_sheet", "closed"]
-
-def call_gemini(prompt: str) -> str:
-    if not GEMINI_API_KEY:
-        return ""
-    resp = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
-        json={"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
-        timeout=30
-    )
-    if resp.status_code == 200:
-        try:
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except Exception:
-            pass
-    return ""
-
-def call_groq(prompt: str) -> str:
-    if not GROQ_API_KEY:
-        return ""
-    resp = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "max_tokens": 300},
-        timeout=30
-    )
-    if resp.status_code == 200:
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    return ""
-
-def llm(prompt: str) -> str:
-    return call_gemini(prompt) or call_groq(prompt) or "No LLM response"
 
 def load_pipeline():
     with open(PIPELINE_FILE) as f:

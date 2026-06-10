@@ -225,6 +225,21 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "crypto_whale_momentum": CryptoWhaleMomentumStrategy,
     "interest_rate_differential": InterestRateDifferentialStrategy,
     "options_gamma_scalp": OptionsGammaScalpStrategy,
+    # ── Polymarket expanded desk ──────────────────────────────────────────────
+    "poly_time_value_fade": PolyTimeValueFadeStrategy,
+    "poly_cross_market_hedge": PolyCrossMarketHedgeStrategy,
+    "poly_liquidity_provision": PolyLiquidityProvisionStrategy,
+    # ── Macro desk ────────────────────────────────────────────────────────────
+    "yield_curve_momentum": YieldCurveMomentumStrategy,
+    "macro_risk_barometer": MacroRiskBarometerStrategy,
+    "dollar_carry": DollarCarryStrategy,
+    "pmi_sector_rotation": PMISectorRotationStrategy,
+    "central_bank_window": CentralBankWindowStrategy,
+    # ── Rates desk ────────────────────────────────────────────────────────────
+    "yield_spread_reversion": YieldSpreadReversionStrategy,
+    "tlt_spy_rotation": TLTSPYRotationStrategy,
+    "duration_momentum": DurationMomentumStrategy,
+    "breakeven_inflation": BreakevenInflationStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,

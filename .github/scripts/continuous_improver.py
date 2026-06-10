@@ -7,29 +7,9 @@ from __future__ import annotations
 import os, sys, json, random, glob, subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-import requests
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, memory_write
 
-# ── Key resolver ──────────────────────────────────────────────────────────────
-def _resolve_key(*names: str) -> str:
-    for name in names:
-        v = os.environ.get(name, "")
-        if v: return v
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v: return v
-    return ""
-
-GEMINI_API_KEY   = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY     = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
-DEEPSEEK_KEYS    = [k for k in [
-    _resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1"),
-    os.environ.get("DEEPSEEK_API_KEY_2", ""),
-    os.environ.get("DEEPSEEK_API_KEY_3", ""),
-] if k]
-SAMBANOVA_KEY    = _resolve_key("SAMBANOVA_API_KEY", "SAMBANOVA_API_KEY_1")
-CEREBRAS_KEY     = _resolve_key("CEREBRAS_API_KEY", "CEREBRAS_API_KEY_1")
-HYPERBOLIC_KEY   = _resolve_key("HYPERBOLIC_API_KEY", "HYPERBOLIC_API_KEY_1")
-TOGETHER_KEY     = _resolve_key("TOGETHER_API_KEY", "TOGETHER_API_KEY_1")
 ALLOW_PAID_APIS  = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
@@ -93,135 +73,6 @@ def record_success(mem: dict, file_path: str, improvement_type: str, tests_passe
     mem["peer_learnings"].append(f"[continuous_improver @ {now[:16]}] {improvement_type} on {short}: tests={'pass' if tests_passed else 'skip'}")
     mem["peer_learnings"] = mem["peer_learnings"][-200:]
 
-# ── LLM helpers ──────────────────────────────────────────────────────────────
-
-def call_gemini(prompt: str, max_tokens: int = 2048) -> str:
-    if not GEMINI_API_KEY: return ""
-    try:
-        resp = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
-            json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                  "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3}},
-            timeout=45
-        )
-        if resp.status_code == 200:
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as e:
-        print(f"Gemini error: {e}")
-    return ""
-
-def call_groq(prompt: str, max_tokens: int = 2048) -> str:
-    if not GROQ_API_KEY: return ""
-    try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-            json={"model": "llama-3.1-8b-instant",
-                  "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=30
-        )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print(f"Groq error: {e}")
-    return ""
-
-def call_deepseek(prompt: str, max_tokens: int = 2048) -> str:
-    for key in DEEPSEEK_KEYS:
-        try:
-            resp = requests.post(
-                "https://api.deepseek.com/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
-                      "max_tokens": max_tokens},
-                timeout=40
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            print(f"DeepSeek error: {e}")
-    return ""
-
-def call_sambanova(prompt: str, max_tokens: int = 2048) -> str:
-    if not SAMBANOVA_KEY: return ""
-    try:
-        resp = requests.post(
-            "https://api.sambanova.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {SAMBANOVA_KEY}", "Content-Type": "application/json"},
-            json={"model": "Meta-Llama-3.1-8B-Instruct",
-                  "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=30
-        )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print(f"SambaNova error: {e}")
-    return ""
-
-def call_cerebras(prompt: str, max_tokens: int = 2048) -> str:
-    if not CEREBRAS_KEY: return ""
-    try:
-        resp = requests.post(
-            "https://api.cerebras.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {CEREBRAS_KEY}", "Content-Type": "application/json"},
-            json={"model": "llama3.1-8b",
-                  "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=25
-        )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print(f"Cerebras error: {e}")
-    return ""
-
-def call_hyperbolic(prompt: str, max_tokens: int = 2048) -> str:
-    if not HYPERBOLIC_KEY: return ""
-    try:
-        resp = requests.post(
-            "https://api.hyperbolic.xyz/v1/chat/completions",
-            headers={"Authorization": f"Bearer {HYPERBOLIC_KEY}", "Content-Type": "application/json"},
-            json={"model": "meta-llama/Llama-3.2-3B-Instruct",
-                  "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=25
-        )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print(f"Hyperbolic error: {e}")
-    return ""
-
-def call_together(prompt: str, max_tokens: int = 2048) -> str:
-    if not TOGETHER_KEY: return ""
-    try:
-        resp = requests.post(
-            "https://api.together.xyz/v1/chat/completions",
-            headers={"Authorization": f"Bearer {TOGETHER_KEY}", "Content-Type": "application/json"},
-            json={"model": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
-                  "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=25
-        )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print(f"Together error: {e}")
-    return ""
-
-def call_llm(prompt: str, max_tokens: int = 2048) -> str:
-    """7-provider chain: Gemini → Groq → DeepSeek (3 keys) → SambaNova → Cerebras → Hyperbolic → Together."""
-    return (
-        call_gemini(prompt, max_tokens)
-        or call_groq(prompt, max_tokens)
-        or call_deepseek(prompt, max_tokens)
-        or call_sambanova(prompt, max_tokens)
-        or call_cerebras(prompt, max_tokens)
-        or call_hyperbolic(prompt, max_tokens)
-        or call_together(prompt, max_tokens)
-        or ""
-    )
-
-def llm(prompt: str, max_tokens: int = 2048) -> str:
-    """Alias for call_llm — 7-provider chain."""
-    return call_llm(prompt, max_tokens)
 
 # ── File selection ────────────────────────────────────────────────────────────
 
