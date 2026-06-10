@@ -33,13 +33,17 @@ Token reduction:
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import logging
 import os
 import sys
+import tempfile
+import threading
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -121,7 +125,18 @@ _PROVIDERS = [
         "model": "meta-llama/Llama-3.3-70B-Instruct",
         "rpm_free": 60,
     },
+    {
+        "name": "nvidia_nim",
+        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "key_env": "NVIDIA_NIM_API_KEY",
+        "fmt": "openai",
+        "model": "meta/llama-3.3-70b-instruct",
+        "rpm_free": 40,
+    },
 ]
+
+# Providers to race in parallel (first N by index). Others are sequential fallbacks.
+_PARALLEL_RACE_N = 3
 
 # ── Response cache ────────────────────────────────────────────────────────────
 
@@ -179,8 +194,16 @@ def llm(
     """
     _load_cache()
 
+    # Cache key uses the BASE prompt (before context injection) so that the same
+    # query deduplicates regardless of what's currently in the brain.
+    ck = _cache_key(prompt, system, max_tokens)
+    if use_cache and ck in _cache_mem:
+        entry = _cache_mem[ck]
+        if time.time() - entry.get("ts", 0) < _CACHE_TTL:
+            return entry["text"]
+
     # Optionally inject shared company context (semantic retrieval if available,
-    # otherwise fall back to recency-based snapshot).
+    # otherwise fall back to recency-based snapshot from TTL-cached brain).
     if inject_company_context:
         if _MEMORY_MANAGER_OK:
             ctx = _build_context(prompt)
@@ -193,29 +216,71 @@ def llm(
     if len(prompt) > 32000:
         prompt = prompt[:28000] + "\n\n[...truncated for token efficiency...]"
 
-    # Check cache
-    ck = _cache_key(prompt, system, max_tokens)
-    if use_cache and ck in _cache_mem:
-        entry = _cache_mem[ck]
-        if time.time() - entry.get("ts", 0) < _CACHE_TTL:
-            return entry["text"]
-
-    # Try providers in order
-    for provider in _PROVIDERS:
-        key = os.environ.get(provider["key_env"], "")
-        if not key or key == "disabled":
-            continue
-        try:
-            result = _call_provider(provider, system, prompt, max_tokens, temperature)
-            if result:
-                _cache_mem[ck] = {"text": result, "ts": time.time(), "provider": provider["name"]}
-                _save_cache()
-                return result
-        except Exception as e:
-            logger.debug("Provider %s failed: %s", provider["name"], e)
-            continue
+    # Race the first N providers in parallel; fall back sequentially for the rest.
+    result, provider_name = _call_parallel_race(system, prompt, max_tokens, temperature)
+    if result:
+        _cache_mem[ck] = {"text": result, "ts": time.time(), "provider": provider_name}
+        _save_cache()
+        return result
 
     return "[LLM unavailable — all providers failed]"
+
+
+def _call_parallel_race(
+    system: str, prompt: str, max_tokens: int, temperature: float
+) -> tuple[str | None, str | None]:
+    """
+    Race the first _PARALLEL_RACE_N available providers in parallel threads.
+    Returns (response_text, provider_name) for the first successful response.
+    Falls back to sequential for remaining providers if the race fails.
+    """
+    available = [
+        p for p in _PROVIDERS
+        if os.environ.get(p["key_env"], "") not in ("", "disabled")
+    ]
+    if not available:
+        return None, None
+
+    race_pool = available[:_PARALLEL_RACE_N]
+    sequential_tail = available[_PARALLEL_RACE_N:]
+
+    # Phase 1: parallel race
+    _result: list[str | None] = [None]
+    _winner: list[str | None] = [None]
+    _done = threading.Event()
+
+    def _try(provider: dict) -> None:
+        if _done.is_set():
+            return
+        try:
+            r = _call_provider(provider, system, prompt, max_tokens, temperature)
+            if r and not _done.is_set():
+                _done.set()
+                _result[0] = r
+                _winner[0] = provider["name"]
+        except Exception as e:
+            logger.debug("Provider %s failed (race): %s", provider["name"], e)
+
+    with ThreadPoolExecutor(max_workers=len(race_pool)) as ex:
+        futs = [ex.submit(_try, p) for p in race_pool]
+        _done.wait(timeout=32)
+        # Cancel pending futures — we already have a winner
+        for f in futs:
+            f.cancel()
+
+    if _result[0]:
+        return _result[0], _winner[0]
+
+    # Phase 2: sequential fallback for remaining providers
+    for provider in sequential_tail:
+        try:
+            r = _call_provider(provider, system, prompt, max_tokens, temperature)
+            if r:
+                return r, provider["name"]
+        except Exception as e:
+            logger.debug("Provider %s failed (sequential): %s", provider["name"], e)
+
+    return None, None
 
 
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
@@ -385,18 +450,53 @@ _DEFAULT_BRAIN: dict = {
 }
 
 
+_brain_cache: dict = {}
+_brain_cache_ts: float = 0.0
+_brain_cache_lock = threading.Lock()
+_BRAIN_CACHE_TTL = 60.0  # seconds — avoids disk read on every context injection
+
+
 def _load_brain() -> dict:
-    try:
-        if _BRAIN_FILE.exists():
-            return json.loads(_BRAIN_FILE.read_text())
-    except Exception:
-        pass
-    return json.loads(json.dumps(_DEFAULT_BRAIN))
+    global _brain_cache, _brain_cache_ts
+    now = time.time()
+    with _brain_cache_lock:
+        if _brain_cache and now - _brain_cache_ts < _BRAIN_CACHE_TTL:
+            return json.loads(json.dumps(_brain_cache))
+        try:
+            if _BRAIN_FILE.exists():
+                loaded = json.loads(_BRAIN_FILE.read_text())
+                _brain_cache = loaded
+                _brain_cache_ts = now
+                return json.loads(json.dumps(loaded))
+        except Exception:
+            pass
+        fallback = json.loads(json.dumps(_DEFAULT_BRAIN))
+        _brain_cache = fallback
+        _brain_cache_ts = now
+        return json.loads(json.dumps(fallback))
+
+
+def _locked_json_write(path: Path, data: dict) -> None:
+    """Atomic JSON write with exclusive flock — prevents concurrent-write corruption."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(".lock")
+    with open(lock_path, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2))
+            os.replace(tmp, path)
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
 
 
 def _save_brain(brain: dict) -> None:
+    global _brain_cache, _brain_cache_ts
     try:
-        _BRAIN_FILE.write_text(json.dumps(brain, indent=2))
+        _locked_json_write(_BRAIN_FILE, brain)
+        with _brain_cache_lock:
+            _brain_cache = json.loads(json.dumps(brain))
+            _brain_cache_ts = time.time()
     except Exception as e:
         logger.debug("_save_brain failed: %s", e)
 

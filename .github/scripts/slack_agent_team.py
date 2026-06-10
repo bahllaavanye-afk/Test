@@ -890,14 +890,14 @@ def score_agent_output(output: str, task_type: str, provider_used: str = "") -> 
 # Cerebras Qwen3 32B is a solid fallback but NOT used as primary on critical tasks.
 
 _TASK_ROUTING: dict[str, list[str]] = {
-    "code":       ["gemini", "cerebras", "groq", "openrouter"],
-    "quant":      ["gemini", "cerebras", "groq", "sambanova"],
-    "ml":         ["gemini", "cerebras", "groq"],
-    "risk":       ["gemini", "cerebras", "groq", "sambanova"],
-    "review":     ["gemini", "cerebras", "openrouter"],
-    "polymarket": ["gemini", "groq", "sambanova"],
-    "frontend":   ["gemini", "cerebras", "groq"],
-    "default":    ["gemini", "cerebras", "groq", "sambanova", "openrouter"],
+    "code":       ["gemini", "cerebras", "groq", "nvidia_nim", "openrouter"],
+    "quant":      ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova"],
+    "ml":         ["gemini", "cerebras", "groq", "nvidia_nim"],
+    "risk":       ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova"],
+    "review":     ["gemini", "cerebras", "nvidia_nim", "openrouter"],
+    "polymarket": ["gemini", "groq", "nvidia_nim", "sambanova"],
+    "frontend":   ["gemini", "cerebras", "groq", "nvidia_nim"],
+    "default":    ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova", "openrouter"],
 }
 
 # Maps employee short-name → task type for routing
@@ -1033,6 +1033,18 @@ def call_best_agent_for_task(
                     _LAST_PROVIDER = f"OpenRouter({env_var})"
                     track_api_call(env_var, cap)
                     return r.strip(), f"OpenRouter({env_var})"
+
+        elif provider == "nvidia_nim":
+            key = os.environ.get("NVIDIA_NIM_API_KEY", "").strip()
+            if key:
+                r = _try_openai_compat(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    key, "meta/llama-3.3-70b-instruct",
+                    safe_sys, safe_prompt, cap)
+                if r and len(r.strip()) > 20:
+                    _LAST_PROVIDER = "NVIDIA-NIM"
+                    track_api_call("NVIDIA_NIM_API_KEY", cap)
+                    return r.strip(), "NVIDIA-NIM"
 
     return None, "exhausted"
 
