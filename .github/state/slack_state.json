@@ -1,65 +1,66 @@
 {
-  "last_run_ts": 1781065238,
+  "last_run_ts": 1781095580,
   "last_commit_sha": "",
   "posted_hashes": [
     "3fb4bde6f86f",
     "226dff1963e9",
     "8731cc247d80",
     "c5df23ebd64c",
-    "7ed9d57d9eb7"
+    "7ed9d57d9eb7",
+    "18fbd7a667d0"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781065203.2509167,
-    "agent-api-usage:api_usage_report": 1781054623.234256,
-    "agent-api-usage:throughput_report": 1781065238.8291914,
-    "engineering:silent_vp_eng": 1781065239.0292153,
-    "alpha-research:silent_alpha_dir": 1781065247.4513636,
-    "desk-crypto:silent_ml_lead": 1781065251.3852499,
-    "risk-alerts:silent_risk_eng": 1781065259.107423,
-    "squad-backend:silent_backend_lead": 1781065262.1682642,
-    "squad-qa:silent_qa_dir": 1781065265.035765,
-    "infra-alerts:silent_devops_dir": 1781065268.2934146,
-    "squad-execution:silent_exec_eng": 1781065271.3406653,
-    "desk-polymarket:silent_poly_desk": 1781065274.2767382,
-    "ml-experiments:silent_ml_researcher": 1781065277.2704012,
-    "desk-fx-rates:silent_vp_research": 1781065280.5272279,
-    "alpha-research:silent_quant_researcher": 1781065283.6456404,
-    "leadership-summary:silent_cro": 1781065288.142935,
-    "squad-frontend:silent_frontend": 1781065289.5263462,
-    "engineering:silent_equity_lead": 1781065290.8782492,
-    "engineering:silent_fixed_income_desk": 1781065292.226217,
-    "engineering:silent_macro_researcher": 1781065293.5669835,
-    "engineering:silent_stat_arb_desk": 1781065295.0771778,
-    "engineering:silent_vol_trader": 1781065296.4661174,
-    "engineering:silent_momentum_quant": 1781065297.867902,
-    "engineering:silent_alt_data_lead": 1781065299.239964,
-    "engineering:silent_model_validator": 1781065300.5235596,
-    "engineering:silent_feature_engineer": 1781065301.9775841,
-    "engineering:silent_crypto_quant": 1781065303.2873492,
-    "engineering:silent_derivatives_desk": 1781065304.5768898,
-    "engineering:silent_arb_trader": 1781065305.882878,
-    "engineering:silent_portfolio_manager": 1781065307.179422,
-    "engineering:silent_market_maker": 1781065308.520059,
-    "engineering:silent_regime_analyst": 1781065310.003269,
-    "engineering:silent_backtest_engineer": 1781065311.2893856,
-    "engineering:silent_data_engineer_2": 1781065312.6792116,
-    "engineering:silent_infra_lead": 1781065314.0846071,
-    "engineering:silent_nlp_researcher": 1781065315.4184015,
-    "engineering:silent_rl_trader": 1781065316.7097425,
-    "engineering:silent_graph_ml_researcher": 1781065318.0266702,
-    "engineering:silent_crypto_defi_desk": 1781065319.294646,
-    "desk-kalshi:silent_kalshi_desk": 1781065320.6431932,
-    "engineering:silent_research_ops": 1781065322.0877533,
-    "engineering:silent_senior_quant": 1781065323.4564643,
-    "engineering:silent_latency_engineer": 1781065324.6991274,
-    "squad-frontend:silent_frontend_lead": 1781065326.2687895,
-    "engineering:silent_data_lead": 1781065327.6759708,
-    "desk-equities:silent_alpha_researcher": 1781065329.129657,
-    "engineering:silent_exec_lead": 1781065330.436021,
-    "engineering:silent_security_lead": 1781065331.7947206,
-    "engineering:silent_product_lead": 1781065333.3773882,
-    "desk-crypto:silent_ml_infra": 1781065334.9964535,
+    "standup-channel:standup": 1781095492.7714095,
+    "agent-api-usage:api_usage_report": 1781095580.474175,
+    "agent-api-usage:throughput_report": 1781095583.4882183,
+    "engineering:silent_vp_eng": 1781095584.0722146,
+    "alpha-research:silent_alpha_dir": 1781095586.0352623,
+    "desk-crypto:silent_ml_lead": 1781095587.732446,
+    "risk-alerts:silent_risk_eng": 1781095589.5252113,
+    "squad-backend:silent_backend_lead": 1781095591.1326828,
+    "squad-qa:silent_qa_dir": 1781095592.7014184,
+    "infra-alerts:silent_devops_dir": 1781095595.5519822,
+    "squad-execution:silent_exec_eng": 1781095597.0924144,
+    "desk-polymarket:silent_poly_desk": 1781095598.560104,
+    "ml-experiments:silent_ml_researcher": 1781095600.2655613,
+    "desk-fx-rates:silent_vp_research": 1781095601.8249364,
+    "alpha-research:silent_quant_researcher": 1781095603.3552878,
+    "leadership-summary:silent_cro": 1781095604.9144585,
+    "squad-frontend:silent_frontend": 1781095606.3926692,
+    "engineering:silent_equity_lead": 1781095608.1549823,
+    "engineering:silent_fixed_income_desk": 1781095609.711906,
+    "engineering:silent_macro_researcher": 1781095611.3480873,
+    "engineering:silent_stat_arb_desk": 1781095613.0751188,
+    "engineering:silent_vol_trader": 1781095614.6650581,
+    "engineering:silent_momentum_quant": 1781095616.333287,
+    "engineering:silent_alt_data_lead": 1781095617.7787373,
+    "engineering:silent_model_validator": 1781095619.5917072,
+    "engineering:silent_feature_engineer": 1781095621.243357,
+    "engineering:silent_crypto_quant": 1781095622.686933,
+    "engineering:silent_derivatives_desk": 1781095624.179038,
+    "engineering:silent_arb_trader": 1781095625.5752575,
+    "engineering:silent_portfolio_manager": 1781095627.0735512,
+    "engineering:silent_market_maker": 1781095629.3129942,
+    "engineering:silent_regime_analyst": 1781095630.944213,
+    "engineering:silent_backtest_engineer": 1781095632.3908477,
+    "engineering:silent_data_engineer_2": 1781095633.7178388,
+    "engineering:silent_infra_lead": 1781095635.2395706,
+    "engineering:silent_nlp_researcher": 1781095636.6964452,
+    "engineering:silent_rl_trader": 1781095638.0835078,
+    "engineering:silent_graph_ml_researcher": 1781095645.8313751,
+    "engineering:silent_crypto_defi_desk": 1781095647.3071222,
+    "desk-kalshi:silent_kalshi_desk": 1781095648.7808223,
+    "engineering:silent_research_ops": 1781095650.8160267,
+    "engineering:silent_senior_quant": 1781095652.2535834,
+    "engineering:silent_latency_engineer": 1781095653.6918626,
+    "squad-frontend:silent_frontend_lead": 1781095655.1349912,
+    "engineering:silent_data_lead": 1781095656.5270135,
+    "desk-equities:silent_alpha_researcher": 1781095657.871163,
+    "engineering:silent_exec_lead": 1781095659.3379567,
+    "engineering:silent_security_lead": 1781095660.917922,
+    "engineering:silent_product_lead": 1781095662.4037974,
+    "desk-crypto:silent_ml_infra": 1781095663.8307273,
     "engineering:agent_reminder": 1781024239.5983934,
     "help:agent_reminder": 1781024240.4124982
   },
@@ -91,9 +92,17 @@
     "crypto_quant": 1781024089.1695297,
     "arb_trader": 1781024089.1695297,
     "portfolio_manager": 1781024089.1695297,
-    "market_maker": 1781024089.1695297
+    "market_maker": 1781024089.1695297,
+    "rl_trader": 1781095584.0721726
   },
-  "daily_usage": {},
+  "daily_usage": {
+    "2026-06-10": {
+      "GEMINI_API_KEY_3": {
+        "tokens": 300,
+        "requests": 1
+      }
+    }
+  },
   "onboarding_posted_week": "",
   "governance": {
     "freeze_algos": false,
@@ -503,6 +512,20 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-10 04:21:27"
+    },
+    {
+      "emp": "ml_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-10 12:45:08"
+    },
+    {
+      "emp": "rl_trader",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-10 12:47:25"
     }
   ],
   "agent_output_log": [
@@ -873,6 +896,22 @@
       "provider": "litellm:groq",
       "ts": 1781065287.9280057,
       "score": 5
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "[12:44 UTC] Crypto Desk Update: We're closely monitoring *BTC perp \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781095508.3061159,
+      "score": 5
+    },
+    {
+      "emp": "rl_trader",
+      "channel": "unknown",
+      "text": "Just digging into some *PPO training instability* for the `VWAP_ExecutionAgent` \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781095645.229515,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -901,9 +940,12 @@
     "crypto_quant": "litellm:groq",
     "arb_trader": "litellm:groq",
     "portfolio_manager": "litellm:groq",
-    "market_maker": "litellm:groq"
+    "market_maker": "litellm:groq",
+    "rl_trader": "Gemini(GEMINI_API_KEY)"
   },
-  "idle_posted_ts": {},
+  "idle_posted_ts": {
+    "gemini_fallback_alpha-research": 1781095580.7191632
+  },
   "token_budget": {
     "GEMINI_API_KEY_2": {
       "date": "2026-06-10",
@@ -911,8 +953,13 @@
     },
     "GEMINI_API_KEY_3": {
       "date": "2026-06-10",
-      "used": 0
+      "used": 300
     }
   },
-  "bot_handle_announced": true
+  "bot_handle_announced": true,
+  "token_usage": {
+    "2026-06-10": {
+      "GEMINI_API_KEY_3": 300
+    }
+  }
 }
