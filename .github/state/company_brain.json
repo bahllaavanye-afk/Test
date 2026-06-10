@@ -43,5 +43,30 @@
   "learnings": [],
   "experiments": [],
   "agent_insights": {},
-  "strategy_notes": {}
+  "strategy_notes": {},
+  "core": {
+    "paper_candidate_strategies": [
+      "lstm_btc_1h_v1",
+      "xgb_spy_daily_v1"
+    ],
+    "last_updated": 1781116812.308439,
+    "paper_active_strategies": [],
+    "live_candidate_strategies": []
+  },
+  "episodic": [
+    {
+      "lesson": "Promoted lstm_btc_1h_v1 to paper_candidate: Sharpe=1.52, MaxDD=11.2%",
+      "category": "strategy",
+      "from_stage": "backtest",
+      "to_stage": "paper_candidate",
+      "ts": 1781116812.3087773
+    },
+    {
+      "lesson": "Promoted xgb_spy_daily_v1 to paper_candidate: Sharpe=1.21, MaxDD=8.9%",
+      "category": "strategy",
+      "from_stage": "backtest",
+      "to_stage": "paper_candidate",
+      "ts": 1781116812.3091338
+    }
+  ]
 }
