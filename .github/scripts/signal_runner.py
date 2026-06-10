@@ -356,9 +356,30 @@ def post_slack(channel: str, text: str) -> bool:
         print(f"Slack error: {e}")
         return False
 
+def _load_strategy_gates() -> dict:
+    """Load regime-based strategy gates from company_brain.json."""
+    brain_file = Path(__file__).resolve().parents[2] / ".github" / "state" / "company_brain.json"
+    try:
+        if brain_file.exists():
+            brain = json.loads(brain_file.read_text())
+            gates = brain.get("core", {}).get("strategy_gates", {})
+            if gates:
+                return gates
+    except Exception:
+        pass
+    return {"directional": True, "min_confidence": 0.60, "size_multiplier": 1.0}
+
+
 def main():
     now = datetime.now(timezone.utc)
     print(f"[{now.strftime('%H:%M UTC')}] Signal runner — all desks")
+
+    # Load regime-based strategy gates from morning opinion
+    gates = _load_strategy_gates()
+    directional_ok = gates.get("directional", True)
+    min_confidence = gates.get("min_confidence", 0.60)
+    size_mult = gates.get("size_multiplier", 1.0)
+    print(f"  Strategy gates: directional={directional_ok} | min_conf={min_confidence:.0%} | size_mult={size_mult:.2f}×")
 
     # Gather market data
     crypto_prices = get_crypto_prices()
@@ -369,12 +390,23 @@ def main():
     print(f"  Equity prices: {len(equity_prices)} symbols")
     print(f"  Funding rates: {len(funding_rates)} symbols")
 
-    # Generate signals across all desks
+    # Generate signals across all desks — directional strategies gated by regime
     all_signals = []
+    # Arbitrage strategies always run regardless of regime
     all_signals.extend(funding_rate_signal(funding_rates))
-    all_signals.extend(momentum_signal(crypto_prices))
-    all_signals.extend(stat_arb_signal())
     all_signals.extend(polymarket_arb_signal())
+    # Directional strategies only run in bull/neutral regimes
+    if directional_ok:
+        all_signals.extend(momentum_signal(crypto_prices))
+        all_signals.extend(stat_arb_signal())
+    else:
+        print("  [regime gate] Directional strategies SKIPPED (bear regime active)")
+
+    # Apply confidence threshold filter
+    pre_filter = len(all_signals)
+    all_signals = [s for s in all_signals if s.get("strength", 0) >= int(min_confidence * 100)]
+    if len(all_signals) < pre_filter:
+        print(f"  [regime gate] Filtered {pre_filter - len(all_signals)} low-confidence signals")
 
     print(f"  Signals generated: {len(all_signals)}")
 

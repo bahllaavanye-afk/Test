@@ -54,7 +54,6 @@ jobs:
           TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
           HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
           NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
-          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           cd $GITHUB_WORKSPACE
