@@ -128,9 +128,14 @@ _PROVIDERS = [
     {
         "name": "nvidia_nim",
         "url": "https://integrate.api.nvidia.com/v1/chat/completions",
-        "key_env": "NVIDIA_NIM_API_KEY",
+        # Key stored in GitHub as NVIDIA_AGENTS_API_KEYS
+        # Models available free: meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct,
+        #   mistralai/mixtral-8x22b-instruct-v0.1, deepseek-ai/deepseek-r1, qwen/qwen2.5-72b-instruct
+        # Using Nemotron-70B: NVIDIA's best instruction-following model, optimized for agents
+        "key_env": "NVIDIA_AGENTS_API_KEYS",
+        "key_env_alt": "NVIDIA_NIM_API_KEY",
         "fmt": "openai",
-        "model": "meta/llama-3.3-70b-instruct",
+        "model": "nvidia/llama-3.1-nemotron-70b-instruct",
         "rpm_free": 40,
     },
 ]
@@ -226,6 +231,55 @@ def llm(
     return "[LLM unavailable — all providers failed]"
 
 
+def llm_with_provider(
+    prompt: str,
+    provider_name: str,
+    system: str = "You are a helpful AI agent at QuantEdge, a quantitative trading firm.",
+    max_tokens: int = 400,
+    temperature: float = 0.7,
+    inject_company_context: bool = False,
+) -> str:
+    """
+    Call a SPECIFIC named provider (e.g. 'gemini', 'groq', 'nvidia_nim').
+    Used when you want each agent pinned to an independent LLM so reviews are truly independent.
+    Falls back to the cascade if the named provider is unavailable.
+    Returns (response_text, actual_provider_name) tuple.
+    """
+    provider = next((p for p in _PROVIDERS if p["name"] == provider_name), None)
+
+    if inject_company_context:
+        ctx = get_company_context(max_tokens=400)
+        if ctx:
+            prompt = f"{ctx}\n\n---\n\n{prompt}"
+
+    if len(prompt) > 32000:
+        prompt = prompt[:28000] + "\n\n[...truncated...]"
+
+    if provider and _has_key(provider):
+        try:
+            result = _call_provider(provider, system, prompt, max_tokens, temperature)
+            if result:
+                return result, provider_name
+        except Exception as e:
+            logger.warning("Provider %s failed in llm_with_provider: %s", provider_name, e)
+
+    # Fall back to cascade
+    result, used = _call_parallel_race(system, prompt, max_tokens, temperature)
+    return (result or "[LLM unavailable]", used or "cascade")
+
+
+def _has_key(p: dict) -> bool:
+    """Check if a provider has an API key configured (supports primary + alt env var)."""
+    v = os.environ.get(p["key_env"], "")
+    if v and v != "disabled":
+        return True
+    alt = p.get("key_env_alt", "")
+    if alt:
+        v2 = os.environ.get(alt, "")
+        return bool(v2) and v2 != "disabled"
+    return False
+
+
 def _call_parallel_race(
     system: str, prompt: str, max_tokens: int, temperature: float
 ) -> tuple[str | None, str | None]:
@@ -234,10 +288,7 @@ def _call_parallel_race(
     Returns (response_text, provider_name) for the first successful response.
     Falls back to sequential for remaining providers if the race fails.
     """
-    available = [
-        p for p in _PROVIDERS
-        if os.environ.get(p["key_env"], "") not in ("", "disabled")
-    ]
+    available = [p for p in _PROVIDERS if _has_key(p)]
     if not available:
         return None, None
 
@@ -283,8 +334,19 @@ def _call_parallel_race(
     return None, None
 
 
+def _provider_key(provider: dict) -> str:
+    """Return API key for a provider, checking primary env var then optional alt."""
+    key = os.environ.get(provider["key_env"], "")
+    if not key or key == "disabled":
+        alt = provider.get("key_env_alt", "")
+        key = os.environ.get(alt, "") if alt else ""
+    if not key or key == "disabled":
+        raise KeyError(f"No API key for provider {provider['name']}")
+    return key
+
+
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
-    key = os.environ[provider["key_env"]]
+    key = _provider_key(provider)
     url = provider["url"]
 
     if provider["fmt"] == "gemini":
@@ -331,7 +393,7 @@ def _call_provider_messages(
     Used by llm_chat() so that multi-turn history is preserved verbatim.
     All 7 providers accept this format; Gemini needs a small shape translation.
     """
-    key = os.environ[provider["key_env"]]
+    key = _provider_key(provider)
     url = provider["url"]
 
     if provider["fmt"] == "gemini":
@@ -414,8 +476,7 @@ def llm_chat(
     messages = store.build_messages(system)
 
     for provider in _PROVIDERS:
-        key = os.environ.get(provider["key_env"], "")
-        if not key or key == "disabled":
+        if not _has_key(provider):
             continue
         try:
             result = _call_provider_messages(provider, messages, max_tokens, temperature)
