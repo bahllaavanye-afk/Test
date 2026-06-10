@@ -73,14 +73,15 @@ def _compute_backtest_metrics(
     exits: list[bool],
 ) -> dict:
     """
-    Simple long-only backtest metrics from signal arrays.
-    entries[i]=True means BUY at close[i+1].
-    exits[i]=True means SELL at close[i+1].
+    Full backtest metrics: Sharpe, Sortino, Calmar, profit factor, expectancy,
+    omega ratio, recovery factor, max consecutive losses, win/loss ratio.
+    entries[i]=True means BUY at close[i+1]. exits[i]=True means SELL at close[i+1].
     """
     if len(closes) < 10:
         return {}
 
-    equity = [1.0]
+    import math
+
     in_trade = False
     entry_price = 0.0
     trades: list[float] = []
@@ -93,7 +94,6 @@ def _compute_backtest_metrics(
         elif in_trade and i < len(exits) and exits[i]:
             ret = (closes[i + 1] - entry_price) / entry_price
             trades.append(ret)
-            equity.append(equity[-1] * (1 + ret))
             in_trade = False
 
         if in_trade and entry_price > 0:
@@ -103,11 +103,15 @@ def _compute_backtest_metrics(
             daily_returns.append(0.0)
 
     if not trades:
-        return {"sharpe": 0.0, "max_drawdown": 0.0, "win_rate": 0.0, "n_trades": 0}
+        return {
+            "sharpe": 0.0, "sortino": 0.0, "calmar": 0.0,
+            "max_drawdown": 0.0, "win_rate": 0.0, "n_trades": 0,
+            "profit_factor": 0.0, "expectancy": 0.0, "omega_ratio": 0.0,
+            "recovery_factor": 0.0, "max_consec_losses": 0, "win_loss_ratio": 0.0,
+            "total_return_pct": 0.0, "composite_score": 0.0,
+        }
 
-    import math
-
-    # Sharpe (annualized, daily returns)
+    # ── Sharpe (annualized) ──────────────────────────────────────────────────
     if len(daily_returns) > 1:
         mean_r = sum(daily_returns) / len(daily_returns)
         std_r = math.sqrt(sum((r - mean_r) ** 2 for r in daily_returns) / len(daily_returns))
@@ -115,27 +119,100 @@ def _compute_backtest_metrics(
     else:
         sharpe = 0.0
 
-    # Max drawdown
+    # ── Sortino (downside deviation only) ───────────────────────────────────
+    downside = [r for r in daily_returns if r < 0]
+    if downside and len(downside) > 1:
+        mean_down = sum(downside) / len(downside)
+        dd_std = math.sqrt(sum((r - mean_down) ** 2 for r in downside) / len(downside))
+        mean_r_all = sum(daily_returns) / len(daily_returns) if daily_returns else 0.0
+        sortino = (mean_r_all / dd_std * math.sqrt(252)) if dd_std > 0 else 0.0
+    else:
+        sortino = sharpe  # no downside — as good as Sharpe
+
+    # ── Max drawdown (on cumulative equity from trades) ──────────────────────
+    running = 1.0
     peak = 1.0
     max_dd = 0.0
-    running = 1.0
     for ret in trades:
         running *= 1 + ret
-        if running > peak:
-            peak = running
+        peak = max(peak, running)
         dd = (peak - running) / peak
-        if dd > max_dd:
-            max_dd = dd
-
-    win_rate = sum(1 for t in trades if t > 0) / len(trades)
+        max_dd = max(max_dd, dd)
     total_return = (running - 1.0) * 100
+
+    # ── Calmar ratio (annualized return / max drawdown) ──────────────────────
+    # Approximate annualization: assume 2 years of data (the default fetch period)
+    ann_return = ((1 + total_return / 100) ** (1 / 2) - 1) * 100
+    calmar = (ann_return / (max_dd * 100)) if max_dd > 0 else (ann_return if ann_return > 0 else 0.0)
+
+    # ── Win/loss breakdown ───────────────────────────────────────────────────
+    wins = [t for t in trades if t > 0]
+    losses = [t for t in trades if t <= 0]
+    win_rate = len(wins) / len(trades)
+    loss_rate = 1 - win_rate
+
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = abs(sum(losses) / len(losses)) if losses else 0.0
+
+    # ── Profit factor (gross wins / gross losses) ────────────────────────────
+    gross_wins = sum(wins) if wins else 0.0
+    gross_losses = abs(sum(losses)) if losses else 0.0
+    profit_factor = (gross_wins / gross_losses) if gross_losses > 0 else (10.0 if gross_wins > 0 else 0.0)
+
+    # ── Expectancy (avg P&L per trade as fraction) ──────────────────────────
+    expectancy = avg_win * win_rate - avg_loss * loss_rate
+
+    # ── Win/loss ratio (avg win / avg loss) ──────────────────────────────────
+    win_loss_ratio = (avg_win / avg_loss) if avg_loss > 0 else (avg_win * 10 if avg_win > 0 else 0.0)
+
+    # ── Omega ratio (probability-weighted gains / losses above threshold=0) ──
+    gains_area = sum(t for t in trades if t > 0)
+    losses_area = abs(sum(t for t in trades if t <= 0))
+    omega_ratio = (gains_area / losses_area) if losses_area > 0 else (10.0 if gains_area > 0 else 1.0)
+
+    # ── Recovery factor (total return / max drawdown) ───────────────────────
+    recovery_factor = (total_return / (max_dd * 100)) if max_dd > 0 else (total_return if total_return > 0 else 0.0)
+
+    # ── Max consecutive losses ───────────────────────────────────────────────
+    max_consec = 0
+    cur_consec = 0
+    for t in trades:
+        if t <= 0:
+            cur_consec += 1
+            max_consec = max(max_consec, cur_consec)
+        else:
+            cur_consec = 0
+
+    # ── Composite score (weighted combination for ranking) ───────────────────
+    # Weights: Sharpe 30%, Sortino 20%, Calmar 20%, profit_factor 15%, expectancy 15%
+    # Normalize each to a 0-2 scale to avoid domination
+    def _clamp(v: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, v))
+    c_sharpe = _clamp(sharpe, -2, 3) / 3
+    c_sortino = _clamp(sortino, -2, 4) / 4
+    c_calmar = _clamp(calmar, -1, 5) / 5
+    c_pf = _clamp(profit_factor - 1, -1, 3) / 3
+    c_exp = _clamp(expectancy * 100, -5, 10) / 10
+    composite_score = round(
+        0.30 * c_sharpe + 0.20 * c_sortino + 0.20 * c_calmar + 0.15 * c_pf + 0.15 * c_exp,
+        4,
+    )
 
     return {
         "sharpe": round(sharpe, 3),
+        "sortino": round(sortino, 3),
+        "calmar": round(calmar, 3),
         "max_drawdown": round(max_dd * 100, 2),
         "win_rate": round(win_rate * 100, 1),
         "n_trades": len(trades),
+        "profit_factor": round(profit_factor, 3),
+        "expectancy": round(expectancy * 100, 3),   # in % per trade
+        "omega_ratio": round(omega_ratio, 3),
+        "recovery_factor": round(recovery_factor, 3),
+        "max_consec_losses": max_consec,
+        "win_loss_ratio": round(win_loss_ratio, 3),
         "total_return_pct": round(total_return, 2),
+        "composite_score": composite_score,
     }
 
 
@@ -216,48 +293,117 @@ _STRATEGY_VARIANTS: dict[str, dict] = {
 
 _SYMBOLS = ["SPY", "QQQ", "IWM", "GLD", "TLT"]
 
+# Walk-forward split: train on first 75% of bars, forward-test on last 25%
+_TRAIN_FRAC = 0.75
+
+
+def _generate_signals(closes: list[float], config: dict) -> tuple[list[bool], list[bool]]:
+    """Generate entry/exit signals from config."""
+    strategy_type = config["type"]
+    if strategy_type == "momentum":
+        return _momentum_signals(closes, config.get("lookback", 90), config.get("skip", 20))
+    elif strategy_type == "mean_reversion":
+        return _mean_reversion_signals(closes, config.get("window", 20), config.get("threshold", 2.0))
+    elif strategy_type == "rsi":
+        return _rsi_signals(closes, config.get("period", 14),
+                            config.get("oversold", 30), config.get("overbought", 70))
+    return [False] * len(closes), [False] * len(closes)
+
 
 def _run_variant_backtest(name: str, config: dict, data: dict[str, list[dict]]) -> dict:
-    """Run one strategy variant across all symbols, return aggregate metrics."""
-    all_sharpes = []
-    sym_results = {}
+    """
+    Run one strategy variant with walk-forward validation.
+    - In-sample (IS): first 75% of bars (parameter fitting period)
+    - Out-of-sample / forward-test (OOS): last 25% of bars (true validation)
+    Reports both sets of metrics and flags overfitting when IS >> OOS.
+    """
+    sym_is: dict[str, dict] = {}    # in-sample metrics per symbol
+    sym_oos: dict[str, dict] = {}   # out-of-sample metrics per symbol
+    all_is_sharpes: list[float] = []
 
     for sym, ohlcv in data.items():
-        if len(ohlcv) < 150:
+        if len(ohlcv) < 200:
             continue
         closes = [r["close"] for r in ohlcv]
+        split = max(100, int(len(closes) * _TRAIN_FRAC))
 
-        strategy_type = config["type"]
-        if strategy_type == "momentum":
-            entries, exits = _momentum_signals(closes, config.get("lookback", 90), config.get("skip", 20))
-        elif strategy_type == "mean_reversion":
-            entries, exits = _mean_reversion_signals(closes, config.get("window", 20), config.get("threshold", 2.0))
-        elif strategy_type == "rsi":
-            entries, exits = _rsi_signals(closes, config.get("period", 14),
-                                           config.get("oversold", 30), config.get("overbought", 70))
-        else:
-            continue
+        # In-sample (train)
+        is_closes = closes[:split]
+        is_entries, is_exits = _generate_signals(is_closes, config)
+        is_metrics = _compute_backtest_metrics(is_closes, is_entries, is_exits)
+        if is_metrics and is_metrics.get("n_trades", 0) > 0:
+            sym_is[sym] = is_metrics
+            all_is_sharpes.append(is_metrics["sharpe"])
 
-        metrics = _compute_backtest_metrics(closes, entries, exits)
-        if metrics:
-            sym_results[sym] = metrics
-            all_sharpes.append(metrics["sharpe"])
+        # Out-of-sample / forward-test (held-out)
+        oos_closes = closes[split:]
+        if len(oos_closes) >= 50:
+            oos_entries, oos_exits = _generate_signals(oos_closes, config)
+            oos_metrics = _compute_backtest_metrics(oos_closes, oos_entries, oos_exits)
+            if oos_metrics:
+                sym_oos[sym] = oos_metrics
 
-    if not all_sharpes:
+    if not all_is_sharpes:
         return {}
 
-    avg_sharpe = sum(all_sharpes) / len(all_sharpes)
-    avg_dd = sum(sym_results[s]["max_drawdown"] for s in sym_results) / len(sym_results)
-    avg_wr = sum(sym_results[s]["win_rate"] for s in sym_results) / len(sym_results)
-    total_trades = sum(sym_results[s]["n_trades"] for s in sym_results)
+    n_is = max(len(sym_is), 1)
+    n_oos = max(len(sym_oos), 1)
+
+    def _avg_is(key: str) -> float:
+        vals = [sym_is[s].get(key, 0.0) for s in sym_is]
+        return round(sum(vals) / n_is, 4)
+
+    def _avg_oos(key: str) -> float:
+        vals = [sym_oos[s].get(key, 0.0) for s in sym_oos] if sym_oos else [0.0]
+        return round(sum(vals) / n_oos, 4)
+
+    # Overfitting flag: IS composite > OOS composite by a large margin
+    is_composite = _avg_is("composite_score")
+    oos_composite = _avg_oos("composite_score")
+    overfit_flag = (is_composite - oos_composite) > 0.15 and oos_composite < 0.0
+
+    # Blended score weights OOS higher (OOS is the truth)
+    blended_composite = round(0.35 * is_composite + 0.65 * oos_composite, 4)
+
+    # Alias for _avg function used in return dict
+    def _avg(key: str) -> float:
+        return _avg_is(key)
+
+    # Count total trades across both IS and OOS
+    total_is_trades = sum(sym_is[s]["n_trades"] for s in sym_is)
+    total_oos_trades = sum(sym_oos[s]["n_trades"] for s in sym_oos)
 
     return {
         "name": name,
-        "avg_sharpe": round(avg_sharpe, 3),
-        "avg_max_drawdown": round(avg_dd, 2),
-        "avg_win_rate": round(avg_wr, 1),
-        "total_trades": total_trades,
-        "symbol_results": sym_results,
+        # In-sample metrics
+        "avg_sharpe": _avg_is("sharpe"),
+        "avg_sortino": _avg_is("sortino"),
+        "avg_calmar": _avg_is("calmar"),
+        "avg_max_drawdown": _avg_is("max_drawdown"),
+        "avg_win_rate": _avg_is("win_rate"),
+        "avg_profit_factor": _avg_is("profit_factor"),
+        "avg_expectancy": _avg_is("expectancy"),
+        "avg_omega_ratio": _avg_is("omega_ratio"),
+        "avg_recovery_factor": _avg_is("recovery_factor"),
+        "avg_win_loss_ratio": _avg_is("win_loss_ratio"),
+        "avg_max_consec_losses": round(_avg_is("max_consec_losses"), 1),
+        "avg_composite_score": is_composite,
+        # Out-of-sample / forward-test metrics
+        "oos_sharpe": _avg_oos("sharpe"),
+        "oos_sortino": _avg_oos("sortino"),
+        "oos_calmar": _avg_oos("calmar"),
+        "oos_max_drawdown": _avg_oos("max_drawdown"),
+        "oos_win_rate": _avg_oos("win_rate"),
+        "oos_profit_factor": _avg_oos("profit_factor"),
+        "oos_expectancy": _avg_oos("expectancy"),
+        "oos_composite_score": oos_composite,
+        # Blended score (35% IS + 65% OOS) — primary ranking key
+        "blended_composite": blended_composite,
+        "overfit_flag": overfit_flag,
+        "total_trades": total_is_trades,
+        "oos_trades": total_oos_trades,
+        "symbol_results": sym_is,
+        "oos_symbol_results": sym_oos,
         "config": config,
         "ts": time.time(),
     }
@@ -278,13 +424,29 @@ def _save_state(state: dict) -> None:
 
 
 def _llm_propose_mutation(top_variants: list[dict], bottom_variants: list[dict]) -> list[dict]:
-    """Ask LLM to propose new strategy variants based on winners and losers."""
-    top_str = json.dumps([{"name": v["name"], "sharpe": v["avg_sharpe"], "config": v["config"]} for v in top_variants[:3]])
-    bot_str = json.dumps([{"name": v["name"], "sharpe": v["avg_sharpe"], "config": v["config"]} for v in bottom_variants[:3]])
+    """Ask LLM to propose new strategy variants based on multi-metric winner/loser analysis."""
+    def _summary(v: dict) -> dict:
+        return {
+            "name": v["name"],
+            "composite_score": v.get("avg_composite_score", 0),
+            "sharpe": v.get("avg_sharpe", 0),
+            "sortino": v.get("avg_sortino", 0),
+            "calmar": v.get("avg_calmar", 0),
+            "profit_factor": v.get("avg_profit_factor", 0),
+            "expectancy_pct": v.get("avg_expectancy", 0),
+            "win_rate": v.get("avg_win_rate", 0),
+            "max_drawdown": v.get("avg_max_drawdown", 0),
+            "config": v["config"],
+        }
+
+    top_str = json.dumps([_summary(v) for v in top_variants[:3]])
+    bot_str = json.dumps([_summary(v) for v in bottom_variants[:3]])
     prompt = (
-        f"These quantitative strategy variants performed best (Sharpe): {top_str}\n"
-        f"These performed worst: {bot_str}\n\n"
+        f"Top performers (by composite score = 30% Sharpe + 20% Sortino + 20% Calmar + 15% ProfitFactor + 15% Expectancy):\n{top_str}\n"
+        f"Worst performers:\n{bot_str}\n\n"
         "Propose 2 new strategy variants by mutating the best performers. "
+        "Optimize for composite score: improve Sortino (reduce downside), improve Calmar (reduce drawdowns), "
+        "and improve profit factor (tighter entries). "
         "Each variant must be one of these types: momentum, mean_reversion, rsi. "
         "Return valid JSON array of objects with fields: name (string), type, and type-specific params "
         "(momentum: lookback int, skip int; mean_reversion: window int, threshold float; "
@@ -328,23 +490,25 @@ def main() -> None:
         res = _run_variant_backtest(name, config, data)
         if res:
             results.append(res)
-            state["runs"][name] = state["runs"].get(name, [])
-            state["runs"][name].append(res["avg_sharpe"])
-            # Keep last 5 runs per variant
-            state["runs"][name] = state["runs"][name][-5:]
 
     if not results:
         print("No backtest results — check data", flush=True)
         sys.exit(0)
 
-    results.sort(key=lambda x: x["avg_sharpe"], reverse=True)
+    results.sort(key=lambda x: x["blended_composite"], reverse=True)
     top = results[:3]
     bottom = results[-3:]
 
-    print("\n=== Autopilot Results ===", flush=True)
+    print("\n=== Autopilot Results (IS = in-sample, OOS = forward-test) ===", flush=True)
     for r in results:
-        print(f"  {r['name']}: Sharpe={r['avg_sharpe']:.3f} | MaxDD={r['avg_max_drawdown']:.1f}% | "
-              f"WinRate={r['avg_win_rate']:.1f}% | Trades={r['total_trades']}", flush=True)
+        overfit = "⚠️OVERFIT" if r.get("overfit_flag") else ""
+        print(
+            f"  {r['name']}: Blended={r['blended_composite']:.3f} "
+            f"IS[Sh={r['avg_sharpe']:.2f} PF={r['avg_profit_factor']:.2f}] "
+            f"OOS[Sh={r['oos_sharpe']:.2f} PF={r['oos_profit_factor']:.2f} "
+            f"WR={r['oos_win_rate']:.1f}%] Trades(IS/OOS)={r['total_trades']}/{r['oos_trades']} {overfit}",
+            flush=True,
+        )
 
     # LLM proposes mutations
     print("\nAsking LLM to propose mutations…", flush=True)
@@ -358,27 +522,46 @@ def main() -> None:
             res = _run_variant_backtest(mut_name, mut_config, data)
             if res:
                 results.append(res)
-                print(f"    → Sharpe={res['avg_sharpe']:.3f}", flush=True)
+                print(f"    → Score={res['avg_composite_score']:.3f} | Sharpe={res['avg_sharpe']:.3f}", flush=True)
 
-    # Re-sort with mutations included
-    results.sort(key=lambda x: x["avg_sharpe"], reverse=True)
+    # Re-sort with mutations included — blended (35% IS + 65% OOS) is the primary key
+    results.sort(key=lambda x: x["blended_composite"], reverse=True)
 
-    # Promote top performers
+    # Promote top performers: require Sharpe ≥ 1.0 AND positive OOS (no overfitters)
     promoted = []
     for r in results:
-        if r["avg_sharpe"] >= _PROMOTE_THRESHOLD:
+        # Must pass: IS Sharpe ≥ 1.0 AND OOS Sharpe > 0 AND not flagged as overfit
+        qualifies = (
+            r["avg_sharpe"] >= _PROMOTE_THRESHOLD
+            and r["oos_sharpe"] > 0
+            and not r.get("overfit_flag", False)
+        )
+        if qualifies:
             promoted.append(r)
             memory_write("experiment_results", {
                 "source": "strategy_autopilot",
                 "name": r["name"],
-                "sharpe": r["avg_sharpe"],
+                "blended_composite": r["blended_composite"],
+                "is_composite": r["avg_composite_score"],
+                "oos_composite": r["oos_composite_score"],
+                "is_sharpe": r["avg_sharpe"],
+                "oos_sharpe": r["oos_sharpe"],
+                "is_sortino": r["avg_sortino"],
+                "oos_sortino": r["oos_sortino"],
+                "calmar": r["avg_calmar"],
+                "profit_factor": r["avg_profit_factor"],
+                "oos_profit_factor": r["oos_profit_factor"],
+                "expectancy_pct": r["avg_expectancy"],
+                "omega_ratio": r["avg_omega_ratio"],
                 "max_drawdown": r["avg_max_drawdown"],
-                "win_rate": r["avg_win_rate"],
+                "is_win_rate": r["avg_win_rate"],
+                "oos_win_rate": r["oos_win_rate"],
+                "win_loss_ratio": r["avg_win_loss_ratio"],
                 "config": r["config"],
                 "status": "promoted",
             })
 
-    # Flag consistently poor performers
+    # Flag consistently poor performers (track by composite score now)
     retired = []
     for name, run_history in state["runs"].items():
         if len(run_history) >= _RETIRE_CONSECUTIVE:
@@ -388,36 +571,61 @@ def main() -> None:
                 state["consecutive_poor"][name] = state["consecutive_poor"].get(name, 0) + 1
 
     # Update brain top strategies
-    top_names = [r["name"] for r in results[:5] if r["avg_sharpe"] > 0.5]
+    # Only include strategies that have positive OOS performance
+    top_names = [r["name"] for r in results[:5] if r["avg_sharpe"] > 0.5 and r["oos_sharpe"] > 0]
     if top_names:
         core_update("top_strategies", top_names)
 
     core_update("last_autopilot_run", time.time())
     core_update("autopilot_best_sharpe", results[0]["avg_sharpe"] if results else 0)
+    core_update("autopilot_best_oos_sharpe", results[0]["oos_sharpe"] if results else 0)
+    core_update("autopilot_best_blended", results[0]["blended_composite"] if results else 0)
+    core_update("autopilot_overfit_count", sum(1 for r in results if r.get("overfit_flag", False)))
 
-    # Save state
+    # Save state (store composite score history alongside sharpe)
+    for r in results:
+        state["runs"][r["name"]] = state["runs"].get(r["name"], [])
+        state["runs"][r["name"]].append(r["avg_sharpe"])
+        state["runs"][r["name"]] = state["runs"][r["name"]][-5:]
     _save_state(state)
 
     # Build Slack report
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    n_bars = len(list(data.values())[0]) if data else 0
+    n_is_bars = int(n_bars * _TRAIN_FRAC)
+    n_oos_bars = n_bars - n_is_bars
     lines = [
         f"*Strategy Autopilot Report — {now_str}*",
-        f"Tested {len(results)} variants across {len(data)} symbols ({len(list(data.values())[0]) if data else 0} bars)",
+        f"Tested {len(results)} variants | {len(data)} symbols | {n_bars} bars "
+        f"(IS={n_is_bars} 75% | OOS={n_oos_bars} 25% forward-test)",
+        f"_Ranked by blended score = 35% IS composite + 65% OOS composite_",
         "",
-        "*Top 5 Performers:*",
+        "*Top 5 Performers (IS | OOS):*",
     ]
     for r in results[:5]:
-        status = "🏆" if r["avg_sharpe"] >= _PROMOTE_THRESHOLD else "✅" if r["avg_sharpe"] >= 0.5 else "⚠️"
+        overfit_warn = " ⚠️OVERFIT" if r.get("overfit_flag") else ""
+        if r["avg_sharpe"] >= _PROMOTE_THRESHOLD and r["oos_sharpe"] > 0 and not r.get("overfit_flag"):
+            status = "🏆"
+        elif r["avg_sharpe"] >= 0.5 and r["oos_sharpe"] > 0:
+            status = "✅"
+        else:
+            status = "⚠️"
         lines.append(
-            f"  {status} `{r['name']}` Sharpe={r['avg_sharpe']:.3f} | "
-            f"DD={r['avg_max_drawdown']:.1f}% | WR={r['avg_win_rate']:.1f}%"
+            f"  {status} `{r['name']}` Blended={r['blended_composite']:.3f}{overfit_warn}\n"
+            f"     IS: Sh={r['avg_sharpe']:.3f} Sortino={r['avg_sortino']:.3f} "
+            f"PF={r['avg_profit_factor']:.2f} WR={r['avg_win_rate']:.1f}% DD={r['avg_max_drawdown']:.1f}%\n"
+            f"     OOS: Sh={r['oos_sharpe']:.3f} PF={r['oos_profit_factor']:.2f} "
+            f"WR={r['oos_win_rate']:.1f}% Trades={r['oos_trades']}"
         )
 
     if promoted:
         lines.append("")
-        lines.append(f"*🚀 Promoted to paper trading ({len(promoted)}):*")
+        lines.append(f"*🚀 Promoted to paper trading ({len(promoted)}) — IS+OOS both positive, no overfitting:*")
         for r in promoted:
-            lines.append(f"  • `{r['name']}` Sharpe={r['avg_sharpe']:.3f}")
+            lines.append(
+                f"  • `{r['name']}` IS Sharpe={r['avg_sharpe']:.3f} → OOS Sharpe={r['oos_sharpe']:.3f} | "
+                f"PF: IS={r['avg_profit_factor']:.2f} OOS={r['oos_profit_factor']:.2f}"
+            )
 
     if retired:
         lines.append("")

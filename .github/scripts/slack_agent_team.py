@@ -1035,15 +1035,19 @@ def call_best_agent_for_task(
                     return r.strip(), f"OpenRouter({env_var})"
 
         elif provider == "nvidia_nim":
-            key = os.environ.get("NVIDIA_NIM_API_KEY", "").strip()
+            key = (
+                os.environ.get("NVIDIA_AGENTS_API_KEYS", "").strip()
+                or os.environ.get("NVIDIA_NIM_API_KEY", "").strip()
+            )
             if key:
+                # Use Nemotron-70B — NVIDIA's best instruction-following model for agents
                 r = _try_openai_compat(
                     "https://integrate.api.nvidia.com/v1/chat/completions",
-                    key, "meta/llama-3.3-70b-instruct",
+                    key, "nvidia/llama-3.1-nemotron-70b-instruct",
                     safe_sys, safe_prompt, cap)
                 if r and len(r.strip()) > 20:
                     _LAST_PROVIDER = "NVIDIA-NIM"
-                    track_api_call("NVIDIA_NIM_API_KEY", cap)
+                    track_api_call("NVIDIA_AGENTS_API_KEYS", cap)
                     return r.strip(), "NVIDIA-NIM"
 
     return None, "exhausted"
