@@ -240,6 +240,11 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "tlt_spy_rotation": TLTSPYRotationStrategy,
     "duration_momentum": DurationMomentumStrategy,
     "breakeven_inflation": BreakevenInflationStrategy,
+    # ── New research strategies ───────────────────────────────────────────────
+    "realized_vol_asymmetry":     RealizedVolAsymmetryStrategy,
+    "analyst_revision_momentum":  AnalystRevisionMomentumStrategy,
+    "on_chain_exchange_netflow":  OnChainExchangeNetflowStrategy,
+    "vol_of_vol_timing":          VolOfVolTimingStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,
