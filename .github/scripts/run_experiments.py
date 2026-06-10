@@ -198,6 +198,13 @@ def _run_one(name: str, module_path: str, class_name: str, symbol: str,
     print(f"\n{'─'*60}", flush=True)
     print(f"  {name} | {effective_symbol} | {test_start}→{test_end}", flush=True)
 
+    # Polymarket and similar non-yfinance symbols have no OHLCV data — skip gracefully.
+    # The strategy's signal logic runs live via Polymarket API; backtest is not applicable.
+    _SKIP_SYMBOLS = {"POLYMARKET", "POLY_DUMMY"}
+    if effective_symbol in _SKIP_SYMBOLS:
+        print(f"  ↷ skipped (no yfinance data for {effective_symbol} — live-only strategy)", flush=True)
+        return {}
+
     # Fetch full data (train + test combined so indicators warm up)
     df = _fetch_ohlcv(effective_symbol, train_start, test_end)
     if df is None or len(df) < 60:

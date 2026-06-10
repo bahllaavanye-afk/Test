@@ -10,12 +10,30 @@ Architecture based on:
 - Constitutional AI: self-critique and revision
 """
 from __future__ import annotations
-import os, sys, json
+import fcntl
+import json
+import os
+import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, slack_post, memory_write
+
+
+def _locked_json_write(path: Path, data: dict) -> None:
+    """Atomic JSON write with exclusive flock to prevent concurrent-write corruption."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(".lock")
+    with open(lock_path, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2))
+            os.replace(tmp, path)
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
 
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
@@ -203,14 +221,14 @@ def main():
     mem["platform_metrics"]["last_collective_learning"] = now.isoformat()
     mem["platform_metrics"]["total_agent_runs"] = total_runs
     mem["platform_metrics"]["total_successes"] = total_successes
-    STATE_FILE.write_text(json.dumps(mem, indent=2))
+    _locked_json_write(STATE_FILE, mem)
 
     skill_data = {"skills": current_skills, "last_updated": now.isoformat(), "total": len(current_skills)}
-    SKILL_FILE.write_text(json.dumps(skill_data, indent=2))
+    _locked_json_write(SKILL_FILE, skill_data)
 
     TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
     tasks["last_updated"] = now.isoformat()
-    TASK_FILE.write_text(json.dumps(tasks, indent=2))
+    _locked_json_write(TASK_FILE, tasks)
 
     # Write learnings to shared company_brain.json
     try:
@@ -230,7 +248,7 @@ def main():
             "skills_added_this_run": len(added),
         }
         brain["last_updated"] = now.isoformat()
-        BRAIN_FILE.write_text(json.dumps(brain, indent=2))
+        _locked_json_write(BRAIN_FILE, brain)
         print(f"  company_brain.json updated (+{len(added)} learnings)")
     except Exception as e:
         print(f"  company_brain write error: {e}")
