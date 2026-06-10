@@ -151,7 +151,7 @@ def check_workflows_enabled() -> tuple[bool, str]:
         local_stems.update(f.stem.lower() for f in workflows_dir.glob("*.yaml"))
         found = [k for k in key_workflows if k in local_stems]
         if len(found) == len(key_workflows):
-            return True, f"{len(found)}/{len(key_workflows)} key workflows found"
+            return True, f"{len(found)}/{len(key_workflows)} key workflows found (local)"
 
     # Secondary check: GitHub API — workflow name: field may use spaces; normalise to hyphens.
     if GH_TOKEN:
@@ -171,7 +171,12 @@ def check_workflows_enabled() -> tuple[bool, str]:
         except Exception:
             pass
 
-    return True, f"{len(found)}/{len(key_workflows)} key workflows found"
+    all_ok = len(found) == len(key_workflows)
+    missing = [k for k in key_workflows if k not in found]
+    detail = f"{len(found)}/{len(key_workflows)} key workflows found"
+    if missing:
+        detail += f" (missing: {', '.join(missing)})"
+    return all_ok, detail
 
 
 def self_heal_state() -> list[str]:

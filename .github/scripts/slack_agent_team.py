@@ -909,6 +909,12 @@ _EMP_TASK_TYPE: dict[str, str] = {
     "risk_eng":   "risk",      "cro":"risk",
     "poly_desk":   "polymarket",
     "frontend": "frontend",
+    # New team expansion
+    "frontend_lead":    "frontend",
+    "data_lead":        "code",
+    "alpha_researcher": "quant",
+    "exec_lead":        "code",
+    "security_lead":    "code",
 }
 
 
@@ -1166,6 +1172,11 @@ _GROQ_ACCOUNT: dict[str, str] = {
     "backtest_engineer": "GROQ_API_KEY_2",
     "data_engineer_2":  "GROQ_API_KEY_2",
     "infra_lead":       "GROQ_API_KEY_2",
+    "frontend_lead":    "GROQ_API_KEY_2",
+    "data_lead":        "GROQ_API_KEY_2",
+    "alpha_researcher": "GROQ_API_KEY_2",
+    "exec_lead":        "GROQ_API_KEY_2",
+    "security_lead":    "GROQ_API_KEY_2",
     # Account 3 — GROQ_API_KEY_3  (core team + group 3 new agents)
     "poly_desk":         "GROQ_API_KEY_3",
     "ml_researcher":     "GROQ_API_KEY_3",
@@ -1225,6 +1236,11 @@ _GEMINI_ACCOUNT: dict[str, str] = {
     "backtest_engineer": "GEMINI_API_KEY_2",
     "data_engineer_2":  "GEMINI_API_KEY_2",
     "infra_lead":       "GEMINI_API_KEY_2",
+    "frontend_lead":    "GEMINI_API_KEY_2",
+    "data_lead":        "GEMINI_API_KEY_2",
+    "alpha_researcher": "GEMINI_API_KEY_2",
+    "exec_lead":        "GEMINI_API_KEY_2",
+    "security_lead":    "GEMINI_API_KEY_2",
     "poly_desk":         "GEMINI_API_KEY_3",
     "ml_researcher":     "GEMINI_API_KEY_3",
     "vp_research":       "GEMINI_API_KEY_3",
@@ -1283,6 +1299,11 @@ _CEREBRAS_ACCOUNT: dict[str, str] = {
     "backtest_engineer": "CEREBRAS_API_KEY_1",
     "data_engineer_2":  "CEREBRAS_API_KEY_1",
     "infra_lead":       "CEREBRAS_API_KEY_1",
+    "frontend_lead":    "CEREBRAS_API_KEY_1",
+    "data_lead":        "CEREBRAS_API_KEY_1",
+    "alpha_researcher": "CEREBRAS_API_KEY_1",
+    "exec_lead":        "CEREBRAS_API_KEY_1",
+    "security_lead":    "CEREBRAS_API_KEY_1",
     # Group 3 → CEREBRAS_API_KEY_2
     "poly_desk":         "CEREBRAS_API_KEY_2",
     "ml_researcher":     "CEREBRAS_API_KEY_2",
@@ -2368,6 +2389,12 @@ _PERSONA_MENTION_MAP: dict[str, str] = {
     "ceo":                "general",
     "finance_eng":        "finance-ops",
     "compliance_eng":     "legal-compliance",
+    # New team expansion
+    "frontend_lead":      "squad-frontend",
+    "data_lead":          "squad-data",
+    "alpha_researcher":   "alpha-research",
+    "exec_lead":          "squad-execution",
+    "security_lead":      "security-alerts",
 }
 
 

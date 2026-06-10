@@ -103,6 +103,7 @@ def get_crypto_prices() -> dict[str, float]:
     # Fall back to Binance if CoinGecko fails
     symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
                "ADAUSDT", "AVAXUSDT", "DOGEUSDT"]
+    prices = {}  # fresh dict — do not reuse CoinGecko empty dict
     try:
         resp = requests.get(
             "https://api.binance.com/api/v3/ticker/price",
@@ -216,9 +217,13 @@ def momentum_signal(prices: dict[str, float]) -> list[dict]:
             timeout=10,
         )
         if cg_resp.status_code == 200:
-            CG_SYM = {"bitcoin": "BTC", "ethereum": "ETH", "solana": "SOL", "ripple": "XRP"}
+            CG_SYM = {
+                "bitcoin": "BTC", "ethereum": "ETH", "solana": "SOL", "ripple": "XRP",
+                "binancecoin": "BNB", "cardano": "ADA", "avalanche-2": "AVAX", "dogecoin": "DOGE",
+            }
+            cg_data = cg_resp.json()  # parse once, not per-iteration
             for cg_id, sym in CG_SYM.items():
-                item = cg_resp.json().get(cg_id, {})
+                item = cg_data.get(cg_id, {})
                 chg = item.get("usd_24h_change")
                 if chg is None:
                     continue
