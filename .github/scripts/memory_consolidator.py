@@ -56,6 +56,7 @@ STATE_DIR  = REPO_ROOT / ".github" / "state"
 MEMORY_FILE   = STATE_DIR / "agent_memory.json"
 SKILL_FILE    = STATE_DIR / "skill_library.json"
 KB_FILE       = STATE_DIR / "knowledge_base.json"
+BRAIN_FILE    = STATE_DIR / "company_brain.json"
 
 
 # Topic keywords for bucketing — pure string matching, no GPU needed
@@ -285,6 +286,32 @@ def main():
         skill_data["total"] = len(skill_data["skills"])
         SKILL_FILE.write_text(json.dumps(skill_data, indent=2))
         print(f"  Added {len(new_skills)} new skills to skill_library.json")
+
+    # Write consolidated knowledge to shared company_brain.json
+    try:
+        brain = json.loads(BRAIN_FILE.read_text()) if BRAIN_FILE.exists() else {}
+        brain.setdefault("learnings", [])
+        brain.setdefault("agent_insights", {})
+        # Record each new skill distilled this run
+        for skill in new_skills:
+            brain["learnings"].append({
+                "source": "memory_consolidator",
+                "skill": skill,
+                "timestamp": now.isoformat(),
+            })
+        # Keep learnings bounded (last 500)
+        brain["learnings"] = brain["learnings"][-500:]
+        brain["agent_insights"]["memory_consolidator"] = {
+            "last_run": now.isoformat(),
+            "topics_consolidated": len(by_topic),
+            "llm_calls": llm_calls,
+            "new_skills_injected": len(new_skills),
+        }
+        brain["last_updated"] = now.isoformat()
+        BRAIN_FILE.write_text(json.dumps(brain, indent=2))
+        print(f"  company_brain.json updated (+{len(new_skills)} skills)")
+    except Exception as e:
+        print(f"  company_brain write error: {e}")
 
     print(
         f"✓ Consolidation complete: {len(by_topic)} topics, "

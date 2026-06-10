@@ -22,10 +22,11 @@ ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
 
-REPO_ROOT  = Path(__file__).resolve().parents[2]
-STATE_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
-SKILL_FILE = REPO_ROOT / ".github" / "state" / "skill_library.json"
-TASK_FILE  = REPO_ROOT / ".github" / "state" / "task_registry.json"
+REPO_ROOT    = Path(__file__).resolve().parents[2]
+STATE_FILE   = REPO_ROOT / ".github" / "state" / "agent_memory.json"
+SKILL_FILE   = REPO_ROOT / ".github" / "state" / "skill_library.json"
+TASK_FILE    = REPO_ROOT / ".github" / "state" / "task_registry.json"
+BRAIN_FILE   = REPO_ROOT / ".github" / "state" / "company_brain.json"
 
 
 def call_llm(prompt: str) -> str:
@@ -210,6 +211,29 @@ def main():
     TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
     tasks["last_updated"] = now.isoformat()
     TASK_FILE.write_text(json.dumps(tasks, indent=2))
+
+    # Write learnings to shared company_brain.json
+    try:
+        brain = json.loads(BRAIN_FILE.read_text()) if BRAIN_FILE.exists() else {}
+        brain.setdefault("learnings", [])
+        brain.setdefault("agent_insights", {})
+        for skill in added:
+            entry = {"source": "collective_learner", "skill": skill, "timestamp": now.isoformat()}
+            brain["learnings"].append(entry)
+        # Keep learnings bounded (last 500)
+        brain["learnings"] = brain["learnings"][-500:]
+        brain["agent_insights"]["collective_learner"] = {
+            "last_run": now.isoformat(),
+            "total_agent_runs": total_runs,
+            "total_successes": total_successes,
+            "skills_total": len(current_skills),
+            "skills_added_this_run": len(added),
+        }
+        brain["last_updated"] = now.isoformat()
+        BRAIN_FILE.write_text(json.dumps(brain, indent=2))
+        print(f"  company_brain.json updated (+{len(added)} learnings)")
+    except Exception as e:
+        print(f"  company_brain write error: {e}")
 
     # Post to Slack if new skills were learned
     if added:

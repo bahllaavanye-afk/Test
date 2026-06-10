@@ -62,8 +62,9 @@ try:
 except ImportError:
     _LITELLM_AVAILABLE = False
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT  = Path(__file__).resolve().parents[2]
 STATE_PATH = REPO_ROOT / ".github" / "state" / "slack_state.json"
+BRAIN_FILE = REPO_ROOT / ".github" / "state" / "company_brain.json"
 
 
 def _resolve_key(*names: str) -> str:
@@ -7399,6 +7400,19 @@ def build_discussion_chains(
              ("ML Modeling Lead", ":robot_face:", "absolutely — Optuna finishes in ~2h. pinging you then. can do a quick Slack huddle"),],
         ]
         chains.append(("standup", pt, random.choice(thread_comments)))
+
+    # Write a summary of discussion activity to company_brain.json
+    if chains:
+        channels_with_discussion = list({ch for ch, _, _ in chains})
+        _write_brain_learning(
+            source="build_discussion_chains",
+            learning=(
+                f"Discussion chains built across {len(chains)} threads in "
+                f"{len(channels_with_discussion)} channels: "
+                + ", ".join(f"#{c}" for c in channels_with_discussion[:5])
+            ),
+            metadata={"chain_count": len(chains), "channels": channels_with_discussion},
+        )
 
     return chains
 
