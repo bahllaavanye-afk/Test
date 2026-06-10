@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "created_at": "2026-06-10T01:07:41.067390+00:00",
+  "last_updated": "2026-06-10T01:07:41.067432+00:00",
+  "platform": {
+    "name": "QuantEdge",
+    "type": "institutional_quant_trading",
+    "stage": "paper_trading",
+    "strategies": 68,
+    "desks": [
+      "equity",
+      "crypto",
+      "polymarket",
+      "macro",
+      "options",
+      "stat_arb",
+      "futures",
+      "rates",
+      "kalshi"
+    ]
+  },
+  "architecture": {
+    "backend": "FastAPI + SQLAlchemy async + Pydantic v2",
+    "frontend": "React 18 + Vite + TypeScript + TanStack Query + shadcn/ui",
+    "ml": "PyTorch LSTM + TFT + XGBoost + Lorentzian KNN + SSM + HMM",
+    "execution": "TWAP/VWAP/LimitFirst/RLExec via SmartRouter",
+    "brokers": [
+      "Alpaca (equity paper)",
+      "Binance (crypto)",
+      "Polymarket (prediction)"
+    ],
+    "infra": "Vercel frontend + Render backend + Supabase DB + Upstash Redis"
+  },
+  "risk_rules": {
+    "max_position_pct": 12.0,
+    "max_drawdown_pct": 15.0,
+    "directional_bucket_pct": 30.0,
+    "arb_bucket_pct": 70.0,
+    "paper_before_live_days": 14,
+    "min_sharpe_for_paper": 1.0,
+    "min_sharpe_for_live": 1.5
+  },
+  "learnings": [],
+  "experiments": [],
+  "agent_insights": {},
+  "strategy_notes": {}
+}

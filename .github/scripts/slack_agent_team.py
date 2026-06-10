@@ -62,8 +62,9 @@ try:
 except ImportError:
     _LITELLM_AVAILABLE = False
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT  = Path(__file__).resolve().parents[2]
 STATE_PATH = REPO_ROOT / ".github" / "state" / "slack_state.json"
+BRAIN_FILE = REPO_ROOT / ".github" / "state" / "company_brain.json"
 
 
 def _resolve_key(*names: str) -> str:
@@ -6460,6 +6461,31 @@ def friday_presentation_post() -> list[Post]:
     return pres
 
 
+def _write_brain_learning(source: str, learning: str, metadata: dict | None = None) -> None:
+    """Append a learning entry to company_brain.json."""
+    try:
+        brain = json.loads(BRAIN_FILE.read_text()) if BRAIN_FILE.exists() else {}
+        brain.setdefault("learnings", [])
+        brain.setdefault("agent_insights", {})
+        entry: dict = {
+            "source": source,
+            "learning": learning,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        if metadata:
+            entry.update(metadata)
+        brain["learnings"].append(entry)
+        brain["learnings"] = brain["learnings"][-500:]  # keep last 500
+        brain["agent_insights"][source] = {
+            "last_learning": learning[:120],
+            "last_updated": entry["timestamp"],
+        }
+        brain["last_updated"] = entry["timestamp"]
+        BRAIN_FILE.write_text(json.dumps(brain, indent=2))
+    except Exception as e:
+        print(f"[brain] write error ({source}): {e}")
+
+
 def cross_team_share_post() -> Post | None:
     """A non-winning team comments on what they're borrowing from the leader."""
     scores = team_scores()
@@ -6473,6 +6499,15 @@ def cross_team_share_post() -> Post | None:
     learner_team = random.choice(ranked[1:])
     winner_team = ranked[0]
     info = TEAMS[learner_team]
+    learning_text = (
+        f"Team {learner_team} is adopting walk-forward purging pattern from "
+        f"top-performing Team {winner_team}"
+    )
+    _write_brain_learning(
+        source="cross_team_share",
+        learning=learning_text,
+        metadata={"learner_team": learner_team, "winner_team": winner_team},
+    )
     return Post(
         channel=info["channel"],
         text=(f"Picked up something from Team *{winner_team}* this week — "
@@ -7365,6 +7400,19 @@ def build_discussion_chains(
              ("ML Modeling Lead", ":robot_face:", "absolutely — Optuna finishes in ~2h. pinging you then. can do a quick Slack huddle"),],
         ]
         chains.append(("standup", pt, random.choice(thread_comments)))
+
+    # Write a summary of discussion activity to company_brain.json
+    if chains:
+        channels_with_discussion = list({ch for ch, _, _ in chains})
+        _write_brain_learning(
+            source="build_discussion_chains",
+            learning=(
+                f"Discussion chains built across {len(chains)} threads in "
+                f"{len(channels_with_discussion)} channels: "
+                + ", ".join(f"#{c}" for c in channels_with_discussion[:5])
+            ),
+            metadata={"chain_count": len(chains), "channels": channels_with_discussion},
+        )
 
     return chains
 

@@ -139,22 +139,38 @@ def check_recent_commits() -> tuple[bool, str]:
 
 
 def check_workflows_enabled() -> tuple[bool, str]:
-    """Check key workflows exist and have recent runs."""
+    """Check key workflows exist — checks local .github/workflows/ files first."""
     key_workflows = ["signal-runner", "continuous-improvement", "quick-backtest", "token-usage-monitor"]
-    if not GH_TOKEN:
-        return True, "gh api check skipped (no token)"
     found = []
-    try:
-        r = requests.get(
-            f"https://api.github.com/repos/{GH_REPO}/actions/workflows",
-            headers={"Authorization": f"token {GH_TOKEN}"},
-            timeout=10
-        )
-        if r.status_code == 200:
-            names = [w["name"].lower() for w in r.json().get("workflows", [])]
-            found = [k for k in key_workflows if any(k in n for n in names)]
-    except Exception:
-        pass
+
+    # Primary check: local .github/workflows/ directory (always works, no token needed).
+    # Workflow filenames use hyphens (e.g. signal-runner.yml) which match key_workflows exactly.
+    workflows_dir = REPO_ROOT / ".github" / "workflows"
+    if workflows_dir.exists():
+        local_stems = {f.stem.lower() for f in workflows_dir.glob("*.yml")}
+        local_stems.update(f.stem.lower() for f in workflows_dir.glob("*.yaml"))
+        found = [k for k in key_workflows if k in local_stems]
+        if len(found) == len(key_workflows):
+            return True, f"{len(found)}/{len(key_workflows)} key workflows found"
+
+    # Secondary check: GitHub API — workflow name: field may use spaces; normalise to hyphens.
+    if GH_TOKEN:
+        try:
+            r = requests.get(
+                f"https://api.github.com/repos/{GH_REPO}/actions/workflows",
+                headers={"Authorization": f"token {GH_TOKEN}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                api_names = [
+                    w["name"].lower().replace(" ", "-")
+                    for w in r.json().get("workflows", [])
+                ]
+                api_found = [k for k in key_workflows if any(k in n for n in api_names)]
+                found = list(set(found) | set(api_found))
+        except Exception:
+            pass
+
     return True, f"{len(found)}/{len(key_workflows)} key workflows found"
 
 
