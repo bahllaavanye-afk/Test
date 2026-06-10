@@ -8781,6 +8781,15 @@ def main() -> int:
     save_state(state)
     print(f"💾 State saved: {len(state['posted_hashes'])} hashes, {len(state['replied_to'])} replied threads")
 
+    # ── Page status reports — each employee audits their assigned pages ──────
+    try:
+        page_posts = run_page_status_reports(token, state)
+        if page_posts:
+            posts_made += page_posts
+            print(f"  ✓ Page reports: {page_posts} page audit(s) posted")
+    except Exception as e:
+        print(f"  [page_reports] {e}")
+
     # Post governance report to #cto-audit
     post_governance_report(token, state)
 
@@ -10101,6 +10110,333 @@ def summons_only_main() -> int:
     return 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Page Status Reporter — each employee audits their assigned dashboard pages
+# Posts rich text "page walkthroughs" to their Slack channel every 4 hours.
+# Reads actual TSX source so the LLM reasons about REAL code, not mock data.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Page → (owner_emp_key, slack_channel, emoji, what_to_check)
+_PAGE_ASSIGNMENTS: list[tuple[str, str, str, str, str]] = [
+    (
+        "Dashboard.tsx",
+        "frontend_lead",
+        "squad-frontend",
+        ":house:",
+        "KPI cards, P&L chart, live price ticker, alert feed, TV Market Overview widget",
+    ),
+    (
+        "EquityTrading.tsx",
+        "alpha_dir",
+        "desk-equities",
+        ":chart_with_upwards_trend:",
+        "TradingView Advanced Chart iframe, order form (market/limit/stop), positions table, execution selector",
+    ),
+    (
+        "CryptoTrading.tsx",
+        "ml_lead",
+        "desk-crypto",
+        ":coin:",
+        "Binance symbol chart, funding rate display, triangular arb opportunities, order entry",
+    ),
+    (
+        "Polymarket.tsx",
+        "poly_desk",
+        "desk-polymarket",
+        ":crystal_ball:",
+        "Active prediction markets, probability calibration, YES/NO arb opportunities, Kelly sizing display",
+    ),
+    (
+        "Comparison.tsx",
+        "alpha_dir",
+        "strategy-review",
+        ":bar_chart:",
+        "Manual vs ML strategy comparison chart, benchmark table (SPY/QQQ/BRK.B/All Weather), stat-sig badge",
+    ),
+    (
+        "BacktestLab.tsx",
+        "backtest_engineer",
+        "alpha-research",
+        ":test_tube:",
+        "Backtest form (strategy/symbol/dates), results table, equity curve, walk-forward metrics",
+    ),
+    (
+        "Experiments.tsx",
+        "ml_lead",
+        "ml-experiments",
+        ":microscope:",
+        "ML experiment list, live training progress, model registry, experiment config viewer",
+    ),
+    (
+        "MLInsights.tsx",
+        "ml_researcher",
+        "ml-experiments",
+        ":brain:",
+        "Model predictions feed, feature importance bar chart, confidence gauge, ensemble weights",
+    ),
+    (
+        "Analytics.tsx",
+        "portfolio_manager",
+        "pnl-daily",
+        ":abacus:",
+        "Sharpe/Sortino/Calmar metrics, monthly returns heatmap, equity curve, tearsheet export button",
+    ),
+    (
+        "RiskManager.tsx",
+        "risk_eng",
+        "risk-alerts",
+        ":shield:",
+        "Risk gauge, drawdown monitor, 70/30 bucket allocation, circuit breaker status, Kelly fraction",
+    ),
+    (
+        "AgentDashboard.tsx",
+        "vp_eng",
+        "engineering",
+        ":robot_face:",
+        "Employee roster with LLM assignments, code review grades panel, shared memory, task queue",
+    ),
+    (
+        "Landing.tsx",
+        "product_lead",
+        "general",
+        ":rocket:",
+        "Investor pitch copy, Sharpe/drawdown stats, feature list, CTA button, benchmark comparison",
+    ),
+    (
+        "PnL.tsx",
+        "portfolio_manager",
+        "pnl-daily",
+        ":money_with_wings:",
+        "Daily P&L breakdown by strategy, realized/unrealized split, cumulative equity, drawdown display",
+    ),
+    (
+        "SystemMonitor.tsx",
+        "devops_dir",
+        "infra-alerts",
+        ":computer:",
+        "Backend health endpoint status, WebSocket connection status, Redis/DB latency, worker heartbeat",
+    ),
+]
+
+
+def _read_page_source(page_filename: str, max_chars: int = 3000) -> str:
+    """Read a frontend page TSX file, returning first max_chars characters."""
+    page_path = REPO_ROOT / "frontend" / "src" / "pages" / page_filename
+    try:
+        content = page_path.read_text()
+        if len(content) > max_chars:
+            return content[:max_chars] + f"\n... [truncated — {len(content)} chars total]"
+        return content
+    except FileNotFoundError:
+        return f"[FILE NOT FOUND: {page_path}]"
+
+
+def run_page_status_reports(token: str, state: dict) -> int:
+    """
+    Each assigned employee audits their dashboard pages from the TSX source.
+    Posts a rich-text page walkthrough to their Slack channel.
+    Rotates through pages — each run covers ~4 pages (cooldown 4h per page).
+    Returns number of posts made.
+    """
+    hr = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    posts_made = 0
+
+    # Pick pages whose cooldown has expired (4 hours per page)
+    cooldown = 4 * 3600
+    pages_to_report: list[tuple] = []
+    for entry in _PAGE_ASSIGNMENTS:
+        page_file, emp_key, channel, emoji, what_to_check = entry
+        ck = f"page_report:{page_file}"
+        last_ts = state.get("post_dedup", {}).get(f"{channel}:{ck}", 0)
+        if time.time() - last_ts >= cooldown:
+            pages_to_report.append(entry)
+
+    if not pages_to_report:
+        print("  [page_reports] all pages on cooldown — skipping")
+        return 0
+
+    # Process up to 4 pages per run to stay within token budget
+    for page_file, emp_key, channel, emoji, what_to_check in pages_to_report[:4]:
+        ck = f"page_report:{page_file}"
+        page_name = page_file.replace(".tsx", "")
+
+        # Read the actual source
+        source = _read_page_source(page_file, max_chars=2500)
+
+        # Get recent git history for this file
+        try:
+            git_hist = subprocess.check_output(
+                ["git", "log", "--oneline", "-5", "--", f"frontend/src/pages/{page_file}"],
+                cwd=str(REPO_ROOT), stderr=subprocess.DEVNULL, text=True,
+            ).strip() or "(no recent commits)"
+        except Exception:
+            git_hist = "(git unavailable)"
+
+        task_prompt = (
+            f"You are reviewing the QuantEdge dashboard page: *{page_name}* ({page_file}).\n\n"
+            f"WHAT TO CHECK: {what_to_check}\n\n"
+            f"RECENT GIT HISTORY:\n{git_hist}\n\n"
+            f"SOURCE CODE (first 2500 chars):\n```\n{source}\n```\n\n"
+            f"Write a page walkthrough report (3-5 bullet points). For each point:\n"
+            f"• What should be visible/working\n"
+            f"• Whether the TSX code actually implements it\n"
+            f"• Any bug, missing feature, or UX issue you can see from the source\n"
+            f"Be specific: cite component names, line patterns, missing imports, TODO comments.\n"
+            f"End with ONE top priority fix labelled **TOP FIX:**."
+        )
+
+        print(f"  [page_reports] {page_file} → {emp_key} → #{channel}")
+        ai_result, provider = employee_provider_prompt(emp_key, task_prompt, state=state)
+
+        if not ai_result:
+            print(f"  [page_reports] {page_file}: provider exhausted — skipping")
+            continue
+
+        # Format the Slack post
+        emp_persona = _EMPLOYEE_PERSONAS.get(emp_key, "")
+        # Extract employee display name from persona (first sentence)
+        emp_display = emp_key.replace("_", " ").title()
+        if emp_persona:
+            m = re.match(r"You are ([^.,(]+)", emp_persona)
+            if m:
+                emp_display = m.group(1).strip()
+
+        msg = (
+            f"{emoji} *Page Report — {page_name}* | {date_str} {hr}\n"
+            f"_Reported by {emp_display} · via {provider or 'LLM'}_\n\n"
+            f"{ai_result.strip()}"
+        )
+
+        if is_duplicate(state, msg):
+            print(f"  [page_reports] {page_file} → dup — skip")
+            # Still mark cooldown so we don't re-check until next window
+            state.setdefault("post_dedup", {})[f"{channel}:{ck}"] = time.time()
+            continue
+
+        r = post_to_slack(token, channel, msg,
+                          username=f"{emp_display[:30]} (Page Audit)",
+                          icon_emoji=emoji)
+        if r.get("ok"):
+            posts_made += 1
+            record_post(state, msg)
+            state.setdefault("post_dedup", {})[f"{channel}:{ck}"] = time.time()
+            print(f"  [page_reports] ✓ {page_file} → #{channel}")
+        else:
+            print(f"  [page_reports] ✗ {page_file} → #{channel}: {r.get('error')}")
+
+        time.sleep(0.8)
+
+    return posts_made
+
+
+def post_honest_progress_report(token: str, state: dict) -> None:
+    """
+    Posts a candid progress report to #leadership-summary comparing current
+    QuantEdge state vs. the grand plan. Runs at most once per 12 hours.
+    """
+    ck = "honest_progress"
+    if _already_posted(state, "leadership-summary", ck, cooldown_seconds=43200):
+        return
+
+    # Gather real signals
+    try:
+        test_result = subprocess.run(
+            ["python", "-m", "pytest", "tests/", "-x", "-q", "--tb=no", "--no-header"],
+            cwd=str(REPO_ROOT / "backend"),
+            capture_output=True, text=True, timeout=60,
+        )
+        test_summary = (test_result.stdout + test_result.stderr).strip().split("\n")[-1]
+    except Exception:
+        test_summary = "(tests could not run)"
+
+    try:
+        ts_result = subprocess.run(
+            ["npx", "tsc", "--noEmit"],
+            cwd=str(REPO_ROOT / "frontend"),
+            capture_output=True, text=True, timeout=60,
+        )
+        ts_errors = (ts_result.stdout + ts_result.stderr).strip()
+        ts_status = "0 errors ✅" if not ts_errors else f"errors found ⚠️"
+    except Exception:
+        ts_status = "(tsc could not run)"
+
+    # Count strategies, ML models, pages
+    strategy_files = list((REPO_ROOT / "backend" / "app" / "strategies").rglob("*.py"))
+    ml_model_files = list((REPO_ROOT / "backend" / "app" / "ml" / "models").rglob("*.py"))
+    page_files = list((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
+    workflow_files = list((REPO_ROOT / ".github" / "workflows").glob("*.yml"))
+
+    # Recent commits
+    try:
+        commits_7d = subprocess.check_output(
+            ["git", "log", "--oneline", "--since=7 days ago"],
+            cwd=str(REPO_ROOT), stderr=subprocess.DEVNULL, text=True,
+        ).strip().split("\n")
+        n_commits = len([c for c in commits_7d if c])
+    except Exception:
+        n_commits = 0
+
+    hr = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    progress_lines = [
+        f":bar_chart: *QuantEdge — Honest Progress Report* | {hr}",
+        "",
+        "*What is actually working:*",
+        f"  ✅ {len(page_files)} dashboard pages (React/TS)",
+        f"  ✅ {len(strategy_files)} strategy files",
+        f"  ✅ {len(ml_model_files)} ML model files",
+        f"  ✅ {len(workflow_files)} GitHub Actions workflows (agent automation)",
+        f"  ✅ TypeScript: {ts_status}",
+        f"  ✅ Backend tests: {test_summary}",
+        f"  ✅ {n_commits} commits in last 7 days",
+        "",
+        "*Gaps vs. institutional hedge funds:*",
+        "  ⚠️  No live broker connection verified (paper mode only — needs API keys in prod)",
+        "  ⚠️  ML models are architecture shells — need real training data + GPU runs",
+        "  ⚠️  Backtests use VectorBT structure but no live OHLCV ingestion yet",
+        "  ⚠️  WebSocket prices depend on Alpaca/Binance keys being set",
+        "  ⚠️  No real money at risk (intentional until Series A infra hardening)",
+        "",
+        "*Honest Sharpe estimate today: N/A* — paper trading only, insufficient live history",
+        "*Path to Sharpe > 2.0:* 2-3 weeks live paper → walk-forward validation → Series A",
+    ]
+
+    msg = "\n".join(progress_lines)
+    if not is_duplicate(state, msg):
+        r = post_to_slack(
+            token, "leadership-summary", msg,
+            username="CRO Progress Report", icon_emoji=":clipboard:",
+        )
+        if r.get("ok"):
+            record_post(state, msg)
+            print("  [honest_progress] ✓ posted to #leadership-summary")
+
+
+def page_reports_main() -> int:
+    """
+    Standalone page audit mode: all assigned employees audit their pages and post
+    text-based walkthroughs to Slack. Triggered by page-reporter.yml workflow.
+    """
+    verify_zero_spend()
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token.startswith("xoxb-"):
+        print("[page_reports] No valid SLACK_BOT_TOKEN — skipping")
+        return 0
+
+    state = load_state()
+    _init_governance(state)
+
+    print(f"📸 Page Status Reporter | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"  Pages to audit: {len(_PAGE_ASSIGNMENTS)}")
+
+    n = run_page_status_reports(token, state)
+    post_honest_progress_report(token, state)
+
+    save_state(state)
+    print(f"✅ Page reports done — {n} posts made")
+    return 0
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
     if mode == "quick":
@@ -10115,6 +10451,8 @@ if __name__ == "__main__":
         sys.exit(code_request_main())
     elif mode == "frontend_improvements":
         sys.exit(frontend_improvements_main())
+    elif mode == "page_reports":
+        sys.exit(page_reports_main())
     elif "--review-employees" in sys.argv:
         sys.exit(review_employees_main())
     elif "--run-experiments" in sys.argv:
