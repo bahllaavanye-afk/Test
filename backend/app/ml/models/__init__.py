@@ -42,3 +42,10 @@ except ImportError as e:
     logger.warning(f"GeminiSignalEngine unavailable (missing deps): {e}")
     GeminiSignalEngine = None  # type: ignore[assignment,misc]
     get_gemini_engine = None  # type: ignore[assignment]
+
+try:
+    from app.ml.models.patch_tst import PatchTST, PatchEncoder
+except ImportError as e:
+    logger.warning(f"PatchTST unavailable (missing deps): {e}")
+    PatchTST = None   # type: ignore[assignment,misc]
+    PatchEncoder = None  # type: ignore[assignment,misc]

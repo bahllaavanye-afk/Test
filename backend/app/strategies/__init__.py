@@ -67,6 +67,10 @@ from app.strategies.manual.tlt_spy_rotation import TLTSPYRotationStrategy
 from app.strategies.manual.duration_momentum import DurationMomentumStrategy
 from app.strategies.manual.breakeven_inflation import BreakevenInflationStrategy
 from app.strategies.manual.multi_factor_equity import MultiFactorEquity
+from app.strategies.manual.realized_vol_asymmetry import RealizedVolAsymmetryStrategy
+from app.strategies.manual.analyst_revision_momentum import AnalystRevisionMomentumStrategy
+from app.strategies.manual.on_chain_exchange_netflow import OnChainExchangeNetflowStrategy
+from app.strategies.manual.vol_of_vol_timing import VolOfVolTimingStrategy
 from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrategy
 from app.strategies.manual.options_strategies import (
     CoveredCallStrategy,
@@ -236,6 +240,11 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "tlt_spy_rotation": TLTSPYRotationStrategy,
     "duration_momentum": DurationMomentumStrategy,
     "breakeven_inflation": BreakevenInflationStrategy,
+    # ── New research strategies ───────────────────────────────────────────────
+    "realized_vol_asymmetry":     RealizedVolAsymmetryStrategy,
+    "analyst_revision_momentum":  AnalystRevisionMomentumStrategy,
+    "on_chain_exchange_netflow":  OnChainExchangeNetflowStrategy,
+    "vol_of_vol_timing":          VolOfVolTimingStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,

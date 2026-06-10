@@ -1,0 +1,48 @@
+name: Strategy Auto-Tuner — Confidence Threshold Adjustment
+
+on:
+  schedule:
+    # Run at 22:30 UTC Mon–Fri (30 min after fill tracker completes)
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  auto-tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run strategy auto-tuner
+        env:
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          TRADING_MODE:      "paper"
+          ANTHROPIC_API_KEY: "disabled"
+          ALLOW_PAID_APIS:   "False"
+        run: |
+          cd $GITHUB_WORKSPACE
+          python .github/scripts/strategy_auto_tuner.py
+
+      - name: Commit and push threshold updates
+        run: |
+          git add backend/performance_log/
+          git diff --cached --quiet || git commit -m "chore: auto-tune strategy thresholds $(date -u +%Y-%m-%d) [skip ci]"
+          git push origin claude/advanced-trading-bot-d5Lmw || true
