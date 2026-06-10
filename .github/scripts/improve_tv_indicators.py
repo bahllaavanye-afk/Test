@@ -10,6 +10,8 @@ Runs as a GitHub Action every 6 hours.
 from __future__ import annotations
 import json, os, re, subprocess, sys, urllib.request
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, memory_write
 
 REPO_ROOT = Path(__file__).parent.parent
 BRANCH    = "claude/advanced-trading-bot-d5Lmw"
@@ -19,57 +21,6 @@ SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID.lower() == "true":
     sys.exit(1)
-
-
-# ── Free LLM cascade ──────────────────────────────────────────────────────────
-
-def _free_llm(prompt: str, max_tokens: int = 8000) -> str | None:
-    providers = [
-        ("gemini",    os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", "")),
-         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-         "gemini-2.0-flash"),
-        ("groq",      os.environ.get("GROQ_API_KEY", ""),
-         "https://api.groq.com/openai/v1/chat/completions",
-         "llama-3.3-70b-versatile"),
-        ("deepseek",  os.environ.get("DEEPSEEK_API_KEY", ""),
-         "https://api.deepseek.com/v1/chat/completions",
-         "deepseek-chat"),
-        ("together",  os.environ.get("TOGETHER_API_KEY", ""),
-         "https://api.together.xyz/v1/chat/completions",
-         "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-        ("cerebras",  os.environ.get("CEREBRAS_API_KEY", ""),
-         "https://api.cerebras.ai/v1/chat/completions",
-         "llama-3.3-70b"),
-        ("sambanova", os.environ.get("SAMBANOVA_API_KEY", ""),
-         "https://api.sambanova.ai/v1/chat/completions",
-         "Meta-Llama-3.3-70B-Instruct"),
-        ("hyperbolic", os.environ.get("HYPERBOLIC_API_KEY", ""),
-         "https://api.hyperbolic.xyz/v1/chat/completions",
-         "meta-llama/Llama-3.3-70B-Instruct"),
-    ]
-    for name, key, url, model in providers:
-        if not key or key in ("disabled", ""):
-            continue
-        try:
-            payload = json.dumps({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-                "temperature": 0.3,
-            }).encode()
-            req = urllib.request.Request(
-                url, data=payload,
-                headers={"Authorization": f"Bearer {key}",
-                         "Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = json.loads(resp.read())
-            text = data["choices"][0]["message"]["content"]
-            print(f"[tv-improve] LLM: {name} ({len(text)} chars)")
-            return text
-        except Exception as e:
-            print(f"[tv-improve] {name} failed: {e}")
-    return None
 
 
 def slack(channel: str, msg: str) -> None:
@@ -200,7 +151,7 @@ def main() -> None:
     print(f"[tv-improve] Current file: {len(current_code)} chars")
 
     prompt = build_prompt(current_code[:12000])  # keep within token budget
-    raw = _free_llm(prompt, max_tokens=8000)
+    raw = llm(prompt, max_tokens=8000)
     if not raw:
         msg = "⚠️ *TV Indicator Agent:* All LLM providers failed — no improvement this cycle"
         print(msg)

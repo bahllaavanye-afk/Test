@@ -67,6 +67,21 @@ EXPERIMENT_CONFIGS = [
     # Macro/FX desk
     ("cross_asset_carry",        "app.strategies.manual.cross_asset_carry",        "CrossAssetCarryStrategy","GLD",  "1d","2020-01-01","2024-01-01","2025-01-01",{}),
     ("intraday_fomc_momentum",   "app.strategies.manual.intraday_fomc_momentum",   "IntradayFOMCMomentumStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    # New macro desk strategies
+    ("yield_curve_momentum",     "app.strategies.manual.yield_curve_momentum",     "YieldCurveMomentumStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("macro_risk_barometer",     "app.strategies.manual.macro_risk_barometer",     "MacroRiskBarometerStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("dollar_carry",             "app.strategies.manual.dollar_carry",             "DollarCarryStrategy",      "EEM","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("pmi_sector_rotation",      "app.strategies.manual.pmi_sector_rotation",      "PMISectorRotationStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("central_bank_window",      "app.strategies.manual.central_bank_window",      "CentralBankWindowStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    # New rates desk strategies
+    ("yield_spread_reversion",   "app.strategies.manual.yield_spread_reversion",   "YieldSpreadReversionStrategy","HYG","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("tlt_spy_rotation",         "app.strategies.manual.tlt_spy_rotation",         "TLTSPYRotationStrategy",   "SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("duration_momentum",        "app.strategies.manual.duration_momentum",        "DurationMomentumStrategy", "TLT","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("breakeven_inflation",      "app.strategies.manual.breakeven_inflation",      "BreakevenInflationStrategy","TIPS","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    # New polymarket desk strategies
+    ("poly_time_value_fade",     "app.strategies.manual.poly_time_value_fade",     "PolyTimeValueFadeStrategy","POLYMARKET","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("poly_cross_market_hedge",  "app.strategies.manual.poly_cross_market_hedge",  "PolyCrossMarketHedgeStrategy","POLYMARKET","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("poly_liquidity_provision", "app.strategies.manual.poly_liquidity_provision", "PolyLiquidityProvisionStrategy","POLYMARKET","1d","2020-01-01","2024-01-01","2025-01-01",{}),
 ]
 
 STRATEGY_FILTER = os.environ.get("STRATEGY_FILTER", "").strip()

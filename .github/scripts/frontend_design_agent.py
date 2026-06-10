@@ -10,30 +10,14 @@ from __future__ import annotations
 import glob
 import json
 import os
-
-# ── Key resolver: supports both plain and numbered secrets ────────────────────
-def _resolve_key(*names: str) -> str:
-    """Return first non-empty value from env, checking plain + numbered variants."""
-    for name in names:
-        v = os.environ.get(name, "")
-        if v:
-            return v
-        # Try _1 suffix if not already numbered
-        if not name[-1].isdigit():
-            v = os.environ.get(name + "_1", "")
-            if v:
-                return v
-    return ""
-
 import random
 import subprocess
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from llm_common import llm, slack_post, memory_write
 
-import requests
-
-GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 COMPONENT_OVERRIDE = os.environ.get("COMPONENT_OVERRIDE", "").strip()
 
@@ -53,51 +37,6 @@ Bloomberg dark theme:
 - No rounded corners on data tables — sharp borders like Bloomberg Terminal
 - Loading state: skeleton shimmer (#1a1a1a → #222), never spinner
 """
-
-# ── LLM ──────────────────────────────────────────────────────────────────────
-
-def call_gemini(prompt: str) -> str:
-    if not GEMINI_API_KEY:
-        return ""
-    try:
-        resp = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
-            json={
-                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.2}
-            },
-            timeout=60
-        )
-        if resp.status_code == 200:
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        if resp.status_code == 429:
-            print(f"Gemini quota hit (429) — falling back to Groq")
-    except Exception as e:
-        print(f"Gemini error: {e}")
-    return ""
-
-def call_groq(prompt: str) -> str:
-    if not GROQ_API_KEY:
-        return ""
-    try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 3000
-            },
-            timeout=30
-        )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print(f"Groq error: {e}")
-    return ""
-
-def llm(prompt: str) -> str:
-    return call_gemini(prompt) or call_groq(prompt) or ""
 
 # ── File picker ───────────────────────────────────────────────────────────────
 

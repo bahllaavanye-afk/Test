@@ -54,6 +54,18 @@ from app.strategies.manual.token_unlock_fade import TokenUnlockFade
 from app.strategies.manual.poly_late_resolution import PolymarketLateResolution
 from app.strategies.manual.poly_market_maker import PolymarketMarketMaker
 from app.strategies.manual.poly_calibration_arb import PolymarketCalibrationArb
+from app.strategies.manual.poly_time_value_fade import PolyTimeValueFadeStrategy
+from app.strategies.manual.poly_cross_market_hedge import PolyCrossMarketHedgeStrategy
+from app.strategies.manual.poly_liquidity_provision import PolyLiquidityProvisionStrategy
+from app.strategies.manual.yield_curve_momentum import YieldCurveMomentumStrategy
+from app.strategies.manual.macro_risk_barometer import MacroRiskBarometerStrategy
+from app.strategies.manual.dollar_carry import DollarCarryStrategy
+from app.strategies.manual.pmi_sector_rotation import PMISectorRotationStrategy
+from app.strategies.manual.central_bank_window import CentralBankWindowStrategy
+from app.strategies.manual.yield_spread_reversion import YieldSpreadReversionStrategy
+from app.strategies.manual.tlt_spy_rotation import TLTSPYRotationStrategy
+from app.strategies.manual.duration_momentum import DurationMomentumStrategy
+from app.strategies.manual.breakeven_inflation import BreakevenInflationStrategy
 from app.strategies.manual.multi_factor_equity import MultiFactorEquity
 from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrategy
 from app.strategies.manual.options_strategies import (
@@ -209,6 +221,21 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "crypto_whale_momentum": CryptoWhaleMomentumStrategy,
     "interest_rate_differential": InterestRateDifferentialStrategy,
     "options_gamma_scalp": OptionsGammaScalpStrategy,
+    # ── Polymarket expanded desk ──────────────────────────────────────────────
+    "poly_time_value_fade": PolyTimeValueFadeStrategy,
+    "poly_cross_market_hedge": PolyCrossMarketHedgeStrategy,
+    "poly_liquidity_provision": PolyLiquidityProvisionStrategy,
+    # ── Macro desk ────────────────────────────────────────────────────────────
+    "yield_curve_momentum": YieldCurveMomentumStrategy,
+    "macro_risk_barometer": MacroRiskBarometerStrategy,
+    "dollar_carry": DollarCarryStrategy,
+    "pmi_sector_rotation": PMISectorRotationStrategy,
+    "central_bank_window": CentralBankWindowStrategy,
+    # ── Rates desk ────────────────────────────────────────────────────────────
+    "yield_spread_reversion": YieldSpreadReversionStrategy,
+    "tlt_spy_rotation": TLTSPYRotationStrategy,
+    "duration_momentum": DurationMomentumStrategy,
+    "breakeven_inflation": BreakevenInflationStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,
