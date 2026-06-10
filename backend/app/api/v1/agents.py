@@ -368,3 +368,71 @@ async def get_modeling_summary(current_user: User = Depends(get_current_user)):
     if not agent:
         return {"error": "ModelingEngineer not running", "cycles_completed": 0, "models_monitored": []}
     return agent.get_engineering_summary()
+
+
+@router.get("/code-reviews")
+async def get_code_reviews(current_user: User = Depends(get_current_user)):
+    """Return latest employee code review grades from docs/agent-reviews/ markdown files."""
+    reviews_dir = REPO_ROOT / "docs" / "agent-reviews"
+    if not reviews_dir.exists():
+        return {"reviews": []}
+
+    reviews: list[dict] = []
+    seen_domains: set[str] = set()
+
+    # Sort by modification time descending — newest first
+    md_files = sorted(reviews_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+
+    for md_path in md_files:
+        # Filename pattern: <domain>-<date>-<emp_key>.md
+        parts = md_path.stem.split("-")
+        if len(parts) < 3:
+            continue
+        # date is parts[-3] if it matches YYYY-MM-DD, emp_key is last part
+        emp_key = parts[-1]
+        # date = parts[-3] through parts[-1] minus last
+        date_str = "-".join(parts[-4:-1]) if len(parts) >= 4 else parts[-2]
+        domain = "-".join(parts[:-4]) if len(parts) > 4 else parts[0]
+
+        # Only keep latest per domain
+        if domain in seen_domains:
+            continue
+        seen_domains.add(domain)
+
+        text = md_path.read_text(errors="replace")
+
+        # Extract grade from header or content
+        import re
+        grade = "?"
+        grade_match = re.search(r"\*\*Grade:\*\*\s*([A-F][+-]?)", text)
+        if grade_match:
+            grade = grade_match.group(1)
+        else:
+            g2 = re.search(r"###\s*Overall Grade\s*\n+([A-F][+-]?)", text)
+            if g2:
+                grade = g2.group(1)
+
+        # Extract top priority
+        top_priority = ""
+        pq = re.search(r"###\s*Implementation Priority Queue\s*(.*?)(?=\n###|$)", text, re.DOTALL)
+        if pq:
+            lines = [l.strip() for l in pq.group(1).strip().splitlines() if l.strip()]
+            top_priority = lines[0].lstrip("0123456789.-) ") if lines else ""
+
+        # Extract provider from header
+        provider = emp_key
+        prov_match = re.search(r"\*\*LLM:\*\*\s*(\S+)", text)
+        if prov_match:
+            provider = prov_match.group(1).rstrip("|").strip()
+
+        reviews.append({
+            "domain": domain,
+            "employee": emp_key,
+            "provider": provider,
+            "grade": grade,
+            "date": date_str,
+            "top_priority": top_priority[:200],
+            "filename": md_path.name,
+        })
+
+    return {"reviews": reviews}
