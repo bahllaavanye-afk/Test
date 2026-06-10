@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781127491.6484108,
+    "last_updated": 1781130480.7071023,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,7 +108,50 @@
       "min_confidence": 0.68,
       "size_multiplier": 0.75
     },
-    "opinion_score": -1
+    "opinion_score": -1,
+    "macro_score": 0,
+    "vix": 22.22,
+    "market_scan_ts": 1781130480.70445,
+    "sector_leaders": [
+      "Healthcare",
+      "Cons. Staples",
+      "Financials"
+    ],
+    "sector_laggards": [
+      "Comm.",
+      "Cons. Disc.",
+      "Materials"
+    ],
+    "active_universe": [
+      "GLD",
+      "XLK",
+      "QQQ",
+      "XLI",
+      "KO",
+      "IWM",
+      "UNH",
+      "AAPL",
+      "SPY",
+      "XLP",
+      "JNJ",
+      "XLV",
+      "MSFT",
+      "PG",
+      "MA",
+      "BRK-B",
+      "WMT",
+      "DIA",
+      "JPM",
+      "XLF"
+    ],
+    "top_momentum": [
+      "JNJ",
+      "KO",
+      "PG",
+      "UNH",
+      "XLV"
+    ],
+    "risk_flags": []
   },
   "episodic": [
     {
@@ -136,6 +179,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1781127491.6488562
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Healthcare",
+        "Cons. Staples",
+        "Financials"
+      ],
+      "gap_count": 3,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
+      "ts": 1781130480.7076263
     }
   ]
 }
