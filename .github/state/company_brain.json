@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781130480.7071023,
+    "last_updated": 1781130826.262057,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -111,7 +111,7 @@
     "opinion_score": -1,
     "macro_score": 0,
     "vix": 22.22,
-    "market_scan_ts": 1781130480.70445,
+    "market_scan_ts": 1781130826.2591898,
     "sector_leaders": [
       "Healthcare",
       "Cons. Staples",
@@ -128,28 +128,28 @@
       "QQQ",
       "XLI",
       "KO",
+      "C",
       "IWM",
+      "PEP",
       "UNH",
       "AAPL",
       "SPY",
       "XLP",
       "JNJ",
       "XLV",
+      "MRK",
       "MSFT",
+      "GS",
+      "MO",
       "PG",
-      "MA",
-      "BRK-B",
-      "WMT",
-      "DIA",
-      "JPM",
-      "XLF"
+      "LLY"
     ],
     "top_momentum": [
+      "LLY",
+      "WFC",
       "JNJ",
-      "KO",
-      "PG",
-      "UNH",
-      "XLV"
+      "BAC",
+      "ABBV"
     ],
     "risk_flags": []
   },
@@ -194,6 +194,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
       "ts": 1781130480.7076263
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Healthcare",
+        "Cons. Staples",
+        "Financials"
+      ],
+      "gap_count": 3,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
+      "ts": 1781130826.2626133
     }
   ]
 }
