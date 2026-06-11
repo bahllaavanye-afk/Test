@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-11T12:36:31.917702+00:00",
+  "last_updated": "2026-06-11T21:37:24.010003+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -353,6 +353,66 @@
       "reason": "syntax check failed",
       "improvement_type": "docstrings",
       "timestamp": "2026-06-11T12:36:31.917639+00:00"
+    },
+    {
+      "file": "backend/app/api/v1/backtests.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:32:29.320946+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_time_series_momentum.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:33:02.105016+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/poly_liquidity_provision.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:33:34.901176+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/ml_momentum.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:34:07.633850+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/multiscale_transformer.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:34:40.362270+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/pandas_ta_compat.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:35:13.111723+00:00"
+    },
+    {
+      "file": "backend/app/execution/smart_router.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:35:45.840484+00:00"
+    },
+    {
+      "file": "backend/app/risk/correlation_monitor.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:36:18.579022+00:00"
+    },
+    {
+      "file": "backend/app/brokers/polymarket.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:36:51.297331+00:00"
+    },
+    {
+      "file": "backend/app/backtest/cpcv.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-06-11T21:37:24.009947+00:00"
     }
   ],
   "improvement_stats": {
