@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: claude/advanced-trading-bot-d5Lmw
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -85,7 +85,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: claude/advanced-trading-bot-d5Lmw
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
