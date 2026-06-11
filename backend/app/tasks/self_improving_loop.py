@@ -102,6 +102,7 @@ class SelfImprovingLoop:
             return
 
         names_to_disable: list[str] = []
+        audit_entries: list[dict] = []
         async with self._factory() as session:
             for m in underperformers:
                 # Enforce paper-first policy: skip strategies created less than 14 days ago
@@ -121,11 +122,29 @@ class SelfImprovingLoop:
                     .values(is_enabled=False)
                 )
                 names_to_disable.append(m["strategy"])
+                audit_entries.append({
+                    "strategy": m["strategy"],
+                    "reason": "sharpe_below_zero_30d",
+                    "sharpe": m["sharpe"],
+                    "num_trades": m["num_trades"],
+                    "total_pnl": m["total_pnl"],
+                    "disabled_at": datetime.now(timezone.utc).isoformat(),
+                })
             await session.commit()
 
         if names_to_disable:
-            logger.info("SelfImprovingLoop: auto-disabled %s", names_to_disable)
-            await self._memory.write("auto_disabled", {"strategies": names_to_disable})
+            # Audit trail: structured log line per action + durable AgentMemory record.
+            # (The relational audit_logs table requires a user FK; system actions
+            # are recorded here instead until a nullable-actor migration exists.)
+            for entry in audit_entries:
+                logger.info(
+                    "SelfImprovingLoop AUDIT: auto-disabled strategy=%s sharpe=%s num_trades=%s reason=%s",
+                    entry["strategy"], entry["sharpe"], entry["num_trades"], entry["reason"],
+                )
+            await self._memory.write("auto_disabled", {
+                "strategies": names_to_disable,
+                "audit": audit_entries,
+            })
 
     # ── LLM improvement pass ──────────────────────────────────────────────────
 

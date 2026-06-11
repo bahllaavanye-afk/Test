@@ -3,7 +3,7 @@ name: Slack Team — bootstrap, invite admin, employee discussion
 # Runs from the DEFAULT branch (main) so cron actually fires.
 # 1. Bootstrap: create all channels + invite the admin (bahl.laavanye@gmail.com)
 # 2. Agent team: each AI "employee" reads repo state and posts to their desk
-# 3. Fires on schedule (4x/day), on push to main, and manually.
+# 3. Fires on schedule (hourly at :15, 24x/day), on push to main, and manually.
 #
 # Requires secret: SLACK_BOT_TOKEN (xoxb-...) with scopes:
 #   chat:write, chat:write.public, chat:write.customize,
@@ -11,7 +11,7 @@ name: Slack Team — bootstrap, invite admin, employee discussion
 
 on:
   schedule:
-    - cron: "15 * * * *"   # 4x daily
+    - cron: "15 * * * *"   # hourly at :15 (24x/day)
   push:
     branches: [main]
     paths:

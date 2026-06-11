@@ -6,7 +6,7 @@ name: Slack Agent Team — real engineering work, real reports
 # username + emoji avatar). Some agents reply in threads to others.
 #
 # Two ways to run:
-#   1) Scheduled: 4x/day (09:15, 13:15, 17:15, 21:15 UTC). Needs SLACK_BOT_TOKEN secret.
+#   1) Scheduled: hourly at :15 (24x/day). Needs SLACK_BOT_TOKEN secret.
 #   2) Manual:    Actions tab → this workflow → Run workflow, paste a token.
 on:
   schedule:
