@@ -123,9 +123,42 @@ def apply_and_push(files: list[dict]) -> list[str]:
     if r.returncode == 0:
         return []
 
+    # Create a fix branch from main and open a PR for review
+    fix_branch = f"fix/backend-team-{int(time.time())}"
+    subprocess.run(["git", "fetch", "origin", "main"], cwd=REPO_ROOT, capture_output=True)
+    subprocess.run(["git", "stash"], cwd=REPO_ROOT, capture_output=True)
+    subprocess.run(["git", "checkout", "-b", fix_branch, "origin/main"], cwd=REPO_ROOT, capture_output=True)
+    subprocess.run(["git", "stash", "pop"], cwd=REPO_ROOT, capture_output=True)
+    subprocess.run(["git", "add"] + patched, cwd=REPO_ROOT, check=True)
     commit_msg = f"fix(auto): backend team auto-fix [{', '.join(patched)}]"
     subprocess.run(["git", "commit", "-m", commit_msg], cwd=REPO_ROOT, check=True)
-    subprocess.run(["git", "push", "origin", BRANCH], cwd=REPO_ROOT, check=True)
+    push_result = subprocess.run(
+        ["git", "push", "origin", f"HEAD:{fix_branch}"],
+        cwd=REPO_ROOT, capture_output=True,
+    )
+    # Open a PR if GH_TOKEN is available
+    gh_token = os.environ.get("GH_TOKEN", "")
+    gh_repo = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
+    if push_result.returncode == 0 and gh_token:
+        try:
+            import urllib.request
+            body = json.dumps({
+                "title": f"fix(auto): backend team auto-fix [{', '.join(patched[:3])}]",
+                "body": "Automated backend audit fix.\n\nPlease review before merging.",
+                "head": fix_branch,
+                "base": "main",
+            }).encode()
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{gh_repo}/pulls",
+                data=body, method="POST",
+                headers={"Authorization": f"Bearer {gh_token}", "Content-Type": "application/json",
+                         "Accept": "application/vnd.github+json"},
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                pr = json.loads(resp.read())
+                print(f"  [backend-team] Opened PR: {pr.get('html_url', '')}")
+        except Exception as e:
+            print(f"  [backend-team] PR creation failed: {e}")
     return patched
 
 
