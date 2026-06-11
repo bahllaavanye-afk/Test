@@ -1,7 +1,3 @@
-# QuantEdge Platform — Institutional-Grade Quantitative Trading
-# Version: 1.0.0  |  Mode: paper (live trading permanently disabled)
-# Config loaded from environment variables via Pydantic BaseSettings
-# TRADING_MODE defaults to "paper" — live mode is permanently disabled
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
 import os as _os
@@ -35,7 +31,7 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def _normalise_database_url(cls, values: dict) -> dict:
-        """Render and Supabase provide postgres:// — SQLAlchemy async needs postgresql+asyncpg://."""
+        # Render/Supabase provide postgres:// — asyncpg needs postgresql+asyncpg://
         url = values.get("database_url", "")
         if isinstance(url, str):
             if url.startswith("postgres://"):

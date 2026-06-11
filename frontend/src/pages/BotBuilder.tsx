@@ -29,9 +29,7 @@ import {
   ExitRuleConfig,
 } from '../api/bots'
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 type ViewMode = 'build' | 'list'
 
@@ -41,9 +39,7 @@ interface SectionProps {
   defaultOpen?: boolean
 }
 
-// ---------------------------------------------------------------------------
 // Collapsible Section
-// ---------------------------------------------------------------------------
 
 function Section({ title, children, defaultOpen = true }: SectionProps) {
   const [open, setOpen] = useState(defaultOpen)
@@ -61,9 +57,7 @@ function Section({ title, children, defaultOpen = true }: SectionProps) {
   )
 }
 
-// ---------------------------------------------------------------------------
 // Field helpers
-// ---------------------------------------------------------------------------
 
 function Label({ children }: { children: React.ReactNode }) {
   return <label className="block text-xs text-[#888] mb-1 font-mono uppercase tracking-widest">{children}</label>
@@ -118,9 +112,7 @@ function Select({
   )
 }
 
-// ---------------------------------------------------------------------------
 // Default form state
-// ---------------------------------------------------------------------------
 
 function defaultForm(): BotCreate {
   return {
@@ -137,9 +129,7 @@ function defaultForm(): BotCreate {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Signal badge
-// ---------------------------------------------------------------------------
 
 function SignalBadge({ signal }: { signal: string | null }) {
   if (!signal) return <span className="text-[#555] text-xs font-mono">—</span>
@@ -157,9 +147,7 @@ function SignalBadge({ signal }: { signal: string | null }) {
   )
 }
 
-// ---------------------------------------------------------------------------
 // BotBuilder page
-// ---------------------------------------------------------------------------
 
 export default function BotBuilder() {
   const queryClient = useQueryClient()
@@ -415,9 +403,7 @@ export default function BotBuilder() {
   )
 }
 
-// ---------------------------------------------------------------------------
 // Build view
-// ---------------------------------------------------------------------------
 
 interface BuildViewProps {
   form: BotCreate
@@ -679,9 +665,7 @@ function BuildView({
   )
 }
 
-// ---------------------------------------------------------------------------
 // Trigger editor
-// ---------------------------------------------------------------------------
 
 function TriggerEditor({ trigger, onChange }: { trigger: TriggerConfig; onChange: (t: TriggerConfig) => void }) {
   return (
@@ -793,9 +777,7 @@ function TriggerEditor({ trigger, onChange }: { trigger: TriggerConfig; onChange
   )
 }
 
-// ---------------------------------------------------------------------------
 // Condition row
-// ---------------------------------------------------------------------------
 
 function ConditionRow({
   cond,
@@ -949,9 +931,7 @@ function ConditionRow({
   )
 }
 
-// ---------------------------------------------------------------------------
 // Action editor
-// ---------------------------------------------------------------------------
 
 function ActionEditor({ action, onChange }: { action: ActionConfig; onChange: (a: ActionConfig) => void }) {
   return (
@@ -1028,9 +1008,7 @@ function ActionEditor({ action, onChange }: { action: ActionConfig; onChange: (a
   )
 }
 
-// ---------------------------------------------------------------------------
 // Exit rule row
-// ---------------------------------------------------------------------------
 
 function ExitRuleRow({
   rule,
@@ -1120,9 +1098,7 @@ function ExitRuleRow({
   )
 }
 
-// ---------------------------------------------------------------------------
 // List view
-// ---------------------------------------------------------------------------
 
 interface ListViewProps {
   bots: BotOut[]

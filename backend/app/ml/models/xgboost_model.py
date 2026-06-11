@@ -1,7 +1,4 @@
-"""
-XGBoost binary classifier with Optuna hyperparameter optimization.
-SHAP-based explainability built in.
-"""
+"""XGBoost binary classifier with Optuna HPO and SHAP explainability."""
 import numpy as np
 import json
 from pathlib import Path

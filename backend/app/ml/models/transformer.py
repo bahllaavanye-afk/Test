@@ -1,8 +1,4 @@
-"""
-Temporal Fusion Transformer (Lim et al., 2021).
-State-of-the-art for multi-horizon time series forecasting.
-Attention mechanism provides interpretable feature importance per timestep.
-"""
+"""Temporal Fusion Transformer (Lim et al., 2021) for multi-horizon forecasting."""
 from __future__ import annotations
 try:
     import torch

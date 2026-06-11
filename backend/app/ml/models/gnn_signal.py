@@ -1,17 +1,4 @@
-"""
-Graph Neural Network signal generator for cross-asset correlation.
-
-Based on: "Temporal Graph Networks for Stock Market Prediction" (2025)
-Nodes: individual assets
-Edges: rolling correlation > threshold (dynamic graph)
-Message passing: each node aggregates neighbour signals
-Output: refined directional signal incorporating cross-asset context
-
-Key insight: if AAPL starts falling AND MSFT (correlated) is also falling,
-the GNN has stronger sell confidence than LSTM alone.
-
-Requires: torch_geometric (optional — falls back gracefully if not installed)
-"""
+"""GNN signal generator for cross-asset correlation (torch_geometric optional)."""
 import numpy as np
 import pandas as pd
 

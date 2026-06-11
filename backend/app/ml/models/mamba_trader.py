@@ -1,38 +1,4 @@
-"""
-MambaTrader — Selective State Space Model (Mamba / S6, Gu & Dao, NeurIPS 2023).
-
-Pure PyTorch implementation; no mamba-ssm CUDA package required.
-Sequences are capped at 500 steps, so the sequential scan is fast enough
-without a custom CUDA kernel.
-
-Core S6 (Selective SSM) mechanics per time step t:
-  h_t = Ā_t ⊙ h_{t-1} + B̄_t ⊙ (x_t expanded)
-  y_t = C_t · h_t  +  D ⊙ x_t          (skip connection)
-
-where the discretisation Ā_t / B̄_t and the inputs B_t, C_t, Δ_t are all
-*input-dependent* (hence "selective").
-
-Architecture:
-  Input projection: n_features → d_model
-  N × MambaBlock (each block):
-    LayerNorm (Pre-LN)
-    in_proj: d_model → 2·d_inner  →  z (gate), x (main branch)
-    conv1d (depthwise, kernel=d_conv, padding=d_conv-1): d_inner → d_inner
-    x_proj: d_inner → (d_state + d_state + 1)  →  B_raw, C_raw, Δ_raw
-    dt_proj: 1 → d_inner  (Δ after softplus)
-    A_log: (d_inner, d_state)  HiPPO-style: log(-A)
-    D:     (d_inner,)           skip
-    SSM sequential scan → y: (B, T, d_inner)
-    Gate: y = y ⊙ SiLU(z)
-    out_proj: d_inner → d_model
-    Residual: output + input
-  Mean-pool over time → LayerNorm → Linear(d_model, 1) → squeeze → (B,)
-  (raw logits; BCEWithLogitsLoss in training, sigmoid in predict_proba)
-
-Exports:
-  MambaTrader   — model class
-  train(...)    — async training entry point matching train_lstm.py API
-"""
+"""MambaTrader — Selective SSM (Gu & Dao, NeurIPS 2023), pure PyTorch, no CUDA kernel required."""
 from __future__ import annotations
 
 import math
