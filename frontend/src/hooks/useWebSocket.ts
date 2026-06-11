@@ -2,11 +2,16 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 export type WSMessage = { type: string; [key: string]: unknown }
 
-export function useWebSocket(path: string, enabled = true) {
+const MAX_RECONNECT_ATTEMPTS = 10
+const BASE_DELAY_MS = 1000
+const MAX_DELAY_MS = 30000
+
+export function useWebSocket(path: string, enabled = true, shouldReconnect = true) {
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null)
   const [connected, setConnected] = useState(false)
   const ws = useRef<WebSocket | null>(null)
-  const reconnectDelay = useRef(1000)
+  const reconnectDelay = useRef(BASE_DELAY_MS)
+  const reconnectAttempts = useRef(0)
   // Track whether the hook is still mounted to avoid state updates after unmount
   const mounted = useRef(true)
 
@@ -18,7 +23,9 @@ export function useWebSocket(path: string, enabled = true) {
     ws.current.onopen = () => {
       if (!mounted.current) return
       setConnected(true)
-      reconnectDelay.current = 1000
+      // Reset backoff on successful connection
+      reconnectDelay.current = BASE_DELAY_MS
+      reconnectAttempts.current = 0
     }
 
     ws.current.onmessage = (e) => {
@@ -33,16 +40,22 @@ export function useWebSocket(path: string, enabled = true) {
     ws.current.onclose = () => {
       if (!mounted.current) return
       setConnected(false)
-      const delay = Math.min(reconnectDelay.current, 30000)
-      setTimeout(connect, delay)
-      reconnectDelay.current *= 2
+      if (
+        shouldReconnect &&
+        reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS
+      ) {
+        const delay = Math.min(reconnectDelay.current, MAX_DELAY_MS)
+        setTimeout(connect, delay)
+        reconnectDelay.current = Math.min(reconnectDelay.current * 2, MAX_DELAY_MS)
+        reconnectAttempts.current += 1
+      }
     }
 
     ws.current.onerror = () => {
       // Let onclose handle reconnect
       ws.current?.close()
     }
-  }, [path, enabled])
+  }, [path, enabled, shouldReconnect])
 
   useEffect(() => {
     mounted.current = true
