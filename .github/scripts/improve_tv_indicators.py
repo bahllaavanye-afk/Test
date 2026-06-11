@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, slack_post, memory_write
 
 REPO_ROOT = Path(__file__).parent.parent
-BRANCH    = "claude/advanced-trading-bot-d5Lmw"
+BRANCH    = "main"
 TV_FILE   = REPO_ROOT / "backend/app/strategies/manual/tv_indicators.py"
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 

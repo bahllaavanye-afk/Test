@@ -10029,7 +10029,7 @@ def review_gemini_changes_main() -> int:
     if syntax_errors and os.environ.get("AUTO_REVERT", "false").lower() == "true":
         print(f"[review] AUTO_REVERT: reverting last commit due to syntax errors")
         subprocess.run(["git", "revert", "--no-edit", "HEAD"], cwd=str(REPO_ROOT))
-        subprocess.run(["git", "push", "origin", "HEAD:claude/advanced-trading-bot-d5Lmw"],
+        subprocess.run(["git", "push", "origin", "HEAD:main"],
                        cwd=str(REPO_ROOT))
         if token:
             post_to_slack(token, "incidents",

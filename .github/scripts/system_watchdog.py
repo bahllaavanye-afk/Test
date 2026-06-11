@@ -29,7 +29,7 @@ DEEPSEEK_KEYS   = [k for k in [
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 GH_TOKEN        = os.environ.get("GH_TOKEN", "")
 GH_REPO         = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
-BRANCH          = "claude/advanced-trading-bot-d5Lmw"
+BRANCH          = "main"
 
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)

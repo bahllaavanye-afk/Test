@@ -101,7 +101,7 @@ def main():
         "",
         "Platform stack: FastAPI + SQLAlchemy async backend. React 18 + TypeScript frontend.",
         "ML: PyTorch (LSTM, TFT, XGBoost, Lorentzian KNN, SSM). Brokers: Alpaca, Binance, Polymarket.",
-        "You operate 24/7 via GitHub Actions. Branch: claude/advanced-trading-bot-d5Lmw.",
+        "You operate 24/7 via GitHub Actions. Branch: main.",
         "",
         "Speak as this agent in first person. Be concise, technical, specific.",
         "Reference actual file paths and function names. No disclaimers.",
