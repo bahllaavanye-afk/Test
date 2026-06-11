@@ -554,6 +554,13 @@ async def main() -> None:
                 desk  = item["desk"]
                 conf  = item["confidence"]
                 sname = item["strategy"].name
+
+                # Regime gate: skip strategies not allowed in current regime
+                allowed_regimes = _STRATEGY_REGIME_MAP.get(sname, _DEFAULT_REGIMES)
+                if current_regime not in allowed_regimes:
+                    print(f"  · {sname}/{item['symbol']} skipped — regime {_REGIME_NAMES[current_regime]} not in {[_REGIME_NAMES[r] for r in allowed_regimes]}", flush=True)
+                    continue
+
                 # Use auto-tuned threshold if available, floored at desk minimum
                 threshold = max(_TUNED_THRESHOLDS.get(sname, desk.confidence_min), desk.confidence_min)
                 if conf < threshold:
