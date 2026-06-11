@@ -134,8 +134,8 @@ class InferenceService:
                     )
                     if gemini_prob is not None:
                         predictions["gemini"] = gemini_prob
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Gemini model prediction failed", error=str(e))
 
             if not predictions:
                 return None

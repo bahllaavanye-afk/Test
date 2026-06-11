@@ -326,7 +326,14 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "mode": "paper", "version": "1.0.0", "agents": "active"}
+        return {
+            "status": "ok",
+            "platform": "QuantEdge",
+            "version": "1.0.0",
+            "mode": "paper",
+            "live_trading": False,
+            "agents": "active",
+        }
 
     @app.get("/health/detailed")
     async def health_detailed():
