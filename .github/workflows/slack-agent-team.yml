@@ -100,12 +100,14 @@ jobs:
         run: |
           git config user.email "agents@quantedge.ai"
           git config user.name "QuantEdge Agent Team"
-          STATE_FILE=".github/state/slack_state.json"
-          if [ -f "$STATE_FILE" ]; then
-            git add "$STATE_FILE"
+          STATE_DIR=".github/state"
+          if [ -d "$STATE_DIR" ] && [ -n "$(ls -A $STATE_DIR)" ]; then
+            git add "$STATE_DIR"
             git diff --cached --quiet || git commit -m "chore: persist agent state [skip ci]"
+            git stash --include-untracked --quiet || true
             for i in 1 2 3 4; do
               git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
             done
+            git stash pop --quiet || true
             git push -u origin claude/advanced-trading-bot-d5Lmw || true
           fi

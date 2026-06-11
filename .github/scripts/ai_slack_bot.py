@@ -30,7 +30,17 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import anthropic
+# Zero-spend policy: Anthropic API must never be called in CI or automated runs.
+if os.environ.get("ALLOW_PAID_APIS", "False").lower() == "true":
+    print("ALLOW_PAID_APIS=True is not permitted — exiting.")
+    sys.exit(1)
+
+try:
+    import anthropic
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _ANTHROPIC_AVAILABLE = False
+
 import httpx
 
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")

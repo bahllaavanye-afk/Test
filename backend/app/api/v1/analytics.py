@@ -1232,46 +1232,87 @@ async def get_tearsheet(
 
 @router.get("/live-stats")
 async def get_live_stats(db: AsyncSession = Depends(get_db)):
-    """Public endpoint for Landing page — real platform metrics."""
-    import glob
+    """Public endpoint for Landing page — real platform metrics.
 
-    # Strategy count from file system
-    manual = glob.glob("app/strategies/manual/*.py")
-    ml = glob.glob("app/strategies/ml_enhanced/*.py")
-    strategy_count = len([f for f in manual + ml if "__init__" not in f])
+    Returns null for performance metrics (Sharpe, win_rate, max_drawdown) when
+    there is insufficient trade history rather than fabricated values.
+    """
+    from pathlib import Path as _Path
+    _strategies_root = _Path(__file__).parents[3] / "app" / "strategies"
+    _models_root = _Path(__file__).parents[3] / "app" / "ml" / "models"
 
-    # Model count
-    model_files = glob.glob("app/ml/models/*.py")
-    model_count = len([f for f in model_files if "__init__" not in f and "base" not in f])
+    manual_files = list((_strategies_root / "manual").glob("*.py")) if (_strategies_root / "manual").exists() else []
+    ml_files = list((_strategies_root / "ml_enhanced").glob("*.py")) if (_strategies_root / "ml_enhanced").exists() else []
+    strategy_count = len([f for f in manual_files + ml_files if "__init__" not in f.name])
 
-    # Trade stats from DB
+    model_files = list(_models_root.glob("*.py")) if _models_root.exists() else []
+    model_count = len([f for f in model_files if "__init__" not in f.name and "base" not in f.name])
+
+    # Compute real metrics from last-30d trade history
+    sharpe_ratio = None
+    max_drawdown_pct = None
+    win_rate_pct = None
+    total_trades = 0
+
     try:
-        from sqlalchemy import func, select
+        import math as _math
+        from sqlalchemy import case, func, select
         from app.models.trade import Trade
-        result = await db.execute(
-            select(
-                func.count(Trade.id).label("total_trades"),
-                func.avg(Trade.realized_pnl).label("avg_pnl"),
-            )
-        )
-        row = result.first()
-        total_trades = row.total_trades or 0
-        avg_pnl = float(row.avg_pnl or 0)
-    except Exception:
-        total_trades = 0
-        avg_pnl = 0
 
-    win_rate = 68.0  # computed from trades when available
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+
+        # Total trade count + win rate
+        stats = await db.execute(
+            select(
+                func.count(Trade.id).label("total"),
+                func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
+            ).where(Trade.closed_at >= thirty_days_ago)
+        )
+        stats_row = stats.first()
+        total_trades = int(stats_row.total or 0)
+        if total_trades >= 10:
+            win_rate_pct = round(float(stats_row.wins or 0) / total_trades * 100, 1)
+
+        # Daily PnL for Sharpe + max drawdown (requires >= 10 trading days)
+        daily = await db.execute(
+            select(
+                func.date_trunc("day", Trade.closed_at).label("day"),
+                func.sum(Trade.realized_pnl).label("daily_pnl"),
+            )
+            .where(Trade.closed_at >= thirty_days_ago)
+            .group_by(func.date_trunc("day", Trade.closed_at))
+            .order_by(func.date_trunc("day", Trade.closed_at))
+        )
+        daily_rows = daily.all()
+        if len(daily_rows) >= 10:
+            pnls = [float(r.daily_pnl or 0) for r in daily_rows]
+            mean_d = sum(pnls) / len(pnls)
+            variance = sum((x - mean_d) ** 2 for x in pnls) / len(pnls)
+            std_d = variance ** 0.5
+            sharpe_ratio = round((mean_d / std_d * _math.sqrt(252)) if std_d > 0 else 0.0, 2)
+
+            # Max drawdown via running equity curve (start at 0)
+            peak = 0.0
+            equity = 0.0
+            max_dd = 0.0
+            for pnl in pnls:
+                equity += pnl
+                if equity > peak:
+                    peak = equity
+                dd = (equity - peak) / max(abs(peak), 1e-9) * 100
+                if dd < max_dd:
+                    max_dd = dd
+            max_drawdown_pct = round(max_dd, 1)
+    except Exception:
+        pass
 
     return {
-        "sharpe_ratio": 2.1,
-        "max_drawdown_pct": 14.7,
-        "win_rate_pct": win_rate,
-        "strategy_count": max(strategy_count, 60),
-        "model_count": max(model_count, 7),
+        "sharpe_ratio": sharpe_ratio,
+        "max_drawdown_pct": max_drawdown_pct,
+        "win_rate_pct": win_rate_pct,
+        "strategy_count": strategy_count,
+        "model_count": model_count,
         "total_trades": total_trades,
-        "platform_status": "live",
-        "trading_mode": "paper",
     }
 
 

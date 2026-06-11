@@ -945,7 +945,7 @@ def call_best_agent_for_task(
         for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
             key = os.environ.get(env_var, "").strip()
             if key:
-                r = call_litellm("gemini/gemini-2.0-flash-exp", key, safe_sys, safe_prompt, cap)
+                r = call_litellm("gemini/gemini-2.5-flash", key, safe_sys, safe_prompt, cap)
                 if r and len(r.strip()) > 20:
                     _LAST_PROVIDER = "litellm:gemini"
                     return r.strip(), "litellm:gemini"
@@ -1752,7 +1752,7 @@ def call_openrouter(system_prompt: str, user_message: str, max_tokens: int = 500
 
 
 def call_litellm(model: str, api_key: str, system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash-exp', 'groq/llama-3.3-70b-versatile', etc."""
+    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.5-flash', 'groq/llama-3.3-70b-versatile', etc."""
     if not _LITELLM_AVAILABLE:
         return None
     hostname = model.split("/")[0]
@@ -1789,7 +1789,7 @@ def call_claude_for_review(system_prompt: str, user_message: str, max_tokens: in
     if not api_key:
         return "", "no-anthropic-key"
     payload = {
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-haiku-4-5-20250514",
         "max_tokens": max_tokens,
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_message}],
@@ -1835,7 +1835,7 @@ def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) ->
     if not api_key:
         return None
     payload = {
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-haiku-4-5-20250514",
         "max_tokens": min(max_tokens, MAX_TOKENS_PER_CALL),
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_message}],
