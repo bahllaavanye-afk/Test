@@ -68,22 +68,7 @@ export default function Comparison() {
   })
   const { data: benchmarksData, isLoading: benchmarksLoading } = useQuery<BenchmarkRow[]>({
     queryKey: ['comparison-benchmarks'],
-    queryFn: () => api.get('/comparison/benchmarks').then(r => {
-      const raw = r.data
-      if (Array.isArray(raw)) return raw
-      const COLORS: Record<string, string> = {
-        'SPY': '#2196F3', 'QQQ': '#9C27B0', 'BRK-B': '#FF9800', 'ALL_WEATHER': '#4CAF50',
-      }
-      return Object.entries(raw).map(([ticker, b]: [string, any]) => ({
-        name: b.name ?? ticker,
-        annualReturn: b.annual_return ?? 0,
-        sharpe: b.sharpe ?? 0,
-        maxDd: b.max_dd ?? 0,
-        ytd: b.annual_return ?? 0,
-        color: COLORS[ticker] ?? '#888888',
-        isUs: false,
-      }))
-    }),
+    queryFn: () => api.get('/comparison/benchmarks').then(r => r.data),
     refetchInterval: 300_000,
   })
 

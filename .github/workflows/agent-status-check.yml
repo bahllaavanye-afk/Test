@@ -43,8 +43,6 @@ jobs:
           SAMBANOVA_API_KEY:    ${{ secrets.SAMBANOVA_API_KEY_1 }}
           CEREBRAS_API_KEY:     ${{ secrets.CEREBRAS_API_KEY_1 }}
           HYPERBOLIC_API_KEY:   ${{ secrets.HYPERBOLIC_API_KEY_1 }}
-          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
-          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY_1 }}
           SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
@@ -70,18 +68,18 @@ jobs:
         run: |
           echo "## Agent Status Check — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           python3 -c "
-          import json, pathlib
-          try:
-              s = json.loads(pathlib.Path('.github/state/agent_status.json').read_text())
-              print(f'- Total agents: {s[\"total_agents\"]}')
-              print(f'- Batch checked: {s[\"batch_checked\"]}')
-              print(f'- Total runs across all agents: {s[\"total_runs\"]}')
-              print(f'- Platform success rate: {s[\"success_rate_pct\"]}%')
-              print(f'- Shared skills: {s[\"skill_count\"]}')
-              print()
-              print('### Agent Reports')
-              for a in s.get('agent_statuses', []):
-                  print(f'- {a[\"emoji\"]} **{a[\"agent\"]}**: {a[\"reply\"][:100]}')
-          except Exception as e:
-              print(f'Could not parse status: {e}')
-          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+import json, pathlib
+try:
+    s = json.loads(pathlib.Path('.github/state/agent_status.json').read_text())
+    print(f'- Total agents: {s[\"total_agents\"]}')
+    print(f'- Batch checked: {s[\"batch_checked\"]}')
+    print(f'- Total runs across all agents: {s[\"total_runs\"]}')
+    print(f'- Platform success rate: {s[\"success_rate_pct\"]}%')
+    print(f'- Shared skills: {s[\"skill_count\"]}')
+    print()
+    print('### Agent Reports')
+    for a in s.get('agent_statuses', []):
+        print(f'- {a[\"emoji\"]} **{a[\"agent\"]}**: {a[\"reply\"][:100]}')
+except Exception as e:
+    print(f'Could not parse status: {e}')
+" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

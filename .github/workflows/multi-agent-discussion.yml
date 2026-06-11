@@ -49,8 +49,6 @@ jobs:
           SAMBANOVA_API_KEY:    ${{ secrets.SAMBANOVA_API_KEY_1 }}
           CEREBRAS_API_KEY:     ${{ secrets.CEREBRAS_API_KEY_1 }}
           HYPERBOLIC_API_KEY:   ${{ secrets.HYPERBOLIC_API_KEY_1 }}
-          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
-          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
           SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
           FORCE_CHANNEL:        ${{ github.event.inputs.channel }}
@@ -76,12 +74,12 @@ jobs:
         run: |
           echo "## Multi-Agent Discussion — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           python3 -c "
-          import json, pathlib
-          m = json.loads(pathlib.Path('.github/state/agent_memory.json').read_text())
-          pl = m.get('peer_learnings', [])
-          pm = m.get('platform_metrics', {})
-          print(f'- Total discussions run: {pm.get(\"total_discussions\", 0)}')
-          print(f'- Peer learnings in memory: {len(pl)}')
-          if pl:
-              print(f'- Latest: {pl[-1][:100]}')
-          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+import json, pathlib
+m = json.loads(pathlib.Path('.github/state/agent_memory.json').read_text())
+pl = m.get('peer_learnings', [])
+pm = m.get('platform_metrics', {})
+print(f'- Total discussions run: {pm.get(\"total_discussions\", 0)}')
+print(f'- Peer learnings in memory: {len(pl)}')
+if pl:
+    print(f'- Latest: {pl[-1][:100]}')
+" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

@@ -3,7 +3,7 @@ name: Gemini Free Cloud ML Training
 on:
   schedule:
     # Run daily at 01:00 UTC (before nightly retrain at 02:00)
-    - cron: "0 */4 * * *"
+    - cron: "0 1 * * *"
   workflow_dispatch:
     inputs:
       symbol:
@@ -31,46 +31,25 @@ jobs:
         working-directory: backend
 
     steps:
-      - name: Check API key configured
-        id: key_check
-        working-directory: ${{ github.workspace }}
-        run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "GEMINI_API_KEY not configured — skipping"
-            echo "has_key=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_key=true" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
-
       - uses: actions/checkout@v4
-        with:
-          ref: claude/advanced-trading-bot-d5Lmw
-          token: ${{ secrets.GITHUB_TOKEN }}
-        if: steps.key_check.outputs.has_key == 'true'
 
       - uses: actions/setup-python@v5
-        if: steps.key_check.outputs.has_key == 'true'
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install deps
-        if: steps.key_check.outputs.has_key == 'true'
-        working-directory: ${{ github.workspace }}
         run: |
-          pip install --quiet \
+          pip install uv --quiet
+          uv pip install --system \
             'google-generativeai>=0.8.0' \
             'yfinance>=0.2.0' 'pandas>=2.2.0' 'numpy>=1.26.0' \
             'pydantic-settings>=2.6.0' 'python-dotenv>=1.0.1' \
             'structlog>=24.4.0' 'pyyaml>=6.0'
 
       - name: Train all symbols with Gemini
-        if: steps.key_check.outputs.has_key == 'true'
-        continue-on-error: true
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PYTHONPATH: "."
         run: |
           SYMBOL="${{ github.event.inputs.symbol || 'all' }}"
@@ -82,7 +61,7 @@ jobs:
           fi
 
       - name: Show results summary
-        if: steps.key_check.outputs.has_key == 'true'
+        if: always()
         run: |
           echo "## Gemini Training Results" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -101,9 +80,7 @@ print(f'  status: {d.get(\"status\",\"?\")}')
           fi
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Push changes
-        continue-on-error: true
-        if: steps.key_check.outputs.has_key == 'true'
+      - name: Commit result files
         run: |
           cd ..
           git config user.email "gemini-trainer@quantedge.ai"
@@ -111,10 +88,7 @@ print(f'  status: {d.get(\"status\",\"?\")}')
           git add experiments/results/*.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "feat(ml): Gemini cloud training results — $(date -u '+%Y-%m-%d')"
-            for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-            done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git push origin HEAD:main || echo "Push skipped (not on main)"
           else
             echo "No new results to commit"
           fi

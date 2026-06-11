@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
@@ -51,19 +51,11 @@ jobs:
             'pydantic>=2.10.0' 'pyyaml>=6.0' \
             'structlog>=24.4.0'
 
-      - name: Generate new strategies via Gemini + Claude
+      - name: Generate new strategies via Gemini
         id: generate
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
           ANTHROPIC_API_KEY: "disabled"
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
-          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
-          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           MARKET_TYPE: ${{ github.event.inputs.market_type || 'auto' }}
           N_STRATEGIES: ${{ github.event.inputs.n_strategies || '1' }}
         run: python .github/scripts/strategy_generator.py
@@ -104,9 +96,9 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "feat(strategies): autonomous strategy generation — $(date -u '+%Y-%m-%d')"
             for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+              git pull --rebase --quiet origin main && break || sleep $((i*2))
             done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git push -u origin main || true
           else
             echo "No new strategies generated"
           fi

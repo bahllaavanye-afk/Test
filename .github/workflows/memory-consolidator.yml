@@ -43,8 +43,6 @@ jobs:
           SAMBANOVA_API_KEY:    ${{ secrets.SAMBANOVA_API_KEY_1 }}
           CEREBRAS_API_KEY:     ${{ secrets.CEREBRAS_API_KEY_1 }}
           HYPERBOLIC_API_KEY:   ${{ secrets.HYPERBOLIC_API_KEY_1 }}
-          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
-          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY_1 }}
           ALLOW_PAID_APIS:      "False"
@@ -69,14 +67,14 @@ jobs:
         run: |
           echo "## Memory Consolidation — $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           python3 -c "
-          import json, pathlib
-          try:
-              kb = json.loads(pathlib.Path('.github/state/knowledge_base.json').read_text())
-              print(f'- Learnings processed: {kb.get(\"total_learnings_processed\", 0)}')
-              print(f'- Topics: {list(kb.get(\"topics\", {}).keys())}')
-              for t, d in kb.get(\"topics\", {}).items():
-                  print(f'\n### {t} ({d[\"source_count\"]} entries)')
-                  print(d[\"summary\"][:200])
-          except Exception as e:
-              print(f'Error: {e}')
-          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+import json, pathlib
+try:
+    kb = json.loads(pathlib.Path('.github/state/knowledge_base.json').read_text())
+    print(f'- Learnings processed: {kb.get(\"total_learnings_processed\", 0)}')
+    print(f'- Topics: {list(kb.get(\"topics\", {}).keys())}')
+    for t, d in kb.get(\"topics\", {}).items():
+        print(f'\n### {t} ({d[\"source_count\"]} entries)')
+        print(d[\"summary\"][:200])
+except Exception as e:
+    print(f'Error: {e}')
+" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

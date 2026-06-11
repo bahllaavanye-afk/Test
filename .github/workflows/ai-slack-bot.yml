@@ -6,7 +6,7 @@ name: QuantEdge AI Slack Bot
 
 on:
   schedule:
-    - cron: "0 9,13,17,21 * * *"   # 4x daily (9am, 1pm, 5pm, 9pm UTC)
+    - cron: "0 * * * *"   # 4x daily (9am, 1pm, 5pm, 9pm UTC)
   push:
     branches:
       - claude/advanced-trading-bot-d5Lmw
@@ -55,8 +55,8 @@ jobs:
             echo "::warning::SLACK_BOT_TOKEN not set — Slack notifications skipped (add to repo Secrets to enable)"
             exit 0
           fi
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "::warning::ANTHROPIC_API_KEY not set — AI insights skipped (add to repo Secrets to enable)"
+          if [ -z "$ANTHROPIC_API_KEY" ] || [ "$ANTHROPIC_API_KEY" = "disabled" ]; then
+            echo "::warning::ANTHROPIC_API_KEY disabled — AI insights skipped (add to repo Secrets to enable)"
             exit 0
           fi
           python .github/scripts/ai_slack_bot.py proactive
