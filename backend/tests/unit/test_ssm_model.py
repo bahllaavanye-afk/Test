@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import torch
 
+torch = pytest.importorskip("torch", reason="torch not installed")
 
 try:
     from app.ml.models.ssm_model import SelectiveSSM, SSMPredictor

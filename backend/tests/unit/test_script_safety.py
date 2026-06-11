@@ -157,7 +157,7 @@ class TestBranchConstant:
         "render_auto_fix.py",
         "strategy_generator.py",
     ]
-    EXPECTED_BRANCH = "claude/advanced-trading-bot-d5Lmw"
+    EXPECTED_BRANCH = "main"
 
     @pytest.mark.parametrize("script_name", SCRIPTS_WITH_BRANCH)
     def test_correct_branch(self, script_name):
@@ -288,7 +288,7 @@ class TestSlackBootstrap:
 
 class TestWorkflowYamls:
     WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
-    EXPECTED_BRANCH = "claude/advanced-trading-bot-d5Lmw"
+    EXPECTED_BRANCH = "main"
 
     def _get_workflow_files(self) -> list[Path]:
         return list(self.WORKFLOWS_DIR.glob("*.yml"))

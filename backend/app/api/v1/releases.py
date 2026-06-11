@@ -448,12 +448,12 @@ async def promote_to_champion(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> ReleaseOut:
-    """
-    Promote a shadow or challenger release to champion.
-
-    The old champion is atomically archived in the same transaction.
-    The router snapshot is invalidated so traffic shifts immediately.
-    """
+    """Promote-to-live is permanently disabled — platform is paper-only."""
+    raise HTTPException(
+        403,
+        "Promote-to-live is disabled: QuantEdge runs in paper mode only. "
+        "Remove PAPER_ONLY_POLICY=true from config to re-enable (not recommended).",
+    )
     release = await _get_release(release_id, db)
 
     if release.status not in ("challenger", "shadow", "registered"):

@@ -3,7 +3,7 @@ name: Claude ↔ Employee Conversations
 on:
   schedule:
     # Claude talks to all employees every 2 hours — no downtime
-    - cron: "0 * * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       channel:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
+          ref: main
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
@@ -51,16 +51,18 @@ jobs:
           SAMBANOVA_API_KEY:  ${{ secrets.SAMBANOVA_API_KEY_1 }}
           CEREBRAS_API_KEY:   ${{ secrets.CEREBRAS_API_KEY_1 }}
           HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY_1 }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           TOGETHER_API_KEY:   ${{ secrets.TOGETHER_API_KEY_1 }}
           ALLOW_PAID_APIS:    "False"
           PYTHONPATH:         ${{ github.workspace }}/backend
           CHANNEL_OVERRIDE:   ${{ github.event.inputs.channel }}
         run: |
-          ARGS=""
           if [ -n "$CHANNEL_OVERRIDE" ]; then
-            ARGS="--channel $CHANNEL_OVERRIDE"
+            python .github/scripts/claude_conversations.py --channel "$CHANNEL_OVERRIDE"
+          else
+            python .github/scripts/claude_conversations.py --all
           fi
-          python .github/scripts/claude_conversations.py $ARGS --all
 
       - name: Commit updated agent memory
         continue-on-error: true

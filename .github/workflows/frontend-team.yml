@@ -5,7 +5,7 @@ name: Frontend Team — AI-Driven UI Improvements
 
 on:
   schedule:
-    - cron: "0 * * * *"   # Mon/Wed/Fri 3am UTC
+    - cron: "0 3 * * 1,3,5"   # Mon/Wed/Fri 3am UTC
   workflow_dispatch:
     inputs:
       focus:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4

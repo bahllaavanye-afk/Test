@@ -1,4 +1,5 @@
 # QuantEdge Platform — Institutional-Grade Quantitative Trading
+# Version: 1.0.0  |  Mode: paper (live trading permanently disabled)
 # Config loaded from environment variables via Pydantic BaseSettings
 # TRADING_MODE defaults to "paper" — live mode is permanently disabled
 from pydantic_settings import BaseSettings, SettingsConfigDict

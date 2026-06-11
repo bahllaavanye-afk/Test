@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, memory_write
 
 REPO_ROOT   = Path(__file__).parent.parent
-BRANCH      = "claude/advanced-trading-bot-d5Lmw"
+BRANCH      = "main"
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 ALLOW_PAID  = os.environ.get("ALLOW_PAID_APIS", "False")
 STATE_FILE  = REPO_ROOT / ".github" / "state" / "slack_review_state.json"
