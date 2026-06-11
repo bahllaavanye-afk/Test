@@ -6,48 +6,28 @@ from app.models.user import User
 router = APIRouter(prefix="/improvements", tags=["improvements"])
 
 
-def _safe_app_state(attr: str, default=None):
-    """Safely read an attribute from app.state, returning default if not set."""
-    try:
-        from app.main import app
-        state = getattr(app, "state", None)
-        if state is None:
-            return default
-        return getattr(state, attr, default)
-    except Exception:
-        return default
-
-
 @router.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
-    improver = _safe_app_state("self_improver")
-    if improver is not None:
-        try:
-            return improver.get_history()
-        except Exception:
-            pass
+    from app.main import app
+    improver = getattr(app.state, "self_improver", None)
+    if improver:
+        return improver.get_history()
     return []
 
 
 @router.get("/quality")
 async def get_quality(current_user: User = Depends(get_current_user)):
-    loop_ref = _safe_app_state("code_quality_loop")
-    if loop_ref is not None:
-        try:
-            result = loop_ref.latest()
-            if result is not None:
-                return result
-        except Exception:
-            pass
-    return {"status": "unavailable", "metrics": {}}
+    from app.main import app
+    loop_ref = getattr(app.state, "code_quality_loop", None)
+    if loop_ref is None:
+        return {"status": "not_running", "message": "Code quality loop not started"}
+    return loop_ref.latest()
 
 
 @router.get("/best_params")
 async def get_best_params(current_user: User = Depends(get_current_user)):
-    improver = _safe_app_state("self_improver")
-    if improver is not None:
-        try:
-            return improver._best_params or {}
-        except Exception:
-            pass
-    return {}
+    from app.main import app
+    improver = getattr(app.state, "self_improver", None)
+    if improver is None:
+        return {"status": "not_running", "best_params": {}}
+    return {"best_params": getattr(improver, "_best_params", {})}
