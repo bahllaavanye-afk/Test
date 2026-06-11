@@ -17,10 +17,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    // Log to console in dev; in production wire this to your error tracker
-    console.error('[ErrorBoundary]', error, info.componentStack)
-  }
+  componentDidCatch(_error: Error, _info: ErrorInfo) {}
 
   render() {
     if (!this.state.hasError) return this.props.children

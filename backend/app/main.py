@@ -23,8 +23,7 @@ from app.risk.correlation_monitor import correlation_monitor
 
 
 async def _supervised(coro_factory, name: str, restart_delay: int = 30):
-    """Restart a background coroutine if it crashes, with exponential backoff.
-    Delay resets to restart_delay after each successful (non-crashing) run."""
+    """Restart a coroutine on crash with exponential backoff."""
     delay = restart_delay
     while True:
         try:
@@ -46,11 +45,7 @@ async def _validate_alpaca(broker) -> None:
 
 
 async def _slack_startup_catchup() -> None:
-    """
-    On startup: wait 30 s for the app to settle, then post CTO reviews for
-    the last 3 unreviewed messages per joined Slack channel.
-    Keeps the CTO agent live even without an explicit /slack/review-history call.
-    """
+    """Post CTO reviews for recent unreviewed Slack messages on startup."""
     await asyncio.sleep(30)
     from app.config import settings
     from app.api.v1.notifications import _cto_review_message
@@ -163,8 +158,6 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: research_scientist.run(), "research_scientist")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: modeling_engineer.run(), "modeling_engineer")))
 
-    # ── Strategy runner + price feed ──────────────────────────────────────────
-    # Build the Alpaca broker (returns None gracefully when API keys are absent)
     from app.brokers.alpaca import create_alpaca_broker
     alpaca_broker = create_alpaca_broker(paper=settings.is_paper)
     app.state.alpaca_broker = alpaca_broker
@@ -216,8 +209,6 @@ async def lifespan(app: FastAPI):
         for sym in s.get("symbols", [])
     })
 
-    # Price feed — polls broker quotes → Redis + WebSocket
-    # Always started (incl. paper mode); gracefully skips ticks when broker is absent
     from app.tasks.price_feed import run_price_feed
 
     async def _price_feed_wrapper():
@@ -240,8 +231,6 @@ async def lifespan(app: FastAPI):
     ))
     logger.info("Price feed task registered", symbols=len(all_symbols))
 
-    # Strategy runner — one asyncio loop per (strategy, symbol) pair
-    # Always started so strategies run in paper mode too
     from app.tasks.strategy_runner import ContinuousStrategyRunner
     strategy_runner = ContinuousStrategyRunner(
         broker=alpaca_broker,
@@ -253,12 +242,10 @@ async def lifespan(app: FastAPI):
     ))
     logger.info("Strategy runner registered", strategies=len(active_strategies))
 
-    # Backtest worker — polls for queued BacktestRun rows every 30 s, executes via yfinance
     from app.tasks.backtest_worker import backtest_worker_loop
     bg_tasks.append(asyncio.create_task(_supervised(backtest_worker_loop, "backtest_worker")))
     logger.info("Backtest worker registered")
 
-    # Regime monitor — fits HMM every 5 min, writes 0/1/2 to Redis key 'market:regime'
     from app.tasks.regime_monitor import RegimeMonitor
     regime_monitor = RegimeMonitor()
     app.state.regime_monitor = regime_monitor
@@ -291,9 +278,6 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # CORS — explicit allowlist only. Browsers reject `*` + credentials anyway,
-    # so the fallback to `*` was both insecure and broken. In dev we permit
-    # localhost; in any other mode the operator MUST set CORS_ORIGINS.
     if settings.cors_origins:
         allowed_origins = settings.cors_origins
     elif settings.trading_mode in ("dev", "test"):
@@ -417,7 +401,6 @@ def create_app() -> FastAPI:
             "checks": checks,
         }
 
-    # Security headers on every response
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)

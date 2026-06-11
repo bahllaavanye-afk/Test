@@ -1,29 +1,4 @@
-"""
-MultiScaleTransformer — three-stream cross-attention transformer.
-
-Three data streams at different temporal resolutions are fused via
-cross-attention, optionally conditioned on macro signals (VIX/yield/USD).
-
-Architecture:
-  x_base  → PatchEncoder(seq=60, patch=8)   → h_base  (B, D)
-  x_mid   → PatchEncoder(seq=20, patch=4)   → h_mid   (B, D)  [optional]
-  x_slow  → PatchEncoder(seq=10, patch=2)   → h_slow  (B, D)  [optional]
-
-  CrossAttn: Q=h_base, KV=h_mid  → h12
-  CrossAttn: Q=h12,   KV=h_slow  → h123
-
-  macro_embed = Linear(n_macro, D)(macro) if macro else zeros(B, D)
-
-  cat(h_base, h12, h123, macro_embed)  →  LN  →  Linear(4D→D)  →  GELU
-    →  Dropout  →  Linear(D→1)  →  squeeze  →  (B,)
-
-Fallback (x_mid=None, x_slow=None):
-  h_base  →  Linear(D→1)  →  squeeze  →  (B,)
-
-Exports:
-  MultiScaleTransformer  — model class
-  train(...)             — async training entry point
-"""
+"""MultiScaleTransformer — three-stream cross-attention fusing base/mid/slow temporal resolutions."""
 from __future__ import annotations
 
 import numpy as np

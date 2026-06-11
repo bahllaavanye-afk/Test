@@ -1,13 +1,4 @@
-"""
-Bidirectional LSTM with self-attention for time series direction prediction.
-
-Architecture:
-  Input: (batch, seq_len, n_features)
-  → Bidirectional LSTM (hidden=128, layers=2, dropout=0.3)
-  → Self-attention layer (learn which time steps matter)
-  → LayerNorm → Linear(256→64) → GELU → Dropout(0.3)
-  → Linear(64→1) → Sigmoid  [binary classification]
-"""
+"""Bidirectional LSTM with self-attention for financial time series direction prediction."""
 try:
     import torch
     import torch.nn as nn

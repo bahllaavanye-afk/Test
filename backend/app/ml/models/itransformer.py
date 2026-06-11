@@ -1,27 +1,4 @@
-"""
-iTransformer (Liu et al., ICLR 2024) — pure PyTorch implementation.
-
-Key innovation: invert the attention axis — treat each feature/variate as a
-token (not each time step). The transformer learns cross-feature dependencies
-by attending over the variate dimension, where each token summarises the full
-time series of one feature via a Linear projection.
-
-Architecture:
-  Input: (batch, seq_len, n_features)
-  Step 1 — Variate embedding:
-    For each variate i, embed its time series [x_{1,i}...x_{T,i}]
-    → d_model via Linear(seq_len, d_model)                        → (B, F, D)
-  Step 2 — Inverted encoder (N layers, Pre-LN):
-    LayerNorm → MultiHeadAttention (Q/K/V over F variates) → Add
-    LayerNorm → FFN (d_ff, GELU) → Add
-  Step 3 — Head:
-    Mean pool over variates → LayerNorm → Linear(d_model, 1) → squeeze → (B,)
-    (sigmoid applied in predict_proba / train; raw logits for BCEWithLogitsLoss)
-
-Exports:
-  iTransformer   — model class
-  train(...)     — async training entry point matching train_lstm.py API
-"""
+"""iTransformer (Liu et al., ICLR 2024) — inverted attention over variates, not time steps."""
 from __future__ import annotations
 
 import math

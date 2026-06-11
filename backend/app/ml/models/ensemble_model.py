@@ -1,8 +1,4 @@
-"""
-Weighted ensemble of LSTM + XGBoost + Lorentzian KNN.
-Weights optimized on validation set via Optuna.
-Only signals with confidence > threshold are forwarded.
-"""
+"""Weighted ensemble of LSTM + XGBoost + Lorentzian KNN with Optuna weight optimization."""
 import numpy as np
 import json
 from pathlib import Path

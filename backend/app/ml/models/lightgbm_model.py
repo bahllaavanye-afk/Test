@@ -1,7 +1,4 @@
-"""
-LightGBM classifier — faster than XGBoost, often matches on financial data.
-Includes SHAP explainability.
-"""
+"""LightGBM classifier with SHAP explainability."""
 from __future__ import annotations
 import numpy as np
 import json

@@ -1,11 +1,8 @@
 """ML model registry — all model classes importable from here."""
-import logging
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.ml.models.ensemble_model import EnsembleModel
 
-logger = logging.getLogger(__name__)
-
-# Optional heavy models (torch/sklearn may not be present in all envs)
+# Optional models — require torch/sklearn; gracefully absent if deps not installed
 try:
     from app.ml.models.lstm import LSTMPredictor
 except ImportError:
@@ -36,3 +33,9 @@ try:
 except ImportError:
     GeminiSignalEngine = None  # type: ignore[assignment,misc]
     get_gemini_engine = None  # type: ignore[assignment]
+
+try:
+    from app.ml.models.patch_tst import PatchTST, PatchEncoder
+except ImportError:
+    PatchTST = None   # type: ignore[assignment,misc]
+    PatchEncoder = None  # type: ignore[assignment,misc]

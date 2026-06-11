@@ -1,22 +1,4 @@
-"""
-PatchTST (Nie et al., ICLR 2023) — pure PyTorch implementation.
-
-Channel-independent mode: each feature dimension is processed through its own
-Transformer encoder; predictions are averaged across channels.
-
-Architecture per channel:
-  Input: (batch, seq_len, n_features) → split to n_features channels
-  Each channel: (batch, seq_len) → patches → Linear(patch_len, d_model)
-               → + learnable pos embedding
-               → TransformerEncoder (n_layers, n_heads)
-               → mean pool over patches → LN → Linear(d_model, 1)
-  Output: mean over n_features channels → (batch,)
-
-Exports:
-  PatchTST              — model class
-  PatchEncoder          — reusable patch-embedding + transformer block
-  train(...)            — async training entry point matching train_lstm.py API
-"""
+"""PatchTST (Nie et al., ICLR 2023) — channel-independent patch transformer, pure PyTorch."""
 from __future__ import annotations
 
 import asyncio
