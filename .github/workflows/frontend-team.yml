@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
