@@ -10,7 +10,7 @@ def get_commits_last_24h():
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     resp = requests.get(
         f"https://api.github.com/repos/{GH_REPO}/commits",
-        params={"since": since, "per_page": 100, "sha": "claude/advanced-trading-bot-d5Lmw"},
+        params={"since": since, "per_page": 100, "sha": "main"},
         headers={"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     )
     if resp.status_code != 200:

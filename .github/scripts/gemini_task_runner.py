@@ -451,7 +451,7 @@ def execute_task(title: str, body: str) -> tuple[bool, str]:
         )
         if result_commit.returncode == 0:
             subprocess.run(
-                ["git", "push", "origin", "HEAD:claude/advanced-trading-bot-d5Lmw"],
+                ["git", "push", "origin", "HEAD:main"],
                 cwd=REPO_ROOT, capture_output=True,
             )
             print(f"  [task] committed + pushed {len(applied)} file(s)")
