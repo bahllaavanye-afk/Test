@@ -284,6 +284,59 @@ async def _place_order(
         return None
 
 
+# ── Regime detection (SPY-based heuristic, no Redis dependency) ───────────────
+# Mirrors the logic in backend/app/tasks/regime_monitor.py for use in CI.
+# 0 = bear, 1 = sideways, 2 = bull
+
+_STRATEGY_REGIME_MAP: dict[str, list[int]] = {
+    "momentum":                  [2],
+    "cross_sectional_momentum":  [2],
+    "mean_reversion":            [1],
+    "vwap_reversion":            [1],
+    "rsi_macd":                  [1, 2],
+    "breakout":                  [2],
+    "supertrend":                [2],
+    "pairs_trading":             [0, 1, 2],
+    "btc_eth_stat_arb":          [0, 1, 2],
+    "triangular_arb":            [0, 1, 2],
+    "poly_binary_arb":           [0, 1, 2],
+    "funding_rate_arb":          [0, 1, 2],
+    "basis_carry":               [0, 1, 2],
+    "vix_mean_reversion":        [0, 1],
+    "liquidation_cascade_fade":  [0],
+    "realized_vol_asymmetry":    [0, 1, 2],
+    "analyst_revision_momentum": [1, 2],
+    "on_chain_exchange_netflow": [0, 1, 2],
+    "vol_of_vol_timing":         [0, 1, 2],
+}
+_DEFAULT_REGIMES = [0, 1, 2]
+
+
+def _detect_regime_from_bars(spy_df) -> int:
+    """
+    Compute market regime from SPY price data.
+    Uses recent return + vol ratio heuristic matching regime_monitor.py fallback.
+    Returns 0=bear, 1=sideways, 2=bull.
+    """
+    import numpy as np
+    try:
+        close = spy_df["close"].astype(float).values
+        if len(close) < 40:
+            return 1
+        log_rets = np.diff(np.log(close))
+        recent_ret = float(np.mean(log_rets[-20:]))
+        recent_vol = float(np.std(log_rets[-20:]))
+        long_vol   = float(np.std(log_rets[-min(252, len(log_rets)):]))
+        vol_ratio  = recent_vol / max(long_vol, 1e-8)
+        if recent_ret < -0.002 and vol_ratio > 1.3:
+            return 0  # bear: negative drift + elevated vol
+        if recent_ret > 0.001 and vol_ratio < 1.2:
+            return 2  # bull: positive drift + calm vol
+        return 1      # sideways
+    except Exception:
+        return 1
+
+
 # ── Strategy dispatch ─────────────────────────────────────────────────────────
 
 def _load_strategy(strategy_name: str):
@@ -457,6 +510,12 @@ async def main() -> None:
                     symbols_fetched.append(sym)
             tracker.set_output(bars_fetched=bars_fetched, symbols=symbols_fetched)
 
+        # Detect market regime from SPY bars (0=bear, 1=sideways, 2=bull)
+        _REGIME_NAMES = {0: "bear", 1: "sideways", 2: "bull"}
+        spy_df = bars_cache.get("SPY")
+        current_regime: int = _detect_regime_from_bars(spy_df) if spy_df is not None else 1
+        print(f"  Market regime: {_REGIME_NAMES[current_regime]} ({current_regime})", flush=True)
+
         # ── Stage 3: Signal Generation ────────────────────────────────────────
         raw_signals: list[dict] = []
         with tracker.stage(SIGNAL_GENERATION, "Generate trading signals"):
@@ -495,6 +554,13 @@ async def main() -> None:
                 desk  = item["desk"]
                 conf  = item["confidence"]
                 sname = item["strategy"].name
+
+                # Regime gate: skip strategies not allowed in current regime
+                allowed_regimes = _STRATEGY_REGIME_MAP.get(sname, _DEFAULT_REGIMES)
+                if current_regime not in allowed_regimes:
+                    print(f"  · {sname}/{item['symbol']} skipped — regime {_REGIME_NAMES[current_regime]} not in {[_REGIME_NAMES[r] for r in allowed_regimes]}", flush=True)
+                    continue
+
                 # Use auto-tuned threshold if available, floored at desk minimum
                 threshold = max(_TUNED_THRESHOLDS.get(sname, desk.confidence_min), desk.confidence_min)
                 if conf < threshold:

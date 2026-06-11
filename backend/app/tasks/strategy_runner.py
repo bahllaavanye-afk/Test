@@ -69,6 +69,11 @@ STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "vix_mean_reversion":       [0, 1],     # bear + sideways
     "liquidation_cascade_fade": [0],        # bear only
     "hmm_regime":               [0, 1, 2],  # always active (meta-strategy)
+    # ── Research strategies ──────────────────────────────────────────────────
+    "realized_vol_asymmetry":    [0, 1, 2],  # all regimes (skew predictor)
+    "analyst_revision_momentum": [1, 2],     # sideways + bull (momentum factor)
+    "on_chain_exchange_netflow": [0, 1, 2],  # all regimes (crypto OI signal)
+    "vol_of_vol_timing":         [0, 1, 2],  # all regimes (vvix regime signal)
 }
 DEFAULT_REGIMES = [0, 1, 2]
 
