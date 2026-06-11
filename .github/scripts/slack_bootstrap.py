@@ -22,6 +22,15 @@ from io import StringIO
 # ── Channel definitions (mirrors backend/app/integrations/slack_bot.py) ──────
 
 CHANNELS = [
+    # Public — core trading/signal channels (required by signal_runner.py and token_usage_monitor.py)
+    {"name": "signals",              "is_private": False, "topic": "Live trading signals across all desks"},
+    {"name": "trading",              "is_private": False, "topic": "Trade execution updates and order flow"},
+    {"name": "crypto",               "is_private": False, "topic": "Crypto desk — live prices, signals, positions"},
+    {"name": "equity",               "is_private": False, "topic": "Equity desk — US stocks, ETFs, options"},
+    {"name": "polymarket",           "is_private": False, "topic": "Polymarket prediction-market signals and arb"},
+    {"name": "token-usage",          "is_private": False, "topic": "LLM token usage monitoring and cost tracking"},
+    {"name": "general",              "is_private": False, "topic": "General discussion for all team members"},
+    {"name": "standup",              "is_private": False, "topic": "Daily standup updates from all squad members"},
     # Public — engineering ops
     {"name": "engineering-standup",  "is_private": False, "topic": "Daily standups from each squad (13:00 UTC)"},
     {"name": "alpha-research",       "is_private": False, "topic": "New strategy proposals + paper reviews"},
@@ -31,6 +40,17 @@ CHANNELS = [
     {"name": "deploys",              "is_private": False, "topic": "Deploy notifications"},
     {"name": "ci-failures",          "is_private": False, "topic": "CI test failures (auto-routed)"},
     {"name": "ml-experiments",       "is_private": False, "topic": "Training run results, model leaderboard"},
+    # Public — team channels (required by claude_conversations.py CHANNEL_EMPLOYEES)
+    {"name": "risk",                 "is_private": False, "topic": "Risk management — VaR, Kelly, circuit breakers"},
+    {"name": "ml-research",         "is_private": False, "topic": "ML research — experiments, model architectures, results"},
+    {"name": "backend",             "is_private": False, "topic": "Backend platform — FastAPI, strategies, DB"},
+    {"name": "frontend",            "is_private": False, "topic": "Frontend — React dashboard, TradingView, UX"},
+    {"name": "data-engineering",    "is_private": False, "topic": "Data pipelines — feeds, OHLCV, Redis cache"},
+    {"name": "execution",           "is_private": False, "topic": "Order execution — TWAP/VWAP, slippage, smart routing"},
+    {"name": "security",            "is_private": False, "topic": "Security — JWT, secrets, audit trail"},
+    {"name": "product",             "is_private": False, "topic": "Product management — OKRs, roadmap, investor metrics"},
+    {"name": "devops",              "is_private": False, "topic": "DevOps — Render, Vercel, CI/CD, monitoring"},
+    {"name": "ml-infra",            "is_private": False, "topic": "ML infrastructure — GPU training, model registry, inference"},
     # Public — general
     {"name": "engineering",          "is_private": False, "topic": "All engineers"},
     {"name": "announcements",        "is_private": False, "topic": "Company-wide announcements (CEO only posts)"},

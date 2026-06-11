@@ -37,11 +37,20 @@ class PairsTradingStrategy(AbstractStrategy):
         ("C", "JPM"),
     ]
 
+    DEFAULT_PARAMS = {
+        "lookback": 252,
+        "z_entry": 2.0,
+        "z_exit": 0.5,
+        "min_half_life": 5,
+        "max_half_life": 126,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.lookback = params.get("lookback", 252) if params else 252
-        self.entry_z = params.get("entry_z", 2.0) if params else 2.0
-        self.exit_z = params.get("exit_z", 0.5) if params else 0.5
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.lookback = effective["lookback"]
+        self.entry_z = effective["z_entry"]
+        self.exit_z = effective["z_exit"]
         self.stop_z = params.get("stop_z", 4.0) if params else 4.0
         self.coint_pvalue = params.get("coint_pvalue", 0.05) if params else 0.05
 

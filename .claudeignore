@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.git/
+*.log
+*.pyc
+__pycache__/
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+backend/models_artifacts/
+experiments/results/
+data/
+*.ipynb_checkpoints/
+frontend/.next/

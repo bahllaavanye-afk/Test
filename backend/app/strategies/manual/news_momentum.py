@@ -29,8 +29,18 @@ class NewsMomentumStrategy(AbstractStrategy):
     DRIFT_WINDOW_DAYS = 2           # Enter within 2 trading days of announcement
     MAX_HOLDING_DAYS = 60           # Exit after 60 days (PEAD drift window)
 
+    DEFAULT_PARAMS = {
+        "lookback_hours": 48,
+        "min_sentiment_score": 0.05,
+        "position_size_pct": 1.0,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.lookback_hours = int(effective["lookback_hours"])
+        self.min_sentiment_score = float(effective["min_sentiment_score"])
+        self.position_size_pct = float(effective["position_size_pct"])
         p = params or {}
         self.min_surprise = float(p.get("min_earnings_surprise", self.MIN_EARNINGS_SURPRISE))
         self.min_price_change = float(p.get("min_price_change", self.MIN_PRICE_CHANGE))

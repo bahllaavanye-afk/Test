@@ -168,7 +168,7 @@ def git_commit_and_push(reason: str) -> bool:
             print("No changes to commit")
             return False
 
-        subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
+        subprocess.run(["git", "commit", "-m", reason], cwd=REPO_ROOT, check=True)
         subprocess.run(
             ["git", "push", "origin", BRANCH],
             cwd=REPO_ROOT, check=True,
@@ -178,6 +178,56 @@ def git_commit_and_push(reason: str) -> bool:
     except subprocess.CalledProcessError as e:
         print(f"Git error: {e}")
         return False
+
+
+def _gemini_autofix(logs: str, deploy_id: str, commit_msg: str) -> None:
+    """Use Gemini (free) to diagnose and fix Render deploy failures."""
+    import urllib.request
+    gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
+    if not gemini_key:
+        slack("⚠️ *Render Auto-Fix:* No LLM key available — manual fix required.")
+        return
+
+    context_files = read_key_files()
+    prompt = (
+        "You are QuantEdge DevOps AI. A Render.com deployment failed.\n"
+        "Analyze the logs and config files, then generate an exact fix.\n\n"
+        "Return ONLY JSON (no markdown):\n"
+        "{\"root_cause\": \"one sentence\", \"fix_description\": \"what to fix\", "
+        "\"files\": [{\"path\": \"relative/path\", \"content\": \"COMPLETE new content\"}]}\n\n"
+        f"Deploy: {deploy_id[:12]} | Commit: {commit_msg}\n"
+        f"Logs (last 3000 chars):\n{logs[-3000:]}\n\n"
+        f"Config files:\n{context_files[:4000]}"
+    )
+    try:
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.1},
+        }).encode()
+        req = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        import re
+        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL) or re.search(r"(\{.*\})", text, re.DOTALL)
+        result = json.loads(m.group(1)) if m else {}
+        root_cause = result.get("root_cause", "Unknown")
+        fix_desc = result.get("fix_description", "")
+        files = result.get("files", [])
+        print(f"Gemini diagnosis: {root_cause}")
+        if apply_fix(json.dumps({"root_cause": root_cause, "files": files})):
+            pushed = git_commit_and_push(f"fix(render): {root_cause[:60]}")
+            if pushed:
+                slack(f"🤖 *Render Auto-Fix (Gemini):* {root_cause}\n✅ {fix_desc}\nPushed fix — awaiting re-deploy.")
+                return
+        slack(f"🤖 *Render Diagnosis (Gemini):* {root_cause}\n{fix_desc}\nNo code changes applied.")
+    except Exception as exc:
+        print(f"Gemini auto-fix failed: {exc}")
+        slack(f"⚠️ *Render Auto-Fix:* Gemini diagnosis failed: {exc}")
 
 
 def main() -> None:
@@ -212,8 +262,9 @@ def main() -> None:
         f"🤖 Running auto-fix..."
     )
 
-    if not ANTHROPIC_API_KEY:
-        print("No ANTHROPIC_API_KEY — cannot auto-fix")
+    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == "disabled":
+        # Try Gemini as free fallback
+        _gemini_autofix(logs, deploy_id, commit_msg)
         return
 
     # ── QuantEdge AI diagnosis + fix ────────────────────────────────────────────────

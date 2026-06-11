@@ -1,13 +1,13 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { useSelector } from 'react-redux'
+import { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { useSelector, useDispatch } from 'react-redux'
 import AppShell from './components/layout/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
 // Public pages — eagerly loaded (smallest possible initial bundle)
 import Login from './pages/Login'
 import Landing from './pages/Landing'
 import GoogleCallback from './pages/GoogleCallback'
-import { selectIsAuthenticated } from './store/slices/authSlice'
+import { selectIsAuthenticated, selectExpiredAt, sessionExpired } from './store/slices/authSlice'
 
 // All protected pages — lazy-loaded so each becomes a separate Vite chunk.
 // Users only download the chunk for the page they actually visit.
@@ -31,6 +31,9 @@ const Polymarket = lazy(() => import('./pages/Polymarket'))
 const MLInsights = lazy(() => import('./pages/MLInsights'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Releases = lazy(() => import('./pages/Releases'))
+const BotBuilder = lazy(() => import('./pages/BotBuilder'))
+const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
+const Scanners = lazy(() => import('./pages/Scanners'))
 
 function PageLoader() {
   return (
@@ -48,10 +51,31 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return isAuth ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+function SessionExpiryHandler() {
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
+  const expiredAt = useSelector(selectExpiredAt)
+
+  useEffect(() => {
+    const handleExpiry = () => {
+      dispatch(sessionExpired())
+    }
+    window.addEventListener('sessionExpired', handleExpiry)
+    return () => window.removeEventListener('sessionExpired', handleExpiry)
+  }, [dispatch])
+
+  useEffect(() => {
+    if (expiredAt) navigate('/login', { replace: true })
+  }, [expiredAt, navigate])
+
+  return null
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
+      <SessionExpiryHandler />
       <Routes>
         <Route path="/landing" element={<Landing />} />
         <Route path="/login" element={<Login />} />
@@ -77,6 +101,9 @@ export default function App() {
           <Route path="ml-insights" element={<MLInsights />} />
           <Route path="pipeline" element={<Pipeline />} />
           <Route path="releases" element={<Releases />} />
+          <Route path="bots" element={<BotBuilder />} />
+          <Route path="agents" element={<AgentDashboard />} />
+          <Route path="scanners" element={<Scanners />} />
         </Route>
       </Routes>
     </Suspense>

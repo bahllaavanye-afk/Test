@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -62,9 +63,10 @@ DESKS: list[DeskConfig] = [
             "momentum", "mean_reversion", "breakout", "rsi_macd", "supertrend",
             "cross_sectional_momentum", "opening_range_breakout", "vwap_reversion",
             "residual_momentum", "idio_vol_anomaly",
+            "realized_vol_asymmetry", "analyst_revision_momentum",
         ],
         notional_usd=500.0,
-        confidence_min=0.60,
+        confidence_min=0.68,
     ),
     DeskConfig(
         name="Crypto",
@@ -74,9 +76,10 @@ DESKS: list[DeskConfig] = [
             "crypto_adaptive_trend", "mean_reversion", "breakout",
             "basis_carry", "btc_eth_stat_arb", "mvrv_zscore_timing",
             "intraday_seasonality", "funding_rate_arb",
+            "on_chain_exchange_netflow", "vol_of_vol_timing",
         ],
         notional_usd=300.0,
-        confidence_min=0.65,
+        confidence_min=0.70,
     ),
     DeskConfig(
         name="Options",
@@ -85,9 +88,10 @@ DESKS: list[DeskConfig] = [
         strategy_names=[
             "vix_mean_reversion", "gamma_exposure", "skew_arb",
             "vrp_systematic", "dispersion_trading", "vol_term_structure",
+            "vol_of_vol_timing",
         ],
         notional_usd=400.0,
-        confidence_min=0.65,
+        confidence_min=0.70,
     ),
     DeskConfig(
         name="Polymarket",
@@ -98,7 +102,7 @@ DESKS: list[DeskConfig] = [
             "poly_calibration_arb", "poly_late_resolution",
         ],
         notional_usd=100.0,
-        confidence_min=0.70,
+        confidence_min=0.75,
     ),
     DeskConfig(
         name="Macro/FX",
@@ -107,9 +111,10 @@ DESKS: list[DeskConfig] = [
         strategy_names=[
             "cross_asset_carry", "sector_rotation", "time_series_momentum",
             "intraday_fomc_momentum", "pead_sue", "multi_factor_equity",
+            "analyst_revision_momentum",
         ],
         notional_usd=400.0,
-        confidence_min=0.60,
+        confidence_min=0.68,
     ),
     DeskConfig(
         name="StatArb",
@@ -123,6 +128,19 @@ DESKS: list[DeskConfig] = [
         confidence_min=0.62,
     ),
 ]
+
+# ── Auto-tuned thresholds (written nightly by strategy_auto_tuner.py) ─────────
+
+_TUNED_THRESHOLDS: dict[str, float] = {}
+_TUNED_FILE = REPO_ROOT / "backend" / "performance_log" / "tuned_thresholds.json"
+try:
+    if _TUNED_FILE.exists():
+        _data = json.loads(_TUNED_FILE.read_text())
+        _TUNED_THRESHOLDS = {k: float(v) for k, v in _data.get("thresholds", {}).items()}
+        if _TUNED_THRESHOLDS:
+            print(f"✓ Loaded {len(_TUNED_THRESHOLDS)} auto-tuned thresholds", flush=True)
+except Exception:
+    pass
 
 # ── Alpaca REST client (direct HTTP, no SDK dependency) ───────────────────────
 
@@ -210,35 +228,113 @@ async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 200) -> "
         return None
 
 
-async def _place_order(symbol: str, side: str, notional_usd: float) -> dict | None:
+def _kelly_notional(equity: float, confidence: float, max_pct: float = 0.03) -> float:
+    """Half-Kelly sizing: confidence score → win probability → Kelly fraction, capped at max_pct."""
+    p = min(max(0.50 + (confidence - 0.60) * 1.25, 0.35), 0.75)
+    b = 1.25  # avg_win / avg_loss
+    q = 1.0 - p
+    kelly_f   = max((p * b - q) / b, 0.0)
+    half_kelly = kelly_f * 0.5
+    capped     = min(half_kelly, max_pct)
+    return max(equity * capped, 50.0)
+
+
+async def _place_order(
+    symbol: str,
+    side: str,
+    notional_usd: float,
+    limit_price: float | None = None,
+    client_order_id: str | None = None,
+) -> dict | None:
     try:
+        is_crypto = "/" in symbol
         body: dict = {
-            "symbol":      symbol,
-            "side":        side,
-            "type":        "market",
-            "time_in_force": "gtc" if "/" in symbol else "day",
+            "symbol":        symbol,
+            "side":          side,
+            "time_in_force": "gtc" if is_crypto else "day",
         }
-        # Use notional for fractional shares; qty for crypto
-        if "/" in symbol:
-            # Alpaca crypto uses qty; estimate from notional
+        if client_order_id:
+            body["client_order_id"] = client_order_id[:48]
+
+        if limit_price and limit_price > 0:
+            # Limit-first: post limit slightly through the market to maximise fill probability
+            lp  = round(limit_price * (1.001 if side == "buy" else 0.999), 2)
+            qty = round(notional_usd / lp, 6 if is_crypto else 2)
+            body["type"]        = "limit"
+            body["limit_price"] = str(lp)
+            body["qty"]         = str(qty)
+        elif is_crypto:
             quote_data = await _alpaca_get(
-                f"/v1beta3/crypto/us/latest/quotes",
+                "/v1beta3/crypto/us/latest/quotes",
                 {"symbols": symbol},
                 data_api=True,
             )
             ask = float((quote_data.get("quotes", {}).get(symbol, {}) or {}).get("ap", 0))
             if ask <= 0:
                 return None
-            qty = round(notional_usd / ask, 6)
-            body["qty"] = str(qty)
+            body["type"] = "market"
+            body["qty"]  = str(round(notional_usd / ask, 6))
         else:
+            body["type"]     = "market"
             body["notional"] = str(round(notional_usd, 2))
 
-        result = await _alpaca_post("/v2/orders", body)
-        return result
+        return await _alpaca_post("/v2/orders", body)
     except Exception as exc:
         print(f"    ⚠ place_order failed {symbol} {side}: {exc}", flush=True)
         return None
+
+
+# ── Regime detection (SPY-based heuristic, no Redis dependency) ───────────────
+# Mirrors the logic in backend/app/tasks/regime_monitor.py for use in CI.
+# 0 = bear, 1 = sideways, 2 = bull
+
+_STRATEGY_REGIME_MAP: dict[str, list[int]] = {
+    "momentum":                  [2],
+    "cross_sectional_momentum":  [2],
+    "mean_reversion":            [1],
+    "vwap_reversion":            [1],
+    "rsi_macd":                  [1, 2],
+    "breakout":                  [2],
+    "supertrend":                [2],
+    "pairs_trading":             [0, 1, 2],
+    "btc_eth_stat_arb":          [0, 1, 2],
+    "triangular_arb":            [0, 1, 2],
+    "poly_binary_arb":           [0, 1, 2],
+    "funding_rate_arb":          [0, 1, 2],
+    "basis_carry":               [0, 1, 2],
+    "vix_mean_reversion":        [0, 1],
+    "liquidation_cascade_fade":  [0],
+    "realized_vol_asymmetry":    [0, 1, 2],
+    "analyst_revision_momentum": [1, 2],
+    "on_chain_exchange_netflow": [0, 1, 2],
+    "vol_of_vol_timing":         [0, 1, 2],
+}
+_DEFAULT_REGIMES = [0, 1, 2]
+
+
+def _detect_regime_from_bars(spy_df) -> int:
+    """
+    Compute market regime from SPY price data.
+    Uses recent return + vol ratio heuristic matching regime_monitor.py fallback.
+    Returns 0=bear, 1=sideways, 2=bull.
+    """
+    import numpy as np
+    try:
+        close = spy_df["close"].astype(float).values
+        if len(close) < 40:
+            return 1
+        log_rets = np.diff(np.log(close))
+        recent_ret = float(np.mean(log_rets[-20:]))
+        recent_vol = float(np.std(log_rets[-20:]))
+        long_vol   = float(np.std(log_rets[-min(252, len(log_rets)):]))
+        vol_ratio  = recent_vol / max(long_vol, 1e-8)
+        if recent_ret < -0.002 and vol_ratio > 1.3:
+            return 0  # bear: negative drift + elevated vol
+        if recent_ret > 0.001 and vol_ratio < 1.2:
+            return 2  # bull: positive drift + calm vol
+        return 1      # sideways
+    except Exception:
+        return 1
 
 
 # ── Strategy dispatch ─────────────────────────────────────────────────────────
@@ -414,6 +510,12 @@ async def main() -> None:
                     symbols_fetched.append(sym)
             tracker.set_output(bars_fetched=bars_fetched, symbols=symbols_fetched)
 
+        # Detect market regime from SPY bars (0=bear, 1=sideways, 2=bull)
+        _REGIME_NAMES = {0: "bear", 1: "sideways", 2: "bull"}
+        spy_df = bars_cache.get("SPY")
+        current_regime: int = _detect_regime_from_bars(spy_df) if spy_df is not None else 1
+        print(f"  Market regime: {_REGIME_NAMES[current_regime]} ({current_regime})", flush=True)
+
         # ── Stage 3: Signal Generation ────────────────────────────────────────
         raw_signals: list[dict] = []
         with tracker.stage(SIGNAL_GENERATION, "Generate trading signals"):
@@ -447,18 +549,38 @@ async def main() -> None:
 
         # ── Stage 4: Risk Check ───────────────────────────────────────────────
         approved_signals: list[dict] = []
-        with tracker.stage(RISK_CHECK, "Apply confidence threshold filter"):
+        with tracker.stage(RISK_CHECK, "Apply confidence threshold + top-K filter"):
             for item in raw_signals:
-                desk = item["desk"]
-                conf = item["confidence"]
-                if conf < desk.confidence_min:
-                    print(
-                        f"  · {item['strategy'].name}/{item['symbol']} signal={item['signal'].side} "
-                        f"conf={conf:.2f} < threshold={desk.confidence_min:.2f} — skipped",
-                        flush=True,
-                    )
+                desk  = item["desk"]
+                conf  = item["confidence"]
+                sname = item["strategy"].name
+
+                # Regime gate: skip strategies not allowed in current regime
+                allowed_regimes = _STRATEGY_REGIME_MAP.get(sname, _DEFAULT_REGIMES)
+                if current_regime not in allowed_regimes:
+                    print(f"  · {sname}/{item['symbol']} skipped — regime {_REGIME_NAMES[current_regime]} not in {[_REGIME_NAMES[r] for r in allowed_regimes]}", flush=True)
+                    continue
+
+                # Use auto-tuned threshold if available, floored at desk minimum
+                threshold = max(_TUNED_THRESHOLDS.get(sname, desk.confidence_min), desk.confidence_min)
+                if conf < threshold:
+                    print(f"  · {sname}/{item['symbol']} conf={conf:.2f} < {threshold:.2f} — skipped", flush=True)
                 else:
                     approved_signals.append(item)
+
+            # Top-K per desk: keep at most 3 highest-confidence signals per desk
+            _TOP_K = 3
+            desk_groups: dict[str, list[dict]] = {}
+            for item in approved_signals:
+                desk_groups.setdefault(item["desk"].name, []).append(item)
+            top_k_signals: list[dict] = []
+            for dname, items in desk_groups.items():
+                ranked = sorted(items, key=lambda x: x["confidence"], reverse=True)
+                top_k_signals.extend(ranked[:_TOP_K])
+                dropped = len(ranked) - min(len(ranked), _TOP_K)
+                if dropped:
+                    print(f"  · top-K[{dname}]: dropped {dropped} lower-confidence signals", flush=True)
+            approved_signals = top_k_signals
             filtered = len(raw_signals) - len(approved_signals)
             tracker.set_output(passed=len(approved_signals), filtered=filtered)
 
@@ -490,27 +612,36 @@ async def main() -> None:
                         flush=True,
                     )
                     continue
+                kelly_notional = _kelly_notional(equity, conf)
+                coid = f"qe-{strategy.name[:10]}-{symbol[:4].replace('/', '')}-{int(time.time())}"
+                limit_price: float | None = None
+                _df = bars_cache.get(symbol)
+                if _df is not None and len(_df) > 0:
+                    limit_price = float(_df["close"].iloc[-1])
                 print(
                     f"  ► {strategy.name}/{symbol} signal={signal.side.upper()} "
-                    f"conf={conf:.2f} — placing ${desk.notional_usd:.0f} order",
+                    f"conf={conf:.2f} — placing ${kelly_notional:.0f} limit-first order",
                     flush=True,
                 )
-                order = await _place_order(symbol, signal.side, desk.notional_usd)
+                order = await _place_order(symbol, signal.side, kelly_notional,
+                                           limit_price=limit_price, client_order_id=coid)
                 if order and order.get("id"):
                     print(f"    ✓ order {order['id']} submitted ({order.get('status', '?')})", flush=True)
                     record = {
-                        "desk":       desk.name,
-                        "strategy":   strategy.name,
-                        "symbol":     symbol,
-                        "side":       signal.side,
-                        "notional":   desk.notional_usd,
-                        "confidence": conf,
-                        "order_id":   order["id"],
-                        "status":     order.get("status", "?"),
-                        "ts":         datetime.now(timezone.utc).isoformat(),
+                        "desk":            desk.name,
+                        "strategy":        strategy.name,
+                        "symbol":          symbol,
+                        "side":            signal.side,
+                        "notional":        kelly_notional,
+                        "confidence":      conf,
+                        "order_id":        order["id"],
+                        "client_order_id": coid,
+                        "order_type":      order.get("type", "limit"),
+                        "status":          order.get("status", "?"),
+                        "ts":              datetime.now(timezone.utc).isoformat(),
                     }
                     all_orders.append(record)
-                    total_notional += desk.notional_usd
+                    total_notional += kelly_notional
                     desk_orders_map.setdefault(desk.name, []).append(record)
                 else:
                     print(f"    ✗ order placement returned no ID", flush=True)

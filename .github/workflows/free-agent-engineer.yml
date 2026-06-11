@@ -7,7 +7,7 @@ on:
   issues:
     types: [labeled]   # fires when label "agent-fix-needed" is added
   schedule:
-    - cron: "0 */4 * * *"   # every 4 hours
+    - cron: "0 */2 * * *"   # every 2 hours
   workflow_dispatch:
 
 jobs:
@@ -29,8 +29,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: claude/advanced-trading-bot-d5Lmw
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-python@v5
         with:
@@ -40,11 +40,12 @@ jobs:
         run: pip install --quiet langfuse google-generativeai || true
 
       - name: Run free agent engineer
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/free_agent_engineer.py

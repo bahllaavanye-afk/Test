@@ -12,11 +12,18 @@ class BreakoutStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 900.0
 
+    DEFAULT_PARAMS = {
+        "lookback": 52,    # rolling window in bars (default ~52 weeks)
+        "vol_mult": 1.5,   # volume confirmation multiplier (current vol > 1.5x avg)
+        "atr_mult": 0.5,   # price must clear resistance by this many ATRs
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.lookback = params.get("lookback", 52) if params else 52     # weeks
-        self.vol_mult = params.get("vol_mult", 1.5) if params else 1.5   # volume must be 1.5x avg
-        self.atr_mult = params.get("atr_mult", 0.5) if params else 0.5   # price must clear by 0.5 ATR
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.lookback = effective["lookback"]
+        self.vol_mult = effective["vol_mult"]
+        self.atr_mult = effective["atr_mult"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         if len(data) < self.lookback + 20:

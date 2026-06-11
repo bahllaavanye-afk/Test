@@ -1,0 +1,123 @@
+name: Page Reporter — Real Screenshots + Employee Audits
+
+# Every 4 hours: take live browser screenshots of all dashboard pages,
+# upload them to the relevant Slack channel, and run LLM-based page audits.
+#
+# Two jobs run in parallel:
+#   1. screenshots  — starts frontend, uses Playwright to capture real PNGs
+#   2. text_audits  — employees read TSX source and post walkthroughs
+
+on:
+  schedule:
+    - cron: "30 */4 * * *"   # Every 4 hours (00:30, 04:30, 08:30, 12:30, 16:30, 20:30 UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: page-reporter
+  cancel-in-progress: true
+
+jobs:
+  # ── Job 1: Real browser screenshots via Playwright ──────────────────────────
+  screenshots:
+    name: Browser Screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend deps (cached)
+        working-directory: frontend
+        run: npm ci --prefer-offline
+
+      - name: Install Playwright + Chromium
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+
+      - name: Install screenshot runner deps
+        run: pip install playwright --quiet
+
+      - name: Start frontend dev server (background)
+        working-directory: frontend
+        env:
+          # Point at a non-existent backend so pages load in "loading" state
+          VITE_API_URL: http://localhost:8000/api/v1
+          VITE_WS_URL: ws://localhost:8000/ws
+        run: |
+          nohup npm run dev -- --port 5173 --host &
+          echo "Waiting for frontend to start..."
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173 > /dev/null && echo "✅ Frontend ready" && break
+            sleep 2
+          done
+
+      - name: Run screenshot runner
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          python .github/scripts/page_screenshot_runner.py \
+            --base-url http://localhost:5173 \
+            --output-dir /tmp/quantedge-screenshots
+
+      - name: Upload screenshots as workflow artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: page-screenshots-${{ github.run_number }}
+          path: /tmp/quantedge-screenshots/*.png
+          retention-days: 7
+
+  # ── Job 2: Employee LLM page audits (text walkthroughs) ─────────────────────
+  text_audits:
+    name: Employee Page Audits
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install audit deps
+        run: pip install requests --quiet
+
+      - name: Run employee page audits
+        env:
+          SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
+          GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_1:       ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2:       ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3:       ${{ secrets.GROQ_API_KEY_3 }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1:     ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2:     ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3:     ${{ secrets.GEMINI_API_KEY_3 }}
+          CEREBRAS_API_KEY:     ${{ secrets.CEREBRAS_API_KEY }}
+          CEREBRAS_API_KEY_1:   ${{ secrets.CEREBRAS_API_KEY_1 }}
+          CEREBRAS_API_KEY_2:   ${{ secrets.CEREBRAS_API_KEY_2 }}
+          SAMBANOVA_API_KEY:    ${{ secrets.SAMBANOVA_API_KEY }}
+          TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY }}
+          HYPERBOLIC_API_KEY:   ${{ secrets.HYPERBOLIC_API_KEY }}
+          DEEPSEEK_API_KEY:     ${{ secrets.DEEPSEEK_API_KEY }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          OPENROUTER_API_KEY:   ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY:    "disabled"
+          ALLOW_PAID_APIS:      "False"
+          TRADING_MODE:         "paper"
+          GH_TOKEN:             ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:              ${{ github.repository }}
+        run: python .github/scripts/slack_agent_team.py page_reports

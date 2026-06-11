@@ -1,0 +1,78 @@
+{
+  "last_updated": "2026-06-08",
+  "pipeline": [
+    {
+      "name": "a16z Crypto Fund",
+      "stage": "deck_sent",
+      "contact": "scout@a16z.com",
+      "added": "2026-06-08",
+      "notes": "Seed to Series A focus"
+    },
+    {
+      "name": "Sequoia Capital",
+      "stage": "deck_sent",
+      "contact": "founders@sequoiacap.com",
+      "added": "2026-06-08",
+      "notes": "FinTech + AI portfolio"
+    },
+    {
+      "name": "Coatue Management",
+      "stage": "deck_sent",
+      "contact": "info@coatue.com",
+      "added": "2026-06-08",
+      "notes": "Quant + tech focus"
+    },
+    {
+      "name": "Two Sigma Ventures",
+      "stage": "deck_sent",
+      "contact": "ventures@twosigma.com",
+      "added": "2026-06-08",
+      "notes": "Quant finance background"
+    },
+    {
+      "name": "Dragoneer Investment Group",
+      "stage": "first_call",
+      "contact": "info@dragoneer.com",
+      "added": "2026-06-08",
+      "notes": "Late-stage tech growth"
+    },
+    {
+      "name": "Tiger Global",
+      "stage": "first_call",
+      "contact": "info@tigerglobal.com",
+      "added": "2026-06-08",
+      "notes": "Growth equity"
+    },
+    {
+      "name": "Founders Fund",
+      "stage": "first_call",
+      "contact": "info@foundersfund.com",
+      "added": "2026-06-04",
+      "notes": "Peter Thiel aligned, tech-first"
+    },
+    {
+      "name": "Andreessen Horowitz",
+      "stage": "first_call",
+      "contact": "a16z-fintech@a16z.com",
+      "added": "2026-06-04",
+      "notes": "FinTech team"
+    },
+    {
+      "name": "Ribbit Capital",
+      "stage": "second_call",
+      "contact": "info@ribbitcap.com",
+      "added": "2026-06-05",
+      "notes": "FinTech specialists"
+    },
+    {
+      "name": "QED Investors",
+      "stage": "diligence",
+      "contact": "info@qedinvestors.com",
+      "added": "2026-06-05",
+      "notes": "FinTech-only VC"
+    }
+  ],
+  "target": 10,
+  "series_a_target_day": 90,
+  "series_a_target_date": "2026-09-03"
+}

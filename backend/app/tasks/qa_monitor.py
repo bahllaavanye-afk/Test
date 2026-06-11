@@ -33,7 +33,7 @@ FIX_LOG_PATH = PROJECT_ROOT / "qa_fix_log.jsonl"
 # ---------------------------------------------------------------------------
 
 @dataclass
-class TestFailure:
+class FailureRecord:
     test_id: str
     error_type: str      # "AssertionError" | "ImportError" | "AttributeError" etc
     error_msg: str
@@ -60,7 +60,7 @@ class QAReport:
     tests_total: int
     tests_passed: int
     tests_failed: int
-    test_failures: list[TestFailure]
+    test_failures: list[FailureRecord]
     security_issues: list[SecurityIssue]
     import_errors: list[str]
     auto_fixes_applied: int
@@ -93,8 +93,8 @@ def run_pytest() -> tuple[int, str]:
         return 1, f"ERROR: {e}"
 
 
-def parse_test_failures(pytest_output: str) -> list[TestFailure]:
-    """Parse pytest output into TestFailure list.
+def parse_test_failures(pytest_output: str) -> list[FailureRecord]:
+    """Parse pytest output into FailureRecord list.
 
     Handles lines like:
       FAILED tests/unit/test_foo.py::test_bar - AssertionError: expected 1 got 2
@@ -103,7 +103,7 @@ def parse_test_failures(pytest_output: str) -> list[TestFailure]:
     if not pytest_output or not pytest_output.strip():
         return []
 
-    failures: list[TestFailure] = []
+    failures: list[FailureRecord] = []
 
     # Map error types to fixability info
     _FIXABLE_MAP: dict[str, tuple[bool, str | None]] = {
@@ -173,7 +173,7 @@ def parse_test_failures(pytest_output: str) -> list[TestFailure]:
         tb = last_traceback.get(test_id)
         line_number: int | None = tb[1] if tb else None
 
-        failures.append(TestFailure(
+        failures.append(FailureRecord(
             test_id=test_id,
             error_type=raw_error_type,
             error_msg=raw_error_msg[:300],  # cap length

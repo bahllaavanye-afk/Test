@@ -1,0 +1,16 @@
+{
+  "lstm_btc_1h_v1": {
+    "stage": "paper_candidate",
+    "promoted_at": 1781116780.1874619,
+    "sharpe": 1.52,
+    "max_dd": 11.200000000000001,
+    "notes": "Auto-promoted from backtest. test_sharpe=1.52, val_sharpe=1.87, max_dd=11.2%"
+  },
+  "xgb_spy_daily_v1": {
+    "stage": "paper_candidate",
+    "promoted_at": 1781116780.1874619,
+    "sharpe": 1.21,
+    "max_dd": 8.9,
+    "notes": "Auto-promoted from backtest. test_sharpe=1.21, val_sharpe=1.43, max_dd=8.9%"
+  }
+}

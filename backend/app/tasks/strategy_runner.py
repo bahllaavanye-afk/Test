@@ -4,6 +4,7 @@ Scales to hundreds of concurrent strategy+symbol combinations.
 """
 from __future__ import annotations
 import asyncio
+import json
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 
@@ -68,6 +69,11 @@ STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "vix_mean_reversion":       [0, 1],     # bear + sideways
     "liquidation_cascade_fade": [0],        # bear only
     "hmm_regime":               [0, 1, 2],  # always active (meta-strategy)
+    # ── Research strategies ──────────────────────────────────────────────────
+    "realized_vol_asymmetry":    [0, 1, 2],  # all regimes (skew predictor)
+    "analyst_revision_momentum": [1, 2],     # sideways + bull (momentum factor)
+    "on_chain_exchange_netflow": [0, 1, 2],  # all regimes (crypto OI signal)
+    "vol_of_vol_timing":         [0, 1, 2],  # all regimes (vvix regime signal)
 }
 DEFAULT_REGIMES = [0, 1, 2]
 
@@ -250,6 +256,33 @@ class ContinuousStrategyRunner:
                             logger.info("Order submitted", strategy=strategy_name, symbol=symbol,
                                         order_id=getattr(result, "order_id", "?"),
                                         side=signal.side, qty=order_req.quantity)
+
+                            # Store exit config in Redis for position_monitor.py
+                            try:
+                                redis_client = get_redis()
+                                if redis_client is not None:
+                                    exit_config = {
+                                        "strategy_name": strategy_name,
+                                        "strategy_type": getattr(strategy_cls, "strategy_type", "manual"),
+                                        "risk_bucket": getattr(strategy_cls, "risk_bucket", "directional"),
+                                        "entry_price": signal.target_price,
+                                        "stop_loss": signal.stop_loss,
+                                        "take_profit": signal.take_profit,
+                                        "peak_price": signal.target_price,
+                                        "bars_held": 0,
+                                        "stored_at": datetime.now(timezone.utc).isoformat(),
+                                    }
+                                    await redis_client.set(
+                                        f"pos_exit:{symbol}",
+                                        json.dumps(exit_config),
+                                        ex=86400,
+                                    )
+                            except Exception as _exit_cfg_exc:
+                                logger.debug(
+                                    "Failed to store exit config in Redis",
+                                    symbol=symbol,
+                                    error=str(_exit_cfg_exc),
+                                )
 
             except asyncio.CancelledError:
                 break

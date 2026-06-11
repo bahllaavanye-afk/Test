@@ -1,6 +1,9 @@
 """ML model registry — all model classes importable from here."""
+import logging
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.ml.models.ensemble_model import EnsembleModel
+
+logger = logging.getLogger(__name__)
 
 # Optional heavy models (torch/sklearn may not be present in all envs)
 try:

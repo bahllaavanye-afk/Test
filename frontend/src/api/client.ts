@@ -44,7 +44,7 @@ api.interceptors.response.use(
           .catch(() => {
             setToken(null)
             setStoredRefreshToken(null)
-            window.location.href = '/login'
+            window.dispatchEvent(new Event('sessionExpired'))
             return Promise.reject(new Error('session expired'))
           })
           .finally(() => { _refreshing = null })
@@ -58,9 +58,10 @@ api.interceptors.response.use(
           return Promise.reject(err)
         }
       }
-      // No refresh token available — redirect to login
+      // No refresh token available — signal session expiry via event
       setToken(null)
-      window.location.href = '/login'
+      setStoredRefreshToken(null)
+      window.dispatchEvent(new Event('sessionExpired'))
     }
     return Promise.reject(err)
   }

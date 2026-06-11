@@ -15,14 +15,24 @@ class RSIMACDStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 300.0
 
+    DEFAULT_PARAMS = {
+        "rsi_period": 14,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "macd_fast": 12,
+        "macd_slow": 26,
+        "macd_signal": 9,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.rsi_period = params.get("rsi_period", 14) if params else 14
-        self.rsi_oversold = params.get("rsi_oversold", 30) if params else 30
-        self.rsi_overbought = params.get("rsi_overbought", 70) if params else 70
-        self.macd_fast = params.get("macd_fast", 12) if params else 12
-        self.macd_slow = params.get("macd_slow", 26) if params else 26
-        self.macd_signal = params.get("macd_signal", 9) if params else 9
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.rsi_period = effective["rsi_period"]
+        self.rsi_oversold = effective["rsi_oversold"]
+        self.rsi_overbought = effective["rsi_overbought"]
+        self.macd_fast = effective["macd_fast"]
+        self.macd_slow = effective["macd_slow"]
+        self.macd_signal = effective["macd_signal"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         if len(data) < self.macd_slow + self.macd_signal + 5:

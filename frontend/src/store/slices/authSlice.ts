@@ -14,6 +14,7 @@ export const setStoredRefreshToken = (t: string | null) => {
 interface AuthState {
   accessToken: string | null
   isAuthenticated: boolean
+  expiredAt: number | null
 }
 
 const storedToken = sessionStorage.getItem('access_token')
@@ -21,6 +22,7 @@ const storedToken = sessionStorage.getItem('access_token')
 const initialState: AuthState = {
   accessToken: storedToken,
   isAuthenticated: !!storedToken,
+  expiredAt: null,
 }
 
 const authSlice = createSlice({
@@ -38,13 +40,20 @@ const authSlice = createSlice({
     logout(state) {
       state.accessToken = null
       state.isAuthenticated = false
+      state.expiredAt = null
       setToken(null)
       setStoredRefreshToken(null)
+    },
+    sessionExpired(state) {
+      state.accessToken = null
+      state.isAuthenticated = false
+      state.expiredAt = Date.now()
     },
   },
 })
 
-export const { setCredentials, logout } = authSlice.actions
+export const { setCredentials, logout, sessionExpired } = authSlice.actions
 export const selectIsAuthenticated = (state: RootState) => state.auth.isAuthenticated
 export const selectToken = (state: RootState) => state.auth.accessToken
+export const selectExpiredAt = (state: RootState) => state.auth.expiredAt
 export default authSlice.reducer

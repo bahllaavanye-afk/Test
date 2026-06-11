@@ -16,9 +16,20 @@ class PolyBinaryArbStrategy(AbstractStrategy):
     risk_bucket = "arbitrage"
     tick_interval_seconds = 5.0   # poll every 5 seconds
 
+    DEFAULT_PARAMS = {
+        "min_edge_pct": 3.0,
+        "max_position_usd": 500,
+        "kelly_fraction": 0.25,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.max_sum = params.get("max_sum", 0.97) if params else 0.97   # YES + NO < this = arb opportunity
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.min_edge_pct = effective["min_edge_pct"]
+        self.max_position_usd = effective["max_position_usd"]
+        self.kelly_fraction = effective["kelly_fraction"]
+        # max_sum derived from min_edge_pct: if edge >= 3%, YES+NO <= 0.97
+        self.max_sum = 1.0 - self.min_edge_pct / 100.0
         self.min_liquidity = params.get("min_liquidity", 100) if params else 100  # $100 minimum depth
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:

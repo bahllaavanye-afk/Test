@@ -160,9 +160,58 @@ def _get_channel_history(channel: str, limit: int = 5) -> list[dict]:
 
 # ── QuantEdge AI response ──────────────────────────────────────────────────────────
 
+def _ask_free_llm(question: str, system: str) -> str:
+    """Fallback to free LLMs (Gemini → Groq → DeepSeek) when Anthropic key is disabled."""
+    import urllib.request
+
+    gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
+    if gemini_key:
+        try:
+            payload = json.dumps({
+                "contents": [{"parts": [{"text": f"{system}\n\n{question}"}]}],
+                "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.3},
+            }).encode()
+            req = urllib.request.Request(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read())
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            print(f"Gemini fallback failed: {e}")
+
+    groq_key = os.environ.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY_1", ""))
+    if groq_key:
+        try:
+            payload = json.dumps({
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": question}],
+                "max_tokens": 1024,
+            }).encode()
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=payload,
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {groq_key}"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"Groq fallback failed: {e}")
+
+    return "⚠️ No LLM available (Anthropic disabled, Gemini/Groq keys missing) — QuantEdge AI cannot respond."
+
+
 def _ask_claude(question: str, channel_context: str = "") -> str:
-    if not ANTHROPIC_API_KEY:
-        return "⚠️ ANTHROPIC_API_KEY not set — QuantEdge AI cannot respond."
+    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == "disabled":
+        status = _read_pipeline_state()
+        results = _read_experiment_results()
+        system = SYSTEM_PROMPT.format(status=status, results=results)
+        if channel_context:
+            system += f"\n\nRecent channel context:\n{channel_context}"
+        return _ask_free_llm(question, system)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     status = _read_pipeline_state()
@@ -202,9 +251,12 @@ def run_proactive_insights() -> None:
     if not SLACK_TOKEN:
         print("No SLACK_BOT_TOKEN — skipping proactive insights")
         return
-    if not ANTHROPIC_API_KEY:
-        print("No ANTHROPIC_API_KEY — cannot call QuantEdge AI")
-        return
+    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == "disabled":
+        gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
+        groq_key = os.environ.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY_1", ""))
+        if not gemini_key and not groq_key:
+            print("No LLM keys available — skipping proactive insights")
+            return
 
     hour = datetime.now(timezone.utc).hour
     # Morning (9am UTC): full briefing. Afternoon (13, 17): quick updates. Evening (21): recap.

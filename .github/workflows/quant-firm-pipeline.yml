@@ -1,0 +1,56 @@
+name: QuantEdge Quant Firm Pipeline (Hourly)
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # every hour, 24/7 — research → quant → risk → portfolio → execute → review
+  workflow_dispatch:
+
+concurrency:
+  group: quant-firm-pipeline
+  cancel-in-progress: false   # never cancel in-progress pipeline
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  pipeline:
+    name: 6-Desk Quant Firm Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install uv --quiet
+          uv pip install --system \
+            'numpy>=1.26.0' 'pandas>=2.2.0' \
+            'requests>=2.32.0'
+
+      - name: Run quant firm pipeline
+        env:
+          ANTHROPIC_API_KEY: "disabled"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL: "https://paper-api.alpaca.markets"
+          TRADING_MODE: "paper"
+          ALLOW_PAID_APIS: "False"
+        run: python .github/scripts/quant_firm_pipeline.py

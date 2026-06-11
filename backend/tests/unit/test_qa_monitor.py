@@ -27,7 +27,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.tasks.qa_monitor import (
     QAReport,
     SecurityIssue,
-    TestFailure,
+    FailureRecord,
     determine_overall_status,
     parse_test_failures,
     scan_security_issues,
@@ -38,7 +38,7 @@ from app.tasks.qa_monitor import (
 # test_parse_test_failures_empty
 # ===========================================================================
 
-class TestParseTestFailuresEmpty:
+class TestParseFailureRecordsEmpty:
     """parse_test_failures with no content returns an empty list."""
 
     def test_none_like_empty_string(self):
@@ -67,7 +67,7 @@ class TestParseTestFailuresEmpty:
 # test_parse_test_failures_with_failures
 # ===========================================================================
 
-class TestParseTestFailuresWithFailures:
+class TestParseFailureRecordsWithFailures:
     """parse_test_failures correctly parses real pytest -q --tb=short output."""
 
     SAMPLE_OUTPUT = (
@@ -78,7 +78,7 @@ class TestParseTestFailuresWithFailures:
         "3 failed, 1 error, 38 passed in 5.67s\n"
     )
 
-    def _get_failures(self) -> list[TestFailure]:
+    def _get_failures(self) -> list[FailureRecord]:
         return parse_test_failures(self.SAMPLE_OUTPUT)
 
     def test_correct_count(self):
@@ -384,7 +384,7 @@ class TestHealthReportSerializable:
     """QAReport (including nested dataclasses) can be round-tripped through JSON."""
 
     def _make_full_report(self) -> QAReport:
-        failure = TestFailure(
+        failure = FailureRecord(
             test_id="tests/unit/test_risk.py::test_drawdown",
             error_type="AssertionError",
             error_msg="drawdown exceeded limit",
@@ -454,7 +454,7 @@ class TestHealthReportSerializable:
 
     def test_none_line_number_serializes_correctly(self):
         """None values inside nested dataclasses must not break JSON serialization."""
-        failure = TestFailure(
+        failure = FailureRecord(
             test_id="tests/unit/test_foo.py::test_bar",
             error_type="AssertionError",
             error_msg="boom",

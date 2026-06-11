@@ -4,6 +4,51 @@ import api from '../api/client'
 import PortfolioGreeks from '../components/options/PortfolioGreeks'
 import OptionsPCRPanel from '../components/strategies/OptionsPCRPanel'
 
+// ── Desk P&L Banner ─────────────────────────────────────────────────────────
+function DeskPnLBanner({ desk }: { desk: string }) {
+  const { data: sysStatus } = useQuery({
+    queryKey: ['system-status'],
+    queryFn: () => api.get('/analytics/system-status').then(r => r.data).catch(() => null),
+    refetchInterval: 30_000,
+  })
+  const deskCount = sysStatus?.strategies_by_desk?.[desk] ?? null
+  const todayPnlPct = sysStatus?.today_pnl_pct ?? null
+
+  if (!sysStatus) return null
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-2.5 bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg">
+      <div className="flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#9c27b0] animate-pulse" />
+        <span className="text-xs font-bold text-[#9c27b0] capitalize">{desk} Desk</span>
+      </div>
+      {deskCount != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Active Strategies</span>
+            <span className="text-xs font-mono font-bold text-[#9c27b0]">{deskCount}</span>
+          </div>
+        </>
+      )}
+      {todayPnlPct != null && (
+        <>
+          <div className="h-3 w-px bg-[#1e1e1e]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#555]">Today P&L</span>
+            <span className="text-xs font-mono font-bold" style={{ color: todayPnlPct >= 0 ? '#00c853' : '#ff1744' }}>
+              {todayPnlPct >= 0 ? '+' : ''}{todayPnlPct.toFixed(2)}%
+            </span>
+          </div>
+        </>
+      )}
+      <span className="ml-auto text-[10px] text-[#333] font-mono uppercase tracking-wider">
+        OPTIONS · PAPER
+      </span>
+    </div>
+  )
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface OptionContract {
@@ -740,6 +785,9 @@ export default function Options() {
 
   return (
     <div className="space-y-4 min-h-0">
+      {/* Desk P&L Header */}
+      <DeskPnLBanner desk="options" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-white">Options Chain</h1>

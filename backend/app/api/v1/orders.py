@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.api.deps import get_current_user
+from app.api.limiter import limiter
 from app.models.order import Order
 from app.models.user import User
 from app.models.account import Account
@@ -119,12 +120,13 @@ async def list_orders(
 
 
 @router.post("/", response_model=OrderOut)
+@limiter.limit("10/minute")
 async def submit_order(
+    request: Request,
     body: OrderCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    request: Request = None,
 ):
     acct_result = await db.execute(select(Account).where(Account.id == body.account_id))
     account = acct_result.scalar_one_or_none()
@@ -314,12 +316,13 @@ async def submit_bracket(
 
 
 @router.patch("/{order_id}", response_model=OrderOut)
+@limiter.limit("10/minute")
 async def modify_order(
+    request: Request,
     order_id: str,
     body: OrderModify,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    request: Request = None,
 ):
     """Modify an open order's price, quantity, or bracket legs."""
     result = await db.execute(select(Order).where(Order.id == order_id))
@@ -381,11 +384,12 @@ async def modify_order(
 
 
 @router.delete("/{order_id}")
+@limiter.limit("20/minute")
 async def cancel_order(
+    request: Request,
     order_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    request: Request = None,
 ):
     result = await db.execute(select(Order).where(Order.id == order_id))
     order = result.scalar_one_or_none()

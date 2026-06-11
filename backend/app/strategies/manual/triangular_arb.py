@@ -34,9 +34,18 @@ class TriangularArbStrategy(AbstractStrategy):
     risk_bucket = "arbitrage"
     tick_interval_seconds = 0.5   # scan every 500ms
 
+    DEFAULT_PARAMS = {
+        "min_profit_bps": 15,
+        "max_position_usd": 10000,
+        "slippage_bps": 5,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.min_profit_pct = params.get("min_profit_pct", 0.15) if params else 0.15  # 15 bps after fees
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.min_profit_pct = effective["min_profit_bps"] / 100.0  # convert bps to pct
+        self.max_position_usd = effective["max_position_usd"]
+        self.slippage_bps = effective["slippage_bps"]
         self.fee_pct = params.get("fee_pct", 0.10) if params else 0.10                # 10 bps per leg (Binance)
 
     def compute_triangle_profit(self, prices: dict, a: str, b: str, c: str) -> float | None:

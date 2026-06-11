@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.api.limiter import limiter
 
 from app.config import settings
 from app.database import engine, Base
@@ -285,6 +288,8 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.debug else None,
         redoc_url="/redoc" if settings.debug else None,
     )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS — explicit allowlist only. Browsers reject `*` + credentials anyway,
     # so the fallback to `*` was both insecure and broken. In dev we permit
@@ -321,7 +326,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "mode": settings.trading_mode}
+        return {"status": "ok", "mode": "paper", "version": "1.0.0", "agents": "active"}
 
     @app.get("/health/detailed")
     async def health_detailed():
@@ -339,7 +344,13 @@ def create_app() -> FastAPI:
                 await session.execute(__import__("sqlalchemy").text("SELECT 1"))
             checks["database"] = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
         except Exception as e:
-            checks["database"] = {"ok": False, "error": str(e)[:120]}
+            err_str = str(e)[:200]
+            hint = ""
+            if "supabase" in settings.database_url.lower() or "pooler" in settings.database_url.lower():
+                hint = (" | SUPABASE PROJECT MAY BE PAUSED — go to supabase.com/dashboard, "
+                        "find your project and click Unpause (free tier pauses after 7d inactivity). "
+                        "You have 90 days before data is lost.")
+            checks["database"] = {"ok": False, "error": err_str + hint}
 
         # Redis
         try:

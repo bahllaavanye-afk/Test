@@ -20,10 +20,19 @@ class LowVolatilityStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 3600.0
 
+    DEFAULT_PARAMS = {
+        "lookback_days": 252,
+        "top_pct": 30,
+        "bottom_pct": 20,
+        "rebalance_freq": 21,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        self.vol_period = params.get("vol_period", 252) if params else 252
-        self.vol_percentile = params.get("vol_percentile", 30) if params else 30  # bottom 30%
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.vol_period = effective["lookback_days"]
+        self.vol_percentile = effective["top_pct"]
+        self.rebalance_freq = effective["rebalance_freq"]
         self.trend_ema = params.get("trend_ema", 50) if params else 50
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:

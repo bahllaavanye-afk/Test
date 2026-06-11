@@ -147,4 +147,9 @@ def optimize_portfolio(
     """
     if method == "cvar":
         return CVaROptimizer(confidence=confidence).compute_weights(returns)
+    if method == "equal":
+        n = len(returns.columns)
+        return pd.Series(1.0 / n, index=returns.columns)
+    if method != "hrp":
+        raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
     return HRPOptimizer().compute_weights(returns)

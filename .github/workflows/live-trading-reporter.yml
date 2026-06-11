@@ -1,0 +1,49 @@
+name: Live Trading Reporter (Paper Account)
+
+# Every 30 minutes on market days: reads real Alpaca paper account data
+# (positions, orders, P&L) and posts live status to Slack desk channels.
+#
+# SECURITY: TRADING_MODE is hardcoded to 'paper' — live trading is blocked
+# at the script level (sys.exit(1) if TRADING_MODE == 'live').
+
+on:
+  schedule:
+    # Every 30 min, Mon–Fri, 09:00–22:00 UTC (covers US pre/regular/post hours)
+    - cron: "*/30 9-22 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: live-trading-reporter
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Paper Trading Status
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests --quiet
+
+      - name: Run live trading reporter
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          TRADING_MODE:      paper
+          ANTHROPIC_API_KEY: "disabled"
+          ALLOW_PAID_APIS:   "False"
+        run: python .github/scripts/live_trading_reporter.py

@@ -20,6 +20,7 @@ from app.strategies.manual.skew_arb import SkewArbitrageStrategy
 from app.strategies.manual.gamma_exposure import GammaExposureStrategy
 from app.strategies.manual.kalman_pairs import KalmanPairsStrategy
 from app.strategies.manual.funding_rate_arb import FundingRateArbStrategy
+from app.strategies.manual.dex_cex_arb import DexCexArbStrategy
 from app.strategies.manual.liquidation_cascade_fade import LiquidationCascadeFadeStrategy
 from app.strategies.manual.vrp_systematic import VRPSystematicStrategy
 from app.strategies.manual.hmm_regime import HMMRegimeStrategy
@@ -53,7 +54,23 @@ from app.strategies.manual.token_unlock_fade import TokenUnlockFade
 from app.strategies.manual.poly_late_resolution import PolymarketLateResolution
 from app.strategies.manual.poly_market_maker import PolymarketMarketMaker
 from app.strategies.manual.poly_calibration_arb import PolymarketCalibrationArb
+from app.strategies.manual.poly_time_value_fade import PolyTimeValueFadeStrategy
+from app.strategies.manual.poly_cross_market_hedge import PolyCrossMarketHedgeStrategy
+from app.strategies.manual.poly_liquidity_provision import PolyLiquidityProvisionStrategy
+from app.strategies.manual.yield_curve_momentum import YieldCurveMomentumStrategy
+from app.strategies.manual.macro_risk_barometer import MacroRiskBarometerStrategy
+from app.strategies.manual.dollar_carry import DollarCarryStrategy
+from app.strategies.manual.pmi_sector_rotation import PMISectorRotationStrategy
+from app.strategies.manual.central_bank_window import CentralBankWindowStrategy
+from app.strategies.manual.yield_spread_reversion import YieldSpreadReversionStrategy
+from app.strategies.manual.tlt_spy_rotation import TLTSPYRotationStrategy
+from app.strategies.manual.duration_momentum import DurationMomentumStrategy
+from app.strategies.manual.breakeven_inflation import BreakevenInflationStrategy
 from app.strategies.manual.multi_factor_equity import MultiFactorEquity
+from app.strategies.manual.realized_vol_asymmetry import RealizedVolAsymmetryStrategy
+from app.strategies.manual.analyst_revision_momentum import AnalystRevisionMomentumStrategy
+from app.strategies.manual.on_chain_exchange_netflow import OnChainExchangeNetflowStrategy
+from app.strategies.manual.vol_of_vol_timing import VolOfVolTimingStrategy
 from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrategy
 from app.strategies.manual.options_strategies import (
     CoveredCallStrategy,
@@ -62,6 +79,30 @@ from app.strategies.manual.options_strategies import (
     LongCallMomentum,
     EarningsIVCrushStrategy,
     WheelStrategy,
+)
+from app.strategies.manual.stat_arb_etf import StatArbETFStrategy
+from app.strategies.manual.bond_equity_rotation import BondEquityRotationStrategy
+from app.strategies.manual.put_call_ratio_contrarian import PutCallRatioContrarianStrategy
+from app.strategies.manual.crypto_basis_roll import CryptoBasisRollStrategy
+from app.strategies.manual.micro_cap_momentum import MicroCapMomentumStrategy
+from app.strategies.manual.event_driven_gap import EventDrivenGapStrategy
+from app.strategies.manual.vol_carry_short import VolCarryShortStrategy
+from app.strategies.manual.crypto_whale_momentum import CryptoWhaleMomentumStrategy
+from app.strategies.manual.interest_rate_differential import InterestRateDifferentialStrategy
+from app.strategies.manual.options_gamma_scalp import OptionsGammaScalpStrategy
+from app.strategies.manual.tv_indicators import (
+    EMAStackStrategy,
+    SqueezeProStrategy,
+    WaveTrendStrategy,
+    HullSuiteStrategy,
+    SupertrendRsiComboStrategy,
+    KamaRocStrategy,
+    VwapBandsStrategy,
+    IchimokuCloudStrategy,
+    MacdDivergenceStrategy,
+    AdxDmiStrategy,
+    StochRsiMacdStrategy,
+    ElliottWaveProxyStrategy,
 )
 
 # ML strategies depend on optional heavy libs (torch, stable_baselines3, gymnasium,
@@ -131,6 +172,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "gamma_exposure": GammaExposureStrategy,
     "kalman_pairs": KalmanPairsStrategy,
     "funding_rate_arb": FundingRateArbStrategy,
+    "dex_cex_arb": DexCexArbStrategy,
     "liquidation_cascade_fade": LiquidationCascadeFadeStrategy,
     "vrp_systematic": VRPSystematicStrategy,
     "hmm_regime": HMMRegimeStrategy,
@@ -172,6 +214,50 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "long_call_momentum": LongCallMomentum,
     "earnings_iv_crush": EarningsIVCrushStrategy,
     "wheel": WheelStrategy,
+    # ── New strategies ────────────────────────────────────────────────────────
+    "stat_arb_etf": StatArbETFStrategy,
+    "bond_equity_rotation": BondEquityRotationStrategy,
+    "put_call_ratio_contrarian": PutCallRatioContrarianStrategy,
+    "crypto_basis_roll": CryptoBasisRollStrategy,
+    "micro_cap_momentum": MicroCapMomentumStrategy,
+    "event_driven_gap": EventDrivenGapStrategy,
+    "vol_carry_short": VolCarryShortStrategy,
+    "crypto_whale_momentum": CryptoWhaleMomentumStrategy,
+    "interest_rate_differential": InterestRateDifferentialStrategy,
+    "options_gamma_scalp": OptionsGammaScalpStrategy,
+    # ── Polymarket expanded desk ──────────────────────────────────────────────
+    "poly_time_value_fade": PolyTimeValueFadeStrategy,
+    "poly_cross_market_hedge": PolyCrossMarketHedgeStrategy,
+    "poly_liquidity_provision": PolyLiquidityProvisionStrategy,
+    # ── Macro desk ────────────────────────────────────────────────────────────
+    "yield_curve_momentum": YieldCurveMomentumStrategy,
+    "macro_risk_barometer": MacroRiskBarometerStrategy,
+    "dollar_carry": DollarCarryStrategy,
+    "pmi_sector_rotation": PMISectorRotationStrategy,
+    "central_bank_window": CentralBankWindowStrategy,
+    # ── Rates desk ────────────────────────────────────────────────────────────
+    "yield_spread_reversion": YieldSpreadReversionStrategy,
+    "tlt_spy_rotation": TLTSPYRotationStrategy,
+    "duration_momentum": DurationMomentumStrategy,
+    "breakeven_inflation": BreakevenInflationStrategy,
+    # ── New research strategies ───────────────────────────────────────────────
+    "realized_vol_asymmetry":     RealizedVolAsymmetryStrategy,
+    "analyst_revision_momentum":  AnalystRevisionMomentumStrategy,
+    "on_chain_exchange_netflow":  OnChainExchangeNetflowStrategy,
+    "vol_of_vol_timing":          VolOfVolTimingStrategy,
+    # ── TradingView Indicator Desk ────────────────────────────────────────────
+    "ema_stack_tv": EMAStackStrategy,
+    "squeeze_pro_tv": SqueezeProStrategy,
+    "wave_trend_tv": WaveTrendStrategy,
+    "hull_suite_tv": HullSuiteStrategy,
+    "supertrend_rsi_tv": SupertrendRsiComboStrategy,
+    "kama_roc_tv": KamaRocStrategy,
+    "vwap_bands_tv": VwapBandsStrategy,
+    "ichimoku_cloud_tv": IchimokuCloudStrategy,
+    "macd_divergence_tv": MacdDivergenceStrategy,
+    "adx_dmi_tv": AdxDmiStrategy,
+    "stoch_rsi_macd_tv": StochRsiMacdStrategy,
+    "elliott_wave_proxy_tv": ElliottWaveProxyStrategy,
 }
 
 # Best-effort load ML strategies; missing optional deps don't break the registry

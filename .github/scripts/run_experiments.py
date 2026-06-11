@@ -46,27 +46,42 @@ EXPERIMENT_CONFIGS = [
     ("triple_barrier_momentum","app.strategies.manual.triple_barrier_momentum","TripleBarrierMomentumStrategy","QQQ","1d","2020-01-01","2024-01-01","2025-01-01",{}),
     ("hmm_regime",       "app.strategies.manual.hmm_regime",       "HMMRegimeStrategy",        "SPY",     "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
     # New institutional strategies (2 Sigma / Citadel research)
-    ("cross_sectional_momentum", "app.strategies.manual.cross_sectional_momentum", "CrossSectionalMomentum", "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("opening_range_breakout",   "app.strategies.manual.opening_range_breakout",   "OpeningRangeBreakout",   "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("vwap_reversion",           "app.strategies.manual.vwap_reversion",           "VWAPReversion",          "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("vrp_systematic",           "app.strategies.manual.vrp_systematic",           "VRPSystematic",          "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("dispersion_trading",       "app.strategies.manual.dispersion_trading",       "DispersionTrading",      "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("pca_stat_arb",             "app.strategies.manual.pca_stat_arb",             "PCAStatArb",             "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("kalman_pairs",             "app.strategies.manual.kalman_pairs",             "KalmanPairsTrading",     "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("pead_sue",                 "app.strategies.manual.pead_sue",                 "PEADSurpriseStrategy",   "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("cross_sectional_momentum", "app.strategies.manual.cross_sectional_momentum", "CrossSectionalMomentumStrategy", "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("opening_range_breakout",   "app.strategies.manual.opening_range_breakout",   "OpeningRangeBreakoutStrategy",   "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("vwap_reversion",           "app.strategies.manual.vwap_reversion",           "VWAPReversionStrategy",          "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("vrp_systematic",           "app.strategies.manual.vrp_systematic",           "VRPSystematicStrategy",          "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("dispersion_trading",       "app.strategies.manual.dispersion_trading",       "DispersionTradingStrategy",      "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("pca_stat_arb",             "app.strategies.manual.pca_stat_arb",             "PCAStatArbStrategy",             "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("kalman_pairs",             "app.strategies.manual.kalman_pairs",             "KalmanPairsStrategy",            "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("pead_sue",                 "app.strategies.manual.pead_sue",                 "PEADStrategy",                   "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
     # Options desk
     ("gamma_exposure",           "app.strategies.manual.gamma_exposure",           "GammaExposureStrategy",  "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
-    ("skew_arb",                 "app.strategies.manual.skew_arb",                 "SkewArbStrategy",        "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
+    ("skew_arb",                 "app.strategies.manual.skew_arb",                 "SkewArbitrageStrategy",  "SPY", "1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
     ("vol_term_structure",       "app.strategies.manual.vol_term_structure",       "VolTermStructureStrategy","SPY","1d", "2020-01-01", "2024-01-01", "2025-01-01", {}),
     # Crypto desk
-    ("crypto_adaptive_trend",    "app.strategies.manual.crypto_adaptive_trend",    "CryptoAdaptiveTrend",    "BTC/USD","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("crypto_adaptive_trend",    "app.strategies.manual.crypto_adaptive_trend",    "CryptoAdaptiveTrendStrategy","BTC/USD","1d","2020-01-01","2024-01-01","2025-01-01",{}),
     ("mvrv_zscore_timing",       "app.strategies.manual.mvrv_zscore_timing",       "MVRVZScoreTimingStrategy","BTC/USD","1d","2020-01-01","2024-01-01","2025-01-01",{}),
     ("intraday_seasonality",     "app.strategies.manual.intraday_seasonality",     "IntradaySeasonality",    "BTC/USD","1d","2020-01-01","2024-01-01","2025-01-01",{}),
     ("basis_carry",              "app.strategies.manual.basis_carry",              "BasisCarryStrategy",     "BTC/USD","1d","2020-01-01","2024-01-01","2025-01-01",{}),
     ("btc_eth_stat_arb",         "app.strategies.manual.btc_eth_stat_arb",         "BTCETHStatArb",          "BTC/USD","1d","2020-01-01","2024-01-01","2025-01-01",{}),
     # Macro/FX desk
-    ("cross_asset_carry",        "app.strategies.manual.cross_asset_carry",        "CrossAssetCarry",        "GLD",  "1d","2020-01-01","2024-01-01","2025-01-01",{}),
-    ("intraday_fomc_momentum",   "app.strategies.manual.intraday_fomc_momentum",   "IntradayFOMCMomentum",   "SPY",  "1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("cross_asset_carry",        "app.strategies.manual.cross_asset_carry",        "CrossAssetCarryStrategy","GLD",  "1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("intraday_fomc_momentum",   "app.strategies.manual.intraday_fomc_momentum",   "IntradayFOMCMomentumStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    # New macro desk strategies
+    ("yield_curve_momentum",     "app.strategies.manual.yield_curve_momentum",     "YieldCurveMomentumStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("macro_risk_barometer",     "app.strategies.manual.macro_risk_barometer",     "MacroRiskBarometerStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("dollar_carry",             "app.strategies.manual.dollar_carry",             "DollarCarryStrategy",      "EEM","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("pmi_sector_rotation",      "app.strategies.manual.pmi_sector_rotation",      "PMISectorRotationStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("central_bank_window",      "app.strategies.manual.central_bank_window",      "CentralBankWindowStrategy","SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    # New rates desk strategies
+    ("yield_spread_reversion",   "app.strategies.manual.yield_spread_reversion",   "YieldSpreadReversionStrategy","HYG","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("tlt_spy_rotation",         "app.strategies.manual.tlt_spy_rotation",         "TLTSPYRotationStrategy",   "SPY","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("duration_momentum",        "app.strategies.manual.duration_momentum",        "DurationMomentumStrategy", "TLT","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("breakeven_inflation",      "app.strategies.manual.breakeven_inflation",      "BreakevenInflationStrategy","TIPS","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    # New polymarket desk strategies
+    ("poly_time_value_fade",     "app.strategies.manual.poly_time_value_fade",     "PolyTimeValueFadeStrategy","POLYMARKET","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("poly_cross_market_hedge",  "app.strategies.manual.poly_cross_market_hedge",  "PolyCrossMarketHedgeStrategy","POLYMARKET","1d","2020-01-01","2024-01-01","2025-01-01",{}),
+    ("poly_liquidity_provision", "app.strategies.manual.poly_liquidity_provision", "PolyLiquidityProvisionStrategy","POLYMARKET","1d","2020-01-01","2024-01-01","2025-01-01",{}),
 ]
 
 STRATEGY_FILTER = os.environ.get("STRATEGY_FILTER", "").strip()
@@ -182,6 +197,13 @@ def _run_one(name: str, module_path: str, class_name: str, symbol: str,
 
     print(f"\n{'─'*60}", flush=True)
     print(f"  {name} | {effective_symbol} | {test_start}→{test_end}", flush=True)
+
+    # Polymarket and similar non-yfinance symbols have no OHLCV data — skip gracefully.
+    # The strategy's signal logic runs live via Polymarket API; backtest is not applicable.
+    _SKIP_SYMBOLS = {"POLYMARKET", "POLY_DUMMY"}
+    if effective_symbol in _SKIP_SYMBOLS:
+        print(f"  ↷ skipped (no yfinance data for {effective_symbol} — live-only strategy)", flush=True)
+        return {}
 
     # Fetch full data (train + test combined so indicators warm up)
     df = _fetch_ohlcv(effective_symbol, train_start, test_end)

@@ -55,8 +55,20 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
 
     _DATA_BASE = "https://data.alpaca.markets"
 
+    DEFAULT_PARAMS = {
+        "orb_minutes": 30,
+        "volume_multiplier": 1.2,
+        "stop_loss_pct": 0.5,
+        "profit_target_pct": 50.0,
+    }
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        self.orb_minutes = int(effective["orb_minutes"])
+        self.volume_multiplier = float(effective["volume_multiplier"])
+        self.stop_loss_pct = float(effective["stop_loss_pct"])
+        self.profit_target_pct = float(effective["profit_target_pct"])
 
     async def _fetch_intraday_bars(self, symbol: str) -> pd.DataFrame:
         """Fetch today's 1-minute bars."""

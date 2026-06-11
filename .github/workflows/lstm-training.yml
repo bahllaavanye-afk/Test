@@ -1,0 +1,72 @@
+name: LSTM Model Training (CPU — Weekly)
+
+# Weekly CPU training on real OHLCV data (SPY + BTC daily, 3 years).
+# Runtime: ~15-20 min on ubuntu-latest.
+# Models saved as workflow artifacts (30-day retention) AND posted to Slack.
+#
+# To promote a trained model to production inference:
+#   1. Download artifact from Actions tab
+#   2. Commit to backend/models_artifacts/<exp_name>/
+#   3. InferenceService auto-loads on next deploy
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"    # Every Sunday 02:00 UTC (off-hours, low runner demand)
+  workflow_dispatch:        # Manual trigger for ad-hoc retraining
+
+concurrency:
+  group: lstm-training
+  cancel-in-progress: true
+
+jobs:
+  train:
+    name: Train LSTM (CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PyTorch (CPU wheel is ~190 MB)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-torch-cpu-2.2
+
+      - name: Install training dependencies
+        run: |
+          pip install --quiet \
+            torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet \
+            numpy yfinance requests
+
+      - name: Verify environment
+        run: |
+          python -c "import torch, numpy, yfinance; print('Torch:', torch.__version__, '| NumPy:', numpy.__version__)"
+
+      - name: Run LSTM training
+        env:
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          TRADING_MODE:      paper
+          ANTHROPIC_API_KEY: "disabled"
+          ALLOW_PAID_APIS:   "False"
+          ARTIFACTS_DIR:     backend/models_artifacts
+        run: python .github/scripts/ci_lstm_trainer.py
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lstm-models-${{ github.run_number }}
+          path: backend/models_artifacts/
+          retention-days: 30

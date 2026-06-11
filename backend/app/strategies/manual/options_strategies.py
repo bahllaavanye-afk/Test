@@ -754,3 +754,278 @@ class WheelStrategy(AbstractStrategy):
         ).fillna(False)
 
         return BacktestSignals(entries=entries, exits=exits)
+
+
+class PutProtectionOverlay(AbstractStrategy):
+    """Portfolio hedge: buy OTM put on SPY/QQQ when VIX < 20 (cheap insurance).
+
+    Acts as portfolio-level insurance, not an alpha source. Designed to run
+    continuously alongside directional strategies to provide downside protection.
+
+    Entry conditions:
+      - VIX < 20: implied volatility is low, making puts cheap
+      - Portfolio beta > 0.8 (inject via data.attrs['portfolio_beta'])
+      - Buy 5% OTM put at 30-45 DTE on SPY or QQQ
+
+    Risk note: buying puts means negative theta (time decay works against you).
+    Keep allocation small (1-2% of portfolio for the hedge).
+    """
+
+    name = "put_protection_overlay"
+    display_name = "Put Protection Overlay"
+    market_type = "equity"
+    strategy_type = "manual"
+    risk_bucket = "arbitrage"           # hedging = risk reduction
+    tick_interval_seconds = 3600.0
+    confidence_threshold = 0.60
+
+    MAX_VIX_FOR_ENTRY = 20.0    # only buy when vol is cheap
+    OTM_PCT = 0.05              # 5% out-of-the-money
+    TARGET_DTE_MIN = 30
+    TARGET_DTE_MAX = 45
+    MIN_PORTFOLIO_BETA = 0.8
+
+    def __init__(self, params: dict | None = None) -> None:
+        super().__init__(params)
+        self.max_vix: float = (params or {}).get("max_vix", self.MAX_VIX_FOR_ENTRY)
+        self.min_beta: float = (params or {}).get("min_portfolio_beta", self.MIN_PORTFOLIO_BETA)
+        self.otm_pct: float = (params or {}).get("otm_pct", self.OTM_PCT)
+
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Signal: VIX < threshold and portfolio is net long (beta > min_beta).
+
+        Caller must inject 'vix' and 'portfolio_beta' into data.attrs.
+        """
+        if len(data) < 20:
+            return None
+
+        vix: float = data.attrs.get("vix", 25.0)
+        portfolio_beta: float = data.attrs.get("portfolio_beta", 1.0)
+
+        if vix >= self.max_vix:
+            return None  # puts are too expensive right now
+
+        if portfolio_beta < self.min_beta:
+            return None  # portfolio already has low market exposure
+
+        # Scale confidence inversely with VIX — lower VIX = cheaper puts = better deal
+        confidence = min(0.80, 0.60 + (self.max_vix - vix) / 40.0)
+        price = float(data["close"].iloc[-1])
+        strike_hint = round(price * (1.0 - self.otm_pct), 2)
+
+        return Signal(
+            symbol=symbol,
+            side="buy",               # buying the put (protection)
+            confidence=confidence,
+            strategy_name=self.name,
+            strategy_type=self.strategy_type,
+            risk_bucket=self.risk_bucket,
+            metadata={
+                "strategy": "put_protection_overlay",
+                "vix": round(vix, 2),
+                "portfolio_beta": round(portfolio_beta, 3),
+                "otm_pct": self.otm_pct,
+                "strike_hint": strike_hint,
+                "target_dte_min": self.TARGET_DTE_MIN,
+                "target_dte_max": self.TARGET_DTE_MAX,
+                "hint": (
+                    f"Buy {self.otm_pct*100:.0f}% OTM put on {symbol} at ~{strike_hint}, "
+                    f"{self.TARGET_DTE_MIN}-{self.TARGET_DTE_MAX} DTE. "
+                    f"Size: 1-2% of portfolio for insurance."
+                ),
+            },
+        )
+
+    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        """Proxy: buy protection when realised vol is in low-percentile (cheap puts window)."""
+        close = df["close"]
+        log_ret = np.log(close / close.shift(1))
+        hv20 = log_ret.rolling(20).std() * np.sqrt(252)
+        hv_min = hv20.rolling(252).min()
+        hv_max = hv20.rolling(252).max()
+        # Low vol rank proxy = VIX low
+        iv_rank = (hv20 - hv_min) / (hv_max - hv_min + 0.001) * 100
+
+        # Enter when vol rank < 30 (cheap vol / low VIX environment)
+        entries = (iv_rank.shift(1) < 30).fillna(False)
+        # Exit when vol rank rises above 50 (put value has expanded, take profits or let run)
+        exits = (iv_rank.shift(1) > 50).fillna(False)
+        return BacktestSignals(entries=entries, exits=exits)
+
+
+class DeltaNeutralStrangle(AbstractStrategy):
+    """Sell OTM call + OTM put at equal delta, then delta-hedge with underlying.
+
+    Collects theta decay while staying market-neutral by continuously
+    rebalancing the net delta of the position.
+
+    Entry conditions:
+      - IV rank > 30 (adequate premium to collect)
+      - Sell 10-15 delta call and 10-15 delta put simultaneously
+    Delta hedging:
+      - Rebalance net delta every day
+      - Each rebalance: buy/sell underlying to bring net delta back to 0
+
+    Risk: Gamma risk near expiry (position can lose if large move occurs).
+    Exit: 50% profit target or 21 DTE, whichever first.
+    """
+
+    name = "delta_neutral_strangle"
+    display_name = "Delta Neutral Strangle"
+    market_type = "equity"
+    strategy_type = "manual"
+    risk_bucket = "arbitrage"           # net-neutral / theta-positive
+    tick_interval_seconds = 3600.0
+    confidence_threshold = 0.62
+
+    TARGET_DELTA = 0.12             # 10-15 delta per leg
+    TARGET_DTE_MIN = 30
+    TARGET_DTE_MAX = 45
+    MIN_IV_RANK = 30
+    PROFIT_TARGET_PCT = 0.50
+    HARD_EXIT_DTE = 21
+    REBALANCE_INTERVAL_DAYS = 1
+
+    def __init__(self, params: dict | None = None) -> None:
+        super().__init__(params)
+        self.iv_rank_threshold: float = (params or {}).get("iv_rank_threshold", self.MIN_IV_RANK)
+        self.target_delta: float = (params or {}).get("target_delta", self.TARGET_DELTA)
+
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Signal: IV rank > 30 and market is not in extreme trending mode.
+
+        Caller may inject 'iv_rank' into data.attrs for real options data.
+        Falls back to HV-percentile proxy when not provided.
+        """
+        if len(data) < 30:
+            return None
+
+        # Use injected IV rank or compute HV proxy
+        iv_rank: float = data.attrs.get("iv_rank", 0.0)
+        if iv_rank == 0.0 and len(data) >= 252:
+            log_ret = np.log(data["close"] / data["close"].shift(1)).dropna()
+            hv_20 = float(log_ret.tail(20).std() * np.sqrt(252))
+            hv_series = log_ret.rolling(252).std() * np.sqrt(252)
+            iv_rank = float(
+                (hv_20 - float(hv_series.min()))
+                / max(float(hv_series.max()) - float(hv_series.min()), 0.001)
+                * 100
+            )
+
+        if iv_rank < self.iv_rank_threshold:
+            return None
+
+        # Avoid extremely trending markets (gamma risk too high)
+        close = data["close"]
+        d = close.diff()
+        gain = d.clip(lower=0).rolling(14).mean()
+        loss = (-d.clip(upper=0)).rolling(14).mean()
+        rsi = float(100 - (100 / (1 + gain.iloc[-1] / max(float(loss.iloc[-1]), 0.001))))
+        if rsi > 72 or rsi < 28:
+            return None
+
+        confidence = min(0.78, 0.62 + (iv_rank - self.iv_rank_threshold) / 150)
+
+        return Signal(
+            symbol=symbol,
+            side="sell",              # selling both legs (net credit)
+            confidence=confidence,
+            strategy_name=self.name,
+            strategy_type=self.strategy_type,
+            risk_bucket=self.risk_bucket,
+            metadata={
+                "strategy": "delta_neutral_strangle",
+                "iv_rank": round(iv_rank, 1),
+                "rsi": round(rsi, 1),
+                "target_delta": self.target_delta,
+                "target_dte_min": self.TARGET_DTE_MIN,
+                "target_dte_max": self.TARGET_DTE_MAX,
+                "profit_target_pct": self.PROFIT_TARGET_PCT,
+                "hard_exit_dte": self.HARD_EXIT_DTE,
+                "rebalance_interval_days": self.REBALANCE_INTERVAL_DAYS,
+                "hint": (
+                    f"Sell {self.target_delta}-delta OTM call and put on {symbol}, "
+                    f"{self.TARGET_DTE_MIN}-{self.TARGET_DTE_MAX} DTE. "
+                    f"Delta-hedge daily with underlying. "
+                    f"Exit at 50% profit or {self.HARD_EXIT_DTE} DTE."
+                ),
+            },
+        )
+
+    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        """Vectorized: enter when HV-rank > 30 and RSI is range-bound (35-65)."""
+        close = df["close"]
+        log_ret = np.log(close / close.shift(1))
+        hv_20 = log_ret.rolling(20).std() * np.sqrt(252)
+        hv_min = hv_20.rolling(252).min()
+        hv_max = hv_20.rolling(252).max()
+        iv_rank = (hv_20 - hv_min) / (hv_max - hv_min + 0.001) * 100
+
+        d = close.diff()
+        gain = d.clip(lower=0).rolling(14).mean()
+        loss = (-d.clip(upper=0)).rolling(14).mean()
+        rsi = 100 - (100 / (1 + gain / (loss + 0.001)))
+
+        entries = (
+            (iv_rank.shift(1) > self.MIN_IV_RANK)
+            & (rsi.shift(1) > 35)
+            & (rsi.shift(1) < 65)
+        ).fillna(False)
+
+        exits = (
+            (iv_rank.shift(1) < 20)
+            | (rsi.shift(1) > 72)
+            | (rsi.shift(1) < 28)
+        ).fillna(False)
+
+        return BacktestSignals(entries=entries, exits=exits)
+
+
+# ── Options Alpha Scoring Utility ─────────────────────────────────────────────
+
+class OptionsAlphaScorer:
+    """Score options opportunities by IV rank, expected move, and strategy fit.
+
+    Based on Options Alpha research methodology (180M+ backtests).
+    """
+
+    @staticmethod
+    def score_iv_rank(iv_rank: float) -> dict:
+        """Return recommended strategy for current IV rank level."""
+        if iv_rank > 70:
+            return {
+                "strategy": "iron_condor",
+                "score": 0.9,
+                "reason": "Very high IV — sell premium",
+            }
+        elif iv_rank > 50:
+            return {
+                "strategy": "covered_call",
+                "score": 0.75,
+                "reason": "High IV — income strategies",
+            }
+        elif iv_rank < 20:
+            return {
+                "strategy": "long_call_momentum",
+                "score": 0.7,
+                "reason": "Low IV — buy cheap options",
+            }
+        else:
+            return {
+                "strategy": "wheel",
+                "score": 0.6,
+                "reason": "Moderate IV — wheel income",
+            }
+
+    @staticmethod
+    def expected_move(price: float, iv: float, dte: int) -> float:
+        """Expected 1-sigma move: price * iv * sqrt(dte/365)"""
+        import math
+        return price * iv * math.sqrt(dte / 365)
+
+    @staticmethod
+    def iv_rank(current_iv: float, iv_52w_low: float, iv_52w_high: float) -> float:
+        """IV Rank = (current - low) / (high - low) * 100"""
+        if iv_52w_high == iv_52w_low:
+            return 50.0
+        return (current_iv - iv_52w_low) / (iv_52w_high - iv_52w_low) * 100

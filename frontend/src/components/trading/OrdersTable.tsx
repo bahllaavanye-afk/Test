@@ -35,7 +35,7 @@ const STATUS_STYLES: Record<string, { color: string; bg: string }> = {
   cancelled: { color: '#ff1744', bg: 'rgba(255,23,68,0.12)' },
   rejected:  { color: '#ff1744', bg: 'rgba(255,23,68,0.12)' },
   pending:   { color: '#f5a623', bg: 'rgba(245,166,35,0.12)' },
-  submitted: { color: '#2979ff', bg: 'rgba(41,121,255,0.12)' },
+  submitted: { color: '#2196F3', bg: 'rgba(33,150,243,0.12)' },
   partial:   { color: '#f5a623', bg: 'rgba(245,166,35,0.12)' },
 }
 
@@ -80,7 +80,7 @@ export default function OrdersTable({ limit = 100, accountId }: OrdersTableProps
   const orders: Order[] = Array.isArray(data) ? data : []
 
   // ── Sort handler ──
-  function handleSort(key: SortKey) {
+  const handleSort = (key: SortKey) => {
     if (key === sortKey) {
       setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
     } else {
@@ -130,11 +130,14 @@ export default function OrdersTable({ limit = 100, accountId }: OrdersTableProps
   ]
 
   return (
-    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
+    <div
+      className="bg-[#0a0a0a] border border-[#1e1e1e] !rounded-lg h-full overflow-hidden"
+      style={{ minWidth: '1280px' }}
+    >
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#1e1e1e]">
-        <h2 className="text-sm font-semibold text-white shrink-0">Order History</h2>
-        <div className="flex items-center gap-2 flex-1 max-w-xs">
+      <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-[#2a2a2a]">
+        <h2 className="text-sm font-bold text-white">Order History</h2>
+        <div className="flex items-center gap-2 flex-1">
           <input
             type="text"
             value={filter}
@@ -143,7 +146,9 @@ export default function OrdersTable({ limit = 100, accountId }: OrdersTableProps
             className="flex-1 bg-[#0a0a0a] border border-[#1e1e1e] rounded px-2 py-1 text-xs text-[#e8e8e8] placeholder-[#555] focus:outline-none focus:border-[#333]"
           />
           {filter && (
-            <button onClick={() => setFilter('')} className="text-xs text-[#555] hover:text-[#888] transition-colors">✕</button>
+            <button onClick={() => setFilter('')} className="text-xs text-[#555] hover:text-[#888] transition-colors">
+              ✕
+            </button>
           )}
         </div>
         <button
@@ -181,7 +186,7 @@ export default function OrdersTable({ limit = 100, accountId }: OrdersTableProps
         ) : (
           <table className="w-full text-xs font-mono">
             <thead>
-              <tr className="text-[#555555] uppercase tracking-wider border-b border-[#1e1e1e]">
+              <tr className="text-[#555555] uppercase tracking-wider border-b border- border-[#2a2a2a]">
                 {cols.map(c => (
                   <th
                     key={c.key}
@@ -204,7 +209,7 @@ export default function OrdersTable({ limit = 100, accountId }: OrdersTableProps
                 return (
                   <tr
                     key={o.id ?? idx}
-                    className="border-b border-[#1a1a1a] last:border-0 hover:bg-[#1a1a1a] transition-colors"
+                    className="border-b border- border-[#1a1a1a] last:border-0 hover:bg-[#1a1a1a] transition-colors"
                   >
                     <td className="py-2 px-3 font-bold text-[#e8e8e8]">{o.symbol}</td>
                     <td className="py-2 px-3">
@@ -246,7 +251,7 @@ export default function OrdersTable({ limit = 100, accountId }: OrdersTableProps
 
       {/* Footer */}
       {processed.length > 0 && (
-        <div className="px-4 py-2 border-t border-[#1e1e1e] flex items-center justify-between text-[10px] text-[#444444]">
+        <div className="px-4 py-2 border-t border-[#2a2a2a] flex items-center justify-between text-[10px] text-[#444444]">
           <span>
             {processed.length} order{processed.length !== 1 ? 's' : ''}
             {filter && ` (filtered from ${orders.length})`}

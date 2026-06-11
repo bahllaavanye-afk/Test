@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
 
@@ -28,6 +29,207 @@ function HealthRow({ label, ok, detail }: { label: string; ok: boolean; detail?:
         >
           {ok ? 'OK' : 'DOWN'}
         </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Strategy Health Table ────────────────────────────────────────────────────
+type DeskFilter = 'all' | 'equity' | 'crypto' | 'options' | 'arbitrage'
+type StatusFilter = 'all' | 'active' | 'paused'
+
+function StrategyHealthTable() {
+  const [deskFilter, setDeskFilter] = useState<DeskFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [sortCol, setSortCol] = useState<'name' | 'market_type' | 'risk_bucket'>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const { data: strategies, isLoading } = useQuery({
+    queryKey: ['strategies-health'],
+    queryFn: () => api.get('/strategies/').then(r => r.data),
+    refetchInterval: 30_000,
+  })
+  const { data: activeStrategies } = useQuery({
+    queryKey: ['active-strategies'],
+    queryFn: () => api.get('/strategies/active').then(r => r.data).catch(() => []),
+    refetchInterval: 15_000,
+  })
+  const { data: recentOrders } = useQuery({
+    queryKey: ['recent-orders-health'],
+    queryFn: () => api.get('/orders/?limit=100').then(r => r.data).catch(() => []),
+    refetchInterval: 30_000,
+  })
+
+  const strats: any[] = Array.isArray(strategies) ? strategies : []
+  const activeNames: string[] = Array.isArray(activeStrategies)
+    ? activeStrategies.map((s: any) => s.name)
+    : []
+  const orders: any[] = Array.isArray(recentOrders) ? recentOrders : []
+
+  // Build last signal map: strategy_name → last order created_at
+  const lastSignalMap: Record<string, string> = {}
+  for (const o of orders) {
+    if (o.strategy_id && o.created_at) {
+      // We only have strategy_id in order but try matching by name if available
+      if (!lastSignalMap[o.strategy_id] || o.created_at > lastSignalMap[o.strategy_id]) {
+        lastSignalMap[o.strategy_id] = o.created_at
+      }
+    }
+  }
+
+  function deskForStrategy(s: any): string {
+    const rb = (s.risk_bucket || '').toLowerCase()
+    const mt = (s.market_type || '').toLowerCase()
+    if (rb.includes('arb')) return 'arbitrage'
+    if (mt === 'crypto') return 'crypto'
+    if (mt === 'options' || mt.includes('option')) return 'options'
+    return 'equity'
+  }
+
+  function handleSort(col: typeof sortCol) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const filtered = strats
+    .filter(s => {
+      if (deskFilter !== 'all' && deskForStrategy(s) !== deskFilter) return false
+      if (statusFilter === 'active' && !s.is_enabled) return false
+      if (statusFilter === 'paused' && s.is_enabled) return false
+      return true
+    })
+    .sort((a, b) => {
+      const va = a[sortCol] ?? ''
+      const vb = b[sortCol] ?? ''
+      const cmp = String(va).localeCompare(String(vb))
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+
+  const DESK_COLORS: Record<string, string> = {
+    equity: '#00c853', crypto: '#f7931a', options: '#9c27b0', arbitrage: '#2196f3',
+  }
+
+  return (
+    <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e1e]">
+        <div>
+          <h2 className="text-sm font-semibold text-[#e8e8e8]">Strategy Health</h2>
+          <p className="text-xs text-[#555] mt-0.5">{filtered.length} of {strats.length} strategies</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Desk filter */}
+          {(['all', 'equity', 'crypto', 'options', 'arbitrage'] as DeskFilter[]).map(d => (
+            <button key={d} onClick={() => setDeskFilter(d)}
+              className="px-2.5 py-1 rounded text-[10px] capitalize transition-colors"
+              style={{
+                background: deskFilter === d ? 'rgba(245,166,35,0.15)' : '#0a0a0a',
+                color: deskFilter === d ? '#f5a623' : '#555',
+                border: `1px solid ${deskFilter === d ? 'rgba(245,166,35,0.3)' : '#1e1e1e'}`,
+              }}>
+              {d}
+            </button>
+          ))}
+          <div className="w-px h-4 bg-[#1e1e1e]" />
+          {/* Status filter */}
+          {(['all', 'active', 'paused'] as StatusFilter[]).map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className="px-2.5 py-1 rounded text-[10px] capitalize transition-colors"
+              style={{
+                background: statusFilter === s ? 'rgba(33,150,243,0.15)' : '#0a0a0a',
+                color: statusFilter === s ? '#2196f3' : '#555',
+                border: `1px solid ${statusFilter === s ? 'rgba(33,150,243,0.3)' : '#1e1e1e'}`,
+              }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-[#0a0a0a]">
+            <tr className="text-xs text-[#888888]">
+              <th className="text-left px-4 py-3 cursor-pointer hover:text-[#e8e8e8] transition-colors"
+                onClick={() => handleSort('name')}>
+                Strategy {sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th className="text-left px-4 py-3 cursor-pointer hover:text-[#e8e8e8] transition-colors"
+                onClick={() => handleSort('market_type')}>
+                Desk {sortCol === 'market_type' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th className="text-left px-4 py-3 cursor-pointer hover:text-[#e8e8e8] transition-colors"
+                onClick={() => handleSort('risk_bucket')}>
+                Bucket {sortCol === 'risk_bucket' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th className="text-left px-4 py-3">Status</th>
+              <th className="text-left px-4 py-3">Health</th>
+              <th className="text-left px-4 py-3">Symbols</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && Array.from({ length: 4 }).map((_, i) => (
+              <tr key={i} className="border-t border-[#1e1e1e]">
+                {Array.from({ length: 6 }).map((_, j) => (
+                  <td key={j} className="px-4 py-3">
+                    <div className="h-4 bg-[#1e1e1e] rounded animate-pulse" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {!isLoading && filtered.map((s: any) => {
+              const desk = deskForStrategy(s)
+              const deskColor = DESK_COLORS[desk] ?? '#888'
+              const isActive = s.is_enabled
+              const isRunning = activeNames.includes(s.name)
+              const lastSignal = lastSignalMap[s.id]
+              const lastSignalLabel = lastSignal
+                ? (() => {
+                    const diff = Math.round((Date.now() - new Date(lastSignal).getTime()) / 60000)
+                    return diff < 60 ? `${diff}m ago` : `${Math.round(diff / 60)}h ago`
+                  })()
+                : 'no signals'
+              const healthOk = isActive && isRunning
+              return (
+                <tr key={s.id} className="border-t border-[#1e1e1e] hover:bg-[#0d0d0d] transition-colors">
+                  <td className="px-4 py-3 text-xs font-mono text-[#e8e8e8] font-medium">{s.display_name ?? s.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-medium capitalize px-2 py-0.5 rounded"
+                      style={{ color: deskColor, background: `${deskColor}18` }}>
+                      {desk}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-[#555] capitalize">{s.risk_bucket}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                      isActive ? 'bg-[#00c853]/15 text-[#00c853]' : 'bg-[#1e1e1e] text-[#555]'}`}>
+                      {isActive ? 'ACTIVE' : 'PAUSED'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ background: healthOk ? '#00c853' : isActive ? '#f5a623' : '#444',
+                          boxShadow: healthOk ? '0 0 4px #00c853' : 'none' }} />
+                      <span className="text-[10px] text-[#555]">{lastSignalLabel}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-[10px] text-[#555] font-mono">
+                    {Array.isArray(s.symbols) && s.symbols.length > 0
+                      ? s.symbols.slice(0, 3).join(', ') + (s.symbols.length > 3 ? ` +${s.symbols.length - 3}` : '')
+                      : '—'}
+                  </td>
+                </tr>
+              )
+            })}
+            {!isLoading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-10 text-center text-xs text-[#555]">
+                  No strategies match the selected filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )
@@ -160,6 +362,9 @@ export default function SystemMonitor() {
           ))}
         </div>
       </div>
+
+      {/* Strategy Health Table */}
+      <StrategyHealthTable />
 
       {/* Best Params Table */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">

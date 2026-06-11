@@ -55,3 +55,13 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           FOCUS: ${{ github.event.inputs.focus || 'bugs, security, performance, correctness' }}
         run: python .github/scripts/backend_team.py
+
+      - name: Persist dedup state
+        continue-on-error: true
+        run: |
+          git add .github/state/backend_team_dedup.json 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "chore: backend-team dedup state [skip ci]"
+          for i in 1 2 3 4; do
+            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+          done
+          git push -u origin claude/advanced-trading-bot-d5Lmw || true

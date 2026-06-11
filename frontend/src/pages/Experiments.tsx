@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
 
@@ -31,12 +32,35 @@ export default function Experiments() {
 
   return (
     <div className="space-y-6">
+      {compareIds && (
+        <ComparePanel ids={compareIds} experiments={experiments} onClose={() => setCompareIds(null)} />
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold">ML Experiments</h1>
-        <span className="text-xs text-[#888888]">Auto-refreshes every 5s · MLflow + PyTorch Lightning</span>
+        <div className="flex items-center gap-3">
+          {selected.length === 2 && (
+            <button
+              onClick={() => setCompareIds([selected[0], selected[1]])}
+              className="px-3 py-1.5 rounded text-xs font-bold bg-[#f5a623] text-black hover:opacity-90 transition-opacity"
+            >
+              Compare Selected
+            </button>
+          )}
+          {selected.length > 0 && (
+            <button
+              onClick={() => setSelected([])}
+              className="px-3 py-1.5 rounded text-xs text-[#555] bg-[#1e1e1e] hover:bg-[#2a2a2a] transition-colors"
+            >
+              Clear ({selected.length})
+            </button>
+          )}
+          <span className="text-xs text-[#888888]">Auto-refreshes every 5s · MLflow + PyTorch Lightning</span>
+        </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      {/* KPI cards */}
+      <div className="grid grid-cols-4 gap-3">
         {[
           { label: 'Total Runs', value: experiments.length, color: '#f5a623' },
           { label: 'Completed', value: experiments.filter(e => e.status === 'done').length, color: '#00c853' },
@@ -50,13 +74,45 @@ export default function Experiments() {
         ))}
       </div>
 
+      {/* Filter bar */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-[#555]">Filter:</span>
+        {STATUS_OPTS.map(s => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className="px-3 py-1 rounded text-xs capitalize transition-colors"
+            style={{
+              background: statusFilter === s ? 'rgba(245,166,35,0.15)' : '#111',
+              color: statusFilter === s ? '#f5a623' : '#555',
+              border: `1px solid ${statusFilter === s ? 'rgba(245,166,35,0.35)' : '#1e1e1e'}`,
+            }}
+          >
+            {s}
+          </button>
+        ))}
+        {selected.length > 0 && (
+          <span className="ml-auto text-xs text-[#555]">
+            {selected.length}/2 selected for comparison
+          </span>
+        )}
+      </div>
+
+      {/* Table */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-[#0a0a0a]">
             <tr className="text-xs text-[#888888]">
-              {['Name', 'Status', 'Val Acc', 'Val Sharpe', 'Test Sharpe', 'Started', 'Completed'].map(h => (
-                <th key={h} className="text-left px-4 py-3">{h}</th>
-              ))}
+              <th className="text-left px-4 py-3 w-8">
+                <span className="text-[#444]">Sel</span>
+              </th>
+              <SortableHeader label="Name" sortKey="name" current={sortKey} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label="Status" sortKey="status" current={sortKey} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label="Val Acc" sortKey="val_accuracy" current={sortKey} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label="Val Sharpe" sortKey="val_sharpe" current={sortKey} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label="Test Sharpe" sortKey="test_sharpe" current={sortKey} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label="Started" sortKey="started_at" current={sortKey} dir={sortDir} onClick={handleSort} />
+              <th className="text-left px-4 py-3">Completed</th>
             </tr>
           </thead>
           <tbody>

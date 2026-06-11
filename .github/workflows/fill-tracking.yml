@@ -1,0 +1,38 @@
+name: Fill Tracker — Strategy P&L Attribution
+
+on:
+  schedule:
+    # Run at 22:00 UTC Mon–Fri (after US market close + settlement buffer)
+    - cron: "0 22 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  track-fills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run fill tracker
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          TRADING_MODE:      "paper"
+          ANTHROPIC_API_KEY: "disabled"
+          ALLOW_PAID_APIS:   "False"
+        run: |
+          cd $GITHUB_WORKSPACE
+          python .github/scripts/fill_tracker.py

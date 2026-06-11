@@ -1,0 +1,151 @@
+name: Vercel Frontend Deployment
+
+# Deploys the React/Vite frontend to Vercel on every push that touches frontend/.
+# Requires three repository secrets:
+#   VERCEL_TOKEN       — from vercel.com/account/tokens
+#   VERCEL_ORG_ID      — run `vercel whoami` in frontend/ after linking
+#   VERCEL_PROJECT_ID  — run `vercel link` in frontend/ to get this
+#
+# If the secrets are not set the job skips gracefully (no error).
+# Once deployed, the live URL is posted to Slack #engineering.
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/vercel-deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check Vercel secrets
+        id: check
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "⚠️  VERCEL_TOKEN not set — skipping deployment"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Install Vercel CLI
+        if: steps.check.outputs.skip == 'false'
+        run: npm install -g vercel@latest
+
+      - name: Deploy to Vercel (production)
+        id: deploy
+        if: steps.check.outputs.skip == 'false'
+        env:
+          VERCEL_TOKEN:      ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: frontend
+        run: |
+          DEPLOY_URL=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN" 2>&1 | tail -1)
+          echo "deploy_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "✅ Deployed to: $DEPLOY_URL"
+
+      - name: Post deployment URL to Slack
+        if: steps.check.outputs.skip == 'false' && steps.deploy.outputs.deploy_url != ''
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          DEPLOY_URL:      ${{ steps.deploy.outputs.deploy_url }}
+          GH_RUN_URL:      https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PYEOF'
+          import json, os, urllib.request
+          token      = os.environ.get("SLACK_BOT_TOKEN", "")
+          deploy_url = os.environ.get("DEPLOY_URL", "")
+          run_url    = os.environ.get("GH_RUN_URL", "")
+          if not token.startswith("xoxb-") or not deploy_url.startswith("http"):
+              print("No token or URL — skipping Slack post")
+              exit(0)
+          msg = (
+              f":rocket: *QuantEdge Frontend Deployed to Vercel*\n"
+              f"*Live URL:* <{deploy_url}|{deploy_url}>\n"
+              f"All employees: access the real-time dashboard at the URL above.\n"
+              f"Backend API: `https://quantedge-api.onrender.com`\n"
+              f"<{run_url}|View deployment run>"
+          )
+          payload = json.dumps({
+              "channel": "engineering",
+              "text": msg,
+              "username": "Vercel Deploy Bot",
+              "icon_emoji": ":rocket:",
+          }).encode()
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=payload,
+              headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  result = json.loads(resp.read())
+              if result.get("ok"):
+                  print(f"✅ Posted deployment URL to #engineering")
+              else:
+                  print(f"Slack error: {result.get('error')}")
+          except Exception as e:
+              print(f"Slack post failed: {e}")
+          PYEOF
+
+      - name: Post setup instructions (if secrets missing)
+        if: steps.check.outputs.skip == 'true'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          python - <<'PYEOF'
+          import json, os, urllib.request
+          token = os.environ.get("SLACK_BOT_TOKEN", "")
+          if not token.startswith("xoxb-"):
+              print("No token — skip")
+              exit(0)
+          msg = (
+              ":vercel: *Vercel deployment skipped* — `VERCEL_TOKEN` secret not configured.\n"
+              "To enable live frontend deployment:\n"
+              "1. Create token at vercel.com/account/tokens\n"
+              "2. Run `cd frontend && vercel link` to get ORG_ID + PROJECT_ID\n"
+              "3. Add `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` to GitHub Secrets\n"
+              "The workflow at `.github/workflows/vercel-deploy.yml` will auto-deploy on next push."
+          )
+          payload = json.dumps({
+              "channel": "engineering",
+              "text": msg,
+              "username": "Vercel Deploy Bot",
+              "icon_emoji": ":warning:",
+          }).encode()
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=payload,
+              headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=10):
+                  pass
+          except Exception:
+              pass
+          PYEOF

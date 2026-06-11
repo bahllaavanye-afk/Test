@@ -1,0 +1,63 @@
+name: Strategy Autopilot — Auto-Explore, Backtest, Promote
+
+on:
+  schedule:
+    # Every 6 hours — explore, backtest, promote top variants
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  autopilot:
+    name: Explore + backtest + promote strategy variants
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests yfinance
+
+      - name: Configure git
+        run: |
+          git config user.email "strategy-autopilot@quantedge.ai"
+          git config user.name "QuantEdge Strategy Autopilot"
+
+      - name: Run strategy autopilot
+        env:
+          ALLOW_PAID_APIS: "False"
+          ANTHROPIC_API_KEY: "disabled"
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          python .github/scripts/strategy_autopilot.py
+
+      - name: Commit autopilot state + brain updates
+        run: |
+          git add .github/state/ || true
+          git diff --cached --quiet || git commit -m "autopilot: strategy exploration run [skip ci]"
+          git pull --rebase origin claude/advanced-trading-bot-d5Lmw || true
+          git push origin claude/advanced-trading-bot-d5Lmw || true

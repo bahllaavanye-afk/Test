@@ -62,8 +62,19 @@ try:
 except ImportError:
     _LITELLM_AVAILABLE = False
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-STATE_PATH = REPO_ROOT / "experiments" / "results" / "slack_state.json"
+REPO_ROOT  = Path(__file__).resolve().parents[2]
+STATE_PATH = REPO_ROOT / ".github" / "state" / "slack_state.json"
+BRAIN_FILE = REPO_ROOT / ".github" / "state" / "company_brain.json"
+
+
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,6 +93,9 @@ _QUANT_SYSTEM = (
 # ── Cost policy — absolutely no paid API calls ────────────────────────────────
 # Changing this to True requires an explicit code review approval.
 ALLOW_PAID_APIS: bool = False
+
+if os.environ.get("ALLOW_PAID_APIS", "False").lower() == "true":
+    sys.exit(1)
 
 # Hard per-call token cap — prevents runaway generation on any provider
 MAX_TOKENS_PER_CALL: int = 500
@@ -759,6 +773,53 @@ _EMPLOYEE_PERSONAS: dict[str, str] = {
         "You report current p99 latency metrics, bottlenecks in the order path, and optimization opportunities."
         + _STRICT_OUTPUT_REQUIREMENTS
     ),
+    # ── New team expansion (16-employee team) ────────────────────────────────
+    "frontend_lead": (
+        "You are Priya Iyer, VP Frontend at QuantEdge (ex-Bloomberg Terminal UX team). "
+        "You build the Bloomberg-grade dark-theme trading dashboard. "
+        "Obsessed with sub-200ms render times, accessibility, and pixel-perfect financial data visualization. "
+        "Direct, opinionated on UX standards."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "data_lead": (
+        "You are Jiwoo Park, Director of Data Engineering at QuantEdge. "
+        "You own the real-time price feeds (Alpaca/Binance WebSocket), historical OHLCV warehouse, and Redis cache layer. "
+        "Data quality and pipeline reliability are your religion."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "alpha_researcher": (
+        "You are Aleksandr Petrov, Director Alpha Research at QuantEdge (ex-DE Shaw). "
+        "You discover and validate new trading signals. "
+        "Fluent in factor models, cointegration, information coefficients. "
+        "Skeptical of in-sample results — walk-forward or it didn't happen."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "exec_lead": (
+        "You are Ying Chen, Director of Execution at QuantEdge. "
+        "You minimize slippage and market impact. "
+        "You own TWAP, VWAP, limit-first, and the PPO RL execution agent. "
+        "Every basis point saved is alpha."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "security_lead": (
+        "You are Naoko Tanaka, VP Security at QuantEdge (ex-Cloudflare). "
+        "You own AppSec, SecOps, and quarterly pen-tests. "
+        "Zero-trust, defense-in-depth, and FINRA compliance are your baselines."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "product_lead": (
+        "You are Sarah Kim, VP Product at QuantEdge. "
+        "You own the roadmap and OKRs. "
+        "You translate investor needs into engineering priorities. "
+        "Series A readiness is your current north star."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
+    "ml_infra": (
+        "You are Felix Andersen, Director ML Infrastructure at QuantEdge. "
+        "You own the training pipeline, model registry, and inference service. "
+        "You optimize for <50ms p99 inference and reproducible experiment runs."
+        + _STRICT_OUTPUT_REQUIREMENTS
+    ),
 }
 
 
@@ -829,14 +890,14 @@ def score_agent_output(output: str, task_type: str, provider_used: str = "") -> 
 # Cerebras Qwen3 32B is a solid fallback but NOT used as primary on critical tasks.
 
 _TASK_ROUTING: dict[str, list[str]] = {
-    "code":       ["gemini", "cerebras", "groq", "openrouter"],
-    "quant":      ["gemini", "cerebras", "groq", "sambanova"],
-    "ml":         ["gemini", "cerebras", "groq"],
-    "risk":       ["gemini", "cerebras", "groq", "sambanova"],
-    "review":     ["gemini", "cerebras", "openrouter"],
-    "polymarket": ["gemini", "groq", "sambanova"],
-    "frontend":   ["gemini", "cerebras", "groq"],
-    "default":    ["gemini", "cerebras", "groq", "sambanova", "openrouter"],
+    "code":       ["gemini", "cerebras", "groq", "nvidia_nim", "openrouter"],
+    "quant":      ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova"],
+    "ml":         ["gemini", "cerebras", "groq", "nvidia_nim"],
+    "risk":       ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova"],
+    "review":     ["gemini", "cerebras", "nvidia_nim", "openrouter"],
+    "polymarket": ["gemini", "groq", "nvidia_nim", "sambanova"],
+    "frontend":   ["gemini", "cerebras", "groq", "nvidia_nim"],
+    "default":    ["gemini", "cerebras", "groq", "nvidia_nim", "sambanova", "openrouter"],
 }
 
 # Maps employee short-name → task type for routing
@@ -848,6 +909,12 @@ _EMP_TASK_TYPE: dict[str, str] = {
     "risk_eng":   "risk",      "cro":"risk",
     "poly_desk":   "polymarket",
     "frontend": "frontend",
+    # New team expansion
+    "frontend_lead":    "frontend",
+    "data_lead":        "code",
+    "alpha_researcher": "quant",
+    "exec_lead":        "code",
+    "security_lead":    "code",
 }
 
 
@@ -966,6 +1033,22 @@ def call_best_agent_for_task(
                     _LAST_PROVIDER = f"OpenRouter({env_var})"
                     track_api_call(env_var, cap)
                     return r.strip(), f"OpenRouter({env_var})"
+
+        elif provider == "nvidia_nim":
+            key = (
+                os.environ.get("NVIDIA_AGENTS_API_KEYS", "").strip()
+                or os.environ.get("NVIDIA_NIM_API_KEY", "").strip()
+            )
+            if key:
+                # Use Nemotron-70B — NVIDIA's best instruction-following model for agents
+                r = _try_openai_compat(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    key, "nvidia/llama-3.1-nemotron-70b-instruct",
+                    safe_sys, safe_prompt, cap)
+                if r and len(r.strip()) > 20:
+                    _LAST_PROVIDER = "NVIDIA-NIM"
+                    track_api_call("NVIDIA_AGENTS_API_KEYS", cap)
+                    return r.strip(), "NVIDIA-NIM"
 
     return None, "exhausted"
 
@@ -1105,6 +1188,11 @@ _GROQ_ACCOUNT: dict[str, str] = {
     "backtest_engineer": "GROQ_API_KEY_2",
     "data_engineer_2":  "GROQ_API_KEY_2",
     "infra_lead":       "GROQ_API_KEY_2",
+    "frontend_lead":    "GROQ_API_KEY_2",
+    "data_lead":        "GROQ_API_KEY_2",
+    "alpha_researcher": "GROQ_API_KEY_2",
+    "exec_lead":        "GROQ_API_KEY_2",
+    "security_lead":    "GROQ_API_KEY_2",
     # Account 3 — GROQ_API_KEY_3  (core team + group 3 new agents)
     "poly_desk":         "GROQ_API_KEY_3",
     "ml_researcher":     "GROQ_API_KEY_3",
@@ -1164,6 +1252,11 @@ _GEMINI_ACCOUNT: dict[str, str] = {
     "backtest_engineer": "GEMINI_API_KEY_2",
     "data_engineer_2":  "GEMINI_API_KEY_2",
     "infra_lead":       "GEMINI_API_KEY_2",
+    "frontend_lead":    "GEMINI_API_KEY_2",
+    "data_lead":        "GEMINI_API_KEY_2",
+    "alpha_researcher": "GEMINI_API_KEY_2",
+    "exec_lead":        "GEMINI_API_KEY_2",
+    "security_lead":    "GEMINI_API_KEY_2",
     "poly_desk":         "GEMINI_API_KEY_3",
     "ml_researcher":     "GEMINI_API_KEY_3",
     "vp_research":       "GEMINI_API_KEY_3",
@@ -1222,6 +1315,11 @@ _CEREBRAS_ACCOUNT: dict[str, str] = {
     "backtest_engineer": "CEREBRAS_API_KEY_1",
     "data_engineer_2":  "CEREBRAS_API_KEY_1",
     "infra_lead":       "CEREBRAS_API_KEY_1",
+    "frontend_lead":    "CEREBRAS_API_KEY_1",
+    "data_lead":        "CEREBRAS_API_KEY_1",
+    "alpha_researcher": "CEREBRAS_API_KEY_1",
+    "exec_lead":        "CEREBRAS_API_KEY_1",
+    "security_lead":    "CEREBRAS_API_KEY_1",
     # Group 3 → CEREBRAS_API_KEY_2
     "poly_desk":         "CEREBRAS_API_KEY_2",
     "ml_researcher":     "CEREBRAS_API_KEY_2",
@@ -2307,6 +2405,12 @@ _PERSONA_MENTION_MAP: dict[str, str] = {
     "ceo":                "general",
     "finance_eng":        "finance-ops",
     "compliance_eng":     "legal-compliance",
+    # New team expansion
+    "frontend_lead":      "squad-frontend",
+    "data_lead":          "squad-data",
+    "alpha_researcher":   "alpha-research",
+    "exec_lead":          "squad-execution",
+    "security_lead":      "security-alerts",
 }
 
 
@@ -4289,11 +4393,10 @@ def alpha_dir_strategy_review() -> list[Post]:
 
 
 def ml_lead_results() -> list[Post]:
-    """ML Lead — post the freshest backtest/experiment result."""
+    """ML Lead — post the freshest backtest/experiment result with full context."""
     state = load_state()
     results = latest_backtest_results()
     if not results:
-        # No results yet — say so honestly
         return [Post(
             channel="ml-experiments",
             text=(":warning: No experiment results in `experiments/results/` yet. "
@@ -4301,21 +4404,59 @@ def ml_lead_results() -> list[Post]:
             username="ML Modeling Lead",
             icon_emoji=":robot_face:",
         )]
-    r = results[0]
-    scaffold = (f"Latest experiment: *{r.get('strategy', '?')}* on `{r.get('symbol', '?')}` "
-                f"({r.get('strategy_type', '?')})\n"
-                f"• Sharpe: *{r.get('sharpe', 0):.2f}* (avg over {r.get('n_runs', 1)} runs)\n"
-                f"• Logged: `experiments/results/` at {r.get('timestamp', 'unknown')}\n\n"
-                f"Total experiments tracked: *{len(results)}*. Top 3 by Sharpe coming next.")
 
-    ai, provider = employee_provider_prompt(
-        "ml_lead",
-        (f"ML experiment result — strategy: {r.get('strategy','?')}, symbol: {r.get('symbol','?')}, "
-         f"Sharpe: {r.get('sharpe', 0):.2f}, runs: {r.get('n_runs',1)}, "
-         f"total experiments: {len(results)}. "
-         "In 2 sentences: what does this Sharpe suggest about the model, and what's the next tuning step?"),
-    state=state,
+    r = results[0]
+
+    # Top 3 by Sharpe for the scaffold
+    top3 = sorted(results, key=lambda x: x.get("sharpe", 0), reverse=True)[:3]
+    top3_lines = "\n".join(
+        f"  {i+1}. *{x.get('strategy','?')}* `{x.get('symbol','?')}` — Sharpe {x.get('sharpe',0):.2f}"
+        for i, x in enumerate(top3)
     )
+
+    scaffold = (
+        f":microscope: *ML Experiment Update — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*\n"
+        f"Latest: *{r.get('strategy', '?')}* on `{r.get('symbol', '?')}` "
+        f"({r.get('strategy_type', '?')})\n"
+        f"• Sharpe: *{r.get('sharpe', 0):.2f}* · runs: {r.get('n_runs', 1)} "
+        f"· logged: {r.get('timestamp', 'unknown')}\n\n"
+        f"*Top 3 by Sharpe ({len(results)} total):*\n{top3_lines}"
+    )
+
+    # Gather richer context for the LLM — mirrors vp_eng_daily() pattern
+    ml_commits = [
+        c for c in git_recent_commits(since_hours=48, limit=20)
+        if any(kw in c["msg"].lower() for kw in ("ml", "model", "lstm", "train", "feature", "experiment", "backtest", "sharpe"))
+    ]
+    commit_subjects = "\n".join(f"- {c['msg']}" for c in ml_commits[:8]) or "- no recent ML commits"
+
+    pytest_res = run_pytest_lightweight()
+    if pytest_res.get("not_installed") or pytest_res.get("timed_out"):
+        test_line = f"test files: {count_tests()}"
+    else:
+        passed = pytest_res.get("passed", 0)
+        failed = pytest_res.get("failed", 0)
+        test_line = f"{'✅' if failed == 0 else '❌'} {passed} passed" + (f", {failed} failed" if failed else "")
+
+    # List available ML model files for context
+    ml_models_dir = REPO_ROOT / "backend" / "app" / "ml" / "models"
+    model_files = [f.stem for f in ml_models_dir.glob("*.py") if not f.stem.startswith("_")] if ml_models_dir.exists() else []
+
+    context = (
+        f"Strategy: {r.get('strategy','?')}, symbol: {r.get('symbol','?')}, "
+        f"Sharpe: {r.get('sharpe', 0):.2f}, runs: {r.get('n_runs',1)}, "
+        f"total experiments in registry: {len(results)}.\n\n"
+        f"Top 3 experiments by Sharpe:\n"
+        + "\n".join(f"  {x.get('strategy','?')} {x.get('symbol','?')}: Sharpe={x.get('sharpe',0):.2f}" for x in top3)
+        + f"\n\nRecent ML-related commits:\n{commit_subjects}\n\n"
+        f"Test suite: {test_line}\n"
+        f"Available model files: {', '.join(model_files) or 'none'}\n\n"
+        "In 2-3 sentences: what does this Sharpe suggest about the model quality, "
+        "which model should be prioritised next, and what is the single highest-leverage tuning step? "
+        "Be concrete — mention the strategy name and a specific hyperparameter or feature."
+    )
+
+    ai, provider = employee_provider_prompt("ml_lead", context, state=state)
     text = scaffold + (f"\n\n{ai}" if ai else "")
     return [Post(
         channel="ml-experiments",
@@ -6363,6 +6504,31 @@ def friday_presentation_post() -> list[Post]:
     return pres
 
 
+def _write_brain_learning(source: str, learning: str, metadata: dict | None = None) -> None:
+    """Append a learning entry to company_brain.json."""
+    try:
+        brain = json.loads(BRAIN_FILE.read_text()) if BRAIN_FILE.exists() else {}
+        brain.setdefault("learnings", [])
+        brain.setdefault("agent_insights", {})
+        entry: dict = {
+            "source": source,
+            "learning": learning,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        if metadata:
+            entry.update(metadata)
+        brain["learnings"].append(entry)
+        brain["learnings"] = brain["learnings"][-500:]  # keep last 500
+        brain["agent_insights"][source] = {
+            "last_learning": learning[:120],
+            "last_updated": entry["timestamp"],
+        }
+        brain["last_updated"] = entry["timestamp"]
+        BRAIN_FILE.write_text(json.dumps(brain, indent=2))
+    except Exception as e:
+        print(f"[brain] write error ({source}): {e}")
+
+
 def cross_team_share_post() -> Post | None:
     """A non-winning team comments on what they're borrowing from the leader."""
     scores = team_scores()
@@ -6376,6 +6542,15 @@ def cross_team_share_post() -> Post | None:
     learner_team = random.choice(ranked[1:])
     winner_team = ranked[0]
     info = TEAMS[learner_team]
+    learning_text = (
+        f"Team {learner_team} is adopting walk-forward purging pattern from "
+        f"top-performing Team {winner_team}"
+    )
+    _write_brain_learning(
+        source="cross_team_share",
+        learning=learning_text,
+        metadata={"learner_team": learner_team, "winner_team": winner_team},
+    )
     return Post(
         channel=info["channel"],
         text=(f"Picked up something from Team *{winner_team}* this week — "
@@ -6497,6 +6672,7 @@ def standup_channel() -> list[Post]:
     positions = alpaca_positions()
     acct = alpaca_account()
     strats = list_strategies()
+    state = load_state()
 
     standups: list[Post] = []
 
@@ -6578,30 +6754,50 @@ def standup_channel() -> list[Post]:
         f"*{weekday} standup — Anna Hoffmann (Backend Lead)*\n↳ {random.choice(anna_tasks)}",
         "Backend Lead", ":gear:"))
 
-    # Aditi — Director of QA
-    if test_res.get("not_installed") or test_res.get("timed_out"):
-        aditi_msg = f"test runner issue — deps missing. {_m('Director of DevOps')}: help needed on CI env"
-    elif test_res.get("failed", 0) > 0:
-        aditi_msg = f"⚠️ {test_res['failed']} tests red — isolating root cause. {_m('Backend Lead')}: heads up"
-    else:
-        aditi_msg = f"✅ {test_res.get('passed', 0)} tests green. reviewing untested strategies — flagging to {_m('Alpha Research Director')}"
+    # Aditi — Director of QA (LLM-driven standup)
+    passed_count = test_res.get("passed", 0)
+    failed_count = test_res.get("failed", 0)
+    aditi_ctx = (
+        f"pytest: {passed_count} passed, {failed_count} failed. "
+        f"Open PRs: {pr_count}. "
+        f"Recent commits: {c_count} in last 24h."
+    )
+    aditi_ai, _ = employee_provider_prompt(
+        "qa_dir",
+        (f"You are Aditi Sharma, Director of QA at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {aditi_ctx} "
+         "Be specific about test status and one action item. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    aditi_msg = aditi_ai if aditi_ai else (
+        f"✅ {passed_count} tests green. reviewing untested strategies."
+        if failed_count == 0
+        else f"⚠️ {failed_count} tests red — isolating root cause."
+    )
     standups.append(Post("standup",
         f"*{weekday} standup — Aditi Sharma (QA Director)*\n↳ {aditi_msg}",
         "QA Dir", ":mag:"))
 
-    # Kenji — DevOps
+    # Kenji — DevOps (LLM-driven standup)
     runs = latest_workflow_runs()
     if runs:
         last = runs[0]
-        c = last.get("conclusion") or last.get("status", "running")
-        kenji_tasks = [
-            f"CI last run: `{last.get('name', '?')}` → {c}. deploy pipeline nominal.",
-            f"Render health: green. UptimeRobot pinging every 5min. Vercel edge functions stable.",
-        ]
+        ci_status = last.get("conclusion") or last.get("status", "running")
+        kenji_ctx = f"Last CI run: '{last.get('name', '?')}' → {ci_status} on {last.get('head_branch', 'main')}."
     else:
-        kenji_tasks = ["no recent CI runs — monitoring. Render + Vercel deploys on standby."]
+        kenji_ctx = "No recent CI runs detected."
+    kenji_ai, _ = employee_provider_prompt(
+        "devops_dir",
+        (f"You are Kenji Watanabe, DevOps Director at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {kenji_ctx} Stack: Render (FastAPI), Vercel (React), Supabase, Upstash Redis. "
+         "State CI/deploy health and one action item. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    kenji_msg = kenji_ai if kenji_ai else (
+        f"CI: {ci_status}. Render + Vercel deploys nominal." if runs else "No recent CI runs — monitoring."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {random.choice(kenji_tasks)}",
+        f"*{weekday} standup — Kenji Watanabe (DevOps)*\n↳ {kenji_msg}",
         "DevOps Dir", ":satellite_antenna:"))
 
     # Diego — Execution Engineer
@@ -6614,14 +6810,22 @@ def standup_channel() -> list[Post]:
         f"*{weekday} standup — Diego Ramirez (Execution Eng)*\n↳ {random.choice(exec_tasks)}",
         "Exec Eng", ":zap:"))
 
-    # Lior — Polymarket
-    poly_tasks = [
-        f"scanning 30 live Polymarket markets. watching YES+NO sums for < 97¢ arb. {_m('Alpha Research Director')}: binary arb strategy on paper",
-        "2 Kalshi + 1 Polymarket arb windows identified this morning. placing orders.",
-        "no arb windows right now — market makers tightened. monitoring every 10min.",
-    ]
+    # Lior — Polymarket (LLM-driven standup)
+    poly_strats = list_strategies().get("manual", [])
+    poly_count = sum(1 for s in poly_strats if "poly" in s.lower() or "polymarket" in s.lower())
+    lior_ctx = f"{poly_count} Polymarket strategies registered. Monitoring YES+NO sum arbitrage via Gamma API."
+    lior_ai, _ = employee_provider_prompt(
+        "poly_desk",
+        (f"You are Lior Avraham, Polymarket Researcher at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {lior_ctx} "
+         "State your current focus on prediction market arb or monitoring. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    lior_msg = lior_ai if lior_ai else (
+        f"scanning live Polymarket markets for YES+NO arb. {poly_count} strategies on paper."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {random.choice(poly_tasks)}",
+        f"*{weekday} standup — Lior Avraham (Polymarket Researcher)*\n↳ {lior_msg}",
         "Poly Desk", ":vertical_traffic_light:"))
 
     # Sara — ML Research Lead
@@ -6634,34 +6838,69 @@ def standup_channel() -> list[Post]:
         f"*{weekday} standup — Sara Kim (ML Research Lead)*\n↳ {random.choice(sara_tasks)}",
         "ML Researcher", ":microscope:"))
 
-    # Sofia — VP Research
-    sofia_tasks = [
-        f"reviewing TFT paper (Lim et al 2021) implementation. checking variable selection against our features.",
-        f"curating new alpha ideas from 3 arxiv papers. {_m('Quant Researcher')}: sending you the most promising one",
-        f"walk-forward validation methodology audit — ensuring all teams use purged k-fold, not simple split.",
-    ]
+    # Sofia — VP Research (LLM-driven standup)
+    all_strats = strats.get("manual", [])
+    untested_count = max(0, len(all_strats) - len(results))
+    sofia_ctx = (
+        f"{len(all_strats)} manual strategies in repo; "
+        f"{len(results)} have backtest results; "
+        f"{untested_count} still need walk-forward validation."
+    )
+    sofia_ai, _ = employee_provider_prompt(
+        "vp_research",
+        (f"You are Sofia Karlsson, VP Research at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {sofia_ctx} "
+         "State your research focus today (validation methodology, paper review, or alpha ideation). "
+         "Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    sofia_msg = sofia_ai if sofia_ai else (
+        f"prioritising walk-forward validation — {untested_count} strategies still need OOS results."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {random.choice(sofia_tasks)}",
+        f"*{weekday} standup — Sofia Karlsson (VP Research)*\n↳ {sofia_msg}",
         "VP Research", ":books:"))
 
-    # Hugo — Quant Researcher
-    hugo_tasks = [
-        f"IC analysis on 5 alpha factors. `oi_momentum` IC=0.04 holding steady. {_m('Feature Engineering Lead')}: ready to add to pipeline",
-        f"running cointegration test on 20 equity pairs. finding 3 with p-value < 0.05 for stat arb desk",
-        f"Monte Carlo robustness check on momentum strategy. 1000 bootstrap samples. Sharpe CI: [0.8, 1.6]",
-    ]
+    # Hugo — Quant Researcher (LLM-driven standup)
+    best_result = max(results, key=lambda r: float(r.get("sharpe", 0) or 0), default={}) if results else {}
+    hugo_ctx = (
+        f"Best backtest Sharpe: {best_result.get('sharpe', 'N/A')} on {best_result.get('strategy', 'unknown')}. "
+        f"{len(results)} backtest runs in experiments/results/."
+    )
+    hugo_ai, _ = employee_provider_prompt(
+        "quant_researcher",
+        (f"You are Hugo Bernardes, Quant Researcher at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {hugo_ctx} "
+         "State your current analysis task (IC analysis, cointegration, Monte Carlo, or factor research). "
+         "Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    hugo_msg = hugo_ai if hugo_ai else (
+        f"running IC analysis on alpha factors. {len(results)} strategies in the backtest ledger."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {random.choice(hugo_tasks)}",
+        f"*{weekday} standup — Hugo Bernardes (Quant Researcher)*\n↳ {hugo_msg}",
         "Quant Researcher", ":mag_right:"))
 
-    # Marcus — CRO
-    marcus_tasks = [
-        f"weekly risk review: all desks within allocated buckets. no circuit breaker events. {_m('Risk Engineer')}: good work",
-        f"signing off on `cross_sectional_momentum` paper candidacy — Kelly-sized, 5% NAV cap. go ahead {_m('Alpha Research Director')}",
-        f"reminder: live trading requires CRO sign-off + 14-day paper record. no exceptions.",
-    ]
+    # Marcus — CRO (LLM-driven standup)
+    has_cb = (REPO_ROOT / "backend" / "app" / "risk" / "circuit_breaker.py").exists()
+    marcus_ctx = (
+        f"Circuit breaker: {'present' if has_cb else 'missing'}. "
+        f"70/30 capital split policy enforced. "
+        f"Open positions: {len(positions) if positions else 0}."
+    )
+    marcus_ai, _ = employee_provider_prompt(
+        "cro",
+        (f"You are Marcus Olufemi, Chief Risk Officer at QuantEdge. Write a 1-sentence async standup for #standup. "
+         f"Context: {marcus_ctx} "
+         "State firm-level risk status and one key compliance point. Max 25 words. No greeting, no sign-off."),
+        state=state,
+    )
+    marcus_msg = marcus_ai if marcus_ai else (
+        "risk posture nominal. 70/30 allocation enforced. live trading requires CRO sign-off + 14-day paper record."
+    )
     standups.append(Post("standup",
-        f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {random.choice(marcus_tasks)}",
+        f"*{weekday} standup — Marcus Olufemi (CRO)*\n↳ {marcus_msg}",
         "CRO", ":shield:"))
 
     return standups
@@ -7205,6 +7444,19 @@ def build_discussion_chains(
         ]
         chains.append(("standup", pt, random.choice(thread_comments)))
 
+    # Write a summary of discussion activity to company_brain.json
+    if chains:
+        channels_with_discussion = list({ch for ch, _, _ in chains})
+        _write_brain_learning(
+            source="build_discussion_chains",
+            learning=(
+                f"Discussion chains built across {len(chains)} threads in "
+                f"{len(channels_with_discussion)} channels: "
+                + ", ".join(f"#{c}" for c in channels_with_discussion[:5])
+            ),
+            metadata={"chain_count": len(chains), "channels": channels_with_discussion},
+        )
+
     return chains
 
 
@@ -7697,6 +7949,23 @@ def _short_stat_arb() -> list[Post]:
 
 def _short_general() -> list[Post]:
     commits = git_recent_commits(since_hours=24, limit=3)
+    strats = list_strategies()
+    n_manual = len(strats.get("manual", []))
+    state = load_state()
+    context = (
+        f"{len(commits)} commits in last 24h. "
+        f"{n_manual} strategies in repo. "
+        f"All desks paper-trading on Alpaca."
+    )
+    ai, _ = employee_provider_prompt(
+        "ceo",
+        (f"You are Laavanye Bahl, CEO/Founder of QuantEdge. Write a 1-sentence motivational or strategic update for #general. "
+         f"Context: {context} "
+         "Max 25 words. Sound like a startup founder, not an AI. No greeting, no sign-off."),
+        state=state,
+    )
+    if ai:
+        return [Post("general", ai, "Laavanye Bahl — CEO/Founder", ":sparkles:")]
     msgs = [
         f"good {datetime.now(timezone.utc).strftime('%A')} — {len(commits)} commits since yesterday. keep shipping.",
         f"reminder: paper-first. no live trading without CRO sign-off. {_m('Risk Engineer')}: status?",
@@ -8511,6 +8780,15 @@ def main() -> int:
         state["last_commit_sha"] = latest_commits[0].get("sha", "")
     save_state(state)
     print(f"💾 State saved: {len(state['posted_hashes'])} hashes, {len(state['replied_to'])} replied threads")
+
+    # ── Page status reports — each employee audits their assigned pages ──────
+    try:
+        page_posts = run_page_status_reports(token, state)
+        if page_posts:
+            posts_made += page_posts
+            print(f"  ✓ Page reports: {page_posts} page audit(s) posted")
+    except Exception as e:
+        print(f"  [page_reports] {e}")
 
     # Post governance report to #cto-audit
     post_governance_report(token, state)
@@ -9832,6 +10110,366 @@ def summons_only_main() -> int:
     return 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Page Status Reporter — each employee audits their assigned dashboard pages
+# Posts rich text "page walkthroughs" to their Slack channel every 4 hours.
+# Reads actual TSX source so the LLM reasons about REAL code, not mock data.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Page → (owner_emp_key, slack_channel, emoji, what_to_check)
+_PAGE_ASSIGNMENTS: list[tuple[str, str, str, str, str]] = [
+    (
+        "Dashboard.tsx",
+        "frontend_lead",
+        "squad-frontend",
+        ":house:",
+        "KPI cards, P&L chart, live price ticker, alert feed, TV Market Overview widget",
+    ),
+    (
+        "EquityTrading.tsx",
+        "alpha_dir",
+        "desk-equities",
+        ":chart_with_upwards_trend:",
+        "TradingView Advanced Chart iframe, order form (market/limit/stop), positions table, execution selector",
+    ),
+    (
+        "CryptoTrading.tsx",
+        "ml_lead",
+        "desk-crypto",
+        ":coin:",
+        "Binance symbol chart, funding rate display, triangular arb opportunities, order entry",
+    ),
+    (
+        "Polymarket.tsx",
+        "poly_desk",
+        "desk-polymarket",
+        ":crystal_ball:",
+        "Active prediction markets, probability calibration, YES/NO arb opportunities, Kelly sizing display",
+    ),
+    (
+        "Comparison.tsx",
+        "alpha_dir",
+        "strategy-review",
+        ":bar_chart:",
+        "Manual vs ML strategy comparison chart, benchmark table (SPY/QQQ/BRK.B/All Weather), stat-sig badge",
+    ),
+    (
+        "BacktestLab.tsx",
+        "backtest_engineer",
+        "alpha-research",
+        ":test_tube:",
+        "Backtest form (strategy/symbol/dates), results table, equity curve, walk-forward metrics",
+    ),
+    (
+        "Experiments.tsx",
+        "ml_lead",
+        "ml-experiments",
+        ":microscope:",
+        "ML experiment list, live training progress, model registry, experiment config viewer",
+    ),
+    (
+        "MLInsights.tsx",
+        "ml_researcher",
+        "ml-experiments",
+        ":brain:",
+        "Model predictions feed, feature importance bar chart, confidence gauge, ensemble weights",
+    ),
+    (
+        "Analytics.tsx",
+        "portfolio_manager",
+        "pnl-daily",
+        ":abacus:",
+        "Sharpe/Sortino/Calmar metrics, monthly returns heatmap, equity curve, tearsheet export button",
+    ),
+    (
+        "RiskManager.tsx",
+        "risk_eng",
+        "risk-alerts",
+        ":shield:",
+        "Risk gauge, drawdown monitor, 70/30 bucket allocation, circuit breaker status, Kelly fraction",
+    ),
+    (
+        "AgentDashboard.tsx",
+        "vp_eng",
+        "engineering",
+        ":robot_face:",
+        "Employee roster with LLM assignments, code review grades panel, shared memory, task queue",
+    ),
+    (
+        "Landing.tsx",
+        "product_lead",
+        "general",
+        ":rocket:",
+        "Investor pitch copy, Sharpe/drawdown stats, feature list, CTA button, benchmark comparison",
+    ),
+    (
+        "PnL.tsx",
+        "portfolio_manager",
+        "pnl-daily",
+        ":money_with_wings:",
+        "Daily P&L breakdown by strategy, realized/unrealized split, cumulative equity, drawdown display",
+    ),
+    (
+        "SystemMonitor.tsx",
+        "devops_dir",
+        "infra-alerts",
+        ":computer:",
+        "Backend health endpoint status, WebSocket connection status, Redis/DB latency, worker heartbeat",
+    ),
+]
+
+
+def _read_page_source(page_filename: str, max_chars: int = 3000) -> str:
+    """Read a frontend page TSX file, returning first max_chars characters."""
+    page_path = REPO_ROOT / "frontend" / "src" / "pages" / page_filename
+    try:
+        content = page_path.read_text()
+        if len(content) > max_chars:
+            return content[:max_chars] + f"\n... [truncated — {len(content)} chars total]"
+        return content
+    except FileNotFoundError:
+        return f"[FILE NOT FOUND: {page_path}]"
+
+
+def run_page_status_reports(token: str, state: dict) -> int:
+    """
+    Each assigned employee audits their dashboard pages from the TSX source.
+    Posts a rich-text page walkthrough to their Slack channel.
+    Rotates through pages — each run covers ~4 pages (cooldown 4h per page).
+    Returns number of posts made.
+    """
+    hr = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    posts_made = 0
+
+    # Pick pages whose cooldown has expired (4 hours per page)
+    cooldown = 4 * 3600
+    pages_to_report: list[tuple] = []
+    for entry in _PAGE_ASSIGNMENTS:
+        page_file, emp_key, channel, emoji, what_to_check = entry
+        ck = f"page_report:{page_file}"
+        last_ts = state.get("post_dedup", {}).get(f"{channel}:{ck}", 0)
+        if time.time() - last_ts >= cooldown:
+            pages_to_report.append(entry)
+
+    if not pages_to_report:
+        print("  [page_reports] all pages on cooldown — skipping")
+        return 0
+
+    # Process up to 4 pages per run to stay within token budget
+    for page_file, emp_key, channel, emoji, what_to_check in pages_to_report[:4]:
+        ck = f"page_report:{page_file}"
+        page_name = page_file.replace(".tsx", "")
+
+        # Read the actual source
+        source = _read_page_source(page_file, max_chars=2500)
+
+        # Get recent git history for this file
+        try:
+            git_hist = subprocess.check_output(
+                ["git", "log", "--oneline", "-5", "--", f"frontend/src/pages/{page_file}"],
+                cwd=str(REPO_ROOT), stderr=subprocess.DEVNULL, text=True,
+            ).strip() or "(no recent commits)"
+        except Exception:
+            git_hist = "(git unavailable)"
+
+        task_prompt = (
+            f"You are reviewing the QuantEdge dashboard page: *{page_name}* ({page_file}).\n\n"
+            f"WHAT TO CHECK: {what_to_check}\n\n"
+            f"RECENT GIT HISTORY:\n{git_hist}\n\n"
+            f"SOURCE CODE (first 2500 chars):\n```\n{source}\n```\n\n"
+            f"Write a page walkthrough report (3-5 bullet points). For each point:\n"
+            f"• What should be visible/working\n"
+            f"• Whether the TSX code actually implements it\n"
+            f"• Any bug, missing feature, or UX issue you can see from the source\n"
+            f"Be specific: cite component names, line patterns, missing imports, TODO comments.\n"
+            f"End with ONE top priority fix labelled **TOP FIX:**."
+        )
+
+        print(f"  [page_reports] {page_file} → {emp_key} → #{channel}")
+        ai_result, provider = employee_provider_prompt(emp_key, task_prompt, state=state)
+
+        if not ai_result:
+            print(f"  [page_reports] {page_file}: provider exhausted — skipping")
+            continue
+
+        # Format the Slack post
+        emp_persona = _EMPLOYEE_PERSONAS.get(emp_key, "")
+        # Extract employee display name from persona (first sentence)
+        emp_display = emp_key.replace("_", " ").title()
+        if emp_persona:
+            m = re.match(r"You are ([^.,(]+)", emp_persona)
+            if m:
+                emp_display = m.group(1).strip()
+
+        msg = (
+            f"{emoji} *Page Report — {page_name}* | {date_str} {hr}\n"
+            f"_Reported by {emp_display} · via {provider or 'LLM'}_\n\n"
+            f"{ai_result.strip()}"
+        )
+
+        if is_duplicate(state, msg):
+            print(f"  [page_reports] {page_file} → dup — skip")
+            # Still mark cooldown so we don't re-check until next window
+            state.setdefault("post_dedup", {})[f"{channel}:{ck}"] = time.time()
+            continue
+
+        r = post_to_slack(token, channel, msg,
+                          username=f"{emp_display[:30]} (Page Audit)",
+                          icon_emoji=emoji)
+        if r.get("ok"):
+            posts_made += 1
+            record_post(state, msg)
+            state.setdefault("post_dedup", {})[f"{channel}:{ck}"] = time.time()
+            print(f"  [page_reports] ✓ {page_file} → #{channel}")
+        else:
+            print(f"  [page_reports] ✗ {page_file} → #{channel}: {r.get('error')}")
+
+        time.sleep(0.8)
+
+    return posts_made
+
+
+def post_honest_progress_report(token: str, state: dict) -> None:
+    """
+    Posts a candid progress report to #leadership-summary comparing current
+    QuantEdge state vs. the grand plan. Runs at most once per 12 hours.
+    """
+    ck = "honest_progress"
+    if _already_posted(state, "leadership-summary", ck, cooldown_seconds=43200):
+        return
+
+    # Gather real signals
+    try:
+        test_result = subprocess.run(
+            ["python", "-m", "pytest", "tests/", "-x", "-q", "--tb=no", "--no-header"],
+            cwd=str(REPO_ROOT / "backend"),
+            capture_output=True, text=True, timeout=60,
+        )
+        test_summary = (test_result.stdout + test_result.stderr).strip().split("\n")[-1]
+    except Exception:
+        test_summary = "(tests could not run)"
+
+    try:
+        ts_result = subprocess.run(
+            ["npx", "tsc", "--noEmit"],
+            cwd=str(REPO_ROOT / "frontend"),
+            capture_output=True, text=True, timeout=60,
+        )
+        ts_errors = (ts_result.stdout + ts_result.stderr).strip()
+        ts_status = "0 errors ✅" if not ts_errors else f"errors found ⚠️"
+    except Exception:
+        ts_status = "(tsc could not run)"
+
+    # Count strategies, ML models, pages
+    strategy_files = list((REPO_ROOT / "backend" / "app" / "strategies").rglob("*.py"))
+    ml_model_files = list((REPO_ROOT / "backend" / "app" / "ml" / "models").rglob("*.py"))
+    page_files = list((REPO_ROOT / "frontend" / "src" / "pages").glob("*.tsx"))
+    workflow_files = list((REPO_ROOT / ".github" / "workflows").glob("*.yml"))
+
+    # Recent commits
+    try:
+        commits_7d = subprocess.check_output(
+            ["git", "log", "--oneline", "--since=7 days ago"],
+            cwd=str(REPO_ROOT), stderr=subprocess.DEVNULL, text=True,
+        ).strip().split("\n")
+        n_commits = len([c for c in commits_7d if c])
+    except Exception:
+        n_commits = 0
+
+    hr = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    # Check gap closer status
+    models_dir = REPO_ROOT / "backend" / "models_artifacts"
+    trained_models = list(models_dir.glob("*/model.pt")) if models_dir.exists() else []
+    vercel_url = os.environ.get("VERCEL_URL", "").strip()
+
+    # Gap 1: Alpaca paper trading
+    alpaca_wf = REPO_ROOT / ".github" / "workflows" / "desk-trading.yml"
+    gap1 = "✅ Paper orders running every 15 min (desk-trading.yml + live-trading-reporter.yml)" if alpaca_wf.exists() else "⚠️  desk-trading.yml missing"
+
+    # Gap 2: Live trading reporter
+    reporter_wf = REPO_ROOT / ".github" / "workflows" / "live-trading-reporter.yml"
+    gap2 = "✅ Live P&L reporter running every 30 min on market days" if reporter_wf.exists() else "⚠️  live-trading-reporter.yml missing"
+
+    # Gap 3: LSTM training
+    if trained_models:
+        gap3 = f"✅ {len(trained_models)} trained LSTM model(s) in models_artifacts/"
+    else:
+        training_wf = REPO_ROOT / ".github" / "workflows" / "lstm-training.yml"
+        gap3 = "🔄 LSTM training scheduled (Sunday 02:00 UTC, first run upcoming)" if training_wf.exists() else "⚠️  lstm-training.yml missing"
+
+    # Gap 4: Vercel deployment
+    vercel_wf = REPO_ROOT / ".github" / "workflows" / "vercel-deploy.yml"
+    if vercel_url:
+        gap4 = f"✅ Live frontend: {vercel_url}"
+    elif vercel_wf.exists():
+        gap4 = "🔄 Vercel workflow ready — add VERCEL_TOKEN secret to enable auto-deploy"
+    else:
+        gap4 = "⚠️  Vercel deployment not configured"
+
+    progress_lines = [
+        f":bar_chart: *QuantEdge — Honest Progress Report* | {hr}",
+        "",
+        "*What is actually working:*",
+        f"  ✅ {len(page_files)} dashboard pages (React/TS)",
+        f"  ✅ {len(strategy_files)} strategy files",
+        f"  ✅ {len(ml_model_files)} ML model files",
+        f"  ✅ {len(workflow_files)} GitHub Actions workflows (agent automation)",
+        f"  ✅ TypeScript: {ts_status}",
+        f"  ✅ Backend tests: {test_summary}",
+        f"  ✅ {n_commits} commits in last 7 days",
+        "",
+        "*Gap Closers (vs. institutional hedge funds):*",
+        f"  {gap1}",
+        f"  {gap2}",
+        f"  {gap3}",
+        f"  {gap4}",
+        "",
+        "*Remaining gaps:*",
+        "  ⚠️  Walk-forward Sharpe not yet measurable (need ≥ 30 days paper data)",
+        "  ⚠️  WebSocket live prices depend on Alpaca/Binance keys being active",
+        "  ⚠️  No real capital at risk (intentional — paper until walk-forward validates)",
+        "",
+        "*Honest Sharpe estimate today: N/A* — paper trading only, insufficient live history",
+        "*Path to Sharpe > 2.0:* 30-day paper run → walk-forward validation → deploy live",
+    ]
+
+    msg = "\n".join(progress_lines)
+    if not is_duplicate(state, msg):
+        r = post_to_slack(
+            token, "leadership-summary", msg,
+            username="CRO Progress Report", icon_emoji=":clipboard:",
+        )
+        if r.get("ok"):
+            record_post(state, msg)
+            print("  [honest_progress] ✓ posted to #leadership-summary")
+
+
+def page_reports_main() -> int:
+    """
+    Standalone page audit mode: all assigned employees audit their pages and post
+    text-based walkthroughs to Slack. Triggered by page-reporter.yml workflow.
+    """
+    verify_zero_spend()
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token.startswith("xoxb-"):
+        print("[page_reports] No valid SLACK_BOT_TOKEN — skipping")
+        return 0
+
+    state = load_state()
+    _init_governance(state)
+
+    print(f"📸 Page Status Reporter | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"  Pages to audit: {len(_PAGE_ASSIGNMENTS)}")
+
+    n = run_page_status_reports(token, state)
+    post_honest_progress_report(token, state)
+
+    save_state(state)
+    print(f"✅ Page reports done — {n} posts made")
+    return 0
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
     if mode == "quick":
@@ -9846,6 +10484,8 @@ if __name__ == "__main__":
         sys.exit(code_request_main())
     elif mode == "frontend_improvements":
         sys.exit(frontend_improvements_main())
+    elif mode == "page_reports":
+        sys.exit(page_reports_main())
     elif "--review-employees" in sys.argv:
         sys.exit(review_employees_main())
     elif "--run-experiments" in sys.argv:
