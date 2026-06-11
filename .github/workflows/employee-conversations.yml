@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: claude/advanced-trading-bot-d5Lmw
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 2
 
