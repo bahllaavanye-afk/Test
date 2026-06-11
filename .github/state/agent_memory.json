@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-10T21:29:15.304457+00:00",
+  "last_updated": "2026-06-11T12:36:31.917702+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -293,6 +293,66 @@
       "reason": "LLM returned empty",
       "improvement_type": "constants",
       "timestamp": "2026-06-09T18:34:25.027138+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/rl_trader.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:31:36.932360+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/multiscale_transformer.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:32:09.685543+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/wavelet_features.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:32:42.650550+00:00"
+    },
+    {
+      "file": "backend/app/execution/iceberg.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:33:15.340026+00:00"
+    },
+    {
+      "file": "backend/app/risk/hrp.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:33:48.258590+00:00"
+    },
+    {
+      "file": "backend/app/brokers/polymarket.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:34:20.943218+00:00"
+    },
+    {
+      "file": "backend/app/backtest/cpcv.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:34:53.690692+00:00"
+    },
+    {
+      "file": "backend/app/comparison/benchmarks.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:35:26.426195+00:00"
+    },
+    {
+      "file": "backend/app/tasks/regime_monitor.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:35:59.186873+00:00"
+    },
+    {
+      "file": "backend/app/api/v1/regime.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-11T12:36:31.917639+00:00"
     }
   ],
   "improvement_stats": {
