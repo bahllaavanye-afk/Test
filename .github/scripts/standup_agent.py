@@ -56,7 +56,7 @@ def get_github_context() -> dict:
         return ctx
     headers = {"Authorization": f"token {GH_TOKEN}"}
     try:
-        r = requests.get(f"https://api.github.com/repos/{GH_REPO}/commits?per_page=5&sha=claude/advanced-trading-bot-d5Lmw", headers=headers, timeout=10)
+        r = requests.get(f"https://api.github.com/repos/{GH_REPO}/commits?per_page=5&sha=main", headers=headers, timeout=10)
         if r.status_code == 200:
             commits = r.json()
             ctx["recent_commits"] = [c["commit"]["message"][:80] for c in commits[:3]]

@@ -47,7 +47,7 @@ except Exception:
     _EMP_PERSONAS: dict = {}
 
 REPO_ROOT = Path(__file__).parent.parent
-BRANCH = "claude/advanced-trading-bot-d5Lmw"
+BRANCH = "main"
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID.lower() == "true":

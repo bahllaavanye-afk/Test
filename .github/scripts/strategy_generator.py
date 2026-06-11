@@ -17,6 +17,17 @@ import textwrap
 from pathlib import Path
 from datetime import datetime, timezone
 
+
+def _resolve_key(*names: str) -> str:
+    for name in names:
+        v = os.environ.get(name, "")
+        if v: return v
+        if not name[-1].isdigit():
+            v = os.environ.get(name + "_1", "")
+            if v: return v
+    return ""
+
+
 REPO_ROOT = Path(__file__).parent.parent
 STRATEGIES_DIR = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
 INIT_FILE = REPO_ROOT / "backend" / "app" / "strategies" / "__init__.py"
@@ -106,7 +117,7 @@ class MyStrategy(AbstractStrategy):
 # ─── LLM calls ───────────────────────────────────────────────────────────────
 
 def _call_gemini(prompt: str) -> str:
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_1", "")
+    key = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
     if not key:
         return ""
     try:

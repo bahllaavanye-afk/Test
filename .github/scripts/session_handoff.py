@@ -27,7 +27,7 @@ if ALLOW_PAID_APIS.lower() == "true":
 
 REPO_ROOT  = Path(__file__).resolve().parents[2]
 STATE_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
-BRANCH     = "claude/advanced-trading-bot-d5Lmw"
+BRANCH     = "main"
 
 
 def get_git_log(n: int = 10) -> list[str]:

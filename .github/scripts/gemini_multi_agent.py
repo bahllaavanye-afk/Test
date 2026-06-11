@@ -312,7 +312,7 @@ def build_platform_context(gh_token: str = "") -> dict:
     ctx = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "platform": "QuantEdge — institutional quant trading platform",
-        "branch": "claude/advanced-trading-bot-d5Lmw",
+        "branch": "main",
         "rules": {
             "allow_paid_apis": False,
             "trading_mode": "paper",
@@ -351,7 +351,7 @@ def build_platform_context(gh_token: str = "") -> dict:
             pass
         try:
             r = requests.get(
-                f"https://api.github.com/repos/{GH_REPO}/commits?per_page=5&sha=claude/advanced-trading-bot-d5Lmw",
+                f"https://api.github.com/repos/{GH_REPO}/commits?per_page=5&sha=main",
                 headers=headers, timeout=10
             )
             if r.status_code == 200:

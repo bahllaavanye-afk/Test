@@ -39,7 +39,7 @@ from llm_common import llm, memory_write, memory_read, core_update, core_get, sl
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", os.environ.get("PAT_TOKEN", ""))
 REPO = "bahllaavanye-afk/test"
-BRANCH = "claude/advanced-trading-bot-d5Lmw"
+BRANCH = "main"
 
 # Key channels to monitor for knowledge
 KNOWLEDGE_CHANNELS = [

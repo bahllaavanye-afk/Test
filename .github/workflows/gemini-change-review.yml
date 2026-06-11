@@ -21,7 +21,7 @@ on:
       - ".github/scripts/**"
       - ".github/workflows/**"
   schedule:
-    - cron: "0 * * * *"    # every 6 hours, 24/7
+    - cron: "0 */6 * * *"    # every 6 hours, 24/7
   workflow_dispatch:
     inputs:
       review_hours:
@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
+          ref: main
           fetch-depth: 0   # need full history for git diff
 
       - uses: actions/setup-python@v5
@@ -106,7 +106,7 @@ jobs:
           STATE=".github/state/slack_state.json"
           if [ -f "$STATE" ]; then
             git add "$STATE"
-            git commit -m "chore: persist review state [skip ci]"
+            git diff --cached --quiet || git commit -m "chore: persist review state [skip ci]"
             for i in 1 2 3 4; do
               git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
             done

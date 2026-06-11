@@ -400,7 +400,7 @@ def verify_fix_applied(report: str) -> tuple[bool, str]:
     return True, f"Fix verified: {summary}"
 
 
-def execute_task(title: str, body: str) -> tuple[bool, str]:
+def execute_task(title: str, body: str, issue_number: int = 0) -> tuple[bool, str]:
     """Run a task through Gemini/Groq, apply changes, return (success, summary)."""
     print(f"[task] Running: {title[:80]}")
     prompt = _build_prompt(title, body)
@@ -439,22 +439,38 @@ def execute_task(title: str, body: str) -> tuple[bool, str]:
     if not applied:
         return False, f"No changes applied. Failures: {'; '.join(failed)}"
 
-    # Commit
+    # Commit on a fix branch and open a PR for review
     changed_files = [fc["file_path"] for fc in files if any(fc["file_path"] in m for m in applied)]
     if changed_files:
         subprocess.run(["git", "config", "user.email", "gemini-runner@quantedge.ai"], cwd=REPO_ROOT)
         subprocess.run(["git", "config", "user.name", "QuantEdge Gemini Runner"], cwd=REPO_ROOT)
+        # Create a fix branch from main
+        fix_branch = f"fix/gemini-issue-{issue_number}-{int(time.time())}"
+        subprocess.run(["git", "fetch", "origin", "main"], cwd=REPO_ROOT, capture_output=True)
+        subprocess.run(["git", "checkout", "-b", fix_branch, "origin/main"], cwd=REPO_ROOT, capture_output=True)
         subprocess.run(["git", "add"] + [fc["file_path"] for fc in files], cwd=REPO_ROOT)
         result_commit = subprocess.run(
-            ["git", "commit", "-m", f"feat(gemini): {title[:72]}\n\n{summary[:500]}"],
+            ["git", "commit", "-m", f"fix(gemini): {title[:72]}\n\nCloses #{issue_number}\n\n{summary[:400]}"],
             cwd=REPO_ROOT, capture_output=True, text=True,
         )
         if result_commit.returncode == 0:
-            subprocess.run(
-                ["git", "push", "origin", "HEAD:claude/advanced-trading-bot-d5Lmw"],
+            push_result = subprocess.run(
+                ["git", "push", "origin", f"HEAD:{fix_branch}"],
                 cwd=REPO_ROOT, capture_output=True,
             )
-            print(f"  [task] committed + pushed {len(applied)} file(s)")
+            if push_result.returncode == 0 and GH_TOKEN and GH_REPO:
+                try:
+                    pr = _gh("POST", f"/repos/{GH_REPO}/pulls", {
+                        "title": f"fix: {title[:72]} (closes #{issue_number})",
+                        "body": f"Automated fix by Gemini Task Runner.\n\nCloses #{issue_number}\n\n{summary[:800]}",
+                        "head": fix_branch,
+                        "base": "main",
+                    })
+                    pr_url = pr.get("html_url", "")
+                    print(f"  [task] opened PR: {pr_url}")
+                except Exception as pr_err:
+                    print(f"  [task] PR creation failed: {pr_err}")
+            print(f"  [task] committed + pushed {len(applied)} file(s) to {fix_branch}")
 
     report = f"✅ Applied {len(applied)} change(s) via {provider}\n"
     report += "\n".join(f"  • {m}" for m in applied)
@@ -522,7 +538,7 @@ def main() -> int:
         title = issue.get("title", "")
         body = issue.get("body", "") or ""
         print(f"\n[gemini-runner] Processing issue #{num}: {title[:80]}")
-        ok, report = execute_task(title, body)
+        ok, report = execute_task(title, body, issue_number=num)
         if ok is None:
             print(f"  [gemini-runner] Rate-limited on #{num} — leaving open for retry.")
             results.append((num, None, report[:200]))

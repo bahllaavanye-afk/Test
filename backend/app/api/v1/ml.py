@@ -1,5 +1,5 @@
 """ML model management and prediction endpoints."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,7 +9,7 @@ from app.models.ml_model import MLModel
 from app.models.user import User
 from app.utils.logging import logger
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -245,3 +245,50 @@ async def optimize_ensemble_weights(
     except Exception as exc:
         logger.error("optimize_ensemble_weights failed", error=str(exc))
         raise HTTPException(500, str(exc))
+
+
+@router.post("/train")
+async def trigger_training(
+    model_name: str = Body(...),
+    symbol: str = Body("BTC/USDT"),
+    interval: str = Body("1h"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Queue a new ML training experiment and return its ID."""
+    import uuid as _uuid
+    from fastapi import HTTPException
+    from app.models.experiment import Experiment
+
+    experiment_id = str(_uuid.uuid4())
+    experiment_name = f"{model_name}_{symbol.replace('/', '-')}_{interval}_{experiment_id[:8]}"
+
+    experiment = Experiment(
+        id=experiment_id,
+        name=experiment_name,
+        config={
+            "model_name": model_name,
+            "symbol": symbol,
+            "interval": interval,
+            "triggered_by": str(current_user.id),
+        },
+        status="queued",
+        created_at=datetime.now(timezone.utc),
+    )
+
+    try:
+        db.add(experiment)
+        await db.commit()
+        await db.refresh(experiment)
+    except Exception as exc:
+        logger.error("trigger_training DB error", error=str(exc))
+        raise HTTPException(500, f"Failed to create experiment: {exc}")
+
+    return {
+        "experiment_id": experiment_id,
+        "name": experiment_name,
+        "status": "queued",
+        "model_name": model_name,
+        "symbol": symbol,
+        "interval": interval,
+    }

@@ -308,6 +308,35 @@ _STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "analyst_revision_momentum": [1, 2],
     "on_chain_exchange_netflow": [0, 1, 2],
     "vol_of_vol_timing":         [0, 1, 2],
+    # Equities (intraday / all-regime)
+    "opening_range_breakout":    [1, 2],   # intraday breakout — avoid bear chop
+    "residual_momentum":         [1, 2],   # factor momentum — avoid bear
+    "idio_vol_anomaly":          [0, 1, 2],
+    # Crypto
+    "crypto_adaptive_trend":     [1, 2],   # trend strategy
+    "mvrv_zscore_timing":        [0, 1, 2],
+    "intraday_seasonality":      [0, 1, 2],
+    # Options / vol strategies (run in all regimes; vol strategies especially useful in bear)
+    "gamma_exposure":            [0, 1, 2],
+    "skew_arb":                  [0, 1, 2],
+    "vrp_systematic":            [0, 1, 2],
+    "dispersion_trading":        [0, 1, 2],
+    "vol_term_structure":        [0, 1, 2],
+    # Polymarket
+    "polymarket_sentiment_momentum": [1, 2],
+    "poly_calibration_arb":      [0, 1, 2],
+    "poly_late_resolution":      [0, 1, 2],
+    # Macro/FX
+    "cross_asset_carry":         [0, 1, 2],
+    "sector_rotation":           [1, 2],
+    "time_series_momentum":      [1, 2],
+    "intraday_fomc_momentum":    [0, 1, 2],
+    "pead_sue":                  [1, 2],
+    "multi_factor_equity":       [1, 2],
+    # StatArb
+    "pca_stat_arb":              [0, 1, 2],
+    "kalman_pairs":              [0, 1, 2],
+    "stablecoin_depeg_arb":      [0, 1, 2],
 }
 _DEFAULT_REGIMES = [0, 1, 2]
 
