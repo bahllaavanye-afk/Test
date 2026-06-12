@@ -85,7 +85,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781298417.433863,
+    "last_updated": 1781299176.8589928,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -145,47 +145,47 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 2,
-    "macro_score": 3,
-    "vix": 19.17,
-    "market_scan_ts": 1781262662.4372122,
+    "macro_score": 4,
+    "vix": 17.68,
+    "market_scan_ts": 1781299176.8551557,
     "sector_leaders": [
       "Healthcare",
-      "Tech",
-      "Financials"
+      "Financials",
+      "Tech"
     ],
     "sector_laggards": [
-      "Materials",
       "Utilities",
+      "Cons. Disc.",
       "Comm."
     ],
     "active_universe": [
-      "ORCL",
       "ADBE",
-      "MSFT",
-      "SPY",
-      "AVGO",
-      "QQQ",
-      "META",
-      "NOW",
-      "XLK",
-      "GS",
-      "INTU",
+      "INTC",
+      "ORCL",
+      "AMD",
+      "TSLA",
       "IWM",
-      "KO",
-      "GOOGL",
       "AMZN",
-      "XLI",
-      "C",
+      "XLF",
       "ABT",
-      "NVDA",
-      "XOM"
+      "MSFT",
+      "NOW",
+      "C",
+      "QQQ",
+      "NFLX",
+      "UNH",
+      "XOM",
+      "MRK",
+      "INTU",
+      "GS",
+      "META"
     ],
     "top_momentum": [
+      "INTC",
+      "AMD",
       "PANW",
-      "CRWD",
-      "LLY",
-      "C",
-      "HD"
+      "BAC",
+      "C"
     ],
     "risk_flags": []
   },
@@ -317,6 +317,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1781298417.4344335
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 3,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781299176.8597157
     }
   ]
 }
