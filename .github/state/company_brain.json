@@ -85,7 +85,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781268095.3366215,
+    "last_updated": 1781298417.433863,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -99,52 +99,52 @@
     "autopilot_overfit_count": 0,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-06-10T21:37:35.964113+00:00",
+      "generated_at": "2026-06-12T21:06:18.658577+00:00",
       "signals": {
         "vix": {
-          "value": 22.22,
-          "trend": "rising"
+          "value": 17.68,
+          "trend": "falling"
         },
         "spy": {
-          "price": 725.43,
-          "sma50": 719.32,
-          "sma200": 683.06,
+          "price": 741.75,
+          "sma50": 722.8,
+          "sma200": 684.07,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0359,
+          "ratio": 1.0451,
           "median": 1.0523,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.001,
+          "hyg_lqd_momentum_20d": -0.178,
           "signal": "widening"
         },
         "breadth": {
-          "sectors_above_sma20": 4,
+          "sectors_above_sma20": 8,
           "total_sectors": 11,
-          "breadth_pct": 36.4
+          "breadth_pct": 72.7
         },
         "btc": {
-          "price": 61615,
-          "24h_pct": -0.37
+          "price": 63430,
+          "24h_pct": 0.02
         }
       },
-      "score": -1,
-      "regime": "neutral",
+      "score": 2,
+      "regime": "bull",
       "strategy_gates": {
         "directional": true,
-        "min_confidence": 0.68,
-        "size_multiplier": 0.75
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
       },
       "summary": "[LLM unavailable \u2014 all providers failed]"
     },
     "strategy_gates": {
       "directional": true,
-      "min_confidence": 0.68,
-      "size_multiplier": 0.75
+      "min_confidence": 0.6,
+      "size_multiplier": 1.0
     },
-    "opinion_score": -1,
+    "opinion_score": 2,
     "macro_score": 3,
     "vix": 19.17,
     "market_scan_ts": 1781262662.4372122,
@@ -305,6 +305,18 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Healthcare, Tech. Gaps: 4, Breakouts: 1, Risk flags: 0.",
       "ts": 1781262662.4412017
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 2,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1781298417.4344335
     }
   ]
 }
