@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781289973,
+  "last_run_ts": 1781290199,
   "last_commit_sha": "69c2d66",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -137,7 +137,8 @@
     "2597a5bc8784",
     "82ac6d9cec47",
     "0929fb975192",
-    "95830299e155"
+    "95830299e155",
+    "f9a5cbc9a19c"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -147,7 +148,11 @@
     "engineering:agent_reminder": 1781237581.3876967,
     "help:agent_reminder": 1781237581.983271,
     "risk-alerts:silent_risk_eng": 1781289978.8437521,
-    "infra-alerts:silent_devops_dir": 1781289989.32648
+    "infra-alerts:silent_devops_dir": 1781289989.32648,
+    "alpha-research:silent_alpha_dir": 1781290202.9581852,
+    "ml-experiments:silent_ml_researcher": 1781290219.4572992,
+    "engineering:silent_momentum_quant": 1781290241.3008041,
+    "engineering:silent_data_engineer_2": 1781290264.1133742
   },
   "response_cache": {},
   "posted_today": [
@@ -200,7 +205,7 @@
   ],
   "last_post_ts": {
     "vp_eng": 1781271102.210905,
-    "alpha_dir": 1781271102.210905,
+    "alpha_dir": 1781290200.3976712,
     "ml_lead": 1781144509.093116,
     "risk_eng": 1781289973.9942653,
     "backend_lead": 1781265829.0596151,
@@ -208,7 +213,7 @@
     "devops_dir": 1781289973.9942653,
     "exec_eng": 1781144509.093116,
     "poly_desk": 1781144509.093116,
-    "ml_researcher": 1781271645.7479749,
+    "ml_researcher": 1781290200.3976712,
     "vp_research": 1781265833.6660388,
     "quant_researcher": 1781265666.5413733,
     "cro": 1781144509.093116,
@@ -226,7 +231,7 @@
     "portfolio_manager": 1781024089.1695297,
     "market_maker": 1781024089.1695297,
     "rl_trader": 1781095584.0721726,
-    "momentum_quant": 1781144509.093116,
+    "momentum_quant": 1781290200.3976712,
     "graph_ml_researcher": 1781144509.093116,
     "macro/fx_desk_bot": 1781265633.191079,
     "kalshi_desk_bot": 1781265634.9182909,
@@ -267,7 +272,8 @@
     "wins_bot": 1781265861.788297,
     "vp_engineering_(cr)": 1781265866.859508,
     "product_lead": 1781271831.6069448,
-    "ml_infra": 1781272059.2677236
+    "ml_infra": 1781272059.2677236,
+    "data_engineer_2": 1781290200.3976712
   },
   "daily_usage": {
     "2026-06-10": {
@@ -945,41 +951,37 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-12 18:46:35"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "ml_lead",
-      "channel": "unknown",
-      "text": "*I'm monitoring the **funding_rate_btc.yaml** signal, which is showing a -0.015% hourly funding rate for BTC perpetual futures*. This is a **10%** deviation from the 7-day average, indicating a potential short squeeze. *Currently, the **tft_btc_perp_1h.yaml** model is predicting a **2.5%** increase ",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781065216.655301,
-      "score": 8
-    },
-    {
-      "emp": "vp_eng",
-      "channel": "unknown",
-      "text": "*I'm currently reviewing the test results for `test_order_execution.py`*, which has a **25%** failure rate in the last 10 runs, with **15** failed assertions on lines 120-150. The **flaky test cases** in `test_order_execution.py` are related to the `submit_limit_order` function, where **3 out of 5**",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781065247.1041367,
-      "score": 8
     },
     {
       "emp": "alpha_dir",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "*I am currently analyzing the momentum strategy's performance in `/home/quantedge/strategies/momentum.py`*, focusing on the ` Sharpe_Ratio` metric which is currently at **1.23**. The backtest results in `/logs/momentum_backtest_2023.csv` indicate a significant improvement in returns when using a **2",
-      "provider": "litellm:groq",
-      "ts": 1781065251.1784275,
-      "score": 8
+      "ts": "2026-06-12 18:50:10"
     },
     {
-      "emp": "ml_lead",
+      "emp": "ml_researcher",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "*I'm currently analyzing the `tft_spy_daily.yaml` experiment results, where the **val_sharpe** is 1.8 vs **train_sharpe** 3.2, indicating overfitting*. To address this, I plan to modify the `d_model` parameter from 64 to 32 and increase the **dropout** rate from 0.1 to 0.25. *The `xgboost_multi_asse",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781065258.9170732,
-      "score": 8
+      "ts": "2026-06-12 18:50:26"
     },
+    {
+      "emp": "momentum_quant",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and only provides a vague statement about validating a cross-sectional momentum strategy without any specific details or insights.",
+      "channel": "unknown",
+      "ts": "2026-06-12 18:50:47"
+    },
+    {
+      "emp": "data_engineer_2",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-12 18:51:11"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "risk_eng",
       "channel": "unknown",
@@ -1347,19 +1349,51 @@
       "provider": "litellm:groq",
       "ts": 1781289995.6284683,
       "score": 5
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "Desk update: I'm currently scrutinizing the walk-forward results for our *ML directional model \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781290210.6215253,
+      "score": 5
+    },
+    {
+      "emp": "ml_researcher",
+      "channel": "unknown",
+      "text": "Working on *TFT v2.1 performance analysis* for the `FX_ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781290226.0673633,
+      "score": 5
+    },
+    {
+      "emp": "momentum_quant",
+      "channel": "unknown",
+      "text": "Currently validating the *cross-sectional 12-1M U.S. Equity \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781290247.8816047,
+      "score": 2
+    },
+    {
+      "emp": "data_engineer_2",
+      "channel": "unknown",
+      "text": "Currently investigating a *missing bar* alert for **NVDA** on the **NASDAQ** \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781290271.2955835,
+      "score": 5
     }
   ],
   "last_providers": {
     "devops_dir": "litellm:groq",
     "vp_eng": "litellm:groq",
-    "alpha_dir": "litellm:groq",
+    "alpha_dir": "Gemini(GEMINI_API_KEY_2)",
     "ml_lead": "litellm:groq",
     "risk_eng": "Gemini(GEMINI_API_KEY_3)",
     "backend_lead": "litellm:groq",
     "qa_dir": "Gemini(GEMINI_API_KEY)",
     "exec_eng": "litellm:groq",
     "poly_desk": "litellm:groq",
-    "ml_researcher": "litellm:groq",
+    "ml_researcher": "Gemini(GEMINI_API_KEY)",
     "vp_research": "litellm:groq",
     "quant_researcher": "litellm:groq",
     "cro": "litellm:groq",
@@ -1377,10 +1411,11 @@
     "portfolio_manager": "litellm:groq",
     "market_maker": "litellm:groq",
     "rl_trader": "Gemini(GEMINI_API_KEY)",
-    "momentum_quant": "litellm:groq",
+    "momentum_quant": "Gemini(GEMINI_API_KEY_3)",
     "graph_ml_researcher": "Gemini(GEMINI_API_KEY)",
     "product_lead": "Gemini(GEMINI_API_KEY)",
-    "ml_infra": "litellm:groq"
+    "ml_infra": "litellm:groq",
+    "data_engineer_2": "Gemini(GEMINI_API_KEY_2)"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781095580.7191632
