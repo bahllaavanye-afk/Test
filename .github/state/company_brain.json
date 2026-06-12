@@ -85,7 +85,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781299176.8589928,
+    "last_updated": 1781302371.582701,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -147,7 +147,7 @@
     "opinion_score": 2,
     "macro_score": 4,
     "vix": 17.68,
-    "market_scan_ts": 1781299176.8551557,
+    "market_scan_ts": 1781302371.5788531,
     "sector_leaders": [
       "Healthcare",
       "Financials",
@@ -332,6 +332,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
       "ts": 1781299176.8597157
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 3,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781302371.5834343
     }
   ]
 }
