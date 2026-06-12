@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "created_at": "2026-06-10T01:07:41.067390+00:00",
-  "last_updated": "2026-06-12T12:03:04.499819+00:00",
+  "last_updated": "2026-06-12T19:37:05.824843+00:00",
   "platform": {
     "name": "QuantEdge",
     "type": "institutional_quant_trading",
@@ -57,13 +57,26 @@
         "general",
         "strategy-review"
       ]
+    },
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 5 threads in 5 channels: #squad-qa, #code-review, #wins, #risk-alerts, #engineering",
+      "timestamp": "2026-06-12T19:37:05.824843+00:00",
+      "chain_count": 5,
+      "channels": [
+        "squad-qa",
+        "code-review",
+        "wins",
+        "risk-alerts",
+        "engineering"
+      ]
     }
   ],
   "experiments": [],
   "agent_insights": {
     "build_discussion_chains": {
-      "last_learning": "Discussion chains built across 9 threads in 9 channels: #desk-kalshi, #ml-experiments, #alpha-research, #model-performan",
-      "last_updated": "2026-06-12T12:03:04.499819+00:00"
+      "last_learning": "Discussion chains built across 5 threads in 5 channels: #squad-qa, #code-review, #wins, #risk-alerts, #engineering",
+      "last_updated": "2026-06-12T19:37:05.824843+00:00"
     }
   },
   "strategy_notes": {},
