@@ -104,8 +104,9 @@ async def run_from_config(config_path: Path) -> dict:
                 if report.warnings:
                     print(f"Warnings: {report.warnings}")
         except Exception as e:
-            print(f"WARNING: Validation gate error (non-fatal): {e}")
+            print(f"WARNING: Validation gate error: {e}")
             validation_summary = {"validation": {"passed": None, "error": str(e)}}
+            status = "validation_error"
 
     # Save results back into config
     config_path.write_text(yaml.dump({**cfg, "results": {

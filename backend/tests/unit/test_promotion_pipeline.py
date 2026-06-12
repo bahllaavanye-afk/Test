@@ -65,10 +65,43 @@ def test_criteria_staging_to_live_pass():
         "win_rate": 0.55,
         "max_drawdown": -0.07,
         "num_trades": 65,
+        "p_value": 0.03,   # ML significance required for staging → live
     }
     passed, failures = check_criteria(metrics, "staging_to_live")
     assert passed is True
     assert failures == []
+
+
+# ---------------------------------------------------------------------------
+# 4b. staging → live: ML significance not established
+# ---------------------------------------------------------------------------
+
+def test_criteria_staging_to_live_fail_no_p_value():
+    metrics = {
+        "days_in_stage": 61,
+        "sharpe": 1.5,
+        "win_rate": 0.55,
+        "max_drawdown": -0.07,
+        "num_trades": 65,
+        # p_value intentionally omitted — must fail
+    }
+    passed, failures = check_criteria(metrics, "staging_to_live")
+    assert passed is False
+    assert any("p_value" in f or "significance" in f.lower() for f in failures)
+
+
+def test_criteria_staging_to_live_fail_high_p_value():
+    metrics = {
+        "days_in_stage": 61,
+        "sharpe": 1.5,
+        "win_rate": 0.55,
+        "max_drawdown": -0.07,
+        "num_trades": 65,
+        "p_value": 0.12,   # above 0.05 threshold
+    }
+    passed, failures = check_criteria(metrics, "staging_to_live")
+    assert passed is False
+    assert any("p_value" in f or "significance" in f.lower() for f in failures)
 
 
 # ---------------------------------------------------------------------------

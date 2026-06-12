@@ -73,4 +73,11 @@ def check_criteria(metrics: dict, transition: str) -> tuple[bool, list[str]]:
     if num_trades < c.min_trades:
         failures.append(f"Too few trades: {num_trades} < {c.min_trades}")
 
+    if c.require_p_value:
+        p_value = metrics.get("p_value")
+        if p_value is None or p_value >= 0.05:
+            failures.append(
+                f"ML significance not established: p_value={p_value} (need < 0.05)"
+            )
+
     return len(failures) == 0, failures

@@ -21,6 +21,25 @@ async def list_promotions(
     return [_serialize(p) for p in result.scalars().all()]
 
 
+@router.get("/criteria/all")
+async def get_all_criteria(
+    current_user: User = Depends(get_current_user),
+):
+    """Return promotion criteria thresholds for all transitions."""
+    from app.tasks.promotion_criteria import CRITERIA
+    return {
+        name: {
+            "min_days": c.min_days,
+            "min_sharpe": c.min_sharpe,
+            "min_win_rate": c.min_win_rate,
+            "max_drawdown": c.max_drawdown,
+            "min_trades": c.min_trades,
+            "require_p_value": c.require_p_value,
+        }
+        for name, c in CRITERIA.items()
+    }
+
+
 @router.get("/{promotion_id}")
 async def get_promotion(
     promotion_id: str,
@@ -112,6 +131,8 @@ async def approve_promotion(
 
     old_stage = p.current_stage
     stage_order = ["paper", "shadow", "staging", "live"]
+    if old_stage not in stage_order:
+        raise HTTPException(status_code=400, detail=f"Cannot approve: strategy is in stage '{old_stage}'")
     idx = stage_order.index(old_stage)
     if idx >= len(stage_order) - 1:
         raise HTTPException(status_code=400, detail="Strategy is already at final stage")
@@ -125,16 +146,20 @@ async def approve_promotion(
     p.approved_at = ts
     setattr(p, f"{new_stage}_started_at", ts)
 
-    # Notify Slack
-    from app.notifications.slack import slack
-    await slack.notify_system(
-        f":white_check_mark: Strategy `{p.strategy_name}` promoted from *{old_stage}* → *{new_stage}* "
-        f"by {current_user.email}",
-        level="info"
-    )
-
     db.add(p)
     await db.commit()
+
+    # Notify after commit so a Slack outage doesn't roll back the promotion
+    try:
+        from app.notifications.slack import slack
+        await slack.notify_system(
+            f":white_check_mark: Strategy `{p.strategy_name}` promoted from *{old_stage}* → *{new_stage}* "
+            f"by {current_user.email}",
+            level="info"
+        )
+    except Exception:
+        pass
+
     return _serialize(p)
 
 
@@ -165,14 +190,18 @@ async def reject_promotion(
     history.append({"ts": ts, "event": "rejected", "stage": old_stage, "reason": req.reason})
     p.review_history = history
 
-    from app.notifications.slack import slack
-    await slack.notify_system(
-        f":x: Strategy `{p.strategy_name}` rejected at stage *{old_stage}*. Reason: {req.reason}",
-        level="warning"
-    )
-
     db.add(p)
     await db.commit()
+
+    try:
+        from app.notifications.slack import slack
+        await slack.notify_system(
+            f":x: Strategy `{p.strategy_name}` rejected at stage *{old_stage}*. Reason: {req.reason}",
+            level="warning"
+        )
+    except Exception:
+        pass
+
     return _serialize(p)
 
 
@@ -214,25 +243,6 @@ async def trigger_review(
     await db.commit()
 
     return {"passed": passed, "failures": failures, "transition": transition, "metrics": metrics}
-
-
-@router.get("/criteria/all")
-async def get_all_criteria(
-    current_user: User = Depends(get_current_user),
-):
-    """Return promotion criteria thresholds for all transitions."""
-    from app.tasks.promotion_criteria import CRITERIA
-    return {
-        name: {
-            "min_days": c.min_days,
-            "min_sharpe": c.min_sharpe,
-            "min_win_rate": c.min_win_rate,
-            "max_drawdown": c.max_drawdown,
-            "min_trades": c.min_trades,
-            "require_p_value": c.require_p_value,
-        }
-        for name, c in CRITERIA.items()
-    }
 
 
 def _serialize(p: StrategyPromotion) -> dict:

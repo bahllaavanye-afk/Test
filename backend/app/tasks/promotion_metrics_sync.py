@@ -90,14 +90,23 @@ def _compute_metrics(trades, stage_start: datetime) -> dict:
     wins = sum(1 for p in pnls if p > 0)
     win_rate = wins / len(pnls) if pnls else 0.0
 
-    # Daily aggregated returns for Sharpe
+    # Daily aggregated PnL and notional (to compute percentage returns for Sharpe)
     from collections import defaultdict
-    daily: dict[str, float] = defaultdict(float)
+    daily_pnl: dict[str, float] = defaultdict(float)
+    daily_notional: dict[str, float] = defaultdict(float)
     for t in trades:
         day = t.closed_at.strftime("%Y-%m-%d")
-        daily[day] += float(t.realized_pnl)
+        daily_pnl[day] += float(t.realized_pnl)
+        daily_notional[day] += float(t.entry_price) * float(t.quantity)
 
-    daily_vals = list(daily.values())
+    # Sort by calendar date so the drawdown loop traverses in chronological order
+    sorted_days = sorted(daily_pnl.keys())
+    # Percentage return per day normalised by notional (independent of position sizing)
+    daily_vals = [
+        daily_pnl[d] / max(daily_notional[d], 1e-9)
+        for d in sorted_days
+    ]
+
     if len(daily_vals) >= 2:
         mean = sum(daily_vals) / len(daily_vals)
         variance = sum((x - mean) ** 2 for x in daily_vals) / (len(daily_vals) - 1)
@@ -106,7 +115,7 @@ def _compute_metrics(trades, stage_start: datetime) -> dict:
     else:
         sharpe = 0.0
 
-    # Max drawdown from cumulative PnL
+    # Max drawdown from cumulative percentage returns (chronological order guaranteed above)
     cum = 0.0
     peak = 0.0
     max_dd = 0.0
@@ -114,7 +123,7 @@ def _compute_metrics(trades, stage_start: datetime) -> dict:
         cum += v
         if cum > peak:
             peak = cum
-        dd = (cum - peak) / max(abs(peak), 1)
+        dd = (cum - peak) / max(abs(peak), 1e-9)
         if dd < max_dd:
             max_dd = dd
 

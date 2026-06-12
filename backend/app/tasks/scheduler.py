@@ -771,7 +771,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             from app.database import AsyncSessionLocal
             await sync_promotion_metrics(AsyncSessionLocal)
         except Exception as exc:
-            logger.debug("Promotion metrics sync failed", error=str(exc))
+            logger.error("Promotion metrics sync failed", error=str(exc))
 
     scheduler.add_job(
         _run_promotion_metrics_sync,

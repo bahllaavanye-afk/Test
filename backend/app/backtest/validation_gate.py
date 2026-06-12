@@ -4,7 +4,6 @@ before they can be marked 'done'. Prevents fake in-sample-only results.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
 import pandas as pd
 
 
@@ -64,7 +63,7 @@ def validate_experiment(
             f"OOS avg drawdown {avg_drawdown:.1%} exceeds limit {max_drawdown:.1%}"
         )
 
-    # Consistency check: require at least half of windows to be profitable
+    # Consistency check: require at least 40% of windows to be profitable
     profitable = [w for w in valid_windows if w.get("total_return", 0) > 0]
     if valid_windows and len(profitable) / len(valid_windows) < 0.4:
         failures.append(
