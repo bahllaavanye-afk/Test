@@ -58,6 +58,7 @@ from app.strategies.manual.poly_time_value_fade import PolyTimeValueFadeStrategy
 from app.strategies.manual.poly_cross_market_hedge import PolyCrossMarketHedgeStrategy
 from app.strategies.manual.poly_liquidity_provision import PolyLiquidityProvisionStrategy
 from app.strategies.manual.poly_near_resolution import PolyNearResolution
+from app.strategies.manual.poly_kalshi_arb import PolyKalshiArb
 from app.strategies.manual.yield_curve_momentum import YieldCurveMomentumStrategy
 from app.strategies.manual.macro_risk_barometer import MacroRiskBarometerStrategy
 from app.strategies.manual.dollar_carry import DollarCarryStrategy
@@ -231,6 +232,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "poly_cross_market_hedge": PolyCrossMarketHedgeStrategy,
     "poly_liquidity_provision": PolyLiquidityProvisionStrategy,
     "poly_near_resolution": PolyNearResolution,
+    "poly_kalshi_arb": PolyKalshiArb,
     # ── Macro desk ────────────────────────────────────────────────────────────
     "yield_curve_momentum": YieldCurveMomentumStrategy,
     "macro_risk_barometer": MacroRiskBarometerStrategy,

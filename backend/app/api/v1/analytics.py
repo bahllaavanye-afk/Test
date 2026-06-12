@@ -254,41 +254,330 @@ async def get_slippage_stats(
     return [{"algo": r.execution_algo, "avg_bps": round(float(r.avg_bps or 0), 2), "count": r.count} for r in rows]
 
 
-@router.get("/attribution")
-async def get_pnl_attribution(
+@router.get("/tca")
+async def get_tca(
+    days: int = Query(30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """P&L broken down by strategy — scoped to current user's accounts."""
+    """Transaction Cost Analysis — execution quality metrics."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
     account_ids = await _user_account_ids(db, current_user.id)
-    if not account_ids:
-        return []
-    result = await db.execute(
+
+    # Count total trades in period
+    trade_count_result = await db.execute(
+        select(func.count(Trade.id)).where(
+            Trade.account_id.in_(account_ids) if account_ids else Trade.account_id.isnot(None),
+            Trade.closed_at >= since,
+        )
+    )
+    total_trades = int(trade_count_result.scalar() or 0)
+
+    # Check if SlippageRecord data is available for this user's accounts
+    slippage_data_available = False
+    avg_slippage_bps = None
+    median_slippage_bps = None
+    total_estimated_cost_usd = None
+    by_strategy_slippage: list[dict] = []
+    by_execution_algo: list[dict] = []
+    by_hour_of_day: list[dict] = []
+    best_strategy_for_execution = None
+    worst_strategy_for_execution = None
+
+    try:
+        from app.models.order import Order as OrderModel
+        slippage_count_result = await db.execute(
+            select(func.count(SlippageRecord.id))
+            .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
+            .where(
+                OrderModel.account_id.in_(account_ids) if account_ids else OrderModel.account_id.isnot(None),
+                SlippageRecord.created_at >= since,
+            )
+        )
+        slippage_count = int(slippage_count_result.scalar() or 0)
+
+        if slippage_count > 0:
+            slippage_data_available = True
+
+            # Average and median slippage bps
+            agg_result = await db.execute(
+                select(
+                    func.avg(SlippageRecord.slippage_bps).label("avg_bps"),
+                    func.percentile_cont(0.5).within_group(
+                        SlippageRecord.slippage_bps
+                    ).label("median_bps"),
+                    func.sum(
+                        case((SlippageRecord.slippage_bps.isnot(None),
+                              SlippageRecord.slippage_bps * SlippageRecord.fill_price / 10000), else_=0)
+                    ).label("total_cost"),
+                )
+                .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
+                .where(
+                    OrderModel.account_id.in_(account_ids) if account_ids else OrderModel.account_id.isnot(None),
+                    SlippageRecord.created_at >= since,
+                )
+            )
+            agg_row = agg_result.one()
+            avg_slippage_bps = round(float(agg_row.avg_bps or 0), 4) if agg_row.avg_bps is not None else None
+            median_slippage_bps = round(float(agg_row.median_bps or 0), 4) if agg_row.median_bps is not None else None
+            total_estimated_cost_usd = round(float(agg_row.total_cost or 0), 2) if agg_row.total_cost is not None else None
+
+            # By strategy (via Trade join on order's trade context — approximate via Trade.strategy_name grouped)
+            # Using Trade join approach: Trade.strategy_name + SlippageRecord via Order
+            strat_result = await db.execute(
+                select(
+                    Trade.strategy_name,
+                    func.avg(SlippageRecord.slippage_bps).label("avg_bps"),
+                    func.count(SlippageRecord.id).label("n_trades"),
+                )
+                .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
+                .join(Trade, Trade.account_id == OrderModel.account_id)
+                .where(
+                    OrderModel.account_id.in_(account_ids) if account_ids else OrderModel.account_id.isnot(None),
+                    SlippageRecord.created_at >= since,
+                )
+                .group_by(Trade.strategy_name)
+                .order_by(func.avg(SlippageRecord.slippage_bps))
+            )
+            strat_rows = strat_result.all()
+            by_strategy_slippage = [
+                {
+                    "strategy": r.strategy_name or "manual",
+                    "avg_slippage_bps": round(float(r.avg_bps or 0), 4),
+                    "num_trades": r.n_trades,
+                }
+                for r in strat_rows
+            ]
+            if by_strategy_slippage:
+                best_strategy_for_execution = by_strategy_slippage[0]["strategy"]
+                worst_strategy_for_execution = by_strategy_slippage[-1]["strategy"]
+
+            # By execution algo
+            algo_result = await db.execute(
+                select(
+                    SlippageRecord.execution_algo,
+                    func.avg(SlippageRecord.slippage_bps).label("avg_bps"),
+                )
+                .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
+                .where(
+                    OrderModel.account_id.in_(account_ids) if account_ids else OrderModel.account_id.isnot(None),
+                    SlippageRecord.created_at >= since,
+                )
+                .group_by(SlippageRecord.execution_algo)
+                .order_by(func.avg(SlippageRecord.slippage_bps))
+            )
+            algo_rows = algo_result.all()
+            by_execution_algo = [
+                {
+                    "algo": r.execution_algo or "unknown",
+                    "avg_slippage_bps": round(float(r.avg_bps or 0), 4),
+                }
+                for r in algo_rows
+            ]
+
+            # By hour of day (UTC)
+            hour_result = await db.execute(
+                select(
+                    func.extract("hour", SlippageRecord.created_at).label("hour"),
+                    func.avg(SlippageRecord.slippage_bps).label("avg_bps"),
+                )
+                .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
+                .where(
+                    OrderModel.account_id.in_(account_ids) if account_ids else OrderModel.account_id.isnot(None),
+                    SlippageRecord.created_at >= since,
+                )
+                .group_by(func.extract("hour", SlippageRecord.created_at))
+                .order_by(func.extract("hour", SlippageRecord.created_at))
+            )
+            hour_rows = hour_result.all()
+            by_hour_of_day = [
+                {
+                    "hour": int(r.hour),
+                    "avg_slippage_bps": round(float(r.avg_bps or 0), 4),
+                }
+                for r in hour_rows
+            ]
+    except Exception as exc:
+        logger.warning("TCA slippage aggregation failed", error=str(exc))
+
+    data_source = (
+        "slippage_records" if slippage_data_available else
+        ("trade_estimates" if total_trades > 0 else "insufficient")
+    )
+
+    # Always compute Trade-level stats
+    avg_pnl_per_trade = None
+    win_rate = None
+    profit_factor = None
+    try:
+        trade_stats_result = await db.execute(
+            select(
+                func.avg(Trade.realized_pnl).label("avg_pnl"),
+                func.count(Trade.id).label("n_trades"),
+                func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
+                func.sum(case((Trade.realized_pnl > 0, Trade.realized_pnl), else_=0)).label("gross_profit"),
+                func.sum(case((Trade.realized_pnl <= 0, Trade.realized_pnl), else_=0)).label("gross_loss"),
+            )
+            .where(
+                Trade.account_id.in_(account_ids) if account_ids else Trade.account_id.isnot(None),
+                Trade.closed_at >= since,
+                Trade.realized_pnl.isnot(None),
+            )
+        )
+        ts_row = trade_stats_result.one()
+        n_trades = int(ts_row.n_trades or 0)
+        if n_trades > 0:
+            avg_pnl_per_trade = round(float(ts_row.avg_pnl or 0), 4)
+            wins = int(ts_row.wins or 0)
+            win_rate = round(wins / n_trades, 4)
+            gross_profit = float(ts_row.gross_profit or 0)
+            gross_loss = float(ts_row.gross_loss or 0)
+            if gross_loss < 0:
+                profit_factor = round(gross_profit / abs(gross_loss), 4)
+    except Exception as exc:
+        logger.warning("TCA trade stats failed", error=str(exc))
+
+    return {
+        "period_days": days,
+        "total_trades": total_trades,
+        "data_source": data_source,
+        "avg_slippage_bps": avg_slippage_bps,
+        "median_slippage_bps": median_slippage_bps,
+        "total_estimated_cost_usd": total_estimated_cost_usd,
+        "by_strategy": by_strategy_slippage,
+        "by_execution_algo": by_execution_algo,
+        "by_hour_of_day": by_hour_of_day,
+        "best_strategy_for_execution": best_strategy_for_execution,
+        "worst_strategy_for_execution": worst_strategy_for_execution,
+        "avg_pnl_per_trade": avg_pnl_per_trade,
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+    }
+
+
+@router.get("/attribution")
+async def get_pnl_attribution(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """PnL attribution breakdown by strategy, time-of-day, day-of-week."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    account_ids = await _user_account_ids(db, current_user.id)
+
+    where_clause = [
+        Trade.closed_at >= since,
+        Trade.realized_pnl.isnot(None),
+    ]
+    if account_ids:
+        where_clause.append(Trade.account_id.in_(account_ids))
+
+    # Overall totals
+    totals_result = await db.execute(
+        select(
+            func.count(Trade.id).label("total_trades"),
+            func.sum(Trade.realized_pnl).label("total_pnl"),
+            func.avg(Trade.realized_pnl).label("avg_pnl"),
+            func.sum(case((Trade.realized_pnl > 0, Trade.realized_pnl), else_=0)).label("gross_profit"),
+            func.sum(case((Trade.realized_pnl <= 0, Trade.realized_pnl), else_=0)).label("gross_loss"),
+        ).where(*where_clause)
+    )
+    totals_row = totals_result.one()
+    total_trades = int(totals_row.total_trades or 0)
+    total_pnl = float(totals_row.total_pnl or 0)
+    avg_pnl = float(totals_row.avg_pnl or 0)
+    gross_profit = float(totals_row.gross_profit or 0)
+    gross_loss = float(totals_row.gross_loss or 0)
+    profit_factor = round(gross_profit / abs(gross_loss), 4) if gross_loss < 0 else None
+
+    # Per-strategy breakdown
+    strat_result = await db.execute(
         select(
             Trade.strategy_name,
-            func.count(Trade.id).label("trades"),
+            func.count(Trade.id).label("n_trades"),
             func.sum(Trade.realized_pnl).label("total_pnl"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
+            func.stddev(Trade.realized_pnl).label("std_pnl"),
         )
-        .where(Trade.account_id.in_(account_ids))
+        .where(*where_clause)
         .group_by(Trade.strategy_name)
         .order_by(func.sum(Trade.realized_pnl).desc())
     )
-    rows = result.all()
-    out = []
-    for r in rows:
-        total = float(r.total_pnl or 0)
-        trades = r.trades or 0
-        wins = r.wins or 0
-        out.append({
-            "strategy": r.strategy_name or "manual",
-            "trades": trades,
-            "total_pnl": round(total, 2),
-            "avg_pnl": round(float(r.avg_pnl or 0), 2),
-            "win_rate": round(wins / max(trades, 1), 3),
+    strat_rows = strat_result.all()
+
+    by_strategy = []
+    for r in strat_rows:
+        s_trades = int(r.n_trades or 0)
+        s_pnl = float(r.total_pnl or 0)
+        s_avg = float(r.avg_pnl or 0)
+        s_wins = int(r.wins or 0)
+        s_std = float(r.std_pnl or 0) if r.std_pnl is not None else 0.0
+        contribution_pct = round(s_pnl / total_pnl * 100, 2) if total_pnl != 0 else 0.0
+        win_rate_s = round(s_wins / max(s_trades, 1), 4)
+        sharpe_proxy = round(s_avg / s_std * math.sqrt(252), 4) if s_std > 0 else None
+        by_strategy.append({
+            "name": r.strategy_name or "manual",
+            "total_pnl": round(s_pnl, 2),
+            "contribution_pct": contribution_pct,
+            "num_trades": s_trades,
+            "win_rate": win_rate_s,
+            "avg_pnl_per_trade": round(s_avg, 4),
+            "sharpe_proxy": sharpe_proxy,
         })
-    return out
+
+    # Day-of-week breakdown (func.extract('dow', ...) → 0=Sun ... 6=Sat on PostgreSQL)
+    _DOW_MAP = {0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat"}
+    dow_result = await db.execute(
+        select(
+            func.extract("dow", Trade.closed_at).label("dow"),
+            func.avg(Trade.realized_pnl).label("avg_pnl"),
+        )
+        .where(*where_clause)
+        .group_by(func.extract("dow", Trade.closed_at))
+        .order_by(func.extract("dow", Trade.closed_at))
+    )
+    dow_rows = dow_result.all()
+    by_day_of_week: dict[str, float] = {d: 0.0 for d in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
+    for r in dow_rows:
+        day_name = _DOW_MAP.get(int(r.dow), "Mon")
+        by_day_of_week[day_name] = round(float(r.avg_pnl or 0), 4)
+
+    best_day = max(by_day_of_week, key=lambda k: by_day_of_week[k])
+    worst_day = min(by_day_of_week, key=lambda k: by_day_of_week[k])
+
+    # Hour-of-day breakdown (UTC)
+    hour_result = await db.execute(
+        select(
+            func.extract("hour", Trade.closed_at).label("hour"),
+            func.avg(Trade.realized_pnl).label("avg_pnl"),
+        )
+        .where(*where_clause)
+        .group_by(func.extract("hour", Trade.closed_at))
+        .order_by(func.extract("hour", Trade.closed_at))
+    )
+    hour_rows = hour_result.all()
+    by_hour_of_day: dict[str, float] = {str(h): 0.0 for h in range(24)}
+    for r in hour_rows:
+        by_hour_of_day[str(int(r.hour))] = round(float(r.avg_pnl or 0), 4)
+
+    best_hour_utc = max(range(24), key=lambda h: by_hour_of_day[str(h)])
+    worst_hour_utc = min(range(24), key=lambda h: by_hour_of_day[str(h)])
+
+    return {
+        "period_days": days,
+        "total_pnl": round(total_pnl, 2),
+        "total_trades": total_trades,
+        "expectancy_usd": round(avg_pnl, 4),
+        "profit_factor": profit_factor,
+        "by_strategy": by_strategy,
+        "by_day_of_week": by_day_of_week,
+        "by_hour_of_day": by_hour_of_day,
+        "best_day": best_day,
+        "worst_day": worst_day,
+        "best_hour_utc": best_hour_utc,
+        "worst_hour_utc": worst_hour_utc,
+    }
 
 
 @router.get("/macro")

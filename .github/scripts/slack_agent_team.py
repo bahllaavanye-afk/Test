@@ -8343,6 +8343,133 @@ def _tag_employees_for_content(text: str) -> str:
     return f"\n_cc: {' · '.join(tags)}_" if tags else ""
 
 
+def _harvest_issues_from_messages(messages: list[str]) -> list[dict]:
+    """
+    Analyze a list of Slack message bodies posted this run and extract
+    specific, actionable code issues using the LLM.
+
+    Returns a list of issue dicts: [{"title": str, "body": str, "labels": ["agent-fix"]}]
+    Returns empty list on any error.
+    """
+    if not messages:
+        return []
+
+    combined = "\n\n---\n\n".join(messages[:40])  # cap at 40 messages
+    prompt = (
+        "You are a senior engineer reading Slack messages from an AI agent team at a quant trading platform.\n"
+        "Extract specific, actionable code issues from the messages below.\n"
+        "Return ONLY a JSON array. Each element must have:\n"
+        "  - title: short issue title (10-80 chars), specific and actionable\n"
+        "  - body: detailed description (30+ chars) with file paths or function names where possible\n"
+        "  - labels: always [\"agent-fix\"]\n"
+        "If there are no actionable issues, return []\n"
+        "Do NOT invent issues — only extract ones clearly mentioned.\n\n"
+        "Messages:\n" + _sanitize(combined[:3000])
+    )
+    try:
+        result, _ = call_best_agent_for_task(
+            "code",
+            prompt,
+            system_prompt=_QUANT_SYSTEM,
+            max_tokens=500,
+        )
+        if not result:
+            return []
+        # Extract JSON array from response
+        import re as _re2
+        json_match = _re2.search(r'\[.*\]', result, _re2.DOTALL)
+        if not json_match:
+            return []
+        issues = json.loads(json_match.group(0))
+        if not isinstance(issues, list):
+            return []
+        return issues
+    except Exception as exc:
+        print(f"  [harvest] LLM call or JSON parse failed: {exc}")
+        return []
+
+
+def _create_github_issues(issues: list[dict]) -> int:
+    """
+    Create GitHub issues for each entry in the issues list.
+    Returns count of successfully created issues.
+    Gates: title >= 10 chars AND body >= 30 chars.
+    Uses GH_TOKEN + GH_REPO env vars.
+    """
+    if not issues:
+        return 0
+
+    GH_REPO = os.environ.get("GH_REPO", "").strip()
+    GH_TOKEN = os.environ.get("GH_TOKEN", "").strip()
+    if not GH_REPO or not GH_TOKEN:
+        print("  [harvest] GH_TOKEN or GH_REPO not set — skipping issue creation")
+        return 0
+
+    created = 0
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        title = str(issue.get("title", "")).strip()
+        body = str(issue.get("body", "")).strip()
+        labels = issue.get("labels", ["agent-fix"])
+        if not isinstance(labels, list):
+            labels = ["agent-fix"]
+
+        # Gate: minimum length requirements to avoid junk issues
+        if len(title) < 10 or len(body) < 30:
+            print(f"  [harvest] skipping short issue: title={len(title)}chars body={len(body)}chars")
+            continue
+
+        # Try gh CLI first
+        try:
+            result = subprocess.run(
+                [
+                    "gh", "issue", "create",
+                    "--title", title,
+                    "--body", body,
+                    "--label", ",".join(labels) if labels else "agent-fix",
+                    "--repo", GH_REPO,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                created += 1
+                print(f"  [harvest] created issue via gh CLI: {title[:60]}")
+                continue
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # gh CLI not available or timed out — fall through to API
+
+        # Fallback: GitHub REST API via urllib
+        try:
+            payload = json.dumps({
+                "title": title,
+                "body": body,
+                "labels": labels,
+            }).encode()
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{GH_REPO}/issues",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {GH_TOKEN}",
+                    "Accept": "application/vnd.github+json",
+                    "Content-Type": "application/json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                resp_data = json.loads(resp.read())
+                if resp_data.get("number"):
+                    created += 1
+                    print(f"  [harvest] created issue #{resp_data['number']} via API: {title[:60]}")
+        except Exception as exc:
+            print(f"  [harvest] API issue creation failed: {exc}")
+
+    return created
+
+
 def main() -> int:
     verify_zero_spend()
     token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
@@ -8570,6 +8697,7 @@ def main() -> int:
 
     posted_ts: dict[str, str] = {}         # channel_name -> last_ts (for thread replies)
     posted_for_reactions: list[tuple] = [] # [(channel_id, ts)] for reaction wave
+    posted_message_bodies: list[str] = []  # all successfully posted message bodies (for issue harvesting)
     # Per-agent tracking: {agent_name -> {"posts": int, "errors": int, "channels": [...]}}
     agent_tracking: dict[str, dict] = {}
 
@@ -8587,6 +8715,7 @@ def main() -> int:
         if r.get("ok"):
             posts_made += 1
             record_post(state, p.text)
+            posted_message_bodies.append(p.text)
             ts = r.get("ts", "")
             if ts and not p.thread_of:
                 posted_ts[p.channel] = ts
@@ -8772,6 +8901,28 @@ def main() -> int:
                     posted_today.add(agent.name)
             except Exception as e:
                 print(f"[catch-up] {agent.name} failed: {e}")
+
+    # ── Issue Harvester: extract actionable issues from this run's messages ────
+    try:
+        print("\n🔍 Issue Harvester: scanning posted messages for actionable issues")
+        harvested_issues = _harvest_issues_from_messages(posted_message_bodies)
+        n_created = _create_github_issues(harvested_issues)
+        harvest_summary = (
+            f":mag: Issue Harvester: found {len(harvested_issues)} actionable issues "
+            f"from {len(posted_message_bodies)} messages this run "
+            f"→ labeled `agent-fix` for auto-fix."
+        )
+        print(f"  [harvest] {len(harvested_issues)} issues parsed, {n_created} created")
+        if token and len(posted_message_bodies) > 0:
+            post_to_slack(
+                token,
+                channel="engineering",
+                text=harvest_summary,
+                username="Issue Harvester",
+                icon_emoji=":mag:",
+            )
+    except Exception as _harvest_exc:
+        print(f"  [harvest] non-blocking error: {_harvest_exc}")
 
     # ── Save state for next run ──────────────────────────────────────────────
     state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())

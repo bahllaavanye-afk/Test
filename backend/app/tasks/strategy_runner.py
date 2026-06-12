@@ -111,6 +111,31 @@ _regime_cache: dict[str, object] = {"value": None, "ts": 0.0}
 _REGIME_CACHE_TTL = 30.0  # seconds — avoids Redis round-trip on every strategy tick
 
 
+def _is_market_open(market_type: str) -> bool:
+    """
+    Returns True if the given market is currently open.
+    - equity: NYSE hours 9:30-16:00 ET, Mon-Fri only
+    - crypto/polymarket: always open (24/7)
+    """
+    if market_type in ("crypto", "polymarket"):
+        return True
+    # Equity market hours: 9:30-16:00 US/Eastern, Mon-Fri
+    try:
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            from backports.zoneinfo import ZoneInfo
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        if now_et.weekday() >= 5:  # Saturday=5, Sunday=6
+            return False
+        open_time = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+        close_time = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+        return open_time <= now_et <= close_time
+    except Exception:
+        # If timezone lookup fails, default to allowing execution
+        return True
+
+
 async def get_current_regime(redis_client) -> int | None:
     """Read current market regime (0=bear, 1=sideways, 2=bull) from Redis key 'market:regime'.
     Cached for 30 s to reduce Redis round-trips across concurrent strategy loops.
@@ -221,6 +246,17 @@ class ContinuousStrategyRunner:
                         strategy=strategy_name,
                         regime=current_regime,
                         allowed=allowed_regimes,
+                    )
+                    await asyncio.sleep(tick_interval)
+                    continue
+
+                # ── Market hours enforcement ─────────────────────────────────
+                market_type = getattr(strategy_cls, "market_type", "equity")
+                if not _is_market_open(market_type):
+                    logger.debug(
+                        "Skipping %s — market closed for type=%s",
+                        strategy_name,
+                        market_type,
                     )
                     await asyncio.sleep(tick_interval)
                     continue
