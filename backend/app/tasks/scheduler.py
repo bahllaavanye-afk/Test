@@ -764,6 +764,24 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _run_promotion_metrics_sync():
+        """Every 6 hours: sync live trade metrics into promotion pipeline."""
+        try:
+            from app.tasks.promotion_metrics_sync import sync_promotion_metrics
+            from app.database import AsyncSessionLocal
+            await sync_promotion_metrics(AsyncSessionLocal)
+        except Exception as exc:
+            logger.debug("Promotion metrics sync failed", error=str(exc))
+
+    scheduler.add_job(
+        _run_promotion_metrics_sync,
+        trigger="interval",
+        hours=6,
+        id="promotion_metrics_sync",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler

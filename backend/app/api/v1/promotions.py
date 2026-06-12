@@ -216,6 +216,25 @@ async def trigger_review(
     return {"passed": passed, "failures": failures, "transition": transition, "metrics": metrics}
 
 
+@router.get("/criteria/all")
+async def get_all_criteria(
+    current_user: User = Depends(get_current_user),
+):
+    """Return promotion criteria thresholds for all transitions."""
+    from app.tasks.promotion_criteria import CRITERIA
+    return {
+        name: {
+            "min_days": c.min_days,
+            "min_sharpe": c.min_sharpe,
+            "min_win_rate": c.min_win_rate,
+            "max_drawdown": c.max_drawdown,
+            "min_trades": c.min_trades,
+            "require_p_value": c.require_p_value,
+        }
+        for name, c in CRITERIA.items()
+    }
+
+
 def _serialize(p: StrategyPromotion) -> dict:
     return {
         "id": p.id,
