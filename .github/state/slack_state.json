@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781293101,
+  "last_run_ts": 1781303589,
   "last_commit_sha": "1f2e76f",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -179,21 +179,31 @@
     "c671cfb81455",
     "9e34c0354f64",
     "94efc3cc80a9",
-    "9738d8a4dee9"
+    "9738d8a4dee9",
+    "89837815a171"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781289701.9552138,
+    "standup-channel:standup": 1781303532.9080026,
     "agent-api-usage:api_usage_report": 1781289781.6127927,
-    "agent-api-usage:throughput_report": 1781289782.7291715,
+    "agent-api-usage:throughput_report": 1781303589.9555757,
     "engineering:agent_reminder": 1781237581.3876967,
     "help:agent_reminder": 1781237581.983271,
-    "risk-alerts:silent_risk_eng": 1781289978.8437521,
-    "infra-alerts:silent_devops_dir": 1781289989.32648,
-    "alpha-research:silent_alpha_dir": 1781290202.9581852,
-    "ml-experiments:silent_ml_researcher": 1781290219.4572992,
-    "engineering:silent_momentum_quant": 1781290241.3008041,
-    "engineering:silent_data_engineer_2": 1781290264.1133742
+    "risk-alerts:silent_risk_eng": 1781303600.5860054,
+    "infra-alerts:silent_devops_dir": 1781303611.7717977,
+    "alpha-research:silent_alpha_dir": 1781303593.7131975,
+    "ml-experiments:silent_ml_researcher": 1781303622.5558112,
+    "engineering:silent_vp_eng": 1781303590.3158536,
+    "desk-crypto:silent_ml_lead": 1781303597.2331607,
+    "squad-backend:silent_backend_lead": 1781303604.933692,
+    "squad-qa:silent_qa_dir": 1781303608.4761717,
+    "squad-execution:silent_exec_eng": 1781303615.7196891,
+    "desk-polymarket:silent_poly_desk": 1781303619.19108,
+    "desk-fx-rates:silent_vp_research": 1781303630.663193,
+    "alpha-research:silent_quant_researcher": 1781303634.041616,
+    "leadership-summary:silent_cro": 1781303637.389448,
+    "engineering:silent_stat_arb_desk": 1781303647.435526,
+    "engineering:silent_market_maker": 1781303670.1106405
   },
   "response_cache": {},
   "posted_today": [
@@ -245,24 +255,24 @@
     "Chief Risk Officer"
   ],
   "last_post_ts": {
-    "vp_eng": 1781271102.210905,
-    "alpha_dir": 1781290200.3976712,
-    "ml_lead": 1781144509.093116,
-    "risk_eng": 1781289973.9942653,
-    "backend_lead": 1781293015.0485098,
-    "qa_dir": 1781271102.210905,
-    "devops_dir": 1781289973.9942653,
-    "exec_eng": 1781144509.093116,
-    "poly_desk": 1781144509.093116,
-    "ml_researcher": 1781290200.3976712,
-    "vp_research": 1781293051.694815,
-    "quant_researcher": 1781293057.7457108,
-    "cro": 1781144509.093116,
+    "vp_eng": 1781303590.3158247,
+    "alpha_dir": 1781303590.3158247,
+    "ml_lead": 1781303590.3158247,
+    "risk_eng": 1781303590.3158247,
+    "backend_lead": 1781303590.3158247,
+    "qa_dir": 1781303590.3158247,
+    "devops_dir": 1781303590.3158247,
+    "exec_eng": 1781303590.3158247,
+    "poly_desk": 1781303590.3158247,
+    "ml_researcher": 1781303590.3158247,
+    "vp_research": 1781303590.3158247,
+    "quant_researcher": 1781303590.3158247,
+    "cro": 1781303590.3158247,
     "frontend": 1781144509.093116,
     "equity_lead": 1781144509.093116,
     "fixed_income_desk": 1781024089.1695297,
     "macro_researcher": 1781237487.4654243,
-    "stat_arb_desk": 1781144509.093116,
+    "stat_arb_desk": 1781303590.3158247,
     "vol_trader": 1781024089.1695297,
     "alt_data_lead": 1781144509.093116,
     "model_validator": 1781144509.093116,
@@ -270,7 +280,7 @@
     "crypto_quant": 1781024089.1695297,
     "arb_trader": 1781024089.1695297,
     "portfolio_manager": 1781024089.1695297,
-    "market_maker": 1781024089.1695297,
+    "market_maker": 1781303590.3158247,
     "rl_trader": 1781095584.0721726,
     "momentum_quant": 1781290200.3976712,
     "graph_ml_researcher": 1781144509.093116,
@@ -1020,137 +1030,121 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-12 18:51:11"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "risk_eng",
-      "channel": "unknown",
-      "text": "*I'm currently reviewing the `/risk/position_limits.csv` file, where I've identified a potential breach in the 70/30 arbitrage/directional capital split, with **72.5%** of capital allocated to arbitrage strategies. I'm running a correlation analysis on the `/data/correlation_matrices/2023.csv` file ",
-      "provider": "litellm:groq",
-      "ts": 1781065261.9559965,
-      "score": 8
-    },
-    {
-      "emp": "backend_lead",
-      "channel": "unknown",
-      "text": "*I'm currently optimizing the **`app/main.py`** file to improve the performance of our API endpoints*. Specifically, I'm analyzing the **`latency_ms`** metric in our **`metrics.json`** file, which shows an average latency of **234ms** for the `/trades` endpoint. To reduce this, I'm implementing **as",
-      "provider": "litellm:groq",
-      "ts": 1781065264.9188144,
-      "score": 8
-    },
-    {
-      "emp": "qa_dir",
-      "channel": "unknown",
-      "text": "*I'm currently reviewing the pytest suite in `/tests/integration` and noticed a  **23%** failure rate in the `test_portfolio_optimization.py` file*. The top failing test, `test_optimize_portfolio`, has failed **17** times in the last hour, indicating a potential issue with the `portfolio_optimizer` ",
-      "provider": "litellm:groq",
-      "ts": 1781065268.1915588,
-      "score": 8
-    },
-    {
-      "emp": "devops_dir",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the GitHub Actions pipeline logs in `/github/workspace/logs/pipeline.log` to identify the root cause of the deployment failure*. The metric `deployment_success_rate` has dropped to 72.43% over the past 24 hours, with 17 failed deployments out of 235 attempts. I'm focusing on",
-      "provider": "litellm:groq",
-      "ts": 1781065271.1368043,
-      "score": 8
-    },
-    {
-      "emp": "exec_eng",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the execution-path latency in the `/trading/execution_engine/order_router.py` file*, focusing on the **99th percentile latency** which is currently at **12.5ms**. To optimize this, I'm working on implementing a **new smart order routing algorithm** that takes into account th",
-      "provider": "litellm:groq",
-      "ts": 1781065274.1740668,
-      "score": 8
-    },
-    {
-      "emp": "poly_desk",
-      "channel": "unknown",
-      "text": "*I'm analyzing the `prediction_markets/calibration_data.csv` file, focusing on the **BTC >$100k by Dec 2025** market, which shows a 9pp gap between Polymarket's 0.62 YES probability and Metaculus' 0.71 estimate*. The **Kelly fraction** for buying YES is 0.08, considering a 2% bid-ask spread. *I'm re",
-      "provider": "litellm:groq",
-      "ts": 1781065277.0658486,
-      "score": 8
-    },
-    {
-      "emp": "ml_researcher",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the performance of our LSTM model on the `/data/stock_prices.csv` file, where the **mean absolute error (MAE)** is 0.045. In comparison, the TFT model on the same dataset has a **MAE of 0.038**, indicating a potential 15.6% improvement. I'm running an ensemble study to combi",
-      "provider": "litellm:groq",
-      "ts": 1781065280.1736314,
-      "score": 8
-    },
-    {
-      "emp": "vp_research",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the `./data/rates.csv` file to identify regime shifts in the FX-rates market, focusing on the **EURUSD** pair*. The **Sharpe Ratio** for our cross-asset carry strategy has decreased to **0.85** over the past quarter, indicating a need to recalibrate our model. I'm running a ",
-      "provider": "litellm:groq",
-      "ts": 1781065283.3996089,
-      "score": 8
-    },
-    {
-      "emp": "quant_researcher",
-      "channel": "unknown",
-      "text": "*I'm currently running a walk-forward study on the `~/projects/eq_signal_123.ipynb` notebook, testing the performance of a new momentum-based signal on the S&P 500 index*. The **Sharpe Ratio** is currently at **1.23** and the **information coefficient** is **0.05** after processing **10,000** rows o",
-      "provider": "litellm:groq",
-      "ts": 1781065287.9280057,
-      "score": 5
-    },
-    {
-      "emp": "ml_lead",
-      "channel": "unknown",
-      "text": "[12:44 UTC] Crypto Desk Update: We're closely monitoring *BTC perp \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781095508.3061159,
-      "score": 5
-    },
-    {
-      "emp": "rl_trader",
-      "channel": "unknown",
-      "text": "Just digging into some *PPO training instability* for the `VWAP_ExecutionAgent` \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781095645.229515,
-      "score": 5
     },
     {
       "emp": "risk_eng",
+      "score": 9,
+      "reason": "Provides specific, data-driven insights with concrete numbers and references to relevant files, highlighting actionable risk metrics and potential portfolio vulnerabilities.",
       "channel": "unknown",
-      "text": "*I'm closely monitoring the `portfolio_risk.csv` file, specifically the column `VaR_95` which is currently at **12.5%**, exceeding our threshold of 10%. The `correlation_matrix.pkl` file is also indicating a **0.85** correlation between our top 2 holdings, which is higher than our comfort level. I'm",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781144442.8091037,
-      "score": 9
+      "ts": "2026-06-12 22:32:23"
     },
     {
       "emp": "vp_eng",
+      "score": 9,
+      "reason": "Provides specific file paths, quantifies the risk with concrete numbers, and offers a concrete actionable point to mitigate the issue by pinning the random seed.",
       "channel": "unknown",
-      "text": "I'm currently reviewing the *test_risk_engine.py* file, where I've found *3 flaky assertions* on Kelly fraction edge cases (lines *45-67*). The test results show a failure rate of *1 in 10 runs*, which is causing unnecessary delays in our CI/CD pipeline. To address this, I plan to *pin the random se",
-      "provider": "litellm:groq",
-      "ts": 1781144513.673882,
-      "score": 9
+      "ts": "2026-06-12 22:33:13"
     },
     {
       "emp": "alpha_dir",
+      "score": 9,
+      "reason": "Provides specific details about the strategy, including Sharpe ratio, confidence interval, and Monte Carlo simulations, and outlines a clear optimization goal for the Kalman filter parameters.",
       "channel": "unknown",
-      "text": "*I'm currently analyzing the **mean_reversion_strategy.py** file, focusing on optimizing the **KalmanFilter** parameters in the **kalman_gain.csv** dataset. The current **SharpeRatio** is 1.23, and I'm aiming to increase it by 5% by adjusting the **q_value** to 0.85 and **r_value** to 0.42 in the **",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781144522.6174452,
-      "score": 8
+      "ts": "2026-06-12 22:33:16"
     },
     {
       "emp": "ml_lead",
+      "score": 8,
+      "reason": "Provides concrete, actionable points, such as reducing d_model and increasing dropout, and cites specific metrics, including val_sharpe, train_sharpe, and walk-forward sharpe, to address overfitting.",
       "channel": "unknown",
-      "text": "\u26a0\ufe0f [hallucination-flagged] *I'm analyzing the performance of `tft_spy_daily.yaml`*, which shows a **val_sharpe of 1.8** vs **train_sharpe of 3.2**, indicating overfitting. To address this, I plan to reduce **d_model from 64 to 32** and increase **dropout from 0.1 to 0.25**. Currently, **XGBoost mult",
-      "provider": "litellm:groq",
-      "ts": 1781144525.895264,
-      "score": 8
+      "ts": "2026-06-12 22:33:20"
     },
     {
       "emp": "risk_eng",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the risk with a 12.5% drawdown, and mentions a concrete action of running a correlation analysis to identify potential blowups.",
       "channel": "unknown",
-      "text": "*I'm currently reviewing the `/risk/models/position_limits.csv` file to ensure compliance with the 70/30 arbitrage/directional capital split*. The **current arbitrage exposure is at 32.4%**, exceeding the 30% limit, which requires immediate adjustment. I'm running the `/scripts/drawdown_caps.py` scr",
-      "provider": "litellm:groq",
-      "ts": 1781144529.1330996,
-      "score": 9
+      "ts": "2026-06-12 22:33:24"
     },
+    {
+      "emp": "backend_lead",
+      "score": 8,
+      "reason": "Provides specific details about the optimization task, including file paths, latency increases, and actionable steps to improve query performance.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:28"
+    },
+    {
+      "emp": "qa_dir",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifies the test coverage gap, and outlines a concrete plan to address it with actionable test case development.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:31"
+    },
+    {
+      "emp": "devops_dir",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the success rate and error metrics, and identifies a concrete area for investigation, providing a clear direction for troubleshooting the deployment issue.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:35"
+    },
+    {
+      "emp": "exec_eng",
+      "score": 9,
+      "reason": "Provides specific file paths, quantifies the latency increase and risk score, and identifies a concrete number of orders to investigate for potential bottlenecks.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:39"
+    },
+    {
+      "emp": "poly_desk",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifies the calibration gap between prediction markets, and calculates a concrete metric like the Kelly fraction for optimal bet sizing.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:42"
+    },
+    {
+      "emp": "ml_researcher",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifies the performance of the LSTM model, and identifies the top features driving this performance with corresponding importance scores.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:50"
+    },
+    {
+      "emp": "vp_research",
+      "score": 8,
+      "reason": "Provides specific file paths, utilizes a relevant quantitative model, and tracks a particular metric to gauge its impact on the strategy, demonstrating concrete analysis.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:53"
+    },
+    {
+      "emp": "quant_researcher",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifies the increase in trading frequency and resulting performance metrics, and references a confidence interval for the signal's profitability.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:33:57"
+    },
+    {
+      "emp": "cro",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the risk with the 95th percentile VaR, and references concrete metrics such as the 3-day drawdown limit and max historical drawdown.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:34:00"
+    },
+    {
+      "emp": "stat_arb_desk",
+      "score": 4,
+      "reason": "Output lacks concrete, actionable points and merely states a general area of investigation without providing any specific insights or data-driven claims.",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:34:14"
+    },
+    {
+      "emp": "market_maker",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-12 22:34:37"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "backend_lead",
       "channel": "unknown",
@@ -1422,19 +1416,147 @@
       "provider": "Gemini(GEMINI_API_KEY_2)",
       "ts": 1781290271.2955835,
       "score": 5
+    },
+    {
+      "emp": "risk_eng",
+      "channel": "unknown",
+      "text": "*I'm monitoring the `var_metrics.csv` file, which indicates a 3.72% spike in Value-at-Risk (VaR) over the past 2 hours*. The `position_concentration.py` script is flagging a 27.5% concentration in the tech sector, exceeding our 25% threshold. *According to the `correlation_matrix.xlsx` file, the pai",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781303543.7058463,
+      "score": 9
+    },
+    {
+      "emp": "vp_eng",
+      "channel": "unknown",
+      "text": "I'm currently reviewing the **test_risk_engine.py** file, which has shown **3 flaky assertions** on Kelly fraction edge cases (lines 45-67). The latest CI run reported a **25% failure rate** on this test, with **12 failures** out of **48 runs**. To mitigate this, I plan to **pin the random seed** in",
+      "provider": "litellm:groq",
+      "ts": 1781303593.364662,
+      "score": 9
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the `C:/Users/QuantEdge/Documents/backtests/momentum_strategies.ipynb` notebook, focusing on the **mean-reversion strategy**. The **Sharpe ratio** for this strategy is currently at **1.23**, with a **95% confidence interval** of 0.87 to 1.59, based on 10,000 **Monte Carlo si",
+      "provider": "litellm:groq",
+      "ts": 1781303596.9168525,
+      "score": 9
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the **tft_spy_daily.yaml** experiment, which shows a **val_sharpe** of 1.8 vs **train_sharpe** of 3.2, indicating overfitting*. To address this, I plan to reduce **d_model** from 64 to 32 and increase **dropout** from 0.1 to 0.25. The **XGBoost** multi-asset model is also be",
+      "provider": "litellm:groq",
+      "ts": 1781303600.2632031,
+      "score": 8
+    },
+    {
+      "emp": "risk_eng",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the `/risk_models/strategy_exposure.csv` file, focusing on the `arb_strategy_1` column, which is approaching the 35% exposure limit*. The latest data from `/metrics/drawdown.csv` shows a 12.5% drawdown for `arb_strategy_1` over the past 24 hours, with a current value of **$1",
+      "provider": "litellm:groq",
+      "ts": 1781303604.640398,
+      "score": 8
+    },
+    {
+      "emp": "backend_lead",
+      "channel": "unknown",
+      "text": "*I'm currently working on optimizing the `app/main.py` service, specifically the `get_trades` endpoint*, which is experiencing a 30% increase in latency due to the recent addition of 500+ new users. *To address this*, I'm analyzing the `trades.csv` dataset, which contains 250,000+ trade records, to ",
+      "provider": "litellm:groq",
+      "ts": 1781303608.3097212,
+      "score": 8
+    },
+    {
+      "emp": "qa_dir",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing test coverage in `src/services/trading.py`*, where I've identified a **34.7%** gap in line coverage for the `place_order` function. My current task is to write **5 new test cases** to cover the remaining scenarios, which will increase overall test coverage to **87.2%**. I'm ",
+      "provider": "litellm:groq",
+      "ts": 1781303611.6082041,
+      "score": 8
+    },
+    {
+      "emp": "devops_dir",
+      "channel": "unknown",
+      "text": "*I'm currently investigating a deployment issue in our `deploy-prod.yml` pipeline, which has a 90% success rate over the last 24 hours, but has failed 3 times in the past hour*. The error logs in `/logs/deployment/error.log` indicate a timeout issue with the `container_build` step, with an average b",
+      "provider": "litellm:groq",
+      "ts": 1781303615.352325,
+      "score": 8
+    },
+    {
+      "emp": "exec_eng",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the execution-path latency in `/opt/quantedge/execution_logs.log` and noticed a 30% increase in average latency over the past hour, with a peak of **125ms** at 21:45 UTC. This is triggering a review of our smart execution algorithm, specifically the `slippage_risk_model.py` ",
+      "provider": "litellm:groq",
+      "ts": 1781303619.0292714,
+      "score": 9
+    },
+    {
+      "emp": "poly_desk",
+      "channel": "unknown",
+      "text": "*I'm analyzing the `data/prediction_markets/btc_prices.csv` file to identify calibration gaps between Polymarket and Metaculus*. The current probability of **BTC >$100k by Dec 2025** is 0.62 YES on Polymarket vs 0.71 on Metaculus, indicating a **9pp gap**. I'm calculating the *Kelly fraction* to det",
+      "provider": "litellm:groq",
+      "ts": 1781303622.2163022,
+      "score": 8
+    },
+    {
+      "emp": "ml_researcher",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the `predictions_20230220.csv` file, which shows that the **LSTM model** is outperforming the others with a **mean absolute error (MAE) of 0.237**. The `model_comparison.py` script indicates that LSTM has a **25.6% lower MAE** compared to the XGBoost model. I'm investigating",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781303630.3163583,
+      "score": 8
+    },
+    {
+      "emp": "vp_research",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the `./data/rates/US10Y.csv` file to identify regime shifts in the 10-year Treasury yield, using a Hidden Markov Model (HMM) with 3 states*. The model indicates a **62.4%** probability of being in a low-volatility regime, based on the past 250 trading days. I'm also tracking",
+      "provider": "litellm:groq",
+      "ts": 1781303633.7140222,
+      "score": 8
+    },
+    {
+      "emp": "quant_researcher",
+      "channel": "unknown",
+      "text": "*I'm currently running a walk-forward study on the `/equities/research/signal_1234.ipynb` notebook, optimizing the `beta_arb` signal with a **10%** increase in trading frequency. The backtest results show a **12.5%** increase in annualized return with a **Sharpe ratio** of 1.23. I'm analyzing the `s",
+      "provider": "litellm:groq",
+      "ts": 1781303637.0431695,
+      "score": 8
+    },
+    {
+      "emp": "cro",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the `/risk_management/vaR_calculations.csv` file, focusing on the **95th percentile VaR** which is currently at $1.2 million*. The **3-day drawdown limit** is set at 5%, and I'm analyzing the impact of the **70/30 capital split** on our overall leverage, currently at 2.5x. T",
+      "provider": "litellm:groq",
+      "ts": 1781303640.6191707,
+      "score": 8
+    },
+    {
+      "emp": "stat_arb_desk",
+      "channel": "unknown",
+      "text": "Currently investigating a *cointegration breakdown* in the NVDA-AMD pair, \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781303654.8216584,
+      "score": 4
+    },
+    {
+      "emp": "market_maker",
+      "channel": "unknown",
+      "text": "Currently analyzing persistent *negative trade-side VWAP deviations* for NVDA, with the `VW \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781303677.049367,
+      "score": 5
     }
   ],
   "last_providers": {
     "devops_dir": "litellm:groq",
     "vp_eng": "litellm:groq",
-    "alpha_dir": "Gemini(GEMINI_API_KEY_2)",
+    "alpha_dir": "litellm:groq",
     "ml_lead": "litellm:groq",
-    "risk_eng": "Gemini(GEMINI_API_KEY_3)",
+    "risk_eng": "litellm:groq",
     "backend_lead": "litellm:groq",
-    "qa_dir": "Gemini(GEMINI_API_KEY)",
+    "qa_dir": "litellm:groq",
     "exec_eng": "litellm:groq",
     "poly_desk": "litellm:groq",
-    "ml_researcher": "Gemini(GEMINI_API_KEY)",
+    "ml_researcher": "Gemini(GEMINI_API_KEY_3)",
     "vp_research": "litellm:groq",
     "quant_researcher": "litellm:groq",
     "cro": "litellm:groq",
@@ -1442,7 +1564,7 @@
     "equity_lead": "litellm:groq",
     "fixed_income_desk": "litellm:groq",
     "macro_researcher": "litellm:gemini",
-    "stat_arb_desk": "litellm:groq",
+    "stat_arb_desk": "Gemini(GEMINI_API_KEY_3)",
     "vol_trader": "litellm:groq",
     "alt_data_lead": "litellm:groq",
     "model_validator": "litellm:groq",
@@ -1450,7 +1572,7 @@
     "crypto_quant": "litellm:groq",
     "arb_trader": "litellm:groq",
     "portfolio_manager": "litellm:groq",
-    "market_maker": "litellm:groq",
+    "market_maker": "Gemini(GEMINI_API_KEY)",
     "rl_trader": "Gemini(GEMINI_API_KEY)",
     "momentum_quant": "Gemini(GEMINI_API_KEY_3)",
     "graph_ml_researcher": "Gemini(GEMINI_API_KEY)",
