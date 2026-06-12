@@ -33,7 +33,7 @@ RENDER_SERVICE_ID = os.environ.get("RENDER_SERVICE_ID", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SLACK_TOKEN       = os.environ.get("SLACK_BOT_TOKEN", "")
 
-BRANCH = "main"
+BRANCH = "claude/advanced-trading-bot-d5Lmw"
 SLACK_CHANNEL = "#risk-alerts"
 
 # Files that QuantEdge AI is allowed to modify during auto-fix

@@ -180,6 +180,8 @@ async def call_race(
     )
     for t in pending:
         t.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
 
     for t in done:
         result = t.result()

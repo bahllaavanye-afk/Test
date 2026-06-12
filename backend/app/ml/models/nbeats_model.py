@@ -114,7 +114,7 @@ class NBEATSPredictor(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 60,      # lookback window (sequence length * features flattened)
+        input_size: int = 1800,    # seq_len * n_features (60 * 30); must match flattened input
         forecast_steps: int = 1,   # 1-step ahead
         layer_size: int = 256,
         n_layers: int = 4,
@@ -153,11 +153,12 @@ class NBEATSPredictor(nn.Module):
         if x.dim() == 3:
             batch, seq, feat = x.shape
             x = x.reshape(batch, -1)
-            # Pad or truncate to input_size
-            if x.shape[1] > self.input_size:
-                x = x[:, :self.input_size]
-            elif x.shape[1] < self.input_size:
-                x = F.pad(x, (0, self.input_size - x.shape[1]))
+            if x.shape[1] != self.input_size:
+                raise ValueError(
+                    f"NBEATSPredictor input_size mismatch: got {x.shape[1]} "
+                    f"(seq_len={seq} * n_features={feat}), expected {self.input_size}. "
+                    f"Set input_size={seq * feat} when constructing the model."
+                )
 
         residuals = x
         forecast = torch.zeros(x.shape[0], self.forecast_steps, device=x.device)

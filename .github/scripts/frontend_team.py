@@ -15,7 +15,7 @@ import httpx
 
 REPO_ROOT    = Path(__file__).parent.parent
 FRONTEND_SRC = REPO_ROOT / "frontend" / "src"
-BRANCH       = "main"
+BRANCH       = "claude/advanced-trading-bot-d5Lmw"
 SLACK_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
 API_KEY      = os.environ.get("ANTHROPIC_API_KEY", "")
 FOCUS        = os.environ.get("FOCUS", "overall UI quality, animations, and UX polish")

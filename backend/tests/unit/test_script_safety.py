@@ -157,7 +157,7 @@ class TestBranchConstant:
         "render_auto_fix.py",
         "strategy_generator.py",
     ]
-    EXPECTED_BRANCH = "main"
+    EXPECTED_BRANCH = "claude/advanced-trading-bot-d5Lmw"
 
     @pytest.mark.parametrize("script_name", SCRIPTS_WITH_BRANCH)
     def test_correct_branch(self, script_name):

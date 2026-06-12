@@ -1,5 +1,6 @@
 """Analytics and performance metrics endpoints."""
 from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case
 from datetime import datetime, timezone, timedelta, date
@@ -18,6 +19,7 @@ from app.models.user import User
 from app.models.account import Account
 from app.models.position import Position
 from app.models.order import Order
+from app.models.strategy import Strategy
 from app.config import settings
 from app.utils.logging import logger
 
@@ -322,21 +324,20 @@ async def get_tca(
             median_slippage_bps = round(float(agg_row.median_bps or 0), 4) if agg_row.median_bps is not None else None
             total_estimated_cost_usd = round(float(agg_row.total_cost or 0), 2) if agg_row.total_cost is not None else None
 
-            # By strategy (via Trade join on order's trade context — approximate via Trade.strategy_name grouped)
-            # Using Trade join approach: Trade.strategy_name + SlippageRecord via Order
+            # By strategy via Order → Strategy FK (avoids Cartesian product through account_id)
             strat_result = await db.execute(
                 select(
-                    Trade.strategy_name,
+                    func.coalesce(Strategy.name, "manual").label("strategy_name"),
                     func.avg(SlippageRecord.slippage_bps).label("avg_bps"),
                     func.count(SlippageRecord.id).label("n_trades"),
                 )
                 .join(OrderModel, SlippageRecord.order_id == OrderModel.id)
-                .join(Trade, Trade.account_id == OrderModel.account_id)
+                .outerjoin(Strategy, Strategy.id == OrderModel.strategy_id)
                 .where(
                     OrderModel.account_id.in_(account_ids) if account_ids else OrderModel.account_id.isnot(None),
                     SlippageRecord.created_at >= since,
                 )
-                .group_by(Trade.strategy_name)
+                .group_by(Strategy.name)
                 .order_by(func.avg(SlippageRecord.slippage_bps))
             )
             strat_rows = strat_result.all()
@@ -1475,7 +1476,8 @@ async def get_tearsheet(
     benchmark_return_spy = None
     try:
         import yfinance as yf
-        spy = yf.download("SPY", period=f"{days}d", interval="1d", auto_adjust=True, progress=False)
+        import functools
+        spy = await run_in_threadpool(functools.partial(yf.download, "SPY", period=f"{days}d", interval="1d", auto_adjust=True, progress=False))
         if spy is not None and len(spy) > 10:
             spy_close = spy["Close"].squeeze()
             spy_rets = spy_close.pct_change().dropna()
@@ -2070,12 +2072,13 @@ async def get_factor_attribution(
             trade_date = trade_date.date()
         pnl_by_date[trade_date] = float(row.daily_pnl)
 
-    # Download factor ETFs via yfinance
+    # Download factor ETFs via yfinance (off event loop — blocking I/O)
+    import functools
     etf_tickers = ["SPY", "IWM", "IVE", "IVW", "MTUM", "VTV", "QUAL", "USMV"]
     try:
-        raw = yf.download(etf_tickers, period="1y", auto_adjust=True, progress=False)["Close"]
+        raw_df = await run_in_threadpool(functools.partial(yf.download, etf_tickers, period="1y", auto_adjust=True, progress=False))
+        raw = raw_df["Close"]
         if hasattr(raw, "columns"):
-            # Multi-ticker download returns DataFrame with ticker columns
             prices = raw
         else:
             return {"error": "yfinance returned unexpected data format"}
