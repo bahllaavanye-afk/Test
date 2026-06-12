@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 RESULTS_DIR = Path(__file__).parent.parent.parent.parent / "experiments" / "results"
 ARTIFACTS_DIR = Path(__file__).parent.parent.parent / "models_artifacts"
@@ -123,7 +123,7 @@ def main():
         torch.save({"policy": best_state}, ARTIFACTS_DIR / "rl_position_sizer.pt")
         print(f"Saved policy. Best episode reward: {max(rewards):.4f}")
     results = {
-        "trained_at": datetime.utcnow().isoformat(),
+        "trained_at": datetime.now(timezone.utc).isoformat(),
         "n_episodes": 500,
         "best_reward": float(max(rewards)),
         "final_avg_reward": float(np.mean(rewards[-50:])),
