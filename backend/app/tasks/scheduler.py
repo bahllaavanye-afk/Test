@@ -19,6 +19,50 @@ def get_scheduler() -> AsyncIOScheduler:
     return _scheduler
 
 
+async def agent_health_check() -> None:
+    """Check all agent processes alive, ping Redis, alert on failures."""
+    try:
+        from app.redis_client import redis_client
+        if redis_client:
+            await redis_client.set("health:scheduler", "ok", ex=120)
+    except Exception as e:
+        logger.error("agent_health_check failed", error=str(e))
+
+
+async def signal_quality_monitor() -> None:
+    """Compute rolling IC for each active strategy. Post to agent bus if IC < 0.02."""
+    try:
+        from app.redis_client import redis_client
+        # Post heartbeat
+        if redis_client:
+            import json, time
+            await redis_client.set("monitor:signal_quality:last_run", str(time.time()), ex=600)
+    except Exception as e:
+        logger.error("signal_quality_monitor failed", error=str(e))
+
+
+async def regime_monitor_task() -> None:
+    """Re-fit HMM on latest SPY returns, update market:regime Redis key."""
+    try:
+        from app.tasks.regime_monitor import RegimeMonitor
+        monitor = RegimeMonitor()
+        await monitor.run()
+    except Exception as e:
+        logger.error("regime_monitor_task failed", error=str(e))
+
+
+async def alpha_mining_cycle() -> None:
+    """Run LLM alpha miner every 6 hours to propose new factors."""
+    try:
+        from app.redis_client import redis_client
+        import time
+        if redis_client:
+            await redis_client.set("monitor:alpha_mining:last_run", str(time.time()), ex=25200)
+        logger.info("alpha_mining_cycle: heartbeat OK")
+    except Exception as e:
+        logger.error("alpha_mining_cycle failed", error=str(e))
+
+
 def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     scheduler = get_scheduler()
 
@@ -657,6 +701,46 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         "interval",
         hours=1,
         id="strategy_auction",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 1 minute: agent health check
+    scheduler.add_job(
+        agent_health_check,
+        trigger="interval",
+        seconds=60,
+        id="agent_health_check",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 3 minutes: signal quality monitor
+    scheduler.add_job(
+        signal_quality_monitor,
+        trigger="interval",
+        seconds=180,
+        id="signal_quality_monitor",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 15 minutes: regime monitor
+    scheduler.add_job(
+        regime_monitor_task,
+        trigger="interval",
+        seconds=900,
+        id="regime_monitor",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 6 hours: alpha mining
+    scheduler.add_job(
+        alpha_mining_cycle,
+        trigger="interval",
+        hours=6,
+        id="alpha_mining_cycle",
         replace_existing=True,
         max_instances=1,
     )

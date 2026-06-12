@@ -19,11 +19,12 @@ Modes:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -212,3 +213,98 @@ async def call_consensus(
 def available_providers() -> list[str]:
     """Return names of providers with configured API keys."""
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
+
+
+import hashlib
+import functools
+
+# ── Response cache ────────────────────────────────────────────────────────────
+
+async def _cache_get(redis_client, messages: list[dict]) -> Optional[str]:
+    key = "llm:cache:" + hashlib.sha256(json.dumps(messages, sort_keys=True).encode()).hexdigest()
+    if redis_client:
+        try:
+            return await redis_client.get(key)
+        except Exception:
+            pass
+    return None
+
+async def _cache_set(redis_client, messages: list[dict], response: str) -> None:
+    key = "llm:cache:" + hashlib.sha256(json.dumps(messages, sort_keys=True).encode()).hexdigest()
+    if redis_client:
+        try:
+            await redis_client.set(key, response, ex=3600)  # 1h TTL
+        except Exception:
+            pass
+
+# ── Routed call by task type ──────────────────────────────────────────────────
+
+async def call_routed(
+    messages: list[dict],
+    task_type: str = "analysis",  # "code" | "analysis" | "fast"
+    max_tokens: int = 2048,
+    redis_client=None,
+) -> Optional[str]:
+    """
+    Route to best free provider for the task type.
+    Checks cache first. Returns response text or None.
+    """
+    # Check cache first
+    cached = await _cache_get(redis_client, messages)
+    if cached:
+        return cached
+
+    # Provider preference by task type
+    if task_type == "fast":
+        # Gemini Flash is fastest
+        preferred = ["gemini", "groq_llama", "together_llama"]
+    elif task_type == "code":
+        # Gemini handles long context better for code
+        preferred = ["gemini", "gemini_thinking", "together_llama", "groq_llama"]
+    else:  # analysis
+        # Llama 70B for reasoning quality
+        preferred = ["groq_llama", "together_llama", "gemini", "nvidia_nim"]
+
+    for provider_name in preferred:
+        provider = next((p for p in PROVIDERS if p.name == provider_name), None)
+        if provider is None:
+            continue
+        env_val = os.getenv(provider.env_key, "")
+        if not env_val or env_val == "disabled":
+            continue
+        result = await _call_provider(provider, messages, temperature=0.3, max_tokens=max_tokens)
+        if result:
+            await _cache_set(redis_client, messages, result.content)
+            return result.content
+
+    # Fallback: race
+    result = await call_race(messages, max_tokens=max_tokens)
+    if result:
+        await _cache_set(redis_client, messages, result.content)
+        return result.content
+    return None
+
+
+async def call_batch(
+    prompts: list[str],
+    system: str = "",
+    max_tokens: int = 512,
+    concurrency: int = 5,
+) -> list[Optional[str]]:
+    """Run up to `concurrency` prompts in parallel. Returns list of responses."""
+    import asyncio
+
+    async def _one(prompt: str) -> Optional[str]:
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.append({"role": "user", "content": prompt})
+        result = await call_race(msgs, max_tokens=max_tokens, timeout=20.0)
+        return result.content if result else None
+
+    sem = asyncio.Semaphore(concurrency)
+    async def _bounded(prompt):
+        async with sem:
+            return await _one(prompt)
+
+    return list(await asyncio.gather(*[_bounded(p) for p in prompts], return_exceptions=False))
