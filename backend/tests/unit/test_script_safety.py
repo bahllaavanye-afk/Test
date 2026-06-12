@@ -288,7 +288,7 @@ class TestSlackBootstrap:
 
 class TestWorkflowYamls:
     WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
-    EXPECTED_BRANCH = "main"
+    EXPECTED_BRANCH = "claude/advanced-trading-bot-d5Lmw"
 
     def _get_workflow_files(self) -> list[Path]:
         return list(self.WORKFLOWS_DIR.glob("*.yml"))

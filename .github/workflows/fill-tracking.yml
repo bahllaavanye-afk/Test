@@ -15,7 +15,7 @@ jobs:
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: claude/advanced-trading-bot-d5Lmw
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5

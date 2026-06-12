@@ -1786,3 +1786,397 @@ async def get_competition_report(
         ),
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/is-analysis")
+async def get_is_analysis(
+    days: int = Query(90, ge=30, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Implementation Shortfall (IS) analysis — institutional-grade execution quality.
+
+    IS = (fill_price - arrival_price) / arrival_price * 10_000 bps
+    Positive IS = you paid more than the mid at order time (implementation cost).
+    Negative IS = you bought cheaper than the mid (good execution).
+
+    Returns:
+      overall_is_bps: float — average IS across all tracked orders
+      vwap_shortfall_bps: float — how far fills deviated from period VWAP
+      by_strategy: list — IS breakdown per strategy name (joined via Order → Trade)
+      by_algo: list — IS by execution algorithm (twap/vwap/limit_first/market)
+      by_size_bucket: list — IS bucketed by order size (small/medium/large)
+      execution_efficiency_score: float — 0-100 score (100=perfect, negative IS = >100)
+      trend_7d: float — IS trend over last 7d vs prior 7d (improvement if negative)
+      data_available: bool
+    """
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return {
+            "overall_is_bps": None,
+            "vwap_shortfall_bps": None,
+            "avg_execution_duration_seconds": None,
+            "by_strategy": [],
+            "by_algo": [],
+            "by_size_bucket": [],
+            "execution_efficiency_score": None,
+            "trend_7d": None,
+            "data_available": False,
+        }
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Fetch SlippageRecords joined to Orders, filtered by user's accounts and date range
+    stmt = (
+        select(SlippageRecord)
+        .join(Order, SlippageRecord.order_id == Order.id)
+        .where(
+            Order.account_id.in_(account_ids),
+            SlippageRecord.created_at >= cutoff,
+        )
+    )
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    if not records:
+        return {
+            "overall_is_bps": None,
+            "vwap_shortfall_bps": None,
+            "avg_execution_duration_seconds": None,
+            "by_strategy": [],
+            "by_algo": [],
+            "by_size_bucket": [],
+            "execution_efficiency_score": None,
+            "trend_7d": None,
+            "data_available": False,
+        }
+
+    # Helper: compute IS bps for a single record
+    def _compute_is_bps(rec: SlippageRecord) -> float | None:
+        if rec.is_cost_bps is not None:
+            return float(rec.is_cost_bps)
+        # Fallback: derive from fill_price and signal_price
+        if rec.fill_price is not None and rec.signal_price is not None and float(rec.signal_price) != 0:
+            return (float(rec.fill_price) - float(rec.signal_price)) / float(rec.signal_price) * 10_000
+        return None
+
+    # Helper: size bucket using signal_price as a proxy for notional
+    def _size_bucket(rec: SlippageRecord) -> str:
+        sp = float(rec.signal_price) if rec.signal_price is not None else 0.0
+        if sp < 1_000:
+            return "small"
+        elif sp < 10_000:
+            return "medium"
+        else:
+            return "large"
+
+    # Collect all IS values
+    is_values = [v for rec in records if (v := _compute_is_bps(rec)) is not None]
+    vwap_values = [float(rec.vwap_shortfall_bps) for rec in records if rec.vwap_shortfall_bps is not None]
+    duration_values = [float(rec.execution_duration_seconds) for rec in records if rec.execution_duration_seconds is not None]
+
+    overall_is_bps = round(sum(is_values) / len(is_values), 4) if is_values else None
+    avg_vwap_shortfall = round(sum(vwap_values) / len(vwap_values), 4) if vwap_values else None
+    avg_duration = round(sum(duration_values) / len(duration_values), 2) if duration_values else None
+
+    # by_algo breakdown
+    algo_buckets: dict[str, list[float]] = {}
+    for rec in records:
+        algo = rec.execution_algo or "unknown"
+        val = _compute_is_bps(rec)
+        if val is not None:
+            algo_buckets.setdefault(algo, []).append(val)
+
+    by_algo = [
+        {
+            "algo": algo,
+            "avg_is_bps": round(sum(vals) / len(vals), 4),
+            "count": len(vals),
+        }
+        for algo, vals in sorted(algo_buckets.items())
+    ]
+
+    # by_strategy: join Order → strategy_id, then look up trade strategy_name
+    # We fetch order_ids from our records and query trades matching account + strategy
+    order_ids = [rec.order_id for rec in records]
+    order_stmt = select(Order).where(Order.id.in_(order_ids))
+    order_result = await db.execute(order_stmt)
+    orders_map = {o.id: o for o in order_result.scalars().all()}
+
+    # Gather strategy names from trades that share account_id (best-effort join)
+    strategy_buckets: dict[str, list[float]] = {}
+    for rec in records:
+        val = _compute_is_bps(rec)
+        if val is None:
+            continue
+        order = orders_map.get(rec.order_id)
+        strategy_name: str | None = None
+        if order is not None and order.strategy_id is not None:
+            # Try to find a matching trade with same account and strategy
+            trade_stmt = (
+                select(Trade.strategy_name)
+                .where(
+                    Trade.account_id == order.account_id,
+                    Trade.strategy_id == order.strategy_id,
+                )
+                .limit(1)
+            )
+            trade_result = await db.execute(trade_stmt)
+            strategy_name = trade_result.scalar()
+        strategy_name = strategy_name or (order.strategy_id if order else None) or "unknown"
+        strategy_buckets.setdefault(strategy_name, []).append(val)
+
+    by_strategy = [
+        {
+            "strategy": strat,
+            "avg_is_bps": round(sum(vals) / len(vals), 4),
+            "count": len(vals),
+        }
+        for strat, vals in sorted(strategy_buckets.items())
+    ]
+
+    # by_size_bucket
+    size_buckets: dict[str, list[float]] = {}
+    for rec in records:
+        val = _compute_is_bps(rec)
+        if val is None:
+            continue
+        bucket = _size_bucket(rec)
+        size_buckets.setdefault(bucket, []).append(val)
+
+    by_size_bucket = [
+        {
+            "bucket": bucket,
+            "avg_is_bps": round(sum(vals) / len(vals), 4),
+            "count": len(vals),
+        }
+        for bucket in ("small", "medium", "large")
+        if bucket in size_buckets
+        for vals in [size_buckets[bucket]]
+    ]
+
+    # Execution efficiency score: 100 = zero IS, >100 if negative IS (price improvement)
+    execution_efficiency_score: float | None = None
+    if overall_is_bps is not None:
+        raw_score = 100.0 - max(0.0, overall_is_bps)
+        execution_efficiency_score = round(max(0.0, raw_score), 2)
+
+    # Trend: compare avg IS in last 7d vs prior 7d
+    trend_7d: float | None = None
+    now = datetime.now(timezone.utc)
+    recent_cutoff = now - timedelta(days=7)
+    prior_cutoff = now - timedelta(days=14)
+
+    recent_vals = [
+        v for rec in records
+        if rec.created_at >= recent_cutoff
+        if (v := _compute_is_bps(rec)) is not None
+    ]
+    prior_vals = [
+        v for rec in records
+        if prior_cutoff <= rec.created_at < recent_cutoff
+        if (v := _compute_is_bps(rec)) is not None
+    ]
+
+    if recent_vals and prior_vals:
+        recent_avg = sum(recent_vals) / len(recent_vals)
+        prior_avg = sum(prior_vals) / len(prior_vals)
+        trend_7d = round(recent_avg - prior_avg, 4)  # negative = improvement
+
+    return {
+        "overall_is_bps": overall_is_bps,
+        "vwap_shortfall_bps": avg_vwap_shortfall,
+        "avg_execution_duration_seconds": avg_duration,
+        "by_strategy": by_strategy,
+        "by_algo": by_algo,
+        "by_size_bucket": by_size_bucket,
+        "execution_efficiency_score": execution_efficiency_score,
+        "trend_7d": trend_7d,
+        "data_available": True,
+        "record_count": len(records),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/factor-attribution")
+async def get_factor_attribution(
+    days: int = Query(90, ge=30, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fama-French 5-factor attribution of realized P&L.
+
+    Uses free yfinance data for factor proxies:
+      - Market (MKT-RF): SPY daily returns - 0.04/252 (risk-free rate proxy)
+      - Size (SMB): IWM - SPY (small minus big)
+      - Value (HML): IVE - IVW (iShares S&P 500 Value vs Growth)
+      - Momentum (MOM): MTUM - VTV (momentum ETF vs value)
+      - Quality (QMJ): QUAL - USMV (quality vs min vol)
+
+    Regresses daily strategy P&L (from Trade records) against these 5 factors
+    using OLS (numpy lstsq). Returns factor loadings (betas), R-squared,
+    alpha (Jensen's alpha annualized), and % of variance explained per factor.
+
+    Returns:
+      alpha_annualized_pct: float — Jensen's alpha annualized
+      r_squared: float — goodness of fit (0-1)
+      factors: dict — {factor_name: {beta, t_stat, contribution_pct}}
+      total_explained_pct: float — % of P&L variance explained by the 5 factors
+      unexplained_pct: float — alpha + noise
+      data_start: str ISO date
+      data_end: str ISO date
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        return {"error": "yfinance not available"}
+
+    import numpy as np
+
+    account_ids = await _user_account_ids(db, current_user.id)
+    if not account_ids:
+        return {"error": "insufficient_data", "min_days_needed": 20}
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Fetch daily realized P&L grouped by date(closed_at)
+    pnl_stmt = (
+        select(
+            func.date(Trade.closed_at).label("trade_date"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= cutoff,
+        )
+        .group_by(func.date(Trade.closed_at))
+        .order_by(func.date(Trade.closed_at))
+    )
+    pnl_result = await db.execute(pnl_stmt)
+    pnl_rows = pnl_result.all()
+
+    if not pnl_rows or len(pnl_rows) < 20:
+        return {"error": "insufficient_data", "min_days_needed": 20}
+
+    # Build daily P&L series indexed by date
+    pnl_by_date: dict[date, float] = {}
+    for row in pnl_rows:
+        trade_date = row.trade_date
+        if isinstance(trade_date, str):
+            trade_date = datetime.strptime(trade_date, "%Y-%m-%d").date()
+        elif isinstance(trade_date, datetime):
+            trade_date = trade_date.date()
+        pnl_by_date[trade_date] = float(row.daily_pnl)
+
+    # Download factor ETFs via yfinance
+    etf_tickers = ["SPY", "IWM", "IVE", "IVW", "MTUM", "VTV", "QUAL", "USMV"]
+    try:
+        raw = yf.download(etf_tickers, period="1y", auto_adjust=True, progress=False)["Close"]
+        if hasattr(raw, "columns"):
+            # Multi-ticker download returns DataFrame with ticker columns
+            prices = raw
+        else:
+            return {"error": "yfinance returned unexpected data format"}
+    except Exception as exc:
+        logger.warning("yfinance download failed: %s", exc)
+        return {"error": "factor_data_unavailable", "detail": str(exc)}
+
+    # Compute daily factor returns
+    prices = prices.dropna(how="all")
+    if prices.empty or len(prices) < 5:
+        return {"error": "insufficient_factor_data"}
+
+    # Ensure all required tickers are present
+    missing = [t for t in etf_tickers if t not in prices.columns]
+    if missing:
+        return {"error": "missing_factor_tickers", "missing": missing}
+
+    pct = prices.pct_change().dropna()
+
+    risk_free_daily = 0.04 / 252
+
+    factor_series: dict[str, "pd.Series"] = {
+        "MKT-RF": pct["SPY"] - risk_free_daily,
+        "SMB":    pct["IWM"] - pct["SPY"],
+        "HML":    pct["IVE"] - pct["IVW"],
+        "MOM":    pct["MTUM"] - pct["VTV"],
+        "QMJ":    pct["QUAL"] - pct["USMV"],
+    }
+
+    # Convert to DataFrame for easy alignment
+    factor_df = pd.DataFrame(factor_series)
+    factor_df.index = pd.to_datetime(factor_df.index).date  # type: ignore[assignment]
+
+    # Build strategy P&L series aligned to factor dates (inner join)
+    common_dates = sorted(set(factor_df.index) & set(pnl_by_date.keys()))
+
+    if len(common_dates) < 20:
+        return {"error": "insufficient_data", "min_days_needed": 20}
+
+    y = np.array([pnl_by_date[d] for d in common_dates], dtype=float)
+    X_factors = factor_df.loc[common_dates].values.astype(float)
+
+    # Add constant (intercept) for alpha
+    ones = np.ones((len(y), 1), dtype=float)
+    X = np.hstack([ones, X_factors])  # shape (n, 6)
+
+    # OLS: solve X @ beta = y
+    coeffs, residuals_arr, rank, sv = np.linalg.lstsq(X, y, rcond=None)
+
+    alpha_daily = float(coeffs[0])
+    betas = coeffs[1:]  # shape (5,)
+
+    # Compute R-squared
+    y_pred = X @ coeffs
+    ss_res = float(np.sum((y - y_pred) ** 2))
+    ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+    r_squared = float(1.0 - ss_res / ss_tot) if ss_tot > 1e-12 else 0.0
+
+    # Standard errors for t-stats
+    n = len(y)
+    k = X.shape[1]  # 6 (intercept + 5 factors)
+    residuals = y - y_pred
+    if n > k:
+        sigma2 = float(np.sum(residuals ** 2)) / (n - k)
+        XtX_inv = np.linalg.pinv(X.T @ X)
+        se = np.sqrt(np.maximum(sigma2 * np.diag(XtX_inv), 0.0))
+        t_stats = coeffs / (se + 1e-12)
+    else:
+        se = np.zeros(k)
+        t_stats = np.zeros(k)
+
+    # Factor contribution: beta_i * std(factor_i) / std(y_pred) * 100
+    factor_std = X_factors.std(axis=0)
+    y_pred_std = float(y_pred.std()) if y_pred.std() > 1e-12 else 1.0
+    contribution_pcts = [
+        float(abs(betas[i]) * factor_std[i] / y_pred_std * 100)
+        for i in range(5)
+    ]
+    total_explained = round(min(100.0, sum(contribution_pcts)), 2)
+
+    # Annualize alpha: daily alpha * 252 * 100 (to percent)
+    alpha_annualized_pct = round(alpha_daily * 252 * 100, 4)
+
+    factor_names = list(factor_series.keys())
+    factors_out = {
+        factor_names[i]: {
+            "beta": round(float(betas[i]), 6),
+            "t_stat": round(float(t_stats[i + 1]), 4),  # +1 to skip intercept t_stat
+            "contribution_pct": round(contribution_pcts[i], 2),
+        }
+        for i in range(5)
+    }
+
+    return {
+        "alpha_annualized_pct": alpha_annualized_pct,
+        "r_squared": round(r_squared, 6),
+        "factors": factors_out,
+        "total_explained_pct": total_explained,
+        "unexplained_pct": round(max(0.0, 100.0 - total_explained), 2),
+        "data_start": str(common_dates[0]),
+        "data_end": str(common_dates[-1]),
+        "n_observations": len(common_dates),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }

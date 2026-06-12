@@ -18,7 +18,7 @@ jobs:
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: claude/advanced-trading-bot-d5Lmw
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python 3.11

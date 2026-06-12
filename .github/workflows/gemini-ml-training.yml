@@ -46,7 +46,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: claude/advanced-trading-bot-d5Lmw
 
       - uses: actions/setup-python@v5
         if: steps.key_check.outputs.has_key == 'true'
