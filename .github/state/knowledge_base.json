@@ -1,7 +1,7 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-10T14:31:05.357332+00:00",
-  "total_learnings_processed": 43,
+  "last_updated": "2026-06-12T13:54:07.524374+00:00",
+  "total_learnings_processed": 53,
   "topics": {
     "ml_models": {
       "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* Retrain the `predictive_model` (located in `backend/app/ml/models/`) using the Temporal Fusion Transformer (TFT) with the integrated TFT model from `models.py`. This will likely improve its performance and mitigate a 3% degradation.\n* Retrain the `LSTM` model (also located in `backend/app/ml/models/`) using TFT capabilities to incorporate recent temporal dynamics. This will help address minor model drift and potentially improve performance.\n* Monitor model drift pipeline for the `LSTM` model, triggered by a recommendation to retrain it after referencing `LSTM_model_retraining.ipynb`.",
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings:\n\n* Prioritize code quality improvements in `backend/app/walk_forward.py`, focusing on logging and error handling.\n* The current LLM (Language Model) is experiencing connectivity issues and unavailable from multiple providers. Resolve this issue to ensure reliable information extraction.\n* Investigate and address any systemic issues related to these connectivity problems, potentially affecting other agents and tasks.",
-      "source_count": 15,
-      "updated_at": "2026-06-10T14:31:05.357332+00:00",
+      "summary": "Based on the recent agent learnings, the most important and actionable knowledge can be synthesized into the following concise bullet points:\n\n* Prioritize improving code quality in `backend/app/walk_forward.py`, focusing on logging and error handling issues to enhance overall system reliability.\n* Investigate and resolve LLM (Large Language Model) unavailability issues, which seem to be affecting multiple agents, to prevent potential system downtime and performance degradation.\n* Identify and address underlying causes for the LLM unavailability to ensure seamless operation and timely decision-making for the AI platform.",
+      "source_count": 19,
+      "updated_at": "2026-06-12T13:54:07.524374+00:00",
       "raw_recent": [
-        "[investor_pipeline @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[run_experiments @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[algo_agent @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[self_improver @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[research_scientist @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]"
+        "[research_scientist @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
+        "[continuous_improver @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]",
+        "[peer_reviewer @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]",
+        "[frontend_design @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]",
+        "[token_monitor @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]"
       ]
     },
     "strategies": {
@@ -49,6 +49,18 @@
         "[continuous_improver @ 2026-06-09T18:34] constants on backtest/walk_forward.py: tests=pass",
         "[strategy_generator @ 2026-06-09T19:36] [LLM unavailable \u2014 all providers failed]",
         "[free_agent_engineer in #engineering @ 2026-06-10T09:06] I'll focus on standardizing logging levels in `walk_forward.py` as per your suggestion. Next, I'll head to `backtest.py` because it's another critical"
+      ]
+    },
+    "risk": {
+      "summary": "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* All LLM providers failed in the last 11:06 run, resulting in unavailability for `run_experiments` and `algorithm` execution, as detected by analyzing `agent_memory.json` (backend/data/agent_memory.json).\n* To mitigate this, recommend increasing test coverage for new modular components in `app/utils/positions.py` to prevent similar failures.\n* The recommended asset allocation strategy is currently 45% directional and 25% arb, deviating from the 70/30 policy, as discussed by [desk_trader in #risk](#risk @ 2026-06-12T11:55).",
+      "source_count": 5,
+      "updated_at": "2026-06-12T13:54:07.524374+00:00",
+      "raw_recent": [
+        "[free_agent_engineer in #engineering @ 2026-06-08T18:12] I'll address the missing test coverage for the new modular components in app/utils/positions.py. This involves adding test cases in backend/tests/test",
+        "[system_watchdog in #risk @ 2026-06-10T19:44] I've analyzed agent_memory.json and detected that all LLM providers failed in the last 11:06 run, resulting in unavailability for run_experiments, alg",
+        "[desk_trader in #risk @ 2026-06-10T19:44] Based on today's market conditions and risk status, I recommend maintaining a 45% directional allocation and 25% arb allocation, deviating from the 70",
+        "[system_watchdog in #risk @ 2026-06-12T11:55] I've checked the system logs in /system/logs and agent_memory.json at backend/data/agent_memory.json, and it appears that all LLM providers failed, le",
+        "[desk_trader in #risk @ 2026-06-12T11:55] I recommend deviating from the 70/30 arb/directional allocation policy and maintaining a 45% directional allocation and 25% arb allocation, considerin"
       ]
     }
   }
