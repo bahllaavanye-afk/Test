@@ -4,7 +4,7 @@ Each agent has working memory (24h TTL), long-term memory (permanent), and episo
 """
 import json
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 
@@ -19,7 +19,7 @@ class AgentMemory:
 
     async def remember(self, key: str, value: Any, memory_type: str = "working") -> None:
         full_key = self._key(memory_type, key)
-        payload = json.dumps({"value": value, "updated_at": datetime.utcnow().isoformat()})
+        payload = json.dumps({"value": value, "updated_at": datetime.now(timezone.utc).isoformat()})
         if memory_type == "working":
             await self.redis.set(full_key, payload, ex=86400)  # 24h TTL
         elif memory_type == "long_term":
@@ -38,7 +38,7 @@ class AgentMemory:
 
     async def log_episode(self, outcome: dict) -> None:
         key = f"{self._prefix}:episodes"
-        entry = json.dumps({**outcome, "ts": datetime.utcnow().isoformat()})
+        entry = json.dumps({**outcome, "ts": datetime.now(timezone.utc).isoformat()})
         await self.redis.lpush(key, entry)
         await self.redis.ltrim(key, 0, 999)   # keep last 1000 episodes
         await self.redis.expire(key, 86400 * 30)  # 30 day TTL

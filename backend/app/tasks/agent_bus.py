@@ -3,7 +3,7 @@ Redis pub/sub message bus for agent-to-agent collaboration.
 """
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 
@@ -27,7 +27,7 @@ class AgentBus:
             "from": from_agent,
             "channel": channel,
             "content": message,
-            "ts": datetime.utcnow().isoformat(),
+            "ts": datetime.now(timezone.utc).isoformat(),
         })
         await self.redis.publish(full_channel, payload)
 
@@ -39,7 +39,7 @@ class AgentBus:
             "task": task,
             "from": from_agent,
             "status": "pending",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
         await self.redis.lpush(f"agent:taskqueue:{target_agent}", entry)
         await self.redis.expire(f"agent:taskqueue:{target_agent}", 86400)
