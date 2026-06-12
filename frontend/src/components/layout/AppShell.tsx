@@ -34,6 +34,8 @@ export default function AppShell() {
       <div className="flex flex-col flex-1 overflow-hidden relative z-10">
         <TopBar />
         <main
+          id="main-content"
+          role="main"
           key={location.pathname}
           className="flex-1 overflow-auto p-4"
           style={{

@@ -67,7 +67,7 @@ function SystemStatusRow() {
     : []
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg px-4 py-3">
+    <div className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg px-4 py-3" aria-busy={isLoading} aria-live="polite">
       <div className="flex items-center gap-6 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-[#00c853] animate-pulse" />
@@ -357,7 +357,9 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-          <TVAdvancedChart symbol={chartSymbol} />
+          <div role="img" aria-label={`TradingView advanced chart for ${chartSymbol}`}>
+            <TVAdvancedChart symbol={chartSymbol} />
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -585,7 +587,9 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-        <TradeMarkerChart symbol={tradeSymbol} height={360} />
+        <div role="img" aria-label={`Trade marker chart for ${tradeSymbol}`}>
+          <TradeMarkerChart symbol={tradeSymbol} height={360} />
+        </div>
       </div>
 
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>

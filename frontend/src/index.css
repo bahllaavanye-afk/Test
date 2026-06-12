@@ -23,6 +23,12 @@
   --purple: #b388ff;
 }
 
+/* ── Accessibility: focus-visible for keyboard navigation ── */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
 /* ── Reset ── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 

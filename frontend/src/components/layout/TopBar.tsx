@@ -40,7 +40,7 @@ export default function TopBar() {
 
   return (
     <>
-      <header className="relative h-10 glass-panel border-b border-white/[0.06] flex items-center justify-between px-4 z-10">
+      <header role="banner" className="relative h-10 glass-panel border-b border-white/[0.06] flex items-center justify-between px-4 z-10">
         {/* Animated gradient border on bottom */}
         <div
           className="absolute bottom-0 left-0 right-0 h-px animate-gradient"
@@ -55,6 +55,8 @@ export default function TopBar() {
           <span
             className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[#f5a623]/30 bg-[#f5a623]/10 text-[10px] font-bold tracking-widest font-mono text-[#f5a623] cursor-default"
             title="Paper trading mode — live trading not available"
+            aria-live="polite"
+            aria-atomic="true"
           >
             PAPER
           </span>
@@ -95,8 +97,9 @@ export default function TopBar() {
             }}
             className="text-[#888888] hover:text-[#e8e8e8] transition-colors"
             title="Logout"
+            aria-label="Logout"
           >
-            <LogOut size={14} />
+            <LogOut size={14} aria-hidden="true" />
           </button>
         </div>
       </header>
