@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "created_at": "2026-06-10T01:07:41.067390+00:00",
-  "last_updated": "2026-06-10T01:07:41.067432+00:00",
+  "last_updated": "2026-06-12T12:03:04.499819+00:00",
   "platform": {
     "name": "QuantEdge",
     "type": "institutional_quant_trading",
@@ -40,9 +40,32 @@
     "min_sharpe_for_paper": 1.0,
     "min_sharpe_for_live": 1.5
   },
-  "learnings": [],
+  "learnings": [
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 9 threads in 9 channels: #desk-kalshi, #ml-experiments, #alpha-research, #model-performance, #help",
+      "timestamp": "2026-06-12T12:03:04.499819+00:00",
+      "chain_count": 9,
+      "channels": [
+        "desk-kalshi",
+        "ml-experiments",
+        "alpha-research",
+        "model-performance",
+        "help",
+        "engineering",
+        "desk-stat-arb",
+        "general",
+        "strategy-review"
+      ]
+    }
+  ],
   "experiments": [],
-  "agent_insights": {},
+  "agent_insights": {
+    "build_discussion_chains": {
+      "last_learning": "Discussion chains built across 9 threads in 9 channels: #desk-kalshi, #ml-experiments, #alpha-research, #model-performan",
+      "last_updated": "2026-06-12T12:03:04.499819+00:00"
+    }
+  },
   "strategy_notes": {},
   "core": {
     "paper_candidate_strategies": [
