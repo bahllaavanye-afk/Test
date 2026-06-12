@@ -17,6 +17,7 @@ from app.api.v1.router import api_router
 from app.ws.prices import router as prices_router
 from app.ws.orders import router as orders_router
 from app.ws.alerts import router as alerts_router
+from app.ws.signal_compare import router as signal_compare_router
 from app.tasks.scheduler import start_scheduler
 from app.utils.logging import logger
 from app.risk.correlation_monitor import correlation_monitor
@@ -323,6 +324,7 @@ def create_app() -> FastAPI:
     app.include_router(prices_router)
     app.include_router(orders_router)
     app.include_router(alerts_router)
+    app.include_router(signal_compare_router)
 
     @app.get("/health")
     async def health():
