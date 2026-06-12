@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
 
+    # Model artifact store — Supabase Storage REST
+    supabase_url: str = ""               # https://xxxx.supabase.co
+    supabase_service_key: str = ""       # service_role key (never public)
+    model_bucket: str = "model-artifacts"
+    model_store_enabled: bool = True     # False → local-only mode
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
         placeholder = "change-me-in-production-32-byte-hex"
