@@ -13,6 +13,7 @@ from app.models.slippage import SlippageRecord
 from app.models.comparison import ComparisonResult
 from app.models.audit_log import AuditLog
 from app.models.bot import Bot
+from app.models.promotion import StrategyPromotion
 
 __all__ = [
     "User", "Account", "AccountSnapshot",
@@ -21,5 +22,5 @@ __all__ = [
     "Experiment", "MLModel", "MLPrediction",
     "OHLCV", "RiskRule", "RiskEvent",
     "SlippageRecord", "ComparisonResult",
-    "AuditLog", "Bot",
+    "AuditLog", "Bot", "StrategyPromotion",
 ]

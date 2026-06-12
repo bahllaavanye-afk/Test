@@ -745,6 +745,25 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _run_holistic_review_job():
+        """Daily at 06:00 UTC: holistic review of all active strategy promotions."""
+        try:
+            from app.tasks.holistic_review import run_holistic_review
+            from app.database import AsyncSessionLocal
+            await run_holistic_review(AsyncSessionLocal)
+        except Exception as exc:
+            logger.error("Holistic review job failed", error=str(exc))
+
+    scheduler.add_job(
+        _run_holistic_review_job,
+        "cron",
+        hour=6,
+        minute=0,
+        id="holistic_review",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler

@@ -39,3 +39,5 @@ api_router.include_router(releases.router)
 api_router.include_router(bots_router)
 api_router.include_router(scanners_router)
 api_router.include_router(slack_router)
+from app.api.v1.promotions import router as promotions_router
+api_router.include_router(promotions_router)
