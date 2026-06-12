@@ -39,16 +39,8 @@ jobs:
 
       - name: Update heartbeat
         run: |
-          python -c "
-import json, datetime
-from pathlib import Path
-p = Path('.github/state/agent_memory.json')
-d = json.loads(p.read_text()) if p.exists() else {}
-d['last_health_check'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-d.setdefault('platform_metrics', {})['health_check_count'] = d.get('platform_metrics', {}).get('health_check_count', 0) + 1
-p.write_text(json.dumps(d, indent=2))
-print('Heartbeat updated')
-"
+          mkdir -p .github/state
+          python3 -c "import json,datetime; from pathlib import Path; p=Path('.github/state/agent_memory.json'); d=json.loads(p.read_text()) if p.exists() else {}; d['last_health_check']=datetime.datetime.now(datetime.timezone.utc).isoformat(); m=d.setdefault('platform_metrics',{}); m['health_check_count']=m.get('health_check_count',0)+1; p.write_text(json.dumps(d,indent=2)); print('Heartbeat updated')"
 
       - name: Commit heartbeat
         continue-on-error: true
