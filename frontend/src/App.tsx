@@ -34,6 +34,7 @@ const Releases = lazy(() => import('./pages/Releases'))
 const BotBuilder = lazy(() => import('./pages/BotBuilder'))
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
 const Scanners = lazy(() => import('./pages/Scanners'))
+const Promotions = lazy(() => import('./pages/Promotions'))
 
 function PageLoader() {
   return (
@@ -104,6 +105,7 @@ export default function App() {
           <Route path="bots" element={<BotBuilder />} />
           <Route path="agents" element={<AgentDashboard />} />
           <Route path="scanners" element={<Scanners />} />
+          <Route path="promotions" element={<Promotions />} />
         </Route>
       </Routes>
     </Suspense>
