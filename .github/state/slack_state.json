@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781265981,
+  "last_run_ts": 1781271100,
   "last_commit_sha": "69c2d66",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -129,17 +129,19 @@
     "05d137828a05",
     "29cc63e2fa6c",
     "9580c830e0fb",
-    "d337c94e003d"
+    "d337c94e003d",
+    "07c4ff477e46"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781237424.602402,
-    "agent-api-usage:api_usage_report": 1781237486.1315901,
-    "agent-api-usage:throughput_report": 1781237487.0735397,
-    "engineering:silent_vp_eng": 1781237487.4654675,
-    "engineering:silent_macro_researcher": 1781237519.918692,
+    "standup-channel:standup": 1781271016.6355035,
+    "agent-api-usage:api_usage_report": 1781271100.6516147,
+    "agent-api-usage:throughput_report": 1781271101.7145724,
+    "engineering:silent_vp_eng": 1781271102.2109418,
     "engineering:agent_reminder": 1781237581.3876967,
-    "help:agent_reminder": 1781237581.983271
+    "help:agent_reminder": 1781237581.983271,
+    "alpha-research:silent_alpha_dir": 1781271106.4980445,
+    "squad-qa:silent_qa_dir": 1781271117.0123034
   },
   "response_cache": {},
   "posted_today": [
@@ -191,12 +193,12 @@
     "Polymarket desk bot"
   ],
   "last_post_ts": {
-    "vp_eng": 1781237487.4654243,
-    "alpha_dir": 1781144509.093116,
+    "vp_eng": 1781271102.210905,
+    "alpha_dir": 1781271102.210905,
     "ml_lead": 1781144509.093116,
     "risk_eng": 1781144509.093116,
     "backend_lead": 1781265829.0596151,
-    "qa_dir": 1781144509.093116,
+    "qa_dir": 1781271102.210905,
     "devops_dir": 1781144509.093116,
     "exec_eng": 1781144509.093116,
     "poly_desk": 1781144509.093116,
@@ -865,41 +867,37 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-12 04:12:07"
+    },
+    {
+      "emp": "ml_lead",
+      "score": 9,
+      "reason": "Provides specific, actionable points, including a monitored funding rate, basis between spot and perp, and a precise price trigger for potential depeg arb opportunity and perp liquidations.",
+      "channel": "unknown",
+      "ts": "2026-06-12 13:30:22"
+    },
+    {
+      "emp": "vp_eng",
+      "score": 9,
+      "reason": "Provides a specific failure rate, identifies a particular test case and line numbers, and outlines a concrete actionable step to resolve the issue.",
+      "channel": "unknown",
+      "ts": "2026-06-12 13:31:45"
+    },
+    {
+      "emp": "alpha_dir",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-12 13:31:52"
+    },
+    {
+      "emp": "qa_dir",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-12 13:32:04"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "crypto_quant",
-      "channel": "unknown",
-      "text": "*I'm analyzing the funding rate data in `/mnt/data/funding_rates.csv` and noticed that **BTCUSDT** has a funding rate of -0.0134%, indicating a potential short squeeze. I'm also monitoring the basis trading opportunities in `/mnt/data/basis_trades.json`, where **ETHUSDT** shows a -1.25% basis, sugge",
-      "provider": "litellm:groq",
-      "ts": 1781024193.0092046,
-      "score": 8
-    },
-    {
-      "emp": "arb_trader",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the ETF/NAV arbitrage opportunity in `/shared/arb_data/etf_nav_discrepancies.csv`, where the `SPY` ETF is trading at a 0.53% discount to its NAV*. The estimated edge is $0.12 per share, with an execution risk of 0.05%. I'm running a regression model in `/scripts/arb_models/e",
-      "provider": "litellm:groq",
-      "ts": 1781024201.2645576,
-      "score": 5
-    },
-    {
-      "emp": "portfolio_manager",
-      "channel": "unknown",
-      "text": "\u26a0\ufe0f [hallucination-flagged] *I'm currently analyzing the `/home/quantedge/data/sharpe_ratios.csv` file to identify areas for improvement, focusing on the **Sharpe ratio of 1.23** for our long-short strategy. The **max drawdown YTD of 8.5%** is also a key concern, which I'm addressing by re-optimizing",
-      "provider": "litellm:groq",
-      "ts": 1781024205.956331,
-      "score": 4
-    },
-    {
-      "emp": "market_maker",
-      "channel": "unknown",
-      "text": "*I am analyzing the current inventory skew in `/data/stocks/inventory.csv` and noticed a significant imbalance in **AAPL** positions, with a net short exposure of **-2342** shares*. I am also monitoring the **bid-ask spread** for **MSFT** in `/logs/market_data.log`, which has widened to **0.057** ov",
-      "provider": "litellm:groq",
-      "ts": 1781024212.4596024,
-      "score": 5
-    },
     {
       "emp": "risk_eng",
       "channel": "unknown",
@@ -1267,16 +1265,48 @@
       "provider": "litellm:gemini",
       "ts": 1781237527.6616495,
       "score": 5
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*I'm closely monitoring the **funding rate** for BTC perpetual futures on Binance, which is currently at **0.032%**. The **basis** between spot and perp is also narrowing, with a **-1.5%** premium on the perp market, indicating potential for a **depeg arb** opportunity. I'm watching for a break belo",
+      "provider": "litellm:groq",
+      "ts": 1781271022.4412932,
+      "score": 9
+    },
+    {
+      "emp": "vp_eng",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the test results for `test_risk_engine.py`*, which has a **3.5% failure rate** over the last 50 runs. The specific issue is with the `kelly_fraction_edge_cases` test, which fails **1 in every 25 runs** due to inconsistent results on lines 123-145. *I'm working on pinning the",
+      "provider": "litellm:groq",
+      "ts": 1781271105.9632351,
+      "score": 9
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "\u26a0\ufe0f [hallucination-flagged] *I'm currently analyzing the `kalman_filter.py` script, specifically the `kalman_update` function, to refine our pairs trading strategy*. The backtest results show a **Sharpe ratio of 1.23** for the EUR/USD pair using a **20-day kalman window**, which I'm now trying to opt",
+      "provider": "litellm:groq",
+      "ts": 1781271112.4846632,
+      "score": 5
+    },
+    {
+      "emp": "qa_dir",
+      "channel": "unknown",
+      "text": "Currently deep-diving into the `test_trade_execution_latency.py::test_high \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781271124.4544196,
+      "score": 5
     }
   ],
   "last_providers": {
     "devops_dir": "litellm:groq",
-    "vp_eng": "litellm:gemini",
-    "alpha_dir": "Gemini(GEMINI_API_KEY)",
-    "ml_lead": "Gemini(GEMINI_API_KEY)",
+    "vp_eng": "litellm:groq",
+    "alpha_dir": "litellm:groq",
+    "ml_lead": "litellm:groq",
     "risk_eng": "litellm:groq",
     "backend_lead": "litellm:groq",
-    "qa_dir": "litellm:groq",
+    "qa_dir": "Gemini(GEMINI_API_KEY)",
     "exec_eng": "litellm:groq",
     "poly_desk": "litellm:groq",
     "ml_researcher": "litellm:groq",
