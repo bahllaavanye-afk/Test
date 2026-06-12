@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781136270.2911756,
+    "last_updated": 1781262662.440565,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -61,7 +61,7 @@
     "autopilot_best_oos_sharpe": 1.2622,
     "autopilot_best_blended": 0.4208,
     "autopilot_overfit_count": 1,
-    "market_regime": "neutral",
+    "market_regime": "bull",
     "market_opinion": {
       "generated_at": "2026-06-10T21:37:35.964113+00:00",
       "signals": {
@@ -109,47 +109,47 @@
       "size_multiplier": 0.75
     },
     "opinion_score": -1,
-    "macro_score": 0,
-    "vix": 22.22,
-    "market_scan_ts": 1781136270.285874,
+    "macro_score": 3,
+    "vix": 19.17,
+    "market_scan_ts": 1781262662.4372122,
     "sector_leaders": [
       "Healthcare",
-      "Cons. Staples",
+      "Tech",
       "Financials"
     ],
     "sector_laggards": [
-      "Comm.",
-      "Cons. Disc.",
-      "Materials"
+      "Materials",
+      "Utilities",
+      "Comm."
     ],
     "active_universe": [
-      "GLD",
-      "XLK",
-      "QQQ",
-      "XLI",
-      "KO",
-      "C",
-      "IWM",
-      "PEP",
-      "UNH",
-      "AAPL",
-      "SPY",
-      "XLP",
-      "JNJ",
-      "XLV",
-      "MRK",
+      "ORCL",
+      "ADBE",
       "MSFT",
+      "SPY",
+      "AVGO",
+      "QQQ",
+      "META",
+      "NOW",
+      "XLK",
       "GS",
-      "MO",
-      "PG",
-      "LLY"
+      "INTU",
+      "IWM",
+      "KO",
+      "GOOGL",
+      "AMZN",
+      "XLI",
+      "C",
+      "ABT",
+      "NVDA",
+      "XOM"
     ],
     "top_momentum": [
+      "PANW",
+      "CRWD",
       "LLY",
-      "WFC",
-      "JNJ",
-      "BAC",
-      "ABBV"
+      "C",
+      "HD"
     ],
     "risk_flags": []
   },
@@ -254,6 +254,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
       "ts": 1781136270.2918024
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Healthcare",
+        "Tech",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Healthcare, Tech. Gaps: 4, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781262662.4412017
     }
   ]
 }
