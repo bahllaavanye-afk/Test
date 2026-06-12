@@ -92,6 +92,20 @@ PROVIDERS: list[LLMProvider] = [
         model="meta-llama/Llama-3.3-70B-Instruct",
         timeout=30.0,
     ),
+    LLMProvider(
+        name="nvidia_nim",
+        env_key="NVIDIA_NIM_API_KEY",
+        base_url="https://integrate.api.nvidia.com/v1",
+        model="nvidia/llama-3.1-nemotron-70b-instruct",
+        timeout=35.0,
+    ),
+    LLMProvider(
+        name="gemini_thinking",
+        env_key="GEMINI_API_KEY",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        model="gemini-2.0-flash-thinking-exp",
+        timeout=40.0,
+    ),
 ]
 
 
