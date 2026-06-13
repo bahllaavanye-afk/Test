@@ -256,9 +256,12 @@ async def lifespan(app: FastAPI):
     # Strategy runner — one asyncio loop per (strategy, symbol) pair
     # Always started so strategies run in paper mode too
     from app.tasks.strategy_runner import ContinuousStrategyRunner
+    from app.risk.manager import RiskManager
+    risk_manager = RiskManager()
+    app.state.risk_manager = risk_manager  # exposed for /qe risk and risk API
     strategy_runner = ContinuousStrategyRunner(
         broker=alpaca_broker,
-        risk_manager=None,
+        risk_manager=risk_manager,
     )
     app.state.strategy_runner = strategy_runner
     bg_tasks.append(asyncio.create_task(
