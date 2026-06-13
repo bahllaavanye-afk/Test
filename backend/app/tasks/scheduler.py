@@ -52,13 +52,37 @@ async def regime_monitor_task() -> None:
 
 
 async def alpha_mining_cycle() -> None:
-    """Run LLM alpha miner every 6 hours to propose new factors."""
+    """Run LLM alpha miner every 6 hours to propose new alpha factors."""
+    import time
     try:
         from app.redis_client import redis_client
-        import time
         if redis_client:
             await redis_client.set("monitor:alpha_mining:last_run", str(time.time()), ex=25200)
-        logger.info("alpha_mining_cycle: heartbeat OK")
+    except Exception:
+        pass
+
+    try:
+        from app.config import settings as _settings
+        if not getattr(_settings, "anthropic_api_key", None):
+            logger.info("alpha_mining_cycle: ANTHROPIC_API_KEY not set — skipping")
+            return
+
+        from experiments.alpha_mining.llm_alpha_miner import AlphaMiner
+        import asyncio
+
+        # Run in a thread to avoid blocking the event loop (sync I/O + yfinance)
+        symbols = ["SPY", "QQQ", "BTCUSDT", "ETHUSDT"]
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: AlphaMiner().mine_and_save(
+                symbols=symbols,
+                output_dir="experiments/alpha_mining/results/",
+            ),
+        )
+        logger.info("alpha_mining_cycle: mining complete", symbols=symbols)
+    except ImportError:
+        logger.debug("alpha_mining_cycle: AlphaMiner module not found — skipping")
     except Exception as e:
         logger.error("alpha_mining_cycle failed", error=str(e))
 

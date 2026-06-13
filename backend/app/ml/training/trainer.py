@@ -40,26 +40,83 @@ ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class TradingLightningModule(L.LightningModule if HAS_LIGHTNING else object):
-    """Wraps any nn.Module for PyTorch Lightning training."""
+    """
+    Wraps any nn.Module for PyTorch Lightning training.
 
-    def __init__(self, model: nn.Module, lr: float = 1e-3, weight_decay: float = 1e-4):
+    Supports Sharpe/Sortino/Focal/Hybrid loss in addition to BCE.
+    Use loss_name="hybrid" for best out-of-sample Sharpe performance.
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        lr: float = 1e-3,
+        weight_decay: float = 1e-4,
+        loss_name: str = "hybrid",
+        sharpe_alpha: float = 0.6,
+        warmup_epochs: int = 5,
+    ):
         if HAS_LIGHTNING:
             super().__init__()
         self.model = model
         self.lr = lr
         self.weight_decay = weight_decay
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.warmup_epochs = warmup_epochs
+        self.sharpe_alpha = sharpe_alpha
+        # Start with pure BCE for gradient stability, then blend in Sharpe loss
+        self._current_alpha = 1.0  # annealed in on_train_epoch_start
+        self._loss_name = loss_name
+
+        try:
+            from app.ml.training.losses import get_loss
+            self.criterion = get_loss(loss_name, sharpe_alpha=sharpe_alpha)
+        except Exception:
+            self.criterion = nn.BCEWithLogitsLoss()
+
+    def _anneal_alpha(self, current_epoch: int) -> None:
+        """Linearly anneal BCE→Sharpe blend over warmup_epochs."""
+        if self._loss_name not in ("hybrid",):
+            return
+        if current_epoch < self.warmup_epochs:
+            # Pure BCE during warmup
+            frac = current_epoch / max(self.warmup_epochs, 1)
+            self._current_alpha = 1.0 - frac * (1.0 - self.sharpe_alpha)
+            try:
+                self.criterion.alpha = self._current_alpha
+            except AttributeError:
+                pass
+
+    def on_train_epoch_start(self) -> None:
+        if HAS_LIGHTNING:
+            self._anneal_alpha(self.current_epoch)
 
     def forward(self, x):
         return self.model(x)
 
     def _step(self, batch, stage: str):
-        x, y = batch
+        # batch may be (x, y) or (x, y, returns)
+        if len(batch) == 3:
+            x, y, actual_returns = batch
+        else:
+            x, y = batch
+            actual_returns = None
+
         pred = self(x).squeeze(-1)
-        loss = self.criterion(pred, y.float())
+
+        # Hybrid loss needs actual returns for Sharpe component
+        try:
+            from app.ml.training.losses import HybridLoss
+            if isinstance(self.criterion, HybridLoss) and actual_returns is not None:
+                loss = self.criterion(pred, y, actual_returns=actual_returns.float())
+            else:
+                loss = self.criterion(pred, y.float())
+        except Exception:
+            loss = self.criterion(pred, y.float())
+
         acc = ((torch.sigmoid(pred) > 0.5) == y.bool()).float().mean()
-        self.log(f"{stage}_loss", loss, prog_bar=True)
-        self.log(f"{stage}_acc", acc, prog_bar=True)
+        if HAS_LIGHTNING:
+            self.log(f"{stage}_loss", loss, prog_bar=True)
+            self.log(f"{stage}_acc", acc, prog_bar=True)
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -69,9 +126,25 @@ class TradingLightningModule(L.LightningModule if HAS_LIGHTNING else object):
         return self._step(batch, "val")
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        optimizer = torch.optim.AdamW(
+            self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        )
+        # OneCycleLR gives faster convergence than CosineAnnealing
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=self.lr * 10,
+            total_steps=1000,  # overridden by Lightning
+            pct_start=0.3,
+            anneal_strategy="cos",
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "monitor": "val_loss",
+            },
+        }
 
 
 def train_with_lightning(

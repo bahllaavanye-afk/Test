@@ -2183,3 +2183,287 @@ async def get_factor_attribution(
         "n_observations": len(common_dates),
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Strategy leaderboard: ranks all strategies by live Sharpe, shows promotion
+# stage and flags underperformers for auto-demotion.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/strategy-leaderboard")
+async def get_strategy_leaderboard(
+    days: int = Query(90, ge=14, le=365),
+    include_rejected: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Leaderboard of all strategies ranked by rolling Sharpe.
+    Shows promotion stage, key metrics, and whether auto-demotion criteria are met.
+    """
+    from app.models.promotion import StrategyPromotion
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    account_ids = await _user_account_ids(db, current_user.id)
+
+    promo_filter = [StrategyPromotion.current_stage != "rejected"] if not include_rejected else []
+    promo_result = await db.execute(
+        select(StrategyPromotion).where(*promo_filter).order_by(StrategyPromotion.strategy_name)
+    )
+    promotions = promo_result.scalars().all()
+
+    strategy_pnl: dict[str, list[float]] = {}
+    if account_ids:
+        trade_result = await db.execute(
+            select(Trade.strategy_name, Trade.realized_pnl)
+            .where(
+                Trade.account_id.in_(account_ids),
+                Trade.closed_at >= since,
+                Trade.realized_pnl.isnot(None),
+                Trade.strategy_name.isnot(None),
+            )
+        )
+        for row in trade_result.all():
+            strategy_pnl.setdefault(row.strategy_name, []).append(float(row.realized_pnl))
+
+    rows = []
+    for promo in promotions:
+        pnls = strategy_pnl.get(promo.strategy_name, [])
+        sharpe = 0.0
+        win_rate = 0.0
+        total_pnl = 0.0
+
+        if len(pnls) >= 5:
+            arr = pd.Series(pnls)
+            std = arr.std()
+            sharpe = round(float(arr.mean() / std * (252 ** 0.5)) if std > 1e-8 else 0.0, 3)
+            win_rate = round(float((arr > 0).sum() / len(arr)), 3)
+            total_pnl = round(float(arr.sum()), 2)
+
+        if promo.current_stage == "live":
+            stage_metrics = promo.live_metrics or {}
+        elif promo.current_stage == "staging":
+            stage_metrics = promo.staging_metrics or {}
+        elif promo.current_stage == "shadow":
+            stage_metrics = promo.shadow_metrics or {}
+        else:
+            stage_metrics = promo.paper_metrics or {}
+
+        demote_flag = (
+            promo.current_stage in ("live", "staging", "shadow")
+            and sharpe < 0.3
+            and len(pnls) >= 20
+        )
+
+        rows.append({
+            "strategy_name": promo.strategy_name,
+            "stage": promo.current_stage,
+            "sharpe": sharpe,
+            "win_rate": win_rate,
+            "total_pnl": total_pnl,
+            "num_trades": len(pnls),
+            "promotion_ready": promo.promotion_ready,
+            "promotion_ready_stage": promo.promotion_ready_stage,
+            "demote_flag": demote_flag,
+            "stage_days": stage_metrics.get("days_in_stage", 0),
+            "stage_sharpe": stage_metrics.get("sharpe", 0.0),
+        })
+
+    stage_order = {"live": 0, "staging": 1, "shadow": 2, "paper": 3, "rejected": 4}
+    rows.sort(key=lambda r: (stage_order.get(r["stage"], 5), -r["sharpe"]))
+
+    demote_count = sum(1 for r in rows if r["demote_flag"])
+    return {
+        "leaderboard": rows,
+        "total_strategies": len(rows),
+        "demote_flag_count": demote_count,
+        "period_days": days,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/strategy-leaderboard/auto-demote")
+async def auto_demote_underperformers(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Auto-demote strategies flagged with demote_flag=True.
+    Moves live → staging, staging → shadow, shadow → paper.
+    """
+    from app.models.promotion import StrategyPromotion
+
+    since = datetime.now(timezone.utc) - timedelta(days=90)
+    account_ids = await _user_account_ids(db, current_user.id)
+
+    strategy_pnl: dict[str, list[float]] = {}
+    if account_ids:
+        trade_result = await db.execute(
+            select(Trade.strategy_name, Trade.realized_pnl)
+            .where(
+                Trade.account_id.in_(account_ids),
+                Trade.closed_at >= since,
+                Trade.realized_pnl.isnot(None),
+                Trade.strategy_name.isnot(None),
+            )
+        )
+        for row in trade_result.all():
+            strategy_pnl.setdefault(row.strategy_name, []).append(float(row.realized_pnl))
+
+    promo_result = await db.execute(
+        select(StrategyPromotion).where(
+            StrategyPromotion.current_stage.in_(["live", "staging", "shadow"])
+        )
+    )
+    promotions = promo_result.scalars().all()
+
+    demotion_map = {"live": "staging", "staging": "shadow", "shadow": "paper"}
+    demoted = []
+
+    for promo in promotions:
+        pnls = strategy_pnl.get(promo.strategy_name, [])
+        if len(pnls) < 20:
+            continue
+        arr = pd.Series(pnls)
+        std = arr.std()
+        sharpe = float(arr.mean() / std * (252 ** 0.5)) if std > 1e-8 else 0.0
+
+        if sharpe < 0.3:
+            prev_stage = promo.current_stage
+            promo.current_stage = demotion_map[prev_stage]
+            promo.rejection_reason = f"Auto-demoted: Sharpe {sharpe:.3f} < 0.3 over 90 days"
+            promo.review_history = (promo.review_history or []) + [{
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "action": "auto_demoted",
+                "from_stage": prev_stage,
+                "to_stage": promo.current_stage,
+                "sharpe": round(sharpe, 3),
+                "num_trades": len(pnls),
+            }]
+            db.add(promo)
+            demoted.append({"strategy": promo.strategy_name, "from": prev_stage, "to": promo.current_stage})
+
+    await db.commit()
+    return {"demoted": demoted, "count": len(demoted)}
+
+
+@router.get("/daily-pnl/by-strategy")
+async def get_daily_pnl_by_strategy(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Daily P&L breakdown per strategy — shows which desk is generating alpha."""
+    account_ids = await _user_account_ids(db, current_user.id)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    if not account_ids:
+        return {"strategies": [], "total_pnl": 0.0}
+
+    result = await db.execute(
+        select(
+            Trade.strategy_name,
+            func.date_trunc("day", Trade.closed_at).label("day"),
+            func.sum(Trade.realized_pnl).label("daily_pnl"),
+            func.count(Trade.id).label("n_trades"),
+        )
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+            Trade.strategy_name.isnot(None),
+        )
+        .group_by(Trade.strategy_name, func.date_trunc("day", Trade.closed_at))
+        .order_by(Trade.strategy_name, func.date_trunc("day", Trade.closed_at))
+    )
+    rows = result.all()
+
+    by_strategy: dict[str, dict] = {}
+    for row in rows:
+        name = row.strategy_name or "unknown"
+        day_str = row.day.strftime("%Y-%m-%d") if hasattr(row.day, "strftime") else str(row.day)[:10]
+        if name not in by_strategy:
+            by_strategy[name] = {"series": [], "total_pnl": 0.0}
+        pnl = float(row.daily_pnl or 0)
+        by_strategy[name]["series"].append({"date": day_str, "pnl": round(pnl, 2), "trades": row.n_trades})
+        by_strategy[name]["total_pnl"] = round(by_strategy[name]["total_pnl"] + pnl, 2)
+
+    strategies = [
+        {"strategy": name, **data}
+        for name, data in sorted(by_strategy.items(), key=lambda x: -x[1]["total_pnl"])
+    ]
+
+    total_pnl = round(sum(s["total_pnl"] for s in strategies), 2)
+    return {
+        "strategies": strategies,
+        "total_strategies": len(strategies),
+        "total_pnl": total_pnl,
+        "period_days": days,
+    }
+
+
+@router.get("/pipeline-status")
+async def get_pipeline_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Full backtest → paper → shadow → staging → live pipeline status.
+    Returns counts per stage and strategies ready for next promotion.
+    """
+    from app.models.promotion import StrategyPromotion
+    from app.models.strategy import Strategy as StrategyModel
+
+    promo_result = await db.execute(select(StrategyPromotion))
+    promotions = promo_result.scalars().all()
+
+    by_stage: dict[str, list[dict]] = {
+        "paper": [], "shadow": [], "staging": [], "live": [], "rejected": []
+    }
+    ready_for_promotion = []
+
+    for p in promotions:
+        stage = p.current_stage if p.current_stage in by_stage else "paper"
+        if stage == "live":
+            stage_metrics = p.live_metrics or {}
+        elif stage == "staging":
+            stage_metrics = p.staging_metrics or {}
+        elif stage == "shadow":
+            stage_metrics = p.shadow_metrics or {}
+        else:
+            stage_metrics = p.paper_metrics or {}
+
+        entry = {
+            "id": p.id,
+            "strategy_name": p.strategy_name,
+            "sharpe": stage_metrics.get("sharpe", 0.0),
+            "win_rate": stage_metrics.get("win_rate", 0.0),
+            "max_drawdown": stage_metrics.get("max_drawdown", 0.0),
+            "days_in_stage": stage_metrics.get("days_in_stage", 0),
+            "promotion_ready": p.promotion_ready,
+            "promotion_ready_stage": p.promotion_ready_stage,
+        }
+        by_stage[stage].append(entry)
+        if p.promotion_ready and not p.awaiting_approval:
+            ready_for_promotion.append({
+                "id": p.id,
+                "strategy": p.strategy_name,
+                "current_stage": stage,
+                "ready_for": p.promotion_ready_stage,
+            })
+
+    strat_result = await db.execute(
+        select(func.count()).select_from(StrategyModel)
+        .where(StrategyModel.is_active == True)
+    )
+    total_active = strat_result.scalar() or 0
+    in_pipeline = sum(len(v) for v in by_stage.values())
+
+    return {
+        "pipeline": {stage: {"count": len(entries), "strategies": entries} for stage, entries in by_stage.items()},
+        "ready_for_promotion": ready_for_promotion,
+        "total_active_strategies": total_active,
+        "total_in_pipeline": in_pipeline,
+        "unregistered": max(0, total_active - in_pipeline),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }

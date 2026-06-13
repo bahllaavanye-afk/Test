@@ -22,7 +22,7 @@ class EnsembleModel(AbstractModel):
         confidence_threshold: float = 0.65,
         gnn_weight: float = 0.0,
     ):
-        self.weights = weights or {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}
+        self.weights = weights or {"lstm": 0.4, "xgboost": 0.3, "lorentzian": 0.15, "ssm": 0.15}
         self.confidence_threshold = confidence_threshold
         self.gnn_weight = gnn_weight
         self.models: dict[str, AbstractModel] = {}
