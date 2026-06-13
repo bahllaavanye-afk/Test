@@ -28,9 +28,12 @@ PROJECT_ROOT = BACKEND_DIR.parent
 
 # (regex, severity, id, description). Severity drives escalation priority.
 AUDIT_PATTERNS: list[tuple[str, str, str, str]] = [
-    (r"\beval\s*\(",                         "high",     "eval_use",
+    # Negative lookbehind for `.` and word chars so we match the dangerous
+    # builtin eval(/exec( but NOT benign method calls like model.eval() (a
+    # ubiquitous PyTorch idiom) or names like safe_eval(.
+    (r"(?<![.\w])eval\s*\(",                 "high",     "eval_use",
      "eval() executes arbitrary code — avoid on any external input"),
-    (r"\bexec\s*\(",                         "high",     "exec_use",
+    (r"(?<![.\w])exec\s*\(",                 "high",     "exec_use",
      "exec() executes arbitrary code — avoid on any external input"),
     (r"pickle\.loads?\s*\(",                 "high",     "insecure_pickle",
      "pickle on untrusted data enables RCE — use json or a vetted format"),

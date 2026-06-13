@@ -77,6 +77,33 @@ class TestScanCodebase:
         # Locations are real line numbers.
         assert all(f.line_number > 0 for f in findings)
 
+    def test_method_eval_is_not_flagged(self, monkeypatch, tmp_path):
+        """Regression: model.eval()/self.eval() (PyTorch idiom) must NOT trip
+        the eval_use rule — only the dangerous builtin eval( should."""
+        app_dir = tmp_path / "app" / "ml"
+        app_dir.mkdir(parents=True)
+        (app_dir / "m.py").write_text(
+            "def predict(model):\n"
+            "    model.eval()\n"          # benign — must not match
+            "    self.eval()\n"           # benign — must not match
+            "    safe_eval(expr)\n"       # different name — must not match
+            "    return model\n"
+        )
+        monkeypatch.setattr(rt, "BACKEND_DIR", tmp_path)
+        monkeypatch.setattr(rt, "PROJECT_ROOT", tmp_path)
+        findings = scan_codebase()
+        assert not any(f.rule_id == "eval_use" for f in findings), \
+            f"false-positive eval_use on method calls: {[f.snippet for f in findings]}"
+
+    def test_builtin_eval_still_flagged(self, monkeypatch, tmp_path):
+        app_dir = tmp_path / "app" / "ml"
+        app_dir.mkdir(parents=True)
+        (app_dir / "m.py").write_text("def f(s):\n    return eval(s)\n")
+        monkeypatch.setattr(rt, "BACKEND_DIR", tmp_path)
+        monkeypatch.setattr(rt, "PROJECT_ROOT", tmp_path)
+        findings = scan_codebase()
+        assert any(f.rule_id == "eval_use" for f in findings)
+
     def test_clean_file_no_findings(self, monkeypatch, tmp_path):
         app_dir = tmp_path / "app" / "clean"
         app_dir.mkdir(parents=True)

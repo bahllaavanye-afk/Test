@@ -102,7 +102,8 @@ async def _risk_blocks() -> list[dict]:
         lines = []
         if breaker is not None:
             lines.append(f"• Circuit breaker: `{breaker.state.value}`")
-            lines.append(f"• Current drawdown: `{breaker.current_drawdown() * 100:.1f}%`")
+            # current_drawdown is a @property — access it, don't call it.
+            lines.append(f"• Current drawdown: `{breaker.current_drawdown * 100:.1f}%`")
             lines.append(f"• Max drawdown limit: `{rm.max_drawdown_pct * 100:.0f}%`")
         else:
             lines.append("• Circuit breaker: `unavailable`")
