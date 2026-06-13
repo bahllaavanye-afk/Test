@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781384081,
+  "last_run_ts": 1781393469,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -312,25 +312,25 @@
     "63dc590c13f8",
     "6dbf71fecdd1",
     "4716a9e65747",
-    "747c183b0232"
+    "747c183b0232",
+    "dbe3fb343659"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781381594.6668897,
-    "agent-api-usage:api_usage_report": 1781371818.5008173,
-    "agent-api-usage:throughput_report": 1781381637.762986,
+    "standup-channel:standup": 1781393367.8304546,
+    "agent-api-usage:api_usage_report": 1781393469.1735756,
+    "agent-api-usage:throughput_report": 1781393469.8669562,
     "engineering:agent_reminder": 1781371929.1289196,
     "help:agent_reminder": 1781371929.7844906,
-    "risk-alerts:silent_risk_eng": 1781381661.9755945,
-    "infra-alerts:silent_devops_dir": 1781381672.0792773,
-    "alpha-research:silent_alpha_dir": 1781381647.0567262,
-    "engineering:silent_vp_eng": 1781381637.933007,
-    "desk-crypto:silent_ml_lead": 1781381653.8779233,
-    "squad-backend:silent_backend_lead": 1781381665.5038855,
-    "squad-qa:silent_qa_dir": 1781381668.7202892,
-    "squad-execution:silent_exec_eng": 1781381675.296098,
-    "desk-polymarket:silent_poly_desk": 1781381678.3961945,
-    "ml-experiments:silent_ml_researcher": 1781382179.8271186
+    "risk-alerts:silent_risk_eng": 1781393488.8127756,
+    "infra-alerts:silent_devops_dir": 1781393501.0250506,
+    "alpha-research:silent_alpha_dir": 1781393475.1815925,
+    "engineering:silent_vp_eng": 1781393470.4865808,
+    "desk-crypto:silent_ml_lead": 1781393484.7484477,
+    "squad-backend:silent_backend_lead": 1781393493.6979353,
+    "squad-qa:silent_qa_dir": 1781393497.3841026,
+    "squad-execution:silent_exec_eng": 1781393504.8113084,
+    "ml-experiments:silent_ml_researcher": 1781393512.6502566
   },
   "response_cache": {},
   "posted_today": [
@@ -381,16 +381,16 @@
     "PnL bot"
   ],
   "last_post_ts": {
-    "vp_eng": 1781381637.9329605,
-    "alpha_dir": 1781381637.9329605,
-    "ml_lead": 1781381637.9329605,
-    "risk_eng": 1781381637.9329605,
-    "backend_lead": 1781381637.9329605,
-    "qa_dir": 1781381637.9329605,
-    "devops_dir": 1781381637.9329605,
-    "exec_eng": 1781381637.9329605,
+    "vp_eng": 1781393470.4865334,
+    "alpha_dir": 1781393470.4865334,
+    "ml_lead": 1781393470.4865334,
+    "risk_eng": 1781393470.4865334,
+    "backend_lead": 1781393470.4865334,
+    "qa_dir": 1781393470.4865334,
+    "devops_dir": 1781393470.4865334,
+    "exec_eng": 1781393470.4865334,
     "poly_desk": 1781381637.9329605,
-    "ml_researcher": 1781382179.8268776,
+    "ml_researcher": 1781393470.4865334,
     "vp_research": 1781384049.2099686,
     "quant_researcher": 1781384051.5963497,
     "cro": 1781372517.8365438,
@@ -1454,89 +1454,79 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-13 20:23:05"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "ml_researcher",
-      "channel": "unknown",
-      "text": "I'm currently analyzing the performance of our **LSTM** model on the `/data/stocks/2022.csv` dataset, which shows a **mean absolute error (MAE) of 0.057**. In comparison, the **TFT** model has a **MAE of 0.042** on the same dataset, indicating a potential improvement opportunity. I'm working on re-w",
-      "provider": "litellm:groq",
-      "ts": 1781271664.2008677,
-      "score": 5
     },
     {
-      "emp": "product_lead",
+      "emp": "ml_lead",
+      "score": 9,
+      "reason": "Provides specific, actionable insights with quantified metrics, including a clear target reversion threshold, demonstrating a strong understanding of the quant trading platform and the signals being monitored.",
       "channel": "unknown",
-      "text": "Just finished reviewing the *Series A investor deck feedback* from Sequoia's associate, \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781271900.9970903,
-      "score": 2
+      "ts": "2026-06-13 23:29:39"
     },
     {
-      "emp": "ml_infra",
+      "emp": "vp_eng",
+      "score": 9,
+      "reason": "Provides a specific, actionable plan to address a quantified issue, referencing exact file paths and lines of code, and offering a concrete solution to improve the reliability of the CI/CD pipeline.",
       "channel": "unknown",
-      "text": "*I'm currently optimizing the inference service for our flagship model, `models/deep_learning/lstm.py`, to meet the <50ms p99 latency requirement*. I've identified a bottleneck in the `data_loader.py` script, which is causing a 30% slowdown due to unnecessary data transformations, resulting in a cur",
-      "provider": "litellm:groq",
-      "ts": 1781272119.371395,
-      "score": 5
-    },
-    {
-      "emp": "risk_eng",
-      "channel": "unknown",
-      "text": "Currently flagging a potential breach in the firm-wide capital allocation. The *directional capital split* has \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781289986.234876,
-      "score": 2
-    },
-    {
-      "emp": "devops_dir",
-      "channel": "unknown",
-      "text": "*I'm currently investigating a deploy readiness issue in our `/deploy/qa.pipeline` file, where the `deployment_success_rate` metric has dropped to 92.43%*. The top blocker to shipping is a container build error in `/src/main/docker/Dockerfile`, causing a 23.1 minute delay in our CI pipeline. *I'm an",
-      "provider": "litellm:groq",
-      "ts": 1781289995.6284683,
-      "score": 5
+      "ts": "2026-06-13 23:31:14"
     },
     {
       "emp": "alpha_dir",
+      "score": 9,
+      "reason": "Provides specific, actionable details on optimizing a strategy parameter, including concrete numbers and file paths, while also addressing potential pitfalls like lookahead bias.",
       "channel": "unknown",
-      "text": "Desk update: I'm currently scrutinizing the walk-forward results for our *ML directional model \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781290210.6215253,
-      "score": 5
+      "ts": "2026-06-13 23:31:24"
     },
     {
-      "emp": "ml_researcher",
+      "emp": "ml_lead",
+      "score": 8,
+      "reason": "Provides specific, actionable points to address overfitting, including adjusting model parameters, and monitors relevant market metrics for potential trading opportunities.",
       "channel": "unknown",
-      "text": "Working on *TFT v2.1 performance analysis* for the `FX_ \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781290226.0673633,
-      "score": 5
-    },
-    {
-      "emp": "momentum_quant",
-      "channel": "unknown",
-      "text": "Currently validating the *cross-sectional 12-1M U.S. Equity \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781290247.8816047,
-      "score": 2
-    },
-    {
-      "emp": "data_engineer_2",
-      "channel": "unknown",
-      "text": "Currently investigating a *missing bar* alert for **NVDA** on the **NASDAQ** \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781290271.2955835,
-      "score": 5
+      "ts": "2026-06-13 23:31:28"
     },
     {
       "emp": "risk_eng",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the risk, and identifies a potential breach of the capital split, providing a clear direction for further analysis.",
       "channel": "unknown",
-      "text": "*I'm monitoring the `var_metrics.csv` file, which indicates a 3.72% spike in Value-at-Risk (VaR) over the past 2 hours*. The `position_concentration.py` script is flagging a 27.5% concentration in the tech sector, exceeding our 25% threshold. *According to the `correlation_matrix.xlsx` file, the pai",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781303543.7058463,
-      "score": 9
+      "ts": "2026-06-13 23:31:33"
     },
+    {
+      "emp": "backend_lead",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifiable latency benchmarks, and concrete optimization targets, demonstrating a clear understanding of the task and a focused approach to improvement.",
+      "channel": "unknown",
+      "ts": "2026-06-13 23:31:37"
+    },
+    {
+      "emp": "qa_dir",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the risk, and identifies a concrete area of focus for improvement, which demonstrates a clear understanding of the task at hand.",
+      "channel": "unknown",
+      "ts": "2026-06-13 23:31:40"
+    },
+    {
+      "emp": "devops_dir",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the failure rate and deploy time, and identifies a relevant metric for root cause analysis.",
+      "channel": "unknown",
+      "ts": "2026-06-13 23:31:44"
+    },
+    {
+      "emp": "exec_eng",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-13 23:31:50"
+    },
+    {
+      "emp": "ml_researcher",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-13 23:31:58"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "vp_eng",
       "channel": "unknown",
@@ -1856,12 +1846,92 @@
       "provider": "litellm:groq",
       "ts": 1781382185.0720384,
       "score": 5
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*I'm closely monitoring the **funding_rate_btc.yaml** signal, which indicates a potential short squeeze in BTC perpetual futures*. The current **funding rate** is **0.045%** (3-standard deviation above mean), with **basis** at **-1.2%**. I'm watching for a potential **mean reversion** in the **BTCUS",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781393379.1852295,
+      "score": 9
+    },
+    {
+      "emp": "vp_eng",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the test results for `test_risk_engine.py`*, which has shown **3 flaky assertions** on Kelly fraction edge cases (lines 45-67). The failure rate is **1 false failure per 10 runs**, indicating a potential issue with the random seed in `conftest.py`. To address this, I plan to",
+      "provider": "litellm:groq",
+      "ts": 1781393474.5645812,
+      "score": 9
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the `mean_reversion_strategy.py` file, focusing on optimizing the `z_score_threshold` parameter to improve the strategy's **63.2%** win rate. The `backtest_results.csv` file shows that adjusting the threshold from **1.5** to **2.1** increases the Sharpe ratio from **0.85** t",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781393484.1309624,
+      "score": 9
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*I'm analyzing the performance of **tft_spy_daily.yaml** and found that the val_sharpe is 1.5 vs train_sharpe 2.8, indicating overfitting*. To address this, I plan to **reduce d_model from 64 to 32** and **increase dropout from 0.1 to 0.2**. Currently, the **funding rate** for BTC is **0.012** and t",
+      "provider": "litellm:groq",
+      "ts": 1781393488.2750072,
+      "score": 8
+    },
+    {
+      "emp": "risk_eng",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the `strategy_exposure.csv` file, where I've identified a potential breach of the 70/30 arbitrage/directional capital split, with 72.4% of capital allocated to directional strategies*. The `drawdown_metrics.json` file shows a 3.5% drawdown in the last hour, triggering a revi",
+      "provider": "litellm:groq",
+      "ts": 1781393493.091583,
+      "score": 8
+    },
+    {
+      "emp": "backend_lead",
+      "channel": "unknown",
+      "text": "*I'm currently refining the **broker adapter for Alpaca** in `services/alpaca_adapter.py`, where I'm optimizing the **order execution latency** to be under 50ms. The latest benchmark shows an average latency of **42.13ms** for 100 concurrent orders. I'm aiming to further reduce this latency by **10%",
+      "provider": "litellm:groq",
+      "ts": 1781393497.0787582,
+      "score": 8
+    },
+    {
+      "emp": "qa_dir",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the `tests/integration/test_trading_system.py` file, where I've identified a *98.5%* pass rate for the past 24 hours. My focus is on the remaining *1.5%* failure rate, specifically the `test_order_execution` function, which has failed *5 times* in the last hour. I'm working ",
+      "provider": "litellm:groq",
+      "ts": 1781393500.6840208,
+      "score": 8
+    },
+    {
+      "emp": "devops_dir",
+      "channel": "unknown",
+      "text": "*I'm currently investigating a deploy failure in our GitHub Actions pipeline, specifically in the `/.github/workflows/deploy.yml` file*. The **failure rate** has increased to 34.7% in the last 6 hours, with **average deploy time** exceeding 23 minutes. I'm analyzing the **`deploy_readiness` metric**",
+      "provider": "litellm:groq",
+      "ts": 1781393504.2516494,
+      "score": 8
+    },
+    {
+      "emp": "exec_eng",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the **execution_path_latency** metric in `/logs/execution_metrics.log**, which shows an average latency of **12.5ms** over the past hour. I'm focusing on optimizing the **order_routing** module, specifically the `/orders/routing.py` file, to reduce latency and **slippage_ris",
+      "provider": "litellm:groq",
+      "ts": 1781393510.5277865,
+      "score": 5
+    },
+    {
+      "emp": "ml_researcher",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the results of the `model_comparison.py` script, which shows that the **LSTM** model outperforms the others with a **MAE of 0.542** on the `data/2022_q1.csv` dataset*. The **TFT** model comes in second with a **MAE of 0.623**, while the **XGBoost** model has a **MAE of 0.751",
+      "provider": "litellm:groq",
+      "ts": 1781393518.0542452,
+      "score": 5
     }
   ],
   "last_providers": {
     "devops_dir": "litellm:groq",
-    "vp_eng": "Gemini(GEMINI_API_KEY_2)",
-    "alpha_dir": "litellm:groq",
+    "vp_eng": "litellm:groq",
+    "alpha_dir": "Gemini(GEMINI_API_KEY_2)",
     "ml_lead": "litellm:groq",
     "risk_eng": "litellm:groq",
     "backend_lead": "litellm:groq",
