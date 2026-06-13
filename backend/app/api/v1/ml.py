@@ -446,6 +446,29 @@ async def get_automl_status(
     }
 
 
+@router.get("/profit-forecast")
+async def get_profit_forecast(
+    current_user: User = Depends(get_current_user),
+):
+    """Latest weekly/monthly/yearly profit projection from the forecasting desk."""
+    from app.tasks.forecasting_desk import get_forecasting_desk
+    desk = get_forecasting_desk()
+    forecast = desk.last_forecast
+    if forecast is None:
+        forecast = await desk.compute()
+    return forecast
+
+
+@router.get("/security-audit")
+async def get_security_audit(
+    current_user: User = Depends(get_current_user),
+):
+    """Latest red-team static security-audit summary."""
+    from app.tasks.red_team import get_red_team
+    agent = get_red_team()
+    return agent.last_summary or {"total": 0, "note": "no scan completed yet"}
+
+
 @router.post("/automl-status/run-now")
 async def trigger_automl_cycle(
     current_user: User = Depends(get_current_user),
