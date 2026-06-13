@@ -8,6 +8,7 @@ import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
 import { TVAdvancedChart } from '../components/charts/TVAdvancedChart'
 import NewsSentimentPanel from '../components/trading/NewsSentimentPanel'
 import TradeMarkerChart from '../components/charts/TradeMarkerChart'
+import TraderLevel from '../components/gamification/TraderLevel'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -293,6 +294,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-5">
       {showLiveModal && <ConfirmLiveModal onConfirm={() => { dispatch(setMode('live')); setShowLiveModal(false) }} onCancel={() => setShowLiveModal(false)} />}
+
+      <TraderLevel />
 
       <div className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all duration-500 ${isLive ? 'bg-[#ff1744]/10 border border-[#ff1744]/40' : 'bg-[#f5a623]/10 border border-[#f5a623]/30'}`}>
         <div className="flex items-center gap-3">
