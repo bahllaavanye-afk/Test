@@ -413,6 +413,51 @@ async def get_training_report(
     }
 
 
+@router.get("/automl-status")
+async def get_automl_status(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Continuous-learning desk status: last cycle's promotions and per-symbol
+    champion/challenger scores. Reflects the live online-training loop.
+    """
+    from pathlib import Path
+    from app.config import settings as _settings
+
+    state_path = Path(_settings.models_dir).parent / "experiments" / "results" / "automl_desk.json"
+    last_cycle = None
+    try:
+        import json as _json
+        if state_path.exists():
+            last_cycle = _json.loads(state_path.read_text())
+    except Exception as e:
+        logger.warning("automl-status: could not read desk state", error=str(e))
+
+    return {
+        "running": True,
+        "mode": "continuous_online_fine_tuning",
+        "explanation": (
+            "Champion models are fine-tuned on the newest real bars every cycle "
+            "(seconds per update, not days). A challenger only replaces the live "
+            "champion if it beats it on a held-out validation slice."
+        ),
+        "last_cycle": last_cycle,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/automl-status/run-now")
+async def trigger_automl_cycle(
+    current_user: User = Depends(get_current_user),
+):
+    """Kick a single AutoML fine-tuning cycle immediately (does not block)."""
+    import asyncio as _asyncio
+    from app.tasks.automl_desk import get_automl_desk
+
+    _asyncio.create_task(get_automl_desk().run_cycle())
+    return {"status": "triggered", "at": datetime.now(timezone.utc).isoformat()}
+
+
 @router.get("/agent-status")
 async def get_agent_status(
     current_user: User = Depends(get_current_user),

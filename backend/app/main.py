@@ -148,6 +148,11 @@ async def lifespan(app: FastAPI):
     modeling_engineer = ModelingEngineer(interval_seconds=1800)
     app.state.modeling_engineer = modeling_engineer
 
+    # AutoML desk: continuous online fine-tuning on the freshest real data.
+    from app.tasks.automl_desk import get_automl_desk
+    automl_desk = get_automl_desk()
+    app.state.automl_desk = automl_desk
+
     bg_tasks = []
     app.state.bg_tasks = bg_tasks
 
@@ -163,6 +168,7 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: qa_monitor.run(), "qa_monitor")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: research_scientist.run(), "research_scientist")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: modeling_engineer.run(), "modeling_engineer")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: automl_desk.run(), "automl_desk")))
 
     # ── Strategy runner + price feed ──────────────────────────────────────────
     # Build the Alpaca broker (returns None gracefully when API keys are absent)
