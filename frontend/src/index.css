@@ -56,6 +56,13 @@ body {
   body::before { display: none; }
   /* Never let a wide table/grid force horizontal page scroll on mobile. */
   #root { max-width: 100vw; overflow-x: hidden; }
+
+  /* Landing page: inline-styled fixed grids must collapse on phones.
+     !important is required because inline styles outrank normal class rules. */
+  .landing-metrics-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 1px !important; }
+  .landing-metrics-grid > div { border-right: none !important; padding: 16px 8px !important; }
+  .landing-grid-3 { grid-template-columns: 1fr !important; }
+  .landing-grid-2 { grid-template-columns: 1fr !important; }
 }
 
 /* Honor users who prefer reduced motion — disable the heavier animations. */
