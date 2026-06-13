@@ -1,9 +1,9 @@
 """Options flow scanner — unusual activity detection."""
 from __future__ import annotations
-import asyncio
+
 import random
 from dataclasses import dataclass
-from datetime import datetime, timezone, date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
 
@@ -43,10 +43,10 @@ class OptionsFlowScanner:
 
     def __init__(self):
         self._cache: list[OptionsFlow] = []
-        self._last_refresh = datetime.min.replace(tzinfo=timezone.utc)
+        self._last_refresh = datetime.min.replace(tzinfo=UTC)
 
     async def scan(self, refresh_seconds: int = 60) -> list[OptionsFlow]:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if (now - self._last_refresh).total_seconds() < refresh_seconds and self._cache:
             return self._cache
         self._cache = self._generate_flow()
@@ -82,7 +82,7 @@ class OptionsFlowScanner:
                     ticker=ticker, expiry=expiry, strike=strike, option_type=opt_type,
                     premium=premium, volume=vol, open_interest=oi,
                     iv_percentile=round(iv_pct, 1), sentiment=sentiment,
-                    is_unusual=is_unusual, timestamp=datetime.now(timezone.utc),
+                    is_unusual=is_unusual, timestamp=datetime.now(UTC),
                 ))
         # Sort unusual first
         flows.sort(key=lambda f: (not f.is_unusual, -f.premium))

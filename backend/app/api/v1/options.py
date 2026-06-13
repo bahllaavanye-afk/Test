@@ -8,21 +8,21 @@ from __future__ import annotations
 
 import asyncio
 import math
-from datetime import date, datetime, timezone
-from typing import Literal, Optional
+from datetime import UTC, date, datetime
+from typing import Literal
 
 import httpx
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.config import settings
 from app.database import get_db
-from app.models.user import User
 from app.models.account import Account
+from app.models.user import User
 
 router = APIRouter(prefix="/options", tags=["options"])
 
@@ -245,7 +245,7 @@ async def get_options_expirations(
 
 
 class OptionsRulesRequest(BaseModel):
-    account_id: Optional[str] = None
+    account_id: str | None = None
     symbol: str
     option_symbol: str
     expiration_date: str  # YYYY-MM-DD
@@ -272,7 +272,7 @@ async def _fetch_account_equity(account_id: str, current_user: User, db: AsyncSe
         return 0.0
 
 
-async def _fetch_iv_rank(symbol: str) -> Optional[float]:
+async def _fetch_iv_rank(symbol: str) -> float | None:
     """
     Compute a proxy IV rank from Alpaca historical bars using 52-week realized vol.
     Returns a value 0–100 representing where current IV sits vs 52-week range.
@@ -282,7 +282,7 @@ async def _fetch_iv_rank(symbol: str) -> Optional[float]:
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
-    start_dt = (datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_dt = (datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
                 - __import__("datetime").timedelta(days=380)).strftime("%Y-%m-%d")
 
     try:
@@ -693,8 +693,8 @@ async def options_scanner(
 
 # ── Legacy endpoints (kept for backward compatibility) ──────────────────────
 from app.options.flow import scanner  # noqa: E402
+from app.options.macro_calendar import get_next_fomc, get_upcoming_events  # noqa: E402
 from app.options.wheel import find_wheel_opportunities  # noqa: E402
-from app.options.macro_calendar import get_upcoming_events, get_next_fomc  # noqa: E402
 
 
 @router.get("/flow")

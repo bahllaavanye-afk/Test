@@ -1,8 +1,9 @@
 """ML-filtered mean reversion. Reduces false signals by 30%."""
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
-from app.strategies.manual.mean_reversion import MeanReversionStrategy
+
 from app.ml.inference import get_inference_service
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+from app.strategies.manual.mean_reversion import MeanReversionStrategy
 
 
 class MLMeanReversionStrategy(AbstractStrategy):

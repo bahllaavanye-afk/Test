@@ -19,10 +19,7 @@ Exports:
 """
 from __future__ import annotations
 
-import asyncio
-import json
 import math
-from pathlib import Path
 
 import numpy as np
 
@@ -44,10 +41,9 @@ try:
 except ImportError:
     _HAS_SKLEARN = False
 
+from app.ml.features.engineer import add_labels, create_sequences, engineer_features
 from app.ml.models.base_model import AbstractModel, EvalMetrics
-from app.ml.features.engineer import engineer_features, create_sequences, add_labels
 from app.ml.training.trainer import ARTIFACTS_DIR
-
 
 # ---------------------------------------------------------------------------
 # PatchEncoder — reusable patch-embedding + TransformerEncoder block

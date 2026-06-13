@@ -31,7 +31,7 @@ Sizing:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
@@ -98,7 +98,7 @@ class PolyNearResolution(AbstractStrategy):
     def _days_to_resolution(self, end_date_str: str) -> float:
         try:
             end = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-            delta = (end - datetime.now(timezone.utc)).total_seconds() / 86400.0
+            delta = (end - datetime.now(UTC)).total_seconds() / 86400.0
             return delta
         except Exception:
             return 9999.0

@@ -1,14 +1,17 @@
 """Holistic strategy review — runs daily at 06:00 UTC."""
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+
 from app.utils.logging import logger
 
 
 async def run_holistic_review(db_session_factory=None) -> None:
     """Review all active strategy promotions and fire Slack alerts for promotion-ready ones."""
     from sqlalchemy import select
+
     from app.models.promotion import StrategyPromotion
-    from app.tasks.promotion_criteria import check_criteria, TRANSITION_MAP
+    from app.tasks.promotion_criteria import TRANSITION_MAP, check_criteria
 
     if db_session_factory is None:
         from app.database import AsyncSessionLocal as db_session_factory
@@ -36,7 +39,7 @@ async def run_holistic_review(db_session_factory=None) -> None:
                 metrics = _get_stage_metrics(p)
                 passed, failures = check_criteria(metrics, transition)
 
-                ts = datetime.now(timezone.utc).isoformat()
+                ts = datetime.now(UTC).isoformat()
                 entry = {
                     "ts": ts,
                     "stage": p.current_stage,

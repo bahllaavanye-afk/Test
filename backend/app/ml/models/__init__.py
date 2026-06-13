@@ -1,5 +1,6 @@
 """ML model registry — all model classes importable from here."""
 import logging
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.ml.models.ensemble_model import EnsembleModel
 
@@ -44,7 +45,7 @@ except ImportError as e:
     get_gemini_engine = None  # type: ignore[assignment]
 
 try:
-    from app.ml.models.patch_tst import PatchTST, PatchEncoder
+    from app.ml.models.patch_tst import PatchEncoder, PatchTST
 except ImportError as e:
     logger.warning(f"PatchTST unavailable (missing deps): {e}")
     PatchTST = None   # type: ignore[assignment,misc]

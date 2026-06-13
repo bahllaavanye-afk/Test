@@ -1,9 +1,10 @@
 """Wheel strategy signal generator (cash-secured puts → covered calls)."""
 from __future__ import annotations
+
+import random
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
-import random
 
 
 @dataclass

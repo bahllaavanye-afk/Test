@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 
@@ -111,7 +111,7 @@ class PolyKalshiArb(AbstractStrategy):
             close_dt = datetime.fromisoformat(
                 close_time_str.replace("Z", "+00:00")
             )
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return (close_dt - now).total_seconds() / 86400.0
         except Exception:
             return 9999.0
@@ -128,7 +128,7 @@ class PolyKalshiArb(AbstractStrategy):
         - Both markets close within MAX_DAYS_TO_CLOSE days
         """
         matches: list[tuple[dict, dict, float]] = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cutoff_dt = now + timedelta(days=self.MAX_DAYS_TO_CLOSE)
 
         for km in kalshi_markets:

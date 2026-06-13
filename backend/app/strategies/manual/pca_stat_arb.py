@@ -20,7 +20,6 @@ from sklearn.decomposition import PCA
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
-
 # Default basket: top 20 liquid US equities (S&P 500 large-cap)
 DEFAULT_BASKET = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "META",

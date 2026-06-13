@@ -1,8 +1,9 @@
 """ML-enhanced momentum: Jegadeesh-Titman signals filtered by LSTM + XGBoost ensemble."""
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
-from app.strategies.manual.momentum import MomentumStrategy
+
 from app.ml.inference import get_inference_service
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+from app.strategies.manual.momentum import MomentumStrategy
 
 
 class MLMomentumStrategy(AbstractStrategy):

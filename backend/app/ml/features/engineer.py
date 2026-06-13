@@ -3,15 +3,16 @@ Master feature engineering pipeline.
 All features are computed without lookahead bias (shift applied where needed).
 Features are used both for ML training and live inference.
 """
-import pandas as pd
 import numpy as np
-from app.ml.features.technical import add_technical_features
-from app.ml.features.advanced_indicators import add_advanced_features, ADVANCED_FEATURE_COLS
-from app.ml.features.wavelet_features import add_wavelet_features, WAVELET_FEATURE_COLS
-from app.ml.features.multi_timeframe import add_multi_timeframe_features, MTF_FEATURE_COLS
-from app.ml.features.microstructure import add_vpin_feature, MICROSTRUCTURE_FEATURE_COLS
-from app.ml.features.alternative import add_alternative_features, ALTERNATIVE_FEATURE_COLS
+import pandas as pd
+
+from app.ml.features.advanced_indicators import ADVANCED_FEATURE_COLS, add_advanced_features
+from app.ml.features.alternative import ALTERNATIVE_FEATURE_COLS, add_alternative_features
+from app.ml.features.microstructure import MICROSTRUCTURE_FEATURE_COLS, add_vpin_feature
+from app.ml.features.multi_timeframe import MTF_FEATURE_COLS, add_multi_timeframe_features
 from app.ml.features.normalization import FeatureScaler
+from app.ml.features.technical import add_technical_features
+from app.ml.features.wavelet_features import WAVELET_FEATURE_COLS, add_wavelet_features
 
 # Social sentiment feature columns added for crypto market_type
 SOCIAL_SENTIMENT_FEATURE_COLS = [

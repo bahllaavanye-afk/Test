@@ -1,7 +1,6 @@
 """BotRunner — schedules and executes all enabled bots via APScheduler."""
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -51,9 +50,9 @@ class BotRunner:
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
         try:
+            from app.bots.engine import BotEngine
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
-            from app.bots.engine import BotEngine
 
             engine = BotEngine()
             async with AsyncSessionLocal() as db:
@@ -73,7 +72,7 @@ class BotRunner:
         except Exception as exc:
             logger.error("Bot run failed", bot_id=bot_id, error=str(exc))
 
-    async def reschedule(self, bot: "Bot") -> None:
+    async def reschedule(self, bot: Bot) -> None:
         """Add or update a bot job in the scheduler."""
         try:
             trigger_cfg: dict = bot.trigger or {}
@@ -96,7 +95,7 @@ class BotRunner:
                 logger.debug("Bot scheduled", bot_id=bot.id, interval=interval_str)
 
             elif trigger_type in ("price_cross", "indicator"):
-                # For non-schedule triggers, poll every 5 minutes and let the engine decide
+                # For non-schedule triggers, poll every 1 minute and let the engine decide
                 self._scheduler.add_job(
                     self._run_bot,
                     "interval",
@@ -104,7 +103,7 @@ class BotRunner:
                     id=job_id,
                     replace_existing=True,
                     max_instances=1,
-                    minutes=5,
+                    minutes=1,
                 )
                 logger.debug("Bot scheduled (poll)", bot_id=bot.id, trigger=trigger_type)
 

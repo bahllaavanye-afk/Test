@@ -5,6 +5,7 @@ GPU-maximized: mixed-precision, cudnn benchmark, multi-GPU, gradient accumulatio
 gradient clipping, and optimized DataLoader kwargs.
 """
 from __future__ import annotations
+
 import os
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ except ImportError:
 
 try:
     import lightning as L
-    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+    from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
     from lightning.pytorch.loggers import MLFlowLogger
     HAS_LIGHTNING = True
 except ImportError:

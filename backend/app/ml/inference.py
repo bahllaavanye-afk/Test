@@ -2,13 +2,15 @@
 Unified ML inference service. Loaded once at app startup.
 Provides ensemble predictions for any symbol.
 """
-import pandas as pd
-from typing import Any
-from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
-from app.ml.features.normalization import FeatureScaler
-from app.config import settings
 from pathlib import Path
+from typing import Any
+
+import pandas as pd
 import structlog
+
+from app.config import settings
+from app.ml.features.engineer import FEATURE_COLS, create_sequences, engineer_features
+from app.ml.features.normalization import FeatureScaler
 
 logger = structlog.get_logger()
 
@@ -147,14 +149,17 @@ class InferenceService:
                         predictions["lstm"] = prob
 
             if "xgboost" in self.models:
-                import numpy as np
                 X_flat = feat_df[FEATURE_COLS].values[-1:]
                 prob = float(self.models["xgboost"].predict_proba(X_flat)[0])
                 predictions["xgboost"] = prob
 
             if "lorentzian" in self.models:
-                from app.ml.models.lorentzian_knn import compute_lorentzian_features, LORENTZIAN_FEATURES
-                import torch, numpy as np
+                import torch
+
+                from app.ml.models.lorentzian_knn import (
+                    LORENTZIAN_FEATURES,
+                    compute_lorentzian_features,
+                )
                 lf = compute_lorentzian_features(data)
                 x = torch.tensor(lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32)
                 prob = float(self.models["lorentzian"].forward(x).item())
@@ -193,7 +198,6 @@ class InferenceService:
             # N-BEATS (stable extended-horizon forecasting)
             if "nbeats" in self.models:
                 try:
-                    import numpy as np
                     X_flat = feat_df[FEATURE_COLS].values[-1:]
                     out = self.models["nbeats"].predict_proba(X_flat)
                     predictions["nbeats"] = float(out[0] if hasattr(out, "__len__") else out)

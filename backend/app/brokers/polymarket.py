@@ -5,7 +5,6 @@ Supports YES/NO binary market trading and arbitrage scanning.
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
-from app.config import settings
 
 try:
     from py_clob_client.client import ClobClient

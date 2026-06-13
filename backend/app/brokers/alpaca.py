@@ -17,7 +17,7 @@ pairs (USDC/USDT, DAI/USDT) use BinanceBroker — those are not
 available on Alpaca spot.
 """
 import asyncio
-from datetime import datetime, timezone
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.config import settings
 from app.utils.exceptions import BrokerError
@@ -28,18 +28,22 @@ from app.utils.logging import logger
 _ALPACA_CONCURRENCY = 10
 
 try:
-    from alpaca.trading.client import TradingClient
-    from alpaca.trading.requests import (
-        MarketOrderRequest, LimitOrderRequest, StopOrderRequest,
-        GetOrdersRequest,
-    )
-    from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
-    from alpaca.data.historical import StockHistoricalDataClient, CryptoHistoricalDataClient
+    from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
     from alpaca.data.requests import (
-        StockBarsRequest, StockLatestQuoteRequest,
-        CryptoBarsRequest, CryptoLatestQuoteRequest,
+        CryptoBarsRequest,
+        CryptoLatestQuoteRequest,
+        StockBarsRequest,
+        StockLatestQuoteRequest,
     )
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
+    from alpaca.trading.requests import (
+        GetOrdersRequest,
+        LimitOrderRequest,
+        MarketOrderRequest,
+        StopOrderRequest,
+    )
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
@@ -47,8 +51,8 @@ except ImportError:
 
 # Bracket order support — imported lazily so missing symbols don't break the module
 try:
-    from alpaca.trading.requests import TakeProfitRequest, StopLossRequest
     from alpaca.trading.enums import OrderClass
+    from alpaca.trading.requests import StopLossRequest, TakeProfitRequest
     ALPACA_BRACKET_AVAILABLE = True
 except ImportError:
     ALPACA_BRACKET_AVAILABLE = False
@@ -77,7 +81,6 @@ def create_alpaca_broker(paper: bool = True) -> "AlpacaBroker | None":
     In paper/dev mode without API keys the process must not crash — the strategy
     runner simply runs in signal-only mode (no orders submitted) when broker is None.
     """
-    from app.config import settings
 
     api_key = settings.alpaca_api_key
     secret_key = settings.alpaca_secret_key

@@ -10,10 +10,9 @@ Example: BTC→ETH→USDT→BTC
   - Buy BTC with USDT: BTC_USDT ask
   Profit = product of all conversion rates - 1
 """
-import itertools
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 # Most liquid Binance triangles
 TRIANGLE_UNIVERSE = [

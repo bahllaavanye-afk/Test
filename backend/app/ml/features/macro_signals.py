@@ -6,18 +6,19 @@ Free macro signal sources (no API key required for basic use):
   - Apewisdom Reddit WSB sentiment (free, no key)
 """
 from __future__ import annotations
-import asyncio
-import aiohttp
-from datetime import datetime, timezone, date, timedelta
-from typing import Optional
-from app.utils.logging import logger
 
+import asyncio
+from datetime import UTC, datetime
+
+import aiohttp
+
+from app.utils.logging import logger
 
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 APEWISDOM_URL = "https://apewisdom.io/api/v1.0/filter/all-stocks/page/1"
 
 
-async def _fred_latest(series_id: str, api_key: str = "DEMO_KEY") -> Optional[float]:
+async def _fred_latest(series_id: str, api_key: str = "DEMO_KEY") -> float | None:
     """Fetch latest value from FRED. DEMO_KEY allows 500 req/day — no registration needed."""
     url = f"{FRED_BASE}?series_id={series_id}&api_key={api_key}&file_type=json&sort_order=desc&limit=1"
     try:
@@ -87,7 +88,7 @@ async def get_macro_snapshot() -> dict:
         "signals": signals,
         "macro_score": macro_score,           # -3 to +3: positive = risk-on environment
         "macro_bias": "risk_on" if macro_score >= 1 else "risk_off" if macro_score <= -1 else "neutral",
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "fetched_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -109,7 +110,7 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
                     results = [r for r in results if r.get("ticker", "").upper() in ticker_set]
                 return {
                     "results": results[:20],
-                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "fetched_at": datetime.now(UTC).isoformat(),
                     "source": "apewisdom.io (reddit wsb)",
                 }
     except Exception as e:
@@ -125,7 +126,7 @@ MACRO_CACHE_SECONDS = 300  # 5 min
 
 async def get_macro_snapshot_cached() -> dict:
     global _macro_cache, _macro_cache_time
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if _macro_cache_time and (now - _macro_cache_time).total_seconds() < MACRO_CACHE_SECONDS:
         return _macro_cache
     _macro_cache = await get_macro_snapshot()

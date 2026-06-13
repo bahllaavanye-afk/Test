@@ -12,11 +12,10 @@ The signal is computed by:
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import re
-import json
-import asyncio
-from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np

@@ -9,11 +9,9 @@ Enhanced with:
 """
 import json
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from app.utils.logging import logger
-
 
 CHANNELS = {
     "strategy": "agent:findings:strategy",
@@ -44,7 +42,7 @@ class AgentBus:
             "from": from_agent,
             "channel": channel,
             "content": message,
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
         })
         if self.redis:
             try:
@@ -60,7 +58,7 @@ class AgentBus:
             "task": task,
             "from": from_agent,
             "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         })
         if self.redis:
             try:
@@ -70,7 +68,7 @@ class AgentBus:
                 logger.warning("AgentBus.post_task failed", target=target_agent, error=str(e))
         return task_id
 
-    async def claim_task(self, agent_name: str) -> Optional[dict]:
+    async def claim_task(self, agent_name: str) -> dict | None:
         if not self.redis:
             return None
         try:
@@ -150,7 +148,7 @@ class AgentBus:
         Used by GNN coordinator to fan-out enhanced signals to strategy agents.
         Persists to a bounded Redis list for replay/audit.
         """
-        enriched = {**signal, "from": from_agent, "broadcast_ts": datetime.now(timezone.utc).isoformat()}
+        enriched = {**signal, "from": from_agent, "broadcast_ts": datetime.now(UTC).isoformat()}
         await self.publish("signals", enriched, from_agent=from_agent)
         if self.redis:
             try:

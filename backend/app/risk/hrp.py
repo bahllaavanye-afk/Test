@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
+from scipy.cluster.hierarchy import leaves_list, linkage, to_tree
 from scipy.spatial.distance import squareform
 
 

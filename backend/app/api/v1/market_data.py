@@ -1,12 +1,14 @@
 """Market data endpoints: quotes, historical OHLCV, news, earnings, IV Rank, PCR."""
-from fastapi import APIRouter, Depends, Query, HTTPException
-from app.api.deps import get_current_user
-from app.models.user import User
-from app.config import settings
 import asyncio
-import httpx
 import math
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.api.deps import get_current_user
+from app.config import settings
+from app.models.user import User
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/market-data", tags=["market_data"])
@@ -59,7 +61,7 @@ def _period_to_start(period: str) -> str:
         "5y": 1825,
     }
     days = days_map.get(period, 365)
-    start_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    start_dt = datetime.now(UTC) - timedelta(days=days)
     return start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -275,7 +277,7 @@ async def get_bars_query(
     # Estimate start date: assume worst case 2 bars/day for intraday, 1/day for daily+
     intraday = tf in ("1Min", "5Min", "15Min", "1Hour", "4Hour")
     lookback_days = max(int(limit / 6.5) + 5, 30) if intraday else limit + 30
-    start = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start = (datetime.now(UTC) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     bars = await _fetch_alpaca_bars(symbol, tf, start, limit=limit)
     return bars
@@ -389,7 +391,7 @@ async def _compute_iv_rank(symbol: str) -> dict:
     sym_upper = symbol.upper()
 
     # 1. Fetch 52 weeks of daily bars
-    start = (datetime.now(timezone.utc) - timedelta(days=370)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start = (datetime.now(UTC) - timedelta(days=370)).strftime("%Y-%m-%dT%H:%M:%SZ")
     bars = await _fetch_alpaca_bars(sym_upper, "1Day", start, limit=1000)
     if len(bars) < 25:
         raise HTTPException(status_code=422, detail=f"Insufficient data for {sym_upper} IV Rank calculation (got {len(bars)} bars, need 25+)")
@@ -479,7 +481,7 @@ async def _compute_iv_rank(symbol: str) -> dict:
         "regime": regime,
         "trade_signal": trade_signal,
         "term_structure": term_structure,
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
         "source": source,
     }
 
@@ -656,7 +658,7 @@ async def get_pcr(
             "confidence": None,
             "regime": "unavailable",
             "source": "no_credentials",
-            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "computed_at": datetime.now(UTC).isoformat(),
         }
 
     headers = {
@@ -681,7 +683,7 @@ async def get_pcr(
                     "confidence": None,
                     "regime": "unavailable",
                     "source": f"alpaca_error_{resp.status_code}",
-                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "computed_at": datetime.now(UTC).isoformat(),
                 }
 
             data = resp.json()
@@ -710,7 +712,7 @@ async def get_pcr(
                     "confidence": None,
                     "regime": "unavailable",
                     "source": "no_call_volume",
-                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "computed_at": datetime.now(UTC).isoformat(),
                 }
 
             pcr = round(put_vol / call_vol, 4)
@@ -740,7 +742,7 @@ async def get_pcr(
                 "pcr_high_threshold": PCR_HIGH,
                 "pcr_low_threshold": PCR_LOW,
                 "source": "alpaca_options",
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
             }
 
     except httpx.TimeoutException:
@@ -753,7 +755,7 @@ async def get_pcr(
             "confidence": None,
             "regime": "unavailable",
             "source": "timeout",
-            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "computed_at": datetime.now(UTC).isoformat(),
         }
     except Exception as exc:
         logger.warning("PCR endpoint failed", symbol=sym_upper, error=str(exc))
@@ -766,7 +768,7 @@ async def get_pcr(
             "confidence": None,
             "regime": "unavailable",
             "source": str(exc),
-            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "computed_at": datetime.now(UTC).isoformat(),
         }
 
 
@@ -797,7 +799,7 @@ async def get_sector_heatmap(
     # Fetch today's bar and yesterday's close for each ETF concurrently
     async def _pct_change(sym: str) -> dict:
         try:
-            start = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            start = (datetime.now(UTC) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
             bars = await _fetch_alpaca_bars(sym, "1Day", start, limit=5)
             if len(bars) >= 2:
                 prev_close = bars[-2]["close"]
@@ -866,7 +868,7 @@ async def get_economic_calendar(
                         "file_type": "json",
                         "limit": 3,
                         "sort_order": "desc",
-                        "observation_start": (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d"),
+                        "observation_start": (datetime.now(UTC) - timedelta(days=365)).strftime("%Y-%m-%d"),
                     },
                 )
                 if resp.status_code != 200:
@@ -883,10 +885,10 @@ async def get_economic_calendar(
                 release_date = latest.get("date", "")
                 try:
                     scheduled_at = datetime.strptime(release_date, "%Y-%m-%d").replace(
-                        hour=8, minute=30, tzinfo=timezone.utc
+                        hour=8, minute=30, tzinfo=UTC
                     ).isoformat()
                 except ValueError:
-                    scheduled_at = datetime.now(timezone.utc).isoformat()
+                    scheduled_at = datetime.now(UTC).isoformat()
 
                 actual_val = latest.get("value")
                 if actual_val in (".", "", None):

@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import os
 import pickle
-import numpy as np
-from typing import Optional
 
+import numpy as np
 
 # ── Baum-Welch fallback (pure NumPy) ─────────────────────────────────────────
 
@@ -126,7 +125,7 @@ class RegimeDetector:
     N_STATES = 3
 
     def __init__(self):
-        self._model: Optional[_BaumWelchHMM] = None
+        self._model: _BaumWelchHMM | None = None
         self._state_map: dict[int, int] = {0: 0, 1: 1, 2: 2}
         self._use_hmmlearn = False
         self._hmmlearn_model = None
@@ -136,7 +135,7 @@ class RegimeDetector:
         r = np.asarray(returns, dtype=float)
         return np.column_stack([r, np.abs(r)])
 
-    def fit(self, returns: np.ndarray) -> "RegimeDetector":
+    def fit(self, returns: np.ndarray) -> RegimeDetector:
         X = self._build_features(returns)
         try:
             from hmmlearn.hmm import GaussianHMM  # type: ignore[import]
@@ -198,7 +197,7 @@ class RegimeDetector:
             }, f)
 
     @classmethod
-    def load(cls, path: str) -> "RegimeDetector":
+    def load(cls, path: str) -> RegimeDetector:
         with open(path, "rb") as f:
             data = pickle.load(f)
         det = cls()

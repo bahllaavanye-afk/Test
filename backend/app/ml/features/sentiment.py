@@ -3,10 +3,12 @@ Market sentiment features: Fear & Greed Index + FinBERT news sentiment.
 Free APIs only. All features are lagged by 1 period to prevent lookahead.
 """
 from __future__ import annotations
-import asyncio
+
+from datetime import UTC, datetime
+
 import httpx
 import pandas as pd
-from datetime import datetime, timezone, timedelta
+
 from app.utils.logging import logger
 
 
@@ -24,7 +26,7 @@ async def fetch_fear_greed_index() -> dict:
         result = []
         for r in readings:
             result.append({
-                "date": datetime.fromtimestamp(int(r["timestamp"]), tz=timezone.utc).date(),
+                "date": datetime.fromtimestamp(int(r["timestamp"]), tz=UTC).date(),
                 "value": int(r["value"]),
                 "classification": r["value_classification"],
             })
@@ -114,8 +116,8 @@ class SECFilingSentiment:
 
     def get_cik(self, ticker: str) -> int | None:
         """Look up CIK from SEC EDGAR company tickers JSON (free, no key needed)."""
-        import urllib.request
         import json
+        import urllib.request
 
         try:
             req = urllib.request.Request(
@@ -146,8 +148,8 @@ class SECFilingSentiment:
         if cik is None:
             return None
 
-        import urllib.request
         import json
+        import urllib.request
 
         try:
             url = self.EDGAR_SUBMISSIONS.format(cik=cik)

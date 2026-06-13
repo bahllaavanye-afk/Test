@@ -1,7 +1,8 @@
 """Ensemble strategy: pure ML signal from all models combined."""
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
 from app.ml.inference import get_inference_service
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class EnsembleStrategy(AbstractStrategy):

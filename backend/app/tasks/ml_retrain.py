@@ -3,10 +3,10 @@ Nightly ML retraining: downloads fresh data, retrains all active models,
 compares new vs old Sharpe, promotes if improved.
 """
 from __future__ import annotations
+
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import pandas as pd
 
 from app.utils.logging import logger
 
@@ -18,7 +18,7 @@ async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> d
     try:
         import yfinance as yf
         loop = asyncio.get_running_loop()
-        end = datetime.now(timezone.utc)
+        end = datetime.now(UTC)
         start = end - timedelta(days=730)
 
         hist = await loop.run_in_executor(
@@ -33,11 +33,11 @@ async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> d
         hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
 
         from app.ml.training.train_lstm import train
-        experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+        experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(UTC).strftime('%Y%m%d')}"
         result = await train(hist, experiment_name=experiment_name, max_epochs=30)
         result["symbol"] = symbol
         result["model"] = model_name
-        result["retrained_at"] = datetime.now(timezone.utc).isoformat()
+        result["retrained_at"] = datetime.now(UTC).isoformat()
         logger.info("Model retrained", **{k: v for k, v in result.items() if k != "best_model_path"})
         return result
 

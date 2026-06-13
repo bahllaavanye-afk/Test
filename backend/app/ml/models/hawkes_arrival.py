@@ -13,8 +13,9 @@ Reference: Hawkes (1971) "Spectra of Some Self-Exciting and Mutually Exciting Po
 """
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass
+
+import numpy as np
 
 
 @dataclass

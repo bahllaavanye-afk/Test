@@ -2,16 +2,18 @@
 import asyncio
 import logging
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.experiment import Experiment
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +92,7 @@ async def trigger_training(
         )
 
     experiment_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     exp = Experiment(
         id=experiment_id,

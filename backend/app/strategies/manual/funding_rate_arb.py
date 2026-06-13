@@ -27,8 +27,8 @@ Academic references:
 
 Documented Sharpe (proxy backtest): ~1.2–1.8 on BTC/ETH daily
 """
-import numpy as np
 import pandas as pd
+
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 

@@ -4,7 +4,9 @@ Participates at 10% of market volume across trading session.
 Minimizes market impact by timing with volume distribution.
 """
 from __future__ import annotations
+
 import asyncio
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 

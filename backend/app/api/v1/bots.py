@@ -1,9 +1,10 @@
 """Bot Builder API — CRUD + manual run + toggle + analytics."""
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -195,6 +196,7 @@ def _maybe_reschedule(bot: Bot) -> None:
     """Attempt to reschedule the bot in the global scheduler if available."""
     try:
         import asyncio
+
         from app.main import app as _app
         runner = getattr(_app.state, "bot_runner", None)
         if runner is None:
@@ -212,6 +214,7 @@ def _maybe_unschedule(bot_id: str) -> None:
     """Attempt to unschedule a deleted bot."""
     try:
         import asyncio
+
         from app.main import app as _app
         runner = getattr(_app.state, "bot_runner", None)
         if runner is None:
@@ -238,7 +241,7 @@ async def get_bot_stats(
     Uses Trade records where strategy_name = bot.name.
     """
     bot = await _get_user_bot(bot_id, current_user.id, db)
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     result = await db.execute(
         select(Trade).where(
@@ -374,7 +377,7 @@ async def get_bots_summary(
     )
     bots = bots_result.scalars().all()
 
-    since = datetime.now(timezone.utc) - timedelta(days=30)
+    since = datetime.now(UTC) - timedelta(days=30)
     rows = []
     for bot in bots:
         # Open positions

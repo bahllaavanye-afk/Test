@@ -10,7 +10,8 @@ making this a near-risk-free short-duration play when spreads widen.
 """
 import numpy as np
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class StatArbETFStrategy(AbstractStrategy):

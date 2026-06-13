@@ -1,8 +1,9 @@
 """APScheduler setup: hourly snapshots, nightly retraining, order sync."""
 from __future__ import annotations
+
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -35,7 +36,7 @@ async def signal_quality_monitor() -> None:
         from app.redis_client import redis_client
         # Post heartbeat
         if redis_client:
-            import json, time
+            import time
             await redis_client.set("monitor:signal_quality:last_run", str(time.time()), ex=600)
     except Exception as e:
         logger.error("signal_quality_monitor failed", error=str(e))
@@ -67,8 +68,9 @@ async def alpha_mining_cycle() -> None:
             logger.info("alpha_mining_cycle: ANTHROPIC_API_KEY not set — skipping")
             return
 
-        from experiments.alpha_mining.llm_alpha_miner import AlphaMiner
         import asyncio
+
+        from experiments.alpha_mining.llm_alpha_miner import AlphaMiner
 
         # Run in a thread to avoid blocking the event loop (sync I/O + yfinance)
         symbols = ["SPY", "QQQ", "BTCUSDT", "ETHUSDT"]
@@ -108,8 +110,8 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             factory = db_session_factory
 
         try:
-            from app.models.account import Account, AccountSnapshot
             from app.brokers.alpaca_orders import get_alpaca_account
+            from app.models.account import Account, AccountSnapshot
 
             async with factory() as db:
                 result = await db.execute(
@@ -125,7 +127,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                         snap = AccountSnapshot(
                             id=str(uuid.uuid4()),
                             account_id=acct.id,
-                            ts=datetime.now(timezone.utc),
+                            ts=datetime.now(UTC),
                             total_equity=float(data.get("equity", 0)),
                             cash=float(data.get("cash", 0)),
                             unrealized_pnl=float(data.get("unrealized_pl", 0)),
@@ -180,10 +182,11 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             factory = db_session_factory
 
         try:
-            from app.models.order import Order
-            from app.models.account import Account
-            from app.brokers.alpaca_orders import _headers, _base_url
             import httpx
+
+            from app.brokers.alpaca_orders import _base_url, _headers
+            from app.models.account import Account
+            from app.models.order import Order
 
             # Fetch all open orders from the DB
             async with factory() as db:
@@ -291,15 +294,16 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     async def _slack_employee_report():
         """Post hourly employee status to Slack #engineering."""
         try:
-            from app.notifications.slack import slack
+            from datetime import datetime
+
             from app.main import app as _app
-            from datetime import datetime, timezone
+            from app.notifications.slack import slack
 
             algo = getattr(_app.state, "algo_agent", None)
             research = getattr(_app.state, "research_scientist", None)
             modeling = getattr(_app.state, "modeling_engineer", None)
 
-            lines = [f"*QuantEdge Hourly Status* — {datetime.now(timezone.utc).strftime('%H:%M UTC')}"]
+            lines = [f"*QuantEdge Hourly Status* — {datetime.now(UTC).strftime('%H:%M UTC')}"]
             if algo:
                 lb = algo.get_leaderboard()
                 best = lb[0] if lb else {}
@@ -330,10 +334,11 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         symbols appropriate for that strategy's market_type.
         Skips polymarket strategies (no OHLCV) and runs already queued today.
         """
+        from datetime import date, timedelta
+
         from app.database import AsyncSessionLocal
         from app.models.backtest import BacktestRun
         from app.strategies import STRATEGY_REGISTRY
-        from datetime import date, timedelta
 
         # Symbol universe per market type — driven by strategy.market_type, not hardcoded
         SYMBOLS_BY_MARKET: dict[str, list[str]] = {
@@ -344,7 +349,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         INTERVAL = "1d"
         END = date.today()
         START = END - timedelta(days=730)
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
         queued = 0
         try:
@@ -372,7 +377,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                             start_date=START,
                             end_date=END,
                             status="queued",
-                            created_at=datetime.now(timezone.utc),
+                            created_at=datetime.now(UTC),
                         )
                         db.add(run)
                         queued += 1
@@ -397,16 +402,16 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         results older than 7 days. Caps at 3 per run to avoid overwhelming free-tier CPU.
         Cycles through all configs over time so everything stays fresh.
         """
-        import sys
         import json
-        from pathlib import Path
+        import sys
         from datetime import timedelta
+        from pathlib import Path
 
         configs_dir = Path(__file__).parents[3] / "experiments" / "configs"
         results_dir = Path(__file__).parents[3] / "experiments" / "results"
         results_dir.mkdir(parents=True, exist_ok=True)
 
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        stale_cutoff = datetime.now(UTC) - timedelta(days=7)
         due: list[Path] = []
 
         for cfg in sorted(configs_dir.glob("*.yaml")):
@@ -446,7 +451,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                 try:
                     await asyncio.wait_for(proc.communicate(), timeout=600)
                     logger.info("Experiment completed", config=cfg.name, returncode=proc.returncode)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     proc.kill()
                     logger.warning("Experiment timed out", config=cfg.name)
             except Exception as exc:
@@ -518,8 +523,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             return  # not a Supabase URL — no-op
 
         try:
-            from app.database import AsyncSessionLocal
             from sqlalchemy import text
+
+            from app.database import AsyncSessionLocal
             async with AsyncSessionLocal() as session:
                 await session.execute(text("SELECT 1"))
             logger.info("Supabase keep-alive ping succeeded")
@@ -541,8 +547,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
 
     async def _bot_exit_checker():
         """
-        Every 5 minutes: check all open bot paper positions for TP/SL hits
-        and create Trade records (Option Alpha-style trade history).
+        Every 1 minute: check all open bot paper positions for TP/SL/indicator exits
+        and create Trade records (Option Alpha-style trade history). 1m cadence gives
+        tight stop-loss/take-profit reaction across all desks.
         """
         try:
             from app.bots.engine import check_bot_exits
@@ -557,7 +564,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     scheduler.add_job(
         _bot_exit_checker,
         "interval",
-        minutes=5,
+        minutes=1,
         id="bot_exit_checker",
         replace_existing=True,
         max_instances=1,
@@ -570,9 +577,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         and submit close orders when triggered.
         """
         try:
-            from app.tasks.position_monitor import start_position_monitor
-            from app.redis_client import get_redis
             from app.database import AsyncSessionLocal
+            from app.redis_client import get_redis
+            from app.tasks.position_monitor import start_position_monitor
 
             # Build broker best-effort (same pattern as strategy_runner)
             _broker = None
@@ -789,8 +796,8 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     async def _run_holistic_review_job():
         """Daily at 06:00 UTC: holistic review of all active strategy promotions."""
         try:
-            from app.tasks.holistic_review import run_holistic_review
             from app.database import AsyncSessionLocal
+            from app.tasks.holistic_review import run_holistic_review
             await run_holistic_review(AsyncSessionLocal)
         except Exception as exc:
             logger.error("Holistic review job failed", error=str(exc))
@@ -808,8 +815,8 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     async def _run_promotion_metrics_sync():
         """Every 6 hours: sync live trade metrics into promotion pipeline."""
         try:
-            from app.tasks.promotion_metrics_sync import sync_promotion_metrics
             from app.database import AsyncSessionLocal
+            from app.tasks.promotion_metrics_sync import sync_promotion_metrics
             await sync_promotion_metrics(AsyncSessionLocal)
         except Exception as exc:
             logger.error("Promotion metrics sync failed", error=str(exc))

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import httpx
@@ -90,7 +90,7 @@ class IssueEscalator:
     # Build the escalation list from a QA report
     # ------------------------------------------------------------------
     @staticmethod
-    def build_escalations(report: "QAReport") -> list[dict]:
+    def build_escalations(report: QAReport) -> list[dict]:
         """
         Turn a QAReport into a list of escalation dicts. Only includes findings
         that the monitor could NOT auto-fix and that genuinely need review.
@@ -180,7 +180,7 @@ class IssueEscalator:
                 seen.add(fp)
         return seen
 
-    async def escalate(self, report: "QAReport") -> dict:
+    async def escalate(self, report: QAReport) -> dict:
         """
         Open GitHub issues for un-fixable QA findings, skipping ones already
         tracked. Returns a summary dict.
@@ -218,7 +218,7 @@ class IssueEscalator:
                         f"{esc['body']}\n\n"
                         f"---\n"
                         f"_Auto-filed by QA Monitor at "
-                        f"{datetime.now(timezone.utc).isoformat()}_\n"
+                        f"{datetime.now(UTC).isoformat()}_\n"
                         f"<!-- qa-fingerprint: {fp} -->"
                     )
                     labels = [

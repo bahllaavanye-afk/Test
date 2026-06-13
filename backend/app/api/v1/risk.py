@@ -1,15 +1,17 @@
 """Risk management endpoints."""
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.database import get_db
-from app.api.deps import get_current_user
-from app.models.risk import RiskRule, RiskEvent
-from app.models.user import User
-from app.models.trade import Trade
-from pydantic import BaseModel, ConfigDict
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.database import get_db
+from app.models.risk import RiskEvent, RiskRule
+from app.models.trade import Trade
+from app.models.user import User
 
 router = APIRouter(prefix="/risk", tags=["risk"])
 
@@ -74,7 +76,7 @@ async def create_rule(
         threshold=body.threshold,
         action=body.action,
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(rule)
     await db.commit()
@@ -174,8 +176,9 @@ async def get_factor_exposure(
     current_user: User = Depends(get_current_user),
 ):
     """Factor exposure analysis: market beta, momentum, low-vol."""
-    from app.risk.factor_exposure import compute_factor_exposure
     import numpy as np
+
+    from app.risk.factor_exposure import compute_factor_exposure
 
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
@@ -257,8 +260,9 @@ async def get_drawdown_recovery(
     current_user: User = Depends(get_current_user),
 ):
     """Estimate drawdown recovery time via Monte Carlo."""
-    from app.risk.drawdown_recovery import estimate_recovery
     import numpy as np
+
+    from app.risk.drawdown_recovery import estimate_recovery
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
     )

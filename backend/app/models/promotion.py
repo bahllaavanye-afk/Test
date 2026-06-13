@@ -1,7 +1,9 @@
 """Strategy promotion pipeline: paper → shadow → staging → live"""
 import uuid
-from sqlalchemy import String, Float, Integer, Boolean, JSON, Text, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from sqlalchemy import JSON, Boolean, ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 from app.models.base import TimestampMixin
 

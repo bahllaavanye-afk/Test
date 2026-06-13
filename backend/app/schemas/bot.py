@@ -1,8 +1,9 @@
 """Pydantic v2 schemas for the Bot builder."""
 from __future__ import annotations
-import uuid
+
 from datetime import datetime
 from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -21,6 +22,9 @@ class ConditionConfig(BaseModel):
     type: Literal["indicator", "price_vs_ma", "pnl", "time_window", "position_exists", "no_position"]
     indicator: str | None = None
     period: int = 14
+    # Multi-timeframe: which timeframe this condition evaluates on.
+    # None = use the bot's primary (trigger) timeframe. Allows e.g. trend on "1d", entry on "1m".
+    timeframe: str | None = None  # 1m|5m|15m|30m|1h|4h|1d
     operator: str = "<"   # < | > | == | != | crosses_above | crosses_below
     value: float | None = None
     ma_period: int | None = None
@@ -57,6 +61,8 @@ class ExitRuleConfig(BaseModel):
     period: int = 14
     operator: str = ">"
     indicator_value: float | None = None
+    # Multi-timeframe: which timeframe an indicator-based exit evaluates on.
+    timeframe: str | None = None  # 1m|5m|15m|30m|1h|4h|1d
 
 
 class BotCreate(BaseModel):

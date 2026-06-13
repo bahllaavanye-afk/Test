@@ -4,10 +4,10 @@ POST /slack/commands — validated with SLACK_SIGNING_SECRET.
 """
 import hashlib
 import hmac
-import json
 import os
 import time
-from fastapi import APIRouter, Request, HTTPException
+
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/slack", tags=["slack"])

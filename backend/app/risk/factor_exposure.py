@@ -5,9 +5,10 @@ are explained by common risk factors (market beta, momentum, low-vol).
 Standard at all hedge funds. Uniquely missing from open-source bots.
 """
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
-from typing import Optional
+
+import numpy as np
 
 
 @dataclass
@@ -51,8 +52,8 @@ def _interpret(fe: FactorExposure) -> str:
 def compute_factor_exposure(
     portfolio_returns: list[float],
     spy_returns: list[float],
-    momentum_factor: Optional[list[float]] = None,
-    low_vol_factor: Optional[list[float]] = None,
+    momentum_factor: list[float] | None = None,
+    low_vol_factor: list[float] | None = None,
 ) -> FactorExposure:
     """
     OLS regression of portfolio returns on factor returns.

@@ -4,7 +4,8 @@ Streams real-time comparison between manual and ML strategy signals.
 """
 import asyncio
 import time
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
 

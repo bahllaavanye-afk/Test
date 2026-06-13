@@ -1,14 +1,14 @@
 """Manual vs ML strategy comparison endpoints."""
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.comparison.benchmarks import get_benchmark_stats
+from app.database import get_db
 from app.models.comparison import ComparisonResult as ComparisonModel
 from app.models.user import User
-from app.comparison.benchmarks import get_benchmark_stats
-from pydantic import BaseModel, ConfigDict, ConfigDict
-from datetime import date
 
 router = APIRouter(prefix="/comparison", tags=["comparison"])
 

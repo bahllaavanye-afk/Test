@@ -22,10 +22,8 @@ Academic reference:
 """
 from __future__ import annotations
 
-from datetime import datetime, date, timedelta, timezone
-from typing import Any
+from datetime import UTC, date, datetime
 
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -132,7 +130,7 @@ class TokenUnlockFade(AbstractStrategy):
         if current_price <= 0:
             raise ValueError(f"TokenUnlockFade: invalid price {current_price}")
 
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         unlock_dates = self._get_unlock_entries(symbol)
 
         if not unlock_dates:

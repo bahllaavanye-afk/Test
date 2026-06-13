@@ -1,7 +1,8 @@
 """Screenshot capture utility. Uses Playwright if installed, falls back to dummy."""
 from __future__ import annotations
+
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -21,7 +22,7 @@ async def capture_dashboard(url: str = "http://localhost:5173", page: str = "") 
         logger.debug("Playwright not installed — skipping screenshot")
         return None
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     page_name = page.replace("/", "_") or "root"
     filepath = SCREENSHOTS_DIR / f"dashboard_{page_name}_{timestamp}.png"
 

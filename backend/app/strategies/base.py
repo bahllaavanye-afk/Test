@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+
 import pandas as pd
 
 
@@ -17,7 +17,7 @@ class Signal:
     stop_loss: float | None = None
     take_profit: float | None = None
     metadata: dict = field(default_factory=dict)
-    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass

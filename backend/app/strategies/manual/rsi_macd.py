@@ -3,8 +3,9 @@ RSI + MACD combined strategy.
 ~73% win rate in backtests with consistent parameter settings.
 """
 import pandas as pd
+
 import app.ml.features.pandas_ta_compat as ta
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class RSIMACDStrategy(AbstractStrategy):

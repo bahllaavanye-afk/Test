@@ -1,7 +1,10 @@
 """Polymarket late-resolution arbitrage strategy."""
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+
 import pandas as pd
+
 try:
     import httpx
     _HTTPX = True
@@ -48,7 +51,7 @@ class PolymarketLateResolution(AbstractStrategy):
     def _hours_to_resolution(self, end_date_str: str) -> float:
         try:
             end = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return (end - now).total_seconds() / 3600.0
         except Exception:
             return 9999.0

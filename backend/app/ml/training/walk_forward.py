@@ -5,9 +5,9 @@ Prevents temporal leakage by training only on past data at each fold.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -21,7 +21,7 @@ except ImportError:
     HAS_TORCH = False
 
 try:
-    from app.ml.features.engineer import engineer_features, create_sequences, add_labels
+    from app.ml.features.engineer import add_labels, create_sequences, engineer_features
     HAS_FEATURES = True
 except ImportError:
     HAS_FEATURES = False
@@ -46,7 +46,7 @@ class WalkForwardResult:
 def _build_tensors(
     df: pd.DataFrame,
     seq_len: int,
-) -> tuple["torch.Tensor", "torch.Tensor"]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Engineer features and create (X, y) tensors from a price DataFrame."""
     if not HAS_FEATURES:
         raise ImportError("app.ml.features.engineer not available")
@@ -62,9 +62,9 @@ def _build_tensors(
 
 
 def _train_one_fold(
-    model: "nn.Module",
-    train_loader: "DataLoader",
-    val_loader: "DataLoader",
+    model: nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
     max_epochs: int,
     lr: float = 1e-3,
     patience: int = 10,
@@ -134,7 +134,7 @@ def _sharpe_from_accuracy(val_accuracy: float) -> float:
 
 def walk_forward_validate(
     df: pd.DataFrame,
-    model_factory: Callable[[], "nn.Module"],
+    model_factory: Callable[[], nn.Module],
     n_folds: int = 5,
     train_window_days: int = 365,
     val_window_days: int = 90,

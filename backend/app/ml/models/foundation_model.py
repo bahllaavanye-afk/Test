@@ -6,8 +6,11 @@ These models can forecast without training on your data — huge alpha for rare 
 Install: pip install chronos-forecasting
 """
 from __future__ import annotations
-import numpy as np
+
 from typing import Literal
+
+import numpy as np
+
 from app.utils.logging import logger
 
 try:
@@ -52,7 +55,7 @@ class FoundationModelSignal:
             logger.info("Chronos loaded.")
         else:
             if self.model_name != "naive":
-                logger.warning(f"chronos not installed. Using naive baseline. pip install chronos-forecasting")
+                logger.warning("chronos not installed. Using naive baseline. pip install chronos-forecasting")
             self.model_name = "naive"
         self._loaded = True
 

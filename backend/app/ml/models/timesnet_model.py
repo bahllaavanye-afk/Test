@@ -19,10 +19,9 @@ Advantages over LSTM for finance:
 from __future__ import annotations
 
 import torch
+import torch.fft
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.fft
-from typing import Optional
 
 
 def _top_k_periods(x: torch.Tensor, k: int = 3) -> tuple[torch.Tensor, torch.Tensor]:
@@ -244,8 +243,7 @@ class TimesNetWrapper:
         x = x.unsqueeze(0).to(self.device)
         return float(self.model(x).item())
 
-    def save(self, path: str, metadata: Optional[dict] = None) -> None:
-        import json
+    def save(self, path: str, metadata: dict | None = None) -> None:
         from pathlib import Path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         torch.save({
@@ -255,7 +253,7 @@ class TimesNetWrapper:
         }, path)
 
     @classmethod
-    def load(cls, path: str) -> "TimesNetWrapper":
+    def load(cls, path: str) -> TimesNetWrapper:
         data = torch.load(path, map_location="cpu", weights_only=False)
         meta = data.get("metadata", {})
         wrapper = cls(

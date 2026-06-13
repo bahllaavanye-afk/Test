@@ -3,6 +3,7 @@ Company org chart as code. Each desk has a name, head, agents, and Slack channel
 Agents are autonomous workers that use the AgentBus and AgentMemory to collaborate.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 

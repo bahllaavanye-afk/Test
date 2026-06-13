@@ -1,15 +1,17 @@
 """ML model management and prediction endpoints."""
-from fastapi import APIRouter, Depends, Query, Body
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Body, Depends, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.ml_model import MLModel
 from app.models.user import User
 from app.utils.logging import logger
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timezone
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -46,8 +48,8 @@ async def list_signals(
     current_user: User = Depends(get_current_user),
 ):
     """Return recent ML prediction signals (latest per active model)."""
+
     from app.models.ml_model import MLPrediction
-    from sqlalchemy.orm import selectinload
     try:
         result = await db.execute(
             select(MLPrediction)
@@ -89,7 +91,6 @@ async def get_predictions(
     # Fetch recent market data for the symbol
     try:
         import yfinance as yf
-        import pandas as pd
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="6mo", interval="1d")
         if df.empty or len(df) < 60:
@@ -140,9 +141,9 @@ async def optimize_ensemble_weights(
     inference service weights immediately.
     """
     from fastapi import HTTPException
+
+    from app.ml.features.engineer import FEATURE_COLS, create_sequences, engineer_features
     from app.ml.inference import get_inference_service
-    from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
-    from app.ml.features.normalization import FeatureScaler
     from app.ml.models.ensemble_model import EnsembleModel
 
     inference = get_inference_service()
@@ -153,9 +154,8 @@ async def optimize_ensemble_weights(
         )
 
     try:
-        import yfinance as yf
         import pandas as pd
-        import numpy as np
+        import yfinance as yf
 
         ticker = yf.Ticker(req.symbol)
         df = ticker.history(
@@ -199,10 +199,12 @@ async def optimize_ensemble_weights(
 
         if "lorentzian" in inference.models:
             try:
-                from app.ml.models.lorentzian_knn import (
-                    compute_lorentzian_features, LORENTZIAN_FEATURES,
-                )
                 import torch
+
+                from app.ml.models.lorentzian_knn import (
+                    LORENTZIAN_FEATURES,
+                    compute_lorentzian_features,
+                )
                 lf = compute_lorentzian_features(df)
                 X_lk = torch.tensor(
                     lf[LORENTZIAN_FEATURES].fillna(0).values, dtype=torch.float32
@@ -257,7 +259,9 @@ async def trigger_training(
 ):
     """Queue a new ML training experiment and return its ID."""
     import uuid as _uuid
+
     from fastapi import HTTPException
+
     from app.models.experiment import Experiment
 
     experiment_id = str(_uuid.uuid4())
@@ -273,7 +277,7 @@ async def trigger_training(
             "triggered_by": str(current_user.id),
         },
         status="queued",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
     try:
@@ -320,6 +324,7 @@ async def get_training_report(
 
     # Model registry
     from pathlib import Path
+
     from app.config import settings as _settings
     models_dir = Path(_settings.models_dir)
     artifacts = {}
@@ -328,7 +333,7 @@ async def get_training_report(
             stat = f.stat()
             artifacts[f.stem] = {
                 "size_mb": round(stat.st_size / 1e6, 1),
-                "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                "modified": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
             }
 
     # SOTA model recommendations
@@ -409,7 +414,7 @@ async def get_training_report(
                 "notebooks/train_xgboost.ipynb",
             ],
         },
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -422,6 +427,7 @@ async def get_automl_status(
     champion/challenger scores. Reflects the live online-training loop.
     """
     from pathlib import Path
+
     from app.config import settings as _settings
 
     state_path = Path(_settings.models_dir).parent / "experiments" / "results" / "automl_desk.json"
@@ -442,7 +448,7 @@ async def get_automl_status(
             "champion if it beats it on a held-out validation slice."
         ),
         "last_cycle": last_cycle,
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -475,10 +481,11 @@ async def trigger_automl_cycle(
 ):
     """Kick a single AutoML fine-tuning cycle immediately (does not block)."""
     import asyncio as _asyncio
+
     from app.tasks.automl_desk import get_automl_desk
 
     _asyncio.create_task(get_automl_desk().run_cycle())
-    return {"status": "triggered", "at": datetime.now(timezone.utc).isoformat()}
+    return {"status": "triggered", "at": datetime.now(UTC).isoformat()}
 
 
 @router.get("/agent-status")
@@ -502,5 +509,5 @@ async def get_agent_status(
     return {
         "agents": statuses,
         "recent_signals": recent_signals,
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }

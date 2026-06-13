@@ -1,15 +1,16 @@
 """Price alert CRUD endpoints."""
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
 
-from app.database import get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
-from app.models.user import User
+from app.database import get_db
 from app.models.alert import Alert
+from app.models.user import User
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -97,7 +98,7 @@ async def trigger_alert(
     alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
-    alert.triggered_at = datetime.now(timezone.utc)
+    alert.triggered_at = datetime.now(UTC)
     alert.active = False
     await db.commit()
     await db.refresh(alert)

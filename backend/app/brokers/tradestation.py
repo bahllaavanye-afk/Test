@@ -1,6 +1,8 @@
 """TradeStation REST API broker with OAuth2 client credentials."""
+from datetime import UTC, datetime, timedelta
+
 import httpx
-from datetime import datetime, timezone, timedelta
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.logging import logger
 
@@ -13,10 +15,10 @@ class TradeStationBroker(AbstractBroker):
         self.paper = paper
         self.base_url = "https://sim.api.tradestation.com/v3" if paper else "https://api.tradestation.com/v3"
         self._access_token: str | None = None
-        self._token_expires_at: datetime = datetime.min.replace(tzinfo=timezone.utc)
+        self._token_expires_at: datetime = datetime.min.replace(tzinfo=UTC)
 
     async def _get_token(self) -> str:
-        if self._access_token and datetime.now(timezone.utc) < self._token_expires_at:
+        if self._access_token and datetime.now(UTC) < self._token_expires_at:
             return self._access_token
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -31,7 +33,7 @@ class TradeStationBroker(AbstractBroker):
             resp.raise_for_status()
             data = resp.json()
             self._access_token = data["access_token"]
-            self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=data.get("expires_in", 1200) - 60)
+            self._token_expires_at = datetime.now(UTC) + timedelta(seconds=data.get("expires_in", 1200) - 60)
         return self._access_token
 
     async def _headers(self) -> dict:

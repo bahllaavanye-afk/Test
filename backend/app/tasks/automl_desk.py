@@ -22,8 +22,8 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -127,10 +127,13 @@ class AutoMLDesk:
     # ------------------------------------------------------------------
     def _update_symbol_sync(self, symbol: str, df) -> SymbolResult:
         """Synchronous core: build data, fine-tune, validate, promote. Runs in executor."""
-        from app.ml.training.incremental import (
-            build_supervised, fine_tune, validate_model, should_promote, ValidationScore,
-        )
         from app.ml.inference import get_inference_service
+        from app.ml.training.incremental import (
+            build_supervised,
+            fine_tune,
+            should_promote,
+            validate_model,
+        )
 
         try:
             inference = get_inference_service()
@@ -159,7 +162,10 @@ class AutoMLDesk:
                 # reconstruction on the unlabeled window before supervised fitting.
                 if self.pretrain_cold_start:
                     try:
-                        from app.ml.training.pretrain import pretrain_masked, transfer_encoder_weights
+                        from app.ml.training.pretrain import (
+                            pretrain_masked,
+                            transfer_encoder_weights,
+                        )
                         pre = pretrain_masked(
                             X_tr, n_features=n_features,
                             hidden_size=fresh.hidden_size, num_layers=fresh.num_layers,
@@ -223,7 +229,7 @@ class AutoMLDesk:
                 "init_kwargs": {"n_features": challenger.n_features},
                 "promoted_by": "automl_desk",
                 "symbol": symbol,
-                "promoted_at": datetime.now(timezone.utc).isoformat(),
+                "promoted_at": datetime.now(UTC).isoformat(),
             })
             try:
                 scaler.save(str(scaler_path))
@@ -242,7 +248,7 @@ class AutoMLDesk:
     async def run_cycle(self) -> CycleReport:
         import time
         start = time.time()
-        report = CycleReport(timestamp=datetime.now(timezone.utc).isoformat())
+        report = CycleReport(timestamp=datetime.now(UTC).isoformat())
         loop = asyncio.get_running_loop()
 
         for symbol in self.symbols:

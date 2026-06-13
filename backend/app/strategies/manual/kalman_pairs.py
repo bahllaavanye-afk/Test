@@ -21,14 +21,15 @@ Parameters tuned to financial data:
 Academic: Elliott et al. (2005) "Pairs Trading", Kalman & Bucy (1961)
 Documented Sharpe: 1.5-2.5 (market neutral)
 """
-import numpy as np
-import pandas as pd
-import httpx
 import asyncio
 from datetime import date, timedelta
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-from app.config import settings
+
+import httpx
+import numpy as np
+import pandas as pd
+
 from app.brokers.alpaca_headers import alpaca_headers
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 def kalman_filter_regression(y: np.ndarray, x: np.ndarray,

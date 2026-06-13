@@ -1,26 +1,26 @@
 """FastAPI app factory with lifespan, CORS, routers, and background tasks."""
 from __future__ import annotations
+
 import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from app.api.limiter import limiter
 
-from app.config import settings
-from app.database import engine, Base
 import app.models  # noqa: F401 — registers all ORM models with Base.metadata before create_all
+from app.api.limiter import limiter
 from app.api.v1.router import api_router
-from app.ws.prices import router as prices_router
-from app.ws.orders import router as orders_router
-from app.ws.alerts import router as alerts_router
-from app.ws.signal_compare import router as signal_compare_router
+from app.config import settings
+from app.database import Base, engine
+from app.risk.correlation_monitor import correlation_monitor
 from app.tasks.scheduler import start_scheduler
 from app.utils.logging import logger
-from app.risk.correlation_monitor import correlation_monitor
+from app.ws.alerts import router as alerts_router
+from app.ws.orders import router as orders_router
+from app.ws.prices import router as prices_router
+from app.ws.signal_compare import router as signal_compare_router
 
 
 async def _supervised(coro_factory, name: str, restart_delay: int = 30):
@@ -53,9 +53,10 @@ async def _slack_startup_catchup() -> None:
     Keeps the CTO agent live even without an explicit /slack/review-history call.
     """
     await asyncio.sleep(30)
-    from app.config import settings
-    from app.api.v1.notifications import _cto_review_message
     import httpx
+
+    from app.api.v1.notifications import _cto_review_message
+    from app.config import settings
 
     token = getattr(settings, "slack_bot_token", "") or ""
     if not token:
@@ -128,8 +129,8 @@ async def lifespan(app: FastAPI):
     app.state.algo_agent = algo_agent
 
     # Self-improvement autoloop
-    from app.tasks.self_improver import SelfImprover
     from app.tasks.code_quality_loop import CodeQualityLoop
+    from app.tasks.self_improver import SelfImprover
     self_improver = SelfImprover(algo_agent=algo_agent, interval_seconds=900)
     app.state.self_improver = self_improver
 
@@ -208,9 +209,10 @@ async def lifespan(app: FastAPI):
     # is not yet reachable at startup (e.g. first cold boot before migrations).
     active_strategies: list[dict] = []
     try:
+        from sqlalchemy import select as _select
+
         from app.database import AsyncSessionLocal
         from app.models.strategy import Strategy
-        from sqlalchemy import select as _select
         async with AsyncSessionLocal() as _db:
             _result = await _db.execute(
                 _select(Strategy).where(Strategy.is_enabled == True)  # noqa: E712
@@ -274,8 +276,8 @@ async def lifespan(app: FastAPI):
 
     # Strategy runner — one asyncio loop per (strategy, symbol) pair
     # Always started so strategies run in paper mode too
-    from app.tasks.strategy_runner import ContinuousStrategyRunner
     from app.risk.manager import RiskManager
+    from app.tasks.strategy_runner import ContinuousStrategyRunner
     risk_manager = RiskManager()
     app.state.risk_manager = risk_manager  # exposed for /qe risk and risk API
     strategy_runner = ContinuousStrategyRunner(
@@ -374,8 +376,9 @@ def create_app() -> FastAPI:
     @app.get("/health/detailed")
     async def health_detailed():
         """Comprehensive system health — DB, Redis, scheduler, and background tasks."""
-        import time
         import importlib.util
+        import time
+
         from app.database import AsyncSessionLocal
 
         checks: dict[str, dict] = {}

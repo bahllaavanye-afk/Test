@@ -41,10 +41,8 @@ Documented Sharpe: ~0.7-1.0 long-short; ~0.4-0.6 short-only leg
 from datetime import date, timedelta
 
 import httpx
-import numpy as np
 import pandas as pd
 
-from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

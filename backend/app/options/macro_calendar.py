@@ -4,8 +4,9 @@ Key dates sourced from Federal Reserve schedule (hardcoded 2025-2026).
 Economic data via FRED API (free, no key required for basic calls).
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Literal
 
 
@@ -65,7 +66,6 @@ def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
             ))
 
     # Add approximate monthly events for next 3 months
-    import calendar
     for month_offset in range(4):
         m = ((today.month - 1 + month_offset) % 12) + 1
         y = today.year + ((today.month - 1 + month_offset) // 12)

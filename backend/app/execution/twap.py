@@ -4,6 +4,7 @@ Splits large orders into N equal slices over duration minutes.
 Minimizes market impact for large positions.
 """
 import asyncio
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 

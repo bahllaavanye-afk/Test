@@ -10,14 +10,15 @@ Loop:
   6. Sleep and repeat
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import subprocess
 import re
+import subprocess
 import time
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
 from typing import Literal
 
 from app.utils.logging import logger
@@ -294,7 +295,7 @@ def auto_fix_deprecated_apis(issues: list[SecurityIssue]) -> int:
 def _log_fix(file_path: str, issue: str, action: str) -> None:
     """Append fix to the fix log."""
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "file": file_path,
         "issue": issue,
         "action": action,
@@ -365,7 +366,7 @@ async def run_one_cycle(interval_seconds: int = 300) -> QAReport:
 
     # 5. Build report
     report = QAReport(
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
         overall_status="healthy",  # resolved below
         tests_total=passed + failed + errors,
         tests_passed=passed,

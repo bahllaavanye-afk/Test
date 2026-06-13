@@ -1,6 +1,6 @@
 """Detect correlated clusters and enforce allocation limits per cluster."""
-import numpy as np
 import pandas as pd
+
 from app.utils.logging import logger
 
 

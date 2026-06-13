@@ -3,6 +3,7 @@ Limit-First Execution: post limit order at best bid/ask + offset, then fall back
 Saves 5-15 bps on average vs immediate market orders.
 """
 import asyncio
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 
 

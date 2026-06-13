@@ -9,10 +9,12 @@ Volume data source: Binance public REST API
   GET https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=25
 """
 import json
+import urllib.request
+
 import numpy as np
 import pandas as pd
-import urllib.request
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 BINANCE_KLINES_URL = (
     "https://api.binance.com/api/v3/klines"

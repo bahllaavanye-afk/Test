@@ -1,5 +1,4 @@
 """Kelly criterion position sizing with fractional Kelly for safety."""
-import numpy as np
 
 
 def kelly_fraction(win_rate: float, avg_win: float, avg_loss: float, fraction: float = 0.25) -> float:

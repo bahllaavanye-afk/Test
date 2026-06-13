@@ -1,12 +1,13 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database import get_db
 from app.models.user import User
-from app.utils.security import decode_token
 from app.utils.exceptions import UnauthorizedError
+from app.utils.security import decode_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

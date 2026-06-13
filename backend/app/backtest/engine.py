@@ -9,10 +9,11 @@ Key features over a naive engine:
   • overnight gap returns modeled separately
 """
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
-from datetime import date
 
 
 @dataclass

@@ -1,15 +1,16 @@
 """Account management endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.account import Account
 from app.models.audit_log import AuditLog
 from app.models.user import User
-from app.utils.security import encrypt_secret, decrypt_secret
 from app.utils.logging import logger
-from pydantic import BaseModel, ConfigDict
+from app.utils.security import encrypt_secret
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 

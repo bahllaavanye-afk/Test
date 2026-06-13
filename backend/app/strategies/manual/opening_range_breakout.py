@@ -24,15 +24,14 @@ Expected Sharpe: 0.9-1.4 (intraday, not annualized)
 
 Data requirement: 1-minute bars (Alpaca free tier provides this)
 """
-import numpy as np
-import pandas as pd
-import httpx
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-from app.config import settings
-from app.brokers.alpaca_headers import alpaca_headers
 
+import httpx
+import pandas as pd
+
+from app.brokers.alpaca_headers import alpaca_headers
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 ET = ZoneInfo("America/New_York")
 

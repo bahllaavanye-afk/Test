@@ -1,17 +1,19 @@
 """Order submission and management endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
 from app.api.limiter import limiter
-from app.models.order import Order
-from app.models.user import User
+from app.database import get_db
 from app.models.account import Account
 from app.models.audit_log import AuditLog
-from pydantic import BaseModel, ConfigDict, field_validator, Field, model_validator
-from datetime import datetime, timezone
-import uuid
+from app.models.order import Order
+from app.models.user import User
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -149,7 +151,7 @@ async def submit_order(
         execution_algo=body.execution_algo,
         status="pending",
         filled_qty=0.0,
-        submitted_at=datetime.now(timezone.utc),
+        submitted_at=datetime.now(UTC),
     )
     db.add(order)
 
@@ -226,7 +228,7 @@ async def submit_bracket(
         execution_algo=body.execution_algo,
         status="pending",
         filled_qty=0.0,
-        submitted_at=datetime.now(timezone.utc),
+        submitted_at=datetime.now(UTC),
     )
     db.add(parent)
 
@@ -401,7 +403,7 @@ async def cancel_order(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     order.status = "cancelled"
-    order.cancelled_at = datetime.now(timezone.utc)
+    order.cancelled_at = datetime.now(UTC)
 
     # Cancel on Alpaca broker if applicable
     if account.broker == "alpaca" and account.encrypted_key and order.broker_order_id:

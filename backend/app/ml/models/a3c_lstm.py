@@ -14,7 +14,6 @@ Training: experiments/configs/ppo_execution.yaml
 import json
 from pathlib import Path
 
-import numpy as np
 try:
     import torch
     import torch.nn as nn

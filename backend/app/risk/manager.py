@@ -3,17 +3,16 @@ Real-time risk manager: Kelly sizing, correlation limits, circuit breakers.
 All order requests pass through here before reaching the broker.
 """
 from __future__ import annotations
-import asyncio
+
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 import pandas as pd
 
 from app.brokers.base import OrderRequest
-from app.risk.kelly import size_from_kelly
-from app.risk.correlation import compute_correlation_clusters, check_cluster_limits
-from app.risk.circuit_breaker import CircuitBreaker, BreakerState
+from app.risk.circuit_breaker import CircuitBreaker
+from app.risk.correlation import check_cluster_limits, compute_correlation_clusters
 from app.risk.hrp import HRPOptimizer
+from app.risk.kelly import size_from_kelly
 from app.risk.portfolio_optimizer import CVaROptimizer
 from app.utils.logging import logger
 

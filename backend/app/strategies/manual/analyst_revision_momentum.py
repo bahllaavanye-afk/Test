@@ -20,7 +20,6 @@ Negative normalised score < -0.25 with negative short-term return → selling
 Volume confirmation: above-average volume (1.5×) on the revision window increases
 confidence (institutional accumulation from rating-change flows).
 """
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal

@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, date, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -33,7 +33,7 @@ class ScanResult:
     signals: list[str]    # human-readable triggered signals
     side: str             # "long" | "short" | "neutral"
     data: dict = field(default_factory=dict)
-    scanned_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    scanned_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __str__(self):
         return f"{self.symbol} [{self.desk}] score={self.score:.1f} side={self.side}: {', '.join(self.signals)}"

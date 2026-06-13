@@ -24,8 +24,8 @@ import asyncio
 import json
 import os
 import subprocess
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -127,7 +127,7 @@ def apply_autofixes() -> list[str]:
 
     # 2. Deprecated-API rewriter from the QA monitor.
     try:
-        from app.tasks.qa_monitor import scan_security_issues, auto_fix_deprecated_apis
+        from app.tasks.qa_monitor import auto_fix_deprecated_apis, scan_security_issues
         n = auto_fix_deprecated_apis(scan_security_issues())
         if n:
             applied.append(f"deprecated-API rewrite in {n} file(s)")
@@ -214,7 +214,7 @@ class BuildMonitor:
                        if not r.ok and not r.skipped and r.check in HARD_GATES]
 
         report = BuildReport(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             overall_ok=not red,
             results=results,
             autofixes_applied=autofixes,

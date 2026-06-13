@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -148,7 +148,7 @@ class RedTeamAgent:
         loop = asyncio.get_running_loop()
         findings = await loop.run_in_executor(None, scan_codebase)
         summary = summarize(findings)
-        summary["scanned_at"] = datetime.now(timezone.utc).isoformat()
+        summary["scanned_at"] = datetime.now(UTC).isoformat()
         self.last_summary = summary
 
         candidates = to_escalations(findings)

@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 import structlog
 
@@ -15,8 +13,8 @@ from pydantic import BaseModel
 
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.notifications.tracker import tracker
 from app.notifications.slack import slack
+from app.notifications.tracker import tracker
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -76,7 +74,7 @@ async def post_employee_report(current_user: User = Depends(get_current_user)):
         algo = research = modeling = regime = None
 
     lines: list[str] = [
-        f"*QuantEdge Employee Status Report* — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"*QuantEdge Employee Status Report* — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         "",
     ]
 
@@ -222,14 +220,14 @@ async def _track_followup(channel_id: str, thread_ts: str, question: str, user_i
         from app.redis_client import get_redis
         redis = get_redis()
         import json
-        from datetime import datetime, timezone
+        from datetime import datetime
         key = f"slack:followup:{channel_id}:{thread_ts}"
         payload = json.dumps({
             "channel_id": channel_id,
             "thread_ts": thread_ts,
             "question": question[:300],
             "user_id": user_id,
-            "asked_at": datetime.now(timezone.utc).isoformat(),
+            "asked_at": datetime.now(UTC).isoformat(),
             "answered": False,
         })
         await redis.set(key, payload, ex=86400 * 2)  # 2-day TTL
@@ -308,6 +306,7 @@ async def _cto_review_message(
 
     try:
         import anthropic
+
         from app.config import settings
 
         api_key = getattr(settings, "anthropic_api_key", "") or ""
@@ -371,8 +370,9 @@ async def _cto_review_message(
 
 async def _post_threaded_reply(channel_id: str, thread_ts: str, text: str, token: str = "") -> None:
     """Post a threaded reply to a Slack message using the bot token."""
-    from app.config import settings
     import httpx
+
+    from app.config import settings
 
     if not token:
         token = getattr(settings, "slack_bot_token", "") or ""
@@ -399,9 +399,10 @@ async def _post_threaded_reply(channel_id: str, thread_ts: str, text: str, token
 
 async def _run_followup_check(hours_threshold: int = 4) -> dict:
     """Core follow-up logic — callable from both the scheduler and the API endpoint."""
-    from app.config import settings
     import json
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
+    from app.config import settings
 
     token = getattr(settings, "slack_bot_token", "") or ""
     api_key = getattr(settings, "anthropic_api_key", "") or ""
@@ -414,7 +415,7 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
     except Exception:
         return {"followed_up": 0}
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_threshold)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours_threshold)
     followed_up = 0
 
     try:
@@ -493,6 +494,7 @@ async def cto_manual_review(
     """
     try:
         import anthropic
+
         from app.config import settings
 
         api_key = getattr(settings, "anthropic_api_key", "") or ""
@@ -553,8 +555,9 @@ async def review_channel_history(
     Requires SLACK_BOT_TOKEN (scopes: channels:history, groups:history,
     channels:read, chat:write) and ANTHROPIC_API_KEY.
     """
-    from app.config import settings
     import httpx
+
+    from app.config import settings
 
     token = getattr(settings, "slack_bot_token", "") or ""
     api_key = getattr(settings, "anthropic_api_key", "") or ""

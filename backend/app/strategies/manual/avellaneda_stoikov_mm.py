@@ -1,8 +1,11 @@
 """Avellaneda-Stoikov market making strategy with inventory management."""
 from __future__ import annotations
+
 import math
+
 import numpy as np
 import pandas as pd
+
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 

@@ -12,9 +12,10 @@ Low RSI(5) on VXX ≈ suppressed VIX ≈ complacency → SELL/HEDGE SPY.
 
 Sharpe target: 0.9–1.4
 """
-import pandas as pd
 import numpy as np
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+import pandas as pd
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class VIXMeanReversionStrategy(AbstractStrategy):

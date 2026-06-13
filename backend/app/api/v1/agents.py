@@ -1,14 +1,13 @@
 """Agent management, monitoring, chat, and task assignment endpoints."""
 from __future__ import annotations
+
 import json
 import os
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user
@@ -221,10 +220,10 @@ async def create_task(
         "agent": body.assigned_to,
         "description": body.description,
         "priority": body.priority,
-        "claimed_at": datetime.now(timezone.utc).isoformat(),
+        "claimed_at": datetime.now(UTC).isoformat(),
         "created_by": current_user.email,
     }
-    data["last_updated"] = datetime.now(timezone.utc).isoformat()
+    data["last_updated"] = datetime.now(UTC).isoformat()
     _write_json(TASK_FILE, data)
     return {"ok": True, "task_id": body.task_id}
 
@@ -239,7 +238,7 @@ async def delete_task(
     if task_id not in data.get("active", {}):
         raise HTTPException(404, "Task not found")
     del data["active"][task_id]
-    data["last_updated"] = datetime.now(timezone.utc).isoformat()
+    data["last_updated"] = datetime.now(UTC).isoformat()
     _write_json(TASK_FILE, data)
     return {"ok": True}
 
@@ -293,7 +292,7 @@ async def chat_with_agent(
     messages.append({"role": "user", "content": body.message})
 
     reply = await _call_llm(messages, max_tokens=800)
-    return {"agent": body.agent, "reply": reply, "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"agent": body.agent, "reply": reply, "timestamp": datetime.now(UTC).isoformat()}
 
 
 # ─── Original endpoints (kept) ───────────────────────────────────────────────

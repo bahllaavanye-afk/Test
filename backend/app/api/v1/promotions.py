@@ -1,13 +1,15 @@
 """Strategy promotion pipeline API."""
-from fastapi import APIRouter, Depends, HTTPException, Body
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
-from app.api.deps import get_db, get_current_user
-from app.models.user import User
+
+from app.api.deps import get_current_user, get_db
 from app.models.promotion import StrategyPromotion
-from app.tasks.promotion_criteria import check_criteria, TRANSITION_MAP
-from datetime import datetime, timezone
+from app.models.user import User
+from app.tasks.promotion_criteria import TRANSITION_MAP, check_criteria
 
 router = APIRouter(prefix="/promotions", tags=["promotions"])
 
@@ -65,7 +67,7 @@ async def create_promotion(
     current_user: User = Depends(get_current_user),
 ):
     """Register a strategy in the promotion pipeline (starts at 'paper' stage)."""
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(UTC).isoformat()
     p = StrategyPromotion(
         strategy_id=req.strategy_id,
         strategy_name=req.strategy_name,
@@ -139,7 +141,7 @@ async def approve_promotion(
         raise HTTPException(status_code=400, detail="Strategy is already at final stage")
 
     new_stage = stage_order[idx + 1]
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(UTC).isoformat()
     p.current_stage = new_stage
     p.promotion_ready = False
     p.awaiting_approval = False
@@ -181,7 +183,7 @@ async def reject_promotion(
         raise HTTPException(status_code=404, detail="Promotion not found")
 
     old_stage = p.current_stage
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(UTC).isoformat()
     p.current_stage = "rejected"
     p.promotion_ready = False
     p.awaiting_approval = False
@@ -217,7 +219,6 @@ async def trigger_review(
     if not p:
         raise HTTPException(status_code=404, detail="Promotion not found")
 
-    from app.tasks.promotion_criteria import check_criteria, TRANSITION_MAP
     from app.tasks.holistic_review import _get_stage_metrics, _notify_promotion_ready
 
     transition = TRANSITION_MAP.get(p.current_stage)
@@ -227,7 +228,7 @@ async def trigger_review(
     metrics = _get_stage_metrics(p)
     passed, failures = check_criteria(metrics, transition)
 
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(UTC).isoformat()
     entry = {"ts": ts, "stage": p.current_stage, "transition": transition, "passed": passed, "metrics": metrics, "failures": failures}
     history = list(p.review_history or [])
     history.append(entry)

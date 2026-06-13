@@ -23,13 +23,14 @@ Gap proxy: If no earnings API data available, use the earnings-day price gap as 
   Gap > 5%: Strong positive surprise → BUY
   Gap < -5%: Strong negative surprise → SELL
 """
+from datetime import date, timedelta
+
+import httpx
 import numpy as np
 import pandas as pd
-import httpx
-from datetime import date, timedelta
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-from app.config import settings
+
 from app.brokers.alpaca_headers import alpaca_headers
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class PEADStrategy(AbstractStrategy):
@@ -89,7 +90,7 @@ class PEADStrategy(AbstractStrategy):
         """Try to get actual earnings data from Alpaca corporate actions."""
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
-                f"https://data.alpaca.markets/v1beta1/corporate-actions",
+                "https://data.alpaca.markets/v1beta1/corporate-actions",
                 params={"types": "earnings", "symbols": symbol, "limit": 5},
                 headers=alpaca_headers(),
             )

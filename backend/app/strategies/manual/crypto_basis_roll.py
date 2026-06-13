@@ -12,11 +12,12 @@ Data source: Binance public REST API (free, unauthenticated).
   GET https://fapi.binance.com/fapi/v1/fundingRate
   GET https://fapi.binance.com/fapi/v1/premiumIndex
 """
-import numpy as np
-import pandas as pd
-import urllib.request
 import json
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+import urllib.request
+
+import pandas as pd
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 BINANCE_FUNDING_URL = (
     "https://fapi.binance.com/fapi/v1/fundingRate?symbol={symbol}&limit=10"

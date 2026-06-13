@@ -19,7 +19,7 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -226,7 +226,7 @@ class ModelServingLayer:
                 model_name=decision.model_name,
                 version=decision.version,
                 symbol=symbol,
-                ts=datetime.now(timezone.utc),
+                ts=datetime.now(UTC),
                 prediction=prediction,
                 signal=signal,
                 confidence=confidence,

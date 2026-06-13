@@ -3,16 +3,17 @@ Continuous strategy runner: one asyncio task per (strategy, symbol) pair.
 Scales to hundreds of concurrent strategy+symbol combinations.
 """
 from __future__ import annotations
+
 import asyncio
 import json
+from datetime import UTC, datetime
+
 import pandas as pd
-from datetime import datetime, timedelta, timezone
 
+from app.redis_client import get_redis, price_cache
 from app.strategies import STRATEGY_REGISTRY
-from app.redis_client import price_cache, get_redis
-from app.ws.manager import manager
 from app.utils.logging import logger
-
+from app.ws.manager import manager
 
 # Default paper-trading strategy configuration used when no active strategies are
 # found in the database (e.g. fresh install, no DB yet).  Covers the major
@@ -213,7 +214,7 @@ class ContinuousStrategyRunner:
         if self.broker is None:
             return None
         try:
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
             limit = 500
             bars = await self.broker.get_historical(symbol, interval, limit=limit)
             if bars:
@@ -335,7 +336,7 @@ class ContinuousStrategyRunner:
                                         "take_profit": signal.take_profit,
                                         "peak_price": signal.target_price,
                                         "bars_held": 0,
-                                        "stored_at": datetime.now(timezone.utc).isoformat(),
+                                        "stored_at": datetime.now(UTC).isoformat(),
                                     }
                                     await redis_client.set(
                                         f"pos_exit:{symbol}",
@@ -411,9 +412,10 @@ async def start_strategy_runner() -> None:
     # ── Load active strategies from DB ────────────────────────────────────────
     active_strategies: list[dict] = []
     try:
+        from sqlalchemy import select
+
         from app.database import AsyncSessionLocal
         from app.models.strategy import Strategy
-        from sqlalchemy import select
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(

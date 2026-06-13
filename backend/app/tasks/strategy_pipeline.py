@@ -21,14 +21,11 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
-import re
 import shutil
 import sys
 import traceback
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -80,7 +77,7 @@ class BacktestResult:
     n_trades:      int
     wf_sharpes:    list[float]
     passed:        bool
-    reject_reason: Optional[str] = None
+    reject_reason: str | None = None
 
 
 # ── Data fetcher (yfinance, no auth) ─────────────────────────────────────────
@@ -110,7 +107,6 @@ def _run_simple_backtest(
     Minimal vectorised backtest using the strategy's backtest_signals() method.
     Returns (daily_returns, n_trades).
     """
-    import pandas_ta as ta  # used inside strategy files
 
     df = df.copy()
     if len(df) < days:
@@ -220,7 +216,7 @@ class StrategyPipelineAgent:
                 await self._broadcast(result)
         return results
 
-    def _evaluate(self, path: Path) -> Optional[BacktestResult]:
+    def _evaluate(self, path: Path) -> BacktestResult | None:
         logger.info("strategy_pipeline: evaluating", file=path.name)
         try:
             strategy_cls = _load_strategy_class(path)

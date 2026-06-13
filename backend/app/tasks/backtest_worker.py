@@ -5,21 +5,23 @@ Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import pandas as pd
 from sqlalchemy import select
+
 from app.utils.logging import logger
 
 
 async def run_backtest_job(run_id: str) -> None:
     """Fetch one queued BacktestRun, execute it, write results back to DB."""
-    from app.database import AsyncSessionLocal
-    from app.models.backtest import BacktestRun, BacktestResult
-    from app.backtest.engine import run_backtest
     from app.backtest.data_loader import fetch_ohlcv
+    from app.backtest.engine import run_backtest
+    from app.database import AsyncSessionLocal
+    from app.models.backtest import BacktestResult, BacktestRun
     from app.strategies import STRATEGY_REGISTRY
 
     async with AsyncSessionLocal() as db:
@@ -27,7 +29,7 @@ async def run_backtest_job(run_id: str) -> None:
         if not run or run.status != "queued":
             return
         run.status = "running"
-        run.started_at = datetime.now(timezone.utc)
+        run.started_at = datetime.now(UTC)
         await db.commit()
         # capture fields before session closes
         symbol = run.symbol
@@ -49,13 +51,13 @@ async def run_backtest_job(run_id: str) -> None:
         strategy = StratClass()
         # backtest_signals may be sync or async depending on the strategy
         import inspect
+
         from app.strategies.base import BacktestSignals as _BSig
         _result = strategy.backtest_signals(df)
         raw_signals = (await _result) if inspect.isawaitable(_result) else _result
 
         # Convert BacktestSignals → pd.Series[int] expected by run_backtest
         if isinstance(raw_signals, _BSig):
-            import numpy as np
             sig = pd.Series(0, index=df.index, dtype=int)
             sig[raw_signals.entries.astype(bool)] = 1
             sig[raw_signals.exits.astype(bool)] = 0
@@ -77,7 +79,7 @@ async def run_backtest_job(run_id: str) -> None:
             run = await db.get(BacktestRun, run_id)
             if run:
                 run.status = "completed"
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 result = BacktestResult(
                     id=str(uuid.uuid4()),
                     run_id=run_id,
@@ -107,7 +109,7 @@ async def run_backtest_job(run_id: str) -> None:
             if run:
                 run.status = "failed"
                 run.error_message = str(exc)[:500]
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 await db.commit()
 
 

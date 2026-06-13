@@ -1,5 +1,6 @@
 """Monitoring and health check endpoints for the QA subsystem."""
 from __future__ import annotations
+
 import asyncio
 import json
 from pathlib import Path

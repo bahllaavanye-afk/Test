@@ -113,7 +113,10 @@ def build_supervised(
     Raises ValueError if there is not enough usable data — never fabricates rows.
     """
     from app.ml.features.engineer import (
-        engineer_features, create_sequences, add_labels, FEATURE_COLS,
+        FEATURE_COLS,
+        add_labels,
+        create_sequences,
+        engineer_features,
     )
     from app.ml.features.normalization import FeatureScaler
 

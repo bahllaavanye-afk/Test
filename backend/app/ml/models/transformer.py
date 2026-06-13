@@ -4,6 +4,7 @@ State-of-the-art for multi-horizon time series forecasting.
 Attention mechanism provides interpretable feature importance per timestep.
 """
 from __future__ import annotations
+
 try:
     import torch
     import torch.nn as nn
@@ -13,6 +14,7 @@ except ImportError:
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
 import numpy as np
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 

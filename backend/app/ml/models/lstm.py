@@ -18,6 +18,7 @@ except ImportError:
     nn = None     # type: ignore[assignment]
 import numpy as np
 from sklearn.metrics import roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 

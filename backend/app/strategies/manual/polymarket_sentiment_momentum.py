@@ -26,7 +26,6 @@ OHLCV proxy for backtesting:
   - All indicators shifted by 1 bar to prevent lookahead bias.
 """
 
-from datetime import date, timedelta
 
 import pandas as pd
 

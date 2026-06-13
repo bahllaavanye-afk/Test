@@ -1,8 +1,10 @@
 """InferenceLog ORM — records every prediction made by a serving model."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Numeric, DateTime, Boolean, ForeignKey, Index
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 
 

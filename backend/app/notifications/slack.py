@@ -10,7 +10,7 @@ Required bot token scopes: chat:write, chat:write.public
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -98,7 +98,7 @@ class SlackClient:
             "text": text or "",
             "fields": attachment_fields,
             "footer": "QuantEdge",
-            "ts": int(datetime.now(timezone.utc).timestamp()),
+            "ts": int(datetime.now(UTC).timestamp()),
         }
 
         if self._use_bot:

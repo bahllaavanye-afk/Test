@@ -24,8 +24,8 @@ from __future__ import annotations
 import asyncio
 import json
 import random
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -129,7 +129,7 @@ class ResearchFinding:
     sample_signal: str       # brief description of the specific signal
     recommended_action: str  # 'backtest' | 'implement' | 'monitor' | 'shelve'
     confidence: float        # 0-1 confidence in the finding
-    researched_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    researched_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class ResearchScientist:

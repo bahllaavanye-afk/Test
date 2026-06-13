@@ -21,6 +21,7 @@ runner-up's mean slippage by `min_edge_bps` — so we don't chase noise.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC
 
 from app.utils.logging import logger
 
@@ -81,12 +82,14 @@ async def compute_scorecard(
     Pure read via the ORM (joins SlippageRecord → Order for the symbol).
     Returns the scorecard; does not mutate the module cache (refresh does that).
     """
-    from datetime import datetime, timezone, timedelta
-    from sqlalchemy import select
-    from app.models.slippage import SlippageRecord
-    from app.models.order import Order
+    from datetime import datetime, timedelta
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    from sqlalchemy import select
+
+    from app.models.order import Order
+    from app.models.slippage import SlippageRecord
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     rows = await db.execute(
         select(Order.symbol, SlippageRecord.execution_algo,
                SlippageRecord.slippage_bps, SlippageRecord.is_cost_bps)

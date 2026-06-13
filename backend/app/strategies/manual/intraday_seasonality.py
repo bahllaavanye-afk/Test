@@ -21,9 +21,8 @@ Academic reference:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -74,7 +73,7 @@ class IntradaySeasonality(AbstractStrategy):
         """
         Check current UTC hour and emit BUY when entering a peak window.
         """
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         utc_hour = now_utc.hour
         utc_minute = now_utc.minute
 

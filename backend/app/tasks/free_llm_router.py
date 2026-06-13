@@ -24,7 +24,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 import httpx
 
@@ -285,11 +284,10 @@ def available_keys() -> list[str]:
 
 
 import hashlib
-import functools
 
 # ── Response cache ────────────────────────────────────────────────────────────
 
-async def _cache_get(redis_client, messages: list[dict]) -> Optional[str]:
+async def _cache_get(redis_client, messages: list[dict]) -> str | None:
     key = "llm:cache:" + hashlib.sha256(json.dumps(messages, sort_keys=True).encode()).hexdigest()
     if redis_client:
         try:
@@ -313,7 +311,7 @@ async def call_routed(
     task_type: str = "analysis",  # "code" | "analysis" | "fast"
     max_tokens: int = 2048,
     redis_client=None,
-) -> Optional[str]:
+) -> str | None:
     """
     Route to best free provider for the task type.
     Checks cache first. Returns response text or None.
@@ -358,11 +356,11 @@ async def call_batch(
     system: str = "",
     max_tokens: int = 512,
     concurrency: int = 5,
-) -> list[Optional[str]]:
+) -> list[str | None]:
     """Run up to `concurrency` prompts in parallel. Returns list of responses."""
     import asyncio
 
-    async def _one(prompt: str) -> Optional[str]:
+    async def _one(prompt: str) -> str | None:
         msgs = []
         if system:
             msgs.append({"role": "system", "content": system})

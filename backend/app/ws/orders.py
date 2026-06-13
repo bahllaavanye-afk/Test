@@ -1,6 +1,8 @@
 """Real-time order status WebSocket endpoint."""
 import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
 from app.ws.manager import manager
 
 logger = logging.getLogger(__name__)

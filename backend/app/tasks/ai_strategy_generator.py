@@ -14,13 +14,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
+from app.tasks.free_llm_router import available_providers, call_consensus
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +173,7 @@ For each strategy, provide:
         analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
 
         code = _STRATEGY_TEMPLATE.format(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             hypothesis=proposal.get("hypothesis", "AI-generated strategy"),
             expected_sharpe=proposal.get("expected_sharpe", 0.8),
             class_name=proposal.get("class_name", "AutoStrategy"),

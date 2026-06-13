@@ -1,11 +1,13 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any
-import uuid
-from jose import JWTError, jwt
-from passlib.context import CryptContext
-from cryptography.fernet import Fernet
 import base64
 import hashlib
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from cryptography.fernet import Fernet
+from jose import jwt
+from passlib.context import CryptContext
+
 from app.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -20,14 +22,14 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
     return jwt.encode({"sub": str(subject), "exp": expire, "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
 
 
 def create_refresh_token(subject: str | Any) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     payload = {
         "sub": str(subject),
         "exp": expire,

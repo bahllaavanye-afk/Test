@@ -3,9 +3,11 @@ Drawdown recovery time estimator.
 Given current drawdown and historical avg daily return, estimate when portfolio recovers.
 """
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
 from datetime import date, timedelta
+
+import numpy as np
 
 
 @dataclass

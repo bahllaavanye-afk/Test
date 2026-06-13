@@ -4,13 +4,14 @@ Uses Upper Confidence Bound (UCB1) for exploration vs exploitation.
 Runs as a background asyncio task alongside the strategy runner.
 """
 from __future__ import annotations
+
 import asyncio
-import math
 import json
+import math
 import uuid
-from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from dataclasses import dataclass, field
 
 from app.utils.logging import logger
 
@@ -109,13 +110,14 @@ class AlgoAgent:
         Returns Sharpe ratio or 0.0 on failure.
         """
         try:
-            import pandas as pd
             import httpx
-            from app.config import settings
+            import pandas as pd
+
             from app.backtest.engine import run_backtest
+            from app.config import settings
             from app.strategies import STRATEGY_REGISTRY
 
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
             start = end - timedelta(days=730)
             start_str = start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -185,7 +187,7 @@ class AlgoAgent:
             "sharpe": round(sharpe, 4),
             "avg_sharpe": round(candidate.avg_sharpe, 4),
             "n_runs": candidate.n_runs,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self._results.append(result)
 
@@ -217,7 +219,7 @@ class AlgoAgent:
                 candidate.n_runs += 1
                 candidate.total_sharpe += sharpe
                 candidate.best_sharpe = max(candidate.best_sharpe, sharpe)
-                candidate.last_run_at = datetime.now(timezone.utc)
+                candidate.last_run_at = datetime.now(UTC)
                 self._total_runs += 1
 
                 self._save_result(candidate, sharpe)

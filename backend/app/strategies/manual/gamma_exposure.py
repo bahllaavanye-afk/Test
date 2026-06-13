@@ -21,12 +21,12 @@ Academic basis: Bouchaud et al. (2002), Garman (1976) inventory model
 Documented: SqueezeMetrics, SpotGamma (institutional research)
 Sharpe: ~1.8 in trending-vs-pinning regime classification
 """
+import httpx
 import numpy as np
 import pandas as pd
-import httpx
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-from app.config import settings
+
 from app.brokers.alpaca_headers import alpaca_headers
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class GammaExposureStrategy(AbstractStrategy):

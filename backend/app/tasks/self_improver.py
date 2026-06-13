@@ -7,11 +7,12 @@ Self-improvement autoloop. Runs forever, looking for ways to improve the platfor
   5. Sleep, then repeat
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import random
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -64,10 +65,11 @@ class SelfImprover:
         try:
             import pandas as pd
             import yfinance as yf
+
             from app.backtest.engine import run_backtest
             from app.strategies import STRATEGY_REGISTRY
 
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
             start = end - timedelta(days=730)
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
@@ -131,7 +133,7 @@ class SelfImprover:
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
                 "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
             self._persist(promotion)
             logger.info("Self-improver PROMOTED params", **promotion)

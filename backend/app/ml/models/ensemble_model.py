@@ -3,11 +3,13 @@ Weighted ensemble of LSTM + XGBoost + Lorentzian KNN.
 Weights optimized on validation set via Optuna.
 Only signals with confidence > threshold are forwarded.
 """
-import numpy as np
 import json
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+
+import numpy as np
 import structlog
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 logger = structlog.get_logger()
@@ -147,8 +149,8 @@ class EnsembleModel(AbstractModel):
         Returns:
             dict of model_name → optimal weight, summing to 1.
         """
-        import pandas as pd
         import numpy as np
+        import pandas as pd
         from scipy.optimize import minimize
 
         model_names = list(returns_by_model.keys())

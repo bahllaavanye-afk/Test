@@ -1,9 +1,9 @@
 from __future__ import annotations
-from collections import defaultdict
-from datetime import datetime, timezone
-import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import uuid
+from collections import defaultdict
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
@@ -12,12 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.utils.security import (
-    create_access_token, create_refresh_token, decode_token,
-    hash_password, verify_password,
-)
-from app.utils.token_blocklist import revoke_jti, is_revoked
 from app.utils.exceptions import UnauthorizedError
+from app.utils.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    verify_password,
+)
+from app.utils.token_blocklist import is_revoked, revoke_jti
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

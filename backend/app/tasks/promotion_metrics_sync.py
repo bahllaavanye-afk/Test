@@ -9,7 +9,7 @@ calls POST /promotions/{id}/metrics internally to update the record.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.utils.logging import logger
 
@@ -17,6 +17,7 @@ from app.utils.logging import logger
 async def sync_promotion_metrics(db_session_factory=None) -> int:
     """Update metrics for all active (non-live, non-rejected) promotions. Returns count updated."""
     from sqlalchemy import select
+
     from app.models.promotion import StrategyPromotion
     from app.models.trade import Trade
 
@@ -75,7 +76,7 @@ def _parse_ts(ts_str: str | None) -> datetime | None:
     try:
         dt = datetime.fromisoformat(ts_str)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except Exception:
         return None
@@ -83,7 +84,7 @@ def _parse_ts(ts_str: str | None) -> datetime | None:
 
 def _compute_metrics(trades, stage_start: datetime) -> dict:
     """Compute Sharpe, win_rate, max_drawdown, num_trades, days_in_stage from Trade list."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     days = max(1, (now - stage_start).days)
 
     pnls = [float(t.realized_pnl) for t in trades]

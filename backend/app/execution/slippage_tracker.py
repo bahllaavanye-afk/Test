@@ -5,10 +5,12 @@ IS = (fill_price - arrival_price) / arrival_price * 10000
 where arrival_price is the mid-price when the order was first submitted.
 """
 import uuid
+from datetime import UTC, datetime
+
 import numpy as np
-from datetime import datetime, timezone
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+
 from app.brokers.base import OrderRequest, OrderResult
 from app.models.slippage import SlippageRecord
 from app.utils.logging import logger
@@ -30,7 +32,7 @@ class SlippageTracker:
         """Record mid-price at order submission time (for IS calculation)."""
         key = f"{request.account_id}:{request.symbol}"
         self._arrival_prices[key] = arrival_price
-        self._submit_times[key] = datetime.now(timezone.utc)
+        self._submit_times[key] = datetime.now(UTC)
 
     async def record_fill(
         self,
@@ -46,7 +48,7 @@ class SlippageTracker:
         # Item 5: IS metrics
         arrival_price = self._arrival_prices.pop(key, None)
         submit_time = self._submit_times.pop(key, None)
-        fill_time = datetime.now(timezone.utc)
+        fill_time = datetime.now(UTC)
         execution_duration_seconds: float | None = None
         if submit_time is not None:
             execution_duration_seconds = (fill_time - submit_time).total_seconds()
@@ -114,7 +116,7 @@ class SlippageTracker:
                     fill_price=result.avg_fill_price,
                     slippage_bps=slippage_bps,
                     execution_algo=request.execution_algo,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     # Item 5: IS fields
                     arrival_price=arrival_price,
                     is_cost_bps=is_cost_bps,
@@ -138,7 +140,7 @@ class SlippageTracker:
             raise RuntimeError("DB session required for execution quality stats")
 
         from datetime import timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
 
         stmt = (
             select(SlippageRecord)

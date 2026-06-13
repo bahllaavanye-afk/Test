@@ -12,7 +12,7 @@ Strategy runner reads this key to gate directional strategies.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -69,7 +69,7 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
     """Sync yfinance fetch — must be called via run_in_executor."""
     try:
         import yfinance as yf  # type: ignore
-        end = datetime.now(timezone.utc).date()
+        end = datetime.now(UTC).date()
         start = end - timedelta(days=400)
         df = yf.download("SPY", start=str(start), end=str(end),
                           progress=False, auto_adjust=True)
@@ -88,7 +88,7 @@ def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     offline dev container). Keeps the regime monitor functional 24/7.
     Deterministic per-day seed so the regime is stable within a session.
     """
-    seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
+    seed = int(datetime.now(UTC).strftime("%Y%m%d"))
     rng = np.random.default_rng(seed)
     # Mild positive drift, ~16% annualised vol — a neutral "sideways/bull" market
     daily_mu = 0.0003

@@ -1,14 +1,15 @@
 """Strategy management endpoints."""
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_active_superuser, get_current_user
 from app.database import get_db
-from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY
-from pydantic import BaseModel, ConfigDict
-import uuid
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -83,7 +84,7 @@ async def list_active(
                 }
                 for s in rows
             ]
-    except Exception as exc:
+    except Exception:
         # Return empty list rather than crashing — frontend must handle this gracefully
         return []
 

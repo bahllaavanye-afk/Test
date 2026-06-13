@@ -1,26 +1,25 @@
 """Analytics and performance metrics endpoints."""
-from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, case
-from datetime import datetime, timezone, timedelta, date
-from typing import Optional
-import re
 import math
+import re
+from datetime import UTC, date, datetime, timedelta
+
 import httpx
 import pandas as pd
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
 from app.api.deps import get_current_user
-from app.models.trade import Trade
-from app.models.slippage import SlippageRecord
-from app.models.user import User
-from app.models.account import Account
-from app.models.position import Position
-from app.models.order import Order
-from app.models.strategy import Strategy
 from app.config import settings
+from app.database import get_db
+from app.models.account import Account
+from app.models.order import Order
+from app.models.position import Position
+from app.models.slippage import SlippageRecord
+from app.models.strategy import Strategy
+from app.models.trade import Trade
+from app.models.user import User
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -32,7 +31,6 @@ async def analytics_summary(
     current_user: User = Depends(get_current_user),
 ):
     """High-level analytics summary: available modules and quick stats."""
-    from sqlalchemy import text
     try:
         trade_count_result = await db.execute(
             select(func.count()).select_from(Trade)
@@ -62,8 +60,9 @@ async def get_arb_opportunities(
     Returns an empty list when no data is available rather than 404.
     """
     try:
-        from app.models.market_data import OHLCV
         from sqlalchemy import desc
+
+        from app.models.market_data import OHLCV
 
         # Return the most recent price snapshots per symbol/exchange for comparison
         result = await db.execute(
@@ -155,7 +154,7 @@ async def get_performance(
             )
             .where(
                 Trade.account_id.in_(account_ids),
-                Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365),
+                Trade.closed_at >= datetime.now(UTC) - timedelta(days=365),
                 Trade.realized_pnl.isnot(None),
             )
             .group_by(func.date_trunc("day", Trade.closed_at))
@@ -163,7 +162,6 @@ async def get_performance(
         )
         daily_rows = daily_result.all()
         if len(daily_rows) >= 5:
-            import numpy as np
             daily_pnls = [float(r.daily_pnl) for r in daily_rows]
             s = pd.Series(daily_pnls)
             mean_r = s.mean()
@@ -195,7 +193,7 @@ async def get_daily_pnl(
 ):
     """Daily P&L breakdown for desk headers and charts."""
     account_ids = await _user_account_ids(db, current_user.id)
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     if not account_ids:
         return {"series": [], "total_pnl": 0.0, "today_pnl": 0.0}
@@ -216,7 +214,7 @@ async def get_daily_pnl(
     )
     rows = result.all()
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     today_pnl = 0.0
     total_pnl = 0.0
     series = []
@@ -263,7 +261,7 @@ async def get_tca(
     current_user: User = Depends(get_current_user),
 ):
     """Transaction Cost Analysis — execution quality metrics."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     account_ids = await _user_account_ids(db, current_user.id)
 
     # Count total trades in period
@@ -463,7 +461,7 @@ async def get_pnl_attribution(
     current_user: User = Depends(get_current_user),
 ):
     """PnL attribution breakdown by strategy, time-of-day, day-of-week."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     account_ids = await _user_account_ids(db, current_user.id)
 
     where_clause = [
@@ -612,7 +610,7 @@ async def _fetch_alpaca_bars(symbols: list[str], days: int) -> dict[str, list[fl
     Returns a dict mapping symbol -> list of close prices (oldest first).
     Symbols that fail to fetch are omitted from the result.
     """
-    start_dt = (datetime.now(timezone.utc) - timedelta(days=days + 10)).strftime("%Y-%m-%d")
+    start_dt = (datetime.now(UTC) - timedelta(days=days + 10)).strftime("%Y-%m-%d")
     # Alpaca doesn't carry BTC/USD in the stock bars endpoint — filter to equity-like symbols
     equity_symbols = [s for s in symbols if "/" not in s]
     if not equity_symbols:
@@ -647,7 +645,7 @@ async def _fetch_alpaca_bars(symbols: list[str], days: int) -> dict[str, list[fl
 
 @router.get("/correlation")
 async def get_correlation_matrix(
-    account_id: Optional[str] = Query(None),
+    account_id: str | None = Query(None),
     days: int = Query(30, ge=5, le=365),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -685,7 +683,7 @@ async def get_correlation_matrix(
         return {
             "symbols": symbols,
             "matrix": [],
-            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "computed_at": datetime.now(UTC).isoformat(),
             "error": "Unable to fetch price data from Alpaca. Check API credentials.",
         }
 
@@ -703,7 +701,7 @@ async def get_correlation_matrix(
         return {
             "symbols": available_symbols,
             "matrix": [[1.0]] if len(series_dict) == 1 else [],
-            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "computed_at": datetime.now(UTC).isoformat(),
         }
 
     # Align series by index (use shortest length)
@@ -721,7 +719,7 @@ async def get_correlation_matrix(
     return {
         "symbols": final_symbols,
         "matrix": matrix,
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -730,7 +728,7 @@ async def get_correlation_matrix(
 ALPACA_QUOTES_URL = "https://data.alpaca.markets/v2/stocks/quotes/latest"
 
 
-async def _fetch_latest_price(symbol: str) -> Optional[float]:
+async def _fetch_latest_price(symbol: str) -> float | None:
     """Try to get the latest ask price for a symbol from Alpaca."""
     headers = {
         "APCA-API-KEY-ID": settings.alpaca_api_key,
@@ -760,7 +758,7 @@ async def _fetch_latest_price(symbol: str) -> Optional[float]:
 @router.get("/tax-lots/{symbol}")
 async def get_tax_lots(
     symbol: str,
-    account_id: Optional[str] = Query(None),
+    account_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -858,7 +856,7 @@ async def get_tax_lots(
         last_fill = buys[-1].avg_fill_price
         current_price = float(last_fill) if last_fill else None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result_lots = []
     for i, lot in enumerate(open_lots):
         qty = float(lot["qty"])
@@ -866,7 +864,7 @@ async def get_tax_lots(
         acquired = lot["acquired_at"]
         # Ensure timezone-aware
         if acquired and acquired.tzinfo is None:
-            acquired = acquired.replace(tzinfo=timezone.utc)
+            acquired = acquired.replace(tzinfo=UTC)
 
         holding_days = (now - acquired).days if acquired else 0
         is_long_term = holding_days > 365
@@ -973,7 +971,7 @@ async def _fetch_options_snapshots_for_symbols(symbols: list[str]) -> dict[str, 
 
 
 async def _get_account_equity_for_user(
-    account_id: Optional[str],
+    account_id: str | None,
     current_user: "User",
     db: AsyncSession,
 ) -> float:
@@ -1001,7 +999,7 @@ async def _get_account_equity_for_user(
 
 @router.get("/portfolio-greeks")
 async def get_portfolio_greeks(
-    account_id: Optional[str] = Query(None),
+    account_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1051,7 +1049,7 @@ async def get_portfolio_greeks(
             "position_count": 0,
             "options_positions": [],
             "account_equity": round(account_equity, 2),
-            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "computed_at": datetime.now(UTC).isoformat(),
         }
 
     # Fetch snapshots for all option symbols
@@ -1133,7 +1131,7 @@ async def get_portfolio_greeks(
         "position_count": len(option_positions),
         "options_positions": positions_out,
         "account_equity": round(account_equity, 2),
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -1145,7 +1143,7 @@ async def get_portfolio_snapshot(
     """Aggregate portfolio KPIs for the dashboard snapshot widget — scoped to user."""
     account_ids = await _user_account_ids(db, current_user.id)
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     yesterday = today - timedelta(days=1)
 
     if not account_ids:
@@ -1165,7 +1163,7 @@ async def get_portfolio_snapshot(
     today_pnl_result = await db.execute(
         select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
             Trade.account_id.in_(account_ids),
-            Trade.closed_at >= datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc),
+            Trade.closed_at >= datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC),
         )
     )
     today_pnl = float(today_pnl_result.scalar_one())
@@ -1174,14 +1172,14 @@ async def get_portfolio_snapshot(
     yesterday_pnl_result = await db.execute(
         select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
             Trade.account_id.in_(account_ids),
-            Trade.closed_at >= datetime.combine(yesterday, datetime.min.time()).replace(tzinfo=timezone.utc),
-            Trade.closed_at < datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc),
+            Trade.closed_at >= datetime.combine(yesterday, datetime.min.time()).replace(tzinfo=UTC),
+            Trade.closed_at < datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC),
         )
     )
     yesterday_pnl = float(yesterday_pnl_result.scalar_one())
 
     # Win rate: positive trades / total trades (last 90 days)
-    since_90 = datetime.now(timezone.utc) - timedelta(days=90)
+    since_90 = datetime.now(UTC) - timedelta(days=90)
     wins_result = await db.execute(
         select(
             func.count(Trade.id).label("total"),
@@ -1210,7 +1208,7 @@ async def get_portfolio_snapshot(
         )
         .where(
             Trade.account_id.in_(account_ids),
-            Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365),
+            Trade.closed_at >= datetime.now(UTC) - timedelta(days=365),
         )
         .group_by(func.date_trunc("day", Trade.closed_at))
         .order_by(func.date_trunc("day", Trade.closed_at))
@@ -1259,7 +1257,7 @@ async def get_equity_curve(
     if not account_ids:
         return []
 
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     result = await db.execute(
         select(
@@ -1306,7 +1304,7 @@ async def get_monthly_returns(
     if not account_ids:
         return []
 
-    since = datetime.now(timezone.utc) - timedelta(days=730)
+    since = datetime.now(UTC) - timedelta(days=730)
 
     result = await db.execute(
         select(
@@ -1365,7 +1363,7 @@ async def get_tearsheet(
     if not account_ids:
         raise HTTPException(status_code=404, detail="No accounts found")
 
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     # Fetch daily P&L
     result = await db.execute(
@@ -1475,8 +1473,9 @@ async def get_tearsheet(
     benchmark_sharpe_spy = None
     benchmark_return_spy = None
     try:
-        import yfinance as yf
         import functools
+
+        import yfinance as yf
         spy = await run_in_threadpool(functools.partial(yf.download, "SPY", period=f"{days}d", interval="1d", auto_adjust=True, progress=False))
         if spy is not None and len(spy) > 10:
             spy_close = spy["Close"].squeeze()
@@ -1516,7 +1515,7 @@ async def get_tearsheet(
         "monthly_returns": monthly_returns,
         "equity_curve": equity_curve,
         "drawdown_curve": drawdown_curve,
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -1547,10 +1546,12 @@ async def get_live_stats(db: AsyncSession = Depends(get_db)):
 
     try:
         import math as _math
+
         from sqlalchemy import case, func, select
+
         from app.models.trade import Trade
 
-        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
         # Total trade count + win rate
         stats = await db.execute(
@@ -1619,6 +1620,7 @@ async def get_system_status(
     open positions, today's P&L %, and strategies broken down by desk.
     """
     from sqlalchemy import desc
+
     from app.strategies import STRATEGY_REGISTRY
 
     account_ids = await _user_account_ids(db, current_user.id)
@@ -1654,7 +1656,7 @@ async def get_system_status(
         if sig_row:
             ts = sig_row
             if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
+                ts = ts.replace(tzinfo=UTC)
             last_signal_at = ts.isoformat()
 
     # Open positions count
@@ -1668,8 +1670,8 @@ async def get_system_status(
     # Today's P&L %
     today_pnl_pct = 0.0
     if account_ids:
-        today = datetime.now(timezone.utc).date()
-        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+        today = datetime.now(UTC).date()
+        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
         today_pnl_result = await db.execute(
             select(func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
                 Trade.account_id.in_(account_ids),
@@ -1731,7 +1733,7 @@ async def get_competition_report(
     try:
         account_ids = await _user_account_ids(db, current_user.id)
         if account_ids:
-            since = datetime.now(timezone.utc) - timedelta(days=365)
+            since = datetime.now(UTC) - timedelta(days=365)
             result = await db.execute(
                 select(Trade.realized_pnl, Trade.exit_time)
                 .where(Trade.account_id.in_(account_ids), Trade.exit_time >= since)
@@ -1739,7 +1741,6 @@ async def get_competition_report(
             )
             rows = result.all()
             if len(rows) >= 20:
-                import numpy as np
                 pnls = [float(r.realized_pnl or 0) for r in rows]
                 arr = pd.Series(pnls)
                 mean_r = arr.mean()
@@ -1786,7 +1787,7 @@ async def get_competition_report(
             if live_sharpe else
             "Insufficient trade history — need ≥20 closed trades for comparison"
         ),
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -1827,7 +1828,7 @@ async def get_is_analysis(
             "data_available": False,
         }
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
 
     # Fetch SlippageRecords joined to Orders, filtered by user's accounts and date range
     stmt = (
@@ -1966,7 +1967,7 @@ async def get_is_analysis(
 
     # Trend: compare avg IS in last 7d vs prior 7d
     trend_7d: float | None = None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     recent_cutoff = now - timedelta(days=7)
     prior_cutoff = now - timedelta(days=14)
 
@@ -1997,7 +1998,7 @@ async def get_is_analysis(
         "trend_7d": trend_7d,
         "data_available": True,
         "record_count": len(records),
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -2041,7 +2042,7 @@ async def get_factor_attribution(
     if not account_ids:
         return {"error": "insufficient_data", "min_days_needed": 20}
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
 
     # Fetch daily realized P&L grouped by date(closed_at)
     pnl_stmt = (
@@ -2100,7 +2101,7 @@ async def get_factor_attribution(
 
     risk_free_daily = 0.04 / 252
 
-    factor_series: dict[str, "pd.Series"] = {
+    factor_series: dict[str, pd.Series] = {
         "MKT-RF": pct["SPY"] - risk_free_daily,
         "SMB":    pct["IWM"] - pct["SPY"],
         "HML":    pct["IVE"] - pct["IVW"],
@@ -2181,7 +2182,7 @@ async def get_factor_attribution(
         "data_start": str(common_dates[0]),
         "data_end": str(common_dates[-1]),
         "n_observations": len(common_dates),
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -2203,7 +2204,7 @@ async def get_strategy_leaderboard(
     """
     from app.models.promotion import StrategyPromotion
 
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     account_ids = await _user_account_ids(db, current_user.id)
 
     promo_filter = [StrategyPromotion.current_stage != "rejected"] if not include_rejected else []
@@ -2278,7 +2279,7 @@ async def get_strategy_leaderboard(
         "total_strategies": len(rows),
         "demote_flag_count": demote_count,
         "period_days": days,
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -2293,7 +2294,7 @@ async def auto_demote_underperformers(
     """
     from app.models.promotion import StrategyPromotion
 
-    since = datetime.now(timezone.utc) - timedelta(days=90)
+    since = datetime.now(UTC) - timedelta(days=90)
     account_ids = await _user_account_ids(db, current_user.id)
 
     strategy_pnl: dict[str, list[float]] = {}
@@ -2333,7 +2334,7 @@ async def auto_demote_underperformers(
             promo.current_stage = demotion_map[prev_stage]
             promo.rejection_reason = f"Auto-demoted: Sharpe {sharpe:.3f} < 0.3 over 90 days"
             promo.review_history = (promo.review_history or []) + [{
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "ts": datetime.now(UTC).isoformat(),
                 "action": "auto_demoted",
                 "from_stage": prev_stage,
                 "to_stage": promo.current_stage,
@@ -2355,7 +2356,7 @@ async def get_daily_pnl_by_strategy(
 ):
     """Daily P&L breakdown per strategy — shows which desk is generating alpha."""
     account_ids = await _user_account_ids(db, current_user.id)
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     if not account_ids:
         return {"strategies": [], "total_pnl": 0.0}
@@ -2465,5 +2466,5 @@ async def get_pipeline_status(
         "total_active_strategies": total_active,
         "total_in_pipeline": in_pipeline,
         "unregistered": max(0, total_active - in_pipeline),
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
     }

@@ -18,8 +18,9 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class Task:
         return {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in asdict(self).items()}
 
     @classmethod
-    def from_redis(cls, fields: dict) -> "Task":
+    def from_redis(cls, fields: dict) -> Task:
         d: dict = {}
         for k, v in fields.items():
             try:

@@ -2,9 +2,10 @@
 # Version: 1.0.0  |  Mode: paper (live trading permanently disabled)
 # Config loaded from environment variables via Pydantic BaseSettings
 # TRADING_MODE defaults to "paper" — live mode is permanently disabled
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
 import os as _os
+
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
 _HERE = _os.path.dirname(_os.path.abspath(__file__))

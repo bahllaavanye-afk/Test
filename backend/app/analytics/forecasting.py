@@ -11,7 +11,7 @@ nothing here is hardcoded or guaranteed.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 # Trading-day horizons.
 TRADING_DAYS = {"weekly": 5, "monthly": 21, "yearly": 252}

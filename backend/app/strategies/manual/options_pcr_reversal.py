@@ -38,10 +38,9 @@ import httpx
 import numpy as np
 import pandas as pd
 
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.utils.logging import logger
-
 
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 

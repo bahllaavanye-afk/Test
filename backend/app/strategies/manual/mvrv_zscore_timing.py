@@ -25,11 +25,9 @@ Academic reference:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
+import aiohttp
 import numpy as np
 import pandas as pd
-import aiohttp
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

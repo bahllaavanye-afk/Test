@@ -5,13 +5,10 @@ Action: 0=0.5x, 1=1.0x, 2=1.5x, 3=2.0x Kelly multiplier
 Reward: excess return over fixed Kelly baseline, penalized by -0.1*drawdown
 Falls back to 1.0x when no trained policy found.
 """
-import os
+from pathlib import Path
+
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from pathlib import Path
-from typing import Optional
-
 
 STATE_DIM = 7
 ACTION_DIM = 4

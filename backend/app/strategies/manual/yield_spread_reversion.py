@@ -22,7 +22,6 @@ Sharpe target: 0.8-1.2 (bond carry + mean reversion)
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal

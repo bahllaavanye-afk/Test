@@ -30,7 +30,6 @@ import httpx
 
 from app.utils.logging import logger
 
-
 SLACK_API = "https://slack.com/api"
 
 

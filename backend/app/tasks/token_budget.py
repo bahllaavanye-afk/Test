@@ -10,14 +10,13 @@ Usage:
         # do LLM call
 """
 from __future__ import annotations
-import json
+
 import time
-from datetime import datetime, timezone
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from app.utils.logging import logger
-
 
 # Daily token quotas per agent (tune these to control API spend)
 DEFAULT_BUDGETS: dict[str, int] = {
@@ -41,7 +40,7 @@ class TokenBudgetManager:
         self._redis = redis_client
 
     def _today_key(self, agent: str) -> str:
-        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        day = datetime.now(UTC).strftime("%Y-%m-%d")
         return f"token_budget:{agent}:{day}"
 
     async def _get_redis(self):

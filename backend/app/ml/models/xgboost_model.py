@@ -2,15 +2,17 @@
 XGBoost binary classifier with Optuna hyperparameter optimization.
 SHAP-based explainability built in.
 """
-import numpy as np
 import json
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+
+import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 try:
-    import xgboost as xgb
     import shap
+    import xgboost as xgb
     XGB_AVAILABLE = True
 except ImportError:
     XGB_AVAILABLE = False

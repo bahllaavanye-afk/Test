@@ -2,9 +2,10 @@
 Technical indicator feature computation using pandas-ta.
 All indicators use only past data (no lookahead).
 """
-import pandas as pd
-import app.ml.features.pandas_ta_compat as ta
 import numpy as np
+import pandas as pd
+
+import app.ml.features.pandas_ta_compat as ta
 
 
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:

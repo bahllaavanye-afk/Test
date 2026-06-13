@@ -1,9 +1,11 @@
 """Continuous price ingestion from brokers → Redis cache → WebSocket broadcast."""
 from __future__ import annotations
+
 import asyncio
-from app.redis_client import get_redis, price_cache
-from app.ws.manager import manager
+
+from app.redis_client import price_cache
 from app.utils.logging import logger
+from app.ws.manager import manager
 
 POLL_INTERVAL = 2      # seconds between full cycles
 BATCH_SIZE    = 20     # max concurrent quote fetches per cycle

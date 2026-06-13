@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -32,10 +32,11 @@ class ForecastingDesk:
 
     async def _daily_series(self, db_session_factory) -> tuple[list[float], dict[str, list[float]]]:
         """Return (overall daily PnL series, per-desk daily PnL series) from Trades."""
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select
+
         from app.models.trade import Trade
 
-        cutoff = datetime.now(timezone.utc) - timedelta(days=self.lookback_days)
+        cutoff = datetime.now(UTC) - timedelta(days=self.lookback_days)
         async with db_session_factory() as db:
             # Overall: daily total PnL.
             day = func.date(Trade.closed_at)
@@ -68,7 +69,7 @@ class ForecastingDesk:
             logger.warning("forecasting_desk: query failed", error=str(e))
             return {"sufficient_data": False, "error": str(e)}
         forecast = build_forecast(overall, by_desk=by_desk)
-        forecast["computed_at"] = datetime.now(timezone.utc).isoformat()
+        forecast["computed_at"] = datetime.now(UTC).isoformat()
         forecast["lookback_days"] = self.lookback_days
         self.last_forecast = forecast
         return forecast

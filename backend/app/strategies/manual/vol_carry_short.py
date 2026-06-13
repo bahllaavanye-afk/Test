@@ -14,7 +14,8 @@ via VIX spot vs 3-month implied vol.
 """
 import numpy as np
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class VolCarryShortStrategy(AbstractStrategy):

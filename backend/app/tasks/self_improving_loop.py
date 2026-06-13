@@ -14,16 +14,15 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import case, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.trade import Trade
 from app.models.strategy import Strategy
-from app.tasks.free_llm_router import call_race
+from app.models.trade import Trade
 from app.tasks.agent_memory import AgentMemory
+from app.tasks.free_llm_router import call_race
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ class SelfImprovingLoop:
 
     async def _collect_strategy_metrics(self) -> list[dict]:
         """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        cutoff = datetime.now(UTC) - timedelta(days=30)
         async with self._factory() as session:
             result = await session.execute(
                 select(
@@ -96,7 +95,7 @@ class SelfImprovingLoop:
         Minimum 14-day paper period is enforced: strategies created less than 14 days
         ago are never auto-disabled regardless of Sharpe.
         """
-        cutoff_age = datetime.now(timezone.utc) - timedelta(days=14)
+        cutoff_age = datetime.now(UTC) - timedelta(days=14)
         underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
         if not underperformers:
             return
@@ -128,7 +127,7 @@ class SelfImprovingLoop:
                     "sharpe": m["sharpe"],
                     "num_trades": m["num_trades"],
                     "total_pnl": m["total_pnl"],
-                    "disabled_at": datetime.now(timezone.utc).isoformat(),
+                    "disabled_at": datetime.now(UTC).isoformat(),
                 })
             await session.commit()
 

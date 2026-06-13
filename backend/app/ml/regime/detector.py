@@ -7,11 +7,12 @@ Used to scale Kelly position sizing:
   HIGH_VOL    → 0.5x (half size — protect capital)
 """
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
+
+import numpy as np
 
 
 class Regime(str, Enum):
@@ -108,7 +109,7 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
         return RegimeState(
             regime=Regime.UNKNOWN, confidence=0.0, vol_20d=0.0,
             hurst=0.5, sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
 
     # 20-day realized volatility (annualized)
@@ -139,7 +140,7 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
         vol_20d=vol_20d,
         hurst=hurst,
         sizing_multiplier=REGIME_SIZING_MULTIPLIER[regime],
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
 
 

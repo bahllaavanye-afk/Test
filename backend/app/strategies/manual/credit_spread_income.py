@@ -34,7 +34,6 @@ import asyncio
 import logging
 from datetime import date, timedelta
 
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal

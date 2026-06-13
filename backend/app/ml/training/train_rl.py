@@ -3,13 +3,12 @@ Train RL position sizer and dynamic exit agents.
 Uses synthetic GBM price paths (no broker connection required).
 Saves best policy to models_artifacts/rl_*.pt
 """
-import os
 import json
-import torch
-import torch.nn as nn
-import numpy as np
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
+
+import numpy as np
+import torch
 
 RESULTS_DIR = Path(__file__).parent.parent.parent.parent / "experiments" / "results"
 ARTIFACTS_DIR = Path(__file__).parent.parent.parent / "models_artifacts"
@@ -22,7 +21,7 @@ def generate_gbm_episode(n_steps=252, mu=0.0008, sigma=0.018, start_price=100.0)
 
 def train_position_sizer(n_episodes=500, lr=3e-4):
     """PPO training for position sizer. Returns final policy state_dict."""
-    from app.risk.rl_position_sizer import _PolicyNet, STATE_DIM, ACTION_DIM, KELLY_MULTIPLIERS
+    from app.risk.rl_position_sizer import KELLY_MULTIPLIERS, _PolicyNet
     net = _PolicyNet()
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     episode_rewards = []
@@ -123,7 +122,7 @@ def main():
         torch.save({"policy": best_state}, ARTIFACTS_DIR / "rl_position_sizer.pt")
         print(f"Saved policy. Best episode reward: {max(rewards):.4f}")
     results = {
-        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "trained_at": datetime.now(UTC).isoformat(),
         "n_episodes": 500,
         "best_reward": float(max(rewards)),
         "final_avg_reward": float(np.mean(rewards[-50:])),

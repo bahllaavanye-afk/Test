@@ -14,9 +14,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import date, datetime, timezone, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -140,7 +139,7 @@ def write(
         "n_rows": len(df),
         "n_cols": len(df.columns),
         "feature_cols": feature_cols,
-        "written_at": datetime.now(timezone.utc).isoformat(),
+        "written_at": datetime.now(UTC).isoformat(),
     }
     _meta_path(symbol, interval, as_of).write_text(json.dumps(meta))
 
@@ -152,7 +151,7 @@ def read(
     symbol: str,
     interval: str,
     as_of: date | str,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Load features from cache. Returns None if not cached."""
     path = _parquet_path(symbol, interval, as_of)
     if not path.exists():
