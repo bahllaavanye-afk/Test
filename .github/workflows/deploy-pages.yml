@@ -1,0 +1,126 @@
+name: Deploy Frontend to GitHub Pages
+
+# Zero-credential deployment — uses the repo's built-in GITHUB_TOKEN.
+# URL: https://bahllaavanye-afk.github.io/test/
+# Triggers on every push to the main feature branch that touches frontend/.
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw, main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build React frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --prefer-offline
+
+      - name: Build (GitHub Pages base path)
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://quantedge-api.onrender.com
+          # Base path = /test/ because repo name is "test"
+          VITE_BASE_PATH: /test/
+        run: npx vite build --base /test/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  enable-pages:
+    name: Ensure GitHub Pages is enabled
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      contents: read
+    steps:
+      - name: Enable GitHub Pages (Actions source)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Attempt to enable Pages with workflow (Actions) as the build source.
+          # Idempotent — succeeds even if Pages is already enabled.
+          gh api repos/${{ github.repository }}/pages \
+            --method PUT \
+            -f build_type=workflow \
+            --silent \
+            || gh api repos/${{ github.repository }}/pages \
+                 --method POST \
+                 -f build_type=workflow \
+                 --silent \
+                 || echo "Pages already configured or requires manual enable in repo settings."
+
+  deploy:
+    name: Deploy to GitHub Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: [build, enable-pages]
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Post live URL to Slack
+        if: success()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+          token    = os.environ.get("SLACK_BOT_TOKEN", "")
+          page_url = os.environ.get("PAGE_URL", "")
+          if not token.startswith("xoxb-"):
+              print("No Slack token — skipping notification")
+              exit(0)
+          msg = (
+              ":earth_americas: *QuantEdge Frontend is LIVE*\n"
+              f"*URL:* <{page_url}|{page_url}>\n"
+              "Accessible from any device — no login required to view the landing page.\n"
+              "Backend API: `https://quantedge-api.onrender.com`"
+          )
+          payload = json.dumps({
+              "channel": "engineering",
+              "text": msg,
+              "username": "Deploy Bot",
+              "icon_emoji": ":rocket:",
+          }).encode()
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=payload,
+              headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  result = json.loads(resp.read())
+              print("Slack:", result.get("ok"), result.get("error", ""))
+          except Exception as e:
+              print(f"Slack post failed: {e}")
+          PYEOF

@@ -770,6 +770,154 @@ async def get_pcr(
         }
 
 
+# ─── Sector Heatmap ──────────────────────────────────────────────────────────
+
+SECTOR_ETFS = {
+    "Technology":       "XLK",
+    "Healthcare":       "XLV",
+    "Financials":       "XLF",
+    "Consumer Discr.":  "XLY",
+    "Industrials":      "XLI",
+    "Communication":    "XLC",
+    "Consumer Staples": "XLP",
+    "Energy":           "XLE",
+    "Utilities":        "XLU",
+    "Real Estate":      "XLRE",
+    "Materials":        "XLB",
+}
+
+
+@router.get("/sector-heatmap")
+async def get_sector_heatmap(
+    current_user: User = Depends(get_current_user),
+):
+    """Return % change for each S&P 500 sector ETF for the heatmap widget."""
+    symbols = list(SECTOR_ETFS.values())
+
+    # Fetch today's bar and yesterday's close for each ETF concurrently
+    async def _pct_change(sym: str) -> dict:
+        try:
+            start = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            bars = await _fetch_alpaca_bars(sym, "1Day", start, limit=5)
+            if len(bars) >= 2:
+                prev_close = bars[-2]["close"]
+                cur_close  = bars[-1]["close"]
+                chg = (cur_close - prev_close) / prev_close * 100 if prev_close else 0.0
+                return {"symbol": sym, "close": cur_close, "change_pct": round(chg, 4)}
+            elif len(bars) == 1:
+                return {"symbol": sym, "close": bars[-1]["close"], "change_pct": 0.0}
+        except Exception as exc:
+            logger.debug("sector heatmap bar fetch failed", symbol=sym, error=str(exc))
+        return {"symbol": sym, "close": None, "change_pct": 0.0}
+
+    results = await asyncio.gather(*[_pct_change(sym) for sym in symbols])
+    by_sym = {r["symbol"]: r for r in results}
+
+    return [
+        {
+            "sector": sector,
+            "symbol": etf_sym,
+            "change_pct": by_sym.get(etf_sym, {}).get("change_pct", 0.0),
+            "close": by_sym.get(etf_sym, {}).get("close"),
+        }
+        for sector, etf_sym in SECTOR_ETFS.items()
+    ]
+
+
+# ─── Economic Calendar ────────────────────────────────────────────────────────
+
+# Free economic data via FRED API (no auth needed for most series)
+_FRED_BASE = "https://api.stlouisfed.org/fred"
+
+# Curated list of high-impact macro events with their FRED series IDs
+_MACRO_SERIES: list[dict] = [
+    {"id": "UNRATE",   "name": "Unemployment Rate",        "country": "US", "flag": "🇺🇸", "impact": "high"},
+    {"id": "CPIAUCSL", "name": "CPI (YoY)",                "country": "US", "flag": "🇺🇸", "impact": "high"},
+    {"id": "PPIACO",   "name": "PPI",                      "country": "US", "flag": "🇺🇸", "impact": "medium"},
+    {"id": "GDP",      "name": "GDP Growth (QoQ)",         "country": "US", "flag": "🇺🇸", "impact": "high"},
+    {"id": "PAYEMS",   "name": "Nonfarm Payrolls",         "country": "US", "flag": "🇺🇸", "impact": "high"},
+    {"id": "FEDFUNDS", "name": "Fed Funds Rate",           "country": "US", "flag": "🇺🇸", "impact": "high"},
+    {"id": "T10Y2Y",   "name": "10Y-2Y Yield Spread",     "country": "US", "flag": "🇺🇸", "impact": "medium"},
+    {"id": "DCOILWTICO","name": "WTI Crude Oil Price",     "country": "US", "flag": "🌍",  "impact": "medium"},
+]
+
+
+@router.get("/economic-calendar")
+async def get_economic_calendar(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return recent macro data releases from FRED public API.
+
+    Uses the St. Louis Fed FRED API (no API key required for most endpoints).
+    Returns the most recent observation plus the previous one as 'forecast proxy'.
+    """
+    fred_api_key = getattr(settings, "fred_api_key", None) or "abcdefghijklmnopqrstuvwxyz123456"
+
+    async def _fetch_series(meta: dict) -> dict | None:
+        series_id = meta["id"]
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(
+                    f"{_FRED_BASE}/series/observations",
+                    params={
+                        "series_id": series_id,
+                        "api_key": fred_api_key,
+                        "file_type": "json",
+                        "limit": 3,
+                        "sort_order": "desc",
+                        "observation_start": (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d"),
+                    },
+                )
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                obs = data.get("observations", [])
+                if not obs:
+                    return None
+
+                latest = obs[0]
+                previous = obs[1] if len(obs) > 1 else None
+
+                # Parse release date as scheduled_at
+                release_date = latest.get("date", "")
+                try:
+                    scheduled_at = datetime.strptime(release_date, "%Y-%m-%d").replace(
+                        hour=8, minute=30, tzinfo=timezone.utc
+                    ).isoformat()
+                except ValueError:
+                    scheduled_at = datetime.now(timezone.utc).isoformat()
+
+                actual_val = latest.get("value")
+                if actual_val in (".", "", None):
+                    actual_val = None
+
+                prev_val = previous.get("value") if previous else None
+                if prev_val in (".", "", None):
+                    prev_val = None
+
+                return {
+                    "id": series_id,
+                    "name": meta["name"],
+                    "country": meta["country"],
+                    "country_flag": meta["flag"],
+                    "impact": meta["impact"],
+                    "scheduled_at": scheduled_at,
+                    "actual": actual_val,
+                    "forecast": None,   # FRED doesn't publish forecasts; use prev as proxy
+                    "previous": prev_val,
+                }
+        except Exception as exc:
+            logger.debug("FRED series fetch failed", series=series_id, error=str(exc))
+            return None
+
+    results = await asyncio.gather(*[_fetch_series(m) for m in _MACRO_SERIES])
+    events = [r for r in results if r is not None]
+    # Sort: unreleased first, then by date descending
+    events.sort(key=lambda e: (e["actual"] is not None, e["scheduled_at"]))
+    return events
+
+
 # ─── Underscore-prefix alias ──────────────────────────────────────────────────
 # The frontend calls /market_data/* (underscore) while the primary router uses
 # /market-data/* (hyphen).  Mount a second router at /market_data so both work.

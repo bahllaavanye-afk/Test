@@ -9,6 +9,10 @@ import { TVAdvancedChart } from '../components/charts/TVAdvancedChart'
 import NewsSentimentPanel from '../components/trading/NewsSentimentPanel'
 import TradeMarkerChart from '../components/charts/TradeMarkerChart'
 import TraderLevel from '../components/gamification/TraderLevel'
+import { WatchlistPanel } from '../components/charts/WatchlistPanel'
+import { MarketHeatmap } from '../components/charts/MarketHeatmap'
+import { AlertCenter } from '../components/alerts/AlertCenter'
+import { EconomicCalendar } from '../components/charts/EconomicCalendar'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -563,6 +567,20 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* ── TradingView-style panels ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <WatchlistPanel
+          symbols={['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'META', 'GOOGL', 'BTC/USD']}
+          onSelectSymbol={(sym) => setChartSymbol(`NASDAQ:${sym}`)}
+          className="h-72"
+        />
+        <AlertCenter className="h-72" />
+        <EconomicCalendar className="h-72" />
+      </div>
+
+      {/* ── Sector Heatmap ── */}
+      <MarketHeatmap className="h-40" />
 
       {/* ── Market News ── */}
       <div className="kpi-card overflow-hidden max-h-64 overflow-y-auto">

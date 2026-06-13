@@ -169,6 +169,11 @@ async def lifespan(app: FastAPI):
     red_team = get_red_team()
     app.state.red_team = red_team
 
+    # Strategy pipeline: staged → backtest → promote (runs every 30 min).
+    from app.tasks.strategy_pipeline import get_pipeline
+    strategy_pipeline = get_pipeline()
+    app.state.strategy_pipeline = strategy_pipeline
+
     bg_tasks = []
     app.state.bg_tasks = bg_tasks
 
@@ -188,6 +193,7 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: build_monitor.run(), "build_monitor")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: forecasting_desk.run(), "forecasting_desk")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: red_team.run(), "red_team")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: strategy_pipeline.run(), "strategy_pipeline")))
 
     # ── Strategy runner + price feed ──────────────────────────────────────────
     # Build the Alpaca broker (returns None gracefully when API keys are absent)
