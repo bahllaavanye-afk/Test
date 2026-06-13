@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781371818,
+  "last_run_ts": 1781372517,
   "last_commit_sha": "f22a00d",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -282,7 +282,8 @@
     "7c1939f8adae",
     "510e36140926",
     "f0a183ae3b9b",
-    "bb1a63197791"
+    "bb1a63197791",
+    "4e93ecb8becf"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -297,7 +298,11 @@
     "engineering:silent_vp_eng": 1781371822.073157,
     "desk-crypto:silent_ml_lead": 1781371835.2347353,
     "squad-backend:silent_backend_lead": 1781371843.1897573,
-    "squad-qa:silent_qa_dir": 1781371846.7756903
+    "squad-qa:silent_qa_dir": 1781371846.7756903,
+    "squad-execution:silent_exec_eng": 1781372517.8367941,
+    "alpha-research:silent_quant_researcher": 1781372534.0015523,
+    "leadership-summary:silent_cro": 1781372541.2093074,
+    "engineering:silent_nlp_researcher": 1781372579.685717
   },
   "response_cache": {},
   "posted_today": [
@@ -355,12 +360,12 @@
     "backend_lead": 1781371822.0731158,
     "qa_dir": 1781371822.0731158,
     "devops_dir": 1781371822.0731158,
-    "exec_eng": 1781303590.3158247,
+    "exec_eng": 1781372517.8365438,
     "poly_desk": 1781303590.3158247,
     "ml_researcher": 1781303590.3158247,
     "vp_research": 1781364343.3286858,
-    "quant_researcher": 1781364396.8455102,
-    "cro": 1781303590.3158247,
+    "quant_researcher": 1781372517.8365438,
+    "cro": 1781372517.8365438,
     "frontend": 1781144509.093116,
     "equity_lead": 1781144509.093116,
     "fixed_income_desk": 1781024089.1695297,
@@ -417,7 +422,8 @@
     "vp_engineering_(cr)": 1781364273.457347,
     "product_lead": 1781271831.6069448,
     "ml_infra": 1781272059.2677236,
-    "data_engineer_2": 1781290200.3976712
+    "data_engineer_2": 1781290200.3976712,
+    "nlp_researcher": 1781372517.8365438
   },
   "daily_usage": {
     "2026-06-10": {
@@ -1297,41 +1303,37 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-13 17:30:58"
+    },
+    {
+      "emp": "exec_eng",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and merely restates the task at hand without providing meaningful insight or analysis.",
+      "channel": "unknown",
+      "ts": "2026-06-13 17:42:08"
+    },
+    {
+      "emp": "quant_researcher",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-13 17:42:20"
+    },
+    {
+      "emp": "cro",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and provides only a vague statement about model-to-live divergence without any specific details or solutions.",
+      "channel": "unknown",
+      "ts": "2026-06-13 17:42:27"
+    },
+    {
+      "emp": "nlp_researcher",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-13 17:43:07"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "cro",
-      "channel": "unknown",
-      "text": "*I am currently reviewing the `/risk_management/vaR_calculations.csv` file, which shows that our **Value-at-Risk (VaR)** is at $1.2 million, exceeding the 95% confidence threshold*. I am focusing on the **equities portfolio**, where the **max drawdown** has reached 12.5% in the last 30 days, as indi",
-      "provider": "litellm:groq",
-      "ts": 1781144566.1853971,
-      "score": 9
-    },
-    {
-      "emp": "frontend",
-      "channel": "unknown",
-      "text": "*I'm currently working on optimizing the `TradingView Lightweight Charts` component in `src/components/Chart.tsx` to improve real-time data updates via WebSocket*. The goal is to reduce the average update latency to **< 50ms** for the `EUR/USD` currency pair, which currently has a 24-hour trading vo",
-      "provider": "litellm:groq",
-      "ts": 1781144569.077212,
-      "score": 8
-    },
-    {
-      "emp": "equity_lead",
-      "channel": "unknown",
-      "text": "*Currently analyzing* the `/data/equities/factors/momentum.csv` file to identify top alpha opportunities, with a focus on the `momentum_12m` metric which shows a **0.85 correlation** with our current portfolio returns. I'm working on refining the signal generation model to incorporate this insight, ",
-      "provider": "litellm:groq",
-      "ts": 1781144572.234852,
-      "score": 7
-    },
-    {
-      "emp": "macro_researcher",
-      "channel": "unknown",
-      "text": "*I'm analyzing the latest CPI data in `/data/economic_indicators/inflation.csv` to assess the current inflation regime*. The **year-over-year inflation rate** has increased to 3.5%, exceeding our threshold of 3.2% in `signals.py`, indicating a potential shift towards a higher inflation regime. I'm c",
-      "provider": "litellm:groq",
-      "ts": 1781144581.0217938,
-      "score": 5
-    },
     {
       "emp": "stat_arb_desk",
       "channel": "unknown",
@@ -1699,6 +1701,38 @@
       "provider": "Gemini(GEMINI_API_KEY_2)",
       "ts": 1781371858.3185656,
       "score": 5
+    },
+    {
+      "emp": "exec_eng",
+      "channel": "unknown",
+      "text": "Currently analyzing fill-quality degradation for `EUR/USD` market orders routed via `exec_ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781372528.9096718,
+      "score": 2
+    },
+    {
+      "emp": "quant_researcher",
+      "channel": "unknown",
+      "text": "Just finished refactoring `/mnt/research/signals/v2/sma_crossover_strength.py`. The *out-of-sample Sharpe* for tech mid-caps improved to *1.35* over the last 6 months (vs. 1.12 previously), with *average daily turnover* holding at 18%. Next up: stress-testing capacity for AUM above $5 \u26a0\ufe0f",
+      "provider": "litellm:gemini",
+      "ts": 1781372540.8944106,
+      "score": 5
+    },
+    {
+      "emp": "cro",
+      "channel": "unknown",
+      "text": "Team, the single biggest firm-level risk right now is *Model-to-Live Divergence \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781372547.9137945,
+      "score": 2
+    },
+    {
+      "emp": "nlp_researcher",
+      "channel": "unknown",
+      "text": "Investigating a recent drop in alpha for our `mgmt_sentiment_delta` feature, where its \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781372587.630264,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -1709,12 +1743,12 @@
     "risk_eng": "litellm:groq",
     "backend_lead": "litellm:groq",
     "qa_dir": "litellm:groq",
-    "exec_eng": "litellm:groq",
+    "exec_eng": "Gemini(GEMINI_API_KEY_3)",
     "poly_desk": "litellm:groq",
     "ml_researcher": "Gemini(GEMINI_API_KEY_3)",
     "vp_research": "litellm:groq",
-    "quant_researcher": "litellm:groq",
-    "cro": "litellm:groq",
+    "quant_researcher": "litellm:gemini",
+    "cro": "Gemini(GEMINI_API_KEY_3)",
     "frontend": "litellm:groq",
     "equity_lead": "litellm:groq",
     "fixed_income_desk": "litellm:groq",
@@ -1733,7 +1767,8 @@
     "graph_ml_researcher": "Gemini(GEMINI_API_KEY)",
     "product_lead": "Gemini(GEMINI_API_KEY)",
     "ml_infra": "litellm:groq",
-    "data_engineer_2": "Gemini(GEMINI_API_KEY_2)"
+    "data_engineer_2": "Gemini(GEMINI_API_KEY_2)",
+    "nlp_researcher": "Gemini(GEMINI_API_KEY_2)"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781095580.7191632,
