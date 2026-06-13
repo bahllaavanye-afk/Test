@@ -64,6 +64,10 @@ class BotCreate(BaseModel):
     description: str = ""
     symbol: str
     market_type: str = "equity"
+    desk: str = "equity"  # equity|crypto|options|futures|fx|commodities|polymarket
+    signal_source: str = "rule_based"  # rule_based|ml_signal|hybrid
+    ml_model_name: str | None = None
+    ml_confidence_threshold: float | None = None
     trigger: TriggerConfig
     conditions: list[ConditionConfig] = []
     condition_logic: str = "ALL"
@@ -76,6 +80,10 @@ class BotUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     is_enabled: bool | None = None
+    desk: str | None = None
+    signal_source: str | None = None
+    ml_model_name: str | None = None
+    ml_confidence_threshold: float | None = None
     conditions: list[ConditionConfig] | None = None
     condition_logic: str | None = None
     action: ActionConfig | None = None
@@ -91,3 +99,7 @@ class BotOut(BotCreate):
     last_signal: str | None
     last_result: dict | None
     created_at: datetime
+    desk: str = "equity"
+    signal_source: str = "rule_based"
+    ml_model_name: str | None = None
+    ml_confidence_threshold: float | None = None

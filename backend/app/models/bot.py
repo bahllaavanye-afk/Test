@@ -1,7 +1,7 @@
 """Bot model — declarative trading bot definitions."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, JSON, Integer, DateTime
+from sqlalchemy import String, Boolean, JSON, Integer, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.base import TimestampMixin
@@ -17,6 +17,12 @@ class Bot(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(String, default="")
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     market_type: Mapped[str] = mapped_column(String(20), default="equity")  # equity|crypto|polymarket
+    # Options Alpha-style "desk" grouping
+    desk: Mapped[str] = mapped_column(String(32), default="equity")  # equity|crypto|options|futures|fx|commodities|polymarket
+    # Signal source: rule_based=pure indicators; ml_signal=ML model output; hybrid=ML gate + rule entry
+    signal_source: Mapped[str] = mapped_column(String(16), default="rule_based")
+    ml_model_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ml_confidence_threshold: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
 
     trigger: Mapped[dict] = mapped_column(JSON, nullable=False)
     conditions: Mapped[list] = mapped_column(JSON, default=list)

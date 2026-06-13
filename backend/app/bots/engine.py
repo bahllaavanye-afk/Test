@@ -789,34 +789,83 @@ class BotEngine:
         df = await _fetch_ohlcv(bot.symbol, bot.market_type)
         current_price = float(df["close"].iloc[-1]) if not df.empty and "close" in df.columns else 0.0
 
-        raw_conditions: list[dict] = bot.conditions or []
-        conditions = [ConditionConfig(**c) for c in raw_conditions]
+        signal_source = getattr(bot, "signal_source", "rule_based") or "rule_based"
+        ml_gate_passed: bool | None = None  # None = not checked
 
-        condition_results: list[bool] = []
-        for cond in conditions:
-            try:
-                passed = evaluate_condition(cond, df, current_price)
-                condition_results.append(passed)
-            except Exception as exc:
-                logger.warning("Condition evaluation error", bot_id=bot.id, error=str(exc))
-                condition_results.append(False)
-
-        logic = (bot.condition_logic or "ALL").upper()
-        if not condition_results:
-            conditions_passed = True
-        elif logic == "ANY":
-            conditions_passed = any(condition_results)
+        # ── ML signal gate (ml_signal or hybrid) ──────────────────────────────
+        if signal_source in ("ml_signal", "hybrid") and not df.empty:
+            ml_gate_passed = await self._check_ml_gate(bot, df)
+            if signal_source == "ml_signal":
+                # Pure ML mode: ML gate is the only condition
+                if not ml_gate_passed:
+                    result = BotResult(
+                        fired=False,
+                        reason=f"ML model confidence below threshold ({getattr(bot, 'ml_confidence_threshold', 0.6) or 0.6:.0%})",
+                        signal="hold",
+                    )
+                    await self._update_bot_stats(bot, db, result)
+                    return result
+                # Skip rule-based conditions entirely
+                conditions_passed = True
+                condition_results: list[bool] = []
+                logic = "ML"
+            else:
+                # Hybrid: evaluate rule conditions too
+                raw_conditions: list[dict] = bot.conditions or []
+                conditions = [ConditionConfig(**c) for c in raw_conditions]
+                condition_results = []
+                for cond in conditions:
+                    try:
+                        passed = evaluate_condition(cond, df, current_price)
+                        condition_results.append(passed)
+                    except Exception as exc:
+                        logger.warning("Condition evaluation error", bot_id=bot.id, error=str(exc))
+                        condition_results.append(False)
+                logic = (bot.condition_logic or "ALL").upper()
+                if not condition_results:
+                    conditions_passed = True
+                elif logic == "ANY":
+                    conditions_passed = any(condition_results)
+                else:
+                    conditions_passed = all(condition_results)
+                # Both rule conditions AND ML gate must pass
+                if not (conditions_passed and ml_gate_passed):
+                    result = BotResult(
+                        fired=False,
+                        reason=f"Hybrid check failed (rules={conditions_passed}, ml={ml_gate_passed})",
+                        signal="hold",
+                    )
+                    await self._update_bot_stats(bot, db, result)
+                    return result
         else:
-            conditions_passed = all(condition_results)
+            # Rule-based (default)
+            raw_conditions = bot.conditions or []
+            conditions = [ConditionConfig(**c) for c in raw_conditions]
+            condition_results = []
+            for cond in conditions:
+                try:
+                    passed = evaluate_condition(cond, df, current_price)
+                    condition_results.append(passed)
+                except Exception as exc:
+                    logger.warning("Condition evaluation error", bot_id=bot.id, error=str(exc))
+                    condition_results.append(False)
 
-        if not conditions_passed:
-            result = BotResult(
-                fired=False,
-                reason=f"Conditions not met ({logic}: {condition_results})",
-                signal="hold",
-            )
-            await self._update_bot_stats(bot, db, result)
-            return result
+            logic = (bot.condition_logic or "ALL").upper()
+            if not condition_results:
+                conditions_passed = True
+            elif logic == "ANY":
+                conditions_passed = any(condition_results)
+            else:
+                conditions_passed = all(condition_results)
+
+            if not conditions_passed:
+                result = BotResult(
+                    fired=False,
+                    reason=f"Conditions not met ({logic}: {condition_results})",
+                    signal="hold",
+                )
+                await self._update_bot_stats(bot, db, result)
+                return result
 
         action_dict: dict = bot.action or {}
         action = ActionConfig(**action_dict)
@@ -857,6 +906,29 @@ class BotEngine:
         )
         await self._update_bot_stats(bot, db, result)
         return result
+
+    async def _check_ml_gate(self, bot: Bot, df: pd.DataFrame) -> bool:
+        """Call ML InferenceService for the bot's symbol. Returns True if model is bullish with enough confidence."""
+        try:
+            from app.ml.inference import InferenceService
+            svc = InferenceService()
+            if not svc.is_ready():
+                # No model loaded — let the trade through (fail open) to avoid silent blocking
+                return True
+            result = await svc.predict(df, bot.symbol)
+            if result is None:
+                return True
+            confidence: float = result.get("confidence", 0.0)
+            direction: str = result.get("prediction", "neutral")
+            threshold: float = float(getattr(bot, "ml_confidence_threshold", None) or 0.6)
+            # For long bots check "up" direction, short bots check "down"
+            action_type: str = (bot.action or {}).get("type", "open_long")
+            if action_type == "open_short":
+                return direction == "down" and confidence >= threshold
+            return direction == "up" and confidence >= threshold
+        except Exception as exc:
+            logger.warning("ML gate check failed, failing open", bot_id=bot.id, error=str(exc))
+            return True  # Fail open — don't block trades due to ML unavailability
 
     async def _create_paper_order(
         self,
