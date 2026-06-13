@@ -185,13 +185,19 @@ class IssueEscalator:
         Open GitHub issues for un-fixable QA findings, skipping ones already
         tracked. Returns a summary dict.
         """
-        summary = {"opened": 0, "skipped_existing": 0, "candidates": 0, "errors": []}
+        return await self.escalate_items(self.build_escalations(report))
+
+    async def escalate_items(self, candidates: list[dict]) -> dict:
+        """
+        Open GitHub issues for a pre-built list of escalation candidates
+        (each: fingerprint, title, body, priority, role), deduplicated against
+        open `auto:qa` issues. Reusable by any monitor, not just the QA report.
+        """
+        summary = {"opened": 0, "skipped_existing": 0, "candidates": len(candidates), "errors": []}
         if not self.enabled:
             summary["errors"].append("escalation_disabled")
             return summary
 
-        candidates = self.build_escalations(report)
-        summary["candidates"] = len(candidates)
         if not candidates:
             return summary
 

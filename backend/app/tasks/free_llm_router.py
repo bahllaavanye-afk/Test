@@ -101,6 +101,13 @@ PROVIDERS: list[LLMProvider] = [
         timeout=35.0,
     ),
     LLMProvider(
+        name="openrouter",
+        env_key="OPENROUTER_API_KEY",
+        base_url="https://openrouter.ai/api/v1",
+        model="meta-llama/llama-3.3-70b-instruct:free",
+        timeout=30.0,
+    ),
+    LLMProvider(
         name="gemini_thinking",
         env_key="GEMINI_API_KEY",
         base_url="https://generativelanguage.googleapis.com/v1beta/openai",
@@ -116,6 +123,57 @@ class LLMResponse:
     content: str
     latency_ms: float
     tokens_used: int = 0
+    key_label: str = ""
+
+
+# ── Multi-key discovery, rotation, and usage tracking ──────────────────────────
+#
+# A provider may have several free keys: e.g. GROQ_API_KEY, GROQ_API_KEY_1,
+# GROQ_API_KEY_2, ... Reading only the singular name (the old behaviour) left
+# every numbered key idle. We discover all of them and round-robin across them so
+# free quota is spread instead of hammering one key.
+
+_MAX_KEY_SUFFIX = 12
+_RR_INDEX: dict[str, int] = {}           # env_key -> next rotation index
+_USAGE: dict[str, dict] = {}             # key_label -> {"calls", "tokens"}
+
+
+def _keys_for(env_key: str) -> list[tuple[str, str]]:
+    """All configured (label, value) keys for a provider, base + numbered."""
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    labels = [env_key] + [f"{env_key}_{i}" for i in range(1, _MAX_KEY_SUFFIX + 1)]
+    for label in labels:
+        val = os.getenv(label, "")
+        if val and val != "disabled" and val not in seen:
+            seen.add(val)
+            out.append((label, val))
+    return out
+
+
+def _next_key(env_key: str) -> tuple[str, str] | None:
+    """Round-robin the next (label, value) key for this provider, or None."""
+    keys = _keys_for(env_key)
+    if not keys:
+        return None
+    idx = _RR_INDEX.get(env_key, 0) % len(keys)
+    _RR_INDEX[env_key] = idx + 1
+    return keys[idx]
+
+
+def _record_usage(key_label: str, tokens: int) -> None:
+    u = _USAGE.setdefault(key_label, {"calls": 0, "tokens": 0})
+    u["calls"] += 1
+    u["tokens"] += int(tokens or 0)
+
+
+def get_throughput_report() -> list[dict]:
+    """Per-key call/token counts observed by the router (source of truth)."""
+    return [{"key": k, **v} for k, v in sorted(_USAGE.items())]
+
+
+def reset_usage() -> None:
+    _USAGE.clear()
 
 
 # ── Core caller ───────────────────────────────────────────────────────────────
@@ -126,9 +184,10 @@ async def _call_provider(
     temperature: float = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
-    api_key = os.getenv(provider.env_key, "")
-    if not api_key or api_key in ("disabled", ""):
+    selected = _next_key(provider.env_key)
+    if selected is None:
         return None
+    key_label, api_key = selected
 
     payload = {
         "model": provider.model,
@@ -150,9 +209,11 @@ async def _call_provider(
             content = data["choices"][0]["message"]["content"]
             tokens = data.get("usage", {}).get("total_tokens", 0)
             latency = (time.monotonic() - t0) * 1000
-            return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
+            _record_usage(key_label, tokens)
+            return LLMResponse(provider=provider.name, content=content, latency_ms=latency,
+                               tokens_used=tokens, key_label=key_label)
     except Exception as e:
-        logger.debug("Provider %s failed: %s", provider.name, e)
+        logger.debug("Provider %s (%s) failed: %s", provider.name, key_label, e)
         return None
 
 
@@ -168,7 +229,7 @@ async def call_race(
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
-        if os.getenv(p.env_key, "") not in ("", "disabled")
+        if _keys_for(p.env_key)
     }
     if not tasks:
         logger.warning("free_llm_router: no API keys configured")
@@ -202,7 +263,7 @@ async def call_consensus(
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
-        if os.getenv(p.env_key, "") not in ("", "disabled")
+        if _keys_for(p.env_key)
     ]
     if not tasks:
         return []
@@ -211,8 +272,16 @@ async def call_consensus(
 
 
 def available_providers() -> list[str]:
-    """Return names of providers with configured API keys."""
-    return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
+    """Return names of providers with at least one configured API key."""
+    return [p.name for p in PROVIDERS if _keys_for(p.env_key)]
+
+
+def available_keys() -> list[str]:
+    """Return labels of every configured key across all providers."""
+    labels: list[str] = []
+    for p in PROVIDERS:
+        labels.extend(label for label, _ in _keys_for(p.env_key))
+    return sorted(set(labels))
 
 
 import hashlib
@@ -254,23 +323,22 @@ async def call_routed(
     if cached:
         return cached
 
-    # Provider preference by task type
+    # Provider preference by task type. Names MUST match PROVIDERS[].name.
     if task_type == "fast":
-        # Gemini Flash is fastest
-        preferred = ["gemini", "groq_llama", "together_llama"]
+        # Cerebras/Groq are fastest; Gemini Flash close behind.
+        preferred = ["cerebras", "groq", "gemini"]
     elif task_type == "code":
-        # Gemini handles long context better for code
-        preferred = ["gemini", "gemini_thinking", "together_llama", "groq_llama"]
+        # Long-context models for code.
+        preferred = ["gemini", "gemini_thinking", "together", "groq"]
     else:  # analysis
-        # Llama 70B for reasoning quality
-        preferred = ["groq_llama", "together_llama", "gemini", "nvidia_nim"]
+        # Llama 70B for reasoning quality, spread across providers.
+        preferred = ["groq", "together", "cerebras", "openrouter", "gemini", "nvidia_nim"]
 
     for provider_name in preferred:
         provider = next((p for p in PROVIDERS if p.name == provider_name), None)
         if provider is None:
             continue
-        env_val = os.getenv(provider.env_key, "")
-        if not env_val or env_val == "disabled":
+        if not _keys_for(provider.env_key):
             continue
         result = await _call_provider(provider, messages, temperature=0.3, max_tokens=max_tokens)
         if result:
