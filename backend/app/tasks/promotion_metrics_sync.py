@@ -127,12 +127,23 @@ def _compute_metrics(trades, stage_start: datetime) -> dict:
         if dd < max_dd:
             max_dd = dd
 
+    # One-tailed t-test: H0 = mean return == 0; need >= 20 days for statistical power
+    p_value: float | None = None
+    if len(daily_vals) >= 20:
+        try:
+            from scipy import stats as scipy_stats
+            t_stat, two_tail_p = scipy_stats.ttest_1samp(daily_vals, popmean=0)
+            p_value = round(float(two_tail_p / 2 if t_stat > 0 else 1.0), 6)
+        except ImportError:
+            pass  # scipy not installed — leave p_value as None
+
     return {
         "sharpe": sharpe,
         "win_rate": round(win_rate, 4),
         "max_drawdown": round(max_dd, 4),
         "num_trades": len(trades),
         "days_in_stage": days,
+        "p_value": p_value,
     }
 
 

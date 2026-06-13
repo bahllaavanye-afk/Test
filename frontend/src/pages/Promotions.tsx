@@ -11,7 +11,19 @@ interface StageMetrics {
   max_drawdown?: number
   num_trades?: number
   days_in_stage?: number
+  p_value?: number | null
 }
+
+interface StageCriteria {
+  min_days: number
+  min_sharpe: number
+  min_win_rate: number
+  max_drawdown: number
+  min_trades: number
+  require_p_value: boolean
+}
+
+type CriteriaMap = Record<string, StageCriteria>
 
 interface ReviewEntry {
   ts: string
@@ -68,13 +80,35 @@ function fmt(iso?: string) {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: '2-digit' })
 }
 
-function MetricBadge({ label, value, good }: { label: string; value?: number; good?: boolean }) {
+function MetricBadge({ label, value, good, fmt: fmtFn }: {
+  label: string
+  value?: number | null
+  good?: boolean
+  fmt?: (v: number) => string
+}) {
   if (value === undefined || value === null) return null
   const color = good === true ? 'text-green-400' : good === false ? 'text-red-400' : 'text-gray-300'
+  const display = fmtFn ? fmtFn(value) : value.toFixed(2)
   return (
     <span className="inline-flex items-center gap-1 bg-white/5 rounded px-2 py-0.5 text-xs">
       <span className="text-gray-500">{label}</span>
-      <span className={`font-mono font-semibold ${color}`}>{value.toFixed(2)}</span>
+      <span className={`font-mono font-semibold ${color}`}>{display}</span>
+    </span>
+  )
+}
+
+function PValueBadge({ p_value }: { p_value?: number | null }) {
+  if (p_value === undefined || p_value === null) return null
+  const significant = p_value < 0.05
+  return (
+    <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs border ${
+      significant
+        ? 'bg-purple-900/30 border-purple-500/40 text-purple-300'
+        : 'bg-white/5 border-white/10 text-gray-400'
+    }`}>
+      <span className="text-gray-500">p=</span>
+      <span className="font-mono font-semibold">{p_value.toFixed(4)}</span>
+      {significant && <span title="Statistically significant (p < 0.05)">★</span>}
     </span>
   )
 }
@@ -84,8 +118,8 @@ function StageMetricsRow({ metrics }: { metrics: StageMetrics }) {
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">
       <MetricBadge label="Sharpe" value={metrics.sharpe} good={metrics.sharpe !== undefined ? metrics.sharpe >= 1.0 : undefined} />
-      <MetricBadge label="WinRate" value={metrics.win_rate !== undefined ? metrics.win_rate * 100 : undefined} />
-      <MetricBadge label="MaxDD%" value={metrics.max_drawdown !== undefined ? metrics.max_drawdown * 100 : undefined} good={metrics.max_drawdown !== undefined ? metrics.max_drawdown > -0.15 : undefined} />
+      <MetricBadge label="WinRate" value={metrics.win_rate !== undefined ? metrics.win_rate * 100 : undefined} fmt={v => `${v.toFixed(1)}%`} />
+      <MetricBadge label="MaxDD" value={metrics.max_drawdown !== undefined ? metrics.max_drawdown * 100 : undefined} fmt={v => `${v.toFixed(1)}%`} good={metrics.max_drawdown !== undefined ? metrics.max_drawdown > -0.15 : undefined} />
       {metrics.num_trades !== undefined && (
         <span className="inline-flex items-center gap-1 bg-white/5 rounded px-2 py-0.5 text-xs">
           <span className="text-gray-500">Trades</span>
@@ -98,6 +132,62 @@ function StageMetricsRow({ metrics }: { metrics: StageMetrics }) {
           <span className="font-mono font-semibold text-gray-300">{metrics.days_in_stage}</span>
         </span>
       )}
+      <PValueBadge p_value={metrics.p_value} />
+    </div>
+  )
+}
+
+// ─── Criteria Progress Bars ───────────────────────────────────────────────────
+
+function CriteriaProgress({ metrics, criteria }: { metrics: StageMetrics; criteria: StageCriteria }) {
+  const checks: Array<{ label: string; pct: number; pass: boolean; text: string }> = []
+
+  if (metrics.sharpe !== undefined) {
+    const pct = Math.min(100, (metrics.sharpe / criteria.min_sharpe) * 100)
+    checks.push({ label: 'Sharpe', pct, pass: metrics.sharpe >= criteria.min_sharpe, text: `${metrics.sharpe.toFixed(2)} / ${criteria.min_sharpe}` })
+  }
+  if (metrics.win_rate !== undefined) {
+    const pct = Math.min(100, (metrics.win_rate / criteria.min_win_rate) * 100)
+    checks.push({ label: 'Win Rate', pct, pass: metrics.win_rate >= criteria.min_win_rate, text: `${(metrics.win_rate * 100).toFixed(1)}% / ${(criteria.min_win_rate * 100).toFixed(0)}%` })
+  }
+  if (metrics.max_drawdown !== undefined) {
+    // max_drawdown is negative; closer to 0 is better; criteria.max_drawdown is e.g. -0.10
+    const pct = Math.min(100, (criteria.max_drawdown / Math.min(metrics.max_drawdown, -1e-9)) * 100)
+    checks.push({ label: 'Max DD', pct, pass: metrics.max_drawdown >= criteria.max_drawdown, text: `${(metrics.max_drawdown * 100).toFixed(1)}% / ${(criteria.max_drawdown * 100).toFixed(0)}%` })
+  }
+  if (metrics.days_in_stage !== undefined) {
+    const pct = Math.min(100, (metrics.days_in_stage / criteria.min_days) * 100)
+    checks.push({ label: 'Days', pct, pass: metrics.days_in_stage >= criteria.min_days, text: `${metrics.days_in_stage} / ${criteria.min_days}` })
+  }
+  if (metrics.num_trades !== undefined) {
+    const pct = Math.min(100, (metrics.num_trades / criteria.min_trades) * 100)
+    checks.push({ label: 'Trades', pct, pass: metrics.num_trades >= criteria.min_trades, text: `${metrics.num_trades} / ${criteria.min_trades}` })
+  }
+  if (criteria.require_p_value) {
+    const pv = metrics.p_value
+    const pass = pv !== null && pv !== undefined && pv < 0.05
+    const pct = pv !== null && pv !== undefined ? Math.min(100, ((0.05 - pv) / 0.05) * 100) : 0
+    checks.push({ label: 'ML Sig.', pct: Math.max(0, pct), pass, text: pv != null ? `p=${pv.toFixed(4)}` : 'not computed' })
+  }
+
+  if (checks.length === 0) return null
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <div className="text-xs font-semibold text-gray-400 mb-2">Promotion Criteria Progress</div>
+      {checks.map(({ label, pct, pass, text }) => (
+        <div key={label} className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 w-16 shrink-0">{label}</span>
+          <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${pass ? 'bg-green-500' : 'bg-orange-500'}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className={`text-xs font-mono w-24 text-right shrink-0 ${pass ? 'text-green-400' : 'text-orange-400'}`}>{text}</span>
+          <span>{pass ? '✓' : '·'}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -131,11 +221,18 @@ function StageProgress({ current }: { current: string }) {
 
 // ─── Promotion Card ───────────────────────────────────────────────────────────
 
-function PromotionCard({ promo, onApprove, onReject, onReview }: {
+const TRANSITION_KEY: Record<string, string> = {
+  paper: 'paper_to_shadow',
+  shadow: 'shadow_to_staging',
+  staging: 'staging_to_live',
+}
+
+function PromotionCard({ promo, onApprove, onReject, onReview, criteriaMap }: {
   promo: StrategyPromotion
   onApprove: (id: string) => void
   onReject: (id: string) => void
   onReview: (id: string) => void
+  criteriaMap: CriteriaMap
 }) {
   const [expanded, setExpanded] = useState(false)
   const cfg = STAGE_CONFIG[promo.current_stage] ?? STAGE_CONFIG.paper
@@ -216,6 +313,13 @@ function PromotionCard({ promo, onApprove, onReject, onReview }: {
       <div className="mt-3">
         <div className="text-xs text-gray-500 mb-1">Current stage metrics:</div>
         <StageMetricsRow metrics={currentMetrics} />
+        {/* Criteria progress bars — only for promotable stages */}
+        {TRANSITION_KEY[promo.current_stage] && criteriaMap[TRANSITION_KEY[promo.current_stage]] && (
+          <CriteriaProgress
+            metrics={currentMetrics}
+            criteria={criteriaMap[TRANSITION_KEY[promo.current_stage]]}
+          />
+        )}
       </div>
 
       {/* Rejection reason */}
@@ -294,6 +398,12 @@ export default function Promotions() {
     refetchInterval: 30_000,
   })
 
+  const { data: criteriaMap = {} } = useQuery<CriteriaMap>({
+    queryKey: ['promotions-criteria'],
+    queryFn: () => api.get('/api/v1/promotions/criteria/all').then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
+
   const approveMut = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/promotions/${id}/approve`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['promotions'] }),
@@ -337,18 +447,29 @@ export default function Promotions() {
         )}
       </div>
 
-      {/* Stage criteria reference */}
+      {/* Stage criteria reference — live from API */}
       <div className="grid grid-cols-3 gap-3 text-xs">
-        {[
-          { label: 'Paper → Shadow', criteria: 'Sharpe ≥ 0.5 · Win ≥ 45% · DD ≥ -15% · 14 days · 20 trades' },
-          { label: 'Shadow → Staging', criteria: 'Sharpe ≥ 0.8 · Win ≥ 50% · DD ≥ -12% · 30 days · 40 trades' },
-          { label: 'Staging → Live', criteria: 'Sharpe ≥ 1.2 · Win ≥ 52% · DD ≥ -10% · 60 days · 60 trades' },
-        ].map(({ label, criteria }) => (
-          <div key={label} className="bg-white/3 border border-white/5 rounded-xl p-3">
+        {([
+          { key: 'paper_to_shadow', label: 'Paper → Shadow' },
+          { key: 'shadow_to_staging', label: 'Shadow → Staging' },
+          { key: 'staging_to_live', label: 'Staging → Live' },
+        ] as const).map(({ key, label }) => {
+          const c: StageCriteria | undefined = criteriaMap[key]
+          return (
+          <div key={key} className="bg-white/3 border border-white/5 rounded-xl p-3">
             <div className="font-semibold text-gray-300 mb-1">{label}</div>
-            <div className="text-gray-500">{criteria}</div>
+            {c ? (
+              <div className="text-gray-500 space-y-0.5">
+                <div>Sharpe ≥ {c.min_sharpe} · Win ≥ {(c.min_win_rate * 100).toFixed(0)}%</div>
+                <div>DD ≥ {(c.max_drawdown * 100).toFixed(0)}% · {c.min_days}d · {c.min_trades} trades</div>
+                {c.require_p_value && <div className="text-purple-400">ML significance required (p &lt; 0.05)</div>}
+              </div>
+            ) : (
+              <div className="text-gray-600">Loading…</div>
+            )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Filter tabs */}
@@ -395,6 +516,7 @@ export default function Promotions() {
             onApprove={(id) => approveMut.mutate(id)}
             onReject={(id) => { setRejectTarget(id); setRejectReason('') }}
             onReview={(id) => reviewMut.mutate(id)}
+            criteriaMap={criteriaMap}
           />
         ))}
       </div>

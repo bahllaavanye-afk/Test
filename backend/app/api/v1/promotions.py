@@ -86,6 +86,7 @@ class UpdateMetricsRequest(BaseModel):
     num_trades: int
     days_in_stage: int
     sortino: float | None = None
+    p_value: float | None = None
     extra: dict | None = None
 
 

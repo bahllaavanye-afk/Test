@@ -194,6 +194,61 @@ async def get_factor_exposure(
     return exposure.to_dict()
 
 
+@router.get("/regime/current")
+async def get_current_regime(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return the current market regime as detected by the HMM regime monitor.
+
+    Reads the Redis key ``market:regime`` written by RegimeMonitor every 5 min.
+    States: 0=bear, 1=sideways, 2=bull.
+
+    Strategy gating rules (enforced by strategy_runner):
+      - Bear (0): skip directional strategies, keep arbitrage
+      - Sideways (1): all strategies run at half confidence threshold
+      - Bull (2): all strategies run normally
+    """
+    from app.redis_client import get_redis
+
+    REGIME_LABELS = {0: "bear", 1: "sideways", 2: "bull"}
+    REGIME_COLORS = {0: "#ff1744", 1: "#f5a623", 2: "#00c853"}
+    STRATEGY_WEIGHTS = {
+        0: {"directional": 0.0, "arbitrage": 1.0},
+        1: {"directional": 0.5, "arbitrage": 1.0},
+        2: {"directional": 1.0, "arbitrage": 1.0},
+    }
+
+    try:
+        redis = get_redis()
+        raw = await redis.get("market:regime")
+        if raw is None:
+            state = None
+        else:
+            state = int(raw)
+    except Exception:
+        state = None
+
+    if state is None or state not in REGIME_LABELS:
+        return {
+            "state": None,
+            "label": "unknown",
+            "color": "#555",
+            "weights": {"directional": 1.0, "arbitrage": 1.0},
+            "source": "redis",
+            "stale": True,
+        }
+
+    return {
+        "state": state,
+        "label": REGIME_LABELS[state],
+        "color": REGIME_COLORS[state],
+        "weights": STRATEGY_WEIGHTS[state],
+        "source": "redis",
+        "stale": False,
+    }
+
+
 @router.get("/drawdown-recovery")
 async def get_drawdown_recovery(
     current_drawdown_pct: float = Query(5.0, description="Current drawdown as percentage, e.g. 5.0"),
