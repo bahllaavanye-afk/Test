@@ -37,6 +37,6 @@
     "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
     "Files > 8000 chars cause LLM truncation \u2014 always truncate before sending to LLM"
   ],
-  "last_updated": "2026-06-13T11:00:52.342417+00:00",
+  "last_updated": "2026-06-13T15:59:44.362429+00:00",
   "total": 36
 }
