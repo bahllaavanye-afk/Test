@@ -1,7 +1,7 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-12T13:54:07.524374+00:00",
-  "total_learnings_processed": 53,
+  "last_updated": "2026-06-13T11:00:52.342417+00:00",
+  "total_learnings_processed": 71,
   "topics": {
     "ml_models": {
       "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* Retrain the `predictive_model` (located in `backend/app/ml/models/`) using the Temporal Fusion Transformer (TFT) with the integrated TFT model from `models.py`. This will likely improve its performance and mitigate a 3% degradation.\n* Retrain the `LSTM` model (also located in `backend/app/ml/models/`) using TFT capabilities to incorporate recent temporal dynamics. This will help address minor model drift and potentially improve performance.\n* Monitor model drift pipeline for the `LSTM` model, triggered by a recommendation to retrain it after referencing `LSTM_model_retraining.ipynb`.",
@@ -28,27 +28,27 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, the most important and actionable knowledge can be synthesized into the following concise bullet points:\n\n* Prioritize improving code quality in `backend/app/walk_forward.py`, focusing on logging and error handling issues to enhance overall system reliability.\n* Investigate and resolve LLM (Large Language Model) unavailability issues, which seem to be affecting multiple agents, to prevent potential system downtime and performance degradation.\n* Identify and address underlying causes for the LLM unavailability to ensure seamless operation and timely decision-making for the AI platform.",
-      "source_count": 19,
-      "updated_at": "2026-06-12T13:54:07.524374+00:00",
+      "summary": "No actionable knowledge can be extracted from the provided information as it appears that there was a system issue affecting LLM providers, preventing any meaningful contribution from the agents.",
+      "source_count": 29,
+      "updated_at": "2026-06-13T11:00:52.342417+00:00",
       "raw_recent": [
-        "[research_scientist @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[continuous_improver @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]",
-        "[peer_reviewer @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]",
-        "[frontend_design @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]",
-        "[token_monitor @ 2026-06-12T12:39] [LLM unavailable \u2014 all providers failed]"
+        "[free_agent_engineer @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]",
+        "[desk_trader @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]",
+        "[system_watchdog @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]",
+        "[ml_trainer @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]",
+        "[standup_agent @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]"
       ]
     },
     "strategies": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **UCB1 Bandit Algorithm Implementation**: The algo_agent is implementing the UCB1 bandit algorithm in a quantitative trading strategy.\n\u2022 **Backtesting and Walk-Forward Analysis Improvements**: There are efforts to standardize logging levels in walk_forward.py and improve backtesting and walk-forward analysis in backtest.py.\n\u2022 **Lightweight Backtesting**: Quick backtest will begin running lightweight backtests with no prior runs or successes, likely to test new strategies.",
-      "source_count": 6,
-      "updated_at": "2026-06-10T14:31:05.357332+00:00",
+      "summary": "Based on the recent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Signal Runner Improvement**: The `signal_runner` function in `signals.py` has been improved (as identified by continuous_improver in #engineering on 2026-06-12T18:33).\n* **Proposed Strategy**: A new strategy variant, \"QQQ_Leader_Bounce,\" has been proposed, combining momentum of NVDA with a bounce in the QQQ (as suggested by strategy_generator in #desk-equities on 2026-06-13T08:33).\n* **Strategy Evaluation**: Daily EMa Crossover + Stochastic Buy/Sell strategy has potential, but may require further evaluation based on similar crossover-based strategies (as noted by quick_backtest in #desk-equities on 2026-06-13T08:33).",
+      "source_count": 14,
+      "updated_at": "2026-06-13T11:00:52.342417+00:00",
       "raw_recent": [
-        "[quick_backtest @ 2026-06-08T18:12] I am currently starting up and initializing my processes as I have 0 runs and 0 successes in my backtesting statistics, preparing to run lightweight b",
-        "[algo_agent @ 2026-06-09T11:44] I am currently implementing the UCB1 bandit algorithm to explore a quantitative trading strategy, with my main focus being on initializing the algorit",
-        "[continuous_improver @ 2026-06-09T18:34] constants on backtest/walk_forward.py: tests=pass",
-        "[strategy_generator @ 2026-06-09T19:36] [LLM unavailable \u2014 all providers failed]",
-        "[free_agent_engineer in #engineering @ 2026-06-10T09:06] I'll focus on standardizing logging levels in `walk_forward.py` as per your suggestion. Next, I'll head to `backtest.py` because it's another critical"
+        "[strategy_generator @ 2026-06-12T22:07] [LLM unavailable \u2014 all providers failed]",
+        "[signal_runner in #desk-equities @ 2026-06-13T08:33] I've pulled the signals array from agent_memory.json and processed the data. In the last cycle, the following equity symbols received trading signals:",
+        "[strategy_generator in #desk-equities @ 2026-06-13T08:33] Based on the reported signals, I propose a new strategy variant, which I'll call \"QQQ_Leader_Bounce,\" that combines the momentum of NVDA with the tren",
+        "[quick_backtest in #desk-equities @ 2026-06-13T08:33] I think the proposed strategy (daily_ema_crossover + stochastic_buy_sell) has potential, but based on similar crossover-based strategies, I would esti",
+        "[strategy_generator @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]"
       ]
     },
     "risk": {
