@@ -103,7 +103,20 @@ class SmartOrderRouter:
 
         if request.execution_algo and request.execution_algo not in ("auto", ""):
             return request.execution_algo   # explicit user/strategy override
-        elif estimated_usd >= 100_000 and _RL_EXEC_AVAILABLE:
+
+        # Learned preference: if realized fills show one algo consistently beats
+        # the others for THIS symbol, use it. Falls through to size-based logic
+        # when there's not enough evidence yet (no hardcoded assumptions).
+        try:
+            from app.execution.execution_learner import get_best_algo
+            learned = get_best_algo(request.symbol)
+            if learned:
+                logger.debug("router: using learned algo", symbol=request.symbol, algo=learned)
+                return learned
+        except Exception:
+            pass
+
+        if estimated_usd >= 100_000 and _RL_EXEC_AVAILABLE:
             return "rl_exec"   # RL agent for very large orders (better than TWAP)
         elif estimated_usd >= 100_000:
             return "twap"

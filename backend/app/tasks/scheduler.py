@@ -271,6 +271,23 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _refresh_execution_scorecard():
+        """Hourly: learn the best execution algo per symbol from realized fills."""
+        try:
+            from app.execution.execution_learner import refresh_scorecard
+            await refresh_scorecard()
+        except Exception as exc:
+            logger.debug("execution scorecard refresh failed", error=str(exc))
+
+    scheduler.add_job(
+        _refresh_execution_scorecard,
+        "interval",
+        hours=1,
+        id="execution_scorecard",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     async def _slack_employee_report():
         """Post hourly employee status to Slack #engineering."""
         try:

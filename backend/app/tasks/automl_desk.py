@@ -66,6 +66,7 @@ class AutoMLDesk:
         fine_tune_epochs: int = 2,
         fine_tune_lr: float = 1e-4,
         min_improvement: float = 0.01,
+        pretrain_cold_start: bool = True,
     ):
         self.symbols = symbols or DEFAULT_SYMBOLS
         self.interval_seconds = interval_seconds
@@ -73,6 +74,7 @@ class AutoMLDesk:
         self.fine_tune_epochs = fine_tune_epochs
         self.fine_tune_lr = fine_tune_lr
         self.min_improvement = min_improvement
+        self.pretrain_cold_start = pretrain_cold_start
         self._running = False
         self.last_report: CycleReport | None = None
 
@@ -153,6 +155,21 @@ class AutoMLDesk:
                 from app.ml.models.lstm import LSTMPredictor
                 n_features = X.shape[-1]
                 fresh = LSTMPredictor(n_features=n_features)
+                # Self-supervised pretraining: warm-start the encoder by masked-bar
+                # reconstruction on the unlabeled window before supervised fitting.
+                if self.pretrain_cold_start:
+                    try:
+                        from app.ml.training.pretrain import pretrain_masked, transfer_encoder_weights
+                        pre = pretrain_masked(
+                            X_tr, n_features=n_features,
+                            hidden_size=fresh.hidden_size, num_layers=fresh.num_layers,
+                            bidirectional=fresh.bidirectional, epochs=8,
+                        )
+                        transfer_encoder_weights(pre.encoder_state, fresh)
+                        logger.info("automl_desk: pretrained encoder", symbol=symbol,
+                                    recon_loss=round(pre.final_loss, 5))
+                    except Exception as e:  # noqa: BLE001 — pretrain is best-effort
+                        logger.debug("automl_desk: pretrain skipped", symbol=symbol, error=str(e))
                 challenger = fine_tune(fresh, X_tr, y_tr,
                                        epochs=max(5, self.fine_tune_epochs), lr=1e-3)
                 ch_score = validate_model(challenger, X_val, y_val, fwd_val)
