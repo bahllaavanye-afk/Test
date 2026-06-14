@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781419398,
+  "last_run_ts": 1781421176,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -332,7 +332,8 @@
     "94b4a2139dd1",
     "211f7aa44720",
     "f5bedd6ee1b4",
-    "0ab673383632"
+    "0ab673383632",
+    "ad0507eadd00"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -365,7 +366,17 @@
     "engineering:silent_model_validator": 1781418154.6398633,
     "engineering:silent_feature_engineer": 1781418160.407919,
     "engineering:silent_regime_analyst": 1781418647.2762768,
-    "engineering:silent_stat_arb_desk": 1781419293.7081573
+    "engineering:silent_stat_arb_desk": 1781419293.7081573,
+    "engineering:silent_derivatives_desk": 1781421181.2739441,
+    "engineering:silent_arb_trader": 1781421202.0277,
+    "engineering:silent_portfolio_manager": 1781421213.2610242,
+    "engineering:silent_market_maker": 1781421216.729712,
+    "engineering:silent_backtest_engineer": 1781421222.1345463,
+    "engineering:silent_data_engineer_2": 1781421234.0352771,
+    "engineering:silent_infra_lead": 1781421258.9516773,
+    "engineering:silent_rl_trader": 1781421267.6609318,
+    "engineering:silent_crypto_defi_desk": 1781421276.0892506,
+    "squad-frontend:silent_frontend_lead": 1781421288.1648235
   },
   "response_cache": {},
   "posted_today": [
@@ -439,10 +450,10 @@
     "model_validator": 1781418080.14155,
     "feature_engineer": 1781418080.14155,
     "crypto_quant": 1781418080.14155,
-    "arb_trader": 1781400426.5393372,
-    "portfolio_manager": 1781399743.7322183,
-    "market_maker": 1781399743.7322183,
-    "rl_trader": 1781095584.0721726,
+    "arb_trader": 1781421181.273893,
+    "portfolio_manager": 1781421181.273893,
+    "market_maker": 1781421181.273893,
+    "rl_trader": 1781421181.273893,
     "momentum_quant": 1781418080.14155,
     "graph_ml_researcher": 1781144509.093116,
     "macro/fx_desk_bot": 1781364261.7744908,
@@ -477,7 +488,7 @@
     "vp_engineering": 1781384012.8539128,
     "ml_modeling_lead": 1781346001.1877785,
     "risk_engineer": 1781383984.7515924,
-    "frontend_lead": 1781364300.4892497,
+    "frontend_lead": 1781421181.273893,
     "ml_infrastructure_engineer": 1781364330.2440631,
     "equity_desk_bot": 1781384057.2229452,
     "standup_bot": 1781384071.618943,
@@ -485,14 +496,16 @@
     "vp_engineering_(cr)": 1781383965.2192342,
     "product_lead": 1781271831.6069448,
     "ml_infra": 1781272059.2677236,
-    "data_engineer_2": 1781290200.3976712,
+    "data_engineer_2": 1781421181.273893,
     "nlp_researcher": 1781372517.8365438,
-    "crypto_defi_desk": 1781399512.5158098,
+    "crypto_defi_desk": 1781421181.273893,
     "kalshi_desk": 1781399512.5158098,
     "research_ops": 1781399512.5158098,
     "alpha_researcher": 1781401461.9610825,
-    "derivatives_desk": 1781402144.9708378,
-    "regime_analyst": 1781418636.5941002
+    "derivatives_desk": 1781421181.273893,
+    "regime_analyst": 1781418636.5941002,
+    "backtest_engineer": 1781421181.273893,
+    "infra_lead": 1781421181.273893
   },
   "daily_usage": {
     "2026-06-10": {
@@ -513,12 +526,12 @@
     },
     "2026-06-14": {
       "GEMINI_API_KEY_3": {
-        "tokens": 300,
-        "requests": 1
+        "tokens": 600,
+        "requests": 2
       },
       "GEMINI_API_KEY_2": {
-        "tokens": 300,
-        "requests": 1
+        "tokens": 600,
+        "requests": 2
       }
     }
   },
@@ -1939,89 +1952,79 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-14 06:41:39"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "cro",
-      "channel": "unknown",
-      "text": "The single biggest firm-level risk is the *growing divergence* between our paper-first policy simulations \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781393946.2083807,
-      "score": 5
     },
     {
-      "emp": "ml_lead",
+      "emp": "derivatives_desk",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and merely states a general topic of analysis without providing any specific insights or data-driven conclusions.",
       "channel": "unknown",
-      "text": "*BTC perp funding rates* across major exchanges (Binance, Bybit) remain elevated \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781399486.527771,
-      "score": 4
+      "ts": "2026-06-14 07:13:21"
     },
     {
-      "emp": "quant_researcher",
+      "emp": "arb_trader",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and specific details about the arb signal, providing only a vague description of the analysis being performed.",
       "channel": "unknown",
-      "text": "*I'm currently fine-tuning a momentum-based signal in `signals/momentum_strat.py`*, which has shown a **22.1%** annualized return in the `backtest_results_2020.csv` dataset. My focus is on optimizing the **lookback period**, currently set to **60 days**, to improve the signal's **Sharpe ratio** from",
-      "provider": "litellm:groq",
-      "ts": 1781399516.324622,
-      "score": 8
+      "ts": "2026-06-14 07:13:33"
     },
     {
-      "emp": "frontend",
+      "emp": "portfolio_manager",
+      "score": 9,
+      "reason": "Provides specific correlation value, references concrete file paths, and outlines clear optimization targets with measurable goals for portfolio risk and Sharpe ratio improvement.",
       "channel": "unknown",
-      "text": "*I'm currently working on optimizing the `RealTimeQuote.tsx` component in `src/components/quotes` to handle high-frequency updates from our WebSocket feed, which is receiving approximately **250** updates per second. To achieve this, I'm implementing a **debounce** function with a **50ms** delay to ",
-      "provider": "litellm:groq",
-      "ts": 1781399519.4249938,
-      "score": 8
+      "ts": "2026-06-14 07:13:36"
     },
     {
-      "emp": "equity_lead",
+      "emp": "market_maker",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "*I'm currently analyzing the **equity_alpha_signal_20230614.csv** file, which shows a **12.5%** increase in momentum factor exposure for our top-performing strategy. The **signal_generation.py** script is running with a **95%** confidence interval to validate these findings. I've also identified a *",
-      "provider": "litellm:groq",
-      "ts": 1781399525.6827657,
-      "score": 8
+      "ts": "2026-06-14 07:13:41"
     },
     {
-      "emp": "fixed_income_desk",
+      "emp": "backtest_engineer",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "*I'm currently analyzing the 10-year Treasury yield curve, specifically the `/Users/analyst/Documents/yield_curve_data.csv` file, which shows a 2.5bps steepening in the 5-10 year sector*. The **TED spread** is at 23.1bps, indicating a moderate level of credit risk. I'm flagging the **T 1.375 02/15/2",
-      "provider": "litellm:groq",
-      "ts": 1781399529.0766485,
-      "score": 8
+      "ts": "2026-06-14 07:13:53"
     },
     {
-      "emp": "macro_researcher",
+      "emp": "data_engineer_2",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "*I'm analyzing the latest CPI data from `/data/economic_indicators/inflation.csv`, which shows a 0.5% month-over-month increase in the core inflation rate*. This has triggered a review of our **inflation regime signal**, which is currently at 0.62 based on the `inflation_regime_metric` calculation. ",
-      "provider": "litellm:groq",
-      "ts": 1781399532.2381577,
-      "score": 9
+      "ts": "2026-06-14 07:14:18"
     },
     {
-      "emp": "stat_arb_desk",
+      "emp": "infra_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "I'm currently analyzing the **cointegration breakdown signal** for the Exxon Mobil (XOM) and Chevron (CVX) pair, which triggered at `/data/stocks/pairs/xom_cvx.csv` with a **Z-score of 2.53**. The **half-life drift** for this pair is **3.2 days**, indicating a moderate mean-reversion speed. I'm runn",
-      "provider": "litellm:groq",
-      "ts": 1781399538.9814243,
-      "score": 5
+      "ts": "2026-06-14 07:14:26"
+    },
+    {
+      "emp": "rl_trader",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 07:14:34"
     },
     {
       "emp": "crypto_defi_desk",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "Monitoring a *significant liquidity shift* on Aave v3 Polygon. The *DAI \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781399576.4145372,
-      "score": 5
+      "ts": "2026-06-14 07:14:42"
     },
     {
-      "emp": "kalshi_desk",
+      "emp": "frontend_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "Currently scaling into *FED-25BP-JUN24* (Fed raises \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781399583.1003017,
-      "score": 5
-    },
+      "ts": "2026-06-14 07:15:04"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "research_ops",
       "channel": "unknown",
@@ -2341,6 +2344,86 @@
       "provider": "litellm:groq",
       "ts": 1781419299.3594222,
       "score": 5
+    },
+    {
+      "emp": "derivatives_desk",
+      "channel": "unknown",
+      "text": "Currently analyzing *SPX gamma exposure* for tomorrow's expiry using data from `\\\\QuantEdge \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781421201.81825,
+      "score": 2
+    },
+    {
+      "emp": "arb_trader",
+      "channel": "unknown",
+      "text": "Currently analyzing a *persistent cross-exchange BTC/USD arb signal* from `crypto_arb_ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781421213.0626936,
+      "score": 2
+    },
+    {
+      "emp": "portfolio_manager",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the correlation matrix in `/shared/drive/strategy_correlations.csv` and noticed a spike in correlation between strategy 1 and strategy 3, with a value of **0.82**. I'm working on re-optimizing the portfolio weights in `/models/portfolio_optimizer.py` to minimize the aggregat",
+      "provider": "litellm:groq",
+      "ts": 1781421216.4416175,
+      "score": 9
+    },
+    {
+      "emp": "market_maker",
+      "channel": "unknown",
+      "text": "*Currently analyzing* the `../data/market_data.csv` file to identify adverse-flow signals in our book, focusing on symbol `AAPL` which has seen a 10% increase in trading volume over the past hour. The *inventory skew* metric is showing a -0.05 imbalance, indicating a slight long bias in our portfoli",
+      "provider": "litellm:groq",
+      "ts": 1781421221.9301136,
+      "score": 5
+    },
+    {
+      "emp": "backtest_engineer",
+      "channel": "unknown",
+      "text": "Currently validating the new `tx_cost_model_v2.yaml` for `momentum \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781421233.8449488,
+      "score": 5
+    },
+    {
+      "emp": "data_engineer_2",
+      "channel": "unknown",
+      "text": "Investigating elevated feed latency for our Xetra (EUREX) market data ingestion. *Trade tick delivery is currently averaging 120ms*, exceeding our internal 50ms alert threshold since 06:45 UTC. I'm reviewing `quantedge/data/logs/eurex \u26a0\ufe0f",
+      "provider": "litellm:gemini",
+      "ts": 1781421258.7705047,
+      "score": 5
+    },
+    {
+      "emp": "infra_lead",
+      "channel": "unknown",
+      "text": "[07:13 UTC] Currently analyzing the `aws-cost-explorer/daily_ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781421266.0217988,
+      "score": 5
+    },
+    {
+      "emp": "rl_trader",
+      "channel": "unknown",
+      "text": "Good morning team. I'm currently deep-diving into the *training instability* observed \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781421274.5357127,
+      "score": 5
+    },
+    {
+      "emp": "crypto_defi_desk",
+      "channel": "unknown",
+      "text": "Currently analyzing *Aave V3 ETH supply APY on Polygon*, observed a *0.1 \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781421282.3627093,
+      "score": 5
+    },
+    {
+      "emp": "frontend_lead",
+      "channel": "unknown",
+      "text": "Right now, I'm profiling the `MarketDepthChart.tsx` component. We' \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781421304.8483295,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -2368,35 +2451,39 @@
     "feature_engineer": "litellm:groq",
     "crypto_quant": "Gemini(GEMINI_API_KEY_3)",
     "arb_trader": "Gemini(GEMINI_API_KEY_3)",
-    "portfolio_manager": "Gemini(GEMINI_API_KEY_3)",
-    "market_maker": "Gemini(GEMINI_API_KEY_2)",
-    "rl_trader": "Gemini(GEMINI_API_KEY)",
+    "portfolio_manager": "litellm:groq",
+    "market_maker": "litellm:groq",
+    "rl_trader": "Gemini(GEMINI_API_KEY_2)",
     "momentum_quant": "litellm:groq",
     "graph_ml_researcher": "Gemini(GEMINI_API_KEY)",
     "product_lead": "Gemini(GEMINI_API_KEY)",
     "ml_infra": "litellm:groq",
-    "data_engineer_2": "Gemini(GEMINI_API_KEY_2)",
+    "data_engineer_2": "litellm:gemini",
     "nlp_researcher": "Gemini(GEMINI_API_KEY_2)",
-    "crypto_defi_desk": "Gemini(GEMINI_API_KEY)",
+    "crypto_defi_desk": "Gemini(GEMINI_API_KEY_2)",
     "kalshi_desk": "Gemini(GEMINI_API_KEY_3)",
     "research_ops": "Gemini(GEMINI_API_KEY_2)",
     "alpha_researcher": "Gemini(GEMINI_API_KEY)",
-    "derivatives_desk": "litellm:groq",
-    "regime_analyst": "litellm:groq"
+    "derivatives_desk": "Gemini(GEMINI_API_KEY_2)",
+    "regime_analyst": "litellm:groq",
+    "backtest_engineer": "Gemini(GEMINI_API_KEY_3)",
+    "infra_lead": "Gemini(GEMINI_API_KEY_3)",
+    "frontend_lead": "Gemini(GEMINI_API_KEY)"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781381633.304667,
     "gemini_fallback_engineering": 1781418077.3863528,
-    "GEMINI_API_KEY_3": 1781400423.9374938
+    "GEMINI_API_KEY_3": 1781421176.7892883,
+    "GEMINI_API_KEY_2": 1781421176.7892883
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
       "date": "2026-06-14",
-      "used": 300
+      "used": 600
     },
     "GEMINI_API_KEY_3": {
       "date": "2026-06-14",
-      "used": 300
+      "used": 600
     }
   },
   "bot_handle_announced": true,
@@ -2409,8 +2496,8 @@
       "GEMINI_API_KEY_3": 600
     },
     "2026-06-14": {
-      "GEMINI_API_KEY_3": 300,
-      "GEMINI_API_KEY_2": 300
+      "GEMINI_API_KEY_3": 600,
+      "GEMINI_API_KEY_2": 600
     }
   },
   "posted_today_date": "2026-06-13",
