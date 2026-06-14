@@ -60,6 +60,50 @@ class SelfImprover:
         space = PARAM_SPACES.get(strategy, {})
         return {k: random.choice(v) for k, v in space.items()}
 
+    async def _propose_params_llm(
+        self, strategy: str, space: dict, tried: list[tuple[dict, float]]
+    ) -> dict | None:
+        """
+        Ask the free-LLM fleet to propose the next promising config given the
+        search space and results tried so far. Returns a valid params dict drawn
+        strictly from `space`, or None if no LLM keys / invalid response.
+        Degrades gracefully to random sampling when no free-LLM keys are set.
+        """
+        try:
+            from app.tasks.free_llm_router import available_keys, call_routed
+            if not available_keys():
+                return None  # No free-LLM keys configured — caller falls back to random
+
+            history = "\n".join(
+                f"  params={json.dumps(p)} -> sharpe={s:.3f}" for p, s in tried[-8:]
+            ) or "  (none yet)"
+            prompt = (
+                f"You are a quant hyperparameter optimizer for the '{strategy}' trading strategy.\n"
+                f"Search space (choose ONE value per key from these lists):\n{json.dumps(space, indent=2)}\n"
+                f"Results so far (maximize Sharpe):\n{history}\n"
+                "Propose the next single config most likely to beat the best Sharpe. "
+                "Respond with ONLY a JSON object mapping each key to one allowed value."
+            )
+            raw = await call_routed(
+                [{"role": "user", "content": prompt}], task_type="fast", max_tokens=256
+            )
+            if not raw:
+                return None
+            # Extract the JSON object from the response defensively
+            start, end = raw.find("{"), raw.rfind("}")
+            if start < 0 or end <= start:
+                return None
+            proposed = json.loads(raw[start:end + 1])
+            # Validate: every key present and value is within the allowed list
+            cleaned: dict = {}
+            for k, allowed in space.items():
+                v = proposed.get(k)
+                cleaned[k] = v if v in allowed else random.choice(allowed)
+            return cleaned
+        except Exception as e:
+            logger.debug("LLM param proposal failed", strategy=strategy, error=str(e))
+            return None
+
     async def _evaluate(self, strategy: str, symbol: str, params: dict) -> float:
         """Run a quick backtest with the given params. Returns Sharpe."""
         try:
@@ -112,10 +156,17 @@ class SelfImprover:
         best_iter_sharpe = current_best
         best_iter_params = None
 
-        # 5 random configs per iteration
-        for _ in range(5):
-            params = self._sample_params(strategy)
+        # 5 configs per iteration. When free-LLM keys are present, the fleet
+        # proposes guided configs informed by results so far; otherwise random.
+        tried: list[tuple[dict, float]] = []
+        for i in range(5):
+            params = None
+            if i >= 1:  # let the LLM learn from at least one prior result
+                params = await self._propose_params_llm(strategy, space, tried)
+            if params is None:
+                params = self._sample_params(strategy)
             sharpe = await self._evaluate(strategy, symbol, params)
+            tried.append((params, sharpe))
             if sharpe > best_iter_sharpe:
                 best_iter_sharpe = sharpe
                 best_iter_params = params

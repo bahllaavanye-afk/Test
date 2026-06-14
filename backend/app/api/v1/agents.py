@@ -328,6 +328,18 @@ async def agent_status(current_user: User = Depends(get_current_user)):
     qa_monitor        = getattr(app.state, "qa_monitor", None)
     research_scientist = getattr(app.state, "research_scientist", None)
     modeling_engineer  = getattr(app.state, "modeling_engineer", None)
+
+    # Free-LLM fleet status — which providers have keys configured
+    try:
+        from app.tasks.free_llm_router import available_providers, available_keys, get_throughput_report
+        llm_providers = available_providers()
+        llm_keys      = available_keys()
+        llm_throughput = get_throughput_report()
+    except Exception:
+        llm_providers  = []
+        llm_keys       = []
+        llm_throughput = []
+
     return {
         "algo_agent": {
             "running": getattr(algo_agent, "_running", False),
@@ -335,8 +347,11 @@ async def agent_status(current_user: User = Depends(get_current_user)):
             "candidates": len(getattr(algo_agent, "_candidates", {})),
             "top_3": algo_agent.get_leaderboard()[:3] if algo_agent else [],
         },
-        "self_improver": {"running": getattr(self_improver, "_running", False),
-                          "iteration": getattr(self_improver, "_iteration", 0)},
+        "self_improver": {
+            "running": getattr(self_improver, "_running", False),
+            "iteration": getattr(self_improver, "_iteration", 0),
+            "llm_guided": len(llm_keys) > 0,
+        },
         "qa_monitor": {"running": getattr(qa_monitor, "_running", False)},
         "research_scientist": {
             "running": research_scientist is not None,
@@ -347,6 +362,11 @@ async def agent_status(current_user: User = Depends(get_current_user)):
             "running": modeling_engineer is not None,
             "cycles_completed": getattr(modeling_engineer, "_cycle", 0),
             "decisions_made": len(getattr(modeling_engineer, "_decisions", [])),
+        },
+        "free_llm_fleet": {
+            "active_providers": llm_providers,
+            "total_keys": len(llm_keys),
+            "throughput": llm_throughput,
         },
     }
 
