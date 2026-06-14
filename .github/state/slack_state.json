@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781393915,
+  "last_run_ts": 1781399511,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -314,13 +314,14 @@
     "4716a9e65747",
     "747c183b0232",
     "dbe3fb343659",
-    "c5ed9273ed51"
+    "c5ed9273ed51",
+    "adc935cd0b75"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781393367.8304546,
+    "standup-channel:standup": 1781399473.2820275,
     "agent-api-usage:api_usage_report": 1781393469.1735756,
-    "agent-api-usage:throughput_report": 1781393469.8669562,
+    "agent-api-usage:throughput_report": 1781399512.3146122,
     "engineering:agent_reminder": 1781371929.1289196,
     "help:agent_reminder": 1781371929.7844906,
     "risk-alerts:silent_risk_eng": 1781393488.8127756,
@@ -334,7 +335,16 @@
     "ml-experiments:silent_ml_researcher": 1781393512.6502566,
     "desk-polymarket:silent_poly_desk": 1781393917.3101187,
     "desk-fx-rates:silent_vp_research": 1781393925.9657922,
-    "leadership-summary:silent_cro": 1781393938.999577
+    "leadership-summary:silent_cro": 1781393938.999577,
+    "alpha-research:silent_quant_researcher": 1781399512.5158527,
+    "squad-frontend:silent_frontend": 1781399516.5184026,
+    "engineering:silent_equity_lead": 1781399519.5575125,
+    "engineering:silent_fixed_income_desk": 1781399525.895749,
+    "engineering:silent_macro_researcher": 1781399529.275518,
+    "engineering:silent_stat_arb_desk": 1781399532.442366,
+    "engineering:silent_crypto_defi_desk": 1781399564.2942815,
+    "desk-kalshi:silent_kalshi_desk": 1781399576.6035616,
+    "engineering:silent_research_ops": 1781399583.3368592
   },
   "response_cache": {},
   "posted_today": [
@@ -396,13 +406,13 @@
     "poly_desk": 1781393917.3100815,
     "ml_researcher": 1781393470.4865334,
     "vp_research": 1781393917.3100815,
-    "quant_researcher": 1781384051.5963497,
+    "quant_researcher": 1781399512.5158098,
     "cro": 1781393917.3100815,
-    "frontend": 1781144509.093116,
-    "equity_lead": 1781144509.093116,
-    "fixed_income_desk": 1781024089.1695297,
-    "macro_researcher": 1781237487.4654243,
-    "stat_arb_desk": 1781303590.3158247,
+    "frontend": 1781399512.5158098,
+    "equity_lead": 1781399512.5158098,
+    "fixed_income_desk": 1781399512.5158098,
+    "macro_researcher": 1781399512.5158098,
+    "stat_arb_desk": 1781399512.5158098,
     "vol_trader": 1781024089.1695297,
     "alt_data_lead": 1781144509.093116,
     "model_validator": 1781144509.093116,
@@ -455,7 +465,10 @@
     "product_lead": 1781271831.6069448,
     "ml_infra": 1781272059.2677236,
     "data_engineer_2": 1781290200.3976712,
-    "nlp_researcher": 1781372517.8365438
+    "nlp_researcher": 1781372517.8365438,
+    "crypto_defi_desk": 1781399512.5158098,
+    "kalshi_desk": 1781399512.5158098,
+    "research_ops": 1781399512.5158098
   },
   "daily_usage": {
     "2026-06-10": {
@@ -486,79 +499,79 @@
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "alpha_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "ml_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "risk_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "backend_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "qa_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "devops_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "exec_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "poly_desk": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "ml_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "vp_research": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "quant_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       },
       "cro": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-13"
+        "date": "2026-06-14"
       }
     }
   },
@@ -1549,89 +1562,79 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-13 23:39:06"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "risk_eng",
-      "channel": "unknown",
-      "text": "*I'm currently reviewing the `/risk_models/strategy_exposure.csv` file, focusing on the `arb_strategy_1` column, which is approaching the 35% exposure limit*. The latest data from `/metrics/drawdown.csv` shows a 12.5% drawdown for `arb_strategy_1` over the past 24 hours, with a current value of **$1",
-      "provider": "litellm:groq",
-      "ts": 1781303604.640398,
-      "score": 8
     },
     {
-      "emp": "backend_lead",
+      "emp": "ml_lead",
+      "score": 4,
+      "reason": "Output lacks concrete, actionable points and only provides a vague statement about BTC perp funding rates without any specific analysis or recommendations.",
       "channel": "unknown",
-      "text": "*I'm currently working on optimizing the `app/main.py` service, specifically the `get_trades` endpoint*, which is experiencing a 30% increase in latency due to the recent addition of 500+ new users. *To address this*, I'm analyzing the `trades.csv` dataset, which contains 250,000+ trade records, to ",
-      "provider": "litellm:groq",
-      "ts": 1781303608.3097212,
-      "score": 8
-    },
-    {
-      "emp": "qa_dir",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing test coverage in `src/services/trading.py`*, where I've identified a **34.7%** gap in line coverage for the `place_order` function. My current task is to write **5 new test cases** to cover the remaining scenarios, which will increase overall test coverage to **87.2%**. I'm ",
-      "provider": "litellm:groq",
-      "ts": 1781303611.6082041,
-      "score": 8
-    },
-    {
-      "emp": "devops_dir",
-      "channel": "unknown",
-      "text": "*I'm currently investigating a deployment issue in our `deploy-prod.yml` pipeline, which has a 90% success rate over the last 24 hours, but has failed 3 times in the past hour*. The error logs in `/logs/deployment/error.log` indicate a timeout issue with the `container_build` step, with an average b",
-      "provider": "litellm:groq",
-      "ts": 1781303615.352325,
-      "score": 8
-    },
-    {
-      "emp": "exec_eng",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the execution-path latency in `/opt/quantedge/execution_logs.log` and noticed a 30% increase in average latency over the past hour, with a peak of **125ms** at 21:45 UTC. This is triggering a review of our smart execution algorithm, specifically the `slippage_risk_model.py` ",
-      "provider": "litellm:groq",
-      "ts": 1781303619.0292714,
-      "score": 9
-    },
-    {
-      "emp": "poly_desk",
-      "channel": "unknown",
-      "text": "*I'm analyzing the `data/prediction_markets/btc_prices.csv` file to identify calibration gaps between Polymarket and Metaculus*. The current probability of **BTC >$100k by Dec 2025** is 0.62 YES on Polymarket vs 0.71 on Metaculus, indicating a **9pp gap**. I'm calculating the *Kelly fraction* to det",
-      "provider": "litellm:groq",
-      "ts": 1781303622.2163022,
-      "score": 8
-    },
-    {
-      "emp": "ml_researcher",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the `predictions_20230220.csv` file, which shows that the **LSTM model** is outperforming the others with a **mean absolute error (MAE) of 0.237**. The `model_comparison.py` script indicates that LSTM has a **25.6% lower MAE** compared to the XGBoost model. I'm investigating",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781303630.3163583,
-      "score": 8
-    },
-    {
-      "emp": "vp_research",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the `./data/rates/US10Y.csv` file to identify regime shifts in the 10-year Treasury yield, using a Hidden Markov Model (HMM) with 3 states*. The model indicates a **62.4%** probability of being in a low-volatility regime, based on the past 250 trading days. I'm also tracking",
-      "provider": "litellm:groq",
-      "ts": 1781303633.7140222,
-      "score": 8
+      "ts": "2026-06-14 01:11:26"
     },
     {
       "emp": "quant_researcher",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifies current performance, and outlines a clear objective with concrete metrics for improvement.",
       "channel": "unknown",
-      "text": "*I'm currently running a walk-forward study on the `/equities/research/signal_1234.ipynb` notebook, optimizing the `beta_arb` signal with a **10%** increase in trading frequency. The backtest results show a **12.5%** increase in annualized return with a **Sharpe ratio** of 1.23. I'm analyzing the `s",
-      "provider": "litellm:groq",
-      "ts": 1781303637.0431695,
-      "score": 8
+      "ts": "2026-06-14 01:11:56"
     },
     {
-      "emp": "cro",
+      "emp": "frontend",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifies the update frequency, and proposes concrete optimizations, such as implementing a debounce function and refining error handling logic.",
       "channel": "unknown",
-      "text": "*I'm currently reviewing the `/risk_management/vaR_calculations.csv` file, focusing on the **95th percentile VaR** which is currently at $1.2 million*. The **3-day drawdown limit** is set at 5%, and I'm analyzing the impact of the **70/30 capital split** on our overall leverage, currently at 2.5x. T",
-      "provider": "litellm:groq",
-      "ts": 1781303640.6191707,
-      "score": 8
+      "ts": "2026-06-14 01:11:59"
     },
+    {
+      "emp": "equity_lead",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the momentum factor exposure and crowding risk, and implies actionable portfolio adjustments based on the analysis.",
+      "channel": "unknown",
+      "ts": "2026-06-14 01:12:05"
+    },
+    {
+      "emp": "fixed_income_desk",
+      "score": 8,
+      "reason": "Provides specific file paths, quantifies the risk with concrete numbers such as the 2.5bps steepening and DV01 of 0.082, and identifies a particular bond for rate-sensitivity risk.",
+      "channel": "unknown",
+      "ts": "2026-06-14 01:12:09"
+    },
+    {
+      "emp": "macro_researcher",
+      "score": 9,
+      "reason": "Provides specific file paths, quantifies the inflation rate and regime signal, and outlines a clear actionable step to update the macroeconomic signals spreadsheet.",
+      "channel": "unknown",
+      "ts": "2026-06-14 01:12:12"
+    },
+    {
+      "emp": "stat_arb_desk",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 01:12:18"
+    },
+    {
+      "emp": "crypto_defi_desk",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 01:12:56"
+    },
+    {
+      "emp": "kalshi_desk",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 01:13:03"
+    },
+    {
+      "emp": "research_ops",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 01:13:10"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "stat_arb_desk",
       "channel": "unknown",
@@ -1951,13 +1954,93 @@
       "provider": "Gemini(GEMINI_API_KEY)",
       "ts": 1781393946.2083807,
       "score": 5
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*BTC perp funding rates* across major exchanges (Binance, Bybit) remain elevated \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781399486.527771,
+      "score": 4
+    },
+    {
+      "emp": "quant_researcher",
+      "channel": "unknown",
+      "text": "*I'm currently fine-tuning a momentum-based signal in `signals/momentum_strat.py`*, which has shown a **22.1%** annualized return in the `backtest_results_2020.csv` dataset. My focus is on optimizing the **lookback period**, currently set to **60 days**, to improve the signal's **Sharpe ratio** from",
+      "provider": "litellm:groq",
+      "ts": 1781399516.324622,
+      "score": 8
+    },
+    {
+      "emp": "frontend",
+      "channel": "unknown",
+      "text": "*I'm currently working on optimizing the `RealTimeQuote.tsx` component in `src/components/quotes` to handle high-frequency updates from our WebSocket feed, which is receiving approximately **250** updates per second. To achieve this, I'm implementing a **debounce** function with a **50ms** delay to ",
+      "provider": "litellm:groq",
+      "ts": 1781399519.4249938,
+      "score": 8
+    },
+    {
+      "emp": "equity_lead",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the **equity_alpha_signal_20230614.csv** file, which shows a **12.5%** increase in momentum factor exposure for our top-performing strategy. The **signal_generation.py** script is running with a **95%** confidence interval to validate these findings. I've also identified a *",
+      "provider": "litellm:groq",
+      "ts": 1781399525.6827657,
+      "score": 8
+    },
+    {
+      "emp": "fixed_income_desk",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the 10-year Treasury yield curve, specifically the `/Users/analyst/Documents/yield_curve_data.csv` file, which shows a 2.5bps steepening in the 5-10 year sector*. The **TED spread** is at 23.1bps, indicating a moderate level of credit risk. I'm flagging the **T 1.375 02/15/2",
+      "provider": "litellm:groq",
+      "ts": 1781399529.0766485,
+      "score": 8
+    },
+    {
+      "emp": "macro_researcher",
+      "channel": "unknown",
+      "text": "*I'm analyzing the latest CPI data from `/data/economic_indicators/inflation.csv`, which shows a 0.5% month-over-month increase in the core inflation rate*. This has triggered a review of our **inflation regime signal**, which is currently at 0.62 based on the `inflation_regime_metric` calculation. ",
+      "provider": "litellm:groq",
+      "ts": 1781399532.2381577,
+      "score": 9
+    },
+    {
+      "emp": "stat_arb_desk",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the **cointegration breakdown signal** for the Exxon Mobil (XOM) and Chevron (CVX) pair, which triggered at `/data/stocks/pairs/xom_cvx.csv` with a **Z-score of 2.53**. The **half-life drift** for this pair is **3.2 days**, indicating a moderate mean-reversion speed. I'm runn",
+      "provider": "litellm:groq",
+      "ts": 1781399538.9814243,
+      "score": 5
+    },
+    {
+      "emp": "crypto_defi_desk",
+      "channel": "unknown",
+      "text": "Monitoring a *significant liquidity shift* on Aave v3 Polygon. The *DAI \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781399576.4145372,
+      "score": 5
+    },
+    {
+      "emp": "kalshi_desk",
+      "channel": "unknown",
+      "text": "Currently scaling into *FED-25BP-JUN24* (Fed raises \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781399583.1003017,
+      "score": 5
+    },
+    {
+      "emp": "research_ops",
+      "channel": "unknown",
+      "text": "Currently investigating a *significant bottleneck* in our `feature_engineering_step` within `model \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781399590.1400998,
+      "score": 5
     }
   ],
   "last_providers": {
     "devops_dir": "litellm:groq",
     "vp_eng": "litellm:groq",
     "alpha_dir": "Gemini(GEMINI_API_KEY_2)",
-    "ml_lead": "litellm:groq",
+    "ml_lead": "Gemini(GEMINI_API_KEY)",
     "risk_eng": "litellm:groq",
     "backend_lead": "litellm:groq",
     "qa_dir": "litellm:groq",
@@ -1965,13 +2048,13 @@
     "poly_desk": "Gemini(GEMINI_API_KEY)",
     "ml_researcher": "litellm:groq",
     "vp_research": "Gemini(GEMINI_API_KEY_2)",
-    "quant_researcher": "litellm:gemini",
+    "quant_researcher": "litellm:groq",
     "cro": "Gemini(GEMINI_API_KEY)",
     "frontend": "litellm:groq",
     "equity_lead": "litellm:groq",
     "fixed_income_desk": "litellm:groq",
-    "macro_researcher": "litellm:gemini",
-    "stat_arb_desk": "Gemini(GEMINI_API_KEY_3)",
+    "macro_researcher": "litellm:groq",
+    "stat_arb_desk": "litellm:groq",
     "vol_trader": "litellm:groq",
     "alt_data_lead": "litellm:groq",
     "model_validator": "litellm:groq",
@@ -1986,7 +2069,10 @@
     "product_lead": "Gemini(GEMINI_API_KEY)",
     "ml_infra": "litellm:groq",
     "data_engineer_2": "Gemini(GEMINI_API_KEY_2)",
-    "nlp_researcher": "Gemini(GEMINI_API_KEY_2)"
+    "nlp_researcher": "Gemini(GEMINI_API_KEY_2)",
+    "crypto_defi_desk": "Gemini(GEMINI_API_KEY)",
+    "kalshi_desk": "Gemini(GEMINI_API_KEY_3)",
+    "research_ops": "Gemini(GEMINI_API_KEY_2)"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781381633.304667,
@@ -1995,12 +2081,12 @@
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
-      "date": "2026-06-13",
-      "used": 600
+      "date": "2026-06-14",
+      "used": 0
     },
     "GEMINI_API_KEY_3": {
-      "date": "2026-06-13",
-      "used": 600
+      "date": "2026-06-14",
+      "used": 0
     }
   },
   "bot_handle_announced": true,
