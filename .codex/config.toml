@@ -1,0 +1,11 @@
+# QuantEdge — Codex Desktop Project Config
+# Model: xAI Grok Build 0.1 via OpenRouter (Responses API bridge)
+# Provider config lives in ~/.codex/config.toml (user-level, run scripts/setup_codex.sh once)
+
+model = "x-ai/grok-build-0.1"
+model_provider = "openrouter"
+
+# Codex agent context — tells the agent what this repo is
+[project]
+name = "QuantEdge"
+description = "Institutional-grade quant trading platform. FastAPI backend + React frontend. Always use SQLAlchemy ORM, never raw SQL. No hardcoded secrets."

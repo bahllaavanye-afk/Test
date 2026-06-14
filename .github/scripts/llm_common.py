@@ -142,12 +142,12 @@ _PROVIDERS = [
     {
         "name": "grok",
         "url": "https://api.x.ai/v1/chat/completions",
-        # xAI Grok — OpenAI-compatible. Free tier: generous daily quota.
-        # grok-3-mini is optimized for fast coding tasks.
+        # xAI Grok Build 0.1 — dedicated agentic coding model, 256K ctx, $1/$2 per 1M.
+        # Falls back to grok-4 for non-coding analysis tasks.
         "key_env": "XAI_API_KEY",
         "key_env_alt": "GROK_API_KEY",
         "fmt": "openai",
-        "model": "grok-3-mini",
+        "model": "grok-build-0.1",
         "rpm_free": 60,
     },
     {
@@ -163,12 +163,12 @@ _PROVIDERS = [
     {
         "name": "openai",
         "url": "https://models.github.ai/inference/chat/completions",
-        # GitHub Models — free GPT-4o via GITHUB_TOKEN (always present in Actions).
-        # Acts as a free OpenAI proxy: same API, zero additional cost.
+        # GitHub Models — GPT-5.5 (azure-openai/gpt-5) via GITHUB_TOKEN (always free in Actions).
+        # GPT-5.5 released April 23 2026 — strongest on multi-step agentic coding tasks.
         "key_env": "GITHUB_MODELS_TOKEN",
         "key_env_alt": "GITHUB_TOKEN",
         "fmt": "openai",
-        "model": "openai/gpt-4o",
+        "model": "azure-openai/gpt-5",
         "rpm_free": 10,
     },
 ]

@@ -74,13 +74,13 @@ def _call_grok(prompt: str, max_tokens: int = 6000) -> str:
     if not XAI_KEY:
         raise RuntimeError("No xAI key (XAI_API_KEY or GROK_API_KEY)")
     body = json.dumps({
-        "model": "grok-3-mini",
+        "model": "grok-build-0.1",   # xAI's dedicated agentic coding model (256K ctx)
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "You are Grok, a fast and precise coding assistant for QuantEdge, "
-                    "an institutional-grade quantitative trading platform. "
+                    "You are Grok Build, xAI's agentic software engineering model running "
+                    "inside QuantEdge, an institutional-grade quantitative trading platform. "
                     "You write clean Python and TypeScript. You never hardcode secrets. "
                     "You always use SQLAlchemy ORM, never raw SQL."
                 ),
