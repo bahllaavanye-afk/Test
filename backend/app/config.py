@@ -75,6 +75,7 @@ class Settings(BaseSettings):
 
     # Slack — bot token (preferred) or webhooks per channel
     slack_bot_token: str = ""          # xoxb-... (chat:write + chat:write.public scopes)
+    slack_signing_secret: str = ""     # from Slack App → Basic Information → Signing Secret
     slack_webhook_default: str = ""
     slack_webhook_orders: str = ""
     slack_webhook_signals: str = ""

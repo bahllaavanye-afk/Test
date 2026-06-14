@@ -19,11 +19,11 @@ type Metric = {
 
 function useLiveMetrics(): Metric[] {
   const [metrics, setMetrics] = useState<Metric[]>([
-    { label: 'Sharpe Ratio', value: 2.1, suffix: '+', decimals: 1, color: 'var(--green)' },
-    { label: 'Max Drawdown', value: 15, prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
-    { label: 'Win Rate', value: 68, prefix: '~', suffix: '%', decimals: 0, color: 'var(--blue)' },
-    { label: 'Strategies', value: 68, suffix: '+', decimals: 0, color: 'var(--purple)' },
-    { label: 'ML Models', value: 7, suffix: '', decimals: 0, color: 'var(--green)' },
+    { label: 'Sharpe Ratio', value: null, suffix: '+', decimals: 1, color: 'var(--green)' },
+    { label: 'Max Drawdown', value: null, prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
+    { label: 'Win Rate', value: null, prefix: '~', suffix: '%', decimals: 0, color: 'var(--blue)' },
+    { label: 'Strategies', value: null, suffix: '+', decimals: 0, color: 'var(--purple)' },
+    { label: 'ML Models', value: null, suffix: '', decimals: 0, color: 'var(--green)' },
     { label: 'Uptime', value: null, display: '24/7', color: 'var(--accent)' },
   ])
 

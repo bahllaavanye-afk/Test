@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import api from '../api/client'
 
@@ -265,51 +265,6 @@ function OverviewTab({
 
 // ── Advanced Analytics tab ────────────────────────────────────────────────────
 
-const confidenceData = [
-  { bucket: '<60%', manual: 52, ml: 54 },
-  { bucket: '60-70%', manual: 52, ml: 61 },
-  { bucket: '70-80%', manual: 52, ml: 68 },
-  { bucket: '>80%', manual: 52, ml: 74 },
-]
-
-const mafeManual = [
-  { name: 'MAE Mean', value: 1.2 },
-  { name: 'MFE Mean', value: 2.8 },
-  { name: 'Edge Ratio', value: 2.3 },
-]
-
-const mafeML = [
-  { name: 'MAE Mean', value: 0.9 },
-  { name: 'MFE Mean', value: 3.4 },
-  { name: 'Edge Ratio', value: 3.8 },
-]
-
-const rMultipleBuckets = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-
-const rMultipleManual = [
-  { r: '-4', freq: 2 },
-  { r: '-3', freq: 5 },
-  { r: '-2', freq: 12 },
-  { r: '-1', freq: 28 },
-  { r: '0', freq: 8 },
-  { r: '1', freq: 22 },
-  { r: '2', freq: 14 },
-  { r: '3', freq: 6 },
-  { r: '4', freq: 3 },
-]
-
-const rMultipleML = [
-  { r: '-4', freq: 1 },
-  { r: '-3', freq: 3 },
-  { r: '-2', freq: 8 },
-  { r: '-1', freq: 18 },
-  { r: '0', freq: 7 },
-  { r: '1', freq: 26 },
-  { r: '2', freq: 19 },
-  { r: '3', freq: 11 },
-  { r: '4', freq: 7 },
-]
-
 const chartTheme = {
   background: '#111111',
   text: '#888',
@@ -376,109 +331,27 @@ function AdvancedAnalyticsTab() {
       {/* Section 2: Win Rate by ML Confidence */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5">
         <h2 className="text-sm font-bold text-[#e8e8e8] mb-1">Win Rate by ML Confidence</h2>
-        <p className="text-[11px] text-[#555] mb-4">Manual (gray) vs ML (green) win rate across confidence buckets</p>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={confidenceData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-            <XAxis dataKey="bucket" tick={{ fill: chartTheme.text, fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis domain={[40, 80]} tick={{ fill: chartTheme.text, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
-            <Tooltip
-              contentStyle={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6 }}
-              labelStyle={{ color: '#e8e8e8' }}
-              formatter={(value: number) => [`${value}%`]}
-            />
-            <Legend wrapperStyle={{ fontSize: 11, color: chartTheme.text }} />
-            <Bar dataKey="manual" name="Manual" fill="#555555" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="ml" name="ML Enhanced" fill="#00c853" radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <p className="text-[11px] text-[#555] mb-4">Manual vs ML win rate across confidence buckets — requires live trade data</p>
+        <div className="flex items-center justify-center h-[220px] text-[#555] text-[12px]">
+          No trade data yet. Run a comparison to populate this chart.
+        </div>
       </div>
 
       {/* Section 3: MAE/MFE Comparison */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5">
         <h2 className="text-sm font-bold text-[#e8e8e8] mb-1">MAE / MFE Comparison</h2>
-        <p className="text-[11px] text-[#555] mb-4">Maximum Adverse Excursion · Maximum Favorable Excursion · Edge Ratio (demo data)</p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-[11px] text-[#888] mb-2 text-center">Manual Strategy</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={mafeManual} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                <XAxis dataKey="name" tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6 }}
-                  labelStyle={{ color: '#e8e8e8' }}
-                />
-                <Bar dataKey="value" fill="#2196F3" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div>
-            <p className="text-[11px] text-[#888] mb-2 text-center">ML Enhanced</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={mafeML} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                <XAxis dataKey="name" tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6 }}
-                  labelStyle={{ color: '#e8e8e8' }}
-                />
-                <Bar dataKey="value" fill="#00c853" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <p className="text-[11px] text-[#555] mb-4">Maximum Adverse Excursion · Maximum Favorable Excursion · Edge Ratio</p>
+        <div className="flex items-center justify-center h-[180px] text-[#555] text-[12px]">
+          No trade data yet. Run a comparison to populate this chart.
         </div>
       </div>
 
       {/* Section 4: R-Multiple Distribution */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5">
         <h2 className="text-sm font-bold text-[#e8e8e8] mb-1">R-Multiple Distribution</h2>
-        <p className="text-[11px] text-[#555] mb-4">Trade outcome distribution in units of initial risk (demo data)</p>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Manual */}
-          <div>
-            <p className="text-[11px] text-[#888] mb-2 text-center">Manual Strategy</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={rMultipleManual} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                <XAxis dataKey="r" tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'R', position: 'insideRight', fill: '#555', fontSize: 10 }} />
-                <YAxis tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6 }}
-                  labelStyle={{ color: '#e8e8e8' }}
-                  formatter={(v: number) => [v, 'Trades']}
-                />
-                <Bar dataKey="freq" radius={[2, 2, 0, 0]}>
-                  {rMultipleManual.map((entry) => (
-                    <Cell key={entry.r} fill={parseFloat(entry.r) < 0 ? '#ff1744' : '#00c853'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          {/* ML */}
-          <div>
-            <p className="text-[11px] text-[#888] mb-2 text-center">ML Enhanced</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={rMultipleML} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                <XAxis dataKey="r" tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'R', position: 'insideRight', fill: '#555', fontSize: 10 }} />
-                <YAxis tick={{ fill: chartTheme.text, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6 }}
-                  labelStyle={{ color: '#e8e8e8' }}
-                  formatter={(v: number) => [v, 'Trades']}
-                />
-                <Bar dataKey="freq" radius={[2, 2, 0, 0]}>
-                  {rMultipleML.map((entry) => (
-                    <Cell key={entry.r} fill={parseFloat(entry.r) < 0 ? '#ff1744' : '#00c853'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <p className="text-[11px] text-[#555] mb-4">Trade outcome distribution in units of initial risk</p>
+        <div className="flex items-center justify-center h-[180px] text-[#555] text-[12px]">
+          No trade data yet. Run a comparison to populate this chart.
         </div>
       </div>
     </div>
@@ -521,9 +394,6 @@ export default function Comparison() {
 
   const comparisons: CompRow[] = resultsData ?? []
   const benchmarks: BenchmarkRow[] = benchmarksData ?? []
-
-  // Suppress unused variable warning — rMultipleBuckets used as reference for data shape
-  void rMultipleBuckets
 
   return (
     <div className="space-y-6">

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_active_superuser, get_current_user, get_db
 from app.models.promotion import StrategyPromotion
 from app.models.user import User
 from app.tasks.promotion_criteria import TRANSITION_MAP, check_criteria
@@ -123,7 +123,7 @@ async def update_metrics(
 async def approve_promotion(
     promotion_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_superuser),
 ):
     """Approve strategy for promotion to next stage."""
     p = await db.get(StrategyPromotion, promotion_id)
@@ -175,7 +175,7 @@ async def reject_promotion(
     promotion_id: str,
     req: RejectRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_superuser),
 ):
     """Reject strategy promotion — marks it as rejected."""
     p = await db.get(StrategyPromotion, promotion_id)

@@ -250,7 +250,20 @@ async def slack_events(request: Request):
       https://quantedge-api.onrender.com/api/v1/notifications/slack/events
     Subscribe to bot events: message.channels, message.groups, app_mention
     """
-    body = await request.json()
+    raw_body = await request.body()
+
+    # Verify Slack request signature (skip only if SLACK_SIGNING_SECRET not configured)
+    from app.config import settings as _cfg
+    if _cfg.slack_signing_secret:
+        from app.tasks.slack_handler import _verify_slack_signature
+        from fastapi import HTTPException as _HTTPException
+        timestamp = request.headers.get("X-Slack-Request-Timestamp", "0")
+        signature = request.headers.get("X-Slack-Signature", "")
+        if not _verify_slack_signature(raw_body, timestamp, signature):
+            raise _HTTPException(status_code=403, detail="Invalid Slack signature")
+
+    import json as _json
+    body = _json.loads(raw_body)
 
     # Slack URL verification handshake
     if body.get("type") == "url_verification":

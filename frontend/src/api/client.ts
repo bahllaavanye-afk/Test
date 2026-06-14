@@ -1,10 +1,11 @@
 import axios from 'axios'
 import { getStoredRefreshToken, setStoredRefreshToken } from '../store/slices/authSlice'
 
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+// VITE_API_URL must include the full path including /api/v1 (e.g. http://localhost:8000/api/v1)
+const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 export const api = axios.create({
-  baseURL: `${BASE_URL}/api/v1`,
+  baseURL: BASE_URL,
   timeout: 30000,
 })
 
@@ -34,7 +35,7 @@ api.interceptors.response.use(
       const refreshToken = getStoredRefreshToken()
       if (refreshToken && !_refreshing) {
         _refreshing = axios
-          .post(`${BASE_URL}/api/v1/auth/refresh`, { refresh_token: refreshToken }, { timeout: 10000 })
+          .post(`${BASE_URL}/auth/refresh`, { refresh_token: refreshToken }, { timeout: 10000 })
           .then(r => {
             const { access_token, refresh_token } = r.data
             setToken(access_token)
@@ -71,7 +72,7 @@ export const callLogout = async () => {
   const refreshToken = getStoredRefreshToken()
   if (refreshToken) {
     try {
-      await axios.post(`${BASE_URL}/api/v1/auth/logout`, { refresh_token: refreshToken })
+      await axios.post(`${BASE_URL}/auth/logout`, { refresh_token: refreshToken })
     } catch {
       // Best-effort — clear locally regardless
     }
