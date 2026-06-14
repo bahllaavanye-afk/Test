@@ -8795,8 +8795,17 @@ def main() -> int:
     print("\n💬 Discussion pass — multi-turn threaded discussions")
     chains = build_discussion_chains(posted_ts)
     random.shuffle(chains)
-    # Run 4-7 chains per wave (varied so not every channel threads every run)
-    n_chains = random.randint(4, min(7, len(chains)))
+    # Run 4-7 chains per wave (varied so not every channel threads every run).
+    # Guard against an empty/small chain list — randint(4, n<4) raises
+    # "empty range for randrange()" and aborts the whole discussion pass,
+    # which is exactly what happens when no parent messages posted
+    # (e.g. the bot isn't in any channel yet).
+    if not chains:
+        print("  ⚠ no parent messages posted — skipping discussion pass "
+              "(check the bot is invited to the channels)")
+        n_chains = 0
+    else:
+        n_chains = random.randint(min(4, len(chains)), min(7, len(chains)))
     chains_run = 0
     for channel, parent_ts, agent_chain in chains[:n_chains]:
         print(f"  💬 discussion in #{channel} ({len(agent_chain)} replies)")
