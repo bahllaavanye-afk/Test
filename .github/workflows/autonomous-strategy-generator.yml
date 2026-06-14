@@ -64,6 +64,8 @@ jobs:
           HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
           NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           MARKET_TYPE: ${{ github.event.inputs.market_type || 'auto' }}
           N_STRATEGIES: ${{ github.event.inputs.n_strategies || '1' }}
         run: python .github/scripts/strategy_generator.py
