@@ -52,8 +52,11 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_URL: https://quantedge-api.onrender.com
-          VITE_BASE_PATH: /test/
-        run: npx vite build --base /test/
+          # Base path MUST match the published URL case exactly. The repo is
+          # "Test", so Pages serves at /Test/ — a lowercase /test/ base makes
+          # every asset 404 and the page renders blank.
+          VITE_BASE_PATH: /Test/
+        run: npx vite build --base /Test/
 
       # SPA fallback: copy index.html to 404.html so client-side routes
       # (e.g. /test/dashboard) resolve instead of returning GitHub's 404.

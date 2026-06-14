@@ -111,7 +111,18 @@ export function PortfolioSnapshot() {
     )
   }
 
-  const d = data
+  // Normalize numeric fields so a missing/null value from the API can never
+  // crash the whole dashboard with "Cannot read properties of undefined".
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const d = {
+    ...data,
+    total_pnl: num(data.total_pnl),
+    today_pnl: num(data.today_pnl),
+    sharpe: num(data.sharpe),
+    win_rate: num(data.win_rate),
+    max_drawdown: num(data.max_drawdown),
+    open_positions: num(data.open_positions),
+  }
   const winRatePct = (d.win_rate > 1 ? d.win_rate : d.win_rate * 100).toFixed(1)
   const winRateTrendPct =
     d.win_rate_trend != null
