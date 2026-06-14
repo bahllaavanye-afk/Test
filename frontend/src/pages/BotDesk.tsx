@@ -362,7 +362,7 @@ export default function BotDesk() {
     <div style={{ padding: 32, color: '#555', fontFamily: 'JetBrains Mono, monospace' }}>Loading desks…</div>
   )
   if (error) return (
-    <div style={{ padding: 32, color: '#ff1744' }}>Failed to load bot desk: {String(error)}</div>
+    <div style={{ padding: 32, color: '#ff1744' }}>Failed to load bot desk: {error instanceof Error ? error.message : 'Unknown error'}</div>
   )
 
   return (
