@@ -28,7 +28,6 @@ from __future__ import annotations
 from collections import defaultdict, deque
 
 import numpy as np
-import pandas as pd
 
 
 class VolatilityTargeter:

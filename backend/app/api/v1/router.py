@@ -25,8 +25,8 @@ from app.api.v1 import (
     strategies,
     trades,
 )
-from app.api.v1.alerts import router as alerts_router
 from app.api.v1.agent_logs import router as agent_logs_router
+from app.api.v1.alerts import router as alerts_router
 from app.api.v1.audit_log import router as audit_log_router
 from app.api.v1.bots import router as bots_router
 from app.api.v1.options import router as options_router
@@ -70,8 +70,8 @@ api_router.include_router(slack_router)
 from app.api.v1.promotions import router as promotions_router
 
 api_router.include_router(promotions_router)
-from app.api.v1.tasks import router as tasks_router
 from app.api.v1.copy_trading import router as copy_trading_router
+from app.api.v1.tasks import router as tasks_router
 
 api_router.include_router(tasks_router)
 api_router.include_router(copy_trading_router)

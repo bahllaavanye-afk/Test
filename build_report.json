@@ -1,20 +1,20 @@
 {
-  "timestamp": "2026-06-14T02:04:55.830421+00:00",
-  "overall_ok": true,
+  "timestamp": "2026-06-14T19:30:13.708060+00:00",
+  "overall_ok": false,
   "results": [
     {
       "component": "backend",
       "check": "imports",
-      "ok": true,
+      "ok": false,
       "skipped": false,
-      "detail": "all modules import"
+      "detail": "app.main: TIMEOUT after 30s\napp.strategies: TIMEOUT after 30s"
     },
     {
       "component": "backend",
       "check": "ruff",
       "ok": false,
       "skipped": false,
-      "detail": "class=structlog.make_filtering_bound_logger(level),\n   |\n\nE501 Line too long (128 > 100)\n  --> app/utils/security.py:28:101\n   |\n26 |         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)\n27 |     )\n28 |     return jwt.encode({\"sub\": str(subject), \"exp\": expire, \"type\": \"access\"}, settings.secret_key, algorithm=settings.algorithm)\n   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n\nFound 603 errors.\nNo fixes available (27 hidden fixes can be enabled with the `--unsafe-fixes` option).\nwarning: The top-level linter settings are deprecated in favour of their counterparts in the `lint` section. Please update the following options in `pyproject.toml`:\n  - 'select' -> 'lint.select'\n"
+      "detail": "                                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n\nF841 Local variable `topic` is assigned to but never used\n  --> app/ws/agent_logs.py:37:5\n   |\n35 |         return\n36 |\n37 |     topic = f\"{AGENT_LOGS_TOPIC}:{user_id}\"\n   |     ^^^^^\n38 |     # Also subscribe to the broadcast channel so all users get real-time events\n39 |     await manager.connect(websocket, AGENT_LOGS_TOPIC)\n   |\nhelp: Remove assignment to unused variable `topic`\n\nFound 637 errors.\nNo fixes available (30 hidden fixes can be enabled with the `--unsafe-fixes` option).\nwarning: The top-level linter settings are deprecated in favour of their counterparts in the `lint` section. Please update the following options in `pyproject.toml`:\n  - 'select' -> 'lint.select'\n"
     },
     {
       "component": "frontend",
@@ -24,9 +24,7 @@
       "detail": ""
     }
   ],
-  "autofixes_applied": [
-    "ruff --fix applied to backend/app"
-  ],
+  "autofixes_applied": [],
   "issues_escalated": 0,
-  "duration_seconds": 53.92
+  "duration_seconds": 151.72
 }

@@ -171,9 +171,10 @@ async def _audit_blocks() -> list[dict]:
 async def _tasks_blocks() -> list[dict]:
     """Show current task queue status from DB."""
     try:
+        from sqlalchemy import func, select
+
         from app.database import AsyncSessionLocal
         from app.models.task import Task, TaskStatus
-        from sqlalchemy import select, func
         async with AsyncSessionLocal() as db:
             counts = {}
             for status in TaskStatus:
@@ -190,7 +191,7 @@ async def _tasks_blocks() -> list[dict]:
             running = running_result.scalars().all()
 
         lines = [
-            f"*Task Queue Status*",
+            "*Task Queue Status*",
             f"• 📋 Queued: `{counts.get('queued', 0)}`",
             f"• ⚡ Running: `{counts.get('running', 0)}`",
             f"• ✅ Done: `{counts.get('done', 0)}`",
@@ -224,6 +225,7 @@ async def _dispatch_blocks(task_type: str, user_id: str) -> list[dict]:
     try:
         import uuid
         from datetime import UTC, datetime
+
         from app.database import AsyncSessionLocal
         from app.models.task import Task, TaskPriority, TaskStatus
 

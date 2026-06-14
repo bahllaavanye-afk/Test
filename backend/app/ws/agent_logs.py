@@ -42,7 +42,7 @@ async def ws_agent_logs(
             try:
                 # Heartbeat every 30 seconds; also keep connection alive by draining messages
                 await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await websocket.send_json({"type": "heartbeat"})
             except Exception as exc:
                 logger.warning("ws_agent_logs receive error for user %s: %s", user_id, exc)

@@ -6,15 +6,17 @@ Following a strategy auto-mirrors its signals at configurable size multiplier.
 """
 import json
 from datetime import UTC, datetime, timedelta
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+
+import numpy as np
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user, get_db
 from app.models.strategy import Strategy
 from app.models.trade import Trade
 from app.models.user import User
-import numpy as np
 
 router = APIRouter(prefix="/copy-trading", tags=["copy-trading"])
 

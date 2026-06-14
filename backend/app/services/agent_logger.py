@@ -6,7 +6,6 @@ Writes to DB and broadcasts to WebSocket subscribers.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from typing import Any
 
 from app.utils.logging import logger as _logger

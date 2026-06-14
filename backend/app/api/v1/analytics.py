@@ -2779,7 +2779,7 @@ async def get_factor_attribution(
 
     risk_free_daily = 0.04 / 252
 
-    factor_series: dict[str, "pd.Series"] = {
+    factor_series: dict[str, pd.Series] = {
         "MKT-RF": pct["SPY"] - risk_free_daily,
         "SMB":    pct["IWM"] - pct["SPY"],
         "HML":    pct["IVE"] - pct["IVW"],

@@ -255,8 +255,9 @@ async def slack_events(request: Request):
     # Verify Slack request signature (skip only if SLACK_SIGNING_SECRET not configured)
     from app.config import settings as _cfg
     if _cfg.slack_signing_secret:
-        from app.tasks.slack_handler import _verify_slack_signature
         from fastapi import HTTPException as _HTTPException
+
+        from app.tasks.slack_handler import _verify_slack_signature
         timestamp = request.headers.get("X-Slack-Request-Timestamp", "0")
         signature = request.headers.get("X-Slack-Signature", "")
         if not _verify_slack_signature(raw_body, timestamp, signature):
@@ -364,6 +365,7 @@ async def _create_task_from_slack(
     task_type, assigned_to = task_info
     try:
         import uuid
+
         from app.database import AsyncSessionLocal
         from app.models.task import Task, TaskPriority, TaskStatus
         async with AsyncSessionLocal() as db:

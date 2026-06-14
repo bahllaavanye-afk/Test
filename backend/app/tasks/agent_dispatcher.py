@@ -152,7 +152,6 @@ async def _execute_task(task_id: str, task_type: str, params: dict, db_session_f
         elif task_type == "evaluate_strategies":
             from sqlalchemy import select
 
-            from app.models.strategy import Strategy
             from app.models.trade import Trade
 
             days = params.get("window_days", 7)

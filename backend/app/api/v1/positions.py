@@ -1,6 +1,5 @@
 """Portfolio positions endpoint."""
 import json
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
@@ -165,16 +164,16 @@ async def get_position_exit_config(
 
 
 class ExitOptionsUpdate(BaseModel):
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    profit_target_pct: Optional[float] = None
-    stop_loss_pct: Optional[float] = None
-    trailing_stop_pct: Optional[float] = None
-    expiration_days: Optional[int] = None
-    pricing_method: Optional[str] = None
-    bid_ask_guard: Optional[bool] = None
-    notes: Optional[str] = None
-    tags: Optional[list[str]] = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    profit_target_pct: float | None = None
+    stop_loss_pct: float | None = None
+    trailing_stop_pct: float | None = None
+    expiration_days: int | None = None
+    pricing_method: str | None = None
+    bid_ask_guard: bool | None = None
+    notes: str | None = None
+    tags: list[str] | None = None
 
 
 @router.patch("/{symbol}/exit-config")
@@ -192,7 +191,7 @@ async def update_position_exit_config(
 
     try:
         raw = await redis_client.get(f"pos_exit:{symbol}")
-    except Exception as exc:
+    except Exception:
         raise HTTPException(status_code=503, detail="Failed to read exit config from Redis")
 
     config: dict = json.loads(raw) if raw else {}
@@ -202,7 +201,7 @@ async def update_position_exit_config(
 
     try:
         await redis_client.set(f"pos_exit:{symbol}", json.dumps(config), ex=86400)
-    except Exception as exc:
+    except Exception:
         raise HTTPException(status_code=503, detail="Failed to write exit config to Redis")
 
     return {"symbol": symbol, "updated": True, "config": config}
