@@ -5,7 +5,7 @@ name: Deploy Frontend to GitHub Pages
 # enables Pages (Actions build type) on first run, so no settings click is needed.
 # URL: https://bahllaavanye-afk.github.io/test/
 # Triggers on every push to the main feature branch.
-# (Re-trigger: Pages enabled in repo Settings — deploy step now succeeds.)
+# (Re-trigger: Pages enabled in repo Settings, Source=GitHub Actions — deploy now succeeds.)
 
 on:
   push:
