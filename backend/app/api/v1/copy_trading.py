@@ -4,9 +4,10 @@ Copy Trading Desk — mirror signals from top-performing strategies.
 Leaderboard ranks internal strategies by 30-day rolling Sharpe.
 Following a strategy auto-mirrors its signals at configurable size multiplier.
 """
+import json
 from datetime import UTC, datetime, timedelta
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
@@ -130,6 +131,11 @@ async def _compute_leaderboard(db: AsyncSession, days: int = 30) -> list[dict]:
     return rows
 
 
+class FollowRequest(BaseModel):
+    strategy_id: str = Field(..., description="ID of the strategy to follow")
+    size_multiplier: float = Field(1.0, gt=0, le=10, description="Position size multiplier (0–10×)")
+
+
 @router.get("/leaderboard")
 async def get_leaderboard(
     days: int = Query(30, ge=7, le=365),
@@ -138,3 +144,86 @@ async def get_leaderboard(
 ):
     """Rank all strategies by rolling Sharpe for the last N days."""
     return await _compute_leaderboard(db, days)
+
+
+def _follows_key(user_id: str) -> str:
+    return f"copy_trading:follows:{user_id}"
+
+
+@router.post("/follow")
+async def follow_strategy(
+    body: FollowRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Follow a strategy and mirror its signals at the given size multiplier."""
+    from app.redis_client import get_redis
+
+    redis_client = get_redis()
+    if redis_client is not None:
+        try:
+            key = _follows_key(str(current_user.id))
+            raw = await redis_client.get(key)
+            follows: dict = json.loads(raw) if raw else {}
+            follows[body.strategy_id] = body.size_multiplier
+            await redis_client.set(key, json.dumps(follows))
+        except Exception:
+            # Optimistic — Redis write failure is non-fatal
+            pass
+
+    return {
+        "followed": True,
+        "strategy_id": body.strategy_id,
+        "size_multiplier": body.size_multiplier,
+    }
+
+
+@router.delete("/follow/{strategy_id}")
+async def unfollow_strategy(
+    strategy_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Stop mirroring a strategy's signals."""
+    from app.redis_client import get_redis
+
+    redis_client = get_redis()
+    if redis_client is not None:
+        try:
+            key = _follows_key(str(current_user.id))
+            raw = await redis_client.get(key)
+            follows: dict = json.loads(raw) if raw else {}
+            follows.pop(strategy_id, None)
+            await redis_client.set(key, json.dumps(follows))
+        except Exception:
+            # Optimistic — Redis write failure is non-fatal
+            pass
+
+    return {"unfollowed": True, "strategy_id": strategy_id}
+
+
+@router.get("/follows")
+async def list_follows(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all strategies the current user is following, with their size multipliers."""
+    from app.redis_client import get_redis
+
+    redis_client = get_redis()
+    if redis_client is None:
+        return {"follows": []}
+
+    try:
+        key = _follows_key(str(current_user.id))
+        raw = await redis_client.get(key)
+        follows: dict = json.loads(raw) if raw else {}
+    except Exception:
+        return {"follows": []}
+
+    return {
+        "follows": [
+            {"strategy_id": sid, "size_multiplier": mult}
+            for sid, mult in follows.items()
+        ]
+    }

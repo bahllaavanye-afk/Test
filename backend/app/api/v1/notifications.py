@@ -301,6 +301,99 @@ async def slack_events(request: Request):
     return {"ok": True}
 
 
+# Channel name → (task_type, assigned_to) mapping
+_CHANNEL_TASK_MAP: dict[str, tuple[str, str]] = {
+    "alpha-research":   ("alpha_mining",          "research_agent"),
+    "risk-alerts":      ("risk_check",             "risk_agent"),
+    "ml-experiments":   ("evaluate_models",        "ml_agent"),
+    "pnl-daily":        ("evaluate_strategies",    "strategy_agent"),
+    "engineering":      ("fetch_ohlcv",            "data_agent"),
+    "squad-execution":  ("slippage_analysis",      "execution_agent"),
+}
+
+# Keyword patterns → (task_type, assigned_to)
+_KEYWORD_TASK_MAP: list[tuple[list[str], str, str]] = [
+    (["risk", "drawdown", "circuit breaker", "breaker"], "risk_check",          "risk_agent"),
+    (["alpha", "factor", "mine", "miner"],               "alpha_mining",         "research_agent"),
+    (["model", "lstm", "train", "drift", "accuracy"],    "evaluate_models",      "ml_agent"),
+    (["strategy", "sharpe", "backtest", "disable"],      "evaluate_strategies",  "strategy_agent"),
+    (["price", "ohlcv", "cache", "sync", "fetch"],       "fetch_ohlcv",          "data_agent"),
+    (["slippage", "fill", "execution", "vwap", "twap"],  "slippage_analysis",    "execution_agent"),
+]
+
+def _slack_message_to_task(text: str, channel_name: str) -> tuple[str, str] | None:
+    """Return (task_type, assigned_to) if this message warrants a queued task, else None."""
+    text_lower = text.lower()
+    # Keyword match takes priority
+    for keywords, task_type, assigned_to in _KEYWORD_TASK_MAP:
+        if any(kw in text_lower for kw in keywords):
+            return task_type, assigned_to
+    # Channel-based fallback
+    return _CHANNEL_TASK_MAP.get(channel_name)
+
+async def _get_channel_name(token: str, channel_id: str) -> str:
+    """Resolve a Slack channel_id to its name for task routing."""
+    if not token or not channel_id:
+        return ""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://slack.com/api/conversations.info",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"channel": channel_id},
+            )
+            data = resp.json()
+            if data.get("ok"):
+                return data.get("channel", {}).get("name", "")
+    except Exception:
+        pass
+    return ""
+
+async def _create_task_from_slack(
+    text: str,
+    channel_id: str,
+    channel_name: str,
+    thread_ts: str,
+    user_id: str,
+) -> None:
+    """Create a queued Task triggered by a Slack message."""
+    task_info = _slack_message_to_task(text, channel_name)
+    if not task_info:
+        return
+    task_type, assigned_to = task_info
+    try:
+        import uuid
+        from app.database import AsyncSessionLocal
+        from app.models.task import Task, TaskPriority, TaskStatus
+        async with AsyncSessionLocal() as db:
+            task = Task(
+                id=str(uuid.uuid4()),
+                title=f"[Slack #{channel_name}] {text[:80].strip()}",
+                description=text[:300],
+                task_type=task_type,
+                assigned_to=assigned_to,
+                assigned_by=f"slack:{user_id}",
+                status=TaskStatus.queued,
+                priority=TaskPriority.medium,
+                params={
+                    "slack_channel_id": channel_id,
+                    "slack_thread_ts": thread_ts,
+                    "triggered_by": "slack",
+                    "original_message": text[:300],
+                    "channel_name": channel_name,
+                },
+                progress_pct=0.0,
+            )
+            db.add(task)
+            await db.commit()
+        from app.utils.logging import logger as _logger
+        _logger.info("Task created from Slack", task_type=task_type, channel=channel_name)
+    except Exception as _e:
+        from app.utils.logging import logger as _logger
+        _logger.debug("Slack task creation failed", error=str(_e))
+
+
 async def _cto_review_message(
     channel_id: str,
     user_id: str,
@@ -371,6 +464,18 @@ async def _cto_review_message(
             )
             full_reply = f"🤖 *CTO:* {author_mention}{reply_text}{routing_footer}"
             await _post_threaded_reply(channel_id, thread_ts, full_reply, token=token)
+
+            # Resolve channel name and dispatch employee task
+            channel_name = await _get_channel_name(token, channel_id)
+            asyncio.create_task(
+                _create_task_from_slack(
+                    text=text,
+                    channel_id=channel_id,
+                    channel_name=channel_name,
+                    thread_ts=thread_ts,
+                    user_id=user_id,
+                )
+            )
 
             # Track unanswered questions for follow-up (new messages only)
             if "?" in text and not is_reply:

@@ -53,6 +53,10 @@ async def slack_command(request: Request):
         blocks = await _signal_blocks(parts[1].upper())
     elif sub == "audit":
         blocks = await _audit_blocks()
+    elif sub == "tasks":
+        blocks = await _tasks_blocks()
+    elif sub == "dispatch" and len(parts) > 1:
+        blocks = await _dispatch_blocks(parts[1].lower(), str(form.get("user_id", "")))
     elif sub == "help":
         blocks = [_block_text(
             "*QuantEdge Slack Commands*\n"
@@ -60,6 +64,8 @@ async def slack_command(request: Request):
             "• `/qe risk` — real circuit-breaker + drawdown state\n"
             "• `/qe signal <SYMBOL>` — live ML ensemble signal\n"
             "• `/qe audit` — channel health audit (what's not working)\n"
+            "• `/qe tasks` — show current task queue status (queued/running/done counts)\n"
+            "• `/qe dispatch <task_type>` — manually queue a task (e.g. `risk_check`, `alpha_mining`)\n"
             "• `/qe help` — this message"
         )]
     else:
@@ -160,3 +166,87 @@ async def _audit_blocks() -> list[dict]:
         return [_block_text("\n".join(lines))]
     except Exception as e:
         return [_block_text(f"*Channel Audit*\nError: `{e}`")]
+
+
+async def _tasks_blocks() -> list[dict]:
+    """Show current task queue status from DB."""
+    try:
+        from app.database import AsyncSessionLocal
+        from app.models.task import Task, TaskStatus
+        from sqlalchemy import select, func
+        async with AsyncSessionLocal() as db:
+            counts = {}
+            for status in TaskStatus:
+                result = await db.execute(
+                    select(func.count(Task.id)).where(Task.status == status)
+                )
+                counts[status.value] = result.scalar() or 0
+
+            # Most recent running tasks
+            running_result = await db.execute(
+                select(Task).where(Task.status == TaskStatus.running)
+                .order_by(Task.started_at.desc()).limit(3)
+            )
+            running = running_result.scalars().all()
+
+        lines = [
+            f"*Task Queue Status*",
+            f"• 📋 Queued: `{counts.get('queued', 0)}`",
+            f"• ⚡ Running: `{counts.get('running', 0)}`",
+            f"• ✅ Done: `{counts.get('done', 0)}`",
+            f"• ❌ Failed: `{counts.get('failed', 0)}`",
+        ]
+        if running:
+            lines.append("*Currently Running:*")
+            for t in running:
+                lines.append(f"  → `{t.task_type}` (assigned to {t.assigned_to or '?'})")
+        return [_block_text("\n".join(lines))]
+    except Exception as e:
+        return [_block_text(f"*Task Queue*\nUnavailable: `{e}`")]
+
+
+async def _dispatch_blocks(task_type: str, user_id: str) -> list[dict]:
+    """Manually queue a task from Slack."""
+    VALID = {
+        "risk_check": "risk_agent",
+        "alpha_mining": "research_agent",
+        "evaluate_strategies": "strategy_agent",
+        "evaluate_models": "ml_agent",
+        "fetch_ohlcv": "data_agent",
+        "slippage_analysis": "execution_agent",
+    }
+    if task_type not in VALID:
+        return [_block_text(
+            f"Unknown task type: `{task_type}`\n"
+            f"Valid types: {', '.join(f'`{k}`' for k in VALID)}"
+        )]
+
+    try:
+        import uuid
+        from datetime import UTC, datetime
+        from app.database import AsyncSessionLocal
+        from app.models.task import Task, TaskPriority, TaskStatus
+
+        async with AsyncSessionLocal() as db:
+            task = Task(
+                id=str(uuid.uuid4()),
+                title=f"[/qe dispatch] {task_type}",
+                task_type=task_type,
+                assigned_to=VALID[task_type],
+                assigned_by=f"slack:manual:{user_id}",
+                status=TaskStatus.queued,
+                priority=TaskPriority.high,
+                params={},
+                progress_pct=0.0,
+                created_at=datetime.now(UTC),
+            )
+            db.add(task)
+            await db.commit()
+            task_id = task.id
+
+        return [_block_text(
+            f"✅ Task `{task_type}` queued (ID: `{task_id[:8]}…`)\n"
+            f"Assigned to `{VALID[task_type]}`. Will execute within 2 minutes."
+        )]
+    except Exception as e:
+        return [_block_text(f"❌ Failed to queue task: `{e}`")]

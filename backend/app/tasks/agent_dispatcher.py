@@ -226,6 +226,52 @@ async def _run_alpha_miner(symbols: list[str]) -> None:
         logger.debug("Background alpha miner failed", error=str(exc))
 
 
+async def _post_result_to_slack(task_type: str, result: dict, params: dict) -> None:
+    """Post task completion result back to the originating Slack thread."""
+    channel_id = params.get("slack_channel_id")
+    thread_ts = params.get("slack_thread_ts")
+    if not channel_id or not thread_ts:
+        return
+    try:
+        from app.config import settings as _settings
+        token = getattr(_settings, "slack_bot_token", "") or ""
+        if not token:
+            return
+
+        # Format a human-readable summary
+        status = result.get("status", "ok")
+        message = result.get("message", f"{task_type} completed")
+        emoji = "✅" if status == "ok" else "❌"
+
+        # Build detail lines from result fields
+        detail_lines = []
+        for k, v in result.items():
+            if k in ("status", "message", "task_id", "task_type", "executed_at"):
+                continue
+            if isinstance(v, (list, dict)) and not v:
+                continue
+            detail_lines.append(f"• `{k}`: {v}")
+
+        reply = f"{emoji} *[{task_type}]* {message}"
+        if detail_lines:
+            reply += "\n" + "\n".join(detail_lines[:8])
+
+        import httpx
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            await client.post(
+                "https://slack.com/api/chat.postMessage",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "channel": channel_id,
+                    "thread_ts": thread_ts,
+                    "text": reply,
+                    "mrkdwn": True,
+                },
+            )
+    except Exception as exc:
+        logger.debug("Slack result post failed", error=str(exc))
+
+
 async def run_dispatcher(db_session_factory) -> None:
     """
     Main dispatcher loop: pick up to 3 queued tasks per tick, execute them,
@@ -268,6 +314,11 @@ async def run_dispatcher(db_session_factory) -> None:
                         t.completed_at = datetime.now(UTC)
                     await db.commit()
                 logger.info("Task completed", task_id=task.id, task_type=task.task_type)
+                # Post result back to Slack if triggered from there
+                if task.params and task.params.get("slack_channel_id"):
+                    asyncio.create_task(
+                        _post_result_to_slack(task.task_type, res, task.params)
+                    )
             except Exception as exc:
                 async with db_session_factory() as db:
                     t = await db.get(Task, task.id)
