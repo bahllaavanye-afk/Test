@@ -14,6 +14,7 @@ from app.models.account import Account
 from app.models.audit_log import AuditLog
 from app.models.order import Order
 from app.models.user import User
+from app.services.agent_logger import agent_logger
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -165,6 +166,19 @@ async def submit_order(
 
     await db.commit()
     await db.refresh(order)
+
+    # Real-time agent log (fire-and-forget)
+    agent_logger.log_action_fire_and_forget(
+        action="submit_order",
+        employee_id=current_user.email or current_user.id,
+        agent_type="human",
+        tool_used="alpaca_api",
+        input_summary=f"{body.side} {body.symbol} {body.order_type}",
+        output_summary=f"order_id={order.id} status={order.status}",
+        status="ok",
+        symbol=body.symbol,
+        account_id=body.account_id,
+    )
 
     # Try to route to broker if account has broker credentials
     from app.brokers.alpaca_orders import submit_alpaca_order

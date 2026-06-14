@@ -5,9 +5,11 @@ compares new vs old Sharpe, promotes if improved.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from app.services.agent_logger import agent_logger
 from app.utils.logging import logger
 
 ARTIFACTS_DIR = Path(__file__).parents[3] / "models_artifacts"
@@ -15,6 +17,16 @@ ARTIFACTS_DIR = Path(__file__).parents[3] / "models_artifacts"
 
 async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
+    agent_logger.log_action_fire_and_forget(
+        action="retrain_model",
+        employee_id="ml_agent",
+        agent_type="ml",
+        tool_used="pytorch",
+        input_summary=f"model={model_name} symbol={symbol} interval={interval}",
+        status="ok",
+        symbol=symbol,
+    )
+    _t0 = time.monotonic()
     try:
         import yfinance as yf
         loop = asyncio.get_running_loop()
@@ -39,10 +51,34 @@ async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> d
         result["model"] = model_name
         result["retrained_at"] = datetime.now(UTC).isoformat()
         logger.info("Model retrained", **{k: v for k, v in result.items() if k != "best_model_path"})
+        _dur = int((time.monotonic() - _t0) * 1000)
+        agent_logger.log_action_fire_and_forget(
+            action="retrain_model_complete",
+            employee_id="ml_agent",
+            agent_type="ml",
+            tool_used="pytorch",
+            input_summary=f"model={model_name} symbol={symbol} interval={interval}",
+            output_summary=f"status={result.get('status','ok')} sharpe={result.get('sharpe','?')}",
+            duration_ms=_dur,
+            status="ok",
+            symbol=symbol,
+        )
         return result
 
     except Exception as e:
         logger.error("Retrain failed", model=model_name, symbol=symbol, error=str(e))
+        _dur = int((time.monotonic() - _t0) * 1000)
+        agent_logger.log_action_fire_and_forget(
+            action="retrain_model_complete",
+            employee_id="ml_agent",
+            agent_type="ml",
+            tool_used="pytorch",
+            input_summary=f"model={model_name} symbol={symbol} interval={interval}",
+            duration_ms=_dur,
+            status="error",
+            error_message=str(e)[:200],
+            symbol=symbol,
+        )
         return {"status": "error", "error": str(e)}
 
 

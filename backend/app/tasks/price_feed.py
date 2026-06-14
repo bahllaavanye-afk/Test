@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 
 from app.redis_client import price_cache
+from app.services.agent_logger import agent_logger
 from app.utils.logging import logger
 from app.ws.manager import manager
 
@@ -48,6 +49,9 @@ async def run_price_feed(broker, symbols: list[str]) -> None:
     # get_redis() is synchronous — do NOT await it; use the module-level price_cache singleton
     cache = price_cache
     logger.info("Price feed started", symbols=len(symbols), batch_size=BATCH_SIZE)
+    # Log feed health once per minute (every ~30 cycles at POLL_INTERVAL=2s)
+    _log_every_n = max(1, 60 // POLL_INTERVAL)
+    _cycle = 0
     while True:
         # Process symbols in parallel batches
         for i in range(0, len(symbols), BATCH_SIZE):
@@ -55,6 +59,17 @@ async def run_price_feed(broker, symbols: list[str]) -> None:
             await asyncio.gather(
                 *[_fetch_and_publish(broker, sym, cache) for sym in batch],
                 return_exceptions=True,
+            )
+        _cycle += 1
+        if _cycle % _log_every_n == 0:
+            agent_logger.log_action_fire_and_forget(
+                action="price_feed_tick",
+                employee_id="price_feed",
+                agent_type="system",
+                tool_used="alpaca_api",
+                input_summary=f"{len(symbols)} symbols polled",
+                output_summary=f"cycle={_cycle}",
+                status="ok",
             )
         await asyncio.sleep(POLL_INTERVAL)
 

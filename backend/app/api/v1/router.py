@@ -26,6 +26,7 @@ from app.api.v1 import (
     trades,
 )
 from app.api.v1.alerts import router as alerts_router
+from app.api.v1.agent_logs import router as agent_logs_router
 from app.api.v1.audit_log import router as audit_log_router
 from app.api.v1.bots import router as bots_router
 from app.api.v1.options import router as options_router
@@ -58,6 +59,7 @@ api_router.include_router(monitoring.router)
 api_router.include_router(options_router)
 api_router.include_router(regime_router)
 api_router.include_router(audit_log_router)
+api_router.include_router(agent_logs_router)
 api_router.include_router(integrations.router)
 api_router.include_router(pipeline.router)
 api_router.include_router(leaderboard.router)

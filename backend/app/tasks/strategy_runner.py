@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pandas as pd
 
 from app.redis_client import get_redis, price_cache
+from app.services.agent_logger import agent_logger
 from app.strategies import STRATEGY_REGISTRY
 from app.utils.logging import logger
 from app.ws.manager import manager
@@ -275,8 +276,22 @@ class ContinuousStrategyRunner:
                 if "close" not in df.columns and "c" in df.columns:
                     df = df.rename(columns={"c": "close", "o": "open", "h": "high", "l": "low", "v": "volume"})
 
+                import time as _time
+                _t0 = _time.monotonic()
                 signal = await strategy.analyze(df, symbol)
+                _dur_ms = int((_time.monotonic() - _t0) * 1000)
                 if signal and signal.confidence >= confidence_threshold:
+                    agent_logger.log_action_fire_and_forget(
+                        action="run_strategy",
+                        employee_id="strategy_runner",
+                        agent_type="strategy",
+                        input_summary=f"{strategy_name} on {symbol}, {len(df)} bars",
+                        output_summary=f"signal={signal.side} conf={signal.confidence:.3f}",
+                        duration_ms=_dur_ms,
+                        status="ok",
+                        strategy_name=strategy_name,
+                        symbol=symbol,
+                    )
                     alert = {
                         "type": "signal",
                         "strategy": strategy_name,
@@ -356,6 +371,16 @@ class ContinuousStrategyRunner:
                 # Catch all per-strategy exceptions so one broken strategy
                 # does NOT kill the runner loop for other strategies.
                 logger.error("Strategy loop error", strategy=strategy_name, symbol=symbol, error=str(e))
+                agent_logger.log_action_fire_and_forget(
+                    action="run_strategy",
+                    employee_id="strategy_runner",
+                    agent_type="strategy",
+                    input_summary=f"{strategy_name} on {symbol}",
+                    status="error",
+                    error_message=str(e)[:200],
+                    strategy_name=strategy_name,
+                    symbol=symbol,
+                )
 
             await asyncio.sleep(tick_interval)
 

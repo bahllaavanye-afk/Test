@@ -2,7 +2,7 @@ import {
   LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker,
   LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers,
   Globe, Coins, CandlestickChart, BrainCircuit, GitBranch, PackageCheck, Bot,
-  Users, ScanSearch, Rocket, Building2, type LucideIcon,
+  Users, ScanSearch, Rocket, Building2, Terminal, type LucideIcon,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -40,6 +40,7 @@ export const NAV: NavItem[] = [
   { to: '/pipeline', icon: GitBranch, label: 'Pipeline' },
   { to: '/promotions', icon: Rocket, label: 'Strategy Promotions' },
   { to: '/releases', icon: PackageCheck, label: 'Model Releases' },
+  { to: '/agent-logs', icon: Terminal, label: 'Agent Logs' },
 ]
 
 /** Primary destinations shown directly in the mobile bottom tab bar. */

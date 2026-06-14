@@ -1,4 +1,5 @@
 from app.models.account import Account, AccountSnapshot
+from app.models.agent_log import AgentActivityLog
 from app.models.audit_log import AuditLog
 from app.models.backtest import BacktestResult, BacktestRun
 from app.models.bot import Bot
@@ -23,4 +24,5 @@ __all__ = [
     "OHLCV", "RiskRule", "RiskEvent",
     "SlippageRecord", "ComparisonResult",
     "AuditLog", "Bot", "StrategyPromotion",
+    "AgentActivityLog",
 ]

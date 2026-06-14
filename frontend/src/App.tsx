@@ -35,6 +35,7 @@ const BotDesk = lazy(() => import('./pages/BotDesk'))
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
 const Scanners = lazy(() => import('./pages/Scanners'))
 const Promotions = lazy(() => import('./pages/Promotions'))
+const AgentLogs = lazy(() => import('./pages/AgentLogs'))
 
 function PageLoader() {
   return (
@@ -106,6 +107,7 @@ export default function App() {
           <Route path="agents" element={<AgentDashboard />} />
           <Route path="scanners" element={<Scanners />} />
           <Route path="promotions" element={<Promotions />} />
+          <Route path="agent-logs" element={<AgentLogs />} />
         </Route>
       </Routes>
     </Suspense>
