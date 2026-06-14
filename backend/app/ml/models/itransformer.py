@@ -332,3 +332,7 @@ async def train(
 
     results["artifact_path"] = str(save_path)
     return results
+
+
+# Backward-compatible alias — registry imports this name.
+iTransformerPredictor = iTransformer

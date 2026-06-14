@@ -328,6 +328,55 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _daily_pnl_summary():
+        """Daily at 23:55 UTC: aggregate the day's closed trades → Slack summary."""
+        try:
+            from datetime import timedelta
+
+            from sqlalchemy import func as _func
+
+            from app.models.trade import Trade
+            from app.notifications.slack import slack
+
+            factory = db_session_factory
+            if factory is None:
+                from app.database import AsyncSessionLocal as factory  # type: ignore
+
+            since = datetime.now(UTC) - timedelta(hours=24)
+            async with factory() as db:
+                rows = (await db.execute(
+                    select(Trade.realized_pnl, Trade.strategy_name)
+                    .where(Trade.closed_at >= since)
+                )).all()
+
+            if not rows:
+                return  # no trades today — nothing to report
+
+            total_pnl = float(sum(float(r[0] or 0) for r in rows))
+            total_trades = len(rows)
+            wins = sum(1 for r in rows if float(r[0] or 0) > 0)
+            win_rate = wins / total_trades if total_trades else 0.0
+
+            # Best strategy by summed realized PnL
+            by_strat: dict[str, float] = {}
+            for pnl, strat in rows:
+                by_strat[strat or "?"] = by_strat.get(strat or "?", 0.0) + float(pnl or 0)
+            best_strategy = max(by_strat, key=by_strat.get) if by_strat else None
+
+            await slack.notify_daily_summary(total_pnl, total_trades, win_rate, best_strategy)
+        except Exception as exc:
+            logger.debug("Daily PnL summary failed", error=str(exc))
+
+    scheduler.add_job(
+        _daily_pnl_summary,
+        "cron",
+        hour=23,
+        minute=55,
+        id="daily_pnl_summary",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     async def _auto_queue_backtests():
         """
         Daily at 03:00 UTC: queue backtests for every registered strategy using

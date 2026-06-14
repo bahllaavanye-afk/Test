@@ -152,3 +152,7 @@ class TFTModel(AbstractModel, nn.Module):
         except Exception:
             auc = 0.5
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0, loss=None)
+
+
+# Backward-compatible alias — registry imports this name.
+TransformerPredictor = TFTModel

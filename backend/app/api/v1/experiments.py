@@ -65,6 +65,21 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
             stderr=subprocess.DEVNULL,
         )
         await proc.wait()
+        # Notify Slack with the final metrics the subprocess persisted.
+        try:
+            from app.database import AsyncSessionLocal
+            from app.notifications.slack import slack
+            async with AsyncSessionLocal() as db:
+                exp = await db.get(Experiment, experiment_id)
+            if exp is not None:
+                await slack.notify_experiment_done(
+                    exp.name,
+                    float(exp.val_sharpe) if exp.val_sharpe is not None else None,
+                    float(exp.test_sharpe) if exp.test_sharpe is not None else None,
+                    float(exp.val_accuracy) if exp.val_accuracy is not None else None,
+                )
+        except Exception as exc:
+            logger.debug("Experiment Slack notify failed: %s", exc)
     except Exception as exc:
         logger.error("Experiment %s failed: %s", experiment_id, exc)
 

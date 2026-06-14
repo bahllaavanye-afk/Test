@@ -42,12 +42,31 @@ class LimitFirstExecution:
                     result.filled_qty = float(order_status.get("filled_qty", request.quantity))
                     return result
 
-            # Cancel limit and submit market
+            # Cancel limit, then only market-order the UNFILLED remainder.
+            # Submitting the full quantity here would double-execute any qty
+            # that filled while we were polling.
             await self.broker.cancel_order(result.broker_order_id)
-            market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
+            filled_so_far = 0.0
+            try:
+                final_status = await self.broker.get_order(result.broker_order_id)
+                filled_so_far = float(final_status.get("filled_qty", 0) or 0)
+            except Exception:
+                filled_so_far = float(getattr(result, "filled_qty", 0) or 0)
+
+            remaining = float(request.quantity) - filled_so_far
+            if remaining <= 0:
+                result.status = "filled"
+                result.filled_qty = float(request.quantity)
+                return result
+
+            market_req = OrderRequest(
+                **{**request.__dict__, "order_type": "market",
+                   "limit_price": None, "quantity": remaining}
+            )
             return await self.broker.place_order(market_req)
 
         except Exception:
-            # If anything fails, fall back to direct market order
+            # Pre-order failure (e.g. quote fetch) — safe to fall back to a full
+            # market order because no limit order was successfully placed.
             market_req = OrderRequest(**{**request.__dict__, "order_type": "market"})
             return await self.broker.place_order(market_req)

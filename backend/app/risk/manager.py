@@ -57,7 +57,34 @@ class RiskManager:
     def update_equity(self, equity: float) -> None:
         self._equity = equity
         self._equity_confirmed = True
+        was_halted = self.global_breaker.is_halted
         self.global_breaker.update(equity)
+        # Fire a Slack alert on the NORMAL → HALTED transition (edge-triggered,
+        # so it notifies once per trip rather than on every snapshot).
+        if not was_halted and self.global_breaker.is_halted:
+            self._notify_breaker_trip(self.global_breaker)
+
+    def _notify_breaker_trip(self, breaker: "CircuitBreaker") -> None:
+        """Fire-and-forget Slack alert when a circuit breaker trips."""
+        import asyncio
+
+        async def _send() -> None:
+            try:
+                from app.notifications.slack import slack
+                from app.notifications.tracker import tracker
+                tracker.record("circuit_breaker", "risk",
+                               f"{breaker.name} breaker tripped at {breaker.current_drawdown:.2%}")
+                await slack.notify_circuit_breaker(
+                    breaker.name, breaker.current_drawdown, breaker.max_drawdown_pct
+                )
+            except Exception:
+                pass
+
+        try:
+            asyncio.get_running_loop().create_task(_send())
+        except RuntimeError:
+            # No running loop (sync context, e.g. tests) — skip notification.
+            pass
 
     def update_positions(self, positions: list[dict]) -> None:
         self._positions = {p["symbol"]: float(p.get("market_value", 0)) for p in positions}

@@ -6,7 +6,7 @@ def kelly_fraction(win_rate: float, avg_win: float, avg_loss: float, fraction: f
     Full Kelly: f = (p*b - q) / b  where b = avg_win/avg_loss, q = 1-p
     Returns fractional Kelly (default 25%) to reduce variance.
     """
-    if avg_loss == 0 or win_rate <= 0:
+    if avg_loss < 1e-9 or win_rate <= 0:
         return 0.0
     b = avg_win / avg_loss
     q = 1.0 - win_rate
@@ -27,5 +27,7 @@ def size_from_kelly(
     """Return integer share count sized by Kelly criterion, capped at max_pct of equity."""
     f = kelly_fraction(win_rate, avg_win_pct, avg_loss_pct, kelly_fraction_pct)
     f = min(f, max_pct)
+    if price <= 0:
+        return 0  # no valid price (halted / stale quote) — cannot size a position
     dollar_size = equity * f
     return max(1, int(dollar_size / price))
