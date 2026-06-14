@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781422810,
+  "last_run_ts": 1781437422,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -335,54 +335,21 @@
     "0ab673383632",
     "ad0507eadd00",
     "1799041005e1",
-    "df15a2dda57e"
+    "df15a2dda57e",
+    "27a54b34d68a"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781422164.5296526,
-    "agent-api-usage:api_usage_report": 1781418077.2457845,
-    "agent-api-usage:throughput_report": 1781422201.2304697,
+    "standup-channel:standup": 1781437397.628698,
+    "agent-api-usage:api_usage_report": 1781437422.872885,
+    "agent-api-usage:throughput_report": 1781437425.4454222,
     "engineering:agent_reminder": 1781371929.1289196,
     "help:agent_reminder": 1781371929.7844906,
-    "alpha-research:silent_quant_researcher": 1781418113.6873882,
-    "squad-frontend:silent_frontend": 1781418119.5046484,
-    "engineering:silent_equity_lead": 1781418122.288508,
-    "engineering:silent_fixed_income_desk": 1781418125.6018064,
-    "engineering:silent_macro_researcher": 1781418131.953044,
-    "engineering:silent_vol_trader": 1781418136.8595114,
-    "engineering:silent_momentum_quant": 1781418142.567473,
-    "engineering:silent_alt_data_lead": 1781418148.8007696,
-    "engineering:silent_crypto_quant": 1781418166.9759016,
-    "engineering:silent_vp_eng": 1781418080.1415927,
-    "risk-alerts:silent_risk_eng": 1781418089.7064245,
-    "desk-polymarket:silent_poly_desk": 1781418104.7151995,
-    "alpha-research:silent_alpha_dir": 1781418083.17057,
-    "desk-crypto:silent_ml_lead": 1781418086.9206893,
-    "squad-backend:silent_backend_lead": 1781418092.8166919,
-    "squad-qa:silent_qa_dir": 1781418095.5282664,
-    "infra-alerts:silent_devops_dir": 1781418098.6533802,
-    "squad-execution:silent_exec_eng": 1781418101.6727977,
-    "ml-experiments:silent_ml_researcher": 1781418107.6352828,
-    "desk-fx-rates:silent_vp_research": 1781418110.6006436,
-    "leadership-summary:silent_cro": 1781418116.6733804,
-    "engineering:silent_model_validator": 1781418154.6398633,
-    "engineering:silent_feature_engineer": 1781418160.407919,
-    "engineering:silent_regime_analyst": 1781418647.2762768,
-    "engineering:silent_stat_arb_desk": 1781419293.7081573,
-    "engineering:silent_derivatives_desk": 1781421181.2739441,
-    "engineering:silent_arb_trader": 1781421202.0277,
-    "engineering:silent_portfolio_manager": 1781421213.2610242,
-    "engineering:silent_market_maker": 1781421216.729712,
-    "engineering:silent_backtest_engineer": 1781421222.1345463,
-    "engineering:silent_data_engineer_2": 1781421234.0352771,
-    "engineering:silent_infra_lead": 1781421258.9516773,
-    "engineering:silent_rl_trader": 1781421267.6609318,
-    "engineering:silent_crypto_defi_desk": 1781421276.0892506,
-    "squad-frontend:silent_frontend_lead": 1781421288.1648235,
-    "engineering:silent_nlp_researcher": 1781422201.5843692,
-    "engineering:silent_senior_quant": 1781422212.8774507,
-    "engineering:silent_exec_lead": 1781422225.8715682,
-    "engineering:silent_product_lead": 1781422233.4747438
+    "engineering:silent_vp_eng": 1781437425.62955,
+    "alpha-research:silent_alpha_dir": 1781437434.8411918,
+    "desk-crypto:silent_ml_lead": 1781437438.0631092,
+    "squad-backend:silent_backend_lead": 1781437442.5225937,
+    "engineering:silent_feature_engineer": 1781437471.9245415
   },
   "response_cache": {},
   "posted_today": [
@@ -433,11 +400,11 @@
     "PnL bot"
   ],
   "last_post_ts": {
-    "vp_eng": 1781418080.14155,
-    "alpha_dir": 1781418080.14155,
-    "ml_lead": 1781418080.14155,
+    "vp_eng": 1781437425.6294992,
+    "alpha_dir": 1781437425.6294992,
+    "ml_lead": 1781437425.6294992,
     "risk_eng": 1781418080.14155,
-    "backend_lead": 1781418080.14155,
+    "backend_lead": 1781437425.6294992,
     "qa_dir": 1781418080.14155,
     "devops_dir": 1781418080.14155,
     "exec_eng": 1781418080.14155,
@@ -454,7 +421,7 @@
     "vol_trader": 1781418080.14155,
     "alt_data_lead": 1781418080.14155,
     "model_validator": 1781418080.14155,
-    "feature_engineer": 1781418080.14155,
+    "feature_engineer": 1781437425.6294992,
     "crypto_quant": 1781418080.14155,
     "arb_trader": 1781421181.273893,
     "portfolio_manager": 1781421181.273893,
@@ -534,8 +501,8 @@
     },
     "2026-06-14": {
       "GEMINI_API_KEY_3": {
-        "tokens": 600,
-        "requests": 2
+        "tokens": 900,
+        "requests": 3
       },
       "GEMINI_API_KEY_2": {
         "tokens": 600,
@@ -631,48 +598,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "backend_lead",
-      "score": 9,
-      "reason": "Provides specific file paths, quantifies the performance improvement, and tracks a relevant metric to monitor the optimization's effectiveness.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:09"
-    },
-    {
-      "emp": "qa_dir",
-      "score": 8,
-      "reason": "Provides specific file paths, quantifies the current test pass rate and error rate, and sets a concrete goal for improvement, offering a clear direction for actionable steps.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:12"
-    },
-    {
-      "emp": "devops_dir",
-      "score": 8,
-      "reason": "Provides specific file paths, quantifies the error rate, and cites a concrete error message, demonstrating a clear and focused approach to investigating the pipeline failure.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:15"
-    },
-    {
-      "emp": "exec_eng",
-      "score": 7,
-      "reason": "Provides some specific details about the task, including file paths and latency metrics, but lacks concrete, actionable optimization proposals for the async_order_management code.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:19"
-    },
-    {
-      "emp": "poly_desk",
-      "score": 9,
-      "reason": "Provides concrete, actionable points, including a specific market analysis, identification of a price gap, and reference to particular files for further risk assessment.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:22"
-    },
-    {
-      "emp": "ml_researcher",
-      "score": 8,
-      "reason": "Provides specific file paths, quantifies model performance with concrete MAE values, and outlines a clear actionable goal for ensemble weighting.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:25"
-    },
     {
       "emp": "vp_research",
       "score": 8,
@@ -2030,57 +1955,51 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-14 07:30:38"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "alt_data_lead",
-      "channel": "unknown",
-      "text": "Team, focused on analyzing a recent spike in *unusual options flow* for AAPL, \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781400444.9702604,
-      "score": 2
     },
     {
-      "emp": "crypto_quant",
+      "emp": "ml_lead",
+      "score": 8,
+      "reason": "Provides specific, actionable points, including monitoring the funding rate and basis, and identifying a potential breakout level in ETH spot price that could impact funding rates.",
       "channel": "unknown",
-      "text": "Team, immediate update on a developing situation:\n\nMonitoring *SOL-PERP funding rates* \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781400456.146657,
-      "score": 5
-    },
-    {
-      "emp": "arb_trader",
-      "channel": "unknown",
-      "text": "Currently analyzing a **live NAV divergence** on XLE. The ETF is trading at a **-0.85% discount \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781400471.0241115,
-      "score": 5
+      "ts": "2026-06-14 11:43:20"
     },
     {
       "emp": "vp_eng",
+      "score": 9,
+      "reason": "Provides specific file paths, quantifies the failure rate, and outlines a concrete, actionable plan to address the issue by pinning the random seed.",
       "channel": "unknown",
-      "text": "*I'm currently reviewing the test results for `test_risk_engine.py`*, which has shown **3 flaky assertions** on Kelly fraction edge cases (lines 45-67). The latest run indicates **1 false failure per 10 runs**, with the most recent failure occurring at `2023-12-01 01:25 UTC`. To address this, I plan",
-      "provider": "litellm:groq",
-      "ts": 1781401154.654155,
-      "score": 5
+      "ts": "2026-06-14 11:43:54"
     },
     {
-      "emp": "alpha_researcher",
+      "emp": "alpha_dir",
+      "score": 8,
+      "reason": "Provides specific details about the script being analyzed, metric being evaluated, and parameters being optimized, offering concrete and actionable steps for refining the model's performance.",
       "channel": "unknown",
-      "text": "Running *walk-forward validation* on the `earnings_revisions_v3` signal \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781401507.1116219,
-      "score": 2
+      "ts": "2026-06-14 11:43:57"
     },
     {
-      "emp": "risk_eng",
+      "emp": "ml_lead",
+      "score": 8,
+      "reason": "Identifies a specific potential issue with overfitting, cites concrete metrics from an experiment, and proposes actionable hyperparameter tweaks to address the problem.",
       "channel": "unknown",
-      "text": "*I'm currently reviewing the `strategy_metrics.csv` file at `/Users/quantedge/risk_engine/data/`, focusing on the `drawdown` metric, which has reached 12.5% for Strategy 7*. The **70/30 arbitrage/directional capital split** is still within limits, with $1.2M allocated to arbitrage and $0.5M to direc",
-      "provider": "litellm:groq",
-      "ts": 1781401823.0495353,
-      "score": 5
+      "ts": "2026-06-14 11:44:00"
     },
+    {
+      "emp": "backend_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 11:44:07"
+    },
+    {
+      "emp": "feature_engineer",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 11:44:38"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "poly_desk",
       "channel": "unknown",
@@ -2432,11 +2351,59 @@
       "provider": "litellm:groq",
       "ts": 1781422238.2857704,
       "score": 5
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*I'm closely monitoring the **funding rate** for BTC perpetual futures on Binance, currently at **0.0149%**. The **basis** between spot and perp is also narrowing, now at **-0.35%**, indicating potential for a mean reversion. I'm watching for a breakout below **$22,500** in ETH spot price, which cou",
+      "provider": "litellm:groq",
+      "ts": 1781437400.7785907,
+      "score": 8
+    },
+    {
+      "emp": "vp_eng",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the test results for **test_quant_models.py** and noticed that 4 out of 10 runs are failing on the **KellyCriteriaTest** with a **23.4%** failure rate. The specific issue is with the **edge_case_kelly_fraction** function on lines **102-115**, which is causing **2.5** false f",
+      "provider": "litellm:gemini",
+      "ts": 1781437434.6565397,
+      "score": 9
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the `equities_backtest.py` script, focusing on the **Kalman filter** implementation, to identify potential regime-fit issues*. The `sharpe_ratio` metric in the `performance_metrics.csv` file, located at `../data/metrics/`, shows a value of **1.23** for the mean-reversion str",
+      "provider": "litellm:groq",
+      "ts": 1781437437.8105323,
+      "score": 8
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*I'm currently analyzing the `tft_btc_daily.yaml` experiment, where the **val_sharpe** is 2.1 vs **train_sharpe** 3.5, indicating potential overfitting*. To address this, I'm testing a reduced **d_model** from 128 to 64 and increasing **dropout** from 0.1 to 0.2. The **funding_rate** on BTCUSDT is c",
+      "provider": "litellm:groq",
+      "ts": 1781437440.8504102,
+      "score": 8
+    },
+    {
+      "emp": "backend_lead",
+      "channel": "unknown",
+      "text": "*I'm currently optimizing the **`alpaca_broker_adapter.py`** file to improve the **`order_execution_latency`** metric, which is currently averaging **450ms**. By implementing **asyncio.gather** for concurrent API requests, I aim to reduce this latency to **<300ms**. The `alpaca_api.log` file shows t",
+      "provider": "litellm:groq",
+      "ts": 1781437447.475428,
+      "score": 5
+    },
+    {
+      "emp": "feature_engineer",
+      "channel": "unknown",
+      "text": "Currently, I'm analyzing the unexpected *drop in feature importance* for `bid_ask_spread_lag_10s` within our `equity_alpha_v3` model; it fell from *0.035 to 0.012* in the past 72 hours. I'm specifically investigating its current predictive power for `AAPL` and `MSFT` by cross-referencing against the",
+      "provider": "litellm:gemini",
+      "ts": 1781437478.6227744,
+      "score": 5
     }
   ],
   "last_providers": {
     "devops_dir": "litellm:groq",
-    "vp_eng": "litellm:groq",
+    "vp_eng": "litellm:gemini",
     "alpha_dir": "litellm:groq",
     "ml_lead": "litellm:groq",
     "risk_eng": "litellm:groq",
@@ -2456,7 +2423,7 @@
     "vol_trader": "litellm:groq",
     "alt_data_lead": "litellm:groq",
     "model_validator": "litellm:groq",
-    "feature_engineer": "litellm:groq",
+    "feature_engineer": "litellm:gemini",
     "crypto_quant": "Gemini(GEMINI_API_KEY_3)",
     "arb_trader": "Gemini(GEMINI_API_KEY_3)",
     "portfolio_manager": "litellm:groq",
@@ -2481,7 +2448,7 @@
     "exec_lead": "Gemini(GEMINI_API_KEY)"
   },
   "idle_posted_ts": {
-    "gemini_fallback_alpha-research": 1781381633.304667,
+    "gemini_fallback_alpha-research": 1781437422.9805672,
     "gemini_fallback_engineering": 1781418077.3863528,
     "GEMINI_API_KEY_3": 1781421176.7892883,
     "GEMINI_API_KEY_2": 1781421176.7892883
@@ -2493,7 +2460,7 @@
     },
     "GEMINI_API_KEY_3": {
       "date": "2026-06-14",
-      "used": 600
+      "used": 900
     }
   },
   "bot_handle_announced": true,
@@ -2506,7 +2473,7 @@
       "GEMINI_API_KEY_3": 600
     },
     "2026-06-14": {
-      "GEMINI_API_KEY_3": 600,
+      "GEMINI_API_KEY_3": 900,
       "GEMINI_API_KEY_2": 600
     }
   },
