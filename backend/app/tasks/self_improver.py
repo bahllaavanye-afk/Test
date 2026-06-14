@@ -20,11 +20,18 @@ from app.utils.logging import logger
 RESULTS_FILE = Path(__file__).parents[3] / "experiments" / "results" / "self_improver.json"
 RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-# Parameter search spaces per strategy
-PARAM_SPACES = {
+# Parameter search spaces per strategy — covers all major strategies across all desks.
+# Add a new entry here to make any strategy auto-tunable by the LLM-guided sweep.
+PARAM_SPACES: dict[str, dict[str, list]] = {
+    # ── Equities — directional ──────────────────────────────────────────────
     "momentum": {
         "lookback_months": [3, 6, 9, 12],
         "min_score": [0.1, 0.2, 0.3, 0.5],
+    },
+    "cross_sectional_momentum": {
+        "formation_months": [3, 6, 9, 12],
+        "holding_months": [1, 3, 6],
+        "skip_months": [0, 1],
     },
     "mean_reversion": {
         "bb_period": [10, 20, 30],
@@ -34,6 +41,8 @@ PARAM_SPACES = {
     "rsi_macd": {
         "rsi_period": [9, 14, 21],
         "rsi_oversold": [25, 30, 35],
+        "macd_fast": [8, 12, 16],
+        "macd_slow": [21, 26, 30],
     },
     "breakout": {
         "high_period": [50, 100, 252],
@@ -42,6 +51,133 @@ PARAM_SPACES = {
     "supertrend": {
         "atr_period": [10, 14, 20],
         "multiplier": [2.0, 3.0, 4.0],
+    },
+    "opening_range_breakout": {
+        "range_minutes": [15, 30, 60],
+        "volume_mult": [1.2, 1.5, 2.0],
+        "stop_loss_pct": [0.5, 1.0, 2.0],
+    },
+    "vwap_reversion": {
+        "std_bands": [1.0, 1.5, 2.0, 2.5],
+        "exit_band": [0.1, 0.25, 0.5],
+    },
+    "pairs_trading": {
+        "zscore_entry": [1.5, 2.0, 2.5],
+        "zscore_exit": [0.0, 0.25, 0.5],
+        "window": [20, 30, 60],
+    },
+    "pca_stat_arb": {
+        "n_components": [3, 5, 10],
+        "zscore_entry": [1.5, 2.0, 2.5],
+        "lookback": [60, 120, 252],
+    },
+    "low_volatility": {
+        "lookback_days": [21, 63, 126, 252],
+        "rebalance_freq": [5, 10, 21],
+    },
+    "sector_rotation": {
+        "momentum_window": [20, 60, 120],
+        "rebalance_days": [21, 63],
+    },
+    "multi_factor_equity": {
+        "momentum_weight": [0.2, 0.3, 0.4],
+        "value_weight": [0.2, 0.3, 0.4],
+        "quality_weight": [0.2, 0.3, 0.4],
+    },
+    # ── Equities — volatility / options desk ───────────────────────────────
+    "vix_mean_reversion": {
+        "vix_low": [12, 14, 16],
+        "vix_high": [25, 30, 35],
+        "hold_days": [3, 5, 10],
+    },
+    "vol_carry_short": {
+        "vix_threshold": [18, 20, 25],
+        "holding_days": [5, 10, 21],
+    },
+    "vol_term_structure": {
+        "slope_threshold": [0.02, 0.05, 0.1],
+        "term1_days": [30, 45],
+        "term2_days": [60, 90],
+    },
+    "gamma_exposure": {
+        "net_gamma_threshold": [0.0, 0.5e9, 1e9],
+        "signal_window": [1, 3, 5],
+    },
+    "skew_arb": {
+        "skew_z_threshold": [1.5, 2.0, 2.5],
+        "lookback_days": [20, 30, 60],
+    },
+    "dispersion_trading": {
+        "corr_threshold": [0.5, 0.6, 0.7],
+        "vol_spread_pct": [0.05, 0.10, 0.15],
+    },
+    # ── Crypto desk ────────────────────────────────────────────────────────
+    "funding_rate_arb": {
+        "funding_threshold": [0.0001, 0.0003, 0.0005],
+        "hold_hours": [8, 24, 72],
+    },
+    "crypto_basis_roll": {
+        "basis_z_entry": [1.0, 1.5, 2.0],
+        "roll_days_before": [1, 3, 7],
+    },
+    "triangular_arb": {
+        "min_profit_bps": [5, 10, 20],
+        "max_slippage_bps": [2, 5, 10],
+    },
+    "dex_cex_arb": {
+        "min_spread_bps": [10, 20, 30],
+        "gas_budget_usd": [5, 10, 20],
+    },
+    "stablecoin_depeg_arb": {
+        "depeg_threshold_pct": [0.1, 0.2, 0.5],
+        "max_hold_hours": [1, 4, 24],
+    },
+    "btc_eth_stat_arb": {
+        "window": [20, 30, 60],
+        "zscore_entry": [1.5, 2.0, 2.5],
+        "zscore_exit": [0.25, 0.5, 0.75],
+    },
+    "liquidation_cascade_fade": {
+        "liq_vol_mult": [2.0, 3.0, 5.0],
+        "fade_window_bars": [3, 5, 10],
+    },
+    "on_chain_exchange_netflow": {
+        "inflow_z_threshold": [1.5, 2.0, 2.5],
+        "window_hours": [24, 48, 72],
+    },
+    # ── Fixed income / macro desk ──────────────────────────────────────────
+    "yield_curve_momentum": {
+        "curve_window": [20, 60, 120],
+        "spread_threshold": [0.1, 0.25, 0.5],
+    },
+    "bond_equity_rotation": {
+        "momentum_window": [20, 60, 120],
+        "rebalance_days": [5, 10, 21],
+    },
+    "tlt_spy_rotation": {
+        "momentum_window": [20, 60, 120],
+        "volatility_window": [20, 60],
+    },
+    "duration_momentum": {
+        "lookback_days": [20, 60, 120],
+        "rebalance_freq": [5, 21],
+    },
+    # ── Polymarket desk ───────────────────────────────────────────────────
+    "poly_binary_arb": {
+        "max_spread_pct": [2, 3, 5],
+        "min_liquidity": [100, 500, 1000],
+    },
+    "poly_calibration_arb": {
+        "min_edge_pct": [2, 4, 6],
+        "kelly_fraction": [0.1, 0.25, 0.5],
+    },
+    "poly_near_resolution": {
+        "days_to_resolution": [1, 3, 7],
+        "min_edge_pct": [1, 2, 5],
+    },
+    "poly_market_maker": {
+        "spread_bps": [100, 200, 300],
+        "max_position_pct": [5, 10, 20],
     },
 }
 
@@ -203,6 +339,33 @@ class SelfImprover:
     def get_best_params(self, strategy: str, symbol: str) -> dict | None:
         return self._best_params.get(f"{strategy}:{symbol}")
 
+    def get_all_best(self) -> list[dict]:
+        """Return all promoted configs across every strategy/symbol pair, sorted by Sharpe."""
+        return sorted(
+            [
+                {
+                    "key": k,
+                    "strategy": k.split(":")[0],
+                    "symbol": k.split(":", 1)[1],
+                    "best_sharpe": self._best_sharpe.get(k, 0.0),
+                    "best_params": v,
+                }
+                for k, v in self._best_params.items()
+            ],
+            key=lambda x: x["best_sharpe"],
+            reverse=True,
+        )
+
+    @staticmethod
+    def get_param_spaces() -> dict:
+        """Return the full parameter search space for all strategies (read-only view)."""
+        return PARAM_SPACES
+
+    @staticmethod
+    def register_param_space(strategy: str, space: dict) -> None:
+        """Add or replace a strategy's search space at runtime (used by agents / API)."""
+        PARAM_SPACES[strategy] = space
+
     def get_history(self) -> list[dict]:
         if not RESULTS_FILE.exists():
             return []
@@ -215,9 +378,48 @@ class SelfImprover:
         self._running = True
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
-        # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        # Cross-desk coverage: (strategy, symbol) pairs cycled each iteration.
+        # Each pair is tried once per interval; pairs with no PARAM_SPACES entry are skipped.
+        TARGETS = [
+            # Equities — trend / momentum
+            ("momentum",                "SPY"),
+            ("momentum",                "QQQ"),
+            ("cross_sectional_momentum", "SPY"),
+            ("rsi_macd",               "AAPL"),
+            ("rsi_macd",               "MSFT"),
+            ("breakout",               "NVDA"),
+            ("supertrend",             "SPY"),
+            ("supertrend",             "QQQ"),
+            ("opening_range_breakout", "SPY"),
+            ("vwap_reversion",         "SPY"),
+            # Equities — stat arb
+            ("pairs_trading",          "SPY"),
+            ("pca_stat_arb",           "SPY"),
+            ("mean_reversion",         "AAPL"),
+            # Equities — factor / low vol
+            ("low_volatility",         "SPY"),
+            ("sector_rotation",        "SPY"),
+            ("multi_factor_equity",    "SPY"),
+            # Volatility / options desk
+            ("vix_mean_reversion",     "SPY"),
+            ("vol_carry_short",        "SPY"),
+            ("vol_term_structure",     "SPY"),
+            ("skew_arb",               "SPY"),
+            ("dispersion_trading",     "SPY"),
+            # Crypto desk
+            ("funding_rate_arb",       "BTC-USD"),
+            ("btc_eth_stat_arb",       "BTC-USD"),
+            ("liquidation_cascade_fade", "BTC-USD"),
+            ("on_chain_exchange_netflow", "BTC-USD"),
+            # Fixed income / macro
+            ("yield_curve_momentum",   "TLT"),
+            ("bond_equity_rotation",   "TLT"),
+            ("tlt_spy_rotation",       "TLT"),
+            ("duration_momentum",      "TLT"),
+            # Polymarket desk (no yfinance data — evaluator will return 0.0; harmless)
+            ("poly_binary_arb",        "POLYMARKET"),
+            ("poly_calibration_arb",   "POLYMARKET"),
+        ]
 
         while self._running:
             self._iteration += 1

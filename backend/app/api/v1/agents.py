@@ -371,6 +371,43 @@ async def agent_status(current_user: User = Depends(get_current_user)):
     }
 
 
+@router.get("/self-improver/best")
+async def get_self_improver_best(current_user: User = Depends(get_current_user)):
+    """All promoted parameter configs ranked by Sharpe, across every strategy/desk."""
+    from app.main import app
+    si = getattr(app.state, "self_improver", None)
+    if not si:
+        return []
+    return si.get_all_best()
+
+
+@router.get("/self-improver/param-spaces")
+async def get_param_spaces(current_user: User = Depends(get_current_user)):
+    """Return the full search space for all auto-tunable strategies (agents read this to discover what's configurable)."""
+    from app.tasks.self_improver import SelfImprover
+    return SelfImprover.get_param_spaces()
+
+
+class ParamSpaceUpdate(BaseModel):
+    strategy: str
+    space: dict  # {param_name: [val1, val2, ...]}
+
+
+@router.post("/self-improver/param-spaces")
+async def register_param_space(
+    body: ParamSpaceUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Register or update a strategy's hyperparameter search space at runtime.
+    Agents call this to make new strategies auto-tunable without a redeploy.
+    """
+    if not body.space or not isinstance(body.space, dict):
+        raise HTTPException(status_code=422, detail="space must be a non-empty dict")
+    from app.tasks.self_improver import SelfImprover
+    SelfImprover.register_param_space(body.strategy, body.space)
+    return {"registered": body.strategy, "params": list(body.space.keys())}
+
+
 @router.get("/research")
 async def get_research_summary(current_user: User = Depends(get_current_user)):
     from app.main import app
