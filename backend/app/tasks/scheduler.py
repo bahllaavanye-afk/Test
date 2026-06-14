@@ -877,6 +877,38 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    # ── Agent Dispatcher (autonomous 24/7 task execution) ───────────────────
+
+    async def _seed_tasks_once():
+        """Seed default improvement tasks at startup."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.tasks.agent_dispatcher import _seed_default_tasks
+            await _seed_default_tasks(AsyncSessionLocal)
+        except Exception as exc:
+            logger.debug("Agent dispatcher seed failed", error=str(exc))
+
+    asyncio.create_task(_seed_tasks_once())
+
+    async def _agent_dispatcher_tick():
+        """Every 2 minutes: pick queued tasks and execute them autonomously."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.tasks.agent_dispatcher import _seed_default_tasks, run_dispatcher
+            await _seed_default_tasks(AsyncSessionLocal)
+            await run_dispatcher(AsyncSessionLocal)
+        except Exception as exc:
+            logger.debug("Agent dispatcher tick failed", error=str(exc))
+
+    scheduler.add_job(
+        _agent_dispatcher_tick,
+        "interval",
+        minutes=2,
+        id="agent_dispatcher",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler
