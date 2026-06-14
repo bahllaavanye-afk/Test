@@ -171,6 +171,18 @@ _PROVIDERS = [
         "model": "azure-openai/gpt-5",
         "rpm_free": 10,
     },
+    {
+        "name": "openrouter",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        # OpenRouter — free-tier Llama-3.3-70B via primary key; falls back to secondary key.
+        # Free models: meta-llama/llama-3.3-70b-instruct:free (no rate limit listed).
+        # Acts as overflow when all other providers are rate-limited.
+        "key_env": "OPENROUTER_API_KEY",
+        "key_env_alt": "OPENROUTER_API_KEY_2",
+        "fmt": "openai",
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "rpm_free": 40,
+    },
 ]
 
 # Providers to race in parallel (first N by index). Others are sequential fallbacks.

@@ -74,6 +74,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
           GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
         run: |
           ISSUE="${{ inputs.issue_number }}"
           if [ -n "$ISSUE" ]; then
@@ -94,6 +96,8 @@ jobs:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
           GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
         # Run only the 3 new agents (Codex, Grok, Gemini-alpha) — not all 11
