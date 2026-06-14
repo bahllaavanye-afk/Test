@@ -36,6 +36,11 @@ const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
 const Scanners = lazy(() => import('./pages/Scanners'))
 const Promotions = lazy(() => import('./pages/Promotions'))
 const AgentLogs = lazy(() => import('./pages/AgentLogs'))
+const BotDashboard = lazy(() => import('./pages/BotDashboard'))
+const PositionsHub = lazy(() => import('./pages/PositionsHub'))
+const BotDetail = lazy(() => import('./pages/BotDetail'))
+const TaskManager = lazy(() => import('./pages/TaskManager'))
+const CopyTrading = lazy(() => import('./pages/CopyTrading'))
 
 function PageLoader() {
   return (
@@ -108,6 +113,11 @@ export default function App() {
           <Route path="scanners" element={<Scanners />} />
           <Route path="promotions" element={<Promotions />} />
           <Route path="agent-logs" element={<AgentLogs />} />
+          <Route path="bot-dashboard" element={<BotDashboard />} />
+          <Route path="bot-dashboard/:botId" element={<BotDetail />} />
+          <Route path="positions" element={<PositionsHub />} />
+          <Route path="tasks" element={<TaskManager />} />
+          <Route path="copy-trading" element={<CopyTrading />} />
         </Route>
       </Routes>
     </Suspense>

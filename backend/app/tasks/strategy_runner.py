@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pandas as pd
 
 from app.redis_client import get_redis, price_cache
+from app.risk.vol_targeting import vol_targeter
 from app.services.agent_logger import agent_logger
 from app.strategies import STRATEGY_REGISTRY
 from app.utils.logging import logger
@@ -322,9 +323,11 @@ class ContinuousStrategyRunner:
                             broker=self.broker,
                             risk_manager=self.risk_manager,
                         )
+                        _vol_scalar = vol_targeter.get_scalar(f"{strategy_name}_{symbol}")
+                        _base_qty = signal.metadata.get("quantity", 1)
                         order_req = OrderRequest(
                             symbol=symbol,
-                            quantity=signal.metadata.get("quantity", 1),
+                            quantity=max(1, round(_base_qty * _vol_scalar)),
                             side=signal.side,
                             order_type=signal.metadata.get("order_type", "market"),
                             limit_price=signal.target_price,
@@ -381,6 +384,16 @@ class ContinuousStrategyRunner:
                     strategy_name=strategy_name,
                     symbol=symbol,
                 )
+
+            # Record daily return for volatility targeting scalar update
+            try:
+                if df is not None and len(df) >= 2 and "close" in df.columns:
+                    closes = df["close"].values
+                    if closes[-2] != 0:
+                        daily_ret = float((closes[-1] - closes[-2]) / closes[-2])
+                        vol_targeter.record_return(f"{strategy_name}_{symbol}", daily_ret)
+            except Exception:
+                pass
 
             await asyncio.sleep(tick_interval)
 
