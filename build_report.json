@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-13T23:36:50.289196+00:00",
+  "timestamp": "2026-06-14T02:04:55.830421+00:00",
   "overall_ok": true,
   "results": [
     {
@@ -14,7 +14,7 @@
       "check": "ruff",
       "ok": false,
       "skipped": false,
-      "detail": "class=structlog.make_filtering_bound_logger(level),\n   |\n\nE501 Line too long (128 > 100)\n  --> app/utils/security.py:28:101\n   |\n26 |         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)\n27 |     )\n28 |     return jwt.encode({\"sub\": str(subject), \"exp\": expire, \"type\": \"access\"}, settings.secret_key, algorithm=settings.algorithm)\n   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n\nFound 602 errors.\nNo fixes available (27 hidden fixes can be enabled with the `--unsafe-fixes` option).\nwarning: The top-level linter settings are deprecated in favour of their counterparts in the `lint` section. Please update the following options in `pyproject.toml`:\n  - 'select' -> 'lint.select'\n"
+      "detail": "class=structlog.make_filtering_bound_logger(level),\n   |\n\nE501 Line too long (128 > 100)\n  --> app/utils/security.py:28:101\n   |\n26 |         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)\n27 |     )\n28 |     return jwt.encode({\"sub\": str(subject), \"exp\": expire, \"type\": \"access\"}, settings.secret_key, algorithm=settings.algorithm)\n   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n\nFound 603 errors.\nNo fixes available (27 hidden fixes can be enabled with the `--unsafe-fixes` option).\nwarning: The top-level linter settings are deprecated in favour of their counterparts in the `lint` section. Please update the following options in `pyproject.toml`:\n  - 'select' -> 'lint.select'\n"
     },
     {
       "component": "frontend",
@@ -28,5 +28,5 @@
     "ruff --fix applied to backend/app"
   ],
   "issues_escalated": 0,
-  "duration_seconds": 74.95
+  "duration_seconds": 53.92
 }
