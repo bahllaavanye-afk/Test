@@ -331,6 +331,12 @@ def create_app() -> FastAPI:
     # CORS — explicit allowlist only. Browsers reject `*` + credentials anyway,
     # so the fallback to `*` was both insecure and broken. In dev we permit
     # localhost; in any other mode the operator MUST set CORS_ORIGINS.
+    # The deployed GitHub Pages frontend always needs to reach this API, so its
+    # origin is baked in as a baseline (in addition to anything in CORS_ORIGINS).
+    # This makes the live site work without requiring a Render env var to be set.
+    _BASELINE_ORIGINS = [
+        "https://bahllaavanye-afk.github.io",
+    ]
     if settings.cors_origins:
         allowed_origins = settings.cors_origins
     elif settings.trading_mode in ("dev", "test"):
@@ -341,13 +347,19 @@ def create_app() -> FastAPI:
         ]
     else:
         logger.warning(
-            "CORS_ORIGINS not configured in non-dev mode — refusing all cross-origin requests"
+            "CORS_ORIGINS not configured in non-dev mode — using baseline Pages origin only"
         )
         allowed_origins = []
+
+    # Merge baseline production origins in, de-duplicated, order-preserving.
+    allowed_origins = list(dict.fromkeys([*allowed_origins, *_BASELINE_ORIGINS]))
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
+        # Allow Vercel preview/prod deployments too (*.vercel.app) without
+        # needing each ephemeral URL in the allowlist.
+        allow_origin_regex=r"https://([a-z0-9-]+\.)*vercel\.app",
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
