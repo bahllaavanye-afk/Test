@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781400423,
+  "last_run_ts": 1781400803,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -317,7 +317,8 @@
     "c5ed9273ed51",
     "adc935cd0b75",
     "e89e093a21ea",
-    "b7d100fbc026"
+    "b7d100fbc026",
+    "ce89dc6ef21f"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -326,15 +327,6 @@
     "agent-api-usage:throughput_report": 1781399512.3146122,
     "engineering:agent_reminder": 1781371929.1289196,
     "help:agent_reminder": 1781371929.7844906,
-    "risk-alerts:silent_risk_eng": 1781393488.8127756,
-    "infra-alerts:silent_devops_dir": 1781393501.0250506,
-    "alpha-research:silent_alpha_dir": 1781393475.1815925,
-    "engineering:silent_vp_eng": 1781393470.4865808,
-    "desk-crypto:silent_ml_lead": 1781393484.7484477,
-    "squad-backend:silent_backend_lead": 1781393493.6979353,
-    "squad-qa:silent_qa_dir": 1781393497.3841026,
-    "squad-execution:silent_exec_eng": 1781393504.8113084,
-    "ml-experiments:silent_ml_researcher": 1781393512.6502566,
     "desk-polymarket:silent_poly_desk": 1781393917.3101187,
     "desk-fx-rates:silent_vp_research": 1781393925.9657922,
     "leadership-summary:silent_cro": 1781393938.999577,
