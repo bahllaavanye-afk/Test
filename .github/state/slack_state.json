@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781421176,
+  "last_run_ts": 1781422200,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -333,13 +333,14 @@
     "211f7aa44720",
     "f5bedd6ee1b4",
     "0ab673383632",
-    "ad0507eadd00"
+    "ad0507eadd00",
+    "1799041005e1"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781418026.5071197,
+    "standup-channel:standup": 1781422164.5296526,
     "agent-api-usage:api_usage_report": 1781418077.2457845,
-    "agent-api-usage:throughput_report": 1781418079.8719723,
+    "agent-api-usage:throughput_report": 1781422201.2304697,
     "engineering:agent_reminder": 1781371929.1289196,
     "help:agent_reminder": 1781371929.7844906,
     "alpha-research:silent_quant_researcher": 1781418113.6873882,
@@ -376,7 +377,11 @@
     "engineering:silent_infra_lead": 1781421258.9516773,
     "engineering:silent_rl_trader": 1781421267.6609318,
     "engineering:silent_crypto_defi_desk": 1781421276.0892506,
-    "squad-frontend:silent_frontend_lead": 1781421288.1648235
+    "squad-frontend:silent_frontend_lead": 1781421288.1648235,
+    "engineering:silent_nlp_researcher": 1781422201.5843692,
+    "engineering:silent_senior_quant": 1781422212.8774507,
+    "engineering:silent_exec_lead": 1781422225.8715682,
+    "engineering:silent_product_lead": 1781422233.4747438
   },
   "response_cache": {},
   "posted_today": [
@@ -494,10 +499,10 @@
     "standup_bot": 1781384071.618943,
     "wins_bot": 1781364418.757565,
     "vp_engineering_(cr)": 1781383965.2192342,
-    "product_lead": 1781271831.6069448,
+    "product_lead": 1781422201.5843105,
     "ml_infra": 1781272059.2677236,
     "data_engineer_2": 1781421181.273893,
-    "nlp_researcher": 1781372517.8365438,
+    "nlp_researcher": 1781422201.5843105,
     "crypto_defi_desk": 1781421181.273893,
     "kalshi_desk": 1781399512.5158098,
     "research_ops": 1781399512.5158098,
@@ -505,7 +510,9 @@
     "derivatives_desk": 1781421181.273893,
     "regime_analyst": 1781418636.5941002,
     "backtest_engineer": 1781421181.273893,
-    "infra_lead": 1781421181.273893
+    "infra_lead": 1781421181.273893,
+    "senior_quant": 1781422201.5843105,
+    "exec_lead": 1781422201.5843105
   },
   "daily_usage": {
     "2026-06-10": {
@@ -623,41 +630,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "devops_dir",
-      "score": 2,
-      "reason": "Output is too vague and lacks concrete, actionable points, merely stating that a pipeline is being watched without providing any meaningful insight or data.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:53:46"
-    },
-    {
-      "emp": "vp_eng",
-      "score": 8,
-      "reason": "Cites specific file paths, quantifies the risk with a concrete failure rate, and provides an actionable point to update the conftest.py file to pin the random seed.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:54:56"
-    },
-    {
-      "emp": "alpha_dir",
-      "score": 8,
-      "reason": "Cites specific file paths, quantifies the risk with a maximum drawdown, and proposes a concrete adjustment to the window size for performance enhancement.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:00"
-    },
-    {
-      "emp": "ml_lead",
-      "score": 9,
-      "reason": "Provides specific, actionable hyperparameter adjustments to address overfitting and cites relevant metrics, including val_sharpe and train_sharpe, while also mentioning a relevant market data point, the funding_rate for BTC.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:03"
-    },
-    {
-      "emp": "risk_eng",
-      "score": 8,
-      "reason": "Cites specific file paths, quantifies the risk with concrete numbers, and analyzes a relevant metric for the quant trading platform.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:06"
-    },
     {
       "emp": "backend_lead",
       "score": 9,
@@ -2022,49 +1994,44 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-14 07:15:04"
+    },
+    {
+      "emp": "poly_desk",
+      "score": 6,
+      "reason": "Output is incomplete and lacks concrete, actionable points, only providing a vague statement about an internal model's suggested fair probability without further explanation or specifics.",
+      "channel": "unknown",
+      "ts": "2026-06-14 07:29:35"
+    },
+    {
+      "emp": "nlp_researcher",
+      "score": 1,
+      "reason": "Output is extremely vague and lacks any concrete, actionable points or specific insights related to the earnings_call_sentiment_v3 model.",
+      "channel": "unknown",
+      "ts": "2026-06-14 07:30:07"
+    },
+    {
+      "emp": "senior_quant",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 07:30:21"
+    },
+    {
+      "emp": "exec_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 07:30:31"
+    },
+    {
+      "emp": "product_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 07:30:38"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "research_ops",
-      "channel": "unknown",
-      "text": "Currently investigating a *significant bottleneck* in our `feature_engineering_step` within `model \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781399590.1400998,
-      "score": 5
-    },
-    {
-      "emp": "vol_trader",
-      "channel": "unknown",
-      "text": "Current focus: I'm analyzing the divergence between SPX 30-day realized volatility, \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781399750.3267112,
-      "score": 5
-    },
-    {
-      "emp": "portfolio_manager",
-      "channel": "unknown",
-      "text": "Currently analyzing the *MacroArbitrage* and *QuantEquityLongShort* strategies; their \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781399767.7027247,
-      "score": 5
-    },
-    {
-      "emp": "market_maker",
-      "channel": "unknown",
-      "text": "Currently analyzing a sudden spike in *realized slippage* on `ETH-USD` fills, \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781399775.4367735,
-      "score": 5
-    },
-    {
-      "emp": "momentum_quant",
-      "channel": "unknown",
-      "text": "Currently analyzing the recent performance dip in our *US 12-1M Cross-Section \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781400437.264803,
-      "score": 2
-    },
     {
       "emp": "alt_data_lead",
       "channel": "unknown",
@@ -2424,6 +2391,46 @@
       "provider": "Gemini(GEMINI_API_KEY)",
       "ts": 1781421304.8483295,
       "score": 5
+    },
+    {
+      "emp": "poly_desk",
+      "channel": "unknown",
+      "text": "Watching *ETH >$4k by June 30, 2024* on Polymarket, currently trading at *0.53 YES*. Our internal model, leveraging options market implied volatility, suggests a fair probability closer to",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781422175.5571156,
+      "score": 6
+    },
+    {
+      "emp": "nlp_researcher",
+      "channel": "unknown",
+      "text": "Investigating the *earnings_call_sentiment_v3* model's *mgt_ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781422207.9967895,
+      "score": 1
+    },
+    {
+      "emp": "senior_quant",
+      "channel": "unknown",
+      "text": "Currently *investigating the recent 15bps compression* in the 2Y-10 \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1781422221.0556757,
+      "score": 5
+    },
+    {
+      "emp": "exec_lead",
+      "channel": "unknown",
+      "text": "Currently analyzing the *PPO RL agent's performance* for yesterday's US close on * \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781422231.7836277,
+      "score": 5
+    },
+    {
+      "emp": "product_lead",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the **`/dashboard/metrics.py`** file to optimize the **`user_engagement_score`** metric, which has seen a 25% decrease in the last 7 days*. This insight will help inform our **OKR-001** objective, targeting a 30% increase in user engagement by the end of Q2. I'm analyzing th",
+      "provider": "litellm:groq",
+      "ts": 1781422238.2857704,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -2435,7 +2442,7 @@
     "backend_lead": "litellm:groq",
     "qa_dir": "litellm:groq",
     "exec_eng": "litellm:groq",
-    "poly_desk": "litellm:groq",
+    "poly_desk": "Gemini(GEMINI_API_KEY_2)",
     "ml_researcher": "litellm:groq",
     "vp_research": "litellm:groq",
     "quant_researcher": "litellm:groq",
@@ -2456,10 +2463,10 @@
     "rl_trader": "Gemini(GEMINI_API_KEY_2)",
     "momentum_quant": "litellm:groq",
     "graph_ml_researcher": "Gemini(GEMINI_API_KEY)",
-    "product_lead": "Gemini(GEMINI_API_KEY)",
+    "product_lead": "litellm:groq",
     "ml_infra": "litellm:groq",
     "data_engineer_2": "litellm:gemini",
-    "nlp_researcher": "Gemini(GEMINI_API_KEY_2)",
+    "nlp_researcher": "Gemini(GEMINI_API_KEY_3)",
     "crypto_defi_desk": "Gemini(GEMINI_API_KEY_2)",
     "kalshi_desk": "Gemini(GEMINI_API_KEY_3)",
     "research_ops": "Gemini(GEMINI_API_KEY_2)",
@@ -2468,7 +2475,9 @@
     "regime_analyst": "litellm:groq",
     "backtest_engineer": "Gemini(GEMINI_API_KEY_3)",
     "infra_lead": "Gemini(GEMINI_API_KEY_3)",
-    "frontend_lead": "Gemini(GEMINI_API_KEY)"
+    "frontend_lead": "Gemini(GEMINI_API_KEY)",
+    "senior_quant": "Gemini(GEMINI_API_KEY_3)",
+    "exec_lead": "Gemini(GEMINI_API_KEY)"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781381633.304667,
