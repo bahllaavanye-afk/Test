@@ -31,6 +31,11 @@ def _clean_router(monkeypatch):
     for p in PROVIDERS:
         for label in [p.env_key] + [f"{p.env_key}_{i}" for i in range(1, 13)]:
             monkeypatch.delenv(label, raising=False)
+    # Also clear cross-provider credential fallbacks (e.g. GitHub Models reuses
+    # GITHUB_TOKEN/GH_TOKEN, which are present in CI and would leak in).
+    for fallback_list in router._ENV_KEY_FALLBACKS.values():
+        for label in fallback_list:
+            monkeypatch.delenv(label, raising=False)
     router._RR_INDEX.clear()
     reset_usage()
     yield
@@ -116,9 +121,36 @@ class TestRoutedNamesExist:
         valid = {p.name for p in PROVIDERS}
         # Mirror the lists in call_routed.
         for names in (
-            ["cerebras", "groq", "gemini"],
-            ["gemini", "gemini_thinking", "together", "groq"],
-            ["groq", "together", "cerebras", "openrouter", "gemini", "nvidia_nim"],
+            ["cerebras", "groq", "gemini", "github_gpt4o_mini"],
+            ["github_o4_mini", "github_gpt4o", "gemini", "gemini_thinking", "together", "groq"],
+            ["github_gpt4o", "groq", "together", "cerebras", "openrouter", "gemini", "github_gpt4o_mini", "nvidia_nim"],
         ):
             for n in names:
                 assert n in valid, f"call_routed references unknown provider '{n}'"
+
+
+class TestFreeOpenAIModels:
+    """GitHub Models puts free OpenAI GPT-4o/o4-mini into the pool."""
+
+    def test_github_models_registered(self):
+        names = {p.name for p in PROVIDERS}
+        assert {"github_gpt4o_mini", "github_gpt4o", "github_o4_mini"} <= names
+
+    def test_github_models_use_openai_namespaced_models(self):
+        by_name = {p.name: p for p in PROVIDERS}
+        assert by_name["github_gpt4o_mini"].model == "openai/gpt-4o-mini"
+        assert by_name["github_o4_mini"].model == "openai/o4-mini"
+        assert by_name["github_gpt4o"].base_url == "https://models.github.ai/inference"
+
+    def test_github_token_fallback_activates_openai_models(self, monkeypatch):
+        """No GITHUB_MODELS_TOKEN, but GITHUB_TOKEN (always in CI) should work."""
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_fake")
+        keys = _keys_for("GITHUB_MODELS_TOKEN")
+        assert ("GITHUB_TOKEN", "ghp_fake") in keys
+        assert "github_gpt4o_mini" in available_providers()
+
+    def test_explicit_token_preferred_over_fallback(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_MODELS_TOKEN", "primary")
+        monkeypatch.setenv("GITHUB_TOKEN", "fallback")
+        labels = [label for label, _ in _keys_for("GITHUB_MODELS_TOKEN")]
+        assert labels[0] == "GITHUB_MODELS_TOKEN"

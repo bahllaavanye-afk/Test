@@ -1,5 +1,5 @@
 """
-Free LLM Router — dispatches to 7 free providers in parallel.
+Free LLM Router — dispatches to many free providers in parallel.
 
 Priority cascade (fastest/highest-quota first):
   1. Gemini Flash 2.0 (Google AI Studio — 1M TPM free)
@@ -9,6 +9,13 @@ Priority cascade (fastest/highest-quota first):
   5. Cerebras (llama-3.3-70b — free tier, fast inference)
   6. Together AI (Llama-3.3-70B — $25 free credit)
   7. Hyperbolic (llama-3.3-70b — $10 free credit)
+  8. NVIDIA NIM (nemotron-70b — free tier)
+  9. OpenRouter (llama-3.3-70b:free — free tier)
+
+  Free OpenAI models (OpenAI-compatible, no paid tier required):
+  10. GitHub Models — GPT-4o-mini   (free with any GitHub token)
+  11. GitHub Models — GPT-4o        (free with any GitHub token)
+  12. GitHub Models — o4-mini       (free reasoning model)
 
 Modes:
   - "race":      first successful response wins, rest cancelled
@@ -113,6 +120,32 @@ PROVIDERS: list[LLMProvider] = [
         model="gemini-2.0-flash-thinking-exp",
         timeout=40.0,
     ),
+    # ── Free OpenAI models via GitHub Models ──────────────────────────────────
+    # GitHub Models exposes OpenAI's GPT-4o family through an OpenAI-compatible
+    # endpoint at no cost — auth is any GitHub token (the Actions GITHUB_TOKEN
+    # works). Model names are namespaced "openai/<model>". This puts genuine
+    # OpenAI models into the free pool without a paid OpenAI key.
+    LLMProvider(
+        name="github_gpt4o_mini",
+        env_key="GITHUB_MODELS_TOKEN",
+        base_url="https://models.github.ai/inference",
+        model="openai/gpt-4o-mini",
+        timeout=30.0,
+    ),
+    LLMProvider(
+        name="github_gpt4o",
+        env_key="GITHUB_MODELS_TOKEN",
+        base_url="https://models.github.ai/inference",
+        model="openai/gpt-4o",
+        timeout=40.0,
+    ),
+    LLMProvider(
+        name="github_o4_mini",
+        env_key="GITHUB_MODELS_TOKEN",
+        base_url="https://models.github.ai/inference",
+        model="openai/o4-mini",
+        timeout=60.0,
+    ),
 ]
 
 
@@ -137,11 +170,21 @@ _RR_INDEX: dict[str, int] = {}           # env_key -> next rotation index
 _USAGE: dict[str, dict] = {}             # key_label -> {"calls", "tokens"}
 
 
+# Some providers accept a credential that is also published under a more common
+# env var. GitHub Models, for example, authenticates with any GitHub token — so
+# if GITHUB_MODELS_TOKEN is unset we transparently fall back to GITHUB_TOKEN
+# (always present in GitHub Actions) and GH_TOKEN.
+_ENV_KEY_FALLBACKS: dict[str, list[str]] = {
+    "GITHUB_MODELS_TOKEN": ["GITHUB_TOKEN", "GH_TOKEN"],
+}
+
+
 def _keys_for(env_key: str) -> list[tuple[str, str]]:
-    """All configured (label, value) keys for a provider, base + numbered."""
+    """All configured (label, value) keys for a provider, base + numbered + fallbacks."""
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
-    labels = [env_key] + [f"{env_key}_{i}" for i in range(1, _MAX_KEY_SUFFIX + 1)]
+    base_labels = [env_key] + [f"{env_key}_{i}" for i in range(1, _MAX_KEY_SUFFIX + 1)]
+    labels = base_labels + _ENV_KEY_FALLBACKS.get(env_key, [])
     for label in labels:
         val = os.getenv(label, "")
         if val and val != "disabled" and val not in seen:
@@ -323,14 +366,14 @@ async def call_routed(
 
     # Provider preference by task type. Names MUST match PROVIDERS[].name.
     if task_type == "fast":
-        # Cerebras/Groq are fastest; Gemini Flash close behind.
-        preferred = ["cerebras", "groq", "gemini"]
+        # Cerebras/Groq are fastest; Gemini Flash + GPT-4o-mini close behind.
+        preferred = ["cerebras", "groq", "gemini", "github_gpt4o_mini"]
     elif task_type == "code":
-        # Long-context models for code.
-        preferred = ["gemini", "gemini_thinking", "together", "groq"]
+        # OpenAI o4-mini/GPT-4o lead on code; long-context Gemini as backup.
+        preferred = ["github_o4_mini", "github_gpt4o", "gemini", "gemini_thinking", "together", "groq"]
     else:  # analysis
-        # Llama 70B for reasoning quality, spread across providers.
-        preferred = ["groq", "together", "cerebras", "openrouter", "gemini", "nvidia_nim"]
+        # Mix OpenAI GPT-4o with Llama 70B for reasoning quality across providers.
+        preferred = ["github_gpt4o", "groq", "together", "cerebras", "openrouter", "gemini", "github_gpt4o_mini", "nvidia_nim"]
 
     for provider_name in preferred:
         provider = next((p for p in PROVIDERS if p.name == provider_name), None)
