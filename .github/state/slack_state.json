@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781418077,
+  "last_run_ts": 1781418635,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -327,7 +327,8 @@
     "10e45b21f634",
     "ce0a4fca8190",
     "8a52978f61b8",
-    "a3bb2653d3c0"
+    "a3bb2653d3c0",
+    "4394e44418dd"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -358,7 +359,8 @@
     "desk-fx-rates:silent_vp_research": 1781418110.6006436,
     "leadership-summary:silent_cro": 1781418116.6733804,
     "engineering:silent_model_validator": 1781418154.6398633,
-    "engineering:silent_feature_engineer": 1781418160.407919
+    "engineering:silent_feature_engineer": 1781418160.407919,
+    "engineering:silent_regime_analyst": 1781418647.2762768
   },
   "response_cache": {},
   "posted_today": [
@@ -484,7 +486,8 @@
     "kalshi_desk": 1781399512.5158098,
     "research_ops": 1781399512.5158098,
     "alpha_researcher": 1781401461.9610825,
-    "derivatives_desk": 1781402144.9708378
+    "derivatives_desk": 1781402144.9708378,
+    "regime_analyst": 1781418636.5941002
   },
   "daily_usage": {
     "2026-06-10": {
@@ -1917,17 +1920,16 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-14 06:22:54"
+    },
+    {
+      "emp": "regime_analyst",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 06:30:52"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "poly_desk",
-      "channel": "unknown",
-      "text": "Examining *ETH >$4k by Dec 31, 20 \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781393925.8000388,
-      "score": 1
-    },
     {
       "emp": "vp_research",
       "channel": "unknown",
@@ -2319,6 +2321,14 @@
       "provider": "Gemini(GEMINI_API_KEY_3)",
       "ts": 1781418174.068838,
       "score": 5
+    },
+    {
+      "emp": "regime_analyst",
+      "channel": "unknown",
+      "text": "*I am currently analyzing the HMM regime classifier data in `/path/to/models/hmm_regimes.pkl`* and have identified a potential transition from a low-volatility regime to a high-volatility regime, with a probability of **0.72**. The 10-day realized volatility metric, `rv_10d`, has increased by **1.23",
+      "provider": "litellm:groq",
+      "ts": 1781418652.4338553,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -2359,7 +2369,8 @@
     "kalshi_desk": "Gemini(GEMINI_API_KEY_3)",
     "research_ops": "Gemini(GEMINI_API_KEY_2)",
     "alpha_researcher": "Gemini(GEMINI_API_KEY)",
-    "derivatives_desk": "litellm:groq"
+    "derivatives_desk": "litellm:groq",
+    "regime_analyst": "litellm:groq"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781381633.304667,
