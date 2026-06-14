@@ -68,6 +68,15 @@ install_cli "Google Gemini" "@google/gemini-cli"      "gemini"
 install_cli "xAI Grok"      "@vibe-kit/grok-cli"      "grok"
 echo
 
+# Perplexity integrates as an MCP server (web-grounded research), not a CLI.
+bold "2b. Perplexity (MCP server — web-grounded research)"
+if [[ -n "${PERPLEXITY_API_KEY:-}" ]]; then
+  ok "PERPLEXITY_API_KEY present — backend research route + MCP ready"
+else
+  warn "set PERPLEXITY_API_KEY to enable Perplexity Sonar (backend research route + MCP)"
+fi
+echo
+
 # ── 3. Free OpenAI LLM pool (GitHub Models) ───────────────────────────────────
 bold "3. Free OpenAI models in the backend pool (GitHub Models)"
 TOKEN="${GITHUB_MODELS_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
@@ -99,10 +108,14 @@ cat <<'EOS'
     /plugin marketplace add zachdunn/grok-plugin-claude-code
     /plugin install grok@grok-cc
 
+    # Perplexity — web-grounded research (MCP server, not a /plugin)
+    claude mcp add perplexity --env PERPLEXITY_API_KEY="$PERPLEXITY_API_KEY" -- npx -y @perplexity-ai/mcp-server
+
   After installing, authenticate each CLI once:
     codex login        # ChatGPT account (free tier ok) or OPENAI_API_KEY
     gemini             # follow the Google sign-in prompt
     grok               # paste your xAI key
+    # Perplexity uses PERPLEXITY_API_KEY directly — no interactive login
 EOS
 echo
 bold "Done."

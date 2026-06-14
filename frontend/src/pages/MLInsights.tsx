@@ -10,7 +10,25 @@ interface MLModel {
   val_accuracy: number | null
   val_sharpe: number | null
   is_active: boolean
-  created_at: string
+  // Backend emits `trained_at`; older payloads used `created_at`. Accept either.
+  created_at?: string | null
+  trained_at?: string | null
+}
+
+// ── Defensive helpers ────────────────────────────────────────────────────────
+// API fields can arrive as undefined/null/strings. Coerce defensively so a
+// single bad field never throws during render and blanks the whole page.
+const num = (v: unknown): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : 0
+
+const fmtNum = (v: unknown, digits = 3): string => num(v).toFixed(digits)
+
+const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+
+const fmtDate = (s: string | null | undefined): string => {
+  if (!s) return '—'
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString()
 }
 
 interface Experiment {
@@ -36,25 +54,38 @@ function StatCard({ label, value, color = '#f5a623', sub }: { label: string; val
 }
 
 export default function MLInsights() {
-  const { data: models = [], isLoading: modelsLoading } = useQuery<MLModel[]>({
+  const {
+    data: modelsData,
+    isLoading: modelsLoading,
+    error: modelsError,
+  } = useQuery<MLModel[]>({
     queryKey: ['ml-models'],
     queryFn: () => api.get('/ml/models').then(r => r.data),
     refetchInterval: 30_000,
   })
 
-  const { data: exps = [], isLoading: expsLoading } = useQuery<Experiment[]>({
+  const {
+    data: expsData,
+    isLoading: expsLoading,
+    error: expsError,
+  } = useQuery<Experiment[]>({
     queryKey: ['experiments'],
     queryFn: () => api.get('/experiments/').then(r => r.data),
     refetchInterval: 10_000,
   })
 
+  // Never assume the API returned an array — an error body or paginated object
+  // would otherwise throw on .filter/.map and blank the entire page.
+  const models = asArray<MLModel>(modelsData)
+  const exps = asArray<Experiment>(expsData)
+
   const activeModels = models.filter(m => m.is_active)
   const completedExps = exps.filter(e => e.status === 'done')
   const bestSharpe = completedExps.length > 0
-    ? Math.max(...completedExps.map(e => e.test_sharpe ?? 0))
+    ? Math.max(...completedExps.map(e => num(e.test_sharpe)))
     : 0
   const avgAccuracy = completedExps.length > 0
-    ? completedExps.reduce((sum, e) => sum + (e.val_accuracy ?? 0), 0) / completedExps.length
+    ? completedExps.reduce((sum, e) => sum + num(e.val_accuracy), 0) / completedExps.length
     : 0
 
   const [optimizeResult, setOptimizeResult] = useState<Record<string, unknown> | null>(null)
@@ -85,11 +116,18 @@ export default function MLInsights() {
         <span className="text-xs text-[#888888]">Live from model registry</span>
       </div>
 
+      {(modelsError || expsError) && (
+        <div className="bg-[#ff1744]/10 border border-[#ff1744]/40 rounded-lg p-3 text-xs text-[#ff1744]">
+          {modelsError && <p>Failed to load models: {(modelsError as Error)?.message ?? 'unknown error'}</p>}
+          {expsError && <p>Failed to load experiments: {(expsError as Error)?.message ?? 'unknown error'}</p>}
+        </div>
+      )}
+
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Registered Models" value={models.length} color="#2196F3" sub={`${activeModels.length} active`} />
         <StatCard label="Completed Experiments" value={completedExps.length} color="#00c853" sub={`of ${exps.length} total`} />
-        <StatCard label="Best Test Sharpe" value={bestSharpe.toFixed(3)} color="#f5a623" sub="highest across all runs" />
+        <StatCard label="Best Test Sharpe" value={fmtNum(bestSharpe)} color="#f5a623" sub="highest across all runs" />
         <StatCard label="Avg Val Accuracy" value={avgAccuracy > 0 ? `${(avgAccuracy * 100).toFixed(1)}%` : '—'} color="#9C27B0" sub="completed runs" />
       </div>
 
@@ -127,13 +165,13 @@ export default function MLInsights() {
                     <td className="px-4 py-3 text-xs text-[#888888]">{m.interval ?? '—'}</td>
                     <td className="px-4 py-3 text-xs">
                       {m.val_accuracy != null
-                        ? <span style={{ color: m.val_accuracy > 0.55 ? '#00c853' : '#888' }}>{(m.val_accuracy * 100).toFixed(1)}%</span>
+                        ? <span style={{ color: num(m.val_accuracy) > 0.55 ? '#00c853' : '#888' }}>{(num(m.val_accuracy) * 100).toFixed(1)}%</span>
                         : <span className="text-[#555]">—</span>}
                     </td>
                     <td className="px-4 py-3 text-xs font-bold">
                       {m.val_sharpe != null
-                        ? <span style={{ color: m.val_sharpe > 1.5 ? '#00c853' : m.val_sharpe > 0.8 ? '#f5a623' : '#888' }}>
-                            {m.val_sharpe.toFixed(3)}
+                        ? <span style={{ color: num(m.val_sharpe) > 1.5 ? '#00c853' : num(m.val_sharpe) > 0.8 ? '#f5a623' : '#888' }}>
+                            {fmtNum(m.val_sharpe)}
                           </span>
                         : <span className="text-[#555]">—</span>}
                     </td>
@@ -145,7 +183,7 @@ export default function MLInsights() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-[#555]">
-                      {new Date(m.created_at).toLocaleDateString()}
+                      {fmtDate(m.trained_at ?? m.created_at)}
                     </td>
                   </tr>
                 ))}
@@ -183,7 +221,7 @@ export default function MLInsights() {
               </thead>
               <tbody>
                 {[...completedExps]
-                  .sort((a, b) => (b.test_sharpe ?? 0) - (a.test_sharpe ?? 0))
+                  .sort((a, b) => num(b.test_sharpe) - num(a.test_sharpe))
                   .slice(0, 20)
                   .map(e => (
                     <tr key={e.id} className="border-t border-[#1e1e1e] hover:bg-[#1a1a1a] transition-colors">
@@ -192,20 +230,20 @@ export default function MLInsights() {
                         {(e.config as any)?.model ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-xs">
-                        {e.val_accuracy != null ? `${(e.val_accuracy * 100).toFixed(1)}%` : '—'}
+                        {e.val_accuracy != null ? `${(num(e.val_accuracy) * 100).toFixed(1)}%` : '—'}
                       </td>
                       <td className="px-4 py-3 text-xs">
-                        {e.val_sharpe?.toFixed(3) ?? '—'}
+                        {e.val_sharpe != null ? fmtNum(e.val_sharpe) : '—'}
                       </td>
                       <td className="px-4 py-3 text-xs font-bold">
                         {e.test_sharpe != null
-                          ? <span style={{ color: e.test_sharpe > 1.5 ? '#00c853' : e.test_sharpe > 0.8 ? '#f5a623' : '#888' }}>
-                              {e.test_sharpe.toFixed(3)}
+                          ? <span style={{ color: num(e.test_sharpe) > 1.5 ? '#00c853' : num(e.test_sharpe) > 0.8 ? '#f5a623' : '#888' }}>
+                              {fmtNum(e.test_sharpe)}
                             </span>
                           : <span className="text-[#555]">—</span>}
                       </td>
                       <td className="px-4 py-3 text-xs text-[#555]">
-                        {e.completed_at ? new Date(e.completed_at).toLocaleDateString() : '—'}
+                        {fmtDate(e.completed_at)}
                       </td>
                     </tr>
                   ))}
@@ -249,10 +287,10 @@ export default function MLInsights() {
               {String((optimizeResult as Record<string, unknown>).n_splits)} folds
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {Object.entries((optimizeResult as Record<string, unknown>).optimal_weights as Record<string, number> ?? {}).map(([model, w]) => (
+              {Object.entries((optimizeResult.optimal_weights as Record<string, unknown>) ?? {}).map(([model, w]) => (
                 <div key={model} className="bg-[#0a0a0a] rounded p-2">
                   <p className="text-[#888888]">{model}</p>
-                  <p className="text-[#00c853] font-bold">{(w * 100).toFixed(1)}%</p>
+                  <p className="text-[#00c853] font-bold">{(num(w) * 100).toFixed(1)}%</p>
                 </div>
               ))}
             </div>

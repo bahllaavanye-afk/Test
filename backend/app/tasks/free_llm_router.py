@@ -146,6 +146,24 @@ PROVIDERS: list[LLMProvider] = [
         model="openai/o4-mini",
         timeout=60.0,
     ),
+    # ── Perplexity Sonar (web-grounded answers) ───────────────────────────────
+    # OpenAI-compatible endpoint. Sonar models answer with live web context —
+    # ideal for the research pipeline / alpha-mining agents. Gated on
+    # PERPLEXITY_API_KEY (free monthly Pro credits or pay-as-you-go).
+    LLMProvider(
+        name="perplexity_sonar",
+        env_key="PERPLEXITY_API_KEY",
+        base_url="https://api.perplexity.ai",
+        model="sonar",
+        timeout=40.0,
+    ),
+    LLMProvider(
+        name="perplexity_sonar_reasoning",
+        env_key="PERPLEXITY_API_KEY",
+        base_url="https://api.perplexity.ai",
+        model="sonar-reasoning",
+        timeout=60.0,
+    ),
 ]
 
 
@@ -365,7 +383,11 @@ async def call_routed(
         return cached
 
     # Provider preference by task type. Names MUST match PROVIDERS[].name.
-    if task_type == "fast":
+    if task_type == "research":
+        # Perplexity Sonar answers with live web context; fall back to strong
+        # reasoners if no Perplexity key is configured.
+        preferred = ["perplexity_sonar_reasoning", "perplexity_sonar", "github_o4_mini", "gemini", "groq"]
+    elif task_type == "fast":
         # Cerebras/Groq are fastest; Gemini Flash + GPT-4o-mini close behind.
         preferred = ["cerebras", "groq", "gemini", "github_gpt4o_mini"]
     elif task_type == "code":

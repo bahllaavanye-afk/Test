@@ -29,6 +29,11 @@ models. Enable each from the Claude Code terminal:
 | **OpenAI Codex** | `/plugin marketplace add openai/codex-plugin-cc` | `/plugin install codex@openai-codex` | `/codex:review`, `/codex:adversarial-review`, `/codex:rescue`, task delegation |
 | **Google Gemini** | `/plugin marketplace add sakibsadmanshajib/gemini-plugin-cc` | `/plugin install gemini@gemini-cc` | `/gemini:review`, visual/screenshot analysis |
 | **xAI Grok** | `/plugin marketplace add zachdunn/grok-plugin-claude-code` | `/plugin install grok@grok-cc` | `/grok:review`, fast delegated coding |
+| **Perplexity** | *(MCP, not a plugin)* | `claude mcp add perplexity --env PERPLEXITY_API_KEY="…" -- npx -y @perplexity-ai/mcp-server` | web-grounded search/research tools |
+
+> **Perplexity is an MCP server, not a review plugin.** Its strength is live
+> web search, so it's wired in as an MCP tool (and as a backend LLM provider —
+> see §2). It needs no interactive login, just `PERPLEXITY_API_KEY`.
 
 After install, verify Codex and toggle the optional **review gate** (blocks
 Claude from finalizing changes until Codex reviews them):
@@ -69,6 +74,12 @@ serves OpenAI's GPT-4o family through an OpenAI-compatible endpoint at no cost:
 | `github_gpt4o_mini` | `openai/gpt-4o-mini` | fast tasks, cheap reasoning |
 | `github_gpt4o` | `openai/gpt-4o` | high-quality analysis |
 | `github_o4_mini` | `openai/o4-mini` | code + step-by-step reasoning |
+| `perplexity_sonar` | `sonar` | web-grounded answers (research route) |
+| `perplexity_sonar_reasoning` | `sonar-reasoning` | web-grounded multi-step research |
+
+Perplexity is gated on `PERPLEXITY_API_KEY` and powers the new
+`call_routed(task_type="research")` route used by the alpha-mining / research
+agents. The pool is now **15 providers**.
 
 **Activation is automatic.** The router resolves the credential in this order:
 
