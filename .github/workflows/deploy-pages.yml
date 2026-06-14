@@ -1,8 +1,10 @@
 name: Deploy Frontend to GitHub Pages
 
-# Zero-credential deployment — uses the repo's built-in GITHUB_TOKEN.
+# Zero-credential, zero-manual-step deployment — uses the repo's built-in
+# GITHUB_TOKEN. actions/configure-pages@v5 with enablement:true programmatically
+# enables Pages (Actions build type) on first run, so no settings click is needed.
 # URL: https://bahllaavanye-afk.github.io/test/
-# Triggers on every push to the main feature branch that touches frontend/.
+# Triggers on every push to the main feature branch.
 
 on:
   push:
@@ -35,6 +37,15 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
+      # Enables GitHub Pages (Actions source) if not already enabled.
+      # This is the officially supported, idempotent enablement path —
+      # it replaces the fragile `gh api` call that previously 404'd the deploy.
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Install dependencies
         working-directory: frontend
         run: npm ci --prefer-offline
@@ -43,38 +54,19 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_URL: https://quantedge-api.onrender.com
-          # Base path = /test/ because repo name is "test"
           VITE_BASE_PATH: /test/
         run: npx vite build --base /test/
+
+      # SPA fallback: copy index.html to 404.html so client-side routes
+      # (e.g. /test/dashboard) resolve instead of returning GitHub's 404.
+      - name: Add SPA 404 fallback
+        working-directory: frontend
+        run: cp dist/index.html dist/404.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: frontend/dist
-
-  enable-pages:
-    name: Ensure GitHub Pages is enabled
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      pages: write
-      contents: read
-    steps:
-      - name: Enable GitHub Pages (Actions source)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Attempt to enable Pages with workflow (Actions) as the build source.
-          # Idempotent — succeeds even if Pages is already enabled.
-          gh api repos/${{ github.repository }}/pages \
-            --method PUT \
-            -f build_type=workflow \
-            --silent \
-            || gh api repos/${{ github.repository }}/pages \
-                 --method POST \
-                 -f build_type=workflow \
-                 --silent \
-                 || echo "Pages already configured or requires manual enable in repo settings."
 
   deploy:
     name: Deploy to GitHub Pages
@@ -82,7 +74,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: [build, enable-pages]
+    needs: build
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
@@ -99,7 +91,7 @@ jobs:
           page_url = os.environ.get("PAGE_URL", "")
           if not token.startswith("xoxb-"):
               print("No Slack token — skipping notification")
-              exit(0)
+              raise SystemExit(0)
           msg = (
               ":earth_americas: *QuantEdge Frontend is LIVE*\n"
               f"*URL:* <{page_url}|{page_url}>\n"
