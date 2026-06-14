@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781402581,
+  "last_run_ts": 1781403263,
   "last_commit_sha": "e8afb89",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -325,13 +325,14 @@
     "0d85cd13539f",
     "786096baa1ce",
     "10e45b21f634",
-    "ce0a4fca8190"
+    "ce0a4fca8190",
+    "8a52978f61b8"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1781399473.2820275,
+    "standup-channel:standup": 1781403165.1915946,
     "agent-api-usage:api_usage_report": 1781393469.1735756,
-    "agent-api-usage:throughput_report": 1781399512.3146122,
+    "agent-api-usage:throughput_report": 1781403264.3401587,
     "engineering:agent_reminder": 1781371929.1289196,
     "help:agent_reminder": 1781371929.7844906,
     "alpha-research:silent_quant_researcher": 1781399512.5158527,
@@ -1734,17 +1735,16 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-14 01:56:22"
+    },
+    {
+      "emp": "poly_desk",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-14 02:12:51"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "cro",
-      "channel": "unknown",
-      "text": "Team, the single biggest firm-level risk right now is *Model-to-Live Divergence \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781372547.9137945,
-      "score": 2
-    },
     {
       "emp": "nlp_researcher",
       "channel": "unknown",
@@ -2136,6 +2136,14 @@
       "provider": "litellm:groq",
       "ts": 1781402182.9725962,
       "score": 5
+    },
+    {
+      "emp": "poly_desk",
+      "channel": "unknown",
+      "text": "*I'm currently monitoring the **BTC >$100k by Dec 2025** event, where Polymarket YES contracts are trading at **0.62** vs **0.71** on Metaculus, representing a **9pp gap**. Our analysis, documented in `/polymarket/research/calibration_spreads.csv`, suggests a buying opportunity for YES contracts, wi",
+      "provider": "litellm:groq",
+      "ts": 1781403171.56262,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -2147,7 +2155,7 @@
     "backend_lead": "litellm:groq",
     "qa_dir": "litellm:groq",
     "exec_eng": "litellm:groq",
-    "poly_desk": "Gemini(GEMINI_API_KEY)",
+    "poly_desk": "litellm:groq",
     "ml_researcher": "litellm:groq",
     "vp_research": "Gemini(GEMINI_API_KEY_2)",
     "quant_researcher": "litellm:groq",
