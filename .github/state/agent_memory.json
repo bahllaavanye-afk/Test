@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-14T20:23:47.337598+00:00",
+  "last_updated": "2026-06-14T20:29:54.516444+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -505,6 +505,66 @@
       "reason": "LLM returned empty",
       "improvement_type": "constants",
       "timestamp": "2026-06-09T18:34:25.027138+00:00"
+    },
+    {
+      "file": "backend/app/tasks/self_improving_loop.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:24:26.914091+00:00"
+    },
+    {
+      "file": "backend/app/api/v1/tasks.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:24:59.667528+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_red_team.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:25:32.417584+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/token_unlock_fade.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:26:05.198792+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/ml_breakout.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:26:38.033785+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/base_model.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:27:10.749418+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/advanced_indicators.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:27:43.541887+00:00"
+    },
+    {
+      "file": "backend/app/execution/advanced_orders.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:28:16.285362+00:00"
+    },
+    {
+      "file": "backend/app/risk/kelly.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:28:49.047707+00:00"
+    },
+    {
+      "file": "backend/app/brokers/polymarket.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-14T20:29:21.778113+00:00"
     }
   ],
   "improvement_stats": {
