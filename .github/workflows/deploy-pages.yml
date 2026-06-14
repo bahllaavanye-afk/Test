@@ -37,15 +37,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      # Enables GitHub Pages (Actions source) if not already enabled.
-      # This is the officially supported, idempotent enablement path —
-      # it replaces the fragile `gh api` call that previously 404'd the deploy.
-      - name: Configure GitHub Pages
-        id: pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
+      # NOTE: The built-in GITHUB_TOKEN cannot CREATE the Pages site for the
+      # first time ("Resource not accessible by integration"). Pages must be
+      # enabled once via Settings → Pages → Source: GitHub Actions, OR by adding
+      # a PAGES_PAT secret. After that one-time step, every push deploys with
+      # zero further action. We build with a hardcoded base path so no
+      # enablement API call is needed at build time.
       - name: Install dependencies
         working-directory: frontend
         run: npm ci --prefer-offline
