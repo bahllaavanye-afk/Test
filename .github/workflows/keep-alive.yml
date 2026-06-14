@@ -1,0 +1,43 @@
+name: Keep Alive — warm Render backend
+
+# Pings the Render-hosted FastAPI /health endpoint every 10 minutes so the
+# free-tier service never idles into a 30-60s cold start.
+# This only warms the dyno — it never fails the run on a slow/missed ping.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes, 24/7
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping Render /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Warm the backend
+        continue-on-error: true
+        run: |
+          URL="https://quantedge-api.onrender.com/health"
+          echo "Pinging $URL"
+          # --retry handles the cold-start window (a wake can take 30-60s).
+          # --max-time bounds each individual attempt; || true never fails the run.
+          OUT=$(curl -sS \
+            --retry 3 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            --max-time 60 \
+            -o /dev/null \
+            -w "%{http_code} %{time_total}" \
+            "$URL") || true
+          STATUS="${OUT%% *}"
+          TIME="${OUT##* }"
+          echo "HTTP status: ${STATUS:-none}"
+          echo "Response time: ${TIME:-n/a}s"
