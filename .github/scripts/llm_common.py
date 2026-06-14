@@ -138,6 +138,39 @@ _PROVIDERS = [
         "model": "nvidia/llama-3.1-nemotron-70b-instruct",
         "rpm_free": 40,
     },
+    # ── New providers: Grok, Perplexity, GitHub Models (OpenAI) ──────────────
+    {
+        "name": "grok",
+        "url": "https://api.x.ai/v1/chat/completions",
+        # xAI Grok — OpenAI-compatible. Free tier: generous daily quota.
+        # grok-3-mini is optimized for fast coding tasks.
+        "key_env": "XAI_API_KEY",
+        "key_env_alt": "GROK_API_KEY",
+        "fmt": "openai",
+        "model": "grok-3-mini",
+        "rpm_free": 60,
+    },
+    {
+        "name": "perplexity",
+        "url": "https://api.perplexity.ai/chat/completions",
+        # Perplexity Sonar — web-grounded search. Best for research tasks.
+        # sonar model includes live internet access.
+        "key_env": "PERPLEXITY_API_KEY",
+        "fmt": "openai",
+        "model": "sonar",
+        "rpm_free": 20,
+    },
+    {
+        "name": "openai",
+        "url": "https://models.github.ai/inference/chat/completions",
+        # GitHub Models — free GPT-4o via GITHUB_TOKEN (always present in Actions).
+        # Acts as a free OpenAI proxy: same API, zero additional cost.
+        "key_env": "GITHUB_MODELS_TOKEN",
+        "key_env_alt": "GITHUB_TOKEN",
+        "fmt": "openai",
+        "model": "openai/gpt-4o",
+        "rpm_free": 10,
+    },
 ]
 
 # Providers to race in parallel (first N by index). Others are sequential fallbacks.

@@ -1,0 +1,70 @@
+name: Claude Task Router — auto-dispatch to sub-agents
+
+# Claude is the main brain. When a new issue arrives, Claude:
+#   1. Reads the task title + body
+#   2. Classifies complexity and domain
+#   3. Routes to the correct sub-agent by adding a label:
+#        research    → perplexity-task (Perplexity Sonar)
+#        fast-code   → grok-task       (Grok Mini — xAI)
+#        code        → codex-task      (GPT-4o via GitHub Models)
+#        analysis    → gemini-task     (Gemini 2.0 Flash)
+#        complex     → gemini-task     (Gemini + GPT-4o dual review)
+#   4. Sub-agent workflows pick up the label and execute
+#   5. claude-acceptance.yml reviews output and accepts/rejects
+
+on:
+  issues:
+    types: [opened, reopened]
+  schedule:
+    - cron: "*/15 * * * *"    # sweep un-routed issues every 15 min
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Route a specific issue number"
+        required: false
+        type: string
+
+concurrency:
+  group: claude-dispatch-router
+  cancel-in-progress: false
+
+jobs:
+  route:
+    name: Claude routes task to sub-agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      contents: read
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Route task via Claude
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # Free LLM fallbacks if Claude unavailable
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+        run: |
+          ISSUE="${{ github.event.issue.number || inputs.issue_number }}"
+          if [ -n "$ISSUE" ]; then
+            python .github/scripts/task_router.py route --issue "$ISSUE"
+          else
+            python .github/scripts/task_router.py route
+          fi

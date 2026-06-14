@@ -1,0 +1,102 @@
+name: Claude Acceptance Gate — review & accept sub-agent work
+
+# After any sub-agent commits work to the branch, Claude reviews it.
+# Claude is the FINAL decision maker — it can accept (close issue) or reject (re-open).
+#
+# This runs AFTER sub-agent workflows complete (gemini-task-runner, grok-task-runner, etc.)
+# Claude uses Anthropic API to review the diff and make the accept/reject call.
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw]
+    paths:
+      - "backend/app/**"
+      - "frontend/src/**"
+      - ".github/scripts/**"
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue to close on accept (optional)"
+        required: false
+        type: string
+
+concurrency:
+  group: claude-acceptance
+  cancel-in-progress: true   # only latest push matters
+
+jobs:
+  accept:
+    name: Claude reviews sub-agent output
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      issues: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      # Skip acceptance check on Claude's own commits (avoid loops)
+      - name: Check commit author
+        id: author_check
+        run: |
+          AUTHOR="${{ github.event.pusher.name || github.actor }}"
+          if [[ "$AUTHOR" == *"claude"* ]] || [[ "${{ github.event.head_commit.message }}" == *"[skip ci]"* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.author_check.outputs.skip != 'true'
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 10
+
+      - uses: actions/setup-python@v5
+        if: steps.author_check.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        if: steps.author_check.outputs.skip != 'true'
+        run: pip install --quiet requests
+
+      - name: Claude acceptance check
+        if: steps.author_check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # Claude is the main brain — use real Anthropic API for acceptance
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # Free LLM fallback if Claude unavailable
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE="${{ inputs.issue_number }}"
+          if [ -n "$ISSUE" ]; then
+            python .github/scripts/task_router.py accept --issue "$ISSUE"
+          else
+            python .github/scripts/task_router.py accept
+          fi
+
+      - name: Post-acceptance: deep review (Codex + Grok + Gemini)
+        if: steps.author_check.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: "disabled"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALLOW_PAID_APIS: "False"
+        # Run only the 3 new agents (Codex, Grok, Gemini-alpha) — not all 11
+        run: |
+          python .github/scripts/deep_code_review.py \
+            --agents codex-security,agent-scripts,gemini-alpha

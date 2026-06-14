@@ -46,6 +46,11 @@ jobs:
           HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
           NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          # New: Grok (xAI), Perplexity, GitHub Models (free OpenAI)
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/deep_code_review.py

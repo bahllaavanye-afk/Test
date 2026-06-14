@@ -137,6 +137,49 @@ AGENTS: list[tuple[str, str, list[str], str, str, str]] = [
         "dependency version pinning, Docker layer caching, missing ALLOW_PAID_APIS guards, "
         "ANTHROPIC_API_KEY disabled enforcement, TRADING_MODE=paper enforcement.",
     ),
+    # ── Codex (OpenAI GPT-4o via GitHub Models) — holistic correctness ────────
+    (
+        "codex-security",
+        "engineering",
+        ["backend/app/", "frontend/src/"],
+        "openai",
+        "codex_reviewer",
+        "You are a senior Codex security & correctness reviewer (GPT-4o). "
+        "Focus on: auth bypass paths, SQL injection (even through ORM), SSRF, XSS, "
+        "hardcoded secrets, unvalidated user-controlled values entering DB or shell, "
+        "race conditions in async code, off-by-one in financial calculations, "
+        "missing input validation on trading parameters (size, price, leverage). "
+        "EVERY finding must have exact file:line and a minimal reproducing scenario.",
+    ),
+    # ── Grok (xAI) — multi-agent scripts and CI/CD pipelines ─────────────────
+    (
+        "agent-scripts",
+        "engineering",
+        [".github/scripts/", "backend/app/tasks/"],
+        "grok",
+        "grok_reviewer",
+        "You are a senior multi-agent systems reviewer (Grok). "
+        "Focus on: agent infinite loops, Redis key naming collisions, token budget exhaustion paths, "
+        "LLM prompt injection vulnerabilities, agent impersonation risks, memory key collisions, "
+        "workflow trigger races (two runs modifying same file), unchecked subprocess calls, "
+        "missing timeouts on LLM calls, unhandled quota exhaustion cascades. "
+        "Quote exact script:line. Be adversarial — you are the red team.",
+    ),
+    # ── Gemini (Google) — strategy + alpha quality oversight ──────────────────
+    (
+        "gemini-alpha",
+        "desk-research",
+        ["backend/app/strategies/", "backend/app/ml/", "experiments/"],
+        "gemini",
+        "gemini_alpha",
+        "You are a senior quantitative researcher reviewing with Gemini 2.0 Flash. "
+        "Focus on: lookahead bias in features or signals, survivorship bias in backtests, "
+        "overfitting indicators (in-sample Sharpe >> out-of-sample), "
+        "strategy edge validity (is there a documented reason this works?), "
+        "ML feature engineering temporal leakage, ensemble weight drift, "
+        "regime sensitivity (does the strategy die in bear markets?). "
+        "Every finding must cite file:line and the specific statistical concern.",
+    ),
 ]
 
 REVIEW_PROMPT = """\
@@ -253,15 +296,24 @@ def commit_and_push() -> None:
 
 
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--agents", type=str, default="",
+        help="Comma-separated list of domains to run (default: all)")
+    args, _ = parser.parse_known_args()
+
+    agents_filter: set[str] = {a.strip() for a in args.agents.split(",") if a.strip()}
+    active_agents = [a for a in AGENTS if not agents_filter or a[0] in agents_filter]
+
     print(f"[review] Employee Deep Code Review — {TIME_STR}", flush=True)
-    print(f"[review] {len(AGENTS)} employees, each reviewing their domain via an independent LLM", flush=True)
+    print(f"[review] {len(active_agents)}/{len(AGENTS)} employees active", flush=True)
 
     slack_post("#engineering",
         f"*Employee Deep Code Review* ({DATE_STR})\n"
-        f"8 employees reviewing their own domains (each pinned to a different LLM):\n"
+        f"{len(active_agents)} employees reviewing their domains (each pinned to a different LLM):\n"
         + "\n".join(
             f"  • `{emp}` reviews `{d}` via _{p}_"
-            for d, _, _, p, emp, _ in AGENTS
+            for d, _, _, p, emp, _ in active_agents
         ))
 
     git_setup()
@@ -270,7 +322,7 @@ def main() -> None:
     all_priority_lines: list[str] = []
     all_grades: dict[str, str] = {}
 
-    for domain, channel, paths, provider, emp_key, focus in AGENTS:
+    for domain, channel, paths, provider, emp_key, focus in active_agents:
         # Look up employee persona — the review comes FROM this employee
         emp_persona = _EMP_PERSONAS.get(emp_key, "")
         emp_role = emp_key.replace("_", " ").title()
@@ -375,7 +427,7 @@ def main() -> None:
         grades_str = " | ".join(f"{d}[{g}]" for d, g in all_grades.items())
         cro_persona = _EMP_PERSONAS.get("cro", "You are the Chief Risk Officer at QuantEdge.")
         synthesis_prompt = (
-            f"8 QuantEdge employees independently reviewed their domains and assigned grades:\n"
+            f"{len(all_grades)} QuantEdge employees independently reviewed their domains and assigned grades:\n"
             f"{grades_str}\n\n"
             "As CRO, summarize in 3 sentences: overall system health, the domain needing most urgent attention, "
             "and the single highest-risk item across all domains."
