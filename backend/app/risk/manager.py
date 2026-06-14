@@ -64,7 +64,7 @@ class RiskManager:
         if not was_halted and self.global_breaker.is_halted:
             self._notify_breaker_trip(self.global_breaker)
 
-    def _notify_breaker_trip(self, breaker: "CircuitBreaker") -> None:
+    def _notify_breaker_trip(self, breaker: CircuitBreaker) -> None:
         """Fire-and-forget Slack alert when a circuit breaker trips."""
         import asyncio
 

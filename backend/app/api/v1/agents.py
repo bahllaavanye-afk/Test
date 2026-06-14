@@ -331,7 +331,11 @@ async def agent_status(current_user: User = Depends(get_current_user)):
 
     # Free-LLM fleet status — which providers have keys configured
     try:
-        from app.tasks.free_llm_router import available_providers, available_keys, get_throughput_report
+        from app.tasks.free_llm_router import (
+            available_keys,
+            available_providers,
+            get_throughput_report,
+        )
         llm_providers = available_providers()
         llm_keys      = available_keys()
         llm_throughput = get_throughput_report()

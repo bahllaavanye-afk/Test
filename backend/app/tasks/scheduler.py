@@ -333,8 +333,6 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         try:
             from datetime import timedelta
 
-            from sqlalchemy import func as _func
-
             from app.models.trade import Trade
             from app.notifications.slack import slack
 
