@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-14T10:54:27.166126+00:00",
+  "last_updated": "2026-06-14T15:29:29.411059+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -280,8 +280,8 @@
     "last_discussion": "2026-06-14T10:33:35.361851+00:00",
     "total_discussions": 13,
     "heartbeat_count": 2,
-    "last_watchdog_run": "2026-06-14T08:56:04.323280+00:00",
-    "health_status": "4 failing",
+    "last_watchdog_run": "2026-06-14T15:29:29.411059+00:00",
+    "health_status": "5 failing",
     "watchdog_checks": {
       "Gemini LLM": {
         "ok": false,
@@ -295,6 +295,10 @@
         "ok": false,
         "detail": "HTTP 402"
       },
+      "OpenRouter LLM": {
+        "ok": false,
+        "detail": "no key"
+      },
       "Binance API": {
         "ok": false,
         "detail": "HTTP 451"
@@ -305,7 +309,7 @@
       },
       "Recent commits": {
         "ok": false,
-        "detail": "last commit 59.3h ago \u2014 improver may be down"
+        "detail": "last commit 3.4h ago \u2014 improver may be down"
       },
       "Workflows": {
         "ok": true,
