@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781502294,
+  "last_run_ts": 1781503136,
   "last_commit_sha": "85421c1",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -398,7 +398,8 @@
     "de19da23dae0",
     "b32b7afbec09",
     "852504ec0bc6",
-    "67e762af1096"
+    "67e762af1096",
+    "5088842c7483"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -435,7 +436,10 @@
     "engineering:silent_data_lead": 1781501498.527859,
     "engineering:silent_crypto_quant": 1781501636.3655498,
     "engineering:silent_rl_trader": 1781501654.321292,
-    "engineering:silent_feature_engineer": 1781502037.2193155
+    "engineering:silent_feature_engineer": 1781502037.2193155,
+    "engineering:silent_derivatives_desk": 1781503142.3446927,
+    "engineering:silent_arb_trader": 1781503156.8615024,
+    "engineering:silent_regime_analyst": 1781503168.627018
   },
   "response_cache": {},
   "posted_today": [
@@ -508,7 +512,7 @@
     "model_validator": 1781501354.185361,
     "feature_engineer": 1781502037.2190602,
     "crypto_quant": 1781501634.4066396,
-    "arb_trader": 1781421181.273893,
+    "arb_trader": 1781503142.3446448,
     "portfolio_manager": 1781421181.273893,
     "market_maker": 1781485121.065978,
     "rl_trader": 1781501634.4066396,
@@ -560,8 +564,8 @@
     "kalshi_desk": 1781399512.5158098,
     "research_ops": 1781399512.5158098,
     "alpha_researcher": 1781401461.9610825,
-    "derivatives_desk": 1781421181.273893,
-    "regime_analyst": 1781418636.5941002,
+    "derivatives_desk": 1781503142.3446448,
+    "regime_analyst": 1781503142.3446448,
     "backtest_engineer": 1781501354.185361,
     "infra_lead": 1781421181.273893,
     "senior_quant": 1781422201.5843105,
@@ -598,12 +602,12 @@
     },
     "2026-06-15": {
       "GEMINI_API_KEY_2": {
-        "tokens": 300,
-        "requests": 1
+        "tokens": 600,
+        "requests": 2
       },
       "GEMINI_API_KEY_3": {
-        "tokens": 300,
-        "requests": 1
+        "tokens": 600,
+        "requests": 2
       }
     }
   },
@@ -695,27 +699,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "risk_eng",
-      "score": 2,
-      "reason": "Output is overly vague and lacks concrete, actionable points or specific data to support the claim of a potential breach in capital allocation.",
-      "channel": "unknown",
-      "ts": "2026-06-12 18:46:26"
-    },
-    {
-      "emp": "devops_dir",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-12 18:46:35"
-    },
-    {
-      "emp": "alpha_dir",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-12 18:50:10"
-    },
     {
       "emp": "ml_researcher",
       "score": 5,
@@ -2094,33 +2077,30 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-15 05:40:42"
+    },
+    {
+      "emp": "derivatives_desk",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and provides only a vague statement about analyzing SPX gamma exposure without any specific insights or data-driven claims.",
+      "channel": "unknown",
+      "ts": "2026-06-15 05:59:16"
+    },
+    {
+      "emp": "arb_trader",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-15 05:59:23"
+    },
+    {
+      "emp": "regime_analyst",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and merely restates the task without providing meaningful analysis or insight.",
+      "channel": "unknown",
+      "ts": "2026-06-15 05:59:36"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "vp_eng",
-      "channel": "unknown",
-      "text": "I'm currently reviewing **test_risk_engine.py** and noticed that 27% of its assertions are failing due to flaky tests on Kelly fraction edge cases (lines 45-67). The **ci_reliability_metrics.csv** file shows that the test suite has a 14.5% failure rate over the past 24 hours, with **test_kelly_fract",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1781484190.3160207,
-      "score": 9
-    },
-    {
-      "emp": "alpha_dir",
-      "channel": "unknown",
-      "text": "*I'm currently reviewing the `mean_reversion_strategy.py` file, which has yielded a **25.6%** return over the past **6 months** with a **0.87** Sharpe ratio. The `kalman_filter_backtest.csv` file shows that our Kalman filter-based pairs trading strategy has a **71.4%** win rate with an average trade",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781484199.8771284,
-      "score": 8
-    },
-    {
-      "emp": "ml_lead",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the **tft_spy_daily.yaml** experiment results, which show a **val_sharpe** of 1.8 vs **train_sharpe** of 3.2, indicating overfitting*. To address this, I plan to reduce the **d_model** from 64 to 32 and increase **dropout** from 0.1 to 0.25. The **SPY daily funding rate** is",
-      "provider": "litellm:groq",
-      "ts": 1781484204.4681094,
-      "score": 8
-    },
     {
       "emp": "risk_eng",
       "channel": "unknown",
@@ -2496,6 +2476,30 @@
       "provider": "litellm:groq",
       "ts": 1781502042.8564405,
       "score": 5
+    },
+    {
+      "emp": "derivatives_desk",
+      "channel": "unknown",
+      "text": "Currently analyzing *SPX gamma exposure* shifts from our `quantedge/data/ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781503156.3162787,
+      "score": 2
+    },
+    {
+      "emp": "arb_trader",
+      "channel": "unknown",
+      "text": "*I'm currently monitoring the ETF/NAV arbitrage opportunity in `/data/etf_nav_discrepancies.csv`*, where the `SPY` ETF is trading at a 0.53% premium to its net asset value. My model estimates an edge of 0.21% with an execution risk of 0.11%, based on historic data in `/models/etf_nav_arb_model.py`. ",
+      "provider": "litellm:groq",
+      "ts": 1781503163.875364,
+      "score": 5
+    },
+    {
+      "emp": "regime_analyst",
+      "channel": "unknown",
+      "text": "Reviewing the latest HMM transition matrix update from `/models/HMM_RegimeClassifier_ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1781503176.8097613,
+      "score": 2
     }
   ],
   "last_providers": {
@@ -2522,7 +2526,7 @@
     "model_validator": "litellm:groq",
     "feature_engineer": "litellm:groq",
     "crypto_quant": "Gemini(GEMINI_API_KEY_3)",
-    "arb_trader": "Gemini(GEMINI_API_KEY_3)",
+    "arb_trader": "litellm:groq",
     "portfolio_manager": "litellm:groq",
     "market_maker": "litellm:groq",
     "rl_trader": "Gemini(GEMINI_API_KEY_2)",
@@ -2536,8 +2540,8 @@
     "kalshi_desk": "Gemini(GEMINI_API_KEY_3)",
     "research_ops": "Gemini(GEMINI_API_KEY_2)",
     "alpha_researcher": "Gemini(GEMINI_API_KEY)",
-    "derivatives_desk": "Gemini(GEMINI_API_KEY_2)",
-    "regime_analyst": "litellm:groq",
+    "derivatives_desk": "Gemini(GEMINI_API_KEY)",
+    "regime_analyst": "Gemini(GEMINI_API_KEY_2)",
     "backtest_engineer": "Gemini(GEMINI_API_KEY_2)",
     "infra_lead": "Gemini(GEMINI_API_KEY_3)",
     "frontend_lead": "Gemini(GEMINI_API_KEY_2)",
@@ -2548,17 +2552,17 @@
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781437422.9805672,
     "gemini_fallback_engineering": 1781418077.3863528,
-    "GEMINI_API_KEY_3": 1781484881.8019767,
-    "GEMINI_API_KEY_2": 1781484881.8019767
+    "GEMINI_API_KEY_3": 1781503136.4346402,
+    "GEMINI_API_KEY_2": 1781503136.4346402
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
       "date": "2026-06-15",
-      "used": 300
+      "used": 600
     },
     "GEMINI_API_KEY_3": {
       "date": "2026-06-15",
-      "used": 300
+      "used": 600
     }
   },
   "bot_handle_announced": true,
@@ -2575,8 +2579,8 @@
       "GEMINI_API_KEY_2": 600
     },
     "2026-06-15": {
-      "GEMINI_API_KEY_2": 300,
-      "GEMINI_API_KEY_3": 300
+      "GEMINI_API_KEY_2": 600,
+      "GEMINI_API_KEY_3": 600
     }
   },
   "posted_today_date": "2026-06-14",
