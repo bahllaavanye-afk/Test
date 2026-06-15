@@ -359,7 +359,7 @@ def _call_parallel_race(
 
     with ThreadPoolExecutor(max_workers=len(race_pool)) as ex:
         futs = [ex.submit(_try, p) for p in race_pool]
-        _done.wait(timeout=32)
+        _done.wait(timeout=20)  # bound worst-case latency when a provider is unreachable
         # Cancel pending futures — we already have a winner
         for f in futs:
             f.cancel()

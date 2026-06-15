@@ -1,0 +1,57 @@
+name: Agent Smoke Test — real production path
+
+# Runs the pure logic tests AND a real-network smoke test (one live LLM call +
+# one live Slack post) in the Actions env, which is the closest thing to the
+# production runtime. This is the test layer that catches network/egress/key
+# regressions the pure unit tests cannot.
+
+on:
+  push:
+    branches:
+      - claude/advanced-trading-bot-d5Lmw
+      - main
+    paths:
+      - ".github/scripts/llm_common.py"
+      - ".github/scripts/model_router.py"
+      - ".github/scripts/member_standup.py"
+      - ".github/scripts/smoke_test_agents.py"
+      - ".github/scripts/test_agent_system.py"
+  schedule:
+    - cron: "30 */6 * * *"   # every 6h: catch a provider going down
+  workflow_dispatch: {}
+
+concurrency:
+  group: agent-smoke-test
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet pytest requests
+
+      - name: Pure logic tests (no network)
+        working-directory: .github/scripts
+        run: python -m pytest test_agent_system.py -q
+
+      - name: Production-path smoke test (real LLM + Slack)
+        env:
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY_1 }}
+          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY_1 }}
+          SAMBANOVA_API_KEY:  ${{ secrets.SAMBANOVA_API_KEY_1 }}
+          CEREBRAS_API_KEY:   ${{ secrets.CEREBRAS_API_KEY_1 }}
+          TOGETHER_API_KEY:   ${{ secrets.TOGETHER_API_KEY_1 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          SLACK_BOT_TOKEN:    ${{ secrets.SLACK_BOT_TOKEN }}
+          ALLOW_PAID_APIS:    "False"
+        run: python .github/scripts/smoke_test_agents.py
