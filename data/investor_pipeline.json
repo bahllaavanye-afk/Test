@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-13",
+  "last_updated": "2026-06-15",
   "pipeline": [
     {
       "name": "a16z Crypto Fund",
@@ -31,16 +31,16 @@
     },
     {
       "name": "Dragoneer Investment Group",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "info@dragoneer.com",
-      "added": "2026-06-08",
+      "added": "2026-06-15",
       "notes": "Late-stage tech growth"
     },
     {
       "name": "Tiger Global",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "info@tigerglobal.com",
-      "added": "2026-06-08",
+      "added": "2026-06-15",
       "notes": "Growth equity"
     },
     {
