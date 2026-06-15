@@ -23,6 +23,10 @@ CHANNELS = {
     "slack":    "agent:slack:outbound",      # Slack notifications
 }
 
+# Topic names (logical channels) — consumed by knowledge_loop and other
+# learners that subscribe to every bus topic.
+TOPICS = list(CHANNELS.keys())
+
 # Agent roster — any agent not listed gets "default" budget
 AGENT_ROSTER = [
     "strategy_agent", "ml_agent", "risk_agent", "research_agent",
