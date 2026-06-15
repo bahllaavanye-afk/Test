@@ -125,7 +125,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781562654.464663,
+    "last_updated": 1781563053.6239207,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -186,45 +186,45 @@
     },
     "opinion_score": 2,
     "macro_score": 4,
-    "vix": 17.68,
-    "market_scan_ts": 1781339641.6797984,
+    "vix": 16.2,
+    "market_scan_ts": 1781563053.618998,
     "sector_leaders": [
-      "Healthcare",
+      "Tech",
       "Financials",
-      "Tech"
+      "Healthcare"
     ],
     "sector_laggards": [
       "Utilities",
-      "Cons. Disc.",
-      "Comm."
+      "Comm.",
+      "Energy"
     ],
     "active_universe": [
       "ADBE",
       "INTC",
-      "ORCL",
-      "AMD",
-      "TSLA",
-      "IWM",
-      "XLF",
-      "AMZN",
-      "ABT",
-      "MSFT",
-      "C",
-      "NOW",
-      "QQQ",
-      "NFLX",
-      "UNH",
       "XOM",
-      "XLK",
-      "INTU",
+      "AMD",
       "MRK",
-      "GS"
+      "ORCL",
+      "C",
+      "BRK-B",
+      "QQQ",
+      "PANW",
+      "XLF",
+      "XLK",
+      "HD",
+      "LLY",
+      "XLI",
+      "NFLX",
+      "JNJ",
+      "NOW",
+      "IWM",
+      "MSFT"
     ],
     "top_momentum": [
-      "INTC",
       "AMD",
+      "INTC",
       "PANW",
-      "BAC",
+      "CRWD",
       "C"
     ],
     "risk_flags": []
@@ -444,6 +444,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1781562654.4655197
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Tech",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Tech, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781563053.624863
     }
   ]
 }
