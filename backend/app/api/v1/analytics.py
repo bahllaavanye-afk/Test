@@ -2862,3 +2862,203 @@ async def get_factor_attribution(
         "n_observations": len(common_dates),
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ─── Funding Rate Monitor ─────────────────────────────────────────────────────
+
+# Binance perpetual futures funding rates (public API, no auth required)
+_BINANCE_FUNDING_URL = "https://fapi.binance.com/fapi/v1/fundingRate"
+_BINANCE_PREMIUM_INDEX_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
+
+# Tracked perp pairs — top institutional crypto
+_FUNDING_SYMBOLS = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+    "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "MATICUSDT", "DOTUSDT",
+    "LINKUSDT", "UNIUSDT", "ATOMUSDT", "NEARUSDT", "APTUSDT",
+]
+
+
+async def _fetch_binance_funding(symbol: str, limit: int = 8) -> list[dict]:
+    """Fetch the last N funding rate events for a Binance perp symbol."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                _BINANCE_FUNDING_URL,
+                params={"symbol": symbol, "limit": limit},
+            )
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as exc:
+        logger.debug("Binance funding fetch failed", symbol=symbol, error=str(exc))
+    return []
+
+
+async def _fetch_binance_premium_index() -> list[dict]:
+    """Fetch current mark price + predicted funding rate for all perps."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(_BINANCE_PREMIUM_INDEX_URL)
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as exc:
+        logger.debug("Binance premium index fetch failed", error=str(exc))
+    return []
+
+
+@router.get("/funding-rates")
+async def get_funding_rates(
+    symbols: str | None = Query(None, description="Comma-separated perp symbols, e.g. BTCUSDT,ETHUSDT"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Crypto perpetual futures funding rate monitor.
+
+    Fetches live funding rates from Binance public API (no auth required).
+    Returns current rate, predicted next rate, 24h average, annualized rate,
+    and the last 8 funding events per symbol.
+
+    Funding rate > 0 means longs pay shorts (bullish sentiment, arb: short perp + long spot).
+    Funding rate < 0 means shorts pay longs (bearish sentiment, arb: long perp + short spot).
+
+    Returns:
+      symbols: list of {
+        symbol, base_asset, mark_price, index_price,
+        last_funding_rate, next_funding_time,
+        rate_annualized_pct, avg_rate_8h, signal,
+        history: [{fundingTime, fundingRate}]
+      }
+      computed_at: ISO timestamp
+      arb_opportunities: list of symbols where |rate| > 0.1% (10bps) per 8h
+    """
+    target_symbols = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else _FUNDING_SYMBOLS
+    )
+
+    # Fetch premium index for all symbols at once (one call)
+    premium_index = await _fetch_binance_premium_index()
+    premium_map: dict[str, dict] = {
+        row["symbol"]: row for row in premium_index
+        if row.get("symbol") in target_symbols
+    }
+
+    # Fetch history for each tracked symbol concurrently
+    import asyncio
+    history_tasks = [_fetch_binance_funding(sym, limit=8) for sym in target_symbols]
+    histories = await asyncio.gather(*history_tasks)
+    history_map: dict[str, list[dict]] = dict(zip(target_symbols, histories))
+
+    out = []
+    arb_opportunities = []
+
+    for sym in target_symbols:
+        pm = premium_map.get(sym, {})
+        history = history_map.get(sym, [])
+
+        # Parse latest funding rate from history (most recent entry)
+        last_rate: float | None = None
+        if history:
+            try:
+                last_rate = float(history[-1]["fundingRate"])
+            except (KeyError, ValueError, TypeError):
+                last_rate = None
+
+        # Parse current predicted rate from premium index
+        predicted_rate: float | None = None
+        try:
+            predicted_rate = float(pm.get("lastFundingRate") or 0.0)
+        except (ValueError, TypeError):
+            predicted_rate = None
+
+        # Mark / index prices
+        mark_price: float | None = None
+        index_price: float | None = None
+        try:
+            mark_price = float(pm.get("markPrice") or 0.0) or None
+            index_price = float(pm.get("indexPrice") or 0.0) or None
+        except (ValueError, TypeError):
+            pass
+
+        # Next funding time (epoch ms)
+        next_funding_time: str | None = None
+        try:
+            nft = pm.get("nextFundingTime")
+            if nft:
+                from datetime import timezone as _tz
+                next_funding_time = datetime.fromtimestamp(int(nft) / 1000, tz=_tz.utc).isoformat()
+        except Exception:
+            pass
+
+        # 8-period average rate
+        rates = []
+        for h in history:
+            try:
+                rates.append(float(h["fundingRate"]))
+            except (KeyError, ValueError, TypeError):
+                pass
+        avg_rate_8h = round(sum(rates) / len(rates), 8) if rates else None
+
+        # Annualized: funding paid 3x per day → 3 * 365 = 1095 periods per year
+        rate_annualized_pct: float | None = None
+        if avg_rate_8h is not None:
+            rate_annualized_pct = round(avg_rate_8h * 1095 * 100, 4)
+
+        # Trading signal
+        signal = "neutral"
+        if last_rate is not None:
+            abs_rate = abs(last_rate)
+            if abs_rate > 0.001:  # > 10 bps per 8h = extreme
+                signal = "sell_perp_buy_spot" if last_rate > 0 else "buy_perp_sell_spot"
+            elif abs_rate > 0.0003:  # > 3 bps
+                signal = "slight_long_bias" if last_rate > 0 else "slight_short_bias"
+
+        base_asset = sym.replace("USDT", "").replace("BUSD", "")
+
+        entry = {
+            "symbol": sym,
+            "base_asset": base_asset,
+            "mark_price": round(mark_price, 6) if mark_price else None,
+            "index_price": round(index_price, 6) if index_price else None,
+            "last_funding_rate": round(last_rate, 8) if last_rate is not None else None,
+            "last_funding_rate_pct": round(last_rate * 100, 6) if last_rate is not None else None,
+            "predicted_rate": round(predicted_rate, 8) if predicted_rate is not None else None,
+            "next_funding_time": next_funding_time,
+            "avg_rate_8h": avg_rate_8h,
+            "rate_annualized_pct": rate_annualized_pct,
+            "signal": signal,
+            "history": [
+                {
+                    "funding_time": datetime.fromtimestamp(
+                        int(h["fundingTime"]) / 1000, tz=datetime.now(UTC).tzinfo
+                    ).isoformat() if h.get("fundingTime") else None,
+                    "rate": float(h["fundingRate"]) if h.get("fundingRate") else None,
+                    "rate_pct": round(float(h["fundingRate"]) * 100, 6) if h.get("fundingRate") else None,
+                }
+                for h in history
+            ],
+        }
+        out.append(entry)
+
+        # Flag as arb opportunity if |rate| > 10bps per 8h
+        if last_rate is not None and abs(last_rate) >= 0.001:
+            arb_opportunities.append({
+                "symbol": sym,
+                "base_asset": base_asset,
+                "rate_pct": round(last_rate * 100, 4),
+                "annualized_pct": rate_annualized_pct,
+                "direction": "short_perp" if last_rate > 0 else "long_perp",
+                "signal": signal,
+            })
+
+    # Sort by abs rate descending
+    out.sort(key=lambda x: abs(x.get("last_funding_rate") or 0), reverse=True)
+    arb_opportunities.sort(key=lambda x: abs(x["rate_pct"]), reverse=True)
+
+    return {
+        "symbols": out,
+        "arb_opportunities": arb_opportunities,
+        "total_symbols": len(out),
+        "extreme_count": sum(1 for x in out if abs(x.get("last_funding_rate") or 0) >= 0.001),
+        "computed_at": datetime.now(UTC).isoformat(),
+    }

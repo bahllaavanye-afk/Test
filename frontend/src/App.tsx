@@ -43,6 +43,7 @@ const TaskManager = lazy(() => import('./pages/TaskManager'))
 const CopyTrading = lazy(() => import('./pages/CopyTrading'))
 const PerformanceAttribution = lazy(() => import('./pages/PerformanceAttribution'))
 const RiskControls = lazy(() => import('./pages/RiskControls'))
+const FundingRateMonitor = lazy(() => import('./pages/FundingRateMonitor'))
 const GoogleCallback = lazy(() => import('./pages/GoogleCallback'))
 
 function PageLoader() {
@@ -128,6 +129,7 @@ export default function App() {
           <Route path="copy-trading" element={<CopyTrading />} />
           <Route path="attribution" element={<PerformanceAttribution />} />
           <Route path="risk-controls" element={<RiskControls />} />
+          <Route path="funding-rates" element={<FundingRateMonitor />} />
         </Route>
       </Routes>
     </Suspense>

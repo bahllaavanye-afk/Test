@@ -3,7 +3,7 @@ import {
   LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers,
   Globe, Coins, CandlestickChart, BrainCircuit, GitBranch, PackageCheck, Bot,
   Users, ScanSearch, Rocket, Building2, Terminal, BarChart3, ListCollapse,
-  ClipboardList, Copy, PieChart, ShieldAlert, type LucideIcon,
+  ClipboardList, Copy, PieChart, ShieldAlert, Percent, type LucideIcon,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -48,6 +48,7 @@ export const NAV: NavItem[] = [
   { to: '/copy-trading', icon: Copy, label: 'Copy Trading' },
   { to: '/attribution', icon: PieChart, label: 'Attribution' },
   { to: '/risk-controls', icon: ShieldAlert, label: 'Risk Controls' },
+  { to: '/funding-rates', icon: Percent, label: 'Funding Rates' },
 ]
 
 /** Primary destinations shown directly in the mobile bottom tab bar. */
