@@ -20,6 +20,8 @@ services:
     envVars:
       - key: TRADING_MODE
         value: paper
+      - key: DEMO_MODE
+        value: "true"
       - key: SECRET_KEY
         generateValue: true        # Render generates a secure random value
       - key: DATABASE_URL

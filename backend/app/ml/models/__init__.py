@@ -50,3 +50,16 @@ except ImportError as e:
     logger.warning(f"PatchTST unavailable (missing deps): {e}")
     PatchTST = None   # type: ignore[assignment,misc]
     PatchEncoder = None  # type: ignore[assignment,misc]
+
+try:
+    from app.ml.models.ssm_model import SSMPredictor, SelectiveSSM
+except ImportError as e:
+    logger.warning(f"SSMPredictor unavailable (missing deps): {e}")
+    SSMPredictor = None  # type: ignore[assignment,misc]
+    SelectiveSSM = None  # type: ignore[assignment,misc]
+
+try:
+    from app.ml.models.hmm_regime import HMMRegimeModel
+except ImportError as e:
+    logger.warning(f"HMMRegimeModel unavailable (missing deps): {e}")
+    HMMRegimeModel = None  # type: ignore[assignment,misc]

@@ -41,6 +41,7 @@ const PositionsHub = lazy(() => import('./pages/PositionsHub'))
 const BotDetail = lazy(() => import('./pages/BotDetail'))
 const TaskManager = lazy(() => import('./pages/TaskManager'))
 const CopyTrading = lazy(() => import('./pages/CopyTrading'))
+const PerformanceAttribution = lazy(() => import('./pages/PerformanceAttribution'))
 
 function PageLoader() {
   return (
@@ -54,8 +55,9 @@ function PageLoader() {
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const isAuth = useSelector(selectIsAuthenticated)
-  return isAuth ? <>{children}</> : <Navigate to="/login" replace />
+  // Auth disabled — all pages public for demo/investor access
+  void useSelector(selectIsAuthenticated)
+  return <>{children}</>
 }
 
 function SessionExpiryHandler() {
@@ -86,8 +88,9 @@ export default function App() {
       <Routes>
         <Route path="/landing" element={<Landing />} />
         <Route path="/login" element={<Login />} />
-<Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
-          <Route index element={<Dashboard />} />
+        <Route path="/" element={<AppShell />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="equity" element={<EquityTrading />} />
           <Route path="crypto" element={<CryptoTrading />} />
           <Route path="comparison" element={<Comparison />} />
@@ -108,8 +111,10 @@ export default function App() {
           <Route path="pipeline" element={<Pipeline />} />
           <Route path="releases" element={<Releases />} />
           <Route path="bots" element={<BotBuilder />} />
+          <Route path="bot-builder" element={<BotBuilder />} />
           <Route path="bot-desk" element={<BotDesk />} />
           <Route path="agents" element={<AgentDashboard />} />
+          <Route path="agent-dashboard" element={<AgentDashboard />} />
           <Route path="scanners" element={<Scanners />} />
           <Route path="promotions" element={<Promotions />} />
           <Route path="agent-logs" element={<AgentLogs />} />
@@ -118,6 +123,7 @@ export default function App() {
           <Route path="positions" element={<PositionsHub />} />
           <Route path="tasks" element={<TaskManager />} />
           <Route path="copy-trading" element={<CopyTrading />} />
+          <Route path="attribution" element={<PerformanceAttribution />} />
         </Route>
       </Routes>
     </Suspense>

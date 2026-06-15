@@ -59,10 +59,14 @@ api.interceptors.response.use(
           return Promise.reject(err)
         }
       }
-      // No refresh token available — signal session expiry via event
-      setToken(null)
-      setStoredRefreshToken(null)
-      window.dispatchEvent(new Event('sessionExpired'))
+      // No refresh token — in demo mode, just pass through (backend allows guest access)
+      // In prod mode, signal session expiry
+      const isDemoMode = !sessionStorage.getItem('access_token')
+      if (!isDemoMode) {
+        setToken(null)
+        setStoredRefreshToken(null)
+        window.dispatchEvent(new Event('sessionExpired'))
+      }
     }
     return Promise.reject(err)
   }

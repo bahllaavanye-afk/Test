@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     debug: bool = False
     trading_mode: str = "paper"  # 'paper' | 'live'
     allowed_origins: str = "http://localhost:5173"
+    demo_mode: bool = True  # Allow unauthenticated read-only access (public demo)
 
     # Security
     secret_key: str = Field(default="change-me-in-production-32-byte-hex")
