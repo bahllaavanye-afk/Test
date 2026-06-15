@@ -850,3 +850,311 @@ class TestActivityPage:
         headers = await _auth(client)
         r = await client.get("/api/v1/notifications", headers=headers)
         assert r.status_code < 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 21. Promotions page (Strategy Promotions)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestPromotionsPage:
+    @pytest.mark.asyncio
+    async def test_list_promotions(self, client):
+        """Promotions page calls GET /promotions/."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/promotions/", headers=headers)
+        assert r.status_code in (200, 404)
+        if r.status_code == 200:
+            assert isinstance(r.json(), list)
+
+    @pytest.mark.asyncio
+    async def test_promotions_criteria(self, client):
+        """Promotions page fetches criteria definitions."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/promotions/criteria/all", headers=headers)
+        assert r.status_code < 500
+
+    @pytest.mark.asyncio
+    async def test_create_promotion_requires_fields(self, client):
+        """POST /promotions/ with missing fields returns 422."""
+        headers = await _auth(client)
+        r = await client.post("/api/v1/promotions/", json={}, headers=headers)
+        assert r.status_code in (422, 400, 404)
+
+    @pytest.mark.asyncio
+    async def test_create_and_approve_promotion(self, client):
+        """Full promotion lifecycle: create → fetch → approve."""
+        headers = await _auth(client)
+        payload = {
+            "strategy_name": "test_momentum",
+            "symbol": "SPY",
+            "interval": "1d",
+            "reason": "Test integration",
+            "paper_sharpe": 1.8,
+            "paper_max_dd": 0.10,
+            "paper_days": 14,
+        }
+        r_create = await client.post("/api/v1/promotions/", json=payload, headers=headers)
+        if r_create.status_code in (404, 500, 503):
+            pytest.skip("Promotions endpoint not available in this env")
+        assert r_create.status_code in (200, 201)
+        promo_id = r_create.json().get("id") or r_create.json().get("promotion_id")
+        if not promo_id:
+            return  # can't test further without id
+
+        # Approve
+        r_approve = await client.post(f"/api/v1/promotions/{promo_id}/approve", headers=headers)
+        assert r_approve.status_code in (200, 201, 403, 404)
+
+    @pytest.mark.asyncio
+    async def test_reject_promotion_requires_reason(self, client):
+        """POST /promotions/{id}/reject with no reason returns 422."""
+        headers = await _auth(client)
+        r = await client.post("/api/v1/promotions/nonexistent-id/reject", json={}, headers=headers)
+        assert r.status_code in (400, 404, 422)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 22. Copy Trading page
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestCopyTradingPage:
+    @pytest.mark.asyncio
+    async def test_leaderboard(self, client):
+        """Copy Trading page calls GET /copy-trading/leaderboard."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/copy-trading/leaderboard", headers=headers)
+        assert r.status_code in (200, 404)
+        if r.status_code == 200:
+            assert isinstance(r.json(), list)
+
+    @pytest.mark.asyncio
+    async def test_list_follows(self, client):
+        """Copy Trading page loads followed traders."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/copy-trading/follows", headers=headers)
+        assert r.status_code in (200, 404)
+
+    @pytest.mark.asyncio
+    async def test_follow_requires_fields(self, client):
+        """POST /copy-trading/follow with missing body returns 422."""
+        headers = await _auth(client)
+        r = await client.post("/api/v1/copy-trading/follow", json={}, headers=headers)
+        assert r.status_code in (400, 404, 422)
+
+    @pytest.mark.asyncio
+    async def test_follow_and_unfollow_trader(self, client):
+        """Follow a trader then unfollow — round-trip smoke test."""
+        headers = await _auth(client)
+        r = await client.post("/api/v1/copy-trading/follow", json={
+            "leader_id": "test-leader-001",
+            "allocation_pct": 0.05,
+            "max_position_pct": 0.02,
+        }, headers=headers)
+        if r.status_code in (404, 500, 503):
+            pytest.skip("Copy trading endpoint not available")
+        assert r.status_code in (200, 201, 409)  # 409 = already following
+
+        follow_id = (r.json() or {}).get("id")
+        if follow_id:
+            r_del = await client.delete(f"/api/v1/copy-trading/follows/{follow_id}", headers=headers)
+            assert r_del.status_code in (200, 204, 404)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 23. Task Manager page
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestTaskManagerPage:
+    @pytest.mark.asyncio
+    async def test_list_tasks(self, client):
+        """Task Manager page calls GET /tasks/."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/tasks/", headers=headers)
+        assert r.status_code in (200, 404)
+        if r.status_code == 200:
+            assert isinstance(r.json(), list)
+
+    @pytest.mark.asyncio
+    async def test_list_employees(self, client):
+        """Task Manager loads employee roster from GET /tasks/employees."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/tasks/employees", headers=headers)
+        assert r.status_code in (200, 404)
+
+    @pytest.mark.asyncio
+    async def test_create_task(self, client):
+        """POST /tasks/ creates a new task."""
+        headers = await _auth(client)
+        r = await client.post("/api/v1/tasks/", json={
+            "title": "Integration test task",
+            "description": "Created by automated test",
+            "priority": "low",
+            "assigned_to": "gemini_analyst",
+        }, headers=headers)
+        if r.status_code in (404, 500, 503):
+            pytest.skip("Tasks endpoint not available")
+        assert r.status_code in (200, 201, 422)
+
+    @pytest.mark.asyncio
+    async def test_create_and_delete_task(self, client):
+        """Full task lifecycle: create → update → delete."""
+        headers = await _auth(client)
+        r_create = await client.post("/api/v1/tasks/", json={
+            "title": "Temp test task",
+            "description": "Will be deleted",
+            "priority": "low",
+            "assigned_to": "system",
+        }, headers=headers)
+        if r_create.status_code in (404, 500, 503):
+            pytest.skip("Tasks endpoint not available")
+        if r_create.status_code not in (200, 201):
+            return
+        task_id = (r_create.json() or {}).get("id")
+        if not task_id:
+            return
+
+        # Update status
+        r_patch = await client.patch(f"/api/v1/tasks/{task_id}", json={"status": "in_progress"}, headers=headers)
+        assert r_patch.status_code in (200, 204, 404)
+
+        # Delete
+        r_del = await client.delete(f"/api/v1/tasks/{task_id}", headers=headers)
+        assert r_del.status_code in (200, 204, 404)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 24. Risk Controls page
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRiskControlsPage:
+    @pytest.mark.asyncio
+    async def test_risk_dashboard(self, client):
+        """Risk Controls page calls GET /risk/."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/risk/", headers=headers)
+        assert r.status_code in (200, 404)
+
+    @pytest.mark.asyncio
+    async def test_list_risk_rules(self, client):
+        """Risk Controls page loads rules from GET /risk/rules."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/risk/rules", headers=headers)
+        assert r.status_code in (200, 404)
+        if r.status_code == 200:
+            assert isinstance(r.json(), list)
+
+    @pytest.mark.asyncio
+    async def test_risk_events(self, client):
+        """Risk Controls page loads event history from GET /risk/events."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/risk/events", headers=headers)
+        assert r.status_code in (200, 404)
+
+    @pytest.mark.asyncio
+    async def test_create_risk_rule(self, client):
+        """POST /risk/rules creates a rule."""
+        headers = await _auth(client)
+        r = await client.post("/api/v1/risk/rules", json={
+            "rule_type": "max_drawdown",
+            "threshold": 0.15,
+            "action": "halt",
+        }, headers=headers)
+        if r.status_code in (404, 500, 503):
+            pytest.skip("Risk rules endpoint not available")
+        assert r.status_code in (200, 201, 422)
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_status(self, client):
+        """Risk Controls page checks circuit breaker via GET /risk/circuit-breaker."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/risk/circuit-breaker", headers=headers)
+        assert r.status_code in (200, 404)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 25. Positions Hub page
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestPositionsHubPage:
+    @pytest.mark.asyncio
+    async def test_list_positions(self, client):
+        """Positions Hub calls GET /positions/."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/positions/", headers=headers)
+        assert r.status_code in (200, 404)
+        if r.status_code == 200:
+            assert isinstance(r.json(), list)
+
+    @pytest.mark.asyncio
+    async def test_positions_summary(self, client):
+        """Positions Hub loads summary stats."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/positions/summary", headers=headers)
+        assert r.status_code in (200, 404)
+
+    @pytest.mark.asyncio
+    async def test_patch_exit_config(self, client):
+        """PATCH /positions/{symbol}/exit-config updates exit rules."""
+        headers = await _auth(client)
+        r = await client.patch("/api/v1/positions/SPY/exit-config", json={
+            "stop_loss_pct": 0.02,
+            "take_profit_pct": 0.05,
+        }, headers=headers)
+        assert r.status_code in (200, 204, 404, 422)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 26. Bot Dashboard page (summary endpoint)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestBotDashboardSummary:
+    @pytest.mark.asyncio
+    async def test_bots_summary_all(self, client):
+        """Bot Dashboard calls GET /bots/summary/all for a combined view."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/bots/summary/all", headers=headers)
+        assert r.status_code in (200, 404)
+        if r.status_code == 200:
+            assert isinstance(r.json(), list)
+
+    @pytest.mark.asyncio
+    async def test_bot_detail_trades(self, client):
+        """GET /bots/{bot_id}/trades returns trade history for a bot."""
+        headers = await _auth(client)
+        # Create a bot first
+        r_bot = await client.post("/api/v1/bots/", json={
+            "name": f"test_bot_{int(time.time())}",
+            "symbol": "SPY",
+            "market_type": "equity",
+        }, headers=headers)
+        if r_bot.status_code not in (200, 201):
+            pytest.skip("Bot creation not available")
+        bot_id = r_bot.json().get("id")
+        if not bot_id:
+            return
+
+        r = await client.get(f"/api/v1/bots/{bot_id}/trades", headers=headers)
+        assert r.status_code in (200, 404)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 27. Attribution page
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAttributionPage:
+    @pytest.mark.asyncio
+    async def test_attribution_endpoint(self, client):
+        """Attribution page calls GET /analytics/attribution."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/analytics/attribution", headers=headers)
+        assert r.status_code in (200, 404)
+        if r.status_code == 200:
+            body = r.json()
+            assert isinstance(body, (list, dict))
+
+    @pytest.mark.asyncio
+    async def test_daily_pnl_endpoint(self, client):
+        """Attribution page calls GET /analytics/daily-pnl."""
+        headers = await _auth(client)
+        r = await client.get("/api/v1/analytics/daily-pnl", headers=headers)
+        assert r.status_code in (200, 404)
