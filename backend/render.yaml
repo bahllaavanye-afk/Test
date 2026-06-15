@@ -40,5 +40,7 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
       - key: CORS_ORIGINS
         sync: false                # your Vercel domain, e.g. https://quantedge.vercel.app
