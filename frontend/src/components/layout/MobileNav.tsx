@@ -1,14 +1,8 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
-import { NAV, PRIMARY_NAV } from './navItems'
+import { NAV_GROUPS, PRIMARY_NAV } from './navItems'
 
-/**
- * Mobile bottom tab bar — the signature pattern of Robinhood / Coinbase / KuCoin.
- * Shows the four primary destinations plus a "More" button that opens a
- * full-screen sheet with the complete navigation grid. Hidden on md+ (desktop
- * uses the sidebar). Respects iOS safe-area insets so it clears the home bar.
- */
 export default function MobileNav() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const location = useLocation()
@@ -20,15 +14,15 @@ export default function MobileNav() {
 
   return (
     <>
-      {/* Full-screen "More" sheet */}
+      {/* Full-screen "More" sheet — grouped layout */}
       {sheetOpen && (
         <div
-          className="md:hidden fixed inset-0 z-50 bg-[#070709]/95 backdrop-blur-xl flex flex-col"
+          className="md:hidden fixed inset-0 z-50 bg-[#070709]/97 backdrop-blur-xl flex flex-col"
           role="dialog"
           aria-modal="true"
           aria-label="All navigation"
         >
-          <div className="flex items-center justify-between px-5 h-14 border-b border-white/[0.06]">
+          <div className="flex items-center justify-between px-5 h-14 border-b border-white/[0.06] shrink-0">
             <span
               className="font-bold text-base text-transparent bg-clip-text"
               style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
@@ -43,24 +37,34 @@ export default function MobileNav() {
               <X size={22} />
             </button>
           </div>
-          <nav className="grid grid-cols-3 gap-3 p-5 overflow-y-auto" aria-label="All destinations">
-            {NAV.map(({ to, icon: Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                onClick={() => setSheetOpen(false)}
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center gap-2 aspect-square rounded-2xl border transition-all ${
-                    isActive
-                      ? 'border-[#00ff88]/40 bg-[#00ff88]/10 text-[#00ff88]'
-                      : 'border-white/[0.06] bg-white/[0.02] text-[#bdbdce] active:bg-white/[0.06]'
-                  }`
-                }
-              >
-                <Icon size={24} aria-hidden="true" />
-                <span className="text-[11px] font-medium text-center leading-tight px-1">{label}</span>
-              </NavLink>
+
+          <nav className="overflow-y-auto flex-1 p-4 space-y-4" aria-label="All destinations">
+            {NAV_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-[10px] font-bold tracking-widest text-[#444] uppercase px-1 mb-2">
+                  {group.label}
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {group.items.map(({ to, icon: Icon, label }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={to === '/'}
+                      onClick={() => setSheetOpen(false)}
+                      className={({ isActive }) =>
+                        `flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all ${
+                          isActive
+                            ? 'border-[#00ff88]/40 bg-[#00ff88]/10 text-[#00ff88]'
+                            : 'border-white/[0.06] bg-white/[0.02] text-[#bdbdce] active:bg-white/[0.06]'
+                        }`
+                      }
+                    >
+                      <Icon size={20} aria-hidden="true" />
+                      <span className="text-[10px] font-medium text-center leading-tight px-1">{label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
             ))}
           </nav>
         </div>
@@ -85,7 +89,7 @@ export default function MobileNav() {
         <button
           onClick={() => setSheetOpen(true)}
           className={tabClass(
-            sheetOpen || !PRIMARY_NAV.some((n) => n.to === location.pathname),
+            sheetOpen || !PRIMARY_NAV.some(n => n.to === location.pathname),
           )}
           aria-label="More navigation"
           aria-expanded={sheetOpen}

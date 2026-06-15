@@ -93,7 +93,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/" element={<AppShell />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<Navigate to="/bot-dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="equity" element={<EquityTrading />} />
           <Route path="crypto" element={<CryptoTrading />} />
