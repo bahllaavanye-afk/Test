@@ -71,8 +71,15 @@ class Settings(BaseSettings):
     arb_bucket_pct: float = 0.70         # 70% capital to arbitrage bucket
     ml_bucket_pct: float = 0.30          # 30% capital to ML bucket
 
-    # Anthropic — for CTO agent Slack review and alpha mining
+    # Anthropic — optional paid fallback for CTO agent Slack review (not required)
     anthropic_api_key: str = ""        # sk-ant-... from console.anthropic.com
+
+    # Free LLM providers — power the autonomous employee agents + alpha miner.
+    # Set at least one; numbered forms (GROQ_API_KEY_1) are also honoured.
+    # Egress hosts: api.groq.com, api.deepseek.com, generativelanguage.googleapis.com
+    groq_api_key: str = ""             # console.groq.com — fastest free tier (preferred)
+    deepseek_api_key: str = ""         # platform.deepseek.com
+    gemini_api_key: str = ""           # aistudio.google.com — Gemini 2.0 Flash free tier
 
     # Slack — bot token (preferred) or webhooks per channel
     slack_bot_token: str = ""          # xoxb-... (chat:write + chat:write.public scopes)

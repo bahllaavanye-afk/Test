@@ -76,57 +76,39 @@ def _resolve_key(*names: str) -> str:
     return ""
 
 
-async def _call_llm(messages: list[dict], max_tokens: int = 600) -> str:
-    """Try Groq → DeepSeek → Gemini for a chat completion."""
-    groq_key = _resolve_key("GROQ_API_KEY")
-    if groq_key:
-        try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                r = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {groq_key}"},
-                    json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": max_tokens},
-                )
-                if r.status_code == 200:
-                    return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception:
-            pass
+async def _call_llm(messages: list[dict], max_tokens: int = 600, agent: str | None = None) -> str:
+    """Chat completion via the shared free-LLM gateway (Groq → DeepSeek → Gemini)."""
+    from app.llm.gateway import complete
 
-    for key in [_resolve_key("DEEPSEEK_API_KEY"), os.environ.get("DEEPSEEK_API_KEY_2", ""),
-                os.environ.get("DEEPSEEK_API_KEY_3", "")]:
-        if not key:
-            continue
-        try:
-            async with httpx.AsyncClient(timeout=25) as client:
-                r = await client.post(
-                    "https://api.deepseek.com/chat/completions",
-                    headers={"Authorization": f"Bearer {key}"},
-                    json={"model": "deepseek-chat", "messages": messages, "max_tokens": max_tokens},
-                )
-                if r.status_code == 200:
-                    return r.json()["choices"][0]["message"]["content"].strip()
-        except Exception:
-            pass
-
-    gemini_key = _resolve_key("GEMINI_API_KEY")
-    if gemini_key:
-        try:
-            prompt = "\n".join(m["content"] for m in messages)
-            async with httpx.AsyncClient(timeout=25) as client:
-                r = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
-                    json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                          "generationConfig": {"maxOutputTokens": max_tokens}},
-                )
-                if r.status_code == 200:
-                    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except Exception:
-            pass
-
-    return "No LLM available — set GROQ_API_KEY_1, DEEPSEEK_API_KEY_1, or GEMINI_API_KEY_1 in environment."
+    text = await complete(messages, max_tokens=max_tokens, agent=agent)
+    if text is None:
+        return "No LLM available — set GROQ_API_KEY_1, DEEPSEEK_API_KEY_1, or GEMINI_API_KEY_1 in environment."
+    return text
 
 
 # ─── Read-only state endpoints ──────────────────────────────────────────────
+
+@router.get("/llm-status")
+async def get_llm_status(current_user: User = Depends(get_current_user)):
+    """Which free LLM providers are configured, plus the egress hosts they need.
+
+    Lets the UI/operator confirm autonomous LLM reasoning is actually live (vs.
+    silently degrading to built-in fallbacks because no key/egress is set).
+    """
+    from app.llm.gateway import PROVIDER_HOSTS, providers_configured
+
+    configured = providers_configured()
+    return {
+        "configured_providers": configured,
+        "autonomous_llm_active": bool(configured),
+        "egress_hosts_required": [PROVIDER_HOSTS[p] for p in PROVIDER_HOSTS],
+        "active_egress_hosts": [PROVIDER_HOSTS[p] for p in configured],
+        "note": (
+            "Set GROQ_API_KEY / DEEPSEEK_API_KEY / GEMINI_API_KEY and allow egress "
+            "to the listed hosts. With none set, agents use validated built-in fallbacks."
+        ),
+    }
+
 
 @router.get("/memory")
 async def get_memory(current_user: User = Depends(get_current_user)):

@@ -76,10 +76,15 @@ async def alpha_mining_cycle() -> None:
         pass
 
     try:
-        from app.config import settings as _settings
-        if not getattr(_settings, "anthropic_api_key", None):
-            logger.info("alpha_mining_cycle: ANTHROPIC_API_KEY not set — skipping")
-            return
+        # Runs on any free LLM provider (Groq/DeepSeek/Gemini). With none
+        # configured the miner still produces validated built-in factors, so
+        # the autonomous cycle is never a no-op.
+        from app.llm.gateway import providers_configured
+        providers = providers_configured()
+        if providers:
+            logger.info("alpha_mining_cycle: using free LLM provider", providers=providers)
+        else:
+            logger.info("alpha_mining_cycle: no free LLM key — running built-in factors")
 
         import asyncio
 

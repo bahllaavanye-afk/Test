@@ -209,7 +209,41 @@ async def _execute_task(task_id: str, task_type: str, params: dict, db_session_f
         result["status"] = "error"
         result["error"] = str(exc)[:500]
 
+    # ── Autonomous LLM reasoning layer ──────────────────────────────────────
+    # The responsible employee agent reasons (via the free gateway) about the
+    # rule-based result, attaches analysis/recommendations, and broadcasts to
+    # the AgentBus so other desks can react. Degrades honestly if no free
+    # provider is configured (llm: "unavailable" — never fabricated).
+    if result.get("status") == "ok":
+        try:
+            from app.llm.employees import reason_about_task
+
+            reasoning = await reason_about_task(task_type, result)
+            result["reasoning"] = reasoning
+            if reasoning.get("recommendations"):
+                await _broadcast_findings(task_type, reasoning)
+        except Exception as exc:
+            logger.debug("LLM reasoning skipped", task_type=task_type, error=str(exc))
+
     return result
+
+
+async def _broadcast_findings(task_type: str, reasoning: dict) -> None:
+    """Post an employee agent's findings to the AgentBus for cross-desk awareness."""
+    try:
+        from app.tasks.agent_bus import get_bus
+
+        agent = reasoning.get("agent", "coordinator")
+        channel = "risk" if task_type == "risk_check" else "strategy"
+        await get_bus().post_finding(
+            channel=channel,
+            summary=reasoning.get("analysis", "")[:200] or f"{task_type} reviewed",
+            details={"recommendations": reasoning.get("recommendations", []), "task_type": task_type},
+            from_agent=agent,
+            priority=2,
+        )
+    except Exception as exc:
+        logger.debug("Finding broadcast failed", error=str(exc))
 
 
 async def _run_alpha_miner(symbols: list[str]) -> None:

@@ -146,36 +146,36 @@ class AlphaMiner:
 
     def generate_factors(self, n: int = 5) -> list[dict]:
         """
-        Call QuantEdge AI API to generate n alpha factor proposals.
-        Returns list of dicts: [{name, formula, rationale}]
-        Falls back to a built-in set if Anthropic is not available.
+        Generate n alpha factor proposals via the shared free-LLM gateway
+        (Groq → DeepSeek → Gemini). Returns list of dicts: [{name, formula, rationale}].
+        Falls back to a built-in set if no free provider is configured/reachable.
         """
-        if not _HAS_ANTHROPIC:
-            print("anthropic package not installed — using built-in factor proposals")
+        try:
+            from app.llm.gateway import complete_sync
+        except Exception:
+            print("free-LLM gateway unavailable — using built-in factor proposals")
+            return self._builtin_factors()
+
+        content = complete_sync(
+            [{"role": "user", "content": _GENERATION_PROMPT.format(n=n)}],
+            max_tokens=1024,
+            agent="alpha_miner",
+        )
+        if not content:
+            print("no free LLM provider configured — using built-in factor proposals")
             return self._builtin_factors()
 
         try:
-            client = anthropic.Anthropic()
-            message = client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": _GENERATION_PROMPT.format(n=n),
-                    }
-                ],
-            )
-            content = message.content[0].text.strip()
             # Extract JSON array
             start = content.find("[")
             end = content.rfind("]") + 1
             if start == -1 or end == 0:
                 raise ValueError("No JSON array found in response")
             proposals = json.loads(content[start:end])
-            return [p for p in proposals if "name" in p and "formula" in p]
+            parsed = [p for p in proposals if "name" in p and "formula" in p]
+            return parsed or self._builtin_factors()
         except Exception as e:
-            print(f"LLM factor generation failed ({e}), using built-in factors")
+            print(f"LLM factor parsing failed ({e}), using built-in factors")
             return self._builtin_factors()
 
     def _builtin_factors(self) -> list[dict]:
