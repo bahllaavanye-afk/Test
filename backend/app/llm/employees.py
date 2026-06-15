@@ -86,7 +86,10 @@ async def reason_about_task(task_type: str, context: dict, max_tokens: int = 400
         agent=agent_name,
     )
     if text is None:
-        return {"llm": "unavailable", "agent": agent_name}
+        # No LLM provider configured — run the deterministic rule engine instead.
+        # This keeps every autonomous loop functional with zero API keys.
+        from app.llm.rule_engine import rule_reason
+        return rule_reason(task_type, context)
 
     parsed = _extract_json(text)
     if parsed is None:

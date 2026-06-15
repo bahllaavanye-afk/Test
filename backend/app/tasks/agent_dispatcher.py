@@ -187,13 +187,14 @@ async def _execute_task(task_id: str, task_type: str, params: dict, db_session_f
             result["message"] = "Slippage analysis: no fills data yet (paper mode)"
 
         elif task_type == "alpha_mining":
+            symbols = params.get("symbols", ["SPY", "QQQ", "BTC-USD"])
             result["status"] = "ok"
+            result["symbols"] = symbols
             result["message"] = "Alpha mining scheduled — see experiments/alpha_mining/results/"
-            # Kick off the actual miner asynchronously (non-blocking)
+            # Kick off the miner unconditionally — it uses free-LLM gateway with
+            # built-in factor fallback when no provider key is set.
             try:
-                from app.config import settings as _settings
-                if getattr(_settings, "anthropic_api_key", None):
-                    asyncio.create_task(_run_alpha_miner(params.get("symbols", ["SPY"])))
+                asyncio.create_task(_run_alpha_miner(symbols))
             except Exception:
                 pass
 

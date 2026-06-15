@@ -38,14 +38,17 @@ async def test_complete_returns_none_without_keys(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_reason_about_task_unavailable_without_llm(monkeypatch):
+async def test_reason_about_task_falls_back_to_rule_engine(monkeypatch):
     for var in ("GROQ_API_KEY", "GROQ_API_KEY_1", "DEEPSEEK_API_KEY",
                 "DEEPSEEK_API_KEY_1", "GEMINI_API_KEY", "GEMINI_API_KEY_1"):
         monkeypatch.delenv(var, raising=False)
     out = await reason_about_task("risk_check", {"status": "ok", "regime": "bull"})
-    assert out["llm"] == "unavailable"
-    # Honest degradation: no fabricated analysis/recommendations.
-    assert "analysis" not in out or not out.get("analysis")
+    # Rule engine always produces real analysis — never returns "unavailable".
+    assert out.get("source") == "rule_engine"
+    assert out.get("agent") == "risk_agent"
+    assert out.get("analysis")           # non-empty string
+    assert isinstance(out.get("recommendations"), list)
+    assert len(out["recommendations"]) > 0
 
 
 def test_complete_sync_returns_none_without_keys(monkeypatch):

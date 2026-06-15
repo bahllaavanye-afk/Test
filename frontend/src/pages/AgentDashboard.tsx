@@ -395,6 +395,160 @@ function TaskPanel({
   )
 }
 
+interface LLMStatus {
+  configured_providers: string[]
+  autonomous_llm_active: boolean
+  egress_hosts_required: string[]
+  active_egress_hosts: string[]
+  note: string
+}
+
+function LLMStatusPanel() {
+  const { data, isLoading, error } = useQuery<LLMStatus>({
+    queryKey: ['agents', 'llm-status'],
+    queryFn: () => api.get('/agents/llm-status').then(r => r.data),
+    refetchInterval: 60_000,
+  })
+
+  const PROVIDER_INFO: Record<string, { label: string; host: string; link: string; color: string }> = {
+    groq:     { label: 'Groq', host: 'api.groq.com',                           link: 'console.groq.com',           color: '#f97316' },
+    deepseek: { label: 'DeepSeek', host: 'api.deepseek.com',                   link: 'platform.deepseek.com',      color: '#3b82f6' },
+    gemini:   { label: 'Gemini', host: 'generativelanguage.googleapis.com',    link: 'aistudio.google.com',        color: '#4285f4' },
+  }
+
+  const ALL_PROVIDERS = ['groq', 'deepseek', 'gemini']
+
+  if (isLoading) return (
+    <div style={{ padding: 24, color: '#555', fontSize: 12, textAlign: 'center' }}>Loading LLM status…</div>
+  )
+  if (error) return (
+    <div style={{ padding: 24, color: '#ff1744', fontSize: 12 }}>Failed to load LLM status</div>
+  )
+
+  const configured = data?.configured_providers ?? []
+  const active = data?.autonomous_llm_active ?? false
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', padding: 16 }}>
+      {/* Status banner */}
+      <div style={{
+        padding: '10px 14px', borderRadius: 8, marginBottom: 16,
+        background: active ? '#0a1a0a' : '#1a0a0a',
+        border: `1px solid ${active ? '#00c853' : '#ff1744'}`,
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <div style={{
+          width: 10, height: 10, borderRadius: '50%',
+          background: active ? '#00c853' : '#ff1744',
+          boxShadow: `0 0 8px ${active ? '#00c853' : '#ff1744'}`,
+        }} />
+        <div>
+          <div style={{ color: active ? '#00c853' : '#ff1744', fontWeight: 700, fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>
+            {active ? 'AUTONOMOUS LLM ACTIVE' : 'RULE ENGINE MODE (no API key)'}
+          </div>
+          <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
+            {active
+              ? `${configured.length} provider(s) configured — LLM reasoning layer is live`
+              : 'Agents run rule-based analysis — set a free API key for LLM depth'}
+          </div>
+        </div>
+      </div>
+
+      {/* Provider grid */}
+      <div style={{ color: '#555', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+        Free LLM Providers (priority order)
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+        {ALL_PROVIDERS.map((p, idx) => {
+          const info = PROVIDER_INFO[p]
+          const isOn = configured.includes(p)
+          return (
+            <div key={p} style={{
+              padding: '10px 12px', borderRadius: 6,
+              background: isOn ? '#0a160a' : '#111',
+              border: `1px solid ${isOn ? '#1a3a1a' : '#1e1e1e'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700,
+                  color: '#444', width: 14, textAlign: 'right',
+                  fontFamily: 'JetBrains Mono, monospace',
+                }}>{idx + 1}</span>
+                <span style={{ color: info.color, fontWeight: 700, fontSize: 12 }}>{info.label}</span>
+                <span style={{
+                  marginLeft: 'auto',
+                  fontSize: 10, padding: '2px 8px', borderRadius: 10,
+                  background: isOn ? '#00c853' : '#1e1e1e',
+                  color: isOn ? '#000' : '#555',
+                  fontWeight: isOn ? 700 : 400,
+                }}>
+                  {isOn ? '✓ configured' : 'not set'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 6, fontSize: 10, color: '#444', paddingLeft: 22 }}>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{info.host}</span>
+                <span>·</span>
+                <span style={{ color: '#555' }}>{info.link}</span>
+              </div>
+              {!isOn && (
+                <div style={{ paddingLeft: 22, marginTop: 4, fontSize: 10, color: '#555', fontFamily: 'JetBrains Mono, monospace' }}>
+                  Set {p.toUpperCase()}_API_KEY in Render → Environment
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Egress note */}
+      <div style={{ color: '#555', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+        Required Egress Hosts
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 20 }}>
+        {(data?.egress_hosts_required ?? ['api.groq.com', 'api.deepseek.com', 'generativelanguage.googleapis.com']).map(h => (
+          <div key={h} style={{
+            padding: '6px 10px', borderRadius: 4,
+            background: (data?.active_egress_hosts ?? []).includes(h) ? '#0a160a' : '#111',
+            border: '1px solid #1a1a1a',
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+            color: (data?.active_egress_hosts ?? []).includes(h) ? '#69f0ae' : '#555',
+          }}>
+            {h}
+          </div>
+        ))}
+        <div style={{ color: '#444', fontSize: 10, marginTop: 4 }}>
+          Add these to Render → Settings → Outbound Networking allowlist
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div style={{ color: '#555', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+        How It Works
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11, color: '#666' }}>
+        {[
+          { step: '1', label: 'Rule Engine', desc: 'Always runs — zero config needed', color: '#00c853' },
+          { step: '2', label: 'Free LLM', desc: 'Enhances with language model depth (Groq → DeepSeek → Gemini)', color: '#f5a623' },
+          { step: '3', label: 'Agent Bus', desc: 'Broadcasts findings to all desks via Redis Streams', color: '#2196F3' },
+          { step: '4', label: 'Slack', desc: 'Posts standups + alerts when SLACK_BOT_TOKEN is set', color: '#9c27b0' },
+        ].map(({ step, label, desc, color }) => (
+          <div key={step} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <span style={{
+              width: 18, height: 18, borderRadius: '50%', background: '#1a1a1a',
+              color, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', flexShrink: 0, fontFamily: 'JetBrains Mono, monospace',
+            }}>{step}</span>
+            <div>
+              <span style={{ color: '#aaa', fontWeight: 600 }}>{label}</span>
+              <span style={{ color: '#555' }}> — {desc}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface CodeReview {
   domain: string
   employee: string
@@ -593,7 +747,7 @@ function MemoryPanel({ memory, skills }: { memory: Memory | null; skills: string
 
 export default function AgentDashboard() {
   const [selectedAgent, setSelectedAgent] = useState('free_agent_engineer')
-  const [rightTab, setRightTab] = useState<'memory' | 'tasks' | 'reviews'>('reviews')
+  const [rightTab, setRightTab] = useState<'memory' | 'tasks' | 'reviews' | 'llm'>('reviews')
   const qc = useQueryClient()
 
   const { data: roster = [] } = useQuery<AgentRoster[]>({
@@ -714,7 +868,10 @@ export default function AgentDashboard() {
 
         {/* Right: Memory + Tasks */}
         <div style={{ width: 340, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid #1e1e1e' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #1e1e1e', flexWrap: 'wrap' }}>
+            <button style={tabBtnStyle(rightTab === 'llm')} onClick={() => setRightTab('llm')}>
+              LLM
+            </button>
             <button style={tabBtnStyle(rightTab === 'reviews')} onClick={() => setRightTab('reviews')}>
               Reviews
             </button>
@@ -726,7 +883,9 @@ export default function AgentDashboard() {
             </button>
           </div>
           <div style={{ flex: 1, overflow: 'hidden' }}>
-            {rightTab === 'reviews' ? (
+            {rightTab === 'llm' ? (
+              <LLMStatusPanel />
+            ) : rightTab === 'reviews' ? (
               <CodeReviewPanel />
             ) : rightTab === 'memory' ? (
               <MemoryPanel

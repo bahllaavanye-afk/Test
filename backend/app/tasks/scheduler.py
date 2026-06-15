@@ -927,6 +927,31 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    # ── Daily Morning Standup (09:00 UTC) ────────────────────────────────────
+
+    async def _daily_standup():
+        """09:00 UTC: each team lead posts overnight summary → Slack threads."""
+        try:
+            from app.tasks.standup import run_daily_standup
+            result = await run_daily_standup(db_session_factory)
+            logger.info(
+                "Daily standup run",
+                teams=len(result.get("teams", [])),
+                slack_posts=result.get("slack_posts", 0),
+            )
+        except Exception as exc:
+            logger.error("Daily standup failed", error=str(exc))
+
+    scheduler.add_job(
+        _daily_standup,
+        "cron",
+        hour=9,
+        minute=0,
+        id="daily_standup",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     scheduler.start()
     logger.info("Scheduler started")
     return scheduler
