@@ -1,58 +1,99 @@
-import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, TrendingUp, Bitcoin, BarChart2, FlaskConical, Beaker, LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers, Globe, Coins, CandlestickChart, BrainCircuit, GitBranch, PackageCheck, Bot, Users, ScanSearch } from 'lucide-react'
+import { useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
+import { ChevronDown } from 'lucide-react'
+import { NAV_GROUPS, type NavGroup } from './navItems'
 
-const NAV = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/equity', icon: TrendingUp, label: 'Equity' },
-  { to: '/crypto', icon: Bitcoin, label: 'Crypto' },
-  { to: '/comparison', icon: BarChart2, label: 'Comparison' },
-  { to: '/backtest', icon: FlaskConical, label: 'Backtest' },
-  { to: '/experiments', icon: Beaker, label: 'Experiments' },
-  { to: '/ml-insights', icon: BrainCircuit, label: 'ML Insights' },
-  { to: '/bots', icon: Bot, label: 'Bot Builder' },
-  { to: '/agents', icon: Users, label: 'Agent Command' },
-  { to: '/scanners', icon: ScanSearch, label: 'Scanners' },
-  { to: '/analytics', icon: LineChart, label: 'Analytics' },
-  { to: '/risk', icon: Shield, label: 'Risk' },
-  { to: '/activity', icon: Activity, label: 'Activity' },
-  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
-  { to: '/pnl', icon: DollarSign, label: 'P&L' },
-  { to: '/archive', icon: Archive, label: 'Archive' },
-  { to: '/system', icon: Monitor, label: 'System Monitor' },
-  { to: '/options-chain', icon: CandlestickChart, label: 'Options Chain' },
-  { to: '/options', icon: Layers, label: 'Options & Macro' },
-  { to: '/macro', icon: Globe, label: 'Macro & Sentiment' },
-  { to: '/polymarket', icon: Coins, label: 'Polymarket' },
-  { to: '/pipeline', icon: GitBranch, label: 'Pipeline' },
-  { to: '/releases', icon: PackageCheck, label: 'Model Releases' },
-]
+function useActiveGroup(groups: NavGroup[]): string | null {
+  const { pathname } = useLocation()
+  for (const group of groups) {
+    if (group.items.some(item => item.to === pathname)) return group.label
+  }
+  return null
+}
+
+function NavGroupSection({ group, defaultOpen }: { group: NavGroup; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="mb-1">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-1.5 rounded-md text-[10px] font-bold tracking-widest text-[#555] hover:text-[#888] hover:bg-white/[0.03] transition-colors"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-1.5">
+          <span>{group.emoji}</span>
+          <span>{group.label}</span>
+        </span>
+        <ChevronDown
+          size={11}
+          className="transition-transform duration-200"
+          style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+          aria-hidden="true"
+        />
+      </button>
+
+      {open && (
+        <div className="mt-0.5 space-y-0.5">
+          {group.items.map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/dashboard' || to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs transition-all duration-150 ${
+                  isActive
+                    ? 'bg-[#00ff88]/10 text-[#00ff88] font-semibold shadow-[0_0_10px_rgba(0,255,136,0.12)]'
+                    : 'text-[#777] hover:text-[#e8e8e8] hover:bg-white/[0.05]'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon size={14} aria-hidden="true" className="flex-shrink-0" />
+                  <span className="truncate">{label}</span>
+                  {isActive && <span className="sr-only">(current page)</span>}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Sidebar() {
+  const activeGroup = useActiveGroup(NAV_GROUPS)
+
   return (
-    <aside className="w-16 glass-panel border-r border-white/[0.06] flex flex-col items-center py-4 gap-1 relative z-10 overflow-visible">
-      <div
-        className="font-bold text-lg mb-6 text-transparent bg-clip-text"
-        style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
+    <aside className="hidden md:flex w-52 glass-panel border-r border-white/[0.06] flex-col py-4 relative z-10 overflow-y-auto overflow-x-hidden scrollbar-thin">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded"
       >
-        Q
-      </div>
-      {NAV.map(({ to, icon: Icon, label }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={to === '/'}
-          className={({ isActive }) =>
-            `sidebar-nav-item w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 ${
-              isActive
-                ? 'bg-[#00ff88]/10 text-[#00ff88] shadow-[0_0_12px_rgba(0,255,136,0.20)]'
-                : 'text-[#888888] hover:text-[#e8e8e8] hover:bg-white/[0.06] hover:shadow-[0_0_8px_rgba(0,212,255,0.10)]'
-            }`
-          }
+        Skip to main content
+      </a>
+
+      {/* Brand */}
+      <div className="px-4 mb-5">
+        <div
+          className="font-bold text-sm tracking-tight text-transparent bg-clip-text"
+          style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
         >
-          <Icon size={18} />
-          <span className="sidebar-tooltip">{label}</span>
-        </NavLink>
-      ))}
+          QUANTEDGE
+        </div>
+      </div>
+
+      <nav aria-label="Main navigation" className="flex-1 px-2">
+        {NAV_GROUPS.map(group => (
+          <NavGroupSection
+            key={group.label}
+            group={group}
+            defaultOpen={activeGroup === group.label || group.label === 'BOTS'}
+          />
+        ))}
+      </nav>
     </aside>
   )
 }

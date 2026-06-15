@@ -32,6 +32,9 @@ const MLInsights = lazy(() => import('./pages/MLInsights'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Releases = lazy(() => import('./pages/Releases'))
 const BotBuilder = lazy(() => import('./pages/BotBuilder'))
+const BotDashboard = lazy(() => import('./pages/BotDashboard'))
+const BotDesk = lazy(() => import('./pages/BotDesk'))
+const BotDetail = lazy(() => import('./pages/BotDetail'))
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
 const Scanners = lazy(() => import('./pages/Scanners'))
 
@@ -81,7 +84,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<Navigate to="/bot-dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="equity" element={<EquityTrading />} />
           <Route path="crypto" element={<CryptoTrading />} />
           <Route path="comparison" element={<Comparison />} />
@@ -102,7 +106,12 @@ export default function App() {
           <Route path="pipeline" element={<Pipeline />} />
           <Route path="releases" element={<Releases />} />
           <Route path="bots" element={<BotBuilder />} />
+          <Route path="bot-builder" element={<BotBuilder />} />
+          <Route path="bot-dashboard" element={<BotDashboard />} />
+          <Route path="bot-dashboard/:botId" element={<BotDetail />} />
+          <Route path="bot-desk" element={<BotDesk />} />
           <Route path="agents" element={<AgentDashboard />} />
+          <Route path="agent-dashboard" element={<AgentDashboard />} />
           <Route path="scanners" element={<Scanners />} />
         </Route>
       </Routes>

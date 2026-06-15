@@ -265,6 +265,116 @@ function ConfirmLiveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCa
 // Top 5 symbols for the "Recent Trades" section
 const TRADE_SYMBOLS = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA']
 
+// ── Bot Activity Feed ───────────────────────────────────────────────────────
+interface BotActivity {
+  id: string
+  type: 'signal' | 'fill' | 'info'
+  ts: string
+  bot_name: string
+  description: string
+  pnl: number
+}
+
+const PLACEHOLDER_ACTIVITIES: BotActivity[] = [
+  { id: '1', type: 'fill',   ts: new Date(Date.now() - 1  * 60000).toISOString(), bot_name: 'MomentumBot-SPY',    description: 'BUY 50 SPY @ $521.40 — filled',           pnl:  87.50 },
+  { id: '2', type: 'signal', ts: new Date(Date.now() - 3  * 60000).toISOString(), bot_name: 'ArbitrageBot-BTC',   description: 'Long signal triggered — RSI 28 divergence', pnl:   0    },
+  { id: '3', type: 'fill',   ts: new Date(Date.now() - 7  * 60000).toISOString(), bot_name: 'TrendFollower-QQQ',  description: 'SELL 25 QQQ @ $448.10 — filled',           pnl: -32.25 },
+  { id: '4', type: 'signal', ts: new Date(Date.now() - 14 * 60000).toISOString(), bot_name: 'MLPredictor-NVDA',   description: 'Short signal: model confidence 0.81',       pnl:   0    },
+  { id: '5', type: 'info',   ts: new Date(Date.now() - 22 * 60000).toISOString(), bot_name: 'RiskGuard',          description: 'Portfolio drawdown limit 4.2% — within threshold', pnl: 0 },
+]
+
+function formatTime(ts: string): string {
+  const diff = Math.round((Date.now() - new Date(ts).getTime()) / 60000)
+  if (diff < 1) return 'just now'
+  if (diff < 60) return `${diff}m ago`
+  return `${Math.round(diff / 60)}h ago`
+}
+
+function BotActivityFeed() {
+  const { data: botSummary } = useQuery({
+    queryKey: ['bot-summary-all'],
+    queryFn: () => api.get('/bots/summary/all').then(r => r.data).catch(() => null),
+    refetchInterval: 15_000,
+    retry: false,
+  })
+  const { data: recentSignals } = useQuery({
+    queryKey: ['strategies-signals-recent'],
+    queryFn: () => api.get('/strategies/signals/recent').then(r => r.data).catch(() => null),
+    refetchInterval: 15_000,
+    retry: false,
+  })
+
+  // Build activity list from live data if available, else show placeholder
+  let activities: BotActivity[] = []
+
+  if (Array.isArray(botSummary?.events) || Array.isArray(recentSignals)) {
+    const botEvents: BotActivity[] = Array.isArray(botSummary?.events)
+      ? botSummary.events.map((e: any) => ({
+          id: e.id ?? String(Math.random()),
+          type: (e.type as BotActivity['type']) ?? 'info',
+          ts: e.ts ?? e.timestamp ?? new Date().toISOString(),
+          bot_name: e.bot_name ?? e.name ?? 'Bot',
+          description: e.description ?? e.message ?? '',
+          pnl: e.pnl ?? 0,
+        }))
+      : []
+    const signalEvents: BotActivity[] = Array.isArray(recentSignals)
+      ? recentSignals.map((s: any) => ({
+          id: s.id ?? String(Math.random()),
+          type: 'signal' as const,
+          ts: s.ts ?? s.timestamp ?? new Date().toISOString(),
+          bot_name: s.strategy_name ?? s.bot_name ?? 'Strategy',
+          description: `${s.direction ?? s.side ?? 'Signal'} on ${s.symbol ?? ''} — ${s.reason ?? 'triggered'}`,
+          pnl: s.pnl ?? 0,
+        }))
+      : []
+    activities = [...botEvents, ...signalEvents]
+      .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+      .slice(0, 20)
+  }
+
+  const isPlaceholder = activities.length === 0
+  const displayActivities = isPlaceholder ? PLACEHOLDER_ACTIVITIES : activities
+
+  return (
+    <div className="kpi-card">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <p className="section-header" style={{ marginBottom: 0 }}>Bot Activity Feed</p>
+          {isPlaceholder && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#1e1e1e] text-[#555] font-mono">placeholder</span>
+          )}
+        </div>
+        <span className="text-[10px] text-[#555] font-mono">last 20 events</span>
+      </div>
+      <div className="space-y-2">
+        {displayActivities.map(event => (
+          <div
+            key={event.id}
+            className="flex items-center gap-3 p-3 bg-[#111] border border-[#1e1e1e] rounded-lg"
+          >
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                event.type === 'signal' ? 'bg-[#f5a623]'
+                : event.type === 'fill'   ? 'bg-[#00c853]'
+                : 'bg-[#888]'
+              }`}
+            />
+            <span className="text-xs text-[#888] flex-shrink-0 font-mono w-14">{formatTime(event.ts)}</span>
+            <span className="text-sm font-medium text-[#e8e8e8] flex-shrink-0 truncate max-w-[120px]">{event.bot_name}</span>
+            <span className="text-sm text-[#aaa] flex-1 truncate">{event.description}</span>
+            {event.pnl !== 0 && (
+              <span className={`ml-auto text-xs flex-shrink-0 font-mono font-bold ${event.pnl >= 0 ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>
+                {event.pnl >= 0 ? '+' : ''}${event.pnl.toFixed(2)}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const dispatch = useDispatch()
   const mode = useSelector(selectTradingMode)
@@ -293,6 +403,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-5">
       {showLiveModal && <ConfirmLiveModal onConfirm={() => { dispatch(setMode('live')); setShowLiveModal(false) }} onCancel={() => setShowLiveModal(false)} />}
+
+      {/* ── Bot Activity Feed (top of dashboard) ── */}
+      <BotActivityFeed />
 
       <div className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all duration-500 ${isLive ? 'bg-[#ff1744]/10 border border-[#ff1744]/40' : 'bg-[#f5a623]/10 border border-[#f5a623]/30'}`}>
         <div className="flex items-center gap-3">
