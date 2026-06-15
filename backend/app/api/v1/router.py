@@ -75,3 +75,5 @@ from app.api.v1.tasks import router as tasks_router
 
 api_router.include_router(tasks_router)
 api_router.include_router(copy_trading_router)
+from app.api.v1.system import router as system_router
+api_router.include_router(system_router)

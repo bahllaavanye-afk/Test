@@ -20,6 +20,19 @@ def get_scheduler() -> AsyncIOScheduler:
     return _scheduler
 
 
+def get_scheduler_jobs() -> list[dict]:
+    """Return metadata about all registered scheduler jobs."""
+    if _scheduler is None:
+        return []
+    return [
+        {
+            "id": job.id,
+            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+        }
+        for job in _scheduler.get_jobs()
+    ]
+
+
 async def agent_health_check() -> None:
     """Check all agent processes alive, ping Redis, alert on failures."""
     try:
@@ -268,7 +281,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     scheduler.add_job(
         _order_sync,
         "interval",
-        minutes=1,
+        seconds=15,
         id="order_sync",
         replace_existing=True,
         max_instances=1,
