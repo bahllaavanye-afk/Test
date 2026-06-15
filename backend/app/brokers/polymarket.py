@@ -84,3 +84,43 @@ class PolymarketBroker(AbstractBroker):
 
     async def get_historical(self, symbol: str, interval: str = "1d", limit: int = 500) -> list[dict]:
         return []  # Polymarket doesn't have traditional OHLCV
+
+
+import urllib.request as _urllib_request
+import json as _json
+
+
+class PolymarketPublicClient:
+    """Read-only Polymarket CLOB client — no API key required."""
+    BASE = "https://clob.polymarket.com"
+
+    def _get(self, path: str, params: dict | None = None) -> dict | list:
+        url = f"{self.BASE}{path}"
+        if params:
+            qs = "&".join(f"{k}={v}" for k, v in params.items())
+            url = f"{url}?{qs}"
+        try:
+            with _urllib_request.urlopen(url, timeout=10) as resp:
+                return _json.loads(resp.read().decode())
+        except Exception as exc:
+            from app.utils.logging import logger
+            logger.debug("PolymarketPublicClient fetch failed", url=url, error=str(exc))
+            return {}
+
+    def get_markets(self, limit: int = 50) -> list[dict]:
+        """Fetch active markets sorted by volume."""
+        data = self._get("/markets", {"limit": str(limit), "active": "true"})
+        if isinstance(data, dict):
+            return data.get("data", []) or []
+        if isinstance(data, list):
+            return data
+        return []
+
+    def get_last_price(self, token_id: str) -> float | None:
+        """Return last YES token price (0–1 range)."""
+        data = self._get("/last-trade-price", {"token_id": token_id})
+        if isinstance(data, dict):
+            price = data.get("price")
+            if price is not None:
+                return float(price)
+        return None
