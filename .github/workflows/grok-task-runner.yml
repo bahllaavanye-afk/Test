@@ -26,9 +26,12 @@ concurrency:
 
 jobs:
   run-task:
+    # Issue-triggered runs require a trusted author — never act on issue text
+    # from untrusted authors (prevents issue → auto-commit injection).
     if: >
       github.event_name != 'issues' ||
-      github.event.label.name == 'grok-task'
+      (github.event.label.name == 'grok-task' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -71,9 +74,13 @@ jobs:
           OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
+          # Untrusted GitHub inputs via env, never inline in the shell.
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+          INPUT_ISSUE: ${{ inputs.issue_number }}
+          INPUT_TASK: ${{ inputs.task }}
         run: |
-          ISSUE="${{ github.event.issue.number || inputs.issue_number }}"
-          TASK="${{ inputs.task }}"
+          ISSUE="${EVENT_ISSUE:-$INPUT_ISSUE}"
+          TASK="$INPUT_TASK"
           if [ -n "$TASK" ]; then
             python .github/scripts/grok_task_runner.py --task "$TASK"
           elif [ -n "$ISSUE" ]; then

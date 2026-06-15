@@ -283,12 +283,18 @@ def llm_with_provider(
     max_tokens: int = 400,
     temperature: float = 0.7,
     inject_company_context: bool = False,
-) -> str:
+    fallback_to_cascade: bool = True,
+) -> tuple[str, str]:
     """
     Call a SPECIFIC named provider (e.g. 'gemini', 'groq', 'nvidia_nim').
     Used when you want each agent pinned to an independent LLM so reviews are truly independent.
-    Falls back to the cascade if the named provider is unavailable.
-    Returns (response_text, actual_provider_name) tuple.
+
+    fallback_to_cascade:
+        True  → if the named provider misses, race the default cascade.
+        False → return ('', '') so the caller can advance to the NEXT provider
+                in its own tier order (model_router.smart_llm relies on this so
+                the tier-specific ordering isn't overridden by the fixed race).
+    Returns (response_text, actual_provider_name).
     """
     provider = next((p for p in _PROVIDERS if p["name"] == provider_name), None)
 
@@ -308,20 +314,35 @@ def llm_with_provider(
         except Exception as e:
             logger.warning("Provider %s failed in llm_with_provider: %s", provider_name, e)
 
+    if not fallback_to_cascade:
+        return "", ""
+
     # Fall back to cascade
     result, used = _call_parallel_race(system, prompt, max_tokens, temperature)
     return (result or "[LLM unavailable]", used or "cascade")
 
 
+def _resolve_env_key(base: str) -> str:
+    """Resolve a key from base or its numbered variants (base, base_1.._3).
+
+    Production secrets are often stored numbered (GROQ_API_KEY_1) with no plain
+    name. Without this, a provider whose only key is GROQ_API_KEY_1 looks
+    unavailable and is skipped — wasting provisioned free capacity (finding L12).
+    """
+    for name in (base, f"{base}_1", f"{base}_2", f"{base}_3"):
+        v = os.environ.get(name, "")
+        if v and v != "disabled":
+            return v
+    return ""
+
+
 def _has_key(p: dict) -> bool:
-    """Check if a provider has an API key configured (supports primary + alt env var)."""
-    v = os.environ.get(p["key_env"], "")
-    if v and v != "disabled":
+    """Check if a provider has an API key configured (primary, numbered, or alt)."""
+    if _resolve_env_key(p["key_env"]):
         return True
     alt = p.get("key_env_alt", "")
     if alt:
-        v2 = os.environ.get(alt, "")
-        return bool(v2) and v2 != "disabled"
+        return bool(_resolve_env_key(alt))
     return False
 
 
@@ -380,12 +401,12 @@ def _call_parallel_race(
 
 
 def _provider_key(provider: dict) -> str:
-    """Return API key for a provider, checking primary env var then optional alt."""
-    key = os.environ.get(provider["key_env"], "")
-    if not key or key == "disabled":
+    """Return API key for a provider — primary, numbered variants, then alt."""
+    key = _resolve_env_key(provider["key_env"])
+    if not key:
         alt = provider.get("key_env_alt", "")
-        key = os.environ.get(alt, "") if alt else ""
-    if not key or key == "disabled":
+        key = _resolve_env_key(alt) if alt else ""
+    if not key:
         raise KeyError(f"No API key for provider {provider['name']}")
     return key
 

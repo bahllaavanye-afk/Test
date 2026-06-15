@@ -75,10 +75,21 @@ def test_claude_flag_off_blocks_escalation(monkeypatch):
 
 def test_claude_budget_exhaustion_blocks(monkeypatch, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("ALLOW_CLAUDE_SENIOR", "true")  # opt-in, so budget is the gate under test
     monkeypatch.setenv("CLAUDE_DAILY_BUDGET", "0")
     import model_router as m
     importlib.reload(m)
     assert m.claude_budget_remaining() == 0
+    assert m.route("risk_signoff", "cro")["claude_eligible"] is False
+
+
+def test_claude_fail_closed_by_default(monkeypatch):
+    # Key present but ALLOW_CLAUDE_SENIOR unset → must NOT escalate (fail-closed).
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("ALLOW_CLAUDE_SENIOR", raising=False)
+    monkeypatch.delenv("CLAUDE_DAILY_BUDGET", raising=False)
+    import model_router as m
+    importlib.reload(m)
     assert m.route("risk_signoff", "cro")["claude_eligible"] is False
 
 

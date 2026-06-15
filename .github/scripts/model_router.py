@@ -115,7 +115,10 @@ def is_senior(role: str) -> bool:
 
 
 def _claude_enabled() -> bool:
-    return os.environ.get("ALLOW_CLAUDE_SENIOR", "true").lower() != "false" and bool(
+    # Fail-closed: paid Claude escalation requires explicit opt-in
+    # (ALLOW_CLAUDE_SENIOR=true) AND a key. Any workflow that forgets the flag
+    # gets free-LLM-only behaviour, never silent paid spend.
+    return os.environ.get("ALLOW_CLAUDE_SENIOR", "false").lower() == "true" and bool(
         os.environ.get("ANTHROPIC_API_KEY", "").strip()
     )
 
@@ -192,15 +195,16 @@ def smart_llm(
     if plan["deterministic"]:
         return "", "rule_engine"  # caller should not have called an LLM for this
 
-    from llm_common import llm_with_provider
+    from llm_common import llm, llm_with_provider
 
-    # Try the free chain in tier order. llm_with_provider falls back to the
-    # global cascade if a named provider has no key, so a missing key never
-    # dead-ends the request.
+    # Try the free chain strictly in TIER order — fallback_to_cascade=False so a
+    # miss advances to the next tier provider instead of being overridden by the
+    # fixed gemini-first race (finding L2).
     for provider in plan["providers"]:
         text, used = llm_with_provider(
             prompt, provider, system=system, max_tokens=max_tokens,
             temperature=temperature, inject_company_context=True,
+            fallback_to_cascade=False,
         )
         if text and not text.startswith("[LLM unavailable"):
             return text, used
@@ -215,6 +219,13 @@ def smart_llm(
                 return text, "claude"
         except Exception:
             pass
+
+    # Last resort: the full llm_common cascade (all 11 providers) so an agent
+    # never goes silent while free capacity sits idle (finding L10).
+    text = llm(prompt, system=system, max_tokens=max_tokens,
+               temperature=temperature, use_cache=False)
+    if text and not text.startswith("[LLM unavailable"):
+        return text, "cascade"
 
     return "[LLM unavailable — all providers failed]", "none"
 

@@ -123,8 +123,10 @@ def put_env_var(sid: str, key: str, value: str) -> bool:
     r = _request("PUT", f"{RENDER_API}/services/{sid}/env-vars/{key}", json_body={"value": value})
     if r is not None and r.status_code in (200, 201):
         return True
-    detail = f"{r.status_code} {r.text[:120]}" if r is not None else "no response"
-    print(f"  PUT {key} failed: {detail}")
+    # Never print r.text — Render's validation errors can echo the submitted
+    # value, which would leak a secret into public Actions logs. Status only.
+    detail = str(r.status_code) if r is not None else "no response"
+    print(f"  PUT {key} failed: HTTP {detail}")
     return False
 
 

@@ -30,10 +30,13 @@ concurrency:
 
 jobs:
   run-task:
-    # Only fire on issue events when the label is "gemini-task"
+    # Only fire on issue events when the label is "gemini-task" AND the issue
+    # was opened by a trusted member — never act on issue text from external/
+    # untrusted authors (prevents Slack/issue → auto-commit injection chains).
     if: >
       github.event_name != 'issues' ||
-      github.event.label.name == 'gemini-task'
+      (github.event.label.name == 'gemini-task' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -69,13 +72,19 @@ jobs:
           OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
+          # Pass untrusted GitHub inputs via env, never inline in the shell —
+          # prevents command injection through inputs.task / issue numbers.
+          INPUT_TASK: ${{ inputs.task }}
+          INPUT_ISSUE: ${{ inputs.issue_number }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ISSUE: ${{ github.event.issue.number }}
         run: |
-          if [ -n "${{ inputs.task }}" ]; then
-            python .github/scripts/gemini_task_runner.py --task "${{ inputs.task }}"
-          elif [ -n "${{ inputs.issue_number }}" ]; then
-            python .github/scripts/gemini_task_runner.py --issue "${{ inputs.issue_number }}"
-          elif [ "${{ github.event_name }}" = "issues" ]; then
-            python .github/scripts/gemini_task_runner.py --issue "${{ github.event.issue.number }}"
+          if [ -n "$INPUT_TASK" ]; then
+            python .github/scripts/gemini_task_runner.py --task "$INPUT_TASK"
+          elif [ -n "$INPUT_ISSUE" ]; then
+            python .github/scripts/gemini_task_runner.py --issue "$INPUT_ISSUE"
+          elif [ "$EVENT_NAME" = "issues" ]; then
+            python .github/scripts/gemini_task_runner.py --issue "$EVENT_ISSUE"
           else
             python .github/scripts/gemini_task_runner.py
           fi

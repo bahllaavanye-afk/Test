@@ -20,6 +20,9 @@ on:
     - cron: "30 */6 * * *"   # every 6h: catch a provider going down
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 concurrency:
   group: agent-smoke-test
   cancel-in-progress: true
