@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1781484691,
+  "last_run_ts": 1781484881,
   "last_commit_sha": "85421c1",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -388,7 +388,8 @@
     "32c048378292",
     "8ed4cd89782c",
     "351d59c75f6c",
-    "889cb079c6cf"
+    "889cb079c6cf",
+    "9848a913c13b"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -409,7 +410,9 @@
     "ml-experiments:silent_ml_researcher": 1781484237.2925625,
     "desk-fx-rates:silent_vp_research": 1781484240.9508276,
     "alpha-research:silent_quant_researcher": 1781484692.552016,
-    "engineering:silent_momentum_quant": 1781484709.5061655
+    "engineering:silent_momentum_quant": 1781484709.5061655,
+    "leadership-summary:silent_cro": 1781484887.134541,
+    "engineering:silent_equity_lead": 1781484904.7396667
   },
   "response_cache": {},
   "posted_today": [
@@ -471,9 +474,9 @@
     "ml_researcher": 1781484182.2076101,
     "vp_research": 1781484182.2076101,
     "quant_researcher": 1781484692.5517592,
-    "cro": 1781463003.1508677,
+    "cro": 1781484887.1344893,
     "frontend": 1781465579.8587964,
-    "equity_lead": 1781418080.14155,
+    "equity_lead": 1781484887.1344893,
     "fixed_income_desk": 1781418080.14155,
     "macro_researcher": 1781418080.14155,
     "stat_arb_desk": 1781419293.7079203,
@@ -568,6 +571,16 @@
         "tokens": 600,
         "requests": 2
       }
+    },
+    "2026-06-15": {
+      "GEMINI_API_KEY_2": {
+        "tokens": 300,
+        "requests": 1
+      },
+      "GEMINI_API_KEY_3": {
+        "tokens": 300,
+        "requests": 1
+      }
     }
   },
   "onboarding_posted_week": "2026-W23",
@@ -658,20 +671,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "vp_research",
-      "score": 8,
-      "reason": "Provides specific file paths, mentions a concrete metric (Sharpe Ratio), and outlines a clear backtesting approach to address the strategy's performance decline.",
-      "channel": "unknown",
-      "ts": "2026-06-10 04:21:23"
-    },
-    {
-      "emp": "quant_researcher",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-10 04:21:27"
-    },
     {
       "emp": "ml_lead",
       "score": 5,
@@ -2057,25 +2056,23 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-06-15 00:51:54"
+    },
+    {
+      "emp": "cro",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-15 00:55:02"
+    },
+    {
+      "emp": "equity_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-06-15 00:55:13"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "backtest_engineer",
-      "channel": "unknown",
-      "text": "Currently validating the new `tx_cost_model_v2.yaml` for `momentum \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1781421233.8449488,
-      "score": 5
-    },
-    {
-      "emp": "data_engineer_2",
-      "channel": "unknown",
-      "text": "Investigating elevated feed latency for our Xetra (EUREX) market data ingestion. *Trade tick delivery is currently averaging 120ms*, exceeding our internal 50ms alert threshold since 06:45 UTC. I'm reviewing `quantedge/data/logs/eurex \u26a0\ufe0f",
-      "provider": "litellm:gemini",
-      "ts": 1781421258.7705047,
-      "score": 5
-    },
     {
       "emp": "infra_lead",
       "channel": "unknown",
@@ -2459,6 +2456,22 @@
       "provider": "litellm:groq",
       "ts": 1781484714.4735804,
       "score": 5
+    },
+    {
+      "emp": "cro",
+      "channel": "unknown",
+      "text": "Our single biggest firm-level risk remains *excessive leverage amplification* of correlated tail events. Specifically \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781484902.2323973,
+      "score": 5
+    },
+    {
+      "emp": "equity_lead",
+      "channel": "unknown",
+      "text": "Currently deep diving into our *Tech Sector Momentum Divergence* signal (`TSMD_002 \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1781484913.0835006,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -2474,9 +2487,9 @@
     "ml_researcher": "litellm:groq",
     "vp_research": "litellm:groq",
     "quant_researcher": "litellm:gemini",
-    "cro": "Gemini(GEMINI_API_KEY_2)",
+    "cro": "Gemini(GEMINI_API_KEY)",
     "frontend": "litellm:groq",
-    "equity_lead": "litellm:groq",
+    "equity_lead": "Gemini(GEMINI_API_KEY)",
     "fixed_income_desk": "litellm:groq",
     "macro_researcher": "litellm:groq",
     "stat_arb_desk": "litellm:groq",
@@ -2510,17 +2523,17 @@
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781437422.9805672,
     "gemini_fallback_engineering": 1781418077.3863528,
-    "GEMINI_API_KEY_3": 1781421176.7892883,
-    "GEMINI_API_KEY_2": 1781421176.7892883
+    "GEMINI_API_KEY_3": 1781484881.8019767,
+    "GEMINI_API_KEY_2": 1781484881.8019767
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
       "date": "2026-06-15",
-      "used": 0
+      "used": 300
     },
     "GEMINI_API_KEY_3": {
       "date": "2026-06-15",
-      "used": 0
+      "used": 300
     }
   },
   "bot_handle_announced": true,
@@ -2535,6 +2548,10 @@
     "2026-06-14": {
       "GEMINI_API_KEY_3": 900,
       "GEMINI_API_KEY_2": 600
+    },
+    "2026-06-15": {
+      "GEMINI_API_KEY_2": 300,
+      "GEMINI_API_KEY_3": 300
     }
   },
   "posted_today_date": "2026-06-14",
