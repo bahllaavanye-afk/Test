@@ -51,7 +51,7 @@ jobs:
       - name: Build (GitHub Pages base path)
         working-directory: frontend
         env:
-          VITE_API_URL: https://quantedge-api.onrender.com
+          VITE_API_URL: https://quantedge-api.onrender.com/api/v1
           # Base path MUST match the published URL case exactly. The repo is
           # "Test", so Pages serves at /Test/ — a lowercase /test/ base makes
           # every asset 404 and the page renders blank.
