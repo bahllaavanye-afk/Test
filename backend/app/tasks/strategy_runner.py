@@ -183,7 +183,7 @@ class ContinuousStrategyRunner:
         self._tasks = [
             asyncio.create_task(
                 self._run_loop(s["name"], symbol, s.get("params", {}),
-                               s.get("tick_interval_seconds", 60),
+                               s.get("tick_interval_seconds", 10),
                                s.get("confidence_threshold", 0.6))
             )
             for s in active_strategies
@@ -314,6 +314,25 @@ class ContinuousStrategyRunner:
                                                     signal.confidence, signal.target_price)
                     except Exception as notify_err:
                         logger.debug("Notification failed", error=str(notify_err))
+
+                    # ── AgentBus: post signal finding + Slack for high confidence ──
+                    try:
+                        from app.tasks.agent_bus import get_bus
+                        bus = get_bus()
+                        await bus.post_finding(
+                            "strategy",
+                            f"Signal: {strategy_name} {symbol} {signal.side}",
+                            {"confidence": signal.confidence, "symbol": symbol},
+                            from_agent=strategy_name,
+                        )
+                        if signal.confidence > 0.8:
+                            await bus.slack_notify(
+                                f"🚨 High-confidence signal: {strategy_name} {signal.side} {symbol} (conf={signal.confidence:.2f})",
+                                from_agent=strategy_name,
+                                level="info",
+                            )
+                    except Exception as _bus_err:
+                        logger.debug("AgentBus signal post failed", error=str(_bus_err))
 
                     # ── Submit order through risk-gated smart router ──────────
                     if self.broker is not None:
