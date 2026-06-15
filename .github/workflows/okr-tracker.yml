@@ -41,6 +41,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          INPUT_REPORT_TYPE: ${{ github.event.inputs.report_type }}
         run: |
           ARGS=""
           # Monday 14:00 run = weekly report
@@ -49,7 +50,7 @@ jobs:
           if [ "$DOW" = "1" ] && [ "$HOUR" = "14" ]; then
             ARGS="--weekly"
           fi
-          if [ "${{ github.event.inputs.report_type }}" = "weekly" ]; then
+          if [ "$INPUT_REPORT_TYPE" = "weekly" ]; then
             ARGS="--weekly"
           fi
           python .github/scripts/okr_tracker.py $ARGS

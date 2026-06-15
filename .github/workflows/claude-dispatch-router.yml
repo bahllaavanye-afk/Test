@@ -63,8 +63,10 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+          INPUT_ISSUE: ${{ inputs.issue_number }}
         run: |
-          ISSUE="${{ github.event.issue.number || inputs.issue_number }}"
+          ISSUE="${EVENT_ISSUE:-$INPUT_ISSUE}"
           if [ -n "$ISSUE" ]; then
             python .github/scripts/task_router.py route --issue "$ISSUE"
           else

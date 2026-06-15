@@ -74,13 +74,15 @@ jobs:
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
         run: |
           FLAGS=""
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
             FLAGS="--dry-run"
           fi
-          if [ -n "${{ inputs.channel }}" ]; then
-            FLAGS="$FLAGS --channel ${{ inputs.channel }}"
+          if [ -n "$INPUT_CHANNEL" ]; then
+            FLAGS="$FLAGS --channel $INPUT_CHANNEL"
           fi
           python .github/scripts/agent_health_monitor.py $FLAGS
           echo "exit_code=$?" >> $GITHUB_OUTPUT

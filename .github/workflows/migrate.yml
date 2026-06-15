@@ -52,8 +52,9 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL: https://paper-api.alpaca.markets
           REDIS_URL: ${{ secrets.REDIS_URL }}
+          INPUT_MODE: ${{ inputs.mode }}
         run: |
-          case "${{ inputs.mode }}" in
+          case "$INPUT_MODE" in
             upgrade-head)    alembic upgrade head ;;
             downgrade-base)  alembic downgrade base ;;
             current)         alembic current ;;

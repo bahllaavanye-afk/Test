@@ -62,6 +62,25 @@ try:
 except ImportError:
     _LITELLM_AVAILABLE = False
 
+# ── Unified LLM gateway — import from llm_common so all providers are shared ──
+# llm_common owns the canonical 11-provider list (Gemini, SambaNova, Cerebras,
+# Groq, DeepSeek, Together, Hyperbolic, NVIDIA NIM, Grok, Perplexity, OpenAI/GH).
+# _llm_waterfall() delegates here so DeepSeek/NVIDIA/together/hyperbolic are no
+# longer missing from the Slack-agent path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from llm_common import (  # type: ignore[import]
+        llm as _llm_gateway,
+        llm_with_provider as _llm_with_provider,
+        _has_key as _llm_common_has_key,
+    )
+    _LLM_COMMON_AVAILABLE = True
+except Exception:  # noqa: BLE001
+    _LLM_COMMON_AVAILABLE = False
+    _llm_gateway = None  # type: ignore[assignment]
+    _llm_with_provider = None  # type: ignore[assignment]
+    _llm_common_has_key = None  # type: ignore[assignment]
+
 REPO_ROOT  = Path(__file__).resolve().parents[2]
 STATE_PATH = REPO_ROOT / ".github" / "state" / "slack_state.json"
 BRAIN_FILE = REPO_ROOT / ".github" / "state" / "company_brain.json"
@@ -887,7 +906,7 @@ def score_agent_output(output: str, task_type: str, provider_used: str = "") -> 
 # Maps task type → preferred provider order.
 # Gemini 2.5 Flash is best for quant reasoning, ML analysis, risk, review.
 # Groq Llama 3.3 70B is best for code generation and fast turnaround.
-# Cerebras Qwen3 32B is a solid fallback but NOT used as primary on critical tasks.
+# Cerebras Llama 3.3 70B is a solid fallback but NOT used as primary on critical tasks.
 
 _TASK_ROUTING: dict[str, list[str]] = {
     "code":       ["gemini", "cerebras", "groq", "nvidia_nim", "openrouter"],
@@ -1003,7 +1022,7 @@ def call_best_agent_for_task(
                     continue
                 r = _try_openai_compat(
                     "https://api.cerebras.ai/v1/chat/completions",
-                    key, "qwen-3-32b", safe_sys, safe_prompt, cap)
+                    key, "llama-3.3-70b", safe_sys, safe_prompt, cap)
                 if r and len(r.strip()) > 20:
                     _LAST_PROVIDER = f"Cerebras({env_var})"
                     track_api_call(env_var, cap)
@@ -1685,12 +1704,12 @@ def call_sambanova(system_prompt: str, user_message: str, max_tokens: int = 600)
 
 
 def call_cerebras(system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Cerebras Inference — free 1M tokens/day, 2600 tok/sec, Qwen3 32B."""
+    """Cerebras Inference — free 1M tokens/day, 2600 tok/sec, Llama 3.3 70B."""
     api_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
     if not api_key:
         return None
     payload = {
-        "model": "qwen-3-32b",   # free on Cerebras, 1M tok/day
+        "model": "llama-3.3-70b",   # free on Cerebras, 1M tok/day
         "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -1980,7 +1999,7 @@ def call_employee_agent(
     if cerebras_key:
         r = _try_openai_compat(
             "https://api.cerebras.ai/v1/chat/completions",
-            cerebras_key, "qwen-3-32b", safe_system, safe_message, cap)
+            cerebras_key, "llama-3.3-70b", safe_system, safe_message, cap)
         if r and len(r.strip()) > 20:
             print(f"  [{emp_key}/cerebras] ✓ {len(r)} chars")
             _LAST_PROVIDER = "Cerebras"
@@ -2035,12 +2054,39 @@ def _llm_waterfall(
 ) -> tuple[str | None, str]:
     """Single provider cascade used by all LLM callers.
     Returns (text, provider_name). Never raises.
-    Order: GitHub Models → SambaNova → Gemini → Groq → Cerebras → OpenRouter.
+
+    Delegates to llm_common._llm_gateway() when available — this gives access to
+    all 11 providers (including DeepSeek, NVIDIA NIM, Together, Hyperbolic, Grok,
+    Perplexity) that the old hand-rolled cascade was missing. Falls back to the
+    original manual cascade when llm_common is not importable.
+
+    Provider order via llm_common (parallel race then sequential fallback):
+    GitHub Models/OpenAI → Gemini → SambaNova → Cerebras → Groq → DeepSeek →
+    Together → Hyperbolic → NVIDIA NIM → Grok → Perplexity → OpenRouter.
     """
     cap = min(max_tokens, MAX_TOKENS_PER_CALL)
     safe_sys = _sanitize(system_prompt)
     safe_msg = _sanitize(user_message)
     label = f"[{task_label}]" if task_label else ""
+
+    # ── Fast path: delegate to unified llm_common gateway ────────────────────
+    # This brings in all 11 providers with parallel-race + sequential fallback.
+    if _LLM_COMMON_AVAILABLE and _llm_gateway is not None:
+        try:
+            result = _llm_gateway(
+                safe_msg,
+                system=safe_sys,
+                max_tokens=cap,
+                use_cache=False,          # waterfall callers manage their own cache
+                inject_company_context=False,  # callers inject context themselves
+            )
+            if result and not result.startswith("[LLM unavailable"):
+                print(f"  {label}[llm_common] ✓ {len(result)} chars")
+                return result.strip(), "llm_common"
+        except Exception as _wf_exc:
+            print(f"  {label}[llm_common] error: {_wf_exc} — falling through to manual cascade")
+
+    # ── Fallback: original manual cascade (used when llm_common import fails) ─
 
     # 1. GitHub Models — always works in Actions, GPT-4o-mini + Llama fallback
     r = call_github_models(safe_sys, safe_msg, cap)
@@ -2078,14 +2124,14 @@ def _llm_waterfall(
             track_api_call(env_var, cap)
             return r3.strip(), f"Groq({env_var})"
 
-    # 5. Cerebras — round-robin
+    # 5. Cerebras — round-robin (model: llama-3.3-70b per llm_common canonical list)
     for env_var in ["CEREBRAS_API_KEY", "CEREBRAS_API_KEY_1", "CEREBRAS_API_KEY_2"]:
         key = os.environ.get(env_var, "").strip()
         if not key:
             continue
         r4 = _try_openai_compat(
             "https://api.cerebras.ai/v1/chat/completions",
-            key, "qwen-3-32b", safe_sys, safe_msg, cap)
+            key, "llama-3.3-70b", safe_sys, safe_msg, cap)
         if r4 and len(r4.strip()) > 20:
             print(f"  {label}[cerebras/{env_var}] ✓ {len(r4)} chars")
             track_api_call(env_var, cap)
@@ -2950,8 +2996,8 @@ _PROVIDER_LIMITS = {
     "GEMINI_API_KEY_1":   {"tok_day": 0,         "req_day": 1_500, "model": "Gemini 2.5 Flash"},
     "GEMINI_API_KEY_2":   {"tok_day": 0,         "req_day": 1_500, "model": "Gemini 2.5 Flash"},
     "GEMINI_API_KEY_3":   {"tok_day": 0,         "req_day": 1_500, "model": "Gemini 2.5 Flash"},
-    "CEREBRAS_API_KEY_1": {"tok_day": 1_000_000, "req_day": 1_440, "model": "Qwen3 32B"},
-    "CEREBRAS_API_KEY_2": {"tok_day": 1_000_000, "req_day": 1_440, "model": "Qwen3 32B"},
+    "CEREBRAS_API_KEY_1": {"tok_day": 1_000_000, "req_day": 1_440, "model": "Llama 3.3 70B"},
+    "CEREBRAS_API_KEY_2": {"tok_day": 1_000_000, "req_day": 1_440, "model": "Llama 3.3 70B"},
     "SAMBANOVA_API_KEY":  {"tok_day": 20_000_000,"req_day": 10_000,"model": "Llama 3.3 70B"},
     "OPENROUTER_API_KEY": {"tok_day": 200_000,   "req_day": 50,    "model": "Llama 3.3 70B :free"},
 }
@@ -9178,7 +9224,7 @@ def fill_idle_capacity(token: str, state: dict) -> int:
             print(f"  [fill_idle] {cerebras_env} idle — posting to #engineering")
             r = _try_openai_compat(
                 "https://api.cerebras.ai/v1/chat/completions",
-                api_key, "qwen-3-32b", sys_prompt, _prompt, 300)
+                api_key, "llama-3.3-70b", sys_prompt, _prompt, 300)
             if r:
                 track_api_call(cerebras_env, 300)
                 res = post_to_slack(token, "engineering",

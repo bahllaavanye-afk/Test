@@ -72,12 +72,14 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           PYTHONPATH: "."
+          INPUT_SYMBOL: ${{ github.event.inputs.symbol || 'all' }}
+          INPUT_INTERVAL: ${{ github.event.inputs.interval || '1d' }}
         run: |
-          SYMBOL="${{ github.event.inputs.symbol || 'all' }}"
+          SYMBOL="$INPUT_SYMBOL"
           if [ "$SYMBOL" = "all" ]; then
             python -m app.ml.training.train_gemini --all 2>&1 | tee /tmp/gemini_train.log
           else
-            INTERVAL="${{ github.event.inputs.interval || '1d' }}"
+            INTERVAL="$INPUT_INTERVAL"
             python -m app.ml.training.train_gemini --symbol "$SYMBOL" --interval "$INTERVAL" 2>&1 | tee /tmp/gemini_train.log
           fi
 

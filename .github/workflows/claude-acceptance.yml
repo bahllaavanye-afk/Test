@@ -39,9 +39,13 @@ jobs:
       # Skip acceptance check on Claude's own commits (avoid loops)
       - name: Check commit author
         id: author_check
+        env:
+          PUSHER_NAME: ${{ github.event.pusher.name }}
+          ACTOR: ${{ github.actor }}
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          AUTHOR="${{ github.event.pusher.name || github.actor }}"
-          if [[ "$AUTHOR" == *"claude"* ]] || [[ "${{ github.event.head_commit.message }}" == *"[skip ci]"* ]]; then
+          AUTHOR="${PUSHER_NAME:-$ACTOR}"
+          if [[ "$AUTHOR" == *"claude"* ]] || [[ "$HEAD_COMMIT_MSG" == *"[skip ci]"* ]]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -76,8 +80,9 @@ jobs:
           GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
+          INPUT_ISSUE: ${{ inputs.issue_number }}
         run: |
-          ISSUE="${{ inputs.issue_number }}"
+          ISSUE="$INPUT_ISSUE"
           if [ -n "$ISSUE" ]; then
             python .github/scripts/task_router.py accept --issue "$ISSUE"
           else

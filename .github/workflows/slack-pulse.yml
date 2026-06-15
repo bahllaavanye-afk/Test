@@ -72,7 +72,7 @@ jobs:
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             # Push: quick mode handles event-specific deploy notifications dynamically
             python .github/scripts/slack_agent_team.py quick
           else

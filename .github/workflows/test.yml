@@ -154,9 +154,11 @@ jobs:
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_NAME: ${{ github.event.repository.name }}
         run: |
-          PR_NUM=${{ github.event.pull_request.number }}
-          REPO=${{ github.repository }}
+          PR_NUM="$PR_NUMBER"
+          REPO="${{ github.repository }}"
           {
             echo "## 🔍 CI debug — \`$(git rev-parse --short HEAD)\`"
             echo ""
@@ -170,7 +172,7 @@ jobs:
             echo ""
             echo "### app.main import"
             echo '```'
-            cd /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/backend
+            cd /home/runner/work/"$REPO_NAME"/"$REPO_NAME"/backend
             PYTHONPATH=. SECRET_KEY=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 \
               DATABASE_URL=sqlite+aiosqlite:///./test.db ALEMBIC_DATABASE_URL=sqlite:///./test.db \
               REDIS_URL= TRADING_MODE=test ALPACA_API_KEY=test ALPACA_SECRET_KEY=test \
