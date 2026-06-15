@@ -138,6 +138,51 @@ _PROVIDERS = [
         "model": "nvidia/llama-3.1-nemotron-70b-instruct",
         "rpm_free": 40,
     },
+    # ── New providers: Grok, Perplexity, GitHub Models (OpenAI) ──────────────
+    {
+        "name": "grok",
+        "url": "https://api.x.ai/v1/chat/completions",
+        # xAI Grok Build 0.1 — dedicated agentic coding model, 256K ctx, $1/$2 per 1M.
+        # Falls back to grok-4 for non-coding analysis tasks.
+        "key_env": "XAI_API_KEY",
+        "key_env_alt": "GROK_API_KEY",
+        "fmt": "openai",
+        "model": "grok-build-0.1",
+        "rpm_free": 60,
+    },
+    {
+        "name": "perplexity",
+        "url": "https://api.perplexity.ai/chat/completions",
+        # Perplexity Sonar — web-grounded search. Best for research tasks.
+        # sonar model includes live internet access.
+        "key_env": "PERPLEXITY_API_KEY",
+        "fmt": "openai",
+        "model": "sonar",
+        "rpm_free": 20,
+    },
+    {
+        "name": "openai",
+        "url": "https://models.github.ai/inference/chat/completions",
+        # GitHub Models — GPT-5.5 (azure-openai/gpt-5) via GITHUB_TOKEN (always free in Actions).
+        # GPT-5.5 released April 23 2026 — strongest on multi-step agentic coding tasks.
+        "key_env": "GITHUB_MODELS_TOKEN",
+        "key_env_alt": "GITHUB_TOKEN",
+        "fmt": "openai",
+        "model": "azure-openai/gpt-5",
+        "rpm_free": 10,
+    },
+    {
+        "name": "openrouter",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        # OpenRouter — free-tier Llama-3.3-70B via primary key; falls back to secondary key.
+        # Free models: meta-llama/llama-3.3-70b-instruct:free (no rate limit listed).
+        # Acts as overflow when all other providers are rate-limited.
+        "key_env": "OPENROUTER_API_KEY",
+        "key_env_alt": "OPENROUTER_API_KEY_2",
+        "fmt": "openai",
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "rpm_free": 40,
+    },
 ]
 
 # Providers to race in parallel (first N by index). Others are sequential fallbacks.

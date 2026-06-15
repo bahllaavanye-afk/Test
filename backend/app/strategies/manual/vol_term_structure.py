@@ -39,10 +39,8 @@ Risk: enormous tail risk during volatility spikes (VIX >50); circuit-breakers ma
 from datetime import date, timedelta
 
 import httpx
-import numpy as np
 import pandas as pd
 
-from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

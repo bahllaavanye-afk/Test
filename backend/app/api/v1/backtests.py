@@ -1,17 +1,19 @@
 """Backtest trigger and result retrieval endpoints."""
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
+from datetime import UTC, date, datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.database import get_db
+
 from app.api.deps import get_current_user
 from app.api.limiter import limiter
-from app.models.backtest import BacktestRun, BacktestResult
-from app.models.user import User
 from app.backtest.stress_test import STRESS_SCENARIOS
-from pydantic import BaseModel, ConfigDict
-from datetime import date, datetime, timezone
-import uuid
+from app.database import get_db
+from app.models.backtest import BacktestResult, BacktestRun
+from app.models.user import User
 
 router = APIRouter(prefix="/backtests", tags=["backtests"])
 
@@ -89,11 +91,12 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
                               interval: str, start_date: date, end_date: date,
                               initial_equity: float) -> None:
     """Background task: fetch OHLCV, run strategy.backtest_signals(), pass to engine."""
-    from app.database import AsyncSessionLocal
+    import pandas as pd
+
     from app.backtest.data_loader import fetch_ohlcv
     from app.backtest.engine import run_backtest
+    from app.database import AsyncSessionLocal
     from app.strategies import STRATEGY_REGISTRY
-    import pandas as pd
 
     async with AsyncSessionLocal() as db:
         # Mark as running
@@ -102,7 +105,7 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
         if run is None:
             return
         run.status = "running"
-        run.started_at = datetime.now(timezone.utc)
+        run.started_at = datetime.now(UTC)
         await db.commit()
 
         try:
@@ -111,7 +114,7 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
             if strategy_cls is None:
                 run.status = "failed"
                 run.error_message = f"Unknown strategy: {strategy_name}"
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 await db.commit()
                 return
 
@@ -122,7 +125,7 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
             if df is None or df.empty or len(df) < 20:
                 run.status = "failed"
                 run.error_message = f"Insufficient data for {symbol} ({interval})"
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 await db.commit()
                 return
 
@@ -168,13 +171,13 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
             db.add(result)
 
             run.status = "done"
-            run.completed_at = datetime.now(timezone.utc)
+            run.completed_at = datetime.now(UTC)
             await db.commit()
 
         except Exception as exc:
             run.status = "failed"
             run.error_message = str(exc)[:500]
-            run.completed_at = datetime.now(timezone.utc)
+            run.completed_at = datetime.now(UTC)
             try:
                 await db.commit()
             except Exception:
@@ -186,12 +189,14 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
                                   train_years: int, test_months: int,
                                   initial_equity: float) -> None:
     """Background task: walk-forward validation using strategy.backtest_signals()."""
-    from app.database import AsyncSessionLocal
+    import statistics
+
+    import pandas as pd
+
     from app.backtest.data_loader import fetch_ohlcv
     from app.backtest.walk_forward import walk_forward
+    from app.database import AsyncSessionLocal
     from app.strategies import STRATEGY_REGISTRY
-    import pandas as pd
-    import statistics
 
     async with AsyncSessionLocal() as db:
         run_q = await db.execute(select(BacktestRun).where(BacktestRun.id == run_id))
@@ -199,7 +204,7 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
         if run is None:
             return
         run.status = "running"
-        run.started_at = datetime.now(timezone.utc)
+        run.started_at = datetime.now(UTC)
         await db.commit()
 
         try:
@@ -207,7 +212,7 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
             if strategy_cls is None:
                 run.status = "failed"
                 run.error_message = f"Unknown strategy: {strategy_name}"
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 await db.commit()
                 return
 
@@ -216,7 +221,7 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
             if df is None or df.empty or len(df) < (train_years * 252 + test_months * 21):
                 run.status = "failed"
                 run.error_message = "Insufficient data for walk-forward validation"
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 await db.commit()
                 return
 
@@ -270,13 +275,13 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
             db.add(result)
 
             run.status = "done"
-            run.completed_at = datetime.now(timezone.utc)
+            run.completed_at = datetime.now(UTC)
             await db.commit()
 
         except Exception as exc:
             run.status = "failed"
             run.error_message = str(exc)[:500]
-            run.completed_at = datetime.now(timezone.utc)
+            run.completed_at = datetime.now(UTC)
             try:
                 await db.commit()
             except Exception:
@@ -362,7 +367,7 @@ async def trigger_backtest_run(
         end_date=body.end_date,
         params={"initial_equity": body.initial_equity},
         status="queued",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(run)
     await db.commit()
@@ -431,7 +436,7 @@ async def trigger_walk_forward(
             "test_months": body.test_months,
         },
         status="queued",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(run)
     await db.commit()

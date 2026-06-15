@@ -4,10 +4,10 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.utils.logging import logger
@@ -82,7 +82,7 @@ class CodeQualityLoop:
         strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
         tests = await loop.run_in_executor(None, _count_tests, BACKEND_ROOT)
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             **loc,
             **strat,
             **tests,

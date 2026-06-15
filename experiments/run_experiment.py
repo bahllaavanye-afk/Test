@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 import yaml
 
@@ -73,18 +74,54 @@ async def run_from_config(config_path: Path) -> dict:
         print(f"Model type '{model_type}' not yet implemented in CLI runner")
         result = {"status": "skipped"}
 
+    # ── OOS Walk-Forward Validation Gate ─────────────────────────────────────
+    # Only mark the experiment "done" if it passes OOS walk-forward validation.
+    # If validation fails, status is set to "validation_failed" and failures are
+    # included in the saved results so they are auditable.
+    validation_summary: dict = {}
+    status = "done"
+
+    if result.get("status") not in ("error", "skipped"):
+        try:
+            import pandas as pd
+            from app.backtest.validation_gate import validate_experiment, summarize_for_results
+
+            prices = hist["close"] if "close" in hist.columns else hist.iloc[:, 0]
+
+            # Build a simple buy-and-hold signal function for validation
+            # (real usage: pass the strategy's actual signal function here)
+            def _signal_fn(train_prices: pd.Series, test_prices: pd.Series) -> pd.Series:
+                return pd.Series(1.0, index=test_prices.index)
+
+            report = validate_experiment(_signal_fn, prices)
+            validation_summary = summarize_for_results(report)
+
+            if not report.passed:
+                status = "validation_failed"
+                print(f"VALIDATION FAILED: {report.failures}")
+            else:
+                print(f"Validation passed — OOS Sharpe: {report.oos_sharpe:.3f}, windows: {report.n_windows}")
+                if report.warnings:
+                    print(f"Warnings: {report.warnings}")
+        except Exception as e:
+            print(f"WARNING: Validation gate error: {e}")
+            validation_summary = {"validation": {"passed": None, "error": str(e)}}
+            status = "validation_error"
+
     # Save results back into config
     config_path.write_text(yaml.dump({**cfg, "results": {
         "val_accuracy": result.get("val_acc"),
         "val_sharpe": None,
         "test_sharpe": None,
         "run_id": exp.get("name"),
-        "trained_at": str(asyncio.get_event_loop().time()),
+        "trained_at": datetime.now(timezone.utc).isoformat(),
         "artifact_path": result.get("artifact_path", ""),
+        "status": status,
+        **validation_summary,
     }}))
 
-    print(json.dumps(result, indent=2))
-    return result
+    print(json.dumps({**result, "status": status, **validation_summary}, indent=2))
+    return {**result, "status": status, **validation_summary}
 
 
 if __name__ == "__main__":

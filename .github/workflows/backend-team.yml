@@ -5,7 +5,7 @@ name: Backend AI Engineering Team
 
 on:
   schedule:
-    - cron: "0 * * * *"    # Tuesday and Thursday at 2am UTC
+    - cron: "0 */4 * * *"    # every 4 hours (aligned with 4h cooldown on "all clean" messages)
   push:
     branches: [claude/advanced-trading-bot-d5Lmw]
     paths:
@@ -52,6 +52,17 @@ jobs:
       - name: Run backend team audit
         env:
           ANTHROPIC_API_KEY: "disabled"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           FOCUS: ${{ github.event.inputs.focus || 'bugs, security, performance, correctness' }}
         run: python .github/scripts/backend_team.py

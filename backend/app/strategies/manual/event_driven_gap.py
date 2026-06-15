@@ -13,9 +13,9 @@ Exit conditions:
   - Gap fill (price comes back to previous close)
   - Trailing stop 1% below entry
 """
-import numpy as np
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class EventDrivenGapStrategy(AbstractStrategy):

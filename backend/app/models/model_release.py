@@ -1,8 +1,10 @@
 """ModelRelease ORM — tracks every trained model artifact through its serving lifecycle."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index
+
+from sqlalchemy import JSON, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 from app.models.base import TimestampMixin
 

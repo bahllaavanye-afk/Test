@@ -2,13 +2,15 @@
 Unified ML inference service. Loaded once at app startup.
 Provides ensemble predictions for any symbol.
 """
-import pandas as pd
-from typing import Any
-from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
-from app.ml.features.normalization import FeatureScaler
-from app.config import settings
 from pathlib import Path
+from typing import Any
+
+import pandas as pd
 import structlog
+
+from app.config import settings
+from app.ml.features.engineer import FEATURE_COLS, create_sequences, engineer_features
+from app.ml.features.normalization import FeatureScaler
 
 logger = structlog.get_logger()
 
@@ -63,19 +65,53 @@ class InferenceService:
         if scaler_path.exists():
             self.scalers["default"] = FeatureScaler.load(str(scaler_path))
 
+        # Try loading SSM (Mamba-inspired state space model)
+        ssm_path = models_dir / "ssm_latest.pt"
+        if ssm_path.exists():
+            try:
+                from app.ml.models.ssm_model import SSMPredictor
+                self.models["ssm"] = SSMPredictor.load(str(ssm_path))
+                self.weights["ssm"] = 0.10
+                logger.info("SSM model loaded")
+            except Exception as e:
+                logger.warning("Failed to load SSM", error=str(e))
+
+        # Try loading PatchTST (Transformer with patching — SOTA on S&P, NASDAQ)
+        patchtst_path = models_dir / "patchtst_latest.pt"
+        if patchtst_path.exists():
+            try:
+                from app.ml.models.patch_tst import PatchTST
+                self.models["patchtst"] = PatchTST.load(str(patchtst_path))
+                self.weights["patchtst"] = 0.10
+                logger.info("PatchTST model loaded")
+            except Exception as e:
+                logger.warning("Failed to load PatchTST", error=str(e))
+
+        # Try loading N-BEATS (stable extended-horizon forecasting)
+        nbeats_path = models_dir / "nbeats_latest.pt"
+        if nbeats_path.exists():
+            try:
+                from app.ml.models.nbeats_model import NBeatsModel
+                self.models["nbeats"] = NBeatsModel.load(str(nbeats_path))
+                self.weights["nbeats"] = 0.10
+                logger.info("N-BEATS model loaded")
+            except Exception as e:
+                logger.warning("Failed to load N-BEATS", error=str(e))
+
         # Load Gemini signal engine (always available when API key is set)
         from app.ml.models.gemini_signal import get_gemini_engine
         gemini = get_gemini_engine()
         if gemini.is_available:
             self.models["gemini"] = gemini
             self.weights["gemini"] = 0.20
-            # Reduce other weights proportionally
-            total = sum(v for k, v in self.weights.items() if k != "gemini")
-            scale = 0.80 / total if total > 0 else 1.0
-            for k in list(self.weights.keys()):
-                if k != "gemini":
-                    self.weights[k] = round(self.weights[k] * scale, 3)
             logger.info("Gemini signal engine loaded", weight=0.20)
+
+        # Renormalise weights to sum to 1.0
+        total_w = sum(self.weights.get(k, 0.0) for k in self.models)
+        if total_w > 0:
+            for k in list(self.weights.keys()):
+                if k in self.models:
+                    self.weights[k] = round(self.weights[k] / total_w, 4)
 
     def has_any_model(self) -> bool:
         """Returns True if at least one model (lstm, xgboost, lorentzian, gemini) is loaded."""
@@ -113,18 +149,60 @@ class InferenceService:
                         predictions["lstm"] = prob
 
             if "xgboost" in self.models:
-                import numpy as np
                 X_flat = feat_df[FEATURE_COLS].values[-1:]
                 prob = float(self.models["xgboost"].predict_proba(X_flat)[0])
                 predictions["xgboost"] = prob
 
             if "lorentzian" in self.models:
-                from app.ml.models.lorentzian_knn import compute_lorentzian_features, LORENTZIAN_FEATURES
-                import torch, numpy as np
+                import torch
+
+                from app.ml.models.lorentzian_knn import (
+                    LORENTZIAN_FEATURES,
+                    compute_lorentzian_features,
+                )
                 lf = compute_lorentzian_features(data)
                 x = torch.tensor(lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32)
                 prob = float(self.models["lorentzian"].forward(x).item())
                 predictions["lorentzian"] = prob
+
+            # SSM (Mamba-inspired state space model)
+            if "ssm" in self.models:
+                try:
+                    scaler = self.scalers.get("default")
+                    if scaler:
+                        feat_df_norm = feat_df.copy()
+                        feat_df_norm[FEATURE_COLS] = scaler.transform(feat_df_norm[FEATURE_COLS])
+                        X, _ = create_sequences(feat_df_norm, seq_len=60)
+                        if len(X) > 0:
+                            import torch
+                            out = self.models["ssm"].forward(X[-1:])
+                            predictions["ssm"] = float(out.item() if hasattr(out, "item") else out[0])
+                except Exception as e:
+                    logger.debug("SSM prediction failed", error=str(e))
+
+            # PatchTST (patched transformer — low MSE on financial data 2024)
+            if "patchtst" in self.models:
+                try:
+                    scaler = self.scalers.get("default")
+                    if scaler:
+                        feat_df_norm = feat_df.copy()
+                        feat_df_norm[FEATURE_COLS] = scaler.transform(feat_df_norm[FEATURE_COLS])
+                        X, _ = create_sequences(feat_df_norm, seq_len=60)
+                        if len(X) > 0:
+                            import torch
+                            out = self.models["patchtst"].forward(X[-1:])
+                            predictions["patchtst"] = float(out.item() if hasattr(out, "item") else out[0])
+                except Exception as e:
+                    logger.debug("PatchTST prediction failed", error=str(e))
+
+            # N-BEATS (stable extended-horizon forecasting)
+            if "nbeats" in self.models:
+                try:
+                    X_flat = feat_df[FEATURE_COLS].values[-1:]
+                    out = self.models["nbeats"].predict_proba(X_flat)
+                    predictions["nbeats"] = float(out[0] if hasattr(out, "__len__") else out)
+                except Exception as e:
+                    logger.debug("N-BEATS prediction failed", error=str(e))
 
             # Gemini signal (async)
             if "gemini" in self.models:
@@ -134,8 +212,8 @@ class InferenceService:
                     )
                     if gemini_prob is not None:
                         predictions["gemini"] = gemini_prob
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Gemini model prediction failed", error=str(e))
 
             if not predictions:
                 return None

@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+from app.strategies.base import AbstractStrategy, Signal
 
 _DEFAULT_UNIVERSE = ["SPY", "QQQ", "IWM", "EFA", "EEM", "GLD", "TLT", "HYG", "VNQ", "XLE"]
 

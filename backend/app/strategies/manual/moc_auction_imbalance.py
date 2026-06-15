@@ -24,8 +24,8 @@ order submission at 15:55 ET via Alpaca's "moc" time_in_force parameter.
 """
 from __future__ import annotations
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

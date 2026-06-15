@@ -28,13 +28,14 @@ Academic:
 - Bollerslev, Tauchen, Zhou (2009) "Expected Stock Returns and Variance Risk Premia"
 - Ilmanen (2011) "Expected Returns" Chapter on volatility risk premium
 """
+from datetime import date, timedelta
+
+import httpx
 import numpy as np
 import pandas as pd
-import httpx
-from datetime import date, timedelta
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-from app.config import settings
+
 from app.brokers.alpaca_headers import alpaca_headers
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class VRPSystematicStrategy(AbstractStrategy):

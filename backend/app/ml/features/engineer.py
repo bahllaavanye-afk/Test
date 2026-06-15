@@ -3,13 +3,16 @@ Master feature engineering pipeline.
 All features are computed without lookahead bias (shift applied where needed).
 Features are used both for ML training and live inference.
 """
-import pandas as pd
 import numpy as np
-from app.ml.features.technical import add_technical_features
-from app.ml.features.advanced_indicators import add_advanced_features, ADVANCED_FEATURE_COLS
-from app.ml.features.wavelet_features import add_wavelet_features, WAVELET_FEATURE_COLS
-from app.ml.features.multi_timeframe import add_multi_timeframe_features, MTF_FEATURE_COLS
+import pandas as pd
+
+from app.ml.features.advanced_indicators import ADVANCED_FEATURE_COLS, add_advanced_features
+from app.ml.features.alternative import ALTERNATIVE_FEATURE_COLS, add_alternative_features
+from app.ml.features.microstructure import MICROSTRUCTURE_FEATURE_COLS, add_vpin_feature
+from app.ml.features.multi_timeframe import MTF_FEATURE_COLS, add_multi_timeframe_features
 from app.ml.features.normalization import FeatureScaler
+from app.ml.features.technical import add_technical_features
+from app.ml.features.wavelet_features import WAVELET_FEATURE_COLS, add_wavelet_features
 
 # Social sentiment feature columns added for crypto market_type
 SOCIAL_SENTIMENT_FEATURE_COLS = [
@@ -48,7 +51,17 @@ _BASE_FEATURE_COLS = [
 ]
 
 # Extended feature list: base 27 + advanced + wavelet + multi-timeframe + social sentiment (crypto)
-FEATURE_COLS = _BASE_FEATURE_COLS + ADVANCED_FEATURE_COLS + WAVELET_FEATURE_COLS + MTF_FEATURE_COLS + SOCIAL_SENTIMENT_FEATURE_COLS
+# + microstructure (VPIN, LOB imbalance, spread) + alternative data (funding rates, OI) for crypto
+FEATURE_COLS = (
+    _BASE_FEATURE_COLS
+    + ADVANCED_FEATURE_COLS
+    + WAVELET_FEATURE_COLS
+    + MTF_FEATURE_COLS
+    + SOCIAL_SENTIMENT_FEATURE_COLS
+    + MICROSTRUCTURE_FEATURE_COLS  # lob_imbalance, spread_bps
+    + ["vpin"]                     # VPIN rolling (VPINFeatures)
+    + ALTERNATIVE_FEATURE_COLS     # funding_rate, funding_rate_ma7, oi_change_pct, oi_momentum
+)
 
 
 def engineer_features(
@@ -99,6 +112,35 @@ def engineer_features(
         row = _ssf.to_dataframe_row(social_sentiment)
         for col in SOCIAL_SENTIMENT_FEATURE_COLS:
             df[col] = row.get(col, row[col] if col in row.index else 0.0)
+
+    # ── VPIN (Volume-Synchronized Probability of Informed Trading) ─────────────
+    # Requires 'volume' column. NaN for first 49 rows (warmup).
+    if "volume" in df.columns:
+        try:
+            df = add_vpin_feature(df, window=50)
+        except Exception as _vpin_err:
+            print(f"[engineer] VPIN skipped: {_vpin_err}", flush=True)
+            df["vpin"] = 0.0
+    else:
+        df["vpin"] = 0.0
+    df["vpin"] = df["vpin"].fillna(0.0)
+
+    # ── Binance funding rates + open interest (crypto only) ───────────────────
+    # Uses public Binance Futures REST — no auth needed. Returns NaN for equities.
+    if market_type == "crypto" and symbol:
+        try:
+            df = add_alternative_features(df, symbol=symbol)
+        except Exception as _alt_err:
+            print(f"[engineer] alternative features skipped: {_alt_err}", flush=True)
+            for col in ALTERNATIVE_FEATURE_COLS:
+                if col not in df.columns:
+                    df[col] = np.nan
+    else:
+        for col in ALTERNATIVE_FEATURE_COLS:
+            if col not in df.columns:
+                df[col] = np.nan
+    for col in ALTERNATIVE_FEATURE_COLS:
+        df[col] = df[col].fillna(0.0)
 
     # Determine which feature cols are actually present (MTF cols depend on TF availability)
     active_cols = [c for c in FEATURE_COLS if c in df.columns]

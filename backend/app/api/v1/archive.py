@@ -1,8 +1,9 @@
 """Trade archive replay endpoints."""
 from fastapi import APIRouter, Depends, Query
+
 from app.api.deps import get_current_user
+from app.archive.trade_archiver import list_archives, replay
 from app.models.user import User
-from app.archive.trade_archiver import replay, list_archives
 
 router = APIRouter(prefix="/archive", tags=["archive"])
 

@@ -28,12 +28,8 @@ jobs:
           AUTHOR=$(git log -1 --pretty=format:'%an')
           FILES_CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -10 | tr '\n' ', ' | sed 's/,$//')
 
-          TEXT="🚀 *QuantEdge deployed to production*
->*Commit:* \`$SHORT_SHA\` — $COMMIT_MSG
->*By:* $AUTHOR
->*Files:* ${FILES_CHANGED:-unknown}
-
-_CTO agent is live and reviewing all channels. <https://quantedge-api.onrender.com/health|Health check>_"
+          TEXT=$(printf '🚀 *QuantEdge deployed to production*\n>*Commit:* `%s` — %s\n>*By:* %s\n>*Files:* %s\n\n_CTO agent is live and reviewing all channels. <https://quantedge-api.onrender.com/health|Health check>_' \
+            "$SHORT_SHA" "$COMMIT_MSG" "$AUTHOR" "${FILES_CHANGED:-unknown}")
 
           curl -sS -X POST \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \

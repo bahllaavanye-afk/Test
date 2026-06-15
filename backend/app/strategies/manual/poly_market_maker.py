@@ -1,6 +1,8 @@
 """Polymarket CLOB market making strategy."""
 from __future__ import annotations
+
 import pandas as pd
+
 try:
     import httpx
     _HTTPX = True

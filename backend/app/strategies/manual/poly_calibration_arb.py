@@ -1,8 +1,11 @@
 """Polymarket calibration arbitrage — compare vs Metaculus/Manifold forecasts."""
 from __future__ import annotations
+
 import asyncio
 import re
+
 import pandas as pd
+
 try:
     import httpx
     _HTTPX = True

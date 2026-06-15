@@ -23,14 +23,13 @@ Documented Sharpe: ~0.7-1.1 long-only, ~1.2-1.8 with momentum filter
 """
 
 import asyncio
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
 import numpy as np
 import pandas as pd
 
-from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

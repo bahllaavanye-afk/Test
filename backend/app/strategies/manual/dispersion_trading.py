@@ -28,14 +28,15 @@ Documented:
 
 Entry trigger: implied_corr / realized_corr > 1.20 (correlation 20% rich)
 """
-import numpy as np
-import pandas as pd
-import httpx
 import asyncio
 from datetime import date, timedelta
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-from app.config import settings
+
+import httpx
+import numpy as np
+import pandas as pd
+
 from app.brokers.alpaca_headers import alpaca_headers
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class DispersionTradingStrategy(AbstractStrategy):

@@ -12,11 +12,12 @@ This indicates:
 
 Data: FRED 10Y yield via public API or fallback to TLT price proxy.
 """
+import urllib.request
+
 import numpy as np
 import pandas as pd
-import urllib.request
-import json
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 # FRED public API for US 10Y Treasury yield (no auth needed)
 FRED_10Y_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"

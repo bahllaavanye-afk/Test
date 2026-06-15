@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -93,8 +92,8 @@ def _enrich_run(run: dict) -> dict:
 
 @router.get("/status")
 def pipeline_status(
-    pipeline: Optional[str] = Query(None),
-    desk: Optional[str] = Query(None),
+    pipeline: str | None = Query(None),
+    desk: str | None = Query(None),
     limit: int = Query(20, le=50),
 ):
     """Return recent pipeline runs, optionally filtered by pipeline name or desk."""

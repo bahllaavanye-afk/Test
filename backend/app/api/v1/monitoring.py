@@ -1,5 +1,6 @@
 """Monitoring and health check endpoints for the QA subsystem."""
 from __future__ import annotations
+
 import asyncio
 import json
 from pathlib import Path
@@ -15,12 +16,21 @@ HEALTH_REPORT_PATH = Path(__file__).parents[4] / "qa_health_report.json"
 FIX_LOG_PATH = Path(__file__).parents[4] / "qa_fix_log.jsonl"
 
 
+@router.get("/health/ping")
+async def health_ping():
+    """Minimal liveness probe for load balancers (no auth, no internal state)."""
+    return {"ok": True}
+
+
 @router.get("/health")
-async def get_health_report():
-    """Public health status (no auth required).
+async def get_health_report(
+    current_user: User = Depends(get_current_user),
+):
+    """Full QA health report (requires auth — contains internal QA state).
 
     Returns the most recent QA health report written by the QAMonitor background
     task, or a placeholder if the monitor has not yet completed its first cycle.
+    Use GET /monitoring/health/ping for unauthenticated liveness checks.
     """
     if HEALTH_REPORT_PATH.exists():
         try:

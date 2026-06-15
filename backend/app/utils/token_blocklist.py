@@ -9,6 +9,7 @@ Stored keys: "revoked_jti:<jti>" with TTL = token remaining lifetime.
 from __future__ import annotations
 
 import time
+
 # In-memory fallback: {jti: expires_at_unix}
 _memory_blocklist: dict[str, float] = {}
 

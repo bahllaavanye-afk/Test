@@ -1,15 +1,16 @@
 """Portfolio positions endpoint."""
 import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
+from app.models.account import Account
 from app.models.position import Position
 from app.models.user import User
-from app.models.account import Account
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/positions", tags=["positions"])
@@ -160,3 +161,47 @@ async def get_position_exit_config(
         "pnl_pct": pnl_pct,
         "stored_at": stored_at,
     }
+
+
+class ExitOptionsUpdate(BaseModel):
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    profit_target_pct: float | None = None
+    stop_loss_pct: float | None = None
+    trailing_stop_pct: float | None = None
+    expiration_days: int | None = None
+    pricing_method: str | None = None
+    bid_ask_guard: bool | None = None
+    notes: str | None = None
+    tags: list[str] | None = None
+
+
+@router.patch("/{symbol}/exit-config")
+async def update_position_exit_config(
+    symbol: str,
+    body: ExitOptionsUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Update the active exit conditions for an open position in Redis."""
+    from app.redis_client import get_redis
+
+    redis_client = get_redis()
+    if redis_client is None:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
+
+    try:
+        raw = await redis_client.get(f"pos_exit:{symbol}")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Failed to read exit config from Redis")
+
+    config: dict = json.loads(raw) if raw else {}
+
+    updates = body.model_dump(exclude_none=True)
+    config.update(updates)
+
+    try:
+        await redis_client.set(f"pos_exit:{symbol}", json.dumps(config), ex=86400)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Failed to write exit config to Redis")
+
+    return {"symbol": symbol, "updated": True, "config": config}

@@ -1,0 +1,91 @@
+name: Grok Task Runner — fast coding via xAI
+
+# Sub-agent: Grok Mini (xAI). Handles issues labeled "grok-task".
+# Claude dispatch-router routes tasks here for: quick bug fixes, config changes, small features.
+# Claude acceptance gate reviews output after commit.
+
+on:
+  issues:
+    types: [labeled]
+  schedule:
+    - cron: "*/20 * * * *"   # batch retry every 20 min
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Run a specific issue number"
+        required: false
+        type: string
+      task:
+        description: "Inline task (skips issue lookup)"
+        required: false
+        type: string
+
+concurrency:
+  group: grok-task-runner
+  cancel-in-progress: false
+
+jobs:
+  run-task:
+    if: >
+      github.event_name != 'issues' ||
+      github.event.label.name == 'grok-task'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/advanced-trading-bot-d5Lmw
+          fetch-depth: 5
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Configure git
+        run: |
+          git config user.email "grok@quantedge.ai"
+          git config user.name "QuantEdge Grok Agent"
+
+      - name: Run Grok task
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          # Fallback providers
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ALLOW_PAID_APIS: "False"
+        run: |
+          ISSUE="${{ github.event.issue.number || inputs.issue_number }}"
+          TASK="${{ inputs.task }}"
+          if [ -n "$TASK" ]; then
+            python .github/scripts/grok_task_runner.py --task "$TASK"
+          elif [ -n "$ISSUE" ]; then
+            python .github/scripts/grok_task_runner.py --issue "$ISSUE"
+          else
+            python .github/scripts/grok_task_runner.py
+          fi
+
+      - name: Push (with rebase retry)
+        continue-on-error: true
+        run: |
+          for i in 1 2 3 4; do
+            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true
+            git push -u origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+          done

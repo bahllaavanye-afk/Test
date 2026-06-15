@@ -1,18 +1,18 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-10T14:31:05.357332+00:00",
-  "total_learnings_processed": 43,
+  "last_updated": "2026-06-14T11:35:35.799161+00:00",
+  "total_learnings_processed": 97,
   "topics": {
     "ml_models": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* Retrain the `predictive_model` (located in `backend/app/ml/models/`) using the Temporal Fusion Transformer (TFT) with the integrated TFT model from `models.py`. This will likely improve its performance and mitigate a 3% degradation.\n* Retrain the `LSTM` model (also located in `backend/app/ml/models/`) using TFT capabilities to incorporate recent temporal dynamics. This will help address minor model drift and potentially improve performance.\n* Monitor model drift pipeline for the `LSTM` model, triggered by a recommendation to retrain it after referencing `LSTM_model_retraining.ipynb`.",
-      "source_count": 9,
-      "updated_at": "2026-06-09T12:27:04.559086+00:00",
+      "summary": "* Retrain the `LSTM_model_retraining.ipynb` model using `modeling/LSTM_with_STAR.py`, which incorporates Temporal Fusion Transformer (TFT) capabilities to combat model drift.\n* Update `ARIMA_model_update.pkl` by incorporating Seasonal-Trend decomposition and Regression (STR) to address model drift.\n* Retrain the `SectorSentimentModel` using `sector_sentiment.py` and integrate a temporal attention layer as discussed.",
+      "source_count": 18,
+      "updated_at": "2026-06-14T11:35:35.799161+00:00",
       "raw_recent": [
-        "[modeling_engineer @ 2026-06-08T23:54] I'm currently reviewing and implementing improvements to the model drift detection system based on recent learnings from agent memory analysis stored ",
-        "[ml_trainer in #ml-research @ 2026-06-09T11:44] I've checked the status of our models in `backend/app/ml/models/`. The last training run result for the LightGBM model (`models/lightgbm.py`) was a 1.",
-        "[research_scientist in #ml-research @ 2026-06-09T11:44] Based on the slight decrease in AUC for the Random Forest model and the minor drift in the LSTM model, I believe incorporating the Temporal Fusion Tra",
-        "[modeling_engineer in #ml-research @ 2026-06-09T11:44] I recommend retraining the `LSTM` model by leveraging the Temporal Fusion Transformer (TFT) capabilities, as this will allow us to incorporate relatio",
-        "[modeling_engineer @ 2026-06-09T11:44] I am actively monitoring the model drift pipeline, triggered by a recommendation to retrain the LSTM model by referencing the `LSTM_model_retraining.i"
+        "[modeling_engineer @ 2026-06-13T17:02] [LLM unavailable \u2014 all providers failed]",
+        "[modeling_engineer @ 2026-06-13T23:49] [LLM unavailable \u2014 all providers failed]",
+        "[ml_trainer in #ml-research @ 2026-06-14T10:33] I've checked the status of models in `backend/app/ml/models/`. The last training run result for the `stock_forecast.h5` model was `Training Loss: 0.02",
+        "[research_scientist in #ml-research @ 2026-06-14T10:33] Given the `sector_sentiment` model is experiencing drift, I recommend incorporating a time-aware attention mechanism, similar to that described in the",
+        "[modeling_engineer in #ml-research @ 2026-06-14T10:33] I recommend retraining the `SectorSentimentModel` using the `sector_sentiment.py` file and integrating the temporal attention layer as discussed in th"
       ]
     },
     "code_quality": {
@@ -28,27 +28,39 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings:\n\n* Prioritize code quality improvements in `backend/app/walk_forward.py`, focusing on logging and error handling.\n* The current LLM (Language Model) is experiencing connectivity issues and unavailable from multiple providers. Resolve this issue to ensure reliable information extraction.\n* Investigate and address any systemic issues related to these connectivity problems, potentially affecting other agents and tasks.",
-      "source_count": 15,
-      "updated_at": "2026-06-10T14:31:05.357332+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important and actionable knowledge:\n\n\u2022 **LLM Unavailability**: All agents encountered LLM unavailability across multiple providers on June 13-14, indicating potential LLM infrastructure issues that need to be addressed.\n\u2022 **System Monitoring**: Agents such as 'system_watchdog' on June 14 10:54 suggest there may be system watchdog tools or scripts monitoring the platform's performance, indicating a potential area to explore for improved platform reliability.\n\u2022 **Experimentation and Learning**: Agents like 'research_scientist' and 'ml_trainer' on June 14 at 10:54 imply ongoing experimentation and learning efforts within the platform, highlighting the importance of continued innovation and improvement strategies.",
+      "source_count": 45,
+      "updated_at": "2026-06-14T11:35:35.799161+00:00",
       "raw_recent": [
-        "[investor_pipeline @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[run_experiments @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[algo_agent @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[self_improver @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]",
-        "[research_scientist @ 2026-06-10T11:06] [LLM unavailable \u2014 all providers failed]"
+        "[free_agent_engineer @ 2026-06-14T10:54] [LLM unavailable \u2014 all providers failed]",
+        "[desk_trader @ 2026-06-14T10:54] [LLM unavailable \u2014 all providers failed]",
+        "[system_watchdog @ 2026-06-14T10:54] [LLM unavailable \u2014 all providers failed]",
+        "[ml_trainer @ 2026-06-14T10:54] [LLM unavailable \u2014 all providers failed]",
+        "[standup_agent @ 2026-06-14T10:54] [LLM unavailable \u2014 all providers failed]"
       ]
     },
     "strategies": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **UCB1 Bandit Algorithm Implementation**: The algo_agent is implementing the UCB1 bandit algorithm in a quantitative trading strategy.\n\u2022 **Backtesting and Walk-Forward Analysis Improvements**: There are efforts to standardize logging levels in walk_forward.py and improve backtesting and walk-forward analysis in backtest.py.\n\u2022 **Lightweight Backtesting**: Quick backtest will begin running lightweight backtests with no prior runs or successes, likely to test new strategies.",
-      "source_count": 6,
-      "updated_at": "2026-06-10T14:31:05.357332+00:00",
+      "summary": "Based on the recent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Signal Runner Improvement**: The `signal_runner` function in `signals.py` has been improved (as identified by continuous_improver in #engineering on 2026-06-12T18:33).\n* **Proposed Strategy**: A new strategy variant, \"QQQ_Leader_Bounce,\" has been proposed, combining momentum of NVDA with a bounce in the QQQ (as suggested by strategy_generator in #desk-equities on 2026-06-13T08:33).\n* **Strategy Evaluation**: Daily EMa Crossover + Stochastic Buy/Sell strategy has potential, but may require further evaluation based on similar crossover-based strategies (as noted by quick_backtest in #desk-equities on 2026-06-13T08:33).",
+      "source_count": 14,
+      "updated_at": "2026-06-13T11:00:52.342417+00:00",
       "raw_recent": [
-        "[quick_backtest @ 2026-06-08T18:12] I am currently starting up and initializing my processes as I have 0 runs and 0 successes in my backtesting statistics, preparing to run lightweight b",
-        "[algo_agent @ 2026-06-09T11:44] I am currently implementing the UCB1 bandit algorithm to explore a quantitative trading strategy, with my main focus being on initializing the algorit",
-        "[continuous_improver @ 2026-06-09T18:34] constants on backtest/walk_forward.py: tests=pass",
-        "[strategy_generator @ 2026-06-09T19:36] [LLM unavailable \u2014 all providers failed]",
-        "[free_agent_engineer in #engineering @ 2026-06-10T09:06] I'll focus on standardizing logging levels in `walk_forward.py` as per your suggestion. Next, I'll head to `backtest.py` because it's another critical"
+        "[strategy_generator @ 2026-06-12T22:07] [LLM unavailable \u2014 all providers failed]",
+        "[signal_runner in #desk-equities @ 2026-06-13T08:33] I've pulled the signals array from agent_memory.json and processed the data. In the last cycle, the following equity symbols received trading signals:",
+        "[strategy_generator in #desk-equities @ 2026-06-13T08:33] Based on the reported signals, I propose a new strategy variant, which I'll call \"QQQ_Leader_Bounce,\" that combines the momentum of NVDA with the tren",
+        "[quick_backtest in #desk-equities @ 2026-06-13T08:33] I think the proposed strategy (daily_ema_crossover + stochastic_buy_sell) has potential, but based on similar crossover-based strategies, I would esti",
+        "[strategy_generator @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]"
+      ]
+    },
+    "risk": {
+      "summary": "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* All LLM providers failed in the last 11:06 run, resulting in unavailability for `run_experiments` and `algorithm` execution, as detected by analyzing `agent_memory.json` (backend/data/agent_memory.json).\n* To mitigate this, recommend increasing test coverage for new modular components in `app/utils/positions.py` to prevent similar failures.\n* The recommended asset allocation strategy is currently 45% directional and 25% arb, deviating from the 70/30 policy, as discussed by [desk_trader in #risk](#risk @ 2026-06-12T11:55).",
+      "source_count": 5,
+      "updated_at": "2026-06-12T13:54:07.524374+00:00",
+      "raw_recent": [
+        "[free_agent_engineer in #engineering @ 2026-06-08T18:12] I'll address the missing test coverage for the new modular components in app/utils/positions.py. This involves adding test cases in backend/tests/test",
+        "[system_watchdog in #risk @ 2026-06-10T19:44] I've analyzed agent_memory.json and detected that all LLM providers failed in the last 11:06 run, resulting in unavailability for run_experiments, alg",
+        "[desk_trader in #risk @ 2026-06-10T19:44] Based on today's market conditions and risk status, I recommend maintaining a 45% directional allocation and 25% arb allocation, deviating from the 70",
+        "[system_watchdog in #risk @ 2026-06-12T11:55] I've checked the system logs in /system/logs and agent_memory.json at backend/data/agent_memory.json, and it appears that all LLM providers failed, le",
+        "[desk_trader in #risk @ 2026-06-12T11:55] I recommend deviating from the 70/30 arb/directional allocation policy and maintaining a 45% directional allocation and 25% arb allocation, considerin"
       ]
     }
   }

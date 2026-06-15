@@ -6,7 +6,6 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 // Public pages — eagerly loaded (smallest possible initial bundle)
 import Login from './pages/Login'
 import Landing from './pages/Landing'
-import GoogleCallback from './pages/GoogleCallback'
 import { selectIsAuthenticated, selectExpiredAt, sessionExpired } from './store/slices/authSlice'
 
 // All protected pages — lazy-loaded so each becomes a separate Vite chunk.
@@ -32,11 +31,20 @@ const MLInsights = lazy(() => import('./pages/MLInsights'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Releases = lazy(() => import('./pages/Releases'))
 const BotBuilder = lazy(() => import('./pages/BotBuilder'))
-const BotDashboard = lazy(() => import('./pages/BotDashboard'))
 const BotDesk = lazy(() => import('./pages/BotDesk'))
-const BotDetail = lazy(() => import('./pages/BotDetail'))
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
 const Scanners = lazy(() => import('./pages/Scanners'))
+const Promotions = lazy(() => import('./pages/Promotions'))
+const AgentLogs = lazy(() => import('./pages/AgentLogs'))
+const BotDashboard = lazy(() => import('./pages/BotDashboard'))
+const PositionsHub = lazy(() => import('./pages/PositionsHub'))
+const BotDetail = lazy(() => import('./pages/BotDetail'))
+const TaskManager = lazy(() => import('./pages/TaskManager'))
+const CopyTrading = lazy(() => import('./pages/CopyTrading'))
+const PerformanceAttribution = lazy(() => import('./pages/PerformanceAttribution'))
+const RiskControls = lazy(() => import('./pages/RiskControls'))
+const FundingRateMonitor = lazy(() => import('./pages/FundingRateMonitor'))
+const GoogleCallback = lazy(() => import('./pages/GoogleCallback'))
 
 function PageLoader() {
   return (
@@ -50,8 +58,9 @@ function PageLoader() {
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const isAuth = useSelector(selectIsAuthenticated)
-  return isAuth ? <>{children}</> : <Navigate to="/login" replace />
+  // Auth disabled — all pages public for demo/investor access
+  void useSelector(selectIsAuthenticated)
+  return <>{children}</>
 }
 
 function SessionExpiryHandler() {
@@ -83,7 +92,7 @@ export default function App() {
         <Route path="/landing" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/auth/google/callback" element={<GoogleCallback />} />
-        <Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
+        <Route path="/" element={<AppShell />}>
           <Route index element={<Navigate to="/bot-dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="equity" element={<EquityTrading />} />
@@ -107,12 +116,20 @@ export default function App() {
           <Route path="releases" element={<Releases />} />
           <Route path="bots" element={<BotBuilder />} />
           <Route path="bot-builder" element={<BotBuilder />} />
-          <Route path="bot-dashboard" element={<BotDashboard />} />
-          <Route path="bot-dashboard/:botId" element={<BotDetail />} />
           <Route path="bot-desk" element={<BotDesk />} />
           <Route path="agents" element={<AgentDashboard />} />
           <Route path="agent-dashboard" element={<AgentDashboard />} />
           <Route path="scanners" element={<Scanners />} />
+          <Route path="promotions" element={<Promotions />} />
+          <Route path="agent-logs" element={<AgentLogs />} />
+          <Route path="bot-dashboard" element={<BotDashboard />} />
+          <Route path="bot-dashboard/:botId" element={<BotDetail />} />
+          <Route path="positions" element={<PositionsHub />} />
+          <Route path="tasks" element={<TaskManager />} />
+          <Route path="copy-trading" element={<CopyTrading />} />
+          <Route path="attribution" element={<PerformanceAttribution />} />
+          <Route path="risk-controls" element={<RiskControls />} />
+          <Route path="funding-rates" element={<FundingRateMonitor />} />
         </Route>
       </Routes>
     </Suspense>

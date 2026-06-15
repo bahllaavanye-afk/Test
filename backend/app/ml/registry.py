@@ -13,12 +13,11 @@ Usage:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from app.utils.logging import logger
-
 
 _DEFAULT_INDEX = Path("experiments/model_registry.json")
 
@@ -94,7 +93,7 @@ class ModelRegistry:
             "name": name,
             "model_type": model_type,
             "artifact_path": str(artifact_path),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "val_sharpe": round(float(val_sharpe), 4),
             "val_accuracy": round(float(val_accuracy), 4),
             "val_auc": round(float(val_auc), 4),

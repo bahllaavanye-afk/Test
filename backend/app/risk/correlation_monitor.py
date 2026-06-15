@@ -6,11 +6,12 @@ auto-reduce the smaller one (by total_pnl) by 50% until correlation drops below 
 This prevents correlated drawdowns — the #1 unaddressed risk in multi-strategy bots.
 """
 from __future__ import annotations
+
 import asyncio
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
 import numpy as np
 
 from app.utils.logging import logger
@@ -22,7 +23,7 @@ class CorrelationAlert:
     strategy_b: str
     correlation: float
     action: str             # 'reduce_b' | 'reduce_a' | 'monitor'
-    reduced_strategy: Optional[str]
+    reduced_strategy: str | None
     timestamp: datetime
 
     def to_dict(self) -> dict:
@@ -92,7 +93,7 @@ class CrossStrategyCorrelationMonitor:
                         strategy_a=s_a, strategy_b=s_b, correlation=corr,
                         action=f"reduce_{smaller.split('_')[0]}",
                         reduced_strategy=smaller,
-                        timestamp=datetime.now(timezone.utc),
+                        timestamp=datetime.now(UTC),
                     )
                     self._alerts.append(alert)
                     new_alerts.append(alert)

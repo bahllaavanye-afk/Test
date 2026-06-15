@@ -1,83 +1,66 @@
 """
-Redis-backed shared agent memory.
-
-Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
-
-Usage:
-    mem = AgentMemory(redis_client)
-    await mem.write("strategy_insight", {"strategy": "ema_stack_tv", "sharpe": 1.8})
-    observations = await mem.read_recent("strategy_insight", n=20)
-    await mem.write("market_regime", {"regime": "bull", "confidence": 0.85})
-    regime = await mem.get_latest("market_regime")
+Persistent agent memory via Redis.
+Each agent has working memory (24h TTL), long-term memory (permanent), and episodic log (30d).
 """
-
-from __future__ import annotations
-
 import json
-import logging
-import time
+from datetime import UTC, datetime
 from typing import Any
-
-logger = logging.getLogger(__name__)
-
-_PREFIX = "agent:memory:"
-_MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
 
 
 class AgentMemory:
-    def __init__(self, redis_client: Any):
-        self._r = redis_client
+    def __init__(self, agent_name: str, redis_client):
+        self.agent_name = agent_name
+        self.redis = redis_client
+        self._prefix = f"agent:memory:{agent_name}"
 
-    # ── Write ─────────────────────────────────────────────────────────────────
+    def _key(self, memory_type: str, key: str) -> str:
+        return f"{self._prefix}:{memory_type}:{key}"
 
-    async def write(self, topic: str, data: dict) -> None:
-        """Append an observation to a topic list with a timestamp."""
-        payload = json.dumps({"ts": time.time(), **data})
-        key = f"{_PREFIX}{topic}"
+    async def remember(self, key: str, value: Any, memory_type: str = "working") -> None:
+        full_key = self._key(memory_type, key)
+        payload = json.dumps({"value": value, "updated_at": datetime.now(UTC).isoformat()})
+        if memory_type == "working":
+            await self.redis.set(full_key, payload, ex=86400)  # 24h TTL
+        elif memory_type == "long_term":
+            await self.redis.set(full_key, payload)  # no TTL
+        # episodic handled separately
+
+    async def recall(self, key: str, memory_type: str = "working") -> Any:
+        full_key = self._key(memory_type, key)
+        raw = await self.redis.get(full_key)
+        if raw is None:
+            return None
         try:
-            await self._r.lpush(key, payload)
-            await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
-        except Exception as e:
-            logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
-
-    async def set_latest(self, topic: str, data: dict) -> None:
-        """Overwrite the latest value for a topic (single-value slot)."""
-        key = f"{_PREFIX}latest:{topic}"
-        payload = json.dumps({"ts": time.time(), **data})
-        try:
-            await self._r.set(key, payload)
-        except Exception as e:
-            logger.warning("AgentMemory.set_latest failed for topic %s: %s", topic, e)
-
-    # ── Read ──────────────────────────────────────────────────────────────────
-
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
-        """Return up to n most-recent observations for a topic."""
-        key = f"{_PREFIX}{topic}"
-        try:
-            items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
-        except Exception as e:
-            logger.warning("AgentMemory.read_recent failed for topic %s: %s", topic, e)
-            return []
-
-    async def get_latest(self, topic: str) -> dict | None:
-        """Return the latest single-value for a topic."""
-        key = f"{_PREFIX}latest:{topic}"
-        try:
-            val = await self._r.get(key)
-            return json.loads(val) if val else None
-        except Exception as e:
-            logger.warning("AgentMemory.get_latest failed for topic %s: %s", topic, e)
+            return json.loads(raw)["value"]
+        except Exception:
             return None
 
-    async def read_all_topics(self) -> list[str]:
-        """List all memory topics currently stored."""
-        try:
-            pattern = f"{_PREFIX}*"
-            keys = await self._r.keys(pattern)
-            return [k.removeprefix(_PREFIX) for k in keys]
-        except Exception as e:
-            logger.warning("AgentMemory.read_all_topics failed: %s", e)
-            return []
+    async def log_episode(self, outcome: dict) -> None:
+        key = f"{self._prefix}:episodes"
+        entry = json.dumps({**outcome, "ts": datetime.now(UTC).isoformat()})
+        await self.redis.lpush(key, entry)
+        await self.redis.ltrim(key, 0, 999)   # keep last 1000 episodes
+        await self.redis.expire(key, 86400 * 30)  # 30 day TTL
+
+    async def get_recent_episodes(self, n: int = 10) -> list[dict]:
+        key = f"{self._prefix}:episodes"
+        raw_list = await self.redis.lrange(key, 0, n - 1)
+        episodes = []
+        for raw in (raw_list or []):
+            try:
+                episodes.append(json.loads(raw))
+            except Exception:
+                pass
+        return episodes
+
+    async def get_context(self, max_chars: int = 2000) -> str:
+        """Returns formatted memory string to prepend to LLM prompts."""
+        lines = [f"[AgentMemory: {self.agent_name}]"]
+        # Recent episodes
+        episodes = await self.get_recent_episodes(5)
+        if episodes:
+            lines.append("Recent outcomes:")
+            for ep in episodes:
+                lines.append(f"  - {ep.get('ts', '')[:10]}: {ep.get('summary', str(ep))[:120]}")
+        context = "\n".join(lines)
+        return context[:max_chars]

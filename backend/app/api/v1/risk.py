@@ -1,15 +1,17 @@
 """Risk management endpoints."""
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.database import get_db
-from app.api.deps import get_current_user
-from app.models.risk import RiskRule, RiskEvent
-from app.models.user import User
-from app.models.trade import Trade
-from pydantic import BaseModel, ConfigDict
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.database import get_db
+from app.models.risk import RiskEvent, RiskRule
+from app.models.trade import Trade
+from app.models.user import User
 
 router = APIRouter(prefix="/risk", tags=["risk"])
 
@@ -20,12 +22,20 @@ async def risk_summary(
     current_user: User = Depends(get_current_user),
 ):
     """Risk dashboard summary: active rules count, recent events, circuit breaker status."""
-    rules_result = await db.execute(select(RiskRule).where(RiskRule.is_active == True))
-    active_rules = rules_result.scalars().all()
-    events_result = await db.execute(
-        select(RiskEvent).order_by(RiskEvent.triggered_at.desc()).limit(5)
-    )
-    recent_events = events_result.scalars().all()
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    active_rules: list = []
+    recent_events: list = []
+    try:
+        rules_result = await db.execute(select(RiskRule).where(RiskRule.is_active == True))
+        active_rules = list(rules_result.scalars().all())
+        events_result = await db.execute(
+            select(RiskEvent).order_by(RiskEvent.triggered_at.desc()).limit(5)
+        )
+        recent_events = list(events_result.scalars().all())
+    except (OperationalError, ProgrammingError):
+        # Tables not yet migrated (fresh DB) — return an empty summary, not a 500.
+        await db.rollback()
     return {
         "active_rules": len(active_rules),
         "recent_events": len(recent_events),
@@ -74,7 +84,7 @@ async def create_rule(
         threshold=body.threshold,
         action=body.action,
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(rule)
     await db.commit()
@@ -174,8 +184,9 @@ async def get_factor_exposure(
     current_user: User = Depends(get_current_user),
 ):
     """Factor exposure analysis: market beta, momentum, low-vol."""
-    from app.risk.factor_exposure import compute_factor_exposure
     import numpy as np
+
+    from app.risk.factor_exposure import compute_factor_exposure
 
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
@@ -194,6 +205,61 @@ async def get_factor_exposure(
     return exposure.to_dict()
 
 
+@router.get("/regime/current")
+async def get_current_regime(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return the current market regime as detected by the HMM regime monitor.
+
+    Reads the Redis key ``market:regime`` written by RegimeMonitor every 5 min.
+    States: 0=bear, 1=sideways, 2=bull.
+
+    Strategy gating rules (enforced by strategy_runner):
+      - Bear (0): skip directional strategies, keep arbitrage
+      - Sideways (1): all strategies run at half confidence threshold
+      - Bull (2): all strategies run normally
+    """
+    from app.redis_client import get_redis
+
+    REGIME_LABELS = {0: "bear", 1: "sideways", 2: "bull"}
+    REGIME_COLORS = {0: "#ff1744", 1: "#f5a623", 2: "#00c853"}
+    STRATEGY_WEIGHTS = {
+        0: {"directional": 0.0, "arbitrage": 1.0},
+        1: {"directional": 0.5, "arbitrage": 1.0},
+        2: {"directional": 1.0, "arbitrage": 1.0},
+    }
+
+    try:
+        redis = get_redis()
+        raw = await redis.get("market:regime")
+        if raw is None:
+            state = None
+        else:
+            state = int(raw)
+    except Exception:
+        state = None
+
+    if state is None or state not in REGIME_LABELS:
+        return {
+            "state": None,
+            "label": "unknown",
+            "color": "#555",
+            "weights": {"directional": 1.0, "arbitrage": 1.0},
+            "source": "redis",
+            "stale": True,
+        }
+
+    return {
+        "state": state,
+        "label": REGIME_LABELS[state],
+        "color": REGIME_COLORS[state],
+        "weights": STRATEGY_WEIGHTS[state],
+        "source": "redis",
+        "stale": False,
+    }
+
+
 @router.get("/drawdown-recovery")
 async def get_drawdown_recovery(
     current_drawdown_pct: float = Query(5.0, description="Current drawdown as percentage, e.g. 5.0"),
@@ -202,8 +268,9 @@ async def get_drawdown_recovery(
     current_user: User = Depends(get_current_user),
 ):
     """Estimate drawdown recovery time via Monte Carlo."""
-    from app.risk.drawdown_recovery import estimate_recovery
     import numpy as np
+
+    from app.risk.drawdown_recovery import estimate_recovery
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
     )

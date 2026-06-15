@@ -20,7 +20,6 @@ so risk engine, strategy runner, and knowledge loop all react in real time.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import math
@@ -88,7 +87,7 @@ class StrategyBid:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "StrategyBid":
+    def from_dict(cls, d: dict) -> StrategyBid:
         bid = cls(d["name"])
         bid.pulls = int(d.get("pulls", 0))
         bid.total_sharpe = float(d.get("total_sharpe", 0.0))

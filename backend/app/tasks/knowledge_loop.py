@@ -25,7 +25,6 @@ and any other subscriber — no polling, no lag, no lost learnings.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from typing import Any
@@ -64,7 +63,7 @@ class KnowledgeLoop:
 
     async def start(self) -> None:
         """Wire up the bus subscriptions and launch the learning coroutine."""
-        from app.tasks.agent_bus import get_bus, TOPICS
+        from app.tasks.agent_bus import TOPICS, get_bus
         bus = get_bus(self._r)
 
         # Subscribe to every topic
@@ -149,9 +148,9 @@ class KnowledgeLoop:
         return (
             f"ML experiment '{config}' ({model}): val_sharpe={val_sharpe:.2f}, "
             f"test_sharpe={test_sharpe:.2f} → {status}. "
-            + (f"Deploy to ml_enhanced strategies immediately." if test_sharpe > 1.5 else
-               f"Archive and try different hyperparameters." if test_sharpe < 0.5 else
-               f"Paper trade 2 weeks before live deploy.")
+            + ("Deploy to ml_enhanced strategies immediately." if test_sharpe > 1.5 else
+               "Archive and try different hyperparameters." if test_sharpe < 0.5 else
+               "Paper trade 2 weeks before live deploy.")
         )
 
     def _lesson_from_regime_change(self, data: dict) -> str:

@@ -17,8 +17,8 @@ import asyncio
 import json
 import random
 from collections import defaultdict, deque
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -71,7 +71,7 @@ class ModelPerformanceRecord:
     model_id: str
     accuracy: float          # fraction of correct directional predictions
     sharpe: float            # rolling Sharpe of model-guided returns
-    checked_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    checked_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     n_predictions: int = 0
     drift_detected: bool = False
 
@@ -82,7 +82,7 @@ class ModelingDecision:
     model_id: str
     reason: str
     confidence: float        # 0-1
-    decided_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    decided_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class ModelingEngineer:
@@ -261,7 +261,7 @@ class ModelingEngineer:
             Path(__file__).parents[3]
             / "experiments"
             / "configs"
-            / f"retrain_{model_id}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.json"
+            / f"retrain_{model_id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}.json"
         )
         experiment_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -271,7 +271,7 @@ class ModelingEngineer:
                         "model_id": model_id,
                         "trigger": "drift_detected",
                         "params": self._best_params.get(model_id, {}),
-                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "created_at": datetime.now(UTC).isoformat(),
                     },
                     indent=2,
                 )
@@ -385,7 +385,7 @@ class ModelingEngineer:
             "cycle": self._cycle,
             "configs_tried": len(configs),
             "best_sharpe": best["estimated_sharpe"],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self._log_raw(sweep_entry)
 

@@ -20,10 +20,10 @@ except ImportError:
     nn = None     # type: ignore[assignment]
 import numpy as np
 import pandas as pd
-import app.ml.features.pandas_ta_compat as ta
 from sklearn.metrics import roc_auc_score
-from app.ml.models.base_model import AbstractModel, EvalMetrics
 
+import app.ml.features.pandas_ta_compat as ta
+from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 LORENTZIAN_FEATURES = ["rsi_14", "cci_20", "adx_20", "ema_fast_delta", "ema_slow_delta"]
 

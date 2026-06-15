@@ -1,32 +1,32 @@
 {
-  "last_updated": "2026-06-08",
+  "last_updated": "2026-06-13",
   "pipeline": [
     {
       "name": "a16z Crypto Fund",
-      "stage": "deck_sent",
+      "stage": "first_call",
       "contact": "scout@a16z.com",
-      "added": "2026-06-08",
+      "added": "2026-06-13",
       "notes": "Seed to Series A focus"
     },
     {
       "name": "Sequoia Capital",
-      "stage": "deck_sent",
+      "stage": "first_call",
       "contact": "founders@sequoiacap.com",
-      "added": "2026-06-08",
+      "added": "2026-06-13",
       "notes": "FinTech + AI portfolio"
     },
     {
       "name": "Coatue Management",
-      "stage": "deck_sent",
+      "stage": "first_call",
       "contact": "info@coatue.com",
-      "added": "2026-06-08",
+      "added": "2026-06-13",
       "notes": "Quant + tech focus"
     },
     {
       "name": "Two Sigma Ventures",
-      "stage": "deck_sent",
+      "stage": "first_call",
       "contact": "ventures@twosigma.com",
-      "added": "2026-06-08",
+      "added": "2026-06-13",
       "notes": "Quant finance background"
     },
     {
@@ -45,16 +45,16 @@
     },
     {
       "name": "Founders Fund",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "info@foundersfund.com",
-      "added": "2026-06-04",
+      "added": "2026-06-12",
       "notes": "Peter Thiel aligned, tech-first"
     },
     {
       "name": "Andreessen Horowitz",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "a16z-fintech@a16z.com",
-      "added": "2026-06-04",
+      "added": "2026-06-12",
       "notes": "FinTech team"
     },
     {

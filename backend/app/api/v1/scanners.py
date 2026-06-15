@@ -63,7 +63,7 @@ async def get_scan_results(
 
     # Live scan
     try:
-        from app.tasks.stock_scanners import EquityScanner, CryptoScanner, PolymarketScanner
+        from app.tasks.stock_scanners import CryptoScanner, EquityScanner, PolymarketScanner
 
         if desk == "equity":
             results = await EquityScanner().scan()

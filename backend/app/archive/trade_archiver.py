@@ -3,10 +3,12 @@ Trade Archiver: writes every order, fill, and signal to JSON-lines files
 for long-term audit and replay. Files rotate daily.
 """
 from __future__ import annotations
-import json
+
 import asyncio
-from datetime import datetime, timezone
+import json
+from datetime import UTC, datetime
 from pathlib import Path
+
 from app.utils.logging import logger
 
 ARCHIVE_DIR = Path(__file__).parents[3] / "archive"
@@ -15,7 +17,7 @@ _lock = asyncio.Lock()
 
 
 def _today_file(category: str) -> Path:
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     return ARCHIVE_DIR / f"{category}_{date_str}.jsonl"
 
 
@@ -29,7 +31,7 @@ async def archive_event(category: str, data: dict) -> None:
     category: 'orders' | 'fills' | 'signals' | 'decisions' | 'risk'
     Appends a single JSON line to today's file. Atomic (lock-guarded).
     """
-    record = {"ts": datetime.now(timezone.utc).isoformat(), **data}
+    record = {"ts": datetime.now(UTC).isoformat(), **data}
     line = json.dumps(record, default=str) + "\n"
     file = _today_file(category)
     try:
@@ -43,7 +45,7 @@ async def archive_event(category: str, data: dict) -> None:
 def replay(category: str, date_str: str | None = None, limit: int = 1000) -> list[dict]:
     """Read back archived events for a category and date (YYYY-MM-DD)."""
     if date_str is None:
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     file = ARCHIVE_DIR / f"{category}_{date_str}.jsonl"
     if not file.exists():
         return []

@@ -46,14 +46,18 @@ jobs:
           SAMBANOVA_API_KEY:  ${{ secrets.SAMBANOVA_API_KEY_1 }}
           CEREBRAS_API_KEY:   ${{ secrets.CEREBRAS_API_KEY_1 }}
           HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY_1 }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           TOGETHER_API_KEY:   ${{ secrets.TOGETHER_API_KEY_1 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           ALLOW_PAID_APIS:    "False"
         run: python .github/scripts/signal_runner.py
 
       - name: Commit updated signals
         continue-on-error: true
         run: |
-          git add .github/state/agent_memory.json 2>/dev/null || true
+          git add .github/state/agent_memory.json .github/state/signal_runner_dedup.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "signals: $(date -u +%H:%M) | $(python3 -c 'import json; d=json.load(open("/tmp/signal_runner_summary.json")); print(str(d.get("signals",0))+" signals across "+",".join(d.get("by_desk",{}).keys()))' 2>/dev/null || echo '?')"
 
       - name: Push

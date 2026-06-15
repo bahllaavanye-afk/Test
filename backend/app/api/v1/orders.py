@@ -1,17 +1,20 @@
 """Order submission and management endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
 from app.api.limiter import limiter
-from app.models.order import Order
-from app.models.user import User
+from app.database import get_db
 from app.models.account import Account
 from app.models.audit_log import AuditLog
-from pydantic import BaseModel, ConfigDict, field_validator, Field, model_validator
-from datetime import datetime, timezone
-import uuid
+from app.models.order import Order
+from app.models.user import User
+from app.services.agent_logger import agent_logger
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -149,7 +152,7 @@ async def submit_order(
         execution_algo=body.execution_algo,
         status="pending",
         filled_qty=0.0,
-        submitted_at=datetime.now(timezone.utc),
+        submitted_at=datetime.now(UTC),
     )
     db.add(order)
 
@@ -164,9 +167,45 @@ async def submit_order(
     await db.commit()
     await db.refresh(order)
 
+    # Real-time agent log (fire-and-forget)
+    agent_logger.log_action_fire_and_forget(
+        action="submit_order",
+        employee_id=current_user.email or current_user.id,
+        agent_type="human",
+        tool_used="alpaca_api",
+        input_summary=f"{body.side} {body.symbol} {body.order_type}",
+        output_summary=f"order_id={order.id} status={order.status}",
+        status="ok",
+        symbol=body.symbol,
+        account_id=body.account_id,
+    )
+
     # Try to route to broker if account has broker credentials
     from app.brokers.alpaca_orders import submit_alpaca_order
     if account.broker == "alpaca" and account.encrypted_key:
+        # Risk gate: every manual order passes through the risk manager before reaching the broker
+        risk_mgr = getattr(request.app.state, "risk_manager", None)
+        if risk_mgr is not None:
+            from app.brokers.base import OrderRequest as RiskOrderRequest
+            risk_req = RiskOrderRequest(
+                symbol=order.symbol,
+                quantity=order.quantity or 1.0,
+                side=order.side,
+                order_type=order.order_type,
+                limit_price=order.limit_price,
+                risk_bucket="directional",
+            )
+            risk_decision = await risk_mgr.check_order(risk_req)
+            if not risk_decision.allowed:
+                order.status = "rejected"
+                await db.commit()
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Order rejected by risk manager: {risk_decision.reason}",
+                )
+            if risk_decision.adjusted_quantity is not None:
+                order.quantity = risk_decision.adjusted_quantity
+                await db.commit()
         try:
             alpaca_resp = await submit_alpaca_order(account, {
                 "symbol": order.symbol,
@@ -226,7 +265,7 @@ async def submit_bracket(
         execution_algo=body.execution_algo,
         status="pending",
         filled_qty=0.0,
-        submitted_at=datetime.now(timezone.utc),
+        submitted_at=datetime.now(UTC),
     )
     db.add(parent)
 
@@ -284,6 +323,32 @@ async def submit_bracket(
     )
 
     await db.commit()
+
+    # Risk gate: every bracket order passes through the risk manager before reaching the broker
+    risk_mgr = getattr(request.app.state, "risk_manager", None) if request else None
+    if risk_mgr is not None:
+        from app.brokers.base import OrderRequest as RiskOrderRequest
+        risk_req = RiskOrderRequest(
+            symbol=body.symbol,
+            quantity=body.quantity or 1.0,
+            side=body.side,
+            order_type=body.order_type,
+            limit_price=body.limit_price,
+            risk_bucket="directional",
+        )
+        risk_decision = await risk_mgr.check_order(risk_req)
+        if not risk_decision.allowed:
+            for o in created_orders:
+                o.status = "rejected"
+            await db.commit()
+            raise HTTPException(
+                status_code=422,
+                detail=f"Order rejected by risk manager: {risk_decision.reason}",
+            )
+        if risk_decision.adjusted_quantity is not None:
+            for o in created_orders:
+                o.quantity = risk_decision.adjusted_quantity
+            await db.commit()
 
     # Try to route the bracket to Alpaca (Alpaca supports bracket natively)
     from app.brokers.alpaca_orders import submit_alpaca_order
@@ -401,7 +466,7 @@ async def cancel_order(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     order.status = "cancelled"
-    order.cancelled_at = datetime.now(timezone.utc)
+    order.cancelled_at = datetime.now(UTC)
 
     # Cancel on Alpaca broker if applicable
     if account.broker == "alpaca" and account.encrypted_key and order.broker_order_id:

@@ -9,11 +9,8 @@ build_exit_strategy() is a factory that returns sensible composites per strategy
 """
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 
 from app.utils.logging import logger
 
@@ -144,7 +141,7 @@ class TimeBasedExit:
         self, position: dict, current_price: float, context: dict
     ) -> tuple[bool, str]:
         if self.eod_exit:
-            now_utc = datetime.now(timezone.utc)
+            now_utc = datetime.now(UTC)
             # Approximate EOD check: 20:55 UTC covers both EST (UTC-5) and EDT (UTC-4)
             # In EDT the market close (16:00 ET) is 20:00 UTC — use 19:55 for that case
             # We use a range: fire if 19:55 <= now_utc.time <= 21:00 UTC

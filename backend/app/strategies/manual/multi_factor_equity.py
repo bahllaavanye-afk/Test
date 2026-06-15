@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd

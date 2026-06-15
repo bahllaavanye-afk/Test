@@ -24,7 +24,6 @@ Documented Sharpe: 0.6-1.0 in fixed income (Brooks & Moskowitz 2017)
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal

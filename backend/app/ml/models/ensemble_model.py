@@ -3,11 +3,13 @@ Weighted ensemble of LSTM + XGBoost + Lorentzian KNN.
 Weights optimized on validation set via Optuna.
 Only signals with confidence > threshold are forwarded.
 """
-import numpy as np
 import json
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+
+import numpy as np
 import structlog
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 logger = structlog.get_logger()
@@ -22,7 +24,7 @@ class EnsembleModel(AbstractModel):
         confidence_threshold: float = 0.65,
         gnn_weight: float = 0.0,
     ):
-        self.weights = weights or {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}
+        self.weights = weights or {"lstm": 0.4, "xgboost": 0.3, "lorentzian": 0.15, "ssm": 0.15}
         self.confidence_threshold = confidence_threshold
         self.gnn_weight = gnn_weight
         self.models: dict[str, AbstractModel] = {}
@@ -50,6 +52,9 @@ class EnsembleModel(AbstractModel):
         into the weighted average using gnn_weight as its contribution weight.
         """
         predictions = {}
+        # Per-call weight overrides — never mutate self.weights inside forward(),
+        # otherwise the GNN weight accumulates across calls and skews normalization.
+        call_weights: dict[str, float] = {}
         for name, model in self.models.items():
             model_input = x[name] if isinstance(x, dict) else x
             try:
@@ -71,18 +76,23 @@ class EnsembleModel(AbstractModel):
                     returns_df, node_features = gnn_input
                     gnn_pred = self._gnn_model.predict(returns_df, node_features)
                     predictions["_gnn"] = gnn_pred
-                    self.weights["_gnn"] = self.gnn_weight
+                    call_weights["_gnn"] = self.gnn_weight
             except Exception as exc:
                 logger.debug("GNN prediction failed in ensemble", error=str(exc))
 
         if not predictions:
-            return np.full(1, 0.5)
+            # Preserve batch shape on the fallback so downstream confidence/threshold
+            # logic does not crash on a shape mismatch.
+            first = next((p for p in predictions.values()), None)
+            return np.full(first.shape if first is not None else 1, 0.5)
 
-        total_weight = sum(self.weights.get(n, 1.0) for n in predictions)
+        def _w(n: str) -> float:
+            return call_weights.get(n, self.weights.get(n, 1.0))
+
+        total_weight = sum(_w(n) for n in predictions) or 1.0
         ensemble = np.zeros(list(predictions.values())[0].shape)
         for name, pred in predictions.items():
-            w = self.weights.get(name, 1.0) / total_weight
-            ensemble += w * pred
+            ensemble += (_w(name) / total_weight) * pred
 
         return ensemble
 
@@ -147,8 +157,8 @@ class EnsembleModel(AbstractModel):
         Returns:
             dict of model_name → optimal weight, summing to 1.
         """
-        import pandas as pd
         import numpy as np
+        import pandas as pd
         from scipy.optimize import minimize
 
         model_names = list(returns_by_model.keys())

@@ -23,7 +23,7 @@ import torch.optim as optim
 # Ensure backend is importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
-from app.execution.rl_exec import ExecutionPolicy, _MODEL_PATH, _STATE_DIM, _ACTION_DIM
+from app.execution.rl_exec import _MODEL_PATH, ExecutionPolicy
 
 
 class ExecutionEnv:

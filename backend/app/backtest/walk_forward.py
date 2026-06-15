@@ -1,9 +1,12 @@
 """Walk-forward validation: train on N years, test on M months, roll forward."""
 
 from __future__ import annotations
-import pandas as pd
+
 from dataclasses import dataclass, field
-from app.backtest.engine import run_backtest, BacktestMetrics
+
+import pandas as pd
+
+from app.backtest.engine import run_backtest
 
 TIMEFRAME_TRAIN = 2  # years of training data
 TIMEFRAME_TEST = 6  # months of testing data

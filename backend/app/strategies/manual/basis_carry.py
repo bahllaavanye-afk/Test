@@ -22,12 +22,7 @@ Documented Sharpe: 4.84 on 2024-2025 BTC basis data (Cong et al. 2023).
 """
 from __future__ import annotations
 
-import asyncio
-import math
-from typing import Any
-
 import aiohttp
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal

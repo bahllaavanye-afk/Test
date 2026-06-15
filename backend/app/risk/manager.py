@@ -3,16 +3,17 @@ Real-time risk manager: Kelly sizing, correlation limits, circuit breakers.
 All order requests pass through here before reaching the broker.
 """
 from __future__ import annotations
-import asyncio
+
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 import pandas as pd
 
 from app.brokers.base import OrderRequest
+from app.risk.circuit_breaker import CircuitBreaker
+from app.risk.correlation import check_cluster_limits, compute_correlation_clusters
+from app.risk.hrp import HRPOptimizer
 from app.risk.kelly import size_from_kelly
-from app.risk.correlation import compute_correlation_clusters, check_cluster_limits
-from app.risk.circuit_breaker import CircuitBreaker, BreakerState
+from app.risk.portfolio_optimizer import CVaROptimizer
 from app.utils.logging import logger
 
 
@@ -43,6 +44,8 @@ class RiskManager:
         self._positions: dict[str, float] = {}   # symbol → market value USD
         self._returns_history: pd.DataFrame = pd.DataFrame()
         self._clusters: dict[str, list[str]] = {}
+        self._hrp_weights: pd.Series | None = None    # HRP per-symbol allocation weights
+        self._cvar_weights: pd.Series | None = None   # CVaR tail-risk overlay weights
 
         self.global_breaker = CircuitBreaker(
             name="global", max_drawdown_pct=max_drawdown_pct
@@ -54,7 +57,34 @@ class RiskManager:
     def update_equity(self, equity: float) -> None:
         self._equity = equity
         self._equity_confirmed = True
+        was_halted = self.global_breaker.is_halted
         self.global_breaker.update(equity)
+        # Fire a Slack alert on the NORMAL → HALTED transition (edge-triggered,
+        # so it notifies once per trip rather than on every snapshot).
+        if not was_halted and self.global_breaker.is_halted:
+            self._notify_breaker_trip(self.global_breaker)
+
+    def _notify_breaker_trip(self, breaker: CircuitBreaker) -> None:
+        """Fire-and-forget Slack alert when a circuit breaker trips."""
+        import asyncio
+
+        async def _send() -> None:
+            try:
+                from app.notifications.slack import slack
+                from app.notifications.tracker import tracker
+                tracker.record("circuit_breaker", "risk",
+                               f"{breaker.name} breaker tripped at {breaker.current_drawdown:.2%}")
+                await slack.notify_circuit_breaker(
+                    breaker.name, breaker.current_drawdown, breaker.max_drawdown_pct
+                )
+            except Exception:
+                pass
+
+        try:
+            asyncio.get_running_loop().create_task(_send())
+        except RuntimeError:
+            # No running loop (sync context, e.g. tests) — skip notification.
+            pass
 
     def update_positions(self, positions: list[dict]) -> None:
         self._positions = {p["symbol"]: float(p.get("market_value", 0)) for p in positions}
@@ -63,6 +93,20 @@ class RiskManager:
         self._returns_history = returns_df
         if not returns_df.empty and len(returns_df) >= 20:
             self._clusters = compute_correlation_clusters(returns_df, threshold=0.70)
+
+        # Recompute HRP and CVaR weights whenever returns data is refreshed.
+        # Multi-asset returns DataFrame (columns = symbols) required.
+        if not returns_df.empty and returns_df.shape[1] >= 2 and len(returns_df) >= 10:
+            try:
+                self._hrp_weights = HRPOptimizer().compute_weights(returns_df)
+            except Exception as _hrp_err:
+                logger.debug("HRP weight computation failed", error=str(_hrp_err))
+                self._hrp_weights = None
+            try:
+                self._cvar_weights = CVaROptimizer(confidence=0.95).compute_weights(returns_df)
+            except Exception as _cvar_err:
+                logger.debug("CVaR weight computation failed", error=str(_cvar_err))
+                self._cvar_weights = None
 
     async def check_order(self, request: OrderRequest) -> RiskDecision:
         """Gate every order through risk checks. Returns RiskDecision."""
@@ -80,12 +124,31 @@ class RiskManager:
         if self._equity <= 0:
             return RiskDecision(False, "equity is zero or negative — orders halted")
 
-        # Position size cap
+        # Position size cap — baseline is max_position_pct (5% of NAV)
         estimated_value = request.quantity * (request.limit_price or 100)
-        max_allowed = self._equity * self.max_position_pct
+        effective_pct = self.max_position_pct
+
+        # Tighten cap using HRP weight for this symbol (takes the min so we never loosen)
+        sym = request.symbol
+        if self._hrp_weights is not None and sym in self._hrp_weights.index:
+            hrp_cap = float(self._hrp_weights[sym])
+            effective_pct = min(effective_pct, hrp_cap)
+
+        # Further tighten using CVaR tail-risk weight
+        if self._cvar_weights is not None and sym in self._cvar_weights.index:
+            cvar_cap = float(self._cvar_weights[sym])
+            effective_pct = min(effective_pct, cvar_cap)
+
+        max_allowed = self._equity * effective_pct
         if estimated_value > max_allowed:
             adj_qty = max_allowed / (request.limit_price or 100)
-            logger.warning("Position size capped", symbol=request.symbol, original=request.quantity, adjusted=adj_qty)
+            logger.warning(
+                "Position size capped",
+                symbol=sym,
+                original=request.quantity,
+                adjusted=adj_qty,
+                effective_pct=round(effective_pct, 4),
+            )
             return RiskDecision(True, "size capped", adj_qty)
 
         # Correlation cluster check

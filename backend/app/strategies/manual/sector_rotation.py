@@ -9,8 +9,8 @@ Sharpe target: ~0.8 (documented in academic literature)
 Risk bucket: directional
 """
 import pandas as pd
-import numpy as np
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class SectorRotationStrategy(AbstractStrategy):

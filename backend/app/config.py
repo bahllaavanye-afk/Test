@@ -1,9 +1,11 @@
 # QuantEdge Platform — Institutional-Grade Quantitative Trading
+# Version: 1.0.0  |  Mode: paper (live trading permanently disabled)
 # Config loaded from environment variables via Pydantic BaseSettings
 # TRADING_MODE defaults to "paper" — live mode is permanently disabled
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
 import os as _os
+
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
@@ -19,6 +21,7 @@ class Settings(BaseSettings):
     debug: bool = False
     trading_mode: str = "paper"  # 'paper' | 'live'
     allowed_origins: str = "http://localhost:5173"
+    demo_mode: bool = True  # Allow unauthenticated read-only access (public demo)
 
     # Security
     secret_key: str = Field(default="change-me-in-production-32-byte-hex")
@@ -73,6 +76,7 @@ class Settings(BaseSettings):
 
     # Slack — bot token (preferred) or webhooks per channel
     slack_bot_token: str = ""          # xoxb-... (chat:write + chat:write.public scopes)
+    slack_signing_secret: str = ""     # from Slack App → Basic Information → Signing Secret
     slack_webhook_default: str = ""
     slack_webhook_orders: str = ""
     slack_webhook_signals: str = ""
@@ -84,6 +88,12 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+
+    # Model artifact store — Supabase Storage REST
+    supabase_url: str = ""               # https://xxxx.supabase.co
+    supabase_service_key: str = ""       # service_role key (never public)
+    model_bucket: str = "model-artifacts"
+    model_store_enabled: bool = True     # False → local-only mode
 
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":

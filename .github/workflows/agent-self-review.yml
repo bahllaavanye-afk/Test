@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -41,6 +41,8 @@ jobs:
         env:
           ANTHROPIC_API_KEY: "disabled"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
         run: python .github/scripts/review_agent_quality.py
 
       - name: Upload review report

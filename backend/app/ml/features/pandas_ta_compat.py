@@ -12,7 +12,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # RSI — Wilder's smoothed RSI (EWM with alpha=1/length)
 # ---------------------------------------------------------------------------

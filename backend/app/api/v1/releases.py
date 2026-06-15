@@ -9,7 +9,7 @@ Also handles A/B test setup, metrics comparison, and inference log access.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -448,12 +448,12 @@ async def promote_to_champion(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> ReleaseOut:
-    """
-    Promote a shadow or challenger release to champion.
-
-    The old champion is atomically archived in the same transaction.
-    The router snapshot is invalidated so traffic shifts immediately.
-    """
+    """Promote-to-live is permanently disabled — platform is paper-only."""
+    raise HTTPException(
+        403,
+        "Promote-to-live is disabled: QuantEdge runs in paper mode only. "
+        "Remove PAPER_ONLY_POLICY=true from config to re-enable (not recommended).",
+    )
     release = await _get_release(release_id, db)
 
     if release.status not in ("challenger", "shadow", "registered"):
@@ -473,10 +473,10 @@ async def promote_to_champion(
     old_champion = old_champ_q.scalar_one_or_none()
     if old_champion and old_champion.id != release_id:
         old_champion.status = "archived"
-        old_champion.archived_at = datetime.now(timezone.utc)
+        old_champion.archived_at = datetime.now(UTC)
         old_champion.traffic_pct = 0.0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     release.status = "champion"
     release.traffic_pct = 100.0
     release.promoted_at = now
@@ -520,7 +520,7 @@ async def archive_release(
 
     release.status = "archived"
     release.traffic_pct = 0.0
-    release.archived_at = datetime.now(timezone.utc)
+    release.archived_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(release)
     _invalidate_router(release.model_name)

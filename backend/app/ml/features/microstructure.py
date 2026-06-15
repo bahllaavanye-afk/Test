@@ -165,3 +165,174 @@ def add_microstructure_features(
 
 
 MICROSTRUCTURE_FEATURE_COLS = ["lob_imbalance", "spread_bps"]
+
+
+class VPINFeatures:
+    """
+    Volume-Synchronized Probability of Informed Trading (VPIN).
+
+    VPIN measures order-flow toxicity by classifying trades as buyer- or
+    seller-initiated using the Lee-Ready rule, then computing the imbalance
+    within equal-volume buckets. High VPIN (> 0.5) signals elevated
+    informed-trading risk and often precedes adverse price moves.
+
+    Reference: Easley, López de Prado & O'Hara (2012).
+    """
+
+    def classify_trades_lee_ready(
+        self,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        prev_close: float | None = None,
+    ) -> np.ndarray:
+        """
+        Classify each trade as buy (+volume) or sell (-volume) using Lee-Ready.
+
+        Rule:
+          - If price > prev_price → buy
+          - If price < prev_price → sell
+          - If price == prev_price (tick test) → inherit last non-zero direction
+
+        Returns signed_volumes array of same length as prices.
+        """
+        prices = np.asarray(prices, dtype=float)
+        volumes = np.asarray(volumes, dtype=float)
+        n = len(prices)
+        signed = np.zeros(n, dtype=float)
+
+        last_direction = 1  # default: buy
+        prev = prev_close if prev_close is not None else prices[0]
+
+        for i in range(n):
+            if prices[i] > prev:
+                last_direction = 1
+            elif prices[i] < prev:
+                last_direction = -1
+            # else: tie — keep last_direction (tick test)
+            signed[i] = last_direction * volumes[i]
+            prev = prices[i]
+
+        return signed
+
+    def compute_vpin(
+        self,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        bucket_size: float | None = None,
+        n_buckets: int = 50,
+        prev_close: float | None = None,
+    ) -> float:
+        """
+        Compute VPIN over the provided trade data.
+
+        Args:
+            prices: trade prices (chronological order)
+            volumes: trade volumes (same order as prices)
+            bucket_size: target volume per bucket; if None, auto-computed as
+                         total_volume / n_buckets
+            n_buckets: number of equal-volume buckets to use; only used when
+                       bucket_size is None
+            prev_close: previous bar's close for the first Lee-Ready comparison
+
+        Returns:
+            VPIN in [0, 1]: probability of informed trading.
+            Returns 0.0 if insufficient data.
+        """
+        prices = np.asarray(prices, dtype=float)
+        volumes = np.asarray(volumes, dtype=float)
+
+        if len(prices) < 10 or volumes.sum() <= 0:
+            return 0.0
+
+        signed = self.classify_trades_lee_ready(prices, volumes, prev_close)
+        total_volume = volumes.sum()
+
+        if bucket_size is None:
+            bucket_size = total_volume / max(n_buckets, 1)
+
+        # Fill equal-volume buckets
+        bucket_buy: list[float] = []
+        bucket_sell: list[float] = []
+        cur_buy = 0.0
+        cur_sell = 0.0
+        cur_vol = 0.0
+
+        for sv in signed:
+            vol = abs(sv)
+            if sv > 0:
+                cur_buy += vol
+            else:
+                cur_sell += vol
+            cur_vol += vol
+
+            while cur_vol >= bucket_size:
+                # Complete one bucket
+                fraction = bucket_size / cur_vol
+                bucket_buy.append(cur_buy * fraction)
+                bucket_sell.append(cur_sell * fraction)
+
+                remaining = 1.0 - fraction
+                cur_buy *= remaining
+                cur_sell *= remaining
+                cur_vol -= bucket_size
+
+        if not bucket_buy:
+            return 0.0
+
+        buy_arr = np.array(bucket_buy)
+        sell_arr = np.array(bucket_sell)
+        total_arr = buy_arr + sell_arr
+        valid = total_arr > 0
+        if not valid.any():
+            return 0.0
+
+        vpin = float(np.mean(np.abs(buy_arr[valid] - sell_arr[valid]) / total_arr[valid]))
+        return min(max(vpin, 0.0), 1.0)
+
+    def compute_vpin_series(
+        self,
+        df: pd.DataFrame,
+        window: int = 50,
+        bucket_size: float | None = None,
+    ) -> pd.Series:
+        """
+        Compute a rolling VPIN series from an OHLCV DataFrame.
+
+        Uses VWAP as a proxy for trade prices and volume as trade volume.
+        Produces one VPIN value per bar using the trailing `window` bars.
+
+        Args:
+            df: DataFrame with columns [open, high, low, close, volume]
+            window: number of bars in the rolling window
+            bucket_size: target volume per bucket (auto-computed if None)
+
+        Returns:
+            pd.Series of VPIN values aligned with df.index, NaN before warmup.
+        """
+        if "volume" not in df.columns:
+            return pd.Series(np.nan, index=df.index)
+
+        vwap = (df["high"] + df["low"] + df["close"]) / 3.0
+        volumes = df["volume"].fillna(0.0)
+
+        vpin_vals = np.full(len(df), np.nan)
+        for i in range(window - 1, len(df)):
+            p_slice = vwap.iloc[i - window + 1 : i + 1].to_numpy()
+            v_slice = volumes.iloc[i - window + 1 : i + 1].to_numpy()
+            prev = vwap.iloc[i - window] if i - window >= 0 else None
+            vpin_vals[i] = self.compute_vpin(
+                p_slice, v_slice, bucket_size=bucket_size, prev_close=float(prev) if prev is not None else None
+            )
+
+        return pd.Series(vpin_vals, index=df.index, name="vpin")
+
+
+def add_vpin_feature(df: pd.DataFrame, window: int = 50) -> pd.DataFrame:
+    """
+    Convenience wrapper: compute VPIN and add it as a column.
+    Requires 'volume' column in df. NaN for the first `window-1` rows.
+    """
+    featurizer = VPINFeatures()
+    df = df.copy()
+    df["vpin"] = featurizer.compute_vpin_series(df, window=window)
+    return df

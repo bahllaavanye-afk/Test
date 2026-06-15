@@ -16,8 +16,7 @@ import asyncio
 import json
 import os
 import re
-import sys
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -172,7 +171,7 @@ async def train_with_gemini(
     if result.get("status") == "success":
         exp_name = experiment_name or f"gemini_{symbol.lower().replace('-','_')}_{interval}"
         result["experiment_name"] = exp_name
-        result["trained_at"] = datetime.now(timezone.utc).isoformat()
+        result["trained_at"] = datetime.now(UTC).isoformat()
         result["model"] = "gemini_code_execution"
         result["symbol"] = symbol
         result["interval"] = interval
@@ -201,7 +200,7 @@ async def train_all_symbols() -> list[dict]:
     results = []
     for symbol, interval in targets:
         try:
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
             start = end - timedelta(days=730)
             df = yf.download(symbol, start=str(start.date()), end=str(end.date()),
                              interval=interval, auto_adjust=True, progress=False)

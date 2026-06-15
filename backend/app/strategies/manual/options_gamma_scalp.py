@@ -15,7 +15,8 @@ Falls back to realized vol proxy when options data is unavailable.
 """
 import numpy as np
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class OptionsGammaScalpStrategy(AbstractStrategy):
@@ -84,7 +85,6 @@ class OptionsGammaScalpStrategy(AbstractStrategy):
         else:
             # Infer from trading calendar: assume monthly expiry cycles
             # Use a proxy: enter in last 2 days of each month
-            from datetime import datetime
             import calendar
             if hasattr(data.index[-1], 'month'):
                 last_day = calendar.monthrange(

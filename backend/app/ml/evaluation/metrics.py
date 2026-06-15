@@ -13,12 +13,10 @@ Research references:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field, asdict
-from typing import Optional
+from dataclasses import asdict, dataclass
 
 import numpy as np
 import pandas as pd
-
 
 # ─── Data classes ──────────────────────────────────────────────────────────────
 
@@ -121,12 +119,12 @@ def _drawdown_series(cum: pd.Series) -> pd.Series:
 
 def compute_metrics(
     returns: pd.Series,
-    benchmark: Optional[pd.Series] = None,
-    signal: Optional[pd.Series] = None,
-    entries: Optional[pd.Series] = None,
-    exits: Optional[pd.Series] = None,
+    benchmark: pd.Series | None = None,
+    signal: pd.Series | None = None,
+    entries: pd.Series | None = None,
+    exits: pd.Series | None = None,
     rf: float = 0.0,
-    ann_factor: Optional[int] = None,
+    ann_factor: int | None = None,
 ) -> PerformanceMetrics:
     """
     Compute the full suite of performance metrics.
@@ -396,8 +394,8 @@ def _fill_signal_stats(m: PerformanceMetrics, r: pd.Series,
 def metrics_from_positions(
     position: pd.Series,
     prices: pd.Series,
-    benchmark_prices: Optional[pd.Series] = None,
-    signal: Optional[pd.Series] = None,
+    benchmark_prices: pd.Series | None = None,
+    signal: pd.Series | None = None,
     rf: float = 0.0,
 ) -> PerformanceMetrics:
     """
@@ -425,8 +423,8 @@ def metrics_from_signals(
     entries: pd.Series,
     exits: pd.Series,
     prices: pd.Series,
-    benchmark_prices: Optional[pd.Series] = None,
-    signal: Optional[pd.Series] = None,
+    benchmark_prices: pd.Series | None = None,
+    signal: pd.Series | None = None,
     rf: float = 0.0,
 ) -> PerformanceMetrics:
     """
@@ -468,27 +466,27 @@ def format_metrics_slack(m: PerformanceMetrics, name: str = "") -> str:
     sharpe_e = "🟢" if m.sharpe > 1.5 else ("🟡" if m.sharpe > 0.7 else "🔴")
 
     lines += [
-        f"*Performance*",
+        "*Performance*",
         f"  Total return: `{pct(m.total_return)}`  |  Ann. return: `{pct(m.ann_return)}`  |  Volatility: `{pct(m.ann_volatility)}`",
-        f"",
-        f"*Risk-adjusted ratios*",
+        "",
+        "*Risk-adjusted ratios*",
         f"  {sharpe_e} Sharpe: `{f2(m.sharpe)}`  |  Sortino: `{f2(m.sortino)}`  |  Calmar: `{f2(m.calmar)}`",
         f"  Omega: `{f1(m.omega)}`  |  Serenity: `{f2(m.serenity)}`  |  Pain ratio: `{f2(m.pain_ratio)}`",
         f"  Gain/Pain: `{f2(m.gain_to_pain)}`  |  Tail ratio: `{f2(m.tail_ratio)}`  |  Recovery factor: `{f2(m.recovery_factor)}`",
-        f"",
-        f"*Drawdown*",
+        "",
+        "*Drawdown*",
         f"  Max DD: `{pct(m.max_drawdown)}`  |  Avg DD: `{pct(m.avg_drawdown)}`  |  Ulcer index: `{f2(m.ulcer_index)}`",
         f"  Max DD duration: `{m.max_dd_duration} bars`  |  Periods: `{m.n_drawdown_periods}`",
-        f"",
-        f"*Risk*",
+        "",
+        "*Risk*",
         f"  VaR 95%: `{pct(m.var_95)}`  |  VaR 99%: `{pct(m.var_99)}`  |  CVaR 95%: `{pct(m.cvar_95)}`",
         f"  Skew: `{f2(m.skewness)}`  |  Kurtosis: `{f2(m.excess_kurtosis)}`",
     ]
 
     if m.n_trades > 0:
         lines += [
-            f"",
-            f"*Trades*",
+            "",
+            "*Trades*",
             f"  n_trades: `{m.n_trades}`  |  Win rate: `{m.win_rate:.1%}`  |  Profit factor: `{f2(m.profit_factor)}`",
             f"  Payoff: `{f2(m.payoff_ratio)}`  |  EV/trade: `{f2(m.expected_value)}`",
             f"  Consec wins: `{m.max_consec_wins}`  |  Consec losses: `{m.max_consec_losses}`",
@@ -496,8 +494,8 @@ def format_metrics_slack(m: PerformanceMetrics, name: str = "") -> str:
 
     if m.alpha != 0 or m.beta != 0:
         lines += [
-            f"",
-            f"*vs Benchmark*",
+            "",
+            "*vs Benchmark*",
             f"  Alpha: `{pct(m.alpha)}`  |  Beta: `{f2(m.beta)}`  |  IR: `{f2(m.information_ratio)}`",
             f"  Up capture: `{m.up_capture:.1%}`  |  Down capture: `{m.down_capture:.1%}`",
             f"  Active return: `{pct(m.active_return)}`  |  Tracking error: `{pct(m.tracking_error)}`",
@@ -505,16 +503,16 @@ def format_metrics_slack(m: PerformanceMetrics, name: str = "") -> str:
 
     if m.ic != 0:
         lines += [
-            f"",
-            f"*ML Signal Quality*",
+            "",
+            "*ML Signal Quality*",
             f"  IC: `{f2(m.ic)}`  |  Rank IC: `{f2(m.rank_ic)}`  |  ICIR: `{f2(m.icir)}`",
             f"  Factor turnover: `{f2(m.factor_turnover)}`",
         ]
 
     if m.hit_rate_monthly > 0:
         lines += [
-            f"",
-            f"*Monthly*",
+            "",
+            "*Monthly*",
             f"  Hit rate: `{m.hit_rate_monthly:.1%}`  |  Avg: `{pct(m.avg_monthly_return)}`",
             f"  Best: `{pct(m.best_month)}`  |  Worst: `{pct(m.worst_month)}`",
         ]

@@ -19,7 +19,7 @@ Redis keys used:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.utils.logging import logger
 
@@ -51,6 +51,7 @@ class PositionMonitor:
         if not positions and self.db_session_factory is not None:
             try:
                 from sqlalchemy import select
+
                 from app.models.position import Position
 
                 async with self.db_session_factory() as db:
@@ -286,7 +287,7 @@ class PositionMonitor:
                     "reason": reason,
                     "close_side": close_side,
                     "qty": qty,
-                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "ts": datetime.now(UTC).isoformat(),
                 },
             )
         except Exception as exc:

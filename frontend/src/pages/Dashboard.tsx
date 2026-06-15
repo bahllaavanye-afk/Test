@@ -8,6 +8,11 @@ import { selectTradingMode, setMode } from '../store/slices/tradingModeSlice'
 import { TVAdvancedChart } from '../components/charts/TVAdvancedChart'
 import NewsSentimentPanel from '../components/trading/NewsSentimentPanel'
 import TradeMarkerChart from '../components/charts/TradeMarkerChart'
+import TraderLevel from '../components/gamification/TraderLevel'
+import { WatchlistPanel } from '../components/charts/WatchlistPanel'
+import { MarketHeatmap } from '../components/charts/MarketHeatmap'
+import { AlertCenter } from '../components/alerts/AlertCenter'
+import { EconomicCalendar } from '../components/charts/EconomicCalendar'
 
 function vixColor(vix: number | null | undefined): string {
   if (vix == null) return '#888888'
@@ -67,7 +72,7 @@ function SystemStatusRow() {
     : []
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg px-4 py-3">
+    <div className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg px-4 py-3" aria-busy={isLoading} aria-live="polite">
       <div className="flex items-center gap-6 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-[#00c853] animate-pulse" />
@@ -262,6 +267,90 @@ function ConfirmLiveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCa
   )
 }
 
+// ── Bot Activity Feed ──────────────────────────────────────────────────────
+function BotActivityFeed() {
+  const { data: bots, isLoading } = useQuery({
+    queryKey: ['bots-summary'],
+    queryFn: () => api.get('/bots/summary/all').then(r => r.data).catch(() => [] as any[]),
+    refetchInterval: 15_000,
+    retry: false,
+  })
+  const { data: signals } = useQuery({
+    queryKey: ['recent-signals'],
+    queryFn: () => api.get('/strategies/signals/recent').then(r => r.data).catch(() => [] as any[]),
+    refetchInterval: 10_000,
+    retry: false,
+  })
+
+  const botList: any[] = Array.isArray(bots) ? bots : []
+  const signalList: any[] = Array.isArray(signals) ? signals : []
+
+  // Combine bots + signals into a unified feed
+  const feedItems = [
+    ...botList.slice(0, 5).map((b: any) => ({
+      id: `bot-${b.id}`,
+      type: 'bot' as const,
+      label: b.name || 'Bot',
+      description: `${b.status || 'running'} · ${b.open_positions ?? 0} open positions`,
+      pnl: b.total_pnl_30d ?? 0,
+      ts: b.last_signal_at || b.updated_at || null,
+    })),
+    ...signalList.slice(0, 8).map((s: any) => ({
+      id: `sig-${s.id || Math.random()}`,
+      type: 'signal' as const,
+      label: s.strategy_name || s.strategy || 'Strategy',
+      description: `${s.direction || s.side || 'signal'} ${s.symbol || ''}`.trim(),
+      pnl: s.realized_pnl ?? 0,
+      ts: s.created_at || s.ts || null,
+    })),
+  ].slice(0, 8)
+
+  const fmtTime = (ts: string | null) => {
+    if (!ts) return ''
+    try {
+      const diff = Math.round((Date.now() - new Date(ts).getTime()) / 60_000)
+      if (diff < 60) return `${diff}m ago`
+      if (diff < 1440) return `${Math.floor(diff / 60)}h ago`
+      return new Date(ts).toLocaleDateString()
+    } catch { return '' }
+  }
+
+  const dotColor = (type: 'bot' | 'signal') =>
+    type === 'signal' ? '#f5a623' : '#2196f3'
+
+  return (
+    <div className="kpi-card">
+      <div className="flex items-center justify-between mb-3">
+        <p className="section-header" style={{ marginBottom: 0 }}>Bot Activity Feed</p>
+        <a href="/bot-dashboard" className="text-[10px] text-[#f5a623] hover:underline">View all →</a>
+      </div>
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => <div key={i} className="h-8 bg-[#1e1e1e] rounded animate-pulse" />)}
+        </div>
+      ) : feedItems.length === 0 ? (
+        <p className="text-xs text-[#555] py-3 text-center">No bot activity yet. <a href="/bots" className="text-[#f5a623] hover:underline">Create a bot →</a></p>
+      ) : (
+        <div className="space-y-1.5">
+          {feedItems.map(item => (
+            <div key={item.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[#0d0d0d] border border-[#1e1e1e] hover:border-[#2a2a2a] transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dotColor(item.type), boxShadow: `0 0 4px ${dotColor(item.type)}80` }} />
+              {item.ts && <span className="text-[10px] text-[#444] font-mono shrink-0 w-14">{fmtTime(item.ts)}</span>}
+              <span className="text-xs font-semibold text-[#f5a623] shrink-0">{item.label}</span>
+              <span className="text-xs text-[#777] truncate flex-1">{item.description}</span>
+              {item.pnl !== 0 && (
+                <span className="text-xs font-mono font-bold shrink-0" style={{ color: item.pnl >= 0 ? '#00c853' : '#ff1744' }}>
+                  {item.pnl >= 0 ? '+' : ''}${Math.abs(item.pnl).toFixed(2)}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Top 5 symbols for the "Recent Trades" section
 const TRADE_SYMBOLS = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA']
 
@@ -407,6 +496,8 @@ export default function Dashboard() {
       {/* ── Bot Activity Feed (top of dashboard) ── */}
       <BotActivityFeed />
 
+      <TraderLevel />
+
       <div className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all duration-500 ${isLive ? 'bg-[#ff1744]/10 border border-[#ff1744]/40' : 'bg-[#f5a623]/10 border border-[#f5a623]/30'}`}>
         <div className="flex items-center gap-3">
           <span className="w-3 h-3 rounded-full inline-block"
@@ -455,6 +546,8 @@ export default function Dashboard() {
 
       <RegimeIndicator />
 
+      <BotActivityFeed />
+
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 flex flex-col gap-2">
           <div className="flex gap-2">
@@ -470,7 +563,9 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-          <TVAdvancedChart symbol={chartSymbol} />
+          <div role="img" aria-label={`TradingView advanced chart for ${chartSymbol}`}>
+            <TVAdvancedChart symbol={chartSymbol} />
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -672,6 +767,20 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* ── TradingView-style panels ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <WatchlistPanel
+          symbols={['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'META', 'GOOGL', 'BTC/USD']}
+          onSelectSymbol={(sym) => setChartSymbol(`NASDAQ:${sym}`)}
+          className="h-72"
+        />
+        <AlertCenter className="h-72" />
+        <EconomicCalendar className="h-72" />
+      </div>
+
+      {/* ── Sector Heatmap ── */}
+      <MarketHeatmap className="h-40" />
+
       {/* ── Market News ── */}
       <div className="kpi-card overflow-hidden max-h-64 overflow-y-auto">
         <NewsSentimentPanel symbols={['SPY', 'QQQ', 'AAPL', 'NVDA', 'META']} />
@@ -698,7 +807,9 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-        <TradeMarkerChart symbol={tradeSymbol} height={360} />
+        <div role="img" aria-label={`Trade marker chart for ${tradeSymbol}`}>
+          <TradeMarkerChart symbol={tradeSymbol} height={360} />
+        </div>
       </div>
 
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>

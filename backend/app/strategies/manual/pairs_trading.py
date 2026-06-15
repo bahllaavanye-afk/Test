@@ -14,10 +14,11 @@ Logic:
 
 Market neutral: long one leg, short the other (dollar-neutral).
 """
-import pandas as pd
 import numpy as np
+import pandas as pd
 from statsmodels.tsa.stattools import coint
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class PairsTradingStrategy(AbstractStrategy):

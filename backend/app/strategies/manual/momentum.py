@@ -7,9 +7,10 @@ Historically: 17.9% annualized excess return, Sharpe 0.68-1.0.
 For single-symbol mode: signal when symbol's 12-1 momentum is strongly positive
 and trending up compared to prior period.
 """
-import pandas as pd
 import numpy as np
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+import pandas as pd
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class MomentumStrategy(AbstractStrategy):

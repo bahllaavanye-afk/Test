@@ -3,10 +3,13 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
+
 import json
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
@@ -48,7 +51,7 @@ class LightGBMClassifier(AbstractModel):
 
     def __init__(self, config: LightGBMConfig | None = None):
         self.config = config or LightGBMConfig()
-        self._model: "lgb.Booster | None" = None
+        self._model: lgb.Booster | None = None
         self._feature_names: list[str] = []
         self._shap_explainer = None
 
@@ -155,7 +158,7 @@ class LightGBMClassifier(AbstractModel):
         Path(path + ".json").write_text(json.dumps(meta, indent=2))
 
     @classmethod
-    def load(cls, path: str) -> "LightGBMClassifier":
+    def load(cls, path: str) -> LightGBMClassifier:
         obj = cls()
         if not HAS_LGB:
             return obj

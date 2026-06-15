@@ -26,14 +26,12 @@ Documented behaviour: cleaner equity curve and dramatically lower turnover than
 classical N-month momentum, with higher hit-rate at similar gross return.
 """
 
-import asyncio
 from datetime import date, timedelta
 
 import httpx
 import numpy as np
 import pandas as pd
 
-from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

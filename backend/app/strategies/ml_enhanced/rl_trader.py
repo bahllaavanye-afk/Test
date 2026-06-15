@@ -17,7 +17,6 @@ except ImportError:
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
-
 # Default path where a trained A3C-LSTM checkpoint is expected.
 _DEFAULT_MODEL_PATH = Path(__file__).parents[3] / "checkpoints" / "a3c_lstm_latest.pt"
 

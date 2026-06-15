@@ -2,59 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --bg: #070709;
-  --surface: #0e0e12;
-  --surface2: #141418;
-  --border: #1c1c24;
-  --border2: #252530;
-  --text: #e2e2f0;
-  --muted: #6b6b80;
+  /* macOS-style dark palette — deep slate with a hint of blue, not pure black */
+  --bg: #0a0b0f;
+  --surface: rgba(22,24,30,0.72);
+  --surface-solid: #16181e;
+  --surface2: rgba(32,34,42,0.6);
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --text: #f2f3f7;
+  --muted: #8a8d9a;
   --accent: #f5a623;
-  --accent-dim: rgba(245,166,35,0.12);
-  --green: #00e676;
-  --green-dim: rgba(0,230,118,0.12);
-  --red: #ff1744;
-  --red-dim: rgba(255,23,68,0.12);
-  --blue: #448aff;
-  --blue-dim: rgba(68,138,255,0.10);
-  --purple: #b388ff;
+  --accent-dim: rgba(245,166,35,0.14);
+  --green: #32d74b;          /* Apple system green */
+  --green-dim: rgba(50,215,75,0.14);
+  --red: #ff453a;            /* Apple system red */
+  --red-dim: rgba(255,69,58,0.14);
+  --blue: #0a84ff;           /* Apple system blue */
+  --blue-dim: rgba(10,132,255,0.12);
+  --purple: #bf5af2;         /* Apple system purple */
+
+  /* Apple "Liquid Glass" / vibrancy tokens */
+  --glass-blur: 24px;
+  --glass-sat: 180%;
+  --glass-bg: rgba(28,30,38,0.55);
+  --glass-bg-strong: rgba(20,22,28,0.72);
+  --glass-border: rgba(255,255,255,0.10);
+  --glass-highlight: rgba(255,255,255,0.06);
+  --shadow-soft: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.36);
+  --shadow-float: 0 1px 0 rgba(255,255,255,0.05) inset, 0 12px 40px rgba(0,0,0,0.5);
+
+  /* HD UI font stack — SF Pro on Apple, Inter everywhere else */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+}
+
+/* ── Accessibility: focus-visible for keyboard navigation ── */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
 }
 
 /* ── Reset ── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Body: animated mesh background ── */
+/* ── Body: clean Apple-style UI typography over a soft vibrancy background ── */
 body {
   background: var(--bg);
   background-image:
-    radial-gradient(ellipse at 15% 40%, rgba(0,230,118,0.025) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 15%, rgba(245,166,35,0.025) 0%, transparent 55%),
-    radial-gradient(ellipse at 60% 85%, rgba(68,138,255,0.02) 0%, transparent 55%);
+    radial-gradient(ellipse at 12% 0%, rgba(10,132,255,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 88% 8%, rgba(191,90,242,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 100%, rgba(50,215,75,0.035) 0%, transparent 55%);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
 }
 
-/* ── Subtle CRT scanline overlay ── */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 3px,
-    rgba(0, 0, 0, 0.06) 3px,
-    rgba(0, 0, 0, 0.06) 4px
-  );
-  pointer-events: none;
-  z-index: 9998;
+/* Numbers and code keep the mono face for that precise, tabular feel */
+.font-mono, code, pre, kbd { font-family: var(--font-mono); }
+
+/* ── Mobile: the dense 12.5px terminal type is unreadable on a phone.
+   Bump the base size and disable the CRT scanline (too noisy on small,
+   high-DPI screens). Touch targets and bottom-nav spacing handled inline. ── */
+@media (max-width: 767px) {
+  body { font-size: 15px; }
+  body::before { display: none; }
+  /* Never let a wide table/grid force horizontal page scroll on mobile. */
+  #root { max-width: 100vw; overflow-x: hidden; }
+
+  /* Landing page: inline-styled fixed grids must collapse on phones.
+     !important is required because inline styles outrank normal class rules. */
+  .landing-metrics-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 1px !important; }
+  .landing-metrics-grid > div { border-right: none !important; padding: 16px 8px !important; }
+  .landing-grid-3 { grid-template-columns: 1fr !important; }
+  .landing-grid-2 { grid-template-columns: 1fr !important; }
 }
+
+/* Honor users who prefer reduced motion — disable the heavier animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* CRT scanline removed — replaced by the clean vibrancy background above for a
+   premium Apple "Liquid Glass" feel rather than a terminal aesthetic. */
 
 /* ── Scrollbars ── */
 ::-webkit-scrollbar { width: 3px; height: 3px; }
@@ -62,12 +107,48 @@ body::before {
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-/* ── Glass card ── */
+/* ── Liquid Glass surfaces (Apple vibrancy) ──────────────────────────────── */
 .glass-card {
-  background: rgba(14,14,18,0.85);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+/* Translucent top/side bars (nav, toolbars) — frosted, sits above content */
+.glass-bar {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border-color: var(--glass-border);
+}
+
+/* Floating glass panel with a brighter top highlight (widget / popover) */
+.glass-panel {
+  position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-float);
+}
+.glass-panel::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--glass-highlight) 0%, transparent 28%);
+  pointer-events: none;
+}
+
+/* Subtle interactive lift used on hoverable glass tiles */
+.glass-hover { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s, border-color .25s; }
+.glass-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--border2);
+  box-shadow: var(--shadow-float);
 }
 
 /* ── Glow utilities ── */
@@ -119,24 +200,27 @@ body::before {
   background: linear-gradient(90deg, var(--border2) 0%, transparent 100%);
 }
 
-/* ── KPI card ── */
+/* ── KPI card — frosted glass tile ── */
 .kpi-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 14px 18px;
   position: relative;
   overflow: hidden;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: var(--shadow-soft);
+  transition: transform .25s cubic-bezier(.2,.8,.2,1), border-color 0.2s, box-shadow 0.2s;
 }
 .kpi-card::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, transparent 60%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 30%);
   pointer-events: none;
 }
-.kpi-card:hover { border-color: var(--border2); }
+.kpi-card:hover { border-color: var(--border2); transform: translateY(-2px); box-shadow: var(--shadow-float); }
 
 /* ── Gradient mesh for hero / landing ── */
 .mesh-bg {

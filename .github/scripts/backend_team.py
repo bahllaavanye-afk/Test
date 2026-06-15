@@ -182,6 +182,7 @@ def _run_gemini_audit() -> None:
         return
 
     print("Backend AI Team starting audit via free LLM cascade...")
+    context = read_files(AUDIT_FILES + SAFE_TO_FIX)
     prompt = (
         f"You are QuantEdge's senior backend engineer.\n"
         f"Focus: {FOCUS}\n\n"

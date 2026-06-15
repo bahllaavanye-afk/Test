@@ -21,7 +21,6 @@ max 2% of AUM per stablecoin; never hold through a confirmed bank-run event.
 from __future__ import annotations
 
 import pandas as pd
-import numpy as np
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

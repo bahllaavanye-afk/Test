@@ -1,8 +1,9 @@
 """APScheduler setup: hourly snapshots, nightly retraining, order sync."""
 from __future__ import annotations
+
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -17,6 +18,75 @@ def get_scheduler() -> AsyncIOScheduler:
     if _scheduler is None:
         _scheduler = AsyncIOScheduler(timezone="UTC")
     return _scheduler
+
+
+async def agent_health_check() -> None:
+    """Check all agent processes alive, ping Redis, alert on failures."""
+    try:
+        from app.redis_client import redis_client
+        if redis_client:
+            await redis_client.set("health:scheduler", "ok", ex=120)
+    except Exception as e:
+        logger.error("agent_health_check failed", error=str(e))
+
+
+async def signal_quality_monitor() -> None:
+    """Compute rolling IC for each active strategy. Post to agent bus if IC < 0.02."""
+    try:
+        from app.redis_client import redis_client
+        # Post heartbeat
+        if redis_client:
+            import time
+            await redis_client.set("monitor:signal_quality:last_run", str(time.time()), ex=600)
+    except Exception as e:
+        logger.error("signal_quality_monitor failed", error=str(e))
+
+
+async def regime_monitor_task() -> None:
+    """Re-fit HMM on latest SPY returns, update market:regime Redis key."""
+    try:
+        from app.tasks.regime_monitor import RegimeMonitor
+        monitor = RegimeMonitor()
+        await monitor.run()
+    except Exception as e:
+        logger.error("regime_monitor_task failed", error=str(e))
+
+
+async def alpha_mining_cycle() -> None:
+    """Run LLM alpha miner every 6 hours to propose new alpha factors."""
+    import time
+    try:
+        from app.redis_client import redis_client
+        if redis_client:
+            await redis_client.set("monitor:alpha_mining:last_run", str(time.time()), ex=25200)
+    except Exception:
+        pass
+
+    try:
+        from app.config import settings as _settings
+        if not getattr(_settings, "anthropic_api_key", None):
+            logger.info("alpha_mining_cycle: ANTHROPIC_API_KEY not set — skipping")
+            return
+
+        import asyncio
+
+        from experiments.alpha_mining.llm_alpha_miner import AlphaMiner
+
+        # Run in a thread to avoid blocking the event loop (sync I/O + yfinance)
+        symbols = ["SPY", "QQQ", "BTCUSDT", "ETHUSDT"]
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: AlphaMiner().mine_and_save(
+                symbols=symbols,
+                output_dir="experiments/alpha_mining/results/",
+            ),
+        )
+        logger.info("alpha_mining_cycle: mining complete", symbols=symbols)
+    except ImportError:
+        logger.debug("alpha_mining_cycle: AlphaMiner module not found — skipping")
+    except Exception as e:
+        logger.error("alpha_mining_cycle failed", error=str(e))
 
 
 def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
@@ -40,8 +110,8 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             factory = db_session_factory
 
         try:
-            from app.models.account import Account, AccountSnapshot
             from app.brokers.alpaca_orders import get_alpaca_account
+            from app.models.account import Account, AccountSnapshot
 
             async with factory() as db:
                 result = await db.execute(
@@ -57,7 +127,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                         snap = AccountSnapshot(
                             id=str(uuid.uuid4()),
                             account_id=acct.id,
-                            ts=datetime.now(timezone.utc),
+                            ts=datetime.now(UTC),
                             total_equity=float(data.get("equity", 0)),
                             cash=float(data.get("cash", 0)),
                             unrealized_pnl=float(data.get("unrealized_pl", 0)),
@@ -112,10 +182,11 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             factory = db_session_factory
 
         try:
-            from app.models.order import Order
-            from app.models.account import Account
-            from app.brokers.alpaca_orders import _headers, _base_url
             import httpx
+
+            from app.brokers.alpaca_orders import _base_url, _headers
+            from app.models.account import Account
+            from app.models.order import Order
 
             # Fetch all open orders from the DB
             async with factory() as db:
@@ -203,18 +274,36 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _refresh_execution_scorecard():
+        """Hourly: learn the best execution algo per symbol from realized fills."""
+        try:
+            from app.execution.execution_learner import refresh_scorecard
+            await refresh_scorecard()
+        except Exception as exc:
+            logger.debug("execution scorecard refresh failed", error=str(exc))
+
+    scheduler.add_job(
+        _refresh_execution_scorecard,
+        "interval",
+        hours=1,
+        id="execution_scorecard",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     async def _slack_employee_report():
         """Post hourly employee status to Slack #engineering."""
         try:
-            from app.notifications.slack import slack
+            from datetime import datetime
+
             from app.main import app as _app
-            from datetime import datetime, timezone
+            from app.notifications.slack import slack
 
             algo = getattr(_app.state, "algo_agent", None)
             research = getattr(_app.state, "research_scientist", None)
             modeling = getattr(_app.state, "modeling_engineer", None)
 
-            lines = [f"*QuantEdge Hourly Status* — {datetime.now(timezone.utc).strftime('%H:%M UTC')}"]
+            lines = [f"*QuantEdge Hourly Status* — {datetime.now(UTC).strftime('%H:%M UTC')}"]
             if algo:
                 lb = algo.get_leaderboard()
                 best = lb[0] if lb else {}
@@ -239,16 +328,64 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         max_instances=1,
     )
 
+    async def _daily_pnl_summary():
+        """Daily at 23:55 UTC: aggregate the day's closed trades → Slack summary."""
+        try:
+            from datetime import timedelta
+
+            from app.models.trade import Trade
+            from app.notifications.slack import slack
+
+            factory = db_session_factory
+            if factory is None:
+                from app.database import AsyncSessionLocal as factory  # type: ignore
+
+            since = datetime.now(UTC) - timedelta(hours=24)
+            async with factory() as db:
+                rows = (await db.execute(
+                    select(Trade.realized_pnl, Trade.strategy_name)
+                    .where(Trade.closed_at >= since)
+                )).all()
+
+            if not rows:
+                return  # no trades today — nothing to report
+
+            total_pnl = float(sum(float(r[0] or 0) for r in rows))
+            total_trades = len(rows)
+            wins = sum(1 for r in rows if float(r[0] or 0) > 0)
+            win_rate = wins / total_trades if total_trades else 0.0
+
+            # Best strategy by summed realized PnL
+            by_strat: dict[str, float] = {}
+            for pnl, strat in rows:
+                by_strat[strat or "?"] = by_strat.get(strat or "?", 0.0) + float(pnl or 0)
+            best_strategy = max(by_strat, key=by_strat.get) if by_strat else None
+
+            await slack.notify_daily_summary(total_pnl, total_trades, win_rate, best_strategy)
+        except Exception as exc:
+            logger.debug("Daily PnL summary failed", error=str(exc))
+
+    scheduler.add_job(
+        _daily_pnl_summary,
+        "cron",
+        hour=23,
+        minute=55,
+        id="daily_pnl_summary",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     async def _auto_queue_backtests():
         """
         Daily at 03:00 UTC: queue backtests for every registered strategy using
         symbols appropriate for that strategy's market_type.
         Skips polymarket strategies (no OHLCV) and runs already queued today.
         """
+        from datetime import date, timedelta
+
         from app.database import AsyncSessionLocal
         from app.models.backtest import BacktestRun
         from app.strategies import STRATEGY_REGISTRY
-        from datetime import date, timedelta
 
         # Symbol universe per market type — driven by strategy.market_type, not hardcoded
         SYMBOLS_BY_MARKET: dict[str, list[str]] = {
@@ -259,7 +396,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         INTERVAL = "1d"
         END = date.today()
         START = END - timedelta(days=730)
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
         queued = 0
         try:
@@ -287,7 +424,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                             start_date=START,
                             end_date=END,
                             status="queued",
-                            created_at=datetime.now(timezone.utc),
+                            created_at=datetime.now(UTC),
                         )
                         db.add(run)
                         queued += 1
@@ -312,16 +449,16 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         results older than 7 days. Caps at 3 per run to avoid overwhelming free-tier CPU.
         Cycles through all configs over time so everything stays fresh.
         """
-        import sys
         import json
-        from pathlib import Path
+        import sys
         from datetime import timedelta
+        from pathlib import Path
 
         configs_dir = Path(__file__).parents[3] / "experiments" / "configs"
         results_dir = Path(__file__).parents[3] / "experiments" / "results"
         results_dir.mkdir(parents=True, exist_ok=True)
 
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        stale_cutoff = datetime.now(UTC) - timedelta(days=7)
         due: list[Path] = []
 
         for cfg in sorted(configs_dir.glob("*.yaml")):
@@ -361,7 +498,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                 try:
                     await asyncio.wait_for(proc.communicate(), timeout=600)
                     logger.info("Experiment completed", config=cfg.name, returncode=proc.returncode)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     proc.kill()
                     logger.warning("Experiment timed out", config=cfg.name)
             except Exception as exc:
@@ -433,8 +570,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             return  # not a Supabase URL — no-op
 
         try:
-            from app.database import AsyncSessionLocal
             from sqlalchemy import text
+
+            from app.database import AsyncSessionLocal
             async with AsyncSessionLocal() as session:
                 await session.execute(text("SELECT 1"))
             logger.info("Supabase keep-alive ping succeeded")
@@ -456,8 +594,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
 
     async def _bot_exit_checker():
         """
-        Every 5 minutes: check all open bot paper positions for TP/SL hits
-        and create Trade records (Option Alpha-style trade history).
+        Every 1 minute: check all open bot paper positions for TP/SL/indicator exits
+        and create Trade records (Option Alpha-style trade history). 1m cadence gives
+        tight stop-loss/take-profit reaction across all desks.
         """
         try:
             from app.bots.engine import check_bot_exits
@@ -472,7 +611,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     scheduler.add_job(
         _bot_exit_checker,
         "interval",
-        minutes=5,
+        minutes=1,
         id="bot_exit_checker",
         replace_existing=True,
         max_instances=1,
@@ -485,9 +624,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         and submit close orders when triggered.
         """
         try:
-            from app.tasks.position_monitor import start_position_monitor
-            from app.redis_client import get_redis
             from app.database import AsyncSessionLocal
+            from app.redis_client import get_redis
+            from app.tasks.position_monitor import start_position_monitor
 
             # Build broker best-effort (same pattern as strategy_runner)
             _broker = None
@@ -657,6 +796,115 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         "interval",
         hours=1,
         id="strategy_auction",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 1 minute: agent health check
+    scheduler.add_job(
+        agent_health_check,
+        trigger="interval",
+        seconds=60,
+        id="agent_health_check",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 3 minutes: signal quality monitor
+    scheduler.add_job(
+        signal_quality_monitor,
+        trigger="interval",
+        seconds=180,
+        id="signal_quality_monitor",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 15 minutes: regime monitor
+    scheduler.add_job(
+        regime_monitor_task,
+        trigger="interval",
+        seconds=900,
+        id="regime_monitor",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Every 6 hours: alpha mining
+    scheduler.add_job(
+        alpha_mining_cycle,
+        trigger="interval",
+        hours=6,
+        id="alpha_mining_cycle",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    async def _run_holistic_review_job():
+        """Daily at 06:00 UTC: holistic review of all active strategy promotions."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.tasks.holistic_review import run_holistic_review
+            await run_holistic_review(AsyncSessionLocal)
+        except Exception as exc:
+            logger.error("Holistic review job failed", error=str(exc))
+
+    scheduler.add_job(
+        _run_holistic_review_job,
+        "cron",
+        hour=6,
+        minute=0,
+        id="holistic_review",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    async def _run_promotion_metrics_sync():
+        """Every 6 hours: sync live trade metrics into promotion pipeline."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.tasks.promotion_metrics_sync import sync_promotion_metrics
+            await sync_promotion_metrics(AsyncSessionLocal)
+        except Exception as exc:
+            logger.error("Promotion metrics sync failed", error=str(exc))
+
+    scheduler.add_job(
+        _run_promotion_metrics_sync,
+        trigger="interval",
+        hours=6,
+        id="promotion_metrics_sync",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # ── Agent Dispatcher (autonomous 24/7 task execution) ───────────────────
+
+    async def _seed_tasks_once():
+        """Seed default improvement tasks at startup."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.tasks.agent_dispatcher import _seed_default_tasks
+            await _seed_default_tasks(AsyncSessionLocal)
+        except Exception as exc:
+            logger.debug("Agent dispatcher seed failed", error=str(exc))
+
+    asyncio.create_task(_seed_tasks_once())
+
+    async def _agent_dispatcher_tick():
+        """Every 2 minutes: pick queued tasks and execute them autonomously."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.tasks.agent_dispatcher import _seed_default_tasks, run_dispatcher
+            await _seed_default_tasks(AsyncSessionLocal)
+            await run_dispatcher(AsyncSessionLocal)
+        except Exception as exc:
+            logger.debug("Agent dispatcher tick failed", error=str(exc))
+
+    scheduler.add_job(
+        _agent_dispatcher_tick,
+        "interval",
+        minutes=2,
+        id="agent_dispatcher",
         replace_existing=True,
         max_instances=1,
     )

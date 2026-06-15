@@ -945,7 +945,7 @@ def call_best_agent_for_task(
         for env_var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"]:
             key = os.environ.get(env_var, "").strip()
             if key:
-                r = call_litellm("gemini/gemini-2.0-flash-exp", key, safe_sys, safe_prompt, cap)
+                r = call_litellm("gemini/gemini-2.5-flash", key, safe_sys, safe_prompt, cap)
                 if r and len(r.strip()) > 20:
                     _LAST_PROVIDER = "litellm:gemini"
                     return r.strip(), "litellm:gemini"
@@ -1752,7 +1752,7 @@ def call_openrouter(system_prompt: str, user_message: str, max_tokens: int = 500
 
 
 def call_litellm(model: str, api_key: str, system_prompt: str, user_message: str, max_tokens: int = 600) -> str | None:
-    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.0-flash-exp', 'groq/llama-3.3-70b-versatile', etc."""
+    """Unified LLM call via LiteLLM. model: 'gemini/gemini-2.5-flash', 'groq/llama-3.3-70b-versatile', etc."""
     if not _LITELLM_AVAILABLE:
         return None
     hostname = model.split("/")[0]
@@ -1789,7 +1789,7 @@ def call_claude_for_review(system_prompt: str, user_message: str, max_tokens: in
     if not api_key:
         return "", "no-anthropic-key"
     payload = {
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-haiku-4-5-20250514",
         "max_tokens": max_tokens,
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_message}],
@@ -1835,7 +1835,7 @@ def call_claude(system_prompt: str, user_message: str, max_tokens: int = 600) ->
     if not api_key:
         return None
     payload = {
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-haiku-4-5-20250514",
         "max_tokens": min(max_tokens, MAX_TOKENS_PER_CALL),
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_message}],
@@ -8343,6 +8343,133 @@ def _tag_employees_for_content(text: str) -> str:
     return f"\n_cc: {' · '.join(tags)}_" if tags else ""
 
 
+def _harvest_issues_from_messages(messages: list[str]) -> list[dict]:
+    """
+    Analyze a list of Slack message bodies posted this run and extract
+    specific, actionable code issues using the LLM.
+
+    Returns a list of issue dicts: [{"title": str, "body": str, "labels": ["agent-fix"]}]
+    Returns empty list on any error.
+    """
+    if not messages:
+        return []
+
+    combined = "\n\n---\n\n".join(messages[:40])  # cap at 40 messages
+    prompt = (
+        "You are a senior engineer reading Slack messages from an AI agent team at a quant trading platform.\n"
+        "Extract specific, actionable code issues from the messages below.\n"
+        "Return ONLY a JSON array. Each element must have:\n"
+        "  - title: short issue title (10-80 chars), specific and actionable\n"
+        "  - body: detailed description (30+ chars) with file paths or function names where possible\n"
+        "  - labels: always [\"agent-fix\"]\n"
+        "If there are no actionable issues, return []\n"
+        "Do NOT invent issues — only extract ones clearly mentioned.\n\n"
+        "Messages:\n" + _sanitize(combined[:3000])
+    )
+    try:
+        result, _ = call_best_agent_for_task(
+            "code",
+            prompt,
+            system_prompt=_QUANT_SYSTEM,
+            max_tokens=500,
+        )
+        if not result:
+            return []
+        # Extract JSON array from response
+        import re as _re2
+        json_match = _re2.search(r'\[.*\]', result, _re2.DOTALL)
+        if not json_match:
+            return []
+        issues = json.loads(json_match.group(0))
+        if not isinstance(issues, list):
+            return []
+        return issues
+    except Exception as exc:
+        print(f"  [harvest] LLM call or JSON parse failed: {exc}")
+        return []
+
+
+def _create_github_issues(issues: list[dict]) -> int:
+    """
+    Create GitHub issues for each entry in the issues list.
+    Returns count of successfully created issues.
+    Gates: title >= 10 chars AND body >= 30 chars.
+    Uses GH_TOKEN + GH_REPO env vars.
+    """
+    if not issues:
+        return 0
+
+    GH_REPO = os.environ.get("GH_REPO", "").strip()
+    GH_TOKEN = os.environ.get("GH_TOKEN", "").strip()
+    if not GH_REPO or not GH_TOKEN:
+        print("  [harvest] GH_TOKEN or GH_REPO not set — skipping issue creation")
+        return 0
+
+    created = 0
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        title = str(issue.get("title", "")).strip()
+        body = str(issue.get("body", "")).strip()
+        labels = issue.get("labels", ["agent-fix"])
+        if not isinstance(labels, list):
+            labels = ["agent-fix"]
+
+        # Gate: minimum length requirements to avoid junk issues
+        if len(title) < 10 or len(body) < 30:
+            print(f"  [harvest] skipping short issue: title={len(title)}chars body={len(body)}chars")
+            continue
+
+        # Try gh CLI first
+        try:
+            result = subprocess.run(
+                [
+                    "gh", "issue", "create",
+                    "--title", title,
+                    "--body", body,
+                    "--label", ",".join(labels) if labels else "agent-fix",
+                    "--repo", GH_REPO,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                created += 1
+                print(f"  [harvest] created issue via gh CLI: {title[:60]}")
+                continue
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # gh CLI not available or timed out — fall through to API
+
+        # Fallback: GitHub REST API via urllib
+        try:
+            payload = json.dumps({
+                "title": title,
+                "body": body,
+                "labels": labels,
+            }).encode()
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{GH_REPO}/issues",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {GH_TOKEN}",
+                    "Accept": "application/vnd.github+json",
+                    "Content-Type": "application/json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                resp_data = json.loads(resp.read())
+                if resp_data.get("number"):
+                    created += 1
+                    print(f"  [harvest] created issue #{resp_data['number']} via API: {title[:60]}")
+        except Exception as exc:
+            print(f"  [harvest] API issue creation failed: {exc}")
+
+    return created
+
+
 def main() -> int:
     verify_zero_spend()
     token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
@@ -8570,6 +8697,7 @@ def main() -> int:
 
     posted_ts: dict[str, str] = {}         # channel_name -> last_ts (for thread replies)
     posted_for_reactions: list[tuple] = [] # [(channel_id, ts)] for reaction wave
+    posted_message_bodies: list[str] = []  # all successfully posted message bodies (for issue harvesting)
     # Per-agent tracking: {agent_name -> {"posts": int, "errors": int, "channels": [...]}}
     agent_tracking: dict[str, dict] = {}
 
@@ -8587,6 +8715,7 @@ def main() -> int:
         if r.get("ok"):
             posts_made += 1
             record_post(state, p.text)
+            posted_message_bodies.append(p.text)
             ts = r.get("ts", "")
             if ts and not p.thread_of:
                 posted_ts[p.channel] = ts
@@ -8666,8 +8795,17 @@ def main() -> int:
     print("\n💬 Discussion pass — multi-turn threaded discussions")
     chains = build_discussion_chains(posted_ts)
     random.shuffle(chains)
-    # Run 4-7 chains per wave (varied so not every channel threads every run)
-    n_chains = random.randint(4, min(7, len(chains)))
+    # Run 4-7 chains per wave (varied so not every channel threads every run).
+    # Guard against an empty/small chain list — randint(4, n<4) raises
+    # "empty range for randrange()" and aborts the whole discussion pass,
+    # which is exactly what happens when no parent messages posted
+    # (e.g. the bot isn't in any channel yet).
+    if not chains:
+        print("  ⚠ no parent messages posted — skipping discussion pass "
+              "(check the bot is invited to the channels)")
+        n_chains = 0
+    else:
+        n_chains = random.randint(min(4, len(chains)), min(7, len(chains)))
     chains_run = 0
     for channel, parent_ts, agent_chain in chains[:n_chains]:
         print(f"  💬 discussion in #{channel} ({len(agent_chain)} replies)")
@@ -8772,6 +8910,28 @@ def main() -> int:
                     posted_today.add(agent.name)
             except Exception as e:
                 print(f"[catch-up] {agent.name} failed: {e}")
+
+    # ── Issue Harvester: extract actionable issues from this run's messages ────
+    try:
+        print("\n🔍 Issue Harvester: scanning posted messages for actionable issues")
+        harvested_issues = _harvest_issues_from_messages(posted_message_bodies)
+        n_created = _create_github_issues(harvested_issues)
+        harvest_summary = (
+            f":mag: Issue Harvester: found {len(harvested_issues)} actionable issues "
+            f"from {len(posted_message_bodies)} messages this run "
+            f"→ labeled `agent-fix` for auto-fix."
+        )
+        print(f"  [harvest] {len(harvested_issues)} issues parsed, {n_created} created")
+        if token and len(posted_message_bodies) > 0:
+            post_to_slack(
+                token,
+                channel="engineering",
+                text=harvest_summary,
+                username="Issue Harvester",
+                icon_emoji=":mag:",
+            )
+    except Exception as _harvest_exc:
+        print(f"  [harvest] non-blocking error: {_harvest_exc}")
 
     # ── Save state for next run ──────────────────────────────────────────────
     state["last_run_ts"] = int(datetime.now(timezone.utc).timestamp())
@@ -9210,6 +9370,13 @@ def check_silent_engineers(token: str, state: dict) -> int:
                     last_posts[emp_key] = now
                     _posts += 1
                     print(f"  [silence_breaker] ✓ {emp_key} posted to #{ch}")
+                else:
+                    # Post failed — undo the dedup mark so we retry next run
+                    state["post_dedup"].pop(f"{ch}:silent_{emp_key}", None)
+            else:
+                # LLM returned nothing — undo the dedup mark so we retry next run
+                state["post_dedup"].pop(f"{ch}:silent_{emp_key}", None)
+                print(f"  [silence_breaker] ✗ {emp_key} LLM empty — will retry next run")
     return _posts
 
 
@@ -10022,7 +10189,7 @@ def review_gemini_changes_main() -> int:
     if syntax_errors and os.environ.get("AUTO_REVERT", "false").lower() == "true":
         print(f"[review] AUTO_REVERT: reverting last commit due to syntax errors")
         subprocess.run(["git", "revert", "--no-edit", "HEAD"], cwd=str(REPO_ROOT))
-        subprocess.run(["git", "push", "origin", "HEAD:claude/advanced-trading-bot-d5Lmw"],
+        subprocess.run(["git", "push", "origin", "HEAD:main"],
                        cwd=str(REPO_ROOT))
         if token:
             post_to_slack(token, "incidents",

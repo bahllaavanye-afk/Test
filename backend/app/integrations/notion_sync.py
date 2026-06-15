@@ -23,13 +23,11 @@ Notion DB schema expected (create once in the Notion UI):
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 import httpx
 
 from app.utils.logging import logger
-
 
 NOTION_API = "https://api.notion.com/v1"
 GITHUB_API = "https://api.github.com"
@@ -187,7 +185,7 @@ class NotionSync:
             result["errors"].append(str(e))
             logger.error("notion_sync failed", error=str(e))
 
-        result["synced_at"] = datetime.now(timezone.utc).isoformat()
+        result["synced_at"] = datetime.now(UTC).isoformat()
         return result
 
 

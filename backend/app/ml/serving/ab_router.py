@@ -69,6 +69,7 @@ class ABRouter:
                 return
             try:
                 from sqlalchemy import select
+
                 from app.models.model_release import ModelRelease
 
                 async with self._db_factory() as db:

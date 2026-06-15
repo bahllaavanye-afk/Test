@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
 import app.ml.features.pandas_ta_compat as ta
 
 # Canonical ordering of supported timeframes with pandas resample rules

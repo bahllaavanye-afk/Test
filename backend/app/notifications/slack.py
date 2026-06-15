@@ -10,7 +10,7 @@ Required bot token scopes: chat:write, chat:write.public
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -57,7 +57,7 @@ class SlackClient:
         self._default_webhook = getattr(settings, "slack_webhook_default", "")
         self._enabled = self._use_bot or bool(self._default_webhook or any(self._webhooks.values()))
 
-    async def _post_bot(self, channel: str, payload: dict) -> bool:
+    async def _post_bot(self, channel: str, payload: dict, _retry: bool = True) -> bool:
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
                 resp = await client.post(
@@ -66,11 +66,58 @@ class SlackClient:
                     json={"channel": f"#{channel}", **payload},
                 )
                 data = resp.json()
-                if not data.get("ok"):
-                    logger.warning("Slack bot error", error=data.get("error"), channel=channel)
-                return data.get("ok", False)
+                if data.get("ok"):
+                    return True
+
+                err = data.get("error")
+                # not_in_channel: the bot must be a member to post. For public
+                # channels we can self-join (needs channels:join scope), then
+                # retry once. Private channels require a manual /invite — surface
+                # an actionable error so it is obvious what to fix.
+                if err == "not_in_channel" and _retry:
+                    joined = await self._join_channel(client, channel)
+                    if joined:
+                        return await self._post_bot(channel, payload, _retry=False)
+                    logger.error(
+                        "Slack post blocked — bot not in channel and could not "
+                        "self-join. Run `/invite @<bot>` in this channel, or add "
+                        "the channels:join + chat:write.public scopes and reinstall.",
+                        channel=channel,
+                    )
+                else:
+                    logger.warning("Slack bot error", error=err, channel=channel)
+                return False
         except Exception as e:
             logger.warning("Slack bot post failed", error=str(e))
+            return False
+
+    async def _join_channel(self, client: httpx.AsyncClient, channel: str) -> bool:
+        """Best-effort: resolve a public channel name → id and join it."""
+        try:
+            headers = {"Authorization": f"Bearer {self._token}"}
+            cursor = ""
+            for _ in range(10):  # paginate up to 10 pages
+                params = {"types": "public_channel", "limit": 200, "exclude_archived": "true"}
+                if cursor:
+                    params["cursor"] = cursor
+                lst = (await client.get(
+                    "https://slack.com/api/conversations.list",
+                    headers=headers, params=params,
+                )).json()
+                if not lst.get("ok"):
+                    return False
+                for ch in lst.get("channels", []):
+                    if ch.get("name") == channel:
+                        joined = (await client.post(
+                            "https://slack.com/api/conversations.join",
+                            headers=headers, json={"channel": ch["id"]},
+                        )).json()
+                        return bool(joined.get("ok"))
+                cursor = lst.get("response_metadata", {}).get("next_cursor", "")
+                if not cursor:
+                    break
+            return False
+        except Exception:
             return False
 
     async def _post_webhook(self, webhook: str, payload: dict) -> bool:
@@ -98,7 +145,7 @@ class SlackClient:
             "text": text or "",
             "fields": attachment_fields,
             "footer": "QuantEdge",
-            "ts": int(datetime.now(timezone.utc).timestamp()),
+            "ts": int(datetime.now(UTC).timestamp()),
         }
 
         if self._use_bot:

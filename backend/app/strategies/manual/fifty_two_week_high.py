@@ -26,14 +26,12 @@ Strategy:
   - Rebalance monthly, equal-weight, ~6-month holding period.
 """
 
-import asyncio
 from datetime import date, timedelta
 
 import httpx
 import numpy as np
 import pandas as pd
 
-from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 

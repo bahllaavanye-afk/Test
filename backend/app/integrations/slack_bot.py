@@ -7,6 +7,8 @@ Authenticates with a Bot Token (xoxb-...). Required OAuth scopes:
   chat:write        post messages (any channel the bot is in)
   channels:read     list channels (for lookups)
   groups:read       list private channels
+  channels:history  read public channel messages (for audit_channels)
+  groups:history    read private channel messages (for audit_channels)
   users:read        list workspace users (for invites)
   channels:join     auto-join created public channels
   im:write          DM users
@@ -27,7 +29,6 @@ from typing import Any
 import httpx
 
 from app.utils.logging import logger
-
 
 SLACK_API = "https://slack.com/api"
 
@@ -163,6 +164,105 @@ class SlackBot:
         if not cid:
             raise ValueError(f"channel '{channel}' not found")
         return self._call("conversations.invite", {"channel": cid, "users": ",".join(user_ids)})
+
+    # ── Reading / audit ─────────────────────────────────────────────────────
+
+    def channel_history(self, channel: str, limit: int = 50) -> list[dict]:
+        """
+        Return recent messages for a channel (newest first). Empty list if the
+        bot is not a member (Slack returns not_in_channel) or the channel is
+        unknown — callers treat that as 'unreadable', not a crash.
+        """
+        cid = channel if channel.startswith(("C", "G")) else self.find_channel_id(channel)
+        if not cid:
+            return []
+        try:
+            data = self._call("conversations.history", {"channel": cid, "limit": limit})
+        except RuntimeError as e:
+            # not_in_channel / channel_not_found are expected, surfaced by audit.
+            logger.debug("slack: history unavailable", channel=channel, error=str(e))
+            return []
+        return data.get("messages", [])
+
+    def audit_channels(
+        self,
+        names: list[str] | None = None,
+        stale_after_hours: float = 24.0,
+        history_limit: int = 50,
+    ) -> dict:
+        """
+        Walk each channel and report what's not working. For every channel:
+          - is_member:     can the bot read it at all?
+          - last_activity: hours since the most recent human/bot message
+          - status:        'healthy' | 'silent' | 'stale' | 'unreadable' | 'flagged'
+          - flagged:       count of messages mentioning failure keywords
+
+        'silent' = no messages ever; 'stale' = nothing in stale_after_hours;
+        'flagged' = recent error/blocker chatter that may need attention.
+        """
+        import time as _time
+
+        FLAG_WORDS = ("error", "failed", "failing", "blocker", "blocked",
+                      "broken", "stuck", "exception", "traceback", "down",
+                      "timeout", "cannot", "can't", "crash")
+
+        channels = self.list_channels(include_private=True)
+        by_name = {c.get("name"): c for c in channels}
+        target_names = names or [c["name"] for c in ENGINEERING_CHANNELS]
+        now = _time.time()
+
+        results: list[dict] = []
+        for name in target_names:
+            ch = by_name.get(name)
+            if ch is None:
+                results.append({"channel": name, "status": "missing",
+                                "detail": "channel does not exist"})
+                continue
+
+            is_member = bool(ch.get("is_member", False))
+            msgs = self.channel_history(ch["id"], limit=history_limit) if is_member else []
+
+            if not is_member:
+                results.append({"channel": name, "status": "unreadable",
+                                "is_member": False,
+                                "detail": "bot is not in this channel — invite it to monitor"})
+                continue
+
+            if not msgs:
+                results.append({"channel": name, "status": "silent", "is_member": True,
+                                "message_count": 0, "detail": "no messages ever"})
+                continue
+
+            newest_ts = max((float(m.get("ts", 0)) for m in msgs), default=0.0)
+            age_hours = round((now - newest_ts) / 3600.0, 1) if newest_ts else None
+            flagged = sum(
+                1 for m in msgs
+                if any(w in (m.get("text", "") or "").lower() for w in FLAG_WORDS)
+            )
+
+            if flagged:
+                status = "flagged"
+            elif age_hours is not None and age_hours > stale_after_hours:
+                status = "stale"
+            else:
+                status = "healthy"
+
+            results.append({
+                "channel": name, "status": status, "is_member": True,
+                "message_count": len(msgs), "last_activity_hours": age_hours,
+                "flagged_messages": flagged,
+            })
+
+        summary = {
+            "total": len(results),
+            "healthy": sum(1 for r in results if r["status"] == "healthy"),
+            "flagged": sum(1 for r in results if r["status"] == "flagged"),
+            "stale": sum(1 for r in results if r["status"] == "stale"),
+            "silent": sum(1 for r in results if r["status"] == "silent"),
+            "unreadable": sum(1 for r in results if r["status"] == "unreadable"),
+            "missing": sum(1 for r in results if r["status"] == "missing"),
+        }
+        return {"summary": summary, "channels": results}
 
     # ── Bootstrap ──────────────────────────────────────────────────────────
 

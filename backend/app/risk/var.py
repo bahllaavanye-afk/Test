@@ -6,9 +6,11 @@ VaR(95%) = worst 5% of daily returns threshold
 CVaR(95%) = average loss in the worst 5% of days
 """
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
 from typing import Literal
+
+import numpy as np
 
 
 @dataclass

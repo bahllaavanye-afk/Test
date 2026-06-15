@@ -3,15 +3,14 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
-import asyncio
+
 from dataclasses import dataclass, field
 from datetime import date
 
-import numpy as np
 import pandas as pd
 from scipy import stats
 
-from app.backtest.engine import run_backtest, BacktestMetrics
+from app.backtest.engine import BacktestMetrics, run_backtest
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
 

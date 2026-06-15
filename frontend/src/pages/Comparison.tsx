@@ -1,11 +1,28 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import api from '../api/client'
 
 interface BenchmarkRow { name: string; annualReturn: number; sharpe: number; maxDd: number; ytd: number; color: string; isUs?: boolean }
 interface CompRow { strategy: string; symbol: string; manualSharpe: number; mlSharpe: number; pValue: number; winner: 'ML' | 'MANUAL' }
-
 interface CurveSeries { name: string; color: string; isUs?: boolean; values: number[] }
+
+interface SignalEvent {
+  ts: number
+  strategy: string
+  symbol: string
+  manual: string
+  ml: string
+  ml_confidence: number
+  agree: boolean
+  manual_only?: boolean
+}
+
+const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function EquityChart({ series }: { series: CurveSeries[] }) {
   const W = 800, H = 280, PAD_L = 48, PAD_R = 16, PAD_T = 16, PAD_B = 28
@@ -60,28 +77,25 @@ function ImprovementBar({ pct }: { pct: number }) {
   )
 }
 
-export default function Comparison() {
-  const { data: resultsData, isLoading: resultsLoading } = useQuery<CompRow[]>({
-    queryKey: ['comparison-results'],
-    queryFn: () => api.get('/comparison/results').then(r => r.data),
-    refetchInterval: 60_000,
-  })
-  const { data: benchmarksData, isLoading: benchmarksLoading } = useQuery<BenchmarkRow[]>({
-    queryKey: ['comparison-benchmarks'],
-    queryFn: () => api.get('/comparison/benchmarks').then(r => r.data),
-    refetchInterval: 300_000,
-  })
+// ── Overview tab ──────────────────────────────────────────────────────────────
 
-  const comparisons: CompRow[] = resultsData ?? []
-  const benchmarks: BenchmarkRow[] = benchmarksData ?? []
-
+function OverviewTab({
+  comparisons,
+  benchmarks,
+  benchmarksLoading,
+  resultsLoading,
+}: {
+  comparisons: CompRow[]
+  benchmarks: BenchmarkRow[]
+  benchmarksLoading: boolean
+  resultsLoading: boolean
+}) {
   const mlWins = comparisons.filter(c => c.winner === 'ML').length
   const sigPairs = comparisons.filter(c => c.pValue < 0.05).length
   const avgImprovement = mlWins > 0
     ? comparisons.filter(c => c.winner === 'ML').reduce((acc, c) => acc + ((c.mlSharpe - c.manualSharpe) / c.manualSharpe) * 100, 0) / mlWins
     : 0
 
-  // Build equity curves from benchmark data when available
   const curveSeries: CurveSeries[] = benchmarks
     .filter(b => b.annualReturn != null)
     .map(b => ({ name: b.name, color: b.color, isUs: b.isUs, values: [100] }))
@@ -91,11 +105,6 @@ export default function Comparison() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-black text-[#e8e8e8] tracking-tight">QuantEdge vs The World</h1>
-        <p className="text-sm text-[#555] mt-1">Full institutional performance comparison · Walk-forward validated</p>
-      </div>
-
       {/* Equity Curve Comparison */}
       <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5">
         <div className="flex items-center justify-between mb-5">
@@ -250,6 +259,175 @@ export default function Comparison() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Advanced Analytics tab ────────────────────────────────────────────────────
+
+const chartTheme = {
+  background: '#111111',
+  text: '#888',
+  grid: '#1e1e1e',
+}
+
+function AdvancedAnalyticsTab() {
+  const [signals, setSignals] = useState<SignalEvent[]>([])
+  const ws = useRef<WebSocket | null>(null)
+
+  useEffect(() => {
+    const token = sessionStorage.getItem('access_token') || localStorage.getItem('token') || ''
+    ws.current = new WebSocket(`${WS_BASE}/ws/signal-compare?token=${token}`)
+    ws.current.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data) as SignalEvent & { type?: string }
+        if (msg.type !== 'heartbeat') {
+          setSignals(prev => [msg, ...prev].slice(0, 50))
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    }
+    return () => ws.current?.close()
+  }, [])
+
+  return (
+    <div className="space-y-6">
+      {/* Section 1: Live Signal Feed */}
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#1a1a1a] flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-[#e8e8e8]">Live Signal Feed</h2>
+            <p className="text-[11px] text-[#555] mt-0.5">Real-time manual vs ML signal comparison · last 50</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#00c853] animate-pulse" />
+            <span className="text-[10px] text-[#555]">LIVE</span>
+          </div>
+        </div>
+        <div
+          className="p-3 font-mono text-[11px] overflow-y-auto"
+          style={{ maxHeight: 300, background: '#0a0a0a' }}
+        >
+          {signals.length === 0 ? (
+            <div className="text-[#555] text-center py-8">
+              Waiting for signal events... (connects to /ws/signal-compare)
+            </div>
+          ) : (
+            signals.map((sig, i) => {
+              const ts = new Date(sig.ts * 1000).toLocaleTimeString()
+              const agreeColor = sig.manual_only ? '#555' : sig.agree ? '#00c853' : '#f5a623'
+              const agreeLabel = sig.manual_only ? 'MANUAL ONLY' : sig.agree ? '✓ AGREE' : '✗ DIFFER'
+              return (
+                <div key={i} className="py-1 border-b border-[#1a1a1a] last:border-0" style={{ color: agreeColor }}>
+                  [{ts}] {sig.strategy} | {sig.symbol} | Manual: {sig.manual} (−) vs ML: {sig.ml} ({Math.round(sig.ml_confidence * 100)}%) | {agreeLabel}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Section 2: Win Rate by ML Confidence */}
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5">
+        <h2 className="text-sm font-bold text-[#e8e8e8] mb-1">Win Rate by ML Confidence</h2>
+        <p className="text-[11px] text-[#555] mb-4">Manual vs ML win rate across confidence buckets — requires live trade data</p>
+        <div className="flex items-center justify-center h-[220px] text-[#555] text-[12px]">
+          No trade data yet. Run a comparison to populate this chart.
+        </div>
+      </div>
+
+      {/* Section 3: MAE/MFE Comparison */}
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5">
+        <h2 className="text-sm font-bold text-[#e8e8e8] mb-1">MAE / MFE Comparison</h2>
+        <p className="text-[11px] text-[#555] mb-4">Maximum Adverse Excursion · Maximum Favorable Excursion · Edge Ratio</p>
+        <div className="flex items-center justify-center h-[180px] text-[#555] text-[12px]">
+          No trade data yet. Run a comparison to populate this chart.
+        </div>
+      </div>
+
+      {/* Section 4: R-Multiple Distribution */}
+      <div className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5">
+        <h2 className="text-sm font-bold text-[#e8e8e8] mb-1">R-Multiple Distribution</h2>
+        <p className="text-[11px] text-[#555] mb-4">Trade outcome distribution in units of initial risk</p>
+        <div className="flex items-center justify-center h-[180px] text-[#555] text-[12px]">
+          No trade data yet. Run a comparison to populate this chart.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function Comparison() {
+  const [activeTab, setActiveTab] = useState<'overview' | 'advanced'>('overview')
+
+  const { data: resultsData, isLoading: resultsLoading } = useQuery<CompRow[]>({
+    queryKey: ['comparison-results'],
+    queryFn: () => api.get('/comparison/results').then(r => r.data),
+    refetchInterval: 60_000,
+  })
+  const { data: benchmarksData, isLoading: benchmarksLoading } = useQuery<BenchmarkRow[]>({
+    queryKey: ['comparison-benchmarks'],
+    queryFn: () => api.get('/comparison/benchmarks').then(r => {
+      const raw = r.data
+      if (Array.isArray(raw)) return raw
+      const COLORS: Record<string, string> = {
+        'SPY': '#2196F3', 'QQQ': '#9C27B0', 'BRK-B': '#FF9800', 'ALL_WEATHER': '#4CAF50',
+      }
+      return Object.entries(raw).map(([ticker, b]: [string, unknown]) => {
+        const bm = b as Record<string, unknown>
+        return {
+          name: (bm.name as string) ?? ticker,
+          annualReturn: (bm.annual_return as number) ?? 0,
+          sharpe: (bm.sharpe as number) ?? 0,
+          maxDd: (bm.max_dd as number) ?? 0,
+          ytd: (bm.annual_return as number) ?? 0,
+          color: COLORS[ticker] ?? '#888888',
+          isUs: false,
+        }
+      })
+    }),
+    refetchInterval: 300_000,
+  })
+
+  const comparisons: CompRow[] = resultsData ?? []
+  const benchmarks: BenchmarkRow[] = benchmarksData ?? []
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-black text-[#e8e8e8] tracking-tight">QuantEdge vs The World</h1>
+        <p className="text-sm text-[#555] mt-1">Full institutional performance comparison · Walk-forward validated</p>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-2 mb-4 border-b border-gray-700">
+        {(['overview', 'advanced'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium capitalize ${
+              activeTab === tab
+                ? 'border-b-2 border-blue-500 text-blue-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {tab === 'advanced' ? 'Advanced Analytics' : 'Overview'}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
+        <OverviewTab
+          comparisons={comparisons}
+          benchmarks={benchmarks}
+          benchmarksLoading={benchmarksLoading}
+          resultsLoading={resultsLoading}
+        />
+      )}
+      {activeTab === 'advanced' && <AdvancedAnalyticsTab />}
     </div>
   )
 }

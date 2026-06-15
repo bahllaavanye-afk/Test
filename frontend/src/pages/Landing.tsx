@@ -19,11 +19,11 @@ type Metric = {
 
 function useLiveMetrics(): Metric[] {
   const [metrics, setMetrics] = useState<Metric[]>([
-    { label: 'Sharpe Ratio', value: 2.1, suffix: '+', decimals: 1, color: 'var(--green)' },
-    { label: 'Max Drawdown', value: 15, prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
-    { label: 'Win Rate', value: 68, prefix: '~', suffix: '%', decimals: 0, color: 'var(--blue)' },
-    { label: 'Strategies', value: 68, suffix: '+', decimals: 0, color: 'var(--purple)' },
-    { label: 'ML Models', value: 7, suffix: '', decimals: 0, color: 'var(--green)' },
+    { label: 'Sharpe Ratio', value: null, suffix: '+', decimals: 1, color: 'var(--green)' },
+    { label: 'Max Drawdown', value: null, prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
+    { label: 'Win Rate', value: null, prefix: '~', suffix: '%', decimals: 0, color: 'var(--blue)' },
+    { label: 'Strategies', value: null, suffix: '+', decimals: 0, color: 'var(--purple)' },
+    { label: 'ML Models', value: null, suffix: '', decimals: 0, color: 'var(--green)' },
     { label: 'Uptime', value: null, display: '24/7', color: 'var(--accent)' },
   ])
 
@@ -505,7 +505,7 @@ export default function Landing() {
           overflow: 'hidden',
         }}>
           <ScanLine />
-          <div style={{
+          <div className="landing-metrics-grid" style={{
             maxWidth: 900, margin: '0 auto',
             display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 0,
           }}>
@@ -547,7 +547,7 @@ export default function Landing() {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          <div className="landing-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {FEATURES.map((f, i) => (
               <div
                 key={f.title}
@@ -675,7 +675,7 @@ export default function Landing() {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="landing-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             {[
               { label: 'HMM Regime Detection', desc: '3-state Hidden Markov Model classifies bull/bear/sideways. Each strategy adapts its parameters and position sizing dynamically to current market conditions.', color: 'var(--green)' },
               { label: 'HRP + CVaR Portfolio', desc: 'Hierarchical Risk Parity replaces naive Kelly for portfolio allocation. CVaR tail-risk overlay constrains downside in extreme market scenarios.', color: 'var(--blue)' },

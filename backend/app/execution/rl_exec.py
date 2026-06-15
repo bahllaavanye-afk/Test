@@ -24,8 +24,6 @@ Policy weights are saved to: backend/models_artifacts/rl_exec_policy.pt
 from __future__ import annotations
 
 import asyncio
-import os
-import random
 import time
 from pathlib import Path
 
@@ -43,7 +41,6 @@ except ImportError:
     F = None      # type: ignore[assignment]
 
 from app.utils.logging import logger
-
 
 _MODEL_PATH = Path("backend/models_artifacts/rl_exec_policy.pt")
 _STATE_DIM = 5

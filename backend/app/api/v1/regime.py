@@ -1,8 +1,9 @@
 """Market regime and cross-strategy correlation endpoints."""
 from fastapi import APIRouter, Depends
+
 from app.api.deps import get_current_user
-from app.models.user import User
 from app.ml.regime.detector import regime_monitor
+from app.models.user import User
 from app.risk.correlation_monitor import correlation_monitor
 
 router = APIRouter(prefix="/regime", tags=["regime"])

@@ -5,8 +5,10 @@ Advanced order types:
   - TrailingStop: stop that follows price by N% or $N
 """
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 

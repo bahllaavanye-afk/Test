@@ -1,7 +1,8 @@
 """Drawdown-based circuit breakers — halt trading at configurable thresholds."""
-from enum import Enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from enum import Enum
+
 from app.utils.logging import logger
 
 
@@ -33,7 +34,7 @@ class CircuitBreaker:
             drawdown = (self.peak_equity - equity) / self.peak_equity
             if drawdown >= self.max_drawdown_pct:
                 self.state = BreakerState.HALTED
-                self.halted_at = datetime.now(timezone.utc)
+                self.halted_at = datetime.now(UTC)
                 reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%}"
                 self.halt_reasons.append(reason)
                 logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)

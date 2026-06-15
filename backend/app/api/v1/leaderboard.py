@@ -1,10 +1,10 @@
 """Strategy leaderboard — aggregate backtest, paper, and live metrics per strategy."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select, func, case
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -159,7 +159,7 @@ async def _best_forward_result(
 def _backtest_result_to_block(result: BacktestResult, run: BacktestRun | None = None) -> MetricsBlock:
     last_updated = None
     if run and run.completed_at:
-        last_updated = run.completed_at.replace(tzinfo=timezone.utc) if run.completed_at.tzinfo is None else run.completed_at
+        last_updated = run.completed_at.replace(tzinfo=UTC) if run.completed_at.tzinfo is None else run.completed_at
 
     total_trades = result.total_trades
     total_return = _float(result.total_return)
@@ -226,7 +226,7 @@ async def _aggregate_trade_metrics(
 
     last_updated = row.last_updated
     if last_updated and last_updated.tzinfo is None:
-        last_updated = last_updated.replace(tzinfo=timezone.utc)
+        last_updated = last_updated.replace(tzinfo=UTC)
 
     return MetricsBlock(
         total_return=float(row.total_pnl or 0),
@@ -250,18 +250,25 @@ async def get_leaderboard(
     Return all strategies with aggregated backtest, paper, and live metrics.
     Sorted by backtest Sharpe ratio descending.
     """
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
     # Load strategies for this user's accounts
-    account_ids = await _user_account_ids(db, current_user.id)
+    try:
+        account_ids = await _user_account_ids(db, current_user.id)
 
-    if account_ids:
-        strat_q = select(Strategy).where(
-            Strategy.account_id.in_(account_ids)
-        )
-    else:
-        strat_q = select(Strategy)
+        if account_ids:
+            strat_q = select(Strategy).where(
+                Strategy.account_id.in_(account_ids)
+            )
+        else:
+            strat_q = select(Strategy)
 
-    strat_result = await db.execute(strat_q)
-    strategies: list[Strategy] = strat_result.scalars().all()
+        strat_result = await db.execute(strat_q)
+        strategies: list[Strategy] = strat_result.scalars().all()
+    except (OperationalError, ProgrammingError):
+        # Tables not yet migrated (fresh DB) — return empty leaderboard, not a 500.
+        await db.rollback()
+        return []
 
     if not strategies:
         return []

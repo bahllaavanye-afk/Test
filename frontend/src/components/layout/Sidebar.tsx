@@ -22,7 +22,7 @@ function NavGroupSection({ group, defaultOpen }: { group: NavGroup; defaultOpen:
         aria-expanded={open}
       >
         <span className="flex items-center gap-1.5">
-          <span>{group.emoji}</span>
+          {group.emoji && <span>{group.emoji}</span>}
           <span>{group.label}</span>
         </span>
         <ChevronDown
@@ -40,6 +40,7 @@ function NavGroupSection({ group, defaultOpen }: { group: NavGroup; defaultOpen:
               key={to}
               to={to}
               end={to === '/dashboard' || to === '/'}
+              aria-label={label}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs transition-all duration-150 ${
                   isActive
@@ -77,12 +78,12 @@ export default function Sidebar() {
 
       {/* Brand */}
       <div className="px-4 mb-5">
-        <div
+        <span
           className="font-bold text-sm tracking-tight text-transparent bg-clip-text"
           style={{ backgroundImage: 'linear-gradient(135deg, #00ff88, #00d4ff)' }}
         >
           QUANTEDGE
-        </div>
+        </span>
       </div>
 
       <nav aria-label="Main navigation" className="flex-1 px-2">

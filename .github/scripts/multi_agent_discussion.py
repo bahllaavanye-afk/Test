@@ -279,7 +279,7 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
     # Get real git log for context
     try:
         log = subprocess.check_output(
-            ["git", "log", "--oneline", "-5", "claude/advanced-trading-bot-d5Lmw"],
+            ["git", "log", "--oneline", "-5", "main"],
             capture_output=False, timeout=10, text=True,
         ).strip()
     except Exception:

@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/advanced-trading-bot-d5Lmw
+          ref: main
           fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -46,6 +46,8 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_1 }}
           DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
           DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           SLACK_BOT_TOKEN:  ${{ secrets.SLACK_BOT_TOKEN }}
           AGENT_NAME:       ${{ github.event.inputs.agent }}
           USER_MESSAGE:     ${{ github.event.inputs.message }}

@@ -6,10 +6,12 @@ revealing tail-risk exposure that standard backtests can understate when they
 average across calm and turbulent regimes.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date
-import numpy as np
+
 import pandas as pd
+
 from app.backtest.engine import BacktestMetrics, run_backtest
 
 

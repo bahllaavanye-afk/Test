@@ -1,14 +1,13 @@
 """Agent management, monitoring, chat, and task assignment endpoints."""
 from __future__ import annotations
+
 import json
 import os
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user
@@ -221,10 +220,10 @@ async def create_task(
         "agent": body.assigned_to,
         "description": body.description,
         "priority": body.priority,
-        "claimed_at": datetime.now(timezone.utc).isoformat(),
+        "claimed_at": datetime.now(UTC).isoformat(),
         "created_by": current_user.email,
     }
-    data["last_updated"] = datetime.now(timezone.utc).isoformat()
+    data["last_updated"] = datetime.now(UTC).isoformat()
     _write_json(TASK_FILE, data)
     return {"ok": True, "task_id": body.task_id}
 
@@ -239,7 +238,7 @@ async def delete_task(
     if task_id not in data.get("active", {}):
         raise HTTPException(404, "Task not found")
     del data["active"][task_id]
-    data["last_updated"] = datetime.now(timezone.utc).isoformat()
+    data["last_updated"] = datetime.now(UTC).isoformat()
     _write_json(TASK_FILE, data)
     return {"ok": True}
 
@@ -293,7 +292,7 @@ async def chat_with_agent(
     messages.append({"role": "user", "content": body.message})
 
     reply = await _call_llm(messages, max_tokens=800)
-    return {"agent": body.agent, "reply": reply, "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"agent": body.agent, "reply": reply, "timestamp": datetime.now(UTC).isoformat()}
 
 
 # ─── Original endpoints (kept) ───────────────────────────────────────────────
@@ -329,6 +328,22 @@ async def agent_status(current_user: User = Depends(get_current_user)):
     qa_monitor        = getattr(app.state, "qa_monitor", None)
     research_scientist = getattr(app.state, "research_scientist", None)
     modeling_engineer  = getattr(app.state, "modeling_engineer", None)
+
+    # Free-LLM fleet status — which providers have keys configured
+    try:
+        from app.tasks.free_llm_router import (
+            available_keys,
+            available_providers,
+            get_throughput_report,
+        )
+        llm_providers = available_providers()
+        llm_keys      = available_keys()
+        llm_throughput = get_throughput_report()
+    except Exception:
+        llm_providers  = []
+        llm_keys       = []
+        llm_throughput = []
+
     return {
         "algo_agent": {
             "running": getattr(algo_agent, "_running", False),
@@ -336,8 +351,11 @@ async def agent_status(current_user: User = Depends(get_current_user)):
             "candidates": len(getattr(algo_agent, "_candidates", {})),
             "top_3": algo_agent.get_leaderboard()[:3] if algo_agent else [],
         },
-        "self_improver": {"running": getattr(self_improver, "_running", False),
-                          "iteration": getattr(self_improver, "_iteration", 0)},
+        "self_improver": {
+            "running": getattr(self_improver, "_running", False),
+            "iteration": getattr(self_improver, "_iteration", 0),
+            "llm_guided": len(llm_keys) > 0,
+        },
         "qa_monitor": {"running": getattr(qa_monitor, "_running", False)},
         "research_scientist": {
             "running": research_scientist is not None,
@@ -349,7 +367,49 @@ async def agent_status(current_user: User = Depends(get_current_user)):
             "cycles_completed": getattr(modeling_engineer, "_cycle", 0),
             "decisions_made": len(getattr(modeling_engineer, "_decisions", [])),
         },
+        "free_llm_fleet": {
+            "active_providers": llm_providers,
+            "total_keys": len(llm_keys),
+            "throughput": llm_throughput,
+        },
     }
+
+
+@router.get("/self-improver/best")
+async def get_self_improver_best(current_user: User = Depends(get_current_user)):
+    """All promoted parameter configs ranked by Sharpe, across every strategy/desk."""
+    from app.main import app
+    si = getattr(app.state, "self_improver", None)
+    if not si:
+        return []
+    return si.get_all_best()
+
+
+@router.get("/self-improver/param-spaces")
+async def get_param_spaces(current_user: User = Depends(get_current_user)):
+    """Return the full search space for all auto-tunable strategies (agents read this to discover what's configurable)."""
+    from app.tasks.self_improver import SelfImprover
+    return SelfImprover.get_param_spaces()
+
+
+class ParamSpaceUpdate(BaseModel):
+    strategy: str
+    space: dict  # {param_name: [val1, val2, ...]}
+
+
+@router.post("/self-improver/param-spaces")
+async def register_param_space(
+    body: ParamSpaceUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Register or update a strategy's hyperparameter search space at runtime.
+    Agents call this to make new strategies auto-tunable without a redeploy.
+    """
+    if not body.space or not isinstance(body.space, dict):
+        raise HTTPException(status_code=422, detail="space must be a non-empty dict")
+    from app.tasks.self_improver import SelfImprover
+    SelfImprover.register_param_space(body.strategy, body.space)
+    return {"registered": body.strategy, "params": list(body.space.keys())}
 
 
 @router.get("/research")

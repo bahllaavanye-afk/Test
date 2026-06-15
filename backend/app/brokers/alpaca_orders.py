@@ -1,8 +1,8 @@
 """Submit, cancel and modify orders via Alpaca REST API."""
 import httpx
-from app.config import settings
-from app.utils.security import decrypt_secret
+
 from app.models.account import Account
+from app.utils.security import decrypt_secret
 
 ALPACA_PAPER = "https://paper-api.alpaca.markets"
 ALPACA_LIVE = "https://api.alpaca.markets"

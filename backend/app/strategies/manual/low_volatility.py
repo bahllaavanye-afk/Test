@@ -7,9 +7,10 @@ Historically achieves higher Sharpe than market with lower drawdown.
 In single-symbol mode: score the symbol vs a universe, signal when it's
 in the low-vol regime and trending up.
 """
-import pandas as pd
 import numpy as np
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+import pandas as pd
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class LowVolatilityStrategy(AbstractStrategy):

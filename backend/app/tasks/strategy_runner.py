@@ -3,16 +3,19 @@ Continuous strategy runner: one asyncio task per (strategy, symbol) pair.
 Scales to hundreds of concurrent strategy+symbol combinations.
 """
 from __future__ import annotations
+
 import asyncio
 import json
+from datetime import UTC, datetime
+
 import pandas as pd
-from datetime import datetime, timedelta, timezone
 
+from app.redis_client import get_redis, price_cache
+from app.risk.vol_targeting import vol_targeter
+from app.services.agent_logger import agent_logger
 from app.strategies import STRATEGY_REGISTRY
-from app.redis_client import price_cache, get_redis
-from app.ws.manager import manager
 from app.utils.logging import logger
-
+from app.ws.manager import manager
 
 # Default paper-trading strategy configuration used when no active strategies are
 # found in the database (e.g. fresh install, no DB yet).  Covers the major
@@ -74,12 +77,66 @@ STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "analyst_revision_momentum": [1, 2],     # sideways + bull (momentum factor)
     "on_chain_exchange_netflow": [0, 1, 2],  # all regimes (crypto OI signal)
     "vol_of_vol_timing":         [0, 1, 2],  # all regimes (vvix regime signal)
+    # ── Equities intraday ────────────────────────────────────────────────────
+    "opening_range_breakout":    [1, 2],
+    "residual_momentum":         [1, 2],
+    "idio_vol_anomaly":          [0, 1, 2],
+    # ── Crypto ───────────────────────────────────────────────────────────────
+    "crypto_adaptive_trend":     [1, 2],
+    "mvrv_zscore_timing":        [0, 1, 2],
+    "intraday_seasonality":      [0, 1, 2],
+    # ── Options / vol ────────────────────────────────────────────────────────
+    "gamma_exposure":            [0, 1, 2],
+    "skew_arb":                  [0, 1, 2],
+    "vrp_systematic":            [0, 1, 2],
+    "dispersion_trading":        [0, 1, 2],
+    "vol_term_structure":        [0, 1, 2],
+    # ── Polymarket ───────────────────────────────────────────────────────────
+    "polymarket_sentiment_momentum": [1, 2],
+    "poly_calibration_arb":      [0, 1, 2],
+    "poly_late_resolution":      [0, 1, 2],
+    # ── Macro / FX ───────────────────────────────────────────────────────────
+    "cross_asset_carry":         [0, 1, 2],
+    "sector_rotation":           [1, 2],
+    "time_series_momentum":      [1, 2],
+    "intraday_fomc_momentum":    [0, 1, 2],
+    "pead_sue":                  [1, 2],
+    "multi_factor_equity":       [1, 2],
+    # ── StatArb ──────────────────────────────────────────────────────────────
+    "pca_stat_arb":              [0, 1, 2],
+    "kalman_pairs":              [0, 1, 2],
+    "stablecoin_depeg_arb":      [0, 1, 2],
 }
 DEFAULT_REGIMES = [0, 1, 2]
 
 
 _regime_cache: dict[str, object] = {"value": None, "ts": 0.0}
 _REGIME_CACHE_TTL = 30.0  # seconds — avoids Redis round-trip on every strategy tick
+
+
+def _is_market_open(market_type: str) -> bool:
+    """
+    Returns True if the given market is currently open.
+    - equity: NYSE hours 9:30-16:00 ET, Mon-Fri only
+    - crypto/polymarket: always open (24/7)
+    """
+    if market_type in ("crypto", "polymarket"):
+        return True
+    # Equity market hours: 9:30-16:00 US/Eastern, Mon-Fri
+    try:
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            from backports.zoneinfo import ZoneInfo
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        if now_et.weekday() >= 5:  # Saturday=5, Sunday=6
+            return False
+        open_time = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+        close_time = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+        return open_time <= now_et <= close_time
+    except Exception:
+        # If timezone lookup fails, default to allowing execution
+        return True
 
 
 async def get_current_regime(redis_client) -> int | None:
@@ -159,7 +216,7 @@ class ContinuousStrategyRunner:
         if self.broker is None:
             return None
         try:
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
             limit = 500
             bars = await self.broker.get_historical(symbol, interval, limit=limit)
             if bars:
@@ -196,6 +253,17 @@ class ContinuousStrategyRunner:
                     await asyncio.sleep(tick_interval)
                     continue
 
+                # ── Market hours enforcement ─────────────────────────────────
+                market_type = getattr(strategy_cls, "market_type", "equity")
+                if not _is_market_open(market_type):
+                    logger.debug(
+                        "Skipping %s — market closed for type=%s",
+                        strategy_name,
+                        market_type,
+                    )
+                    await asyncio.sleep(tick_interval)
+                    continue
+
                 df = await self._get_ohlcv(symbol, strategy_cls)
 
                 if df is None or len(df) < 30:
@@ -209,8 +277,22 @@ class ContinuousStrategyRunner:
                 if "close" not in df.columns and "c" in df.columns:
                     df = df.rename(columns={"c": "close", "o": "open", "h": "high", "l": "low", "v": "volume"})
 
+                import time as _time
+                _t0 = _time.monotonic()
                 signal = await strategy.analyze(df, symbol)
+                _dur_ms = int((_time.monotonic() - _t0) * 1000)
                 if signal and signal.confidence >= confidence_threshold:
+                    agent_logger.log_action_fire_and_forget(
+                        action="run_strategy",
+                        employee_id="strategy_runner",
+                        agent_type="strategy",
+                        input_summary=f"{strategy_name} on {symbol}, {len(df)} bars",
+                        output_summary=f"signal={signal.side} conf={signal.confidence:.3f}",
+                        duration_ms=_dur_ms,
+                        status="ok",
+                        strategy_name=strategy_name,
+                        symbol=symbol,
+                    )
                     alert = {
                         "type": "signal",
                         "strategy": strategy_name,
@@ -241,9 +323,11 @@ class ContinuousStrategyRunner:
                             broker=self.broker,
                             risk_manager=self.risk_manager,
                         )
+                        _vol_scalar = vol_targeter.get_scalar(f"{strategy_name}_{symbol}")
+                        _base_qty = signal.metadata.get("quantity", 1)
                         order_req = OrderRequest(
                             symbol=symbol,
-                            quantity=signal.metadata.get("quantity", 1),
+                            quantity=max(1, round(_base_qty * _vol_scalar)),
                             side=signal.side,
                             order_type=signal.metadata.get("order_type", "market"),
                             limit_price=signal.target_price,
@@ -270,7 +354,7 @@ class ContinuousStrategyRunner:
                                         "take_profit": signal.take_profit,
                                         "peak_price": signal.target_price,
                                         "bars_held": 0,
-                                        "stored_at": datetime.now(timezone.utc).isoformat(),
+                                        "stored_at": datetime.now(UTC).isoformat(),
                                     }
                                     await redis_client.set(
                                         f"pos_exit:{symbol}",
@@ -290,6 +374,26 @@ class ContinuousStrategyRunner:
                 # Catch all per-strategy exceptions so one broken strategy
                 # does NOT kill the runner loop for other strategies.
                 logger.error("Strategy loop error", strategy=strategy_name, symbol=symbol, error=str(e))
+                agent_logger.log_action_fire_and_forget(
+                    action="run_strategy",
+                    employee_id="strategy_runner",
+                    agent_type="strategy",
+                    input_summary=f"{strategy_name} on {symbol}",
+                    status="error",
+                    error_message=str(e)[:200],
+                    strategy_name=strategy_name,
+                    symbol=symbol,
+                )
+
+            # Record daily return for volatility targeting scalar update
+            try:
+                if df is not None and len(df) >= 2 and "close" in df.columns:
+                    closes = df["close"].values
+                    if closes[-2] != 0:
+                        daily_ret = float((closes[-1] - closes[-2]) / closes[-2])
+                        vol_targeter.record_return(f"{strategy_name}_{symbol}", daily_ret)
+            except Exception:
+                pass
 
             await asyncio.sleep(tick_interval)
 
@@ -346,9 +450,10 @@ async def start_strategy_runner() -> None:
     # ── Load active strategies from DB ────────────────────────────────────────
     active_strategies: list[dict] = []
     try:
+        from sqlalchemy import select
+
         from app.database import AsyncSessionLocal
         from app.models.strategy import Strategy
-        from sqlalchemy import select
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(

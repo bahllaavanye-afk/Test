@@ -10,9 +10,10 @@ Signal: BUY when EPS surprise > 5% AND price gapped up > 2% on earnings day,
 Sharpe target: 0.8–1.2
 Risk bucket: directional (30% capital allocation)
 """
-import pandas as pd
 import numpy as np
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+import pandas as pd
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class NewsMomentumStrategy(AbstractStrategy):

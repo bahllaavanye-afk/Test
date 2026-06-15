@@ -35,7 +35,6 @@ Exports:
 """
 from __future__ import annotations
 
-import math
 import numpy as np
 
 try:
@@ -59,7 +58,6 @@ except ImportError:
     _HAS_SKLEARN = False
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
-
 
 # ---------------------------------------------------------------------------
 # Selective SSM scan  (sequential; causal — no lookahead)
@@ -394,8 +392,8 @@ async def train(
     Returns a results dict with loss, accuracy, and artifact_path.
     Temporal (walk-forward) split is enforced with shuffle=False.
     """
-    from app.ml.features.engineer import engineer_features, create_sequences, add_labels
-    from app.ml.training.trainer import train_with_lightning, ARTIFACTS_DIR
+    from app.ml.features.engineer import add_labels, create_sequences, engineer_features
+    from app.ml.training.trainer import ARTIFACTS_DIR, train_with_lightning
 
     df = engineer_features(ohlcv_df)
     df = add_labels(df, threshold=0.002)

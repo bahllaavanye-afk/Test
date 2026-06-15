@@ -10,11 +10,12 @@ Usage:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
-from scipy.stats import spearmanr
 from scipy.optimize import curve_fit
+from scipy.stats import spearmanr
 
 
 @dataclass

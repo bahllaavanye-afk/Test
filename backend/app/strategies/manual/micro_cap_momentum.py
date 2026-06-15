@@ -7,9 +7,9 @@ Signal: stocks with 3-month return in top decile AND volume > 2× 20-day average
 Combines price momentum with volume confirmation to identify
 strong small-cap movers with conviction behind the move.
 """
-import numpy as np
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class MicroCapMomentumStrategy(AbstractStrategy):

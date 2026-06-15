@@ -1,0 +1,44 @@
+# Render Blueprint — one-click deploy of the QuantEdge backend on the free tier.
+#
+# Deploy: push this repo to GitHub, then in the Render dashboard choose
+# "New +" → "Blueprint" and point it at this repo. Render reads this file and
+# provisions the services below. Fill the `sync: false` secrets in the
+# dashboard (they are never committed).
+#
+# Free-tier note: free web services sleep after ~15 min idle. The frontend's
+# Vercel cron / an UptimeRobot monitor hitting /health every 5 min keeps it warm
+# for true 24x7 availability.
+services:
+  - type: web
+    name: quantedge-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: TRADING_MODE
+        value: paper
+      - key: DEMO_MODE
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true        # Render generates a secure random value
+      - key: DATABASE_URL
+        sync: false                # Supabase pooler URL (port 6543)
+      - key: REDIS_URL
+        sync: false                # Upstash Redis URL
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false                # your Vercel domain, e.g. https://quantedge.vercel.app

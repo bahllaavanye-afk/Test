@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 import structlog
 
@@ -15,8 +13,8 @@ from pydantic import BaseModel
 
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.notifications.tracker import tracker
 from app.notifications.slack import slack
+from app.notifications.tracker import tracker
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -76,7 +74,7 @@ async def post_employee_report(current_user: User = Depends(get_current_user)):
         algo = research = modeling = regime = None
 
     lines: list[str] = [
-        f"*QuantEdge Employee Status Report* — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"*QuantEdge Employee Status Report* — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         "",
     ]
 
@@ -222,14 +220,14 @@ async def _track_followup(channel_id: str, thread_ts: str, question: str, user_i
         from app.redis_client import get_redis
         redis = get_redis()
         import json
-        from datetime import datetime, timezone
+        from datetime import datetime
         key = f"slack:followup:{channel_id}:{thread_ts}"
         payload = json.dumps({
             "channel_id": channel_id,
             "thread_ts": thread_ts,
             "question": question[:300],
             "user_id": user_id,
-            "asked_at": datetime.now(timezone.utc).isoformat(),
+            "asked_at": datetime.now(UTC).isoformat(),
             "answered": False,
         })
         await redis.set(key, payload, ex=86400 * 2)  # 2-day TTL
@@ -252,7 +250,21 @@ async def slack_events(request: Request):
       https://quantedge-api.onrender.com/api/v1/notifications/slack/events
     Subscribe to bot events: message.channels, message.groups, app_mention
     """
-    body = await request.json()
+    raw_body = await request.body()
+
+    # Verify Slack request signature (skip only if SLACK_SIGNING_SECRET not configured)
+    from app.config import settings as _cfg
+    if _cfg.slack_signing_secret:
+        from fastapi import HTTPException as _HTTPException
+
+        from app.tasks.slack_handler import _verify_slack_signature
+        timestamp = request.headers.get("X-Slack-Request-Timestamp", "0")
+        signature = request.headers.get("X-Slack-Signature", "")
+        if not _verify_slack_signature(raw_body, timestamp, signature):
+            raise _HTTPException(status_code=403, detail="Invalid Slack signature")
+
+    import json as _json
+    body = _json.loads(raw_body)
 
     # Slack URL verification handshake
     if body.get("type") == "url_verification":
@@ -290,6 +302,100 @@ async def slack_events(request: Request):
     return {"ok": True}
 
 
+# Channel name → (task_type, assigned_to) mapping
+_CHANNEL_TASK_MAP: dict[str, tuple[str, str]] = {
+    "alpha-research":   ("alpha_mining",          "research_agent"),
+    "risk-alerts":      ("risk_check",             "risk_agent"),
+    "ml-experiments":   ("evaluate_models",        "ml_agent"),
+    "pnl-daily":        ("evaluate_strategies",    "strategy_agent"),
+    "engineering":      ("fetch_ohlcv",            "data_agent"),
+    "squad-execution":  ("slippage_analysis",      "execution_agent"),
+}
+
+# Keyword patterns → (task_type, assigned_to)
+_KEYWORD_TASK_MAP: list[tuple[list[str], str, str]] = [
+    (["risk", "drawdown", "circuit breaker", "breaker"], "risk_check",          "risk_agent"),
+    (["alpha", "factor", "mine", "miner"],               "alpha_mining",         "research_agent"),
+    (["model", "lstm", "train", "drift", "accuracy"],    "evaluate_models",      "ml_agent"),
+    (["strategy", "sharpe", "backtest", "disable"],      "evaluate_strategies",  "strategy_agent"),
+    (["price", "ohlcv", "cache", "sync", "fetch"],       "fetch_ohlcv",          "data_agent"),
+    (["slippage", "fill", "execution", "vwap", "twap"],  "slippage_analysis",    "execution_agent"),
+]
+
+def _slack_message_to_task(text: str, channel_name: str) -> tuple[str, str] | None:
+    """Return (task_type, assigned_to) if this message warrants a queued task, else None."""
+    text_lower = text.lower()
+    # Keyword match takes priority
+    for keywords, task_type, assigned_to in _KEYWORD_TASK_MAP:
+        if any(kw in text_lower for kw in keywords):
+            return task_type, assigned_to
+    # Channel-based fallback
+    return _CHANNEL_TASK_MAP.get(channel_name)
+
+async def _get_channel_name(token: str, channel_id: str) -> str:
+    """Resolve a Slack channel_id to its name for task routing."""
+    if not token or not channel_id:
+        return ""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://slack.com/api/conversations.info",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"channel": channel_id},
+            )
+            data = resp.json()
+            if data.get("ok"):
+                return data.get("channel", {}).get("name", "")
+    except Exception:
+        pass
+    return ""
+
+async def _create_task_from_slack(
+    text: str,
+    channel_id: str,
+    channel_name: str,
+    thread_ts: str,
+    user_id: str,
+) -> None:
+    """Create a queued Task triggered by a Slack message."""
+    task_info = _slack_message_to_task(text, channel_name)
+    if not task_info:
+        return
+    task_type, assigned_to = task_info
+    try:
+        import uuid
+
+        from app.database import AsyncSessionLocal
+        from app.models.task import Task, TaskPriority, TaskStatus
+        async with AsyncSessionLocal() as db:
+            task = Task(
+                id=str(uuid.uuid4()),
+                title=f"[Slack #{channel_name}] {text[:80].strip()}",
+                description=text[:300],
+                task_type=task_type,
+                assigned_to=assigned_to,
+                assigned_by=f"slack:{user_id}",
+                status=TaskStatus.queued,
+                priority=TaskPriority.medium,
+                params={
+                    "slack_channel_id": channel_id,
+                    "slack_thread_ts": thread_ts,
+                    "triggered_by": "slack",
+                    "original_message": text[:300],
+                    "channel_name": channel_name,
+                },
+                progress_pct=0.0,
+            )
+            db.add(task)
+            await db.commit()
+        from app.utils.logging import logger as _logger
+        _logger.info("Task created from Slack", task_type=task_type, channel=channel_name)
+    except Exception as _e:
+        from app.utils.logging import logger as _logger
+        _logger.debug("Slack task creation failed", error=str(_e))
+
+
 async def _cto_review_message(
     channel_id: str,
     user_id: str,
@@ -308,6 +414,7 @@ async def _cto_review_message(
 
     try:
         import anthropic
+
         from app.config import settings
 
         api_key = getattr(settings, "anthropic_api_key", "") or ""
@@ -360,6 +467,18 @@ async def _cto_review_message(
             full_reply = f"🤖 *CTO:* {author_mention}{reply_text}{routing_footer}"
             await _post_threaded_reply(channel_id, thread_ts, full_reply, token=token)
 
+            # Resolve channel name and dispatch employee task
+            channel_name = await _get_channel_name(token, channel_id)
+            asyncio.create_task(
+                _create_task_from_slack(
+                    text=text,
+                    channel_id=channel_id,
+                    channel_name=channel_name,
+                    thread_ts=thread_ts,
+                    user_id=user_id,
+                )
+            )
+
             # Track unanswered questions for follow-up (new messages only)
             if "?" in text and not is_reply:
                 await _track_followup(channel_id, thread_ts, text, user_id)
@@ -371,8 +490,9 @@ async def _cto_review_message(
 
 async def _post_threaded_reply(channel_id: str, thread_ts: str, text: str, token: str = "") -> None:
     """Post a threaded reply to a Slack message using the bot token."""
-    from app.config import settings
     import httpx
+
+    from app.config import settings
 
     if not token:
         token = getattr(settings, "slack_bot_token", "") or ""
@@ -399,9 +519,10 @@ async def _post_threaded_reply(channel_id: str, thread_ts: str, text: str, token
 
 async def _run_followup_check(hours_threshold: int = 4) -> dict:
     """Core follow-up logic — callable from both the scheduler and the API endpoint."""
-    from app.config import settings
     import json
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
+    from app.config import settings
 
     token = getattr(settings, "slack_bot_token", "") or ""
     api_key = getattr(settings, "anthropic_api_key", "") or ""
@@ -414,11 +535,10 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
     except Exception:
         return {"followed_up": 0}
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_threshold)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours_threshold)
     followed_up = 0
 
     try:
-        # Scan all open followup keys
         cursor = 0
         keys: list[str] = []
         while True:
@@ -440,9 +560,7 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
                     continue
                 asked_at = datetime.fromisoformat(item["asked_at"])
                 if asked_at > cutoff:
-                    continue  # too recent
-
-                # Generate follow-up nudge
+                    continue
 
                 r = ac.messages.create(
                     model="claude-haiku-4-5-20251001",
@@ -458,7 +576,6 @@ async def _run_followup_check(hours_threshold: int = 4) -> dict:
                     f"🤖 *CTO follow-up:* {author}{nudge}",
                     token=token,
                 )
-                # Mark as answered so we don't spam
                 item["answered"] = True
                 await redis.set(key, json.dumps(item), ex=86400)
                 followed_up += 1
@@ -497,6 +614,7 @@ async def cto_manual_review(
     """
     try:
         import anthropic
+
         from app.config import settings
 
         api_key = getattr(settings, "anthropic_api_key", "") or ""
@@ -557,8 +675,9 @@ async def review_channel_history(
     Requires SLACK_BOT_TOKEN (scopes: channels:history, groups:history,
     channels:read, chat:write) and ANTHROPIC_API_KEY.
     """
-    from app.config import settings
     import httpx
+
+    from app.config import settings
 
     token = getattr(settings, "slack_bot_token", "") or ""
     api_key = getattr(settings, "anthropic_api_key", "") or ""

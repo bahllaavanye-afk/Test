@@ -8,13 +8,11 @@ Used by: GET /api/v1/comparison/report
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from html import escape as _h
-from typing import Optional
 
 from app.comparison.engine import ComparisonResult
-from app.comparison.benchmarks import get_benchmark_stats
 
 
 @dataclass
@@ -125,9 +123,9 @@ class ReportBuilder:
         abs_improvement = abs(report.ml_improvement_pct)
 
         sig_phrase = (
-            "statistically significant (p={:.4f})".format(report.p_value)
+            f"statistically significant (p={report.p_value:.4f})"
             if report.is_statistically_significant
-            else "not statistically significant (p={:.4f})".format(report.p_value)
+            else f"not statistically significant (p={report.p_value:.4f})"
         )
 
         best_benchmark = self._best_benchmark(report)
@@ -334,7 +332,7 @@ class ReportBuilder:
 
         return curves
 
-    def _best_benchmark(self, report: ComparisonReport) -> Optional[str]:
+    def _best_benchmark(self, report: ComparisonReport) -> str | None:
         """Return the ticker of the best-Sharpe benchmark, or None."""
         if not report.benchmarks:
             return None

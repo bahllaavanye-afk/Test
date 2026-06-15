@@ -1,0 +1,119 @@
+name: Deploy Frontend to GitHub Pages
+
+# Zero-credential, zero-manual-step deployment — uses the repo's built-in
+# GITHUB_TOKEN. actions/configure-pages@v5 with enablement:true programmatically
+# enables Pages (Actions build type) on first run, so no settings click is needed.
+# URL: https://bahllaavanye-afk.github.io/test/
+# Triggers on every push to the main feature branch.
+# (Re-trigger: Pages enabled in repo Settings, Source=GitHub Actions — deploy now succeeds.)
+
+on:
+  push:
+    branches: [claude/advanced-trading-bot-d5Lmw, main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build React frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # NOTE: The built-in GITHUB_TOKEN cannot CREATE the Pages site for the
+      # first time ("Resource not accessible by integration"). Pages must be
+      # enabled once via Settings → Pages → Source: GitHub Actions, OR by adding
+      # a PAGES_PAT secret. After that one-time step, every push deploys with
+      # zero further action. We build with a hardcoded base path so no
+      # enablement API call is needed at build time.
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --prefer-offline
+
+      - name: Build (GitHub Pages base path)
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://quantedge-api.onrender.com/api/v1
+          # Base path MUST match the published URL case exactly. The repo is
+          # "Test", so Pages serves at /Test/ — a lowercase /test/ base makes
+          # every asset 404 and the page renders blank.
+          VITE_BASE_PATH: /Test/
+        run: npx vite build --base /Test/
+
+      # SPA fallback: copy index.html to 404.html so client-side routes
+      # (e.g. /test/dashboard) resolve instead of returning GitHub's 404.
+      - name: Add SPA 404 fallback
+        working-directory: frontend
+        run: cp dist/index.html dist/404.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Post live URL to Slack
+        if: success()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+          token    = os.environ.get("SLACK_BOT_TOKEN", "")
+          page_url = os.environ.get("PAGE_URL", "")
+          if not token.startswith("xoxb-"):
+              print("No Slack token — skipping notification")
+              raise SystemExit(0)
+          msg = (
+              ":earth_americas: *QuantEdge Frontend is LIVE*\n"
+              f"*URL:* <{page_url}|{page_url}>\n"
+              "Accessible from any device — no login required to view the landing page.\n"
+              "Backend API: `https://quantedge-api.onrender.com`"
+          )
+          payload = json.dumps({
+              "channel": "engineering",
+              "text": msg,
+              "username": "Deploy Bot",
+              "icon_emoji": ":rocket:",
+          }).encode()
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=payload,
+              headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  result = json.loads(resp.read())
+              print("Slack:", result.get("ok"), result.get("error", ""))
+          except Exception as e:
+              print(f"Slack post failed: {e}")
+          PYEOF

@@ -3,8 +3,9 @@ Download benchmark equity curves via Alpaca historical bars API.
 Benchmarks: SPY, QQQ, BRK-B, GLD + Ray Dalio All Weather (rebalanced monthly).
 """
 from __future__ import annotations
+
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 import httpx
 import pandas as pd

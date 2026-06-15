@@ -31,6 +31,8 @@ def event_loop_policy():
 @pytest_asyncio.fixture(scope="session")
 async def _create_tables():
     """Create all DB tables once per test session (no background tasks)."""
+    # Import models before create_all so all tables are registered with Base.metadata
+    import app.models  # noqa: F401 — side-effect: registers ORM models
     from app.database import engine, Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

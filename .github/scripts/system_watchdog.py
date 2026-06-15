@@ -26,13 +26,26 @@ DEEPSEEK_KEYS   = [k for k in [
     os.environ.get("DEEPSEEK_API_KEY_2", ""),
     os.environ.get("DEEPSEEK_API_KEY_3", ""),
 ] if k]
-ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
-GH_TOKEN        = os.environ.get("GH_TOKEN", "")
-GH_REPO         = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
-BRANCH          = "claude/advanced-trading-bot-d5Lmw"
+ALLOW_PAID_APIS     = os.environ.get("ALLOW_PAID_APIS", "False")
+GH_TOKEN            = os.environ.get("GH_TOKEN", "")
+GH_REPO             = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
+BRANCH              = "claude/advanced-trading-bot-d5Lmw"
+OPENROUTER_KEY      = _resolve_key("OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2")
 
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
+
+# Scheduled workflows we want to guarantee are running — (filename_stem, max_silence_minutes)
+CRITICAL_WORKFLOWS = [
+    ("signal-runner",           10),   # every 5 min
+    ("system-watchdog",         10),   # every 5 min
+    ("continuous-improvement",  70),   # every 30 min
+    ("agent-heartbeat",         70),   # every 30 min
+    ("keep-alive",              25),   # every 10 min
+    ("company-brain",           70),   # every 30 min
+    ("market-scanner",          70),   # every 30 min
+    ("claude-dispatch-router",  25),   # every 15 min
+]
 
 REPO_ROOT  = Path(__file__).resolve().parents[2]
 STATE_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
@@ -93,6 +106,24 @@ def check_deepseek() -> tuple[bool, str]:
         return False, str(e)[:40]
 
 
+def check_openrouter() -> tuple[bool, str]:
+    if not OPENROUTER_KEY:
+        return False, "no key"
+    try:
+        r = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"},
+            json={"model": "meta-llama/llama-3.3-70b-instruct:free",
+                  "messages": [{"role": "user", "content": "Say OK"}], "max_tokens": 5},
+            timeout=15,
+        )
+        if r.status_code == 200:
+            return True, "ok"
+        return False, f"HTTP {r.status_code}"
+    except Exception as e:
+        return False, str(e)[:40]
+
+
 def check_binance() -> tuple[bool, str]:
     try:
         r = requests.get("https://api.binance.com/api/v3/ping", timeout=5)
@@ -112,6 +143,78 @@ def check_state_files() -> tuple[bool, str]:
             except Exception:
                 issues.append(f"{f.name} corrupt")
     return (len(issues) == 0), (", ".join(issues) or "ok")
+
+
+def reactivate_stale_workflows() -> list[str]:
+    """
+    Check each critical workflow's last run time via GitHub API.
+    If a workflow hasn't run within its expected window, trigger it via workflow_dispatch.
+    Returns list of workflows re-triggered.
+    """
+    if not GH_TOKEN:
+        return []
+
+    triggered = []
+    now = datetime.now(timezone.utc)
+
+    # Get all workflow IDs
+    try:
+        r = requests.get(
+            f"https://api.github.com/repos/{GH_REPO}/actions/workflows",
+            headers={"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return []
+        all_workflows = {w["path"].split("/")[-1].replace(".yml", "").replace(".yaml", ""): w
+                        for w in r.json().get("workflows", [])}
+    except Exception:
+        return []
+
+    for stem, max_silence_min in CRITICAL_WORKFLOWS:
+        wf = all_workflows.get(stem)
+        if not wf:
+            continue
+        wf_id = wf["id"]
+        # Check last run
+        try:
+            runs_r = requests.get(
+                f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{wf_id}/runs",
+                params={"per_page": 1, "branch": BRANCH},
+                headers={"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+                timeout=10,
+            )
+            runs = runs_r.json().get("workflow_runs", []) if runs_r.status_code == 200 else []
+        except Exception:
+            runs = []
+
+        if runs:
+            last_run_time = datetime.fromisoformat(runs[0]["created_at"].replace("Z", "+00:00"))
+            silence_min = (now - last_run_time).total_seconds() / 60
+            if silence_min <= max_silence_min * 1.5:  # within 1.5× expected window
+                continue
+
+        # Re-enable if disabled, then dispatch
+        try:
+            requests.put(
+                f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{wf_id}/enable",
+                headers={"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+                timeout=10,
+            )
+            dispatch_r = requests.post(
+                f"https://api.github.com/repos/{GH_REPO}/actions/workflows/{wf_id}/dispatches",
+                headers={"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github.v3+json",
+                         "Content-Type": "application/json"},
+                json={"ref": BRANCH},
+                timeout=10,
+            )
+            if dispatch_r.status_code in (204, 200):
+                triggered.append(stem)
+                print(f"  REACTIVATED: {stem}")
+        except Exception as e:
+            print(f"  Could not re-trigger {stem}: {e}")
+
+    return triggered
 
 
 def check_recent_commits() -> tuple[bool, str]:
@@ -245,16 +348,21 @@ def main():
     now = datetime.now(timezone.utc)
     print(f"[{now.strftime('%H:%M UTC')}] System watchdog running")
 
-    # Self-heal first
+    # Self-heal first (state files)
     healed = self_heal_state()
     for action in healed:
         print(f"  HEALED: {action}")
+
+    # Re-activate any stale scheduled workflows
+    reactivated = reactivate_stale_workflows()
+    healed.extend(f"re-triggered {w}" for w in reactivated)
 
     # Run all health checks
     checks = {
         "Gemini LLM":    check_gemini(),
         "Groq LLM":      check_groq(),
         "DeepSeek LLM":  check_deepseek(),
+        "OpenRouter LLM":check_openrouter(),
         "Binance API":   check_binance(),
         "State files":   check_state_files(),
         "Recent commits":check_recent_commits(),

@@ -49,7 +49,6 @@ except ImportError:
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.ml.models.patch_tst import PatchEncoder
 
-
 # ---------------------------------------------------------------------------
 # Cross-Attention module
 # ---------------------------------------------------------------------------
@@ -302,8 +301,9 @@ async def train(
     Returns a results dict with loss, accuracy, and artifact_path.
     """
     import torch
-    from app.ml.features.engineer import engineer_features, create_sequences, add_labels
-    from app.ml.training.trainer import train_with_lightning, ARTIFACTS_DIR
+
+    from app.ml.features.engineer import add_labels, create_sequences, engineer_features
+    from app.ml.training.trainer import ARTIFACTS_DIR, train_with_lightning
 
     df = engineer_features(ohlcv_df)
     df = add_labels(df, threshold=0.002)

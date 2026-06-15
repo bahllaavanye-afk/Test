@@ -4,9 +4,12 @@ Strategies and backtests call fetch_ohlcv() — it's entirely offline,
 no broker keys required. yfinance pulls from Yahoo Finance for free.
 """
 from __future__ import annotations
+
 import asyncio
-import pandas as pd
 from datetime import date, timedelta
+
+import pandas as pd
+
 from app.utils.logging import logger
 
 

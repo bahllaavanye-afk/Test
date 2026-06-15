@@ -2,10 +2,15 @@
 Lorentzian KNN strategy — Python port of TradingView's most popular ML indicator.
 Uses Lorentzian distance (robust to outliers) for k-nearest-neighbors classification.
 """
-import pandas as pd
 import numpy as np
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
-from app.ml.models.lorentzian_knn import LorentzianKNN, compute_lorentzian_features, LORENTZIAN_FEATURES
+import pandas as pd
+
+from app.ml.models.lorentzian_knn import (
+    LORENTZIAN_FEATURES,
+    LorentzianKNN,
+    compute_lorentzian_features,
+)
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class LorentzianStrategy(AbstractStrategy):

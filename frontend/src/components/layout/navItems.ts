@@ -16,60 +16,23 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  emoji: string
+  /** Optional emoji prefix shown in sidebar group header */
+  emoji?: string
   label: string
   items: NavItem[]
 }
 
-/** Full navigation — used by the desktop sidebar and the mobile "More" sheet. */
-export const NAV: NavItem[] = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', short: 'Home' },
-  { to: '/equity', icon: TrendingUp, label: 'Equity', short: 'Equity' },
-  { to: '/crypto', icon: Bitcoin, label: 'Crypto', short: 'Crypto' },
-  { to: '/comparison', icon: BarChart2, label: 'Comparison' },
-  { to: '/backtest', icon: FlaskConical, label: 'Backtest' },
-  { to: '/experiments', icon: Beaker, label: 'Experiments' },
-  { to: '/ml-insights', icon: BrainCircuit, label: 'ML Insights' },
-  { to: '/bots', icon: Bot, label: 'Bot Builder' },
-  { to: '/bot-desk', icon: Building2, label: 'Bot Desk' },
-  { to: '/agents', icon: Users, label: 'Agent Command' },
-  { to: '/scanners', icon: ScanSearch, label: 'Scanners' },
-  { to: '/analytics', icon: LineChart, label: 'Analytics', short: 'Stats' },
-  { to: '/risk', icon: Shield, label: 'Risk' },
-  { to: '/activity', icon: Activity, label: 'Activity' },
-  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
-  { to: '/pnl', icon: DollarSign, label: 'P&L' },
-  { to: '/archive', icon: Archive, label: 'Archive' },
-  { to: '/system', icon: Monitor, label: 'System Monitor' },
-  { to: '/options-chain', icon: CandlestickChart, label: 'Options Chain' },
-  { to: '/options', icon: Layers, label: 'Options & Macro' },
-  { to: '/macro', icon: Globe, label: 'Macro & Sentiment' },
-  { to: '/polymarket', icon: Coins, label: 'Polymarket' },
-  { to: '/pipeline', icon: GitBranch, label: 'Pipeline' },
-  { to: '/promotions', icon: Rocket, label: 'Strategy Promotions' },
-  { to: '/releases', icon: PackageCheck, label: 'Model Releases' },
-  { to: '/agent-logs', icon: Terminal, label: 'Agent Logs' },
-  { to: '/bot-dashboard', icon: BarChart3, label: 'Bot Dashboard' },
-  { to: '/positions', icon: ListCollapse, label: 'Positions Hub' },
-  { to: '/tasks', icon: ClipboardList, label: 'Task Manager' },
-  { to: '/copy-trading', icon: Copy, label: 'Copy Trading' },
-  { to: '/attribution', icon: PieChart, label: 'Attribution' },
-  { to: '/risk-controls', icon: ShieldAlert, label: 'Risk Controls' },
-  { to: '/funding-rates', icon: Percent, label: 'Funding Rates' },
-]
-
-/** Grouped navigation for the sidebar. */
+/** Grouped navigation — used by sidebar and mobile "More" sheet. */
 export const NAV_GROUPS: NavGroup[] = [
   {
     emoji: '🤖',
     label: 'BOTS',
     items: [
-      { to: '/bot-dashboard', icon: BarChart3, label: 'Bot Dashboard' },
+      { to: '/bot-dashboard', icon: BarChart3, label: 'Bot Dashboard', short: 'Bots' },
       { to: '/bots', icon: Bot, label: 'Bot Builder' },
       { to: '/bot-desk', icon: Building2, label: 'Bot Desk' },
+      { to: '/copy-trading', icon: Copy, label: 'Copy Trading' },
       { to: '/agents', icon: Users, label: 'Agent Command' },
-      { to: '/agent-logs', icon: Terminal, label: 'Agent Logs' },
-      { to: '/scanners', icon: ScanSearch, label: 'Scanners' },
       { to: '/tasks', icon: ClipboardList, label: 'Task Manager' },
     ],
   },
@@ -78,11 +41,14 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'MARKETS',
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Overview', short: 'Home' },
-      { to: '/equity', icon: TrendingUp, label: 'Equity Trading', short: 'Equity' },
+      { to: '/equity', icon: TrendingUp, label: 'Equity Trading', short: 'Stocks' },
       { to: '/crypto', icon: Bitcoin, label: 'Crypto Trading', short: 'Crypto' },
+      { to: '/polymarket', icon: Coins, label: 'Polymarket' },
+      { to: '/options', icon: Layers, label: 'Options' },
       { to: '/options-chain', icon: CandlestickChart, label: 'Options Chain' },
       { to: '/macro', icon: Globe, label: 'Macro & Sentiment' },
-      { to: '/polymarket', icon: Coins, label: 'Polymarket' },
+      { to: '/funding-rates', icon: Percent, label: 'Funding Rates' },
+      { to: '/scanners', icon: ScanSearch, label: 'Scanners' },
       { to: '/positions', icon: ListCollapse, label: 'Positions Hub' },
     ],
   },
@@ -93,36 +59,43 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/analytics', icon: LineChart, label: 'Analytics', short: 'Stats' },
       { to: '/backtest', icon: FlaskConical, label: 'Backtest Lab' },
       { to: '/comparison', icon: BarChart2, label: 'Comparison' },
+      { to: '/experiments', icon: Beaker, label: 'Experiments' },
+      { to: '/ml-insights', icon: BrainCircuit, label: 'ML Insights' },
+      { to: '/attribution', icon: PieChart, label: 'Attribution' },
       { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
       { to: '/pnl', icon: DollarSign, label: 'P&L' },
-      { to: '/attribution', icon: PieChart, label: 'Attribution' },
-      { to: '/ml-insights', icon: BrainCircuit, label: 'ML Insights' },
+      { to: '/activity', icon: Activity, label: 'Activity' },
     ],
   },
   {
     emoji: '⚠️',
     label: 'RISK',
     items: [
-      { to: '/risk-controls', icon: ShieldAlert, label: 'Risk Controls' },
       { to: '/risk', icon: Shield, label: 'Risk Manager' },
-      { to: '/funding-rates', icon: Percent, label: 'Funding Rates' },
+      { to: '/risk-controls', icon: ShieldAlert, label: 'Risk Controls' },
     ],
   },
   {
     emoji: '⚙️',
-    label: 'SETTINGS',
+    label: 'SYSTEM',
     items: [
-      { to: '/system', icon: Monitor, label: 'System Monitor' },
       { to: '/pipeline', icon: GitBranch, label: 'Pipeline' },
+      { to: '/promotions', icon: Rocket, label: 'Promotions' },
       { to: '/releases', icon: PackageCheck, label: 'Model Releases' },
+      { to: '/agent-logs', icon: Terminal, label: 'Agent Logs' },
+      { to: '/system', icon: Monitor, label: 'System Monitor' },
+      { to: '/archive', icon: Archive, label: 'Archive' },
     ],
   },
 ]
 
-/** Primary destinations shown directly in the mobile bottom tab bar. */
+/** Flat nav list (all items) — used by legacy consumers */
+export const NAV: NavItem[] = NAV_GROUPS.flatMap(g => g.items)
+
+/** Primary destinations shown in the mobile bottom tab bar. */
 export const PRIMARY_NAV: NavItem[] = [
-  { to: '/bot-dashboard', icon: BarChart3, label: 'Bots', short: 'Bots' },
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Markets', short: 'Markets' },
-  { to: '/analytics', icon: LineChart, label: 'Analytics', short: 'Stats' },
-  { to: '/risk-controls', icon: ShieldAlert, label: 'Risk', short: 'Risk' },
+  NAV_GROUPS[0].items[0], // Bot Dashboard
+  NAV_GROUPS[1].items[1], // Equity Trading
+  NAV_GROUPS[1].items[2], // Crypto Trading
+  NAV_GROUPS[2].items[0], // Analytics
 ]

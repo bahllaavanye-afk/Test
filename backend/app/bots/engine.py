@@ -4,17 +4,18 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, time as dtime
+from datetime import UTC, datetime
+from datetime import time as dtime
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import structlog
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bot import Bot
-from app.schemas.bot import ConditionConfig, ActionConfig, ExitRuleConfig
+from app.schemas.bot import ActionConfig, ConditionConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -676,7 +677,7 @@ def evaluate_condition(cond: ConditionConfig, data: pd.DataFrame, current_price:
 
     elif ctype == "time_window":
         from datetime import timedelta
-        now_et = (datetime.now(timezone.utc) - timedelta(hours=5)).time()
+        now_et = (datetime.now(UTC) - timedelta(hours=5)).time()
         try:
             start = dtime(*[int(x) for x in (cond.start_time or "09:30").split(":")])
             end = dtime(*[int(x) for x in (cond.end_time or "16:00").split(":")])
@@ -718,11 +719,27 @@ def _map_crypto_symbol(symbol: str) -> str:
     return symbol
 
 
-async def _fetch_ohlcv(symbol: str, market_type: str) -> pd.DataFrame:
-    """Fetch OHLCV data: try Redis cache first, then yfinance fallback."""
+# yfinance period limits per interval (their API caps short intervals to recent history)
+_YF_TF_PARAMS: dict[str, dict[str, str]] = {
+    "1m":  {"period": "5d",  "interval": "1m"},
+    "5m":  {"period": "1mo", "interval": "5m"},
+    "15m": {"period": "1mo", "interval": "15m"},
+    "30m": {"period": "2mo", "interval": "30m"},
+    "1h":  {"period": "6mo", "interval": "60m"},
+    "4h":  {"period": "1y",  "interval": "1h"},   # 4h resampled from 1h below
+    "1d":  {"period": "1y",  "interval": "1d"},
+}
+
+# Timeframes always pulled so every strategy has full higher/lower context available.
+ALL_TIMEFRAMES: tuple[str, ...] = ("1m", "5m", "15m", "1h", "1d")
+
+
+async def _fetch_ohlcv_tf(symbol: str, market_type: str, timeframe: str) -> pd.DataFrame:
+    """Fetch OHLCV for a single timeframe: Redis cache first, then yfinance fallback."""
+    # Redis cache keyed by timeframe
     try:
         from app.redis_client import price_cache
-        raw = await price_cache.get(f"ohlcv:{symbol}:1d")
+        raw = await price_cache.get(f"ohlcv:{symbol}:{timeframe}")
         if raw:
             rows = json.loads(raw)
             if rows and len(rows) >= 20:
@@ -730,22 +747,64 @@ async def _fetch_ohlcv(symbol: str, market_type: str) -> pd.DataFrame:
                 if "close" in df.columns:
                     return df
     except Exception as e:
-        logger.debug("Redis OHLCV fetch failed", symbol=symbol, error=str(e))
+        logger.debug("Redis OHLCV fetch failed", symbol=symbol, tf=timeframe, error=str(e))
 
     try:
         import yfinance as yf
         yf_symbol = symbol
         if market_type == "crypto":
             yf_symbol = _map_crypto_symbol(symbol)
-        df = yf.download(yf_symbol, period="3mo", interval="1d", progress=False, auto_adjust=True)
+        params = _YF_TF_PARAMS.get(timeframe, _YF_TF_PARAMS["1d"])
+        df = yf.download(yf_symbol, progress=False, auto_adjust=True, **params)
         if df.empty:
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-        df.columns = [c.lower() for c in df.columns]
+        df.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in df.columns]
         df = df.reset_index(drop=True)
+        # 4h isn't a native yfinance interval — resample 1h → 4h
+        if timeframe == "4h" and "close" in df.columns:
+            df = _resample_ohlcv(df, 4)
         return df
     except Exception as e:
-        logger.warning("yfinance fallback failed", symbol=symbol, error=str(e))
+        logger.warning("yfinance fallback failed", symbol=symbol, tf=timeframe, error=str(e))
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+
+def _resample_ohlcv(df: pd.DataFrame, factor: int) -> pd.DataFrame:
+    """Aggregate every `factor` bars into one (OHLCV roll-up). Used for 4h from 1h."""
+    if df.empty or len(df) < factor:
+        return df
+    out_rows = []
+    for i in range(0, len(df) - len(df) % factor, factor):
+        chunk = df.iloc[i:i + factor]
+        out_rows.append({
+            "open": float(chunk["open"].iloc[0]),
+            "high": float(chunk["high"].max()),
+            "low": float(chunk["low"].min()),
+            "close": float(chunk["close"].iloc[-1]),
+            "volume": float(chunk["volume"].sum()) if "volume" in chunk else 0.0,
+        })
+    return pd.DataFrame(out_rows)
+
+
+async def _fetch_multi_timeframe(
+    symbol: str, market_type: str, timeframes: tuple[str, ...] = ALL_TIMEFRAMES
+) -> dict[str, pd.DataFrame]:
+    """Fetch OHLCV across ALL timeframes concurrently. Returns {timeframe: df}."""
+    import asyncio
+    results = await asyncio.gather(
+        *[_fetch_ohlcv_tf(symbol, market_type, tf) for tf in timeframes],
+        return_exceptions=True,
+    )
+    out: dict[str, pd.DataFrame] = {}
+    for tf, res in zip(timeframes, results):
+        if isinstance(res, pd.DataFrame) and not res.empty:
+            out[tf] = res
+    return out
+
+
+async def _fetch_ohlcv(symbol: str, market_type: str) -> pd.DataFrame:
+    """Backwards-compatible single-timeframe fetch (daily). Kept for callers expecting one df."""
+    return await _fetch_ohlcv_tf(symbol, market_type, "1d")
 
 
 # ---------------------------------------------------------------------------
@@ -785,38 +844,95 @@ class BotEngine:
             await self._update_bot_stats(bot, db, result)
             return result
 
+    def _eval_conditions(
+        self,
+        conditions: list[ConditionConfig],
+        mtf: dict[str, pd.DataFrame],
+        primary_tf: str,
+        current_price: float,
+        bot_id: str,
+    ) -> list[bool]:
+        """Evaluate each condition against its own timeframe (multi-timeframe routing)."""
+        results: list[bool] = []
+        for cond in conditions:
+            tf = cond.timeframe or primary_tf
+            df_tf = mtf.get(tf)
+            if df_tf is None or df_tf.empty:
+                # Fall back to primary, then to any available timeframe
+                df_tf = mtf.get(primary_tf) or (next(iter(mtf.values())) if mtf else pd.DataFrame())
+            try:
+                results.append(evaluate_condition(cond, df_tf, current_price))
+            except Exception as exc:
+                logger.warning("Condition evaluation error", bot_id=bot_id, tf=tf, error=str(exc))
+                results.append(False)
+        return results
+
     async def _evaluate_inner(self, bot: Bot, db: AsyncSession) -> BotResult:
-        df = await _fetch_ohlcv(bot.symbol, bot.market_type)
-        current_price = float(df["close"].iloc[-1]) if not df.empty and "close" in df.columns else 0.0
+        # Fetch ALL timeframes so every strategy has full higher/lower context.
+        mtf = await _fetch_multi_timeframe(bot.symbol, bot.market_type)
+        # Primary timeframe = the bot's trigger interval (falls back to 1d).
+        primary_tf = (bot.trigger or {}).get("interval", "1d")
+        if primary_tf not in mtf:
+            primary_tf = "1d" if "1d" in mtf else (next(iter(mtf), "1d"))
+
+        # Freshest price comes from the lowest available timeframe (1m preferred).
+        price_df = mtf.get("1m") or mtf.get("5m") or mtf.get(primary_tf)
+        current_price = (
+            float(price_df["close"].iloc[-1])
+            if price_df is not None and not price_df.empty and "close" in price_df.columns
+            else 0.0
+        )
+        primary_df = mtf.get(primary_tf, pd.DataFrame())
+
+        signal_source = getattr(bot, "signal_source", "rule_based") or "rule_based"
+        ml_gate_passed: bool | None = None  # None = not checked
+        logic = (bot.condition_logic or "ALL").upper()
+
+        def _combine(results: list[bool]) -> bool:
+            if not results:
+                return True
+            return any(results) if logic == "ANY" else all(results)
 
         raw_conditions: list[dict] = bot.conditions or []
         conditions = [ConditionConfig(**c) for c in raw_conditions]
 
-        condition_results: list[bool] = []
-        for cond in conditions:
-            try:
-                passed = evaluate_condition(cond, df, current_price)
-                condition_results.append(passed)
-            except Exception as exc:
-                logger.warning("Condition evaluation error", bot_id=bot.id, error=str(exc))
-                condition_results.append(False)
-
-        logic = (bot.condition_logic or "ALL").upper()
-        if not condition_results:
-            conditions_passed = True
-        elif logic == "ANY":
-            conditions_passed = any(condition_results)
+        # ── ML signal gate (ml_signal or hybrid) ──────────────────────────────
+        if signal_source in ("ml_signal", "hybrid") and mtf:
+            # ML uses the primary timeframe for inference
+            ml_gate_passed = await self._check_ml_gate(bot, primary_df if not primary_df.empty else next(iter(mtf.values())))
+            if signal_source == "ml_signal":
+                if not ml_gate_passed:
+                    result = BotResult(
+                        fired=False,
+                        reason=f"ML model confidence below threshold ({getattr(bot, 'ml_confidence_threshold', 0.6) or 0.6:.0%})",
+                        signal="hold",
+                    )
+                    await self._update_bot_stats(bot, db, result)
+                    return result
+                condition_results: list[bool] = []
+                logic = "ML"
+            else:
+                # Hybrid: rule conditions (multi-timeframe) AND ML gate must pass
+                condition_results = self._eval_conditions(conditions, mtf, primary_tf, current_price, bot.id)
+                if not (_combine(condition_results) and ml_gate_passed):
+                    result = BotResult(
+                        fired=False,
+                        reason=f"Hybrid check failed (rules={_combine(condition_results)}, ml={ml_gate_passed})",
+                        signal="hold",
+                    )
+                    await self._update_bot_stats(bot, db, result)
+                    return result
         else:
-            conditions_passed = all(condition_results)
-
-        if not conditions_passed:
-            result = BotResult(
-                fired=False,
-                reason=f"Conditions not met ({logic}: {condition_results})",
-                signal="hold",
-            )
-            await self._update_bot_stats(bot, db, result)
-            return result
+            # Rule-based (default) — each condition routed to its timeframe
+            condition_results = self._eval_conditions(conditions, mtf, primary_tf, current_price, bot.id)
+            if not _combine(condition_results):
+                result = BotResult(
+                    fired=False,
+                    reason=f"Conditions not met ({logic}: {condition_results})",
+                    signal="hold",
+                )
+                await self._update_bot_stats(bot, db, result)
+                return result
 
         action_dict: dict = bot.action or {}
         action = ActionConfig(**action_dict)
@@ -857,6 +973,29 @@ class BotEngine:
         )
         await self._update_bot_stats(bot, db, result)
         return result
+
+    async def _check_ml_gate(self, bot: Bot, df: pd.DataFrame) -> bool:
+        """Call ML InferenceService for the bot's symbol. Returns True if model is bullish with enough confidence."""
+        try:
+            from app.ml.inference import InferenceService
+            svc = InferenceService()
+            if not svc.is_ready():
+                # No model loaded — let the trade through (fail open) to avoid silent blocking
+                return True
+            result = await svc.predict(df, bot.symbol)
+            if result is None:
+                return True
+            confidence: float = result.get("confidence", 0.0)
+            direction: str = result.get("prediction", "neutral")
+            threshold: float = float(getattr(bot, "ml_confidence_threshold", None) or 0.6)
+            # For long bots check "up" direction, short bots check "down"
+            action_type: str = (bot.action or {}).get("type", "open_long")
+            if action_type == "open_short":
+                return direction == "down" and confidence >= threshold
+            return direction == "up" and confidence >= threshold
+        except Exception as exc:
+            logger.warning("ML gate check failed, failing open", bot_id=bot.id, error=str(exc))
+            return True  # Fail open — don't block trades due to ML unavailability
 
     async def _create_paper_order(
         self,
@@ -936,7 +1075,7 @@ class BotEngine:
         """Persist run stats back to the Bot row."""
         try:
             bot.run_count = (bot.run_count or 0) + 1
-            bot.last_run_at = datetime.now(timezone.utc)
+            bot.last_run_at = datetime.now(UTC)
             bot.last_signal = result.signal
             bot.last_result = {
                 "fired": result.fired,
@@ -974,7 +1113,10 @@ async def _fetch_current_price(symbol: str, market_type: str = "equity") -> floa
         import yfinance as yf
         yf_sym = _map_crypto_symbol(symbol) if market_type == "crypto" else symbol
         ticker = yf.Ticker(yf_sym)
-        hist = ticker.history(period="2d", interval="1d")
+        # Prefer the freshest 1-minute bar for tight intraday exit monitoring.
+        hist = ticker.history(period="1d", interval="1m")
+        if hist.empty:
+            hist = ticker.history(period="2d", interval="1d")
         if not hist.empty:
             return float(hist["Close"].iloc[-1])
     except Exception as exc:
@@ -1011,7 +1153,7 @@ async def check_bot_exits(db: AsyncSession) -> int:
     if not open_orders:
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Batch price fetches by symbol
     symbols: dict[str, str] = {}  # symbol → market_type

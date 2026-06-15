@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "created_at": "2026-06-10T01:07:41.067390+00:00",
-  "last_updated": "2026-06-10T01:07:41.067432+00:00",
+  "last_updated": "2026-06-14T21:59:42.511299+00:00",
   "platform": {
     "name": "QuantEdge",
     "type": "institutional_quant_trading",
@@ -40,116 +40,192 @@
     "min_sharpe_for_paper": 1.0,
     "min_sharpe_for_live": 1.5
   },
-  "learnings": [],
+  "learnings": [
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 9 threads in 9 channels: #desk-kalshi, #ml-experiments, #alpha-research, #model-performance, #help",
+      "timestamp": "2026-06-12T12:03:04.499819+00:00",
+      "chain_count": 9,
+      "channels": [
+        "desk-kalshi",
+        "ml-experiments",
+        "alpha-research",
+        "model-performance",
+        "help",
+        "engineering",
+        "desk-stat-arb",
+        "general",
+        "strategy-review"
+      ]
+    },
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 5 threads in 5 channels: #squad-qa, #code-review, #wins, #risk-alerts, #engineering",
+      "timestamp": "2026-06-12T19:37:05.824843+00:00",
+      "chain_count": 5,
+      "channels": [
+        "squad-qa",
+        "code-review",
+        "wins",
+        "risk-alerts",
+        "engineering"
+      ]
+    },
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 5 threads in 5 channels: #standup, #desk-kalshi, #code-review, #engineering, #desk-stat-arb",
+      "timestamp": "2026-06-13T15:25:48.490038+00:00",
+      "chain_count": 5,
+      "channels": [
+        "standup",
+        "desk-kalshi",
+        "code-review",
+        "engineering",
+        "desk-stat-arb"
+      ]
+    },
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 6 threads in 6 channels: #engineering, #model-performance, #risk-alerts, #squad-qa, #code-review",
+      "timestamp": "2026-06-13T20:53:51.519294+00:00",
+      "chain_count": 6,
+      "channels": [
+        "engineering",
+        "model-performance",
+        "risk-alerts",
+        "squad-qa",
+        "code-review",
+        "desk-stat-arb"
+      ]
+    },
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 5 threads in 5 channels: #code-review, #desk-stat-arb, #general, #standup, #strategy-review",
+      "timestamp": "2026-06-14T21:59:42.511299+00:00",
+      "chain_count": 5,
+      "channels": [
+        "code-review",
+        "desk-stat-arb",
+        "general",
+        "standup",
+        "strategy-review"
+      ]
+    }
+  ],
   "experiments": [],
-  "agent_insights": {},
+  "agent_insights": {
+    "build_discussion_chains": {
+      "last_learning": "Discussion chains built across 5 threads in 5 channels: #code-review, #desk-stat-arb, #general, #standup, #strategy-revi",
+      "last_updated": "2026-06-14T21:59:42.511299+00:00"
+    }
+  },
   "strategy_notes": {},
   "core": {
     "paper_candidate_strategies": [
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781136270.2911756,
+    "last_updated": 1781475711.0403855,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "mean_rev_20_2",
       "mean_rev_20_1.5"
     ],
-    "last_autopilot_run": 1781126751.922351,
-    "autopilot_best_sharpe": 0.2832,
-    "autopilot_best_oos_sharpe": 1.2622,
-    "autopilot_best_blended": 0.4208,
-    "autopilot_overfit_count": 1,
-    "market_regime": "neutral",
+    "last_autopilot_run": 1781475711.0366757,
+    "autopilot_best_sharpe": 0.3146,
+    "autopilot_best_oos_sharpe": 1.2534,
+    "autopilot_best_blended": 0.4212,
+    "autopilot_overfit_count": 0,
+    "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-06-10T21:37:35.964113+00:00",
+      "generated_at": "2026-06-12T21:06:18.658577+00:00",
       "signals": {
         "vix": {
-          "value": 22.22,
-          "trend": "rising"
+          "value": 17.68,
+          "trend": "falling"
         },
         "spy": {
-          "price": 725.43,
-          "sma50": 719.32,
-          "sma200": 683.06,
+          "price": 741.75,
+          "sma50": 722.8,
+          "sma200": 684.07,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0359,
+          "ratio": 1.0451,
           "median": 1.0523,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.001,
+          "hyg_lqd_momentum_20d": -0.178,
           "signal": "widening"
         },
         "breadth": {
-          "sectors_above_sma20": 4,
+          "sectors_above_sma20": 8,
           "total_sectors": 11,
-          "breadth_pct": 36.4
+          "breadth_pct": 72.7
         },
         "btc": {
-          "price": 61615,
-          "24h_pct": -0.37
+          "price": 63430,
+          "24h_pct": 0.02
         }
       },
-      "score": -1,
-      "regime": "neutral",
+      "score": 2,
+      "regime": "bull",
       "strategy_gates": {
         "directional": true,
-        "min_confidence": 0.68,
-        "size_multiplier": 0.75
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
       },
       "summary": "[LLM unavailable \u2014 all providers failed]"
     },
     "strategy_gates": {
       "directional": true,
-      "min_confidence": 0.68,
-      "size_multiplier": 0.75
+      "min_confidence": 0.6,
+      "size_multiplier": 1.0
     },
-    "opinion_score": -1,
-    "macro_score": 0,
-    "vix": 22.22,
-    "market_scan_ts": 1781136270.285874,
+    "opinion_score": 2,
+    "macro_score": 4,
+    "vix": 17.68,
+    "market_scan_ts": 1781339641.6797984,
     "sector_leaders": [
       "Healthcare",
-      "Cons. Staples",
-      "Financials"
+      "Financials",
+      "Tech"
     ],
     "sector_laggards": [
-      "Comm.",
+      "Utilities",
       "Cons. Disc.",
-      "Materials"
+      "Comm."
     ],
     "active_universe": [
-      "GLD",
-      "XLK",
-      "QQQ",
-      "XLI",
-      "KO",
-      "C",
+      "ADBE",
+      "INTC",
+      "ORCL",
+      "AMD",
+      "TSLA",
       "IWM",
-      "PEP",
-      "UNH",
-      "AAPL",
-      "SPY",
-      "XLP",
-      "JNJ",
-      "XLV",
-      "MRK",
+      "XLF",
+      "AMZN",
+      "ABT",
       "MSFT",
-      "GS",
-      "MO",
-      "PG",
-      "LLY"
+      "C",
+      "NOW",
+      "QQQ",
+      "NFLX",
+      "UNH",
+      "XOM",
+      "XLK",
+      "INTU",
+      "MRK",
+      "GS"
     ],
     "top_momentum": [
-      "LLY",
-      "WFC",
-      "JNJ",
+      "INTC",
+      "AMD",
+      "PANW",
       "BAC",
-      "ABBV"
+      "C"
     ],
     "risk_flags": []
   },
@@ -254,6 +330,108 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
       "ts": 1781136270.2918024
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Healthcare",
+        "Tech",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Healthcare, Tech. Gaps: 4, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781262662.4412017
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 2,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1781298417.4344335
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 3,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781299176.8597157
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 3,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781302371.5834343
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 3,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781302838.7968962
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 3,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781309214.838602
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 3,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
+      "ts": 1781339641.6849904
     }
   ]
 }

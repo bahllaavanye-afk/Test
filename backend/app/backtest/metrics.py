@@ -4,9 +4,10 @@ All metrics follow institutional conventions.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
 
 
 @dataclass
@@ -237,3 +238,128 @@ def compute_metrics(
         worst_month_pct=worst_month_pct,
         recovery_factor=recovery_factor,
     )
+
+
+def compute_mae_mfe(trades: list[dict]) -> dict:
+    """
+    Maximum Adverse Excursion and Maximum Favorable Excursion.
+    Each trade dict needs: entry_price, exit_price, side, high_during_trade, low_during_trade
+    (uses exit_price as proxy for high/low if OHLCV not available).
+    Returns: mae_mean, mae_p95, mfe_mean, mfe_p95, edge_ratio, efficiency
+    """
+    if not trades:
+        return {}
+    mae_list, mfe_list, eff_list = [], [], []
+    for t in trades:
+        entry = float(t.get("entry_price", 0) or 0)
+        exit_p = float(t.get("exit_price", 0) or 0)
+        side = t.get("side", "buy")
+        high = float(t.get("high_during_trade", max(entry, exit_p)) or max(entry, exit_p))
+        low = float(t.get("low_during_trade", min(entry, exit_p)) or min(entry, exit_p))
+        if entry <= 0:
+            continue
+        if side == "buy":
+            mae = max(0, (entry - low) / entry)
+            mfe = max(0, (high - entry) / entry)
+            realized = max(0, (exit_p - entry) / entry)
+        else:
+            mae = max(0, (high - entry) / entry)
+            mfe = max(0, (entry - low) / entry)
+            realized = max(0, (entry - exit_p) / entry)
+        mae_list.append(mae)
+        mfe_list.append(mfe)
+        eff_list.append(realized / mfe if mfe > 0 else 0)
+    if not mae_list:
+        return {}
+    return {
+        "mae_mean": float(np.mean(mae_list)),
+        "mae_p95": float(np.percentile(mae_list, 95)),
+        "mfe_mean": float(np.mean(mfe_list)),
+        "mfe_p95": float(np.percentile(mfe_list, 95)),
+        "edge_ratio": float(np.mean(mfe_list) / np.mean(mae_list)) if np.mean(mae_list) > 0 else 0,
+        "efficiency": float(np.mean(eff_list)),
+    }
+
+
+def compute_r_multiples(trades: list[dict]) -> dict:
+    """
+    R-multiple = realized_pnl / initial_risk.
+    initial_risk = entry * stop_loss_pct if stop_loss not set, else abs(entry - stop_loss).
+    trade dict needs: realized_pnl, entry_price, stop_loss_price (optional), quantity
+    """
+    if not trades:
+        return {}
+    r_multiples = []
+    for t in trades:
+        entry = float(t.get("entry_price", 0) or 0)
+        pnl = float(t.get("realized_pnl", 0) or 0)
+        qty = float(t.get("quantity", 1) or 1)
+        stop = t.get("stop_loss_price")
+        if entry <= 0 or qty <= 0:
+            continue
+        if stop and float(stop) > 0:
+            risk_per_share = abs(entry - float(stop))
+        else:
+            risk_per_share = entry * 0.02  # default 2% ATR proxy
+        initial_risk = risk_per_share * qty
+        if initial_risk > 0:
+            r_multiples.append(pnl / initial_risk)
+    if not r_multiples:
+        return {}
+    arr = np.array(r_multiples)
+    winners = arr[arr > 0]
+    losers = arr[arr < 0]
+    return {
+        "expectancy_R": float(np.mean(arr)),
+        "positive_expectancy": bool(np.mean(arr) > 0),
+        "avg_winner_R": float(np.mean(winners)) if len(winners) > 0 else 0.0,
+        "avg_loser_R": float(np.mean(losers)) if len(losers) > 0 else 0.0,
+        "win_rate": float(len(winners) / len(arr)),
+        "profit_factor": float(np.sum(winners) / abs(np.sum(losers))) if len(losers) > 0 and np.sum(losers) != 0 else float("inf"),
+        "r_multiple_p25": float(np.percentile(arr, 25)),
+        "r_multiple_p75": float(np.percentile(arr, 75)),
+        "r_multiple_distribution": [round(float(v), 3) for v in np.clip(arr, -10, 10).tolist()[:200]],
+    }
+
+
+def compute_position_metrics(trades: list[dict]) -> dict:
+    """
+    Position handling quality metrics.
+    trade dict needs: hold_seconds, quantity, realized_pnl, entry_price,
+                      filled_qty (optional), ordered_qty (optional)
+    """
+    if not trades:
+        return {}
+    hold_hours, sizes, fill_rates = [], [], []
+    entry_slippages, exit_slippages = [], []
+    for t in trades:
+        if t.get("hold_seconds"):
+            hold_hours.append(float(t["hold_seconds"]) / 3600)
+        entry = float(t.get("entry_price", 0) or 0)
+        qty = float(t.get("quantity", 0) or 0)
+        if entry > 0 and qty > 0:
+            sizes.append(entry * qty)
+        filled = t.get("filled_qty")
+        ordered = t.get("ordered_qty")
+        if filled and ordered and float(ordered) > 0:
+            fill_rates.append(float(filled) / float(ordered))
+        entry_slip = t.get("entry_slippage_bps")
+        exit_slip = t.get("exit_slippage_bps")
+        if entry_slip is not None:
+            entry_slippages.append(float(entry_slip))
+        if exit_slip is not None:
+            exit_slippages.append(float(exit_slip))
+    result = {}
+    if hold_hours:
+        result.update({
+            "avg_hold_hours": float(np.mean(hold_hours)),
+            "median_hold_hours": float(np.median(hold_hours)),
+            "max_hold_hours": float(np.max(hold_hours)),
+        })
+    if fill_rates:
+        result["partial_fill_rate"] = float(np.mean([r < 1.0 for r in fill_rates]))
+    if entry_slippages:
+        result["avg_slippage_entry_bps"] = float(np.mean(entry_slippages))
+    if exit_slippages:
+        result["avg_slippage_exit_bps"] = float(np.mean(exit_slippages))
+    return result

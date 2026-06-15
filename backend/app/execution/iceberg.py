@@ -3,7 +3,9 @@ Iceberg execution: show only small visible quantity, refill as each slice fills.
 Prevents large orders from moving the market by hiding true size.
 """
 from __future__ import annotations
+
 import asyncio
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 

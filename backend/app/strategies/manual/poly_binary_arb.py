@@ -5,7 +5,8 @@ If YES_price + NO_price < $0.97 (accounting for fees), buy both sides.
 At resolution, one side pays $1.00 — guaranteed profit.
 """
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class PolyBinaryArbStrategy(AbstractStrategy):

@@ -1,14 +1,16 @@
 """Trade history endpoints."""
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.account import Account
 from app.models.trade import Trade
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 
 router = APIRouter(prefix="/trades", tags=["trades"])
 

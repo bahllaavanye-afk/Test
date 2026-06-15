@@ -25,13 +25,14 @@ Academic: Bates (2003), Foresi & Wu (2005), Santa-Clara & Yan (2010)
 Documented: Risk reversal strategies earn ~0.5% monthly (6% annually)
 Implementation: Requires options with clear 25-delta strikes
 """
+from datetime import date, timedelta
+
+import httpx
 import numpy as np
 import pandas as pd
-import httpx
-from datetime import date, timedelta
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-from app.config import settings
+
 from app.brokers.alpaca_headers import alpaca_headers
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class SkewArbitrageStrategy(AbstractStrategy):

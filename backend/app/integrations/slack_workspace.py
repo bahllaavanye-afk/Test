@@ -27,7 +27,7 @@ Get webhook URLs at: https://api.slack.com/apps → Create New App → From Scra
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -102,10 +102,10 @@ async def post(
 
 async def post_standup(squad: str, shipped: list[str], planned: list[str], blockers: list[str]) -> bool:
     blocks = [
-        {"type": "header", "text": {"type": "plain_text", "text": f"🌅 {squad} standup — {datetime.now(timezone.utc):%Y-%m-%d}"}},
+        {"type": "header", "text": {"type": "plain_text", "text": f"🌅 {squad} standup — {datetime.now(UTC):%Y-%m-%d}"}},
         {"type": "section", "fields": [
-            {"type": "mrkdwn", "text": f"*Shipped*\n" + ("\n".join(f"• {x}" for x in shipped) or "_nothing yet_")},
-            {"type": "mrkdwn", "text": f"*Planned*\n" + ("\n".join(f"• {x}" for x in planned) or "_to be set_")},
+            {"type": "mrkdwn", "text": "*Shipped*\n" + ("\n".join(f"• {x}" for x in shipped) or "_nothing yet_")},
+            {"type": "mrkdwn", "text": "*Planned*\n" + ("\n".join(f"• {x}" for x in planned) or "_to be set_")},
         ]},
     ]
     if blockers:

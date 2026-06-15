@@ -3,9 +3,10 @@ In-memory event tracker — records all significant events with timestamps.
 Used by the Slack bot and the dashboard /activity endpoint.
 """
 from __future__ import annotations
+
 from collections import deque
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -36,7 +37,7 @@ class ActivityTracker:
 
     def record(self, event_type: str, category: str, summary: str, **metadata) -> TrackedEvent:
         event = TrackedEvent(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             event_type=event_type,
             category=category,
             summary=summary,

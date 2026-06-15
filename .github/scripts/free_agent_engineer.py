@@ -434,17 +434,51 @@ def _commit_fix(file_path: str, issue_title: str, agent_name: str) -> bool:
         return False
 
 
-def _push_branch() -> bool:
-    """Push current branch to origin."""
+def _push_branch(branch: str | None = None) -> bool:
+    """Push the given branch (or current branch) to origin."""
     try:
-        branch_result = _git("rev-parse", "--abbrev-ref", "HEAD")
-        branch = branch_result.stdout.strip()
+        if branch is None:
+            branch_result = _git("rev-parse", "--abbrev-ref", "HEAD")
+            branch = branch_result.stdout.strip()
         _git("push", "origin", f"HEAD:{branch}")
         print(f"[free-agent] Pushed to origin/{branch}")
         return True
     except subprocess.CalledProcessError as e:
         print(f"[free-agent] Git push failed: {e.stderr}")
         return False
+
+
+def _current_branch() -> str:
+    """Name of the currently checked-out branch."""
+    return _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+
+
+def _create_fix_branch(issue_number: int) -> str | None:
+    """Create and checkout a dedicated fix branch BEFORE touching any files.
+
+    Doing this first guarantees `git checkout -b` cannot fail because of a
+    dirty working tree left by a previous fix in the same run, and a failed
+    fix can be discarded by deleting the branch without touching the base.
+    Returns the branch name, or None on failure.
+    """
+    branch = f"agent-fix/issue-{issue_number}-{int(time.time())}"
+    try:
+        _git("checkout", "-b", branch)
+        print(f"[free-agent] Created fix branch {branch}")
+        return branch
+    except subprocess.CalledProcessError as e:
+        print(f"[free-agent] Could not create fix branch: {e.stderr}")
+        return None
+
+
+def _abandon_fix_branch(branch: str, base_branch: str) -> None:
+    """Return to the base branch and delete the orphan fix branch."""
+    try:
+        _git("checkout", base_branch)
+        _git("branch", "-D", branch, check=False)
+        print(f"[free-agent] Deleted orphan branch {branch}")
+    except Exception as e:
+        print(f"[free-agent] Branch cleanup failed: {e}")
 
 
 def _revert_file(file_path: str) -> None:
@@ -542,16 +576,27 @@ def _process_issue(issue: dict) -> str:
         _comment_on_issue(number, comment)
         return f"skipped:{validation_error}"
 
-    # 4. Apply the fix
+    # 4. Create the fix branch FIRST — before touching any files — so a dirty
+    #    working tree can never block branch creation and a failed fix is
+    #    discarded by deleting the branch (issues #113, #121).
+    base_branch = _current_branch()
+    branch = _create_fix_branch(number)
+    if branch is None:
+        _comment_on_issue(number, ":robot: **Auto-fix failed** — could not create fix branch.")
+        return "failed:branch_create"
+
+    # 5. Apply the fix
     if not _apply_fix(fix):
+        _abandon_fix_branch(branch, base_branch)
         comment = ":robot: **Auto-fix failed** — could not apply patch to file."
         _comment_on_issue(number, comment)
         return "failed:apply_fix"
 
-    # 5. Verify imports
+    # 6. Verify imports
     if not _verify_imports():
-        # Revert the bad fix
+        # Revert the bad fix and discard the branch
         _revert_file(fix["file_path"])
+        _abandon_fix_branch(branch, base_branch)
         comment = (
             ":robot: **Auto-fix reverted** — import verification failed after applying patch.\n\n"
             "The agent's proposed change broke the application. Manual review required."
@@ -559,19 +604,31 @@ def _process_issue(issue: dict) -> str:
         _comment_on_issue(number, comment)
         return "failed:import_check"
 
-    # 6. Commit
+    # 7. Commit
     if not _commit_fix(fix["file_path"], title, agent_name):
         _revert_file(fix["file_path"])
+        _abandon_fix_branch(branch, base_branch)
         return "failed:git_commit"
 
-    # 7. Push
-    _push_branch()
+    # 8. Push — on failure, leave the issue OPEN for retry and clean up the
+    #    orphan branch instead of silently closing against a missing commit.
+    if not _push_branch(branch):
+        print(f"[free-agent] Push failed for {branch} — leaving issue #{number} open for retry")
+        _abandon_fix_branch(branch, base_branch)
+        _comment_on_issue(
+            number,
+            ":robot: **Auto-fix could not be pushed** — git push failed. "
+            "The fix was discarded; this issue stays open for the next run.",
+        )
+        return "failed:git_push"
 
-    # 8. Close the issue with a success comment
+    # Return to the base branch so the next issue in this run starts clean.
     try:
-        branch = _git("rev-parse", "--abbrev-ref", "HEAD", check=False).stdout.strip()
+        _git("checkout", base_branch)
     except Exception:
-        branch = "unknown"
+        pass
+
+    # 9. Close the issue with a success comment
 
     close_comment = (
         f":white_check_mark: **Auto-fixed by {agent_name}**\n\n"

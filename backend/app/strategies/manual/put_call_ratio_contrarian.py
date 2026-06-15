@@ -10,7 +10,8 @@ Falls back to a synthetic proxy using VIX level when P/C data unavailable.
 """
 import numpy as np
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 
 class PutCallRatioContrarianStrategy(AbstractStrategy):

@@ -3,6 +3,7 @@ Binance broker integration via CCXT async.
 Supports spot trading, real-time order book, and triangular arb scanning.
 """
 import asyncio
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -82,7 +83,7 @@ class BinanceBroker(AbstractBroker):
     async def get_quote(self, symbol: str) -> QuoteResult:
         try:
             ticker = await asyncio.wait_for(self.exchange.fetch_ticker(symbol), timeout=10.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Binance fetch_ticker timed out", symbol=symbol)
             raise BrokerError(f"Binance quote timed out for {symbol}")
         return QuoteResult(symbol=symbol, bid=float(ticker["bid"]), ask=float(ticker["ask"]),

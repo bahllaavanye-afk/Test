@@ -19,6 +19,7 @@ This strategy:
 """
 import numpy as np
 import pandas as pd
+
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 try:

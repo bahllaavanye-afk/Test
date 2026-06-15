@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { Menu, X } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import MobileNav from './MobileNav'
 import MobileDrawer from './MobileDrawer'
 import '../../styles/animations.css'
 
@@ -32,7 +33,6 @@ export default function AppShell() {
         className="absolute inset-0 pointer-events-none z-0 animated-grid-bg"
         aria-hidden="true"
       />
-
       {/* Desktop sidebar (hidden on mobile) */}
       <Sidebar />
 
@@ -40,7 +40,7 @@ export default function AppShell() {
       <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <div className="flex flex-col flex-1 overflow-hidden relative z-10">
-        {/* Desktop top bar */}
+        {/* Dense desktop top bar */}
         <div className="hidden md:block">
           <TopBar />
         </div>
@@ -64,7 +64,7 @@ export default function AppShell() {
           >
             QUANTEDGE
           </span>
-          {/* Placeholder to balance the flex row */}
+          {/* Spacer to balance flex row */}
           <div className="w-9" />
         </header>
 
@@ -72,11 +72,13 @@ export default function AppShell() {
           id="main-content"
           role="main"
           key={location.pathname}
-          className="flex-1 overflow-auto overflow-x-hidden p-3 sm:p-4"
+          className="flex-1 overflow-auto overflow-x-hidden p-3 sm:p-4 pb-24 md:pb-4"
           style={{ animation: 'page-fade-in 0.18s ease-out' }}
         >
           <Outlet />
         </main>
+        {/* Mobile bottom tab bar (hidden on desktop) */}
+        <MobileNav />
       </div>
 
       <style>{`

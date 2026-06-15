@@ -14,7 +14,6 @@ Architecture:
 """
 from __future__ import annotations
 
-import math
 try:
     import torch
     import torch.nn as nn
@@ -27,6 +26,7 @@ except ImportError:
     F = None      # type: ignore[assignment]
 
 import numpy as np
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 
@@ -185,7 +185,7 @@ class SSMPredictor(AbstractModel, nn.Module):
     def save(self, path: str, metadata: dict | None = None) -> None:
         if not _TORCH_AVAILABLE:
             return
-        import os, pickle
+        import os
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         torch.save({
             "state_dict": self.state_dict(),
@@ -198,7 +198,7 @@ class SSMPredictor(AbstractModel, nn.Module):
         }, path)
 
     @classmethod
-    def load(cls, path: str) -> "SSMPredictor":
+    def load(cls, path: str) -> SSMPredictor:
         if not _TORCH_AVAILABLE:
             return cls()
         checkpoint = torch.load(path, map_location="cpu", weights_only=False)

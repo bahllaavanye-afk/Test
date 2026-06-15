@@ -43,6 +43,8 @@ jobs:
           DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
           CEREBRAS_API_KEY:   ${{ secrets.CEREBRAS_API_KEY_1 }}
           SAMBANOVA_API_KEY:  ${{ secrets.SAMBANOVA_API_KEY_1 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
           GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
           GH_REPO:            ${{ github.repository }}
           ALLOW_PAID_APIS:    "False"

@@ -21,11 +21,10 @@ Academic reference:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-import numpy as np
-import pandas as pd
 import aiohttp
+import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -127,7 +126,7 @@ class FundingSettlementTimer(AbstractStrategy):
         Check timing windows and current funding rate.
         Enter trade 30 min before settlement if rate exceeds threshold.
         """
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         minutes_to_next = self._minutes_to_next_settlement(now_utc)
         minutes_since_last = self._minutes_since_last_settlement(now_utc)
 

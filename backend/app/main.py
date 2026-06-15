@@ -1,25 +1,27 @@
 """FastAPI app factory with lifespan, CORS, routers, and background tasks."""
 from __future__ import annotations
+
 import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from app.api.limiter import limiter
 
-from app.config import settings
-from app.database import engine, Base
 import app.models  # noqa: F401 — registers all ORM models with Base.metadata before create_all
+from app.api.limiter import limiter
 from app.api.v1.router import api_router
-from app.ws.prices import router as prices_router
-from app.ws.orders import router as orders_router
-from app.ws.alerts import router as alerts_router
+from app.config import settings
+from app.database import Base, engine
+from app.risk.correlation_monitor import correlation_monitor
 from app.tasks.scheduler import start_scheduler
 from app.utils.logging import logger
-from app.risk.correlation_monitor import correlation_monitor
+from app.ws.agent_logs import router as agent_logs_router
+from app.ws.alerts import router as alerts_router
+from app.ws.orders import router as orders_router
+from app.ws.prices import router as prices_router
+from app.ws.signal_compare import router as signal_compare_router
 
 
 async def _supervised(coro_factory, name: str, restart_delay: int = 30):
@@ -52,9 +54,10 @@ async def _slack_startup_catchup() -> None:
     Keeps the CTO agent live even without an explicit /slack/review-history call.
     """
     await asyncio.sleep(30)
-    from app.config import settings
-    from app.api.v1.notifications import _cto_review_message
     import httpx
+
+    from app.api.v1.notifications import _cto_review_message
+    from app.config import settings
 
     token = getattr(settings, "slack_bot_token", "") or ""
     if not token:
@@ -127,8 +130,8 @@ async def lifespan(app: FastAPI):
     app.state.algo_agent = algo_agent
 
     # Self-improvement autoloop
-    from app.tasks.self_improver import SelfImprover
     from app.tasks.code_quality_loop import CodeQualityLoop
+    from app.tasks.self_improver import SelfImprover
     self_improver = SelfImprover(algo_agent=algo_agent, interval_seconds=900)
     app.state.self_improver = self_improver
 
@@ -147,6 +150,32 @@ async def lifespan(app: FastAPI):
     modeling_engineer = ModelingEngineer(interval_seconds=1800)
     app.state.modeling_engineer = modeling_engineer
 
+    # AutoML desk: continuous online fine-tuning on the freshest real data.
+    from app.tasks.automl_desk import get_automl_desk
+    automl_desk = get_automl_desk()
+    app.state.automl_desk = automl_desk
+
+    # Build monitor: hourly backend+frontend build with safe auto-fix + escalation.
+    from app.tasks.build_monitor import get_build_monitor
+    build_monitor = get_build_monitor()
+    app.state.build_monitor = build_monitor
+
+    # Forecasting desk: projects weekly/monthly/yearly profit, reports to
+    # leadership every 6 hours.
+    from app.tasks.forecasting_desk import get_forecasting_desk
+    forecasting_desk = get_forecasting_desk()
+    app.state.forecasting_desk = forecasting_desk
+
+    # Red-team agent: independent 24/7 security audit → security-desk issues.
+    from app.tasks.red_team import get_red_team
+    red_team = get_red_team()
+    app.state.red_team = red_team
+
+    # Strategy pipeline: staged → backtest → promote (runs every 30 min).
+    from app.tasks.strategy_pipeline import get_pipeline
+    strategy_pipeline = get_pipeline()
+    app.state.strategy_pipeline = strategy_pipeline
+
     bg_tasks = []
     app.state.bg_tasks = bg_tasks
 
@@ -162,6 +191,11 @@ async def lifespan(app: FastAPI):
     bg_tasks.append(asyncio.create_task(_supervised(lambda: qa_monitor.run(), "qa_monitor")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: research_scientist.run(), "research_scientist")))
     bg_tasks.append(asyncio.create_task(_supervised(lambda: modeling_engineer.run(), "modeling_engineer")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: automl_desk.run(), "automl_desk")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: build_monitor.run(), "build_monitor")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: forecasting_desk.run(), "forecasting_desk")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: red_team.run(), "red_team")))
+    bg_tasks.append(asyncio.create_task(_supervised(lambda: strategy_pipeline.run(), "strategy_pipeline")))
 
     # ── Strategy runner + price feed ──────────────────────────────────────────
     # Build the Alpaca broker (returns None gracefully when API keys are absent)
@@ -176,9 +210,10 @@ async def lifespan(app: FastAPI):
     # is not yet reachable at startup (e.g. first cold boot before migrations).
     active_strategies: list[dict] = []
     try:
+        from sqlalchemy import select as _select
+
         from app.database import AsyncSessionLocal
         from app.models.strategy import Strategy
-        from sqlalchemy import select as _select
         async with AsyncSessionLocal() as _db:
             _result = await _db.execute(
                 _select(Strategy).where(Strategy.is_enabled == True)  # noqa: E712
@@ -242,10 +277,13 @@ async def lifespan(app: FastAPI):
 
     # Strategy runner — one asyncio loop per (strategy, symbol) pair
     # Always started so strategies run in paper mode too
+    from app.risk.manager import RiskManager
     from app.tasks.strategy_runner import ContinuousStrategyRunner
+    risk_manager = RiskManager()
+    app.state.risk_manager = risk_manager  # exposed for /qe risk and risk API
     strategy_runner = ContinuousStrategyRunner(
         broker=alpaca_broker,
-        risk_manager=None,
+        risk_manager=risk_manager,
     )
     app.state.strategy_runner = strategy_runner
     bg_tasks.append(asyncio.create_task(
@@ -294,6 +332,12 @@ def create_app() -> FastAPI:
     # CORS — explicit allowlist only. Browsers reject `*` + credentials anyway,
     # so the fallback to `*` was both insecure and broken. In dev we permit
     # localhost; in any other mode the operator MUST set CORS_ORIGINS.
+    # The deployed GitHub Pages frontend always needs to reach this API, so its
+    # origin is baked in as a baseline (in addition to anything in CORS_ORIGINS).
+    # This makes the live site work without requiring a Render env var to be set.
+    _BASELINE_ORIGINS = [
+        "https://bahllaavanye-afk.github.io",
+    ]
     if settings.cors_origins:
         allowed_origins = settings.cors_origins
     elif settings.trading_mode in ("dev", "test"):
@@ -304,13 +348,19 @@ def create_app() -> FastAPI:
         ]
     else:
         logger.warning(
-            "CORS_ORIGINS not configured in non-dev mode — refusing all cross-origin requests"
+            "CORS_ORIGINS not configured in non-dev mode — using baseline Pages origin only"
         )
         allowed_origins = []
+
+    # Merge baseline production origins in, de-duplicated, order-preserving.
+    allowed_origins = list(dict.fromkeys([*allowed_origins, *_BASELINE_ORIGINS]))
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
+        # Allow Vercel preview/prod deployments too (*.vercel.app) without
+        # needing each ephemeral URL in the allowlist.
+        allow_origin_regex=r"https://([a-z0-9-]+\.)*vercel\.app",
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
@@ -323,16 +373,26 @@ def create_app() -> FastAPI:
     app.include_router(prices_router)
     app.include_router(orders_router)
     app.include_router(alerts_router)
+    app.include_router(signal_compare_router)
+    app.include_router(agent_logs_router)
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "mode": "paper", "version": "1.0.0", "agents": "active"}
+        return {
+            "status": "ok",
+            "platform": "QuantEdge",
+            "version": "1.0.0",
+            "mode": "paper",
+            "live_trading": False,
+            "agents": "active",
+        }
 
     @app.get("/health/detailed")
     async def health_detailed():
         """Comprehensive system health — DB, Redis, scheduler, and background tasks."""
-        import time
         import importlib.util
+        import time
+
         from app.database import AsyncSessionLocal
 
         checks: dict[str, dict] = {}

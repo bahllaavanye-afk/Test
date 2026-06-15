@@ -28,11 +28,10 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.utils.logging import logger
-
 
 SCOPES = [
     "https://www.googleapis.com/auth/documents",
@@ -163,11 +162,11 @@ def log_standup(squad: str, shipped: list[str], planned: list[str], blockers: li
     doc_id = os.getenv(f"GDOC_STANDUP_{squad.upper().replace('-', '_')}", "").strip()
     if not doc_id:
         return False
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     body = (
-        f"Shipped:\n" + "\n".join(f"  • {x}" for x in shipped) + "\n\n"
-        f"Planned:\n" + "\n".join(f"  • {x}" for x in planned) + "\n\n"
-        f"Blockers:\n" + ("\n".join(f"  • {x}" for x in blockers) if blockers else "  (none)")
+        "Shipped:\n" + "\n".join(f"  • {x}" for x in shipped) + "\n\n"
+        "Planned:\n" + "\n".join(f"  • {x}" for x in planned) + "\n\n"
+        "Blockers:\n" + ("\n".join(f"  • {x}" for x in blockers) if blockers else "  (none)")
     )
     return append_to_doc(doc_id, body, heading=f"Standup {today}")
 
@@ -191,5 +190,5 @@ def log_alpha_review(strategy: str, sharpe: float, maxdd: float, decision: str, 
         f"Decision: {decision}\n\n"
         f"Notes:\n{notes}"
     )
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     return append_to_doc(doc_id, body, heading=f"{today} — {strategy}")
