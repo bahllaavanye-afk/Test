@@ -21,7 +21,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end={to === '/dashboard' || to === '/'}
             aria-label={label}
             className={({ isActive }) =>
               `sidebar-nav-item w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 ${

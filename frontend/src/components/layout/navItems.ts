@@ -3,7 +3,7 @@ import {
   LineChart, Shield, Activity, Trophy, DollarSign, Archive, Monitor, Layers,
   Globe, Coins, CandlestickChart, BrainCircuit, GitBranch, PackageCheck, Bot,
   Users, ScanSearch, Rocket, Building2, Terminal, BarChart3, ListCollapse,
-  ClipboardList, Copy, type LucideIcon,
+  ClipboardList, Copy, PieChart, ShieldAlert, type LucideIcon,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -16,7 +16,7 @@ export interface NavItem {
 
 /** Full navigation — used by the desktop sidebar and the mobile "More" sheet. */
 export const NAV: NavItem[] = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', short: 'Home' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', short: 'Home' },
   { to: '/equity', icon: TrendingUp, label: 'Equity', short: 'Equity' },
   { to: '/crypto', icon: Bitcoin, label: 'Crypto', short: 'Crypto' },
   { to: '/comparison', icon: BarChart2, label: 'Comparison' },
@@ -46,6 +46,8 @@ export const NAV: NavItem[] = [
   { to: '/positions', icon: ListCollapse, label: 'Positions Hub' },
   { to: '/tasks', icon: ClipboardList, label: 'Task Manager' },
   { to: '/copy-trading', icon: Copy, label: 'Copy Trading' },
+  { to: '/attribution', icon: PieChart, label: 'Attribution' },
+  { to: '/risk-controls', icon: ShieldAlert, label: 'Risk Controls' },
 ]
 
 /** Primary destinations shown directly in the mobile bottom tab bar. */

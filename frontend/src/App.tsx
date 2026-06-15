@@ -42,6 +42,8 @@ const BotDetail = lazy(() => import('./pages/BotDetail'))
 const TaskManager = lazy(() => import('./pages/TaskManager'))
 const CopyTrading = lazy(() => import('./pages/CopyTrading'))
 const PerformanceAttribution = lazy(() => import('./pages/PerformanceAttribution'))
+const RiskControls = lazy(() => import('./pages/RiskControls'))
+const GoogleCallback = lazy(() => import('./pages/GoogleCallback'))
 
 function PageLoader() {
   return (
@@ -88,6 +90,7 @@ export default function App() {
       <Routes>
         <Route path="/landing" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/" element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
@@ -124,6 +127,7 @@ export default function App() {
           <Route path="tasks" element={<TaskManager />} />
           <Route path="copy-trading" element={<CopyTrading />} />
           <Route path="attribution" element={<PerformanceAttribution />} />
+          <Route path="risk-controls" element={<RiskControls />} />
         </Route>
       </Routes>
     </Suspense>

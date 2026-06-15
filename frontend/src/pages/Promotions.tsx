@@ -394,24 +394,24 @@ export default function Promotions() {
 
   const { data: promotions = [], isLoading, error } = useQuery<StrategyPromotion[]>({
     queryKey: ['promotions'],
-    queryFn: () => api.get('/api/v1/promotions/').then(r => r.data),
+    queryFn: () => api.get('/promotions/').then(r => r.data),
     refetchInterval: 30_000,
   })
 
   const { data: criteriaMap = {} } = useQuery<CriteriaMap>({
     queryKey: ['promotions-criteria'],
-    queryFn: () => api.get('/api/v1/promotions/criteria/all').then(r => r.data),
+    queryFn: () => api.get('/promotions/criteria/all').then(r => r.data),
     staleTime: 5 * 60_000,
   })
 
   const approveMut = useMutation({
-    mutationFn: (id: string) => api.post(`/api/v1/promotions/${id}/approve`),
+    mutationFn: (id: string) => api.post(`/promotions/${id}/approve`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['promotions'] }),
   })
 
   const rejectMut = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      api.post(`/api/v1/promotions/${id}/reject`, { reason }),
+      api.post(`/promotions/${id}/reject`, { reason }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['promotions'] })
       setRejectTarget(null)
@@ -420,7 +420,7 @@ export default function Promotions() {
   })
 
   const reviewMut = useMutation({
-    mutationFn: (id: string) => api.post(`/api/v1/promotions/${id}/review`),
+    mutationFn: (id: string) => api.post(`/promotions/${id}/review`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['promotions'] }),
   })
 

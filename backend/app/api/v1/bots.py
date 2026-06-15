@@ -77,6 +77,72 @@ async def create_bot(
     return bot
 
 
+@router.get("/summary/all", response_model=list[dict])
+async def get_bots_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    """
+    Options Alpha command center: all bots with open positions count and
+    30-day P&L. One row per bot — the 'bots dashboard' view.
+    Registered before /{bot_id} so FastAPI doesn't capture 'summary' as a bot_id.
+    """
+    bots_result = await db.execute(
+        select(Bot).where(Bot.user_id == current_user.id).order_by(Bot.created_at.desc())
+    )
+    bots = bots_result.scalars().all()
+
+    since = datetime.now(UTC) - timedelta(days=30)
+    rows = []
+    for bot in bots:
+        # Open positions
+        pos_result = await db.execute(
+            select(func.count()).select_from(Order).where(
+                Order.status == "paper",
+                Order.raw_payload["bot_id"].as_string() == bot.id,
+            )
+        )
+        open_positions = pos_result.scalar() or 0
+
+        # 30-day P&L
+        trade_result = await db.execute(
+            select(
+                func.count().label("n"),
+                func.sum(Trade.realized_pnl).label("total_pnl"),
+            ).where(
+                Trade.strategy_name == bot.name,
+                Trade.closed_at >= since,
+            )
+        )
+        row = trade_result.one()
+        n_trades = row.n or 0
+        total_pnl = float(row.total_pnl or 0)
+
+        rows.append({
+            "id": bot.id,
+            "name": bot.name,
+            "description": bot.description,
+            "symbol": bot.symbol,
+            "market_type": bot.market_type,
+            "desk": bot.desk or "equity",
+            "signal_source": bot.signal_source or "rule_based",
+            "ml_model_name": bot.ml_model_name,
+            "ml_confidence_threshold": float(bot.ml_confidence_threshold) if bot.ml_confidence_threshold else None,
+            "is_enabled": bot.is_enabled,
+            "run_count": bot.run_count,
+            "last_run_at": bot.last_run_at.isoformat() if bot.last_run_at else None,
+            "last_signal": bot.last_signal,
+            "last_result": bot.last_result,
+            "open_positions": open_positions,
+            "trades_30d": n_trades,
+            "pnl_30d": round(total_pnl, 4),
+            "trigger_interval": (bot.trigger or {}).get("interval", "?"),
+            "conditions_count": len(bot.conditions or []),
+            "exit_rules_count": len(bot.exit_rules or []),
+        })
+    return rows
+
+
 @router.get("/{bot_id}", response_model=BotOut)
 async def get_bot(
     bot_id: str,
@@ -363,62 +429,3 @@ async def get_bot_trades(
     ]
 
 
-@router.get("/summary/all", response_model=list[dict])
-async def get_bots_summary(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> list[dict]:
-    """
-    Options Alpha command center: all bots with open positions count and
-    30-day P&L. One row per bot — the 'bots dashboard' view.
-    """
-    bots_result = await db.execute(
-        select(Bot).where(Bot.user_id == current_user.id).order_by(Bot.created_at.desc())
-    )
-    bots = bots_result.scalars().all()
-
-    since = datetime.now(UTC) - timedelta(days=30)
-    rows = []
-    for bot in bots:
-        # Open positions
-        pos_result = await db.execute(
-            select(func.count()).select_from(Order).where(
-                Order.status == "paper",
-                Order.raw_payload["bot_id"].as_string() == bot.id,
-            )
-        )
-        open_positions = pos_result.scalar() or 0
-
-        # 30-day P&L
-        trade_result = await db.execute(
-            select(
-                func.count().label("n"),
-                func.sum(Trade.realized_pnl).label("total_pnl"),
-                func.avg(Trade.realized_pnl).label("avg_pnl"),
-            ).where(
-                Trade.strategy_name == bot.name,
-                Trade.closed_at >= since,
-            )
-        )
-        row = trade_result.one()
-        n_trades = row.n or 0
-        total_pnl = float(row.total_pnl or 0)
-
-        rows.append({
-            "id": bot.id,
-            "name": bot.name,
-            "description": bot.description,
-            "symbol": bot.symbol,
-            "market_type": bot.market_type,
-            "is_enabled": bot.is_enabled,
-            "run_count": bot.run_count,
-            "last_run_at": bot.last_run_at.isoformat() if bot.last_run_at else None,
-            "last_signal": bot.last_signal,
-            "open_positions": open_positions,
-            "trades_30d": n_trades,
-            "pnl_30d": round(total_pnl, 4),
-            "trigger_interval": (bot.trigger or {}).get("interval", "?"),
-            "conditions_count": len(bot.conditions or []),
-            "exit_rules_count": len(bot.exit_rules or []),
-        })
-    return rows
