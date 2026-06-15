@@ -250,18 +250,25 @@ async def get_leaderboard(
     Return all strategies with aggregated backtest, paper, and live metrics.
     Sorted by backtest Sharpe ratio descending.
     """
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
     # Load strategies for this user's accounts
-    account_ids = await _user_account_ids(db, current_user.id)
+    try:
+        account_ids = await _user_account_ids(db, current_user.id)
 
-    if account_ids:
-        strat_q = select(Strategy).where(
-            Strategy.account_id.in_(account_ids)
-        )
-    else:
-        strat_q = select(Strategy)
+        if account_ids:
+            strat_q = select(Strategy).where(
+                Strategy.account_id.in_(account_ids)
+            )
+        else:
+            strat_q = select(Strategy)
 
-    strat_result = await db.execute(strat_q)
-    strategies: list[Strategy] = strat_result.scalars().all()
+        strat_result = await db.execute(strat_q)
+        strategies: list[Strategy] = strat_result.scalars().all()
+    except (OperationalError, ProgrammingError):
+        # Tables not yet migrated (fresh DB) — return empty leaderboard, not a 500.
+        await db.rollback()
+        return []
 
     if not strategies:
         return []

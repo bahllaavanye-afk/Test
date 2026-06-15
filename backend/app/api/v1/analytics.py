@@ -2985,8 +2985,7 @@ async def get_funding_rates(
         try:
             nft = pm.get("nextFundingTime")
             if nft:
-                from datetime import timezone as _tz
-                next_funding_time = datetime.fromtimestamp(int(nft) / 1000, tz=_tz.utc).isoformat()
+                next_funding_time = datetime.fromtimestamp(int(nft) / 1000, tz=UTC).isoformat()
         except Exception:
             pass
 

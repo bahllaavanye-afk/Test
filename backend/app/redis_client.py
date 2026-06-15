@@ -6,6 +6,7 @@ This lets the app run on Render/local without a Redis instance — strategies
 and the API still work; only real-time price caching and pub/sub are skipped.
 """
 import json
+import time as _time
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -14,47 +15,77 @@ from app.config import settings
 from app.utils.logging import logger
 
 _pool: aioredis.ConnectionPool | None = None
-_redis_disabled = not settings.redis_url or settings.redis_url.strip() == ""
+
+# Treat empty OR placeholder URLs as "no Redis" so we fall back to the
+# in-process memory cache instead of hammering a bogus host on every call.
+_PLACEHOLDER_HINTS = ("your-upstash", "your-redis", "example.com", "changeme", "<", "placeholder")
+
+
+def _is_placeholder(url: str) -> bool:
+    u = (url or "").strip().lower()
+    return (not u) or any(h in u for h in _PLACEHOLDER_HINTS)
+
+
+_redis_disabled = _is_placeholder(settings.redis_url)
 
 
 def _redis_enabled() -> bool:
-    """Return True if a Redis URL is configured."""
+    """Return True if a real Redis URL is configured."""
     return not _redis_disabled
 
 
-class _NoopPriceCache:
-    """Drop-in replacement for PriceCache when Redis is not configured.
+class _MemoryPriceCache:
+    """In-process cache used when Redis is not configured (no Upstash needed).
 
-    All methods are async no-ops that return None/empty so that callers
-    need no conditional logic.
+    Stores real data fetched by the price feed in plain dicts with lazy TTL
+    expiry, so the platform is fully functional with zero external Redis —
+    real prices/OHLCV still flow to strategies and the dashboard. This is a
+    cache layer only; it never fabricates data.
     """
 
-    async def set_price(self, *args, **kwargs) -> None:
-        pass
+    def __init__(self) -> None:
+        self._kv: dict[str, tuple[float, Any]] = {}  # key -> (expiry_ts, value)
 
-    async def get_price(self, *args, **kwargs):
-        return None
+    def _get(self, key: str) -> Any:
+        item = self._kv.get(key)
+        if item is None:
+            return None
+        expiry, value = item
+        if expiry and expiry < _time.time():
+            self._kv.pop(key, None)
+            return None
+        return value
 
-    async def set_ohlcv(self, *args, **kwargs) -> None:
-        pass
+    def _set(self, key: str, value: Any, ttl: int) -> None:
+        self._kv[key] = (_time.time() + ttl if ttl else 0.0, value)
 
-    async def get_ohlcv(self, *args, **kwargs):
-        return None
+    async def set_price(self, exchange: str, symbol: str, data: dict, ttl: int = 5) -> None:
+        self._set(f"price:{exchange}:{symbol}", data, ttl)
 
-    async def set_arb_opportunity(self, *args, **kwargs) -> None:
-        pass
+    async def get_price(self, exchange: str, symbol: str):
+        return self._get(f"price:{exchange}:{symbol}")
+
+    async def set_ohlcv(self, exchange: str, symbol: str, interval: str, data: list, ttl: int = 60) -> None:
+        # OHLCV history is long-lived for strategy consumption — keep generously.
+        self._set(f"ohlcv:{exchange}:{symbol}:{interval}", data, max(ttl, 3600))
+
+    async def get_ohlcv(self, exchange: str, symbol: str, interval: str):
+        return self._get(f"ohlcv:{exchange}:{symbol}:{interval}")
+
+    async def set_arb_opportunity(self, key: str, data: dict, ttl: int = 2) -> None:
+        self._set(f"arb:{key}", data, ttl)
 
     async def publish(self, *args, **kwargs) -> None:
-        pass
+        pass  # no pub/sub in memory mode — WS broadcast handled separately
 
-    async def cache_prediction(self, *args, **kwargs) -> None:
-        pass
+    async def cache_prediction(self, symbol: str, model_id: str, data: dict, ttl: int = 60) -> None:
+        self._set(f"ml:prediction:{symbol}:{model_id}", data, ttl)
 
     async def get(self, key: str):
-        return None
+        return self._get(key)
 
     async def set(self, key: str, value: str, ttl: int = 300) -> None:
-        pass
+        self._set(key, value, ttl)
 
     async def ping(self) -> None:
         pass
@@ -170,8 +201,10 @@ class PriceCache:
             logger.warning("redis.set failed", key=key, error=str(exc))
 
 
-# Module-level singleton — falls back to the no-op cache when Redis is disabled
+# Module-level singleton — falls back to the in-memory cache when Redis is
+# disabled or configured with a placeholder URL (so real data still flows).
 if _redis_enabled():
-    price_cache: PriceCache | _NoopPriceCache = PriceCache()
+    price_cache: PriceCache | _MemoryPriceCache = PriceCache()
 else:
-    price_cache = _NoopPriceCache()
+    logger.info("Redis not configured — using in-process memory cache (real data still flows)")
+    price_cache = _MemoryPriceCache()

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from app.redis_client import price_cache
 from app.services.agent_logger import agent_logger
@@ -110,14 +111,160 @@ async def start_price_feed() -> None:
         )
 
     if broker is None:
-        # No Alpaca keys — fall back to yfinance polling (free, no auth needed).
-        # 60-second cadence is fine for daily-resolution strategies.
-        logger.info("Price feed: no Alpaca broker — using yfinance fallback (60s cadence)")
-        await _yfinance_price_feed(DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS)
+        # No Alpaca keys — use FREE real-data sources (no key required):
+        #   • Crypto  → Binance public REST klines (real OHLCV, very reliable)
+        #   • Equity  → yfinance / Stooq (real OHLCV)
+        # Seeds real OHLCV history so strategies get their bars, then refreshes.
+        logger.info("Price feed: no Alpaca broker — using free real-data feed (Binance + yfinance/Stooq)")
+        await _free_data_feed(DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS)
         return
 
     symbols = DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS
     await run_price_feed(broker, symbols)
+
+
+def _binance_symbol(symbol: str) -> str:
+    """Map a unified symbol like 'BTC/USD' to a Binance pair 'BTCUSDT'."""
+    base = symbol.split("/")[0].upper()
+    return f"{base}USDT"
+
+
+def _binance_klines_sync(symbol: str, interval: str, limit: int = 200) -> list[dict]:
+    """Fetch real OHLCV klines from Binance public REST (no API key required).
+
+    Binance is free, keyless, and very reliable. Returns a list of bar dicts.
+    Raises on network/HTTP error so the caller can fall through to other sources.
+    """
+    import urllib.request
+
+    pair = _binance_symbol(symbol)
+    url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval={interval}&limit={limit}"
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 (trusted host)
+        raw = json.loads(resp.read().decode())
+    bars: list[dict] = []
+    for k in raw:
+        bars.append({
+            "timestamp": int(k[0]),
+            "open":  float(k[1]),
+            "high":  float(k[2]),
+            "low":   float(k[3]),
+            "close": float(k[4]),
+            "volume": float(k[5]),
+        })
+    return bars
+
+
+def _yf_history_sync(symbol: str, period: str, interval: str) -> list[dict]:
+    """Fetch real OHLCV history for an equity from yfinance (free, keyless)."""
+    import yfinance as yf
+
+    yf_sym = symbol.replace("/USD", "-USD").replace("/USDT", "-USD")
+    df = yf.Ticker(yf_sym).history(period=period, interval=interval)
+    bars: list[dict] = []
+    for ts, row in df.iterrows():
+        bars.append({
+            "timestamp": int(ts.timestamp() * 1000),
+            "open":  float(row["Open"]),
+            "high":  float(row["High"]),
+            "low":   float(row["Low"]),
+            "close": float(row["Close"]),
+            "volume": float(row.get("Volume", 0) or 0),
+        })
+    return bars
+
+
+def _stooq_history_sync(symbol: str) -> list[dict]:
+    """Fetch real daily OHLCV for an equity from Stooq CSV (free, keyless)."""
+    import csv
+    import io
+    import urllib.request
+
+    s = symbol.lower().replace("/", "").replace(".", "-")
+    if "-usd" not in s and not s.endswith(".us"):
+        s = f"{s}.us"
+    url = f"https://stooq.com/q/d/l/?s={s}&i=d"
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+        text = resp.read().decode()
+    bars: list[dict] = []
+    for row in csv.DictReader(io.StringIO(text)):
+        try:
+            bars.append({
+                "timestamp": row["Date"],
+                "open":  float(row["Open"]),
+                "high":  float(row["High"]),
+                "low":   float(row["Low"]),
+                "close": float(row["Close"]),
+                "volume": float(row.get("Volume", 0) or 0),
+            })
+        except (KeyError, ValueError):
+            continue
+    return bars
+
+
+async def _seed_symbol_history(symbol: str, cache) -> bool:
+    """Seed real OHLCV history (1h + 1d) for one symbol from the best free source.
+
+    Returns True if at least one interval was successfully populated.
+    """
+    loop = asyncio.get_running_loop()
+    is_crypto = "/" in symbol
+    exchange = "crypto" if is_crypto else "alpaca"
+    ok = False
+
+    for interval in ("1h", "1d"):
+        bars: list[dict] = []
+        try:
+            if is_crypto:
+                bars = await loop.run_in_executor(None, _binance_klines_sync, symbol, interval, 200)
+            else:
+                period = "60d" if interval == "1h" else "2y"
+                bars = await loop.run_in_executor(None, _yf_history_sync, symbol, period, interval)
+                if not bars and interval == "1d":
+                    bars = await loop.run_in_executor(None, _stooq_history_sync, symbol)
+        except Exception as exc:
+            logger.debug("history seed failed", symbol=symbol, interval=interval, error=str(exc))
+            bars = []
+
+        if bars and len(bars) >= 30:
+            await cache.set_ohlcv(exchange, symbol, interval, bars)
+            last = bars[-1]["close"]
+            await asyncio.gather(
+                cache.set_price(exchange, symbol, {"last": last, "bid": last, "ask": last}),
+                manager.broadcast(f"prices:{symbol}", {"type": "quote", "symbol": symbol, "last": last, "bid": last, "ask": last}),
+                return_exceptions=True,
+            )
+            ok = True
+    return ok
+
+
+async def _free_data_feed(symbols: list[str]) -> None:
+    """Continuous REAL market-data feed using free, keyless sources.
+
+    Seeds OHLCV history for every symbol, then refreshes on a loop. Uses
+    Binance public REST for crypto and yfinance/Stooq for equities. Never
+    fabricates data — on total network failure a symbol is simply skipped.
+    """
+    cache = price_cache
+    # Initial seed
+    seeded = 0
+    for sym in symbols:
+        if await _seed_symbol_history(sym, cache):
+            seeded += 1
+    logger.info("Free data feed seeded", seeded=seeded, total=len(symbols))
+    if seeded == 0:
+        logger.warning(
+            "Free data feed: no symbols seeded — all free data hosts unreachable. "
+            "Allowlist api.binance.com + query1.finance.yahoo.com (or set ALPACA paper keys)."
+        )
+
+    # Refresh loop — re-pull latest bars every 60s
+    while True:
+        await asyncio.sleep(60)
+        for sym in symbols:
+            try:
+                await _seed_symbol_history(sym, cache)
+            except Exception as exc:
+                logger.debug("free feed refresh error", symbol=sym, error=str(exc))
 
 
 async def _yfinance_price_feed(symbols: list[str]) -> None:

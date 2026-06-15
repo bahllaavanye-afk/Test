@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from sqlalchemy import JSON, Column, DateTime, Float, String, Text
 from sqlalchemy import Enum as SAEnum
 
-from app.database import Base
 from app.config import settings
+from app.database import Base
 
 # Use JSONB on PostgreSQL (GIN-indexable) and plain JSON on SQLite (tests/dev).
 if settings.database_url.startswith("postgresql"):

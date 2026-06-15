@@ -22,12 +22,20 @@ async def risk_summary(
     current_user: User = Depends(get_current_user),
 ):
     """Risk dashboard summary: active rules count, recent events, circuit breaker status."""
-    rules_result = await db.execute(select(RiskRule).where(RiskRule.is_active == True))
-    active_rules = rules_result.scalars().all()
-    events_result = await db.execute(
-        select(RiskEvent).order_by(RiskEvent.triggered_at.desc()).limit(5)
-    )
-    recent_events = events_result.scalars().all()
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    active_rules: list = []
+    recent_events: list = []
+    try:
+        rules_result = await db.execute(select(RiskRule).where(RiskRule.is_active == True))
+        active_rules = list(rules_result.scalars().all())
+        events_result = await db.execute(
+            select(RiskEvent).order_by(RiskEvent.triggered_at.desc()).limit(5)
+        )
+        recent_events = list(events_result.scalars().all())
+    except (OperationalError, ProgrammingError):
+        # Tables not yet migrated (fresh DB) — return an empty summary, not a 500.
+        await db.rollback()
     return {
         "active_rules": len(active_rules),
         "recent_events": len(recent_events),

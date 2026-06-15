@@ -52,7 +52,7 @@ except ImportError as e:
     PatchEncoder = None  # type: ignore[assignment,misc]
 
 try:
-    from app.ml.models.ssm_model import SSMPredictor, SelectiveSSM
+    from app.ml.models.ssm_model import SelectiveSSM, SSMPredictor
 except ImportError as e:
     logger.warning(f"SSMPredictor unavailable (missing deps): {e}")
     SSMPredictor = None  # type: ignore[assignment,misc]
