@@ -19,6 +19,19 @@ DEFAULT_EQUITY_SYMBOLS = [
 DEFAULT_CRYPTO_SYMBOLS = [
     "BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD", "DOGE/USD",
 ]
+# Forex desk — yfinance FX tickers (free, keyless). Stored under the "alpaca"
+# cache key like equities since they share the non-crypto data path.
+DEFAULT_FOREX_SYMBOLS = [
+    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X",
+]
+# Commodities / futures desk — yfinance continuous-future tickers (free, keyless).
+DEFAULT_COMMODITY_SYMBOLS = [
+    "GC=F",  # Gold
+    "CL=F",  # Crude oil
+    "SI=F",  # Silver
+    "NG=F",  # Natural gas
+    "ZC=F",  # Corn
+]
 
 
 async def _fetch_and_publish(broker, symbol: str, cache) -> None:
@@ -116,7 +129,12 @@ async def start_price_feed() -> None:
         #   • Equity  → yfinance / Stooq (real OHLCV)
         # Seeds real OHLCV history so strategies get their bars, then refreshes.
         logger.info("Price feed: no Alpaca broker — using free real-data feed (Binance + yfinance/Stooq)")
-        await _free_data_feed(DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS)
+        await _free_data_feed(
+            DEFAULT_EQUITY_SYMBOLS
+            + DEFAULT_CRYPTO_SYMBOLS
+            + DEFAULT_FOREX_SYMBOLS
+            + DEFAULT_COMMODITY_SYMBOLS
+        )
         return
 
     symbols = DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS
