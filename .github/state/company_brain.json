@@ -125,7 +125,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781547138.669176,
+    "last_updated": 1781562654.464663,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -139,35 +139,35 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-06-12T21:06:18.658577+00:00",
+      "generated_at": "2026-06-15T22:30:31.040535+00:00",
       "signals": {
         "vix": {
-          "value": 17.68,
+          "value": 16.2,
           "trend": "falling"
         },
         "spy": {
-          "price": 741.75,
-          "sma50": 722.8,
-          "sma200": 684.07,
+          "price": 754.83,
+          "sma50": 724.78,
+          "sma200": 684.64,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0451,
+          "ratio": 1.044,
           "median": 1.0523,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.178,
+          "hyg_lqd_momentum_20d": -0.183,
           "signal": "widening"
         },
         "breadth": {
-          "sectors_above_sma20": 8,
+          "sectors_above_sma20": 9,
           "total_sectors": 11,
-          "breadth_pct": 72.7
+          "breadth_pct": 81.8
         },
         "btc": {
-          "price": 63430,
-          "24h_pct": 0.02
+          "price": 66143,
+          "24h_pct": 1.47
         }
       },
       "score": 2,
@@ -432,6 +432,18 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 3, Breakouts: 1, Risk flags: 0.",
       "ts": 1781339641.6849904
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 2,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1781562654.4655197
     }
   ]
 }
