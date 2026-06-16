@@ -49,6 +49,6 @@
     "* The recommended asset allocation strategy is currently 45% directional and 25% arb, deviating from the 70/30 policy, as discussed by [desk_trader in #risk](#risk @ 2026-06-12T11:55).",
     "* Retrain the `SectorSentimentModel` using the `sector_sentiment.py` file and integrate a temporal attention layer to handle model drift."
   ],
-  "last_updated": "2026-06-15T23:17:27.871727+00:00",
+  "last_updated": "2026-06-16T18:14:04.890507+00:00",
   "total": 48
 }
