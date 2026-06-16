@@ -43,7 +43,7 @@ import tempfile
 import threading
 import time
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -69,22 +69,14 @@ _CACHE_FILE = _STATE_DIR / "llm_cache.json"
 
 # ── Provider config ───────────────────────────────────────────────────────────
 
+# Order matters: the first _PARALLEL_RACE_N entries form the parallel race pool,
+# the rest are sequential fallbacks. Lead with the fastest, highest-throughput
+# Llama-3.3-70B providers (Cerebras ~2600 tok/s, Groq sub-second latency,
+# SambaNova 20M tok/day) so the race resolves quickly. Gemini is demoted out of
+# the race pool: at 15 rpm it has the scarcest free quota, so racing it on every
+# call would burn that quota on requests that usually lose — keep it as a
+# sequential fallback instead (finding L3).
 _PROVIDERS = [
-    {
-        "name": "gemini",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
-        "key_env": "GEMINI_API_KEY",
-        "fmt": "gemini",
-        "rpm_free": 15,
-    },
-    {
-        "name": "sambanova",
-        "url": "https://api.sambanova.ai/v1/chat/completions",
-        "key_env": "SAMBANOVA_API_KEY",
-        "fmt": "openai",
-        "model": "Meta-Llama-3.3-70B-Instruct",
-        "rpm_free": 60,
-    },
     {
         "name": "cerebras",
         "url": "https://api.cerebras.ai/v1/chat/completions",
@@ -100,6 +92,21 @@ _PROVIDERS = [
         "fmt": "openai",
         "model": "llama-3.3-70b-versatile",
         "rpm_free": 30,
+    },
+    {
+        "name": "sambanova",
+        "url": "https://api.sambanova.ai/v1/chat/completions",
+        "key_env": "SAMBANOVA_API_KEY",
+        "fmt": "openai",
+        "model": "Meta-Llama-3.3-70B-Instruct",
+        "rpm_free": 60,
+    },
+    {
+        "name": "gemini",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        "key_env": "GEMINI_API_KEY",
+        "fmt": "gemini",
+        "rpm_free": 15,
     },
     {
         "name": "deepseek",
@@ -187,6 +194,11 @@ _PROVIDERS = [
 
 # Providers to race in parallel (first N by index). Others are sequential fallbacks.
 _PARALLEL_RACE_N = 3
+
+# Worst-case wait for the parallel race before falling through to the sequential
+# tail. Kept below the 30s per-request socket timeout so an unreachable provider
+# can never stall a caller for the full socket budget.
+_RACE_TIMEOUT = 20
 
 # ── Response cache ────────────────────────────────────────────────────────────
 
@@ -322,27 +334,60 @@ def llm_with_provider(
     return (result or "[LLM unavailable]", used or "cascade")
 
 
-def _resolve_env_key(base: str) -> str:
-    """Resolve a key from base or its numbered variants (base, base_1.._3).
+# Round-robin cursor per key-base so successive calls spread across every
+# provisioned key instead of always hammering _1. Lock-guarded because the
+# parallel race may resolve keys from multiple threads at once.
+_KEY_ROTATION_LOCK = threading.Lock()
+_KEY_ROTATION_IDX: dict[str, int] = {}
 
-    Production secrets are often stored numbered (GROQ_API_KEY_1) with no plain
-    name. Without this, a provider whose only key is GROQ_API_KEY_1 looks
-    unavailable and is skipped — wasting provisioned free capacity (finding L12).
+
+def _all_env_keys(base: str) -> list[str]:
+    """Every non-empty key variant for base — base, base_1 .. base_10 — deduped.
+
+    Production secrets are stored numbered (GROQ_API_KEY_1..GROQ_API_KEY_10) and
+    often have no plain name. Discovering the full _1.._10 range means provisioned
+    free capacity (e.g. GROQ_API_KEY_4..10) is actually used, not silently
+    skipped (findings L5/L12).
     """
-    for name in (base, f"{base}_1", f"{base}_2", f"{base}_3"):
+    out: list[str] = []
+    for name in (base, *(f"{base}_{i}" for i in range(1, 11))):
         v = os.environ.get(name, "")
-        if v and v != "disabled":
-            return v
-    return ""
+        if v and v != "disabled" and v not in out:
+            out.append(v)
+    return out
+
+
+def _resolve_env_key(base: str) -> str:
+    """Resolve a usable key for base, round-robining across all provisioned
+    variants so free-tier quota spreads over every key (findings L5/L12).
+
+    A random starting offset (per base, per process) keeps separate workflow
+    runs from all opening on the same key.
+    """
+    keys = _all_env_keys(base)
+    if not keys:
+        return ""
+    if len(keys) == 1:
+        return keys[0]
+    with _KEY_ROTATION_LOCK:
+        i = _KEY_ROTATION_IDX.get(base)
+        if i is None:
+            i = random.randrange(len(keys))
+        _KEY_ROTATION_IDX[base] = (i + 1) % len(keys)
+    return keys[i % len(keys)]
 
 
 def _has_key(p: dict) -> bool:
-    """Check if a provider has an API key configured (primary, numbered, or alt)."""
-    if _resolve_env_key(p["key_env"]):
+    """Check if a provider has an API key configured (primary, numbered, or alt).
+
+    Uses _all_env_keys directly (not _resolve_env_key) so an existence check
+    never burns a round-robin slot.
+    """
+    if _all_env_keys(p["key_env"]):
         return True
     alt = p.get("key_env_alt", "")
     if alt:
-        return bool(_resolve_env_key(alt))
+        return bool(_all_env_keys(alt))
     return False
 
 
@@ -378,12 +423,19 @@ def _call_parallel_race(
         except Exception as e:
             logger.debug("Provider %s failed (race): %s", provider["name"], e)
 
-    with ThreadPoolExecutor(max_workers=len(race_pool)) as ex:
-        futs = [ex.submit(_try, p) for p in race_pool]
-        _done.wait(timeout=20)  # bound worst-case latency when a provider is unreachable
-        # Cancel pending futures — we already have a winner
-        for f in futs:
-            f.cancel()
+    # Daemon threads (not ThreadPoolExecutor): the executor's context-manager
+    # exit calls shutdown(wait=True), which JOINS every worker — so a provider
+    # stuck in urlopen would block here for the full 30s socket timeout, blowing
+    # past the 20s race budget (finding L9). Daemon threads let us return the
+    # instant we have a winner (or hit the budget); any orphan finishes its
+    # urlopen in the background and never blocks shutdown or interpreter exit.
+    threads = [
+        threading.Thread(target=_try, args=(p,), daemon=True, name=f"llm-race-{p['name']}")
+        for p in race_pool
+    ]
+    for t in threads:
+        t.start()
+    _done.wait(timeout=_RACE_TIMEOUT)  # bounded; orphaned daemon threads die on their own
 
     if _result[0]:
         return _result[0], _winner[0]
