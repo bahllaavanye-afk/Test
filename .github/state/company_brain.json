@@ -125,7 +125,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781568966.6737092,
+    "last_updated": 1781615840.3683412,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -137,7 +137,7 @@
     "autopilot_best_oos_sharpe": 1.3198,
     "autopilot_best_blended": 0.4506,
     "autopilot_overfit_count": 1,
-    "market_regime": "bull",
+    "market_regime": "neutral",
     "market_opinion": {
       "generated_at": "2026-06-15T22:30:31.040535+00:00",
       "signals": {
@@ -185,47 +185,47 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 2,
-    "macro_score": 4,
-    "vix": 16.2,
-    "market_scan_ts": 1781568966.6688566,
+    "macro_score": 0,
+    "vix": 16.09,
+    "market_scan_ts": 1781615840.3618007,
     "sector_leaders": [
       "Tech",
       "Financials",
-      "Healthcare"
-    ],
-    "sector_laggards": [
-      "Utilities",
-      "Comm.",
       "Energy"
     ],
+    "sector_laggards": [
+      "Real Estate",
+      "Materials",
+      "Comm."
+    ],
     "active_universe": [
-      "ADBE",
-      "INTC",
-      "XOM",
-      "AMD",
-      "MRK",
-      "ORCL",
-      "C",
-      "BRK-B",
+      "SPY",
       "QQQ",
-      "PANW",
-      "XLF",
-      "XLK",
-      "HD",
-      "LLY",
-      "XLI",
-      "NFLX",
+      "DIA",
+      "GLD",
+      "SHY",
+      "TLT",
+      "AAPL",
+      "MSFT",
+      "JPM",
+      "XOM",
       "JNJ",
-      "NOW",
-      "IWM",
-      "MSFT"
+      "PG",
+      "KO",
+      "WMT",
+      "XLK",
+      "XLF",
+      "XLE",
+      "XLV",
+      "XLI",
+      "XLP"
     ],
     "top_momentum": [
-      "AMD",
-      "INTC",
-      "PANW",
-      "CRWD",
-      "C"
+      "SPY",
+      "QQQ",
+      "DIA",
+      "GLD",
+      "AAPL"
     ],
     "risk_flags": []
   },
@@ -504,6 +504,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=4). Leading: Tech, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
       "ts": 1781568966.6746404
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Tech",
+        "Financials",
+        "Energy"
+      ],
+      "gap_count": 1,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=0). Leading: Tech, Financials. Gaps: 1, Breakouts: 0, Risk flags: 0.",
+      "ts": 1781615840.3693197
     }
   ]
 }
