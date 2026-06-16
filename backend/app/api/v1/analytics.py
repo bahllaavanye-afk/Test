@@ -497,7 +497,7 @@ async def get_pnl_attribution(
             func.sum(Trade.realized_pnl).label("total_pnl"),
             func.avg(Trade.realized_pnl).label("avg_pnl"),
             func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("wins"),
-            func.stddev(Trade.realized_pnl).label("std_pnl"),
+            func.avg(Trade.realized_pnl * Trade.realized_pnl).label("avg_sq_pnl"),
         )
         .where(*where_clause)
         .group_by(Trade.strategy_name)
@@ -511,7 +511,8 @@ async def get_pnl_attribution(
         s_pnl = float(r.total_pnl or 0)
         s_avg = float(r.avg_pnl or 0)
         s_wins = int(r.wins or 0)
-        s_std = float(r.std_pnl or 0) if r.std_pnl is not None else 0.0
+        s_avg_sq = float(r.avg_sq_pnl or 0)
+        s_std = math.sqrt(max(s_avg_sq - s_avg * s_avg, 0.0))
         contribution_pct = round(s_pnl / total_pnl * 100, 2) if total_pnl != 0 else 0.0
         win_rate_s = round(s_wins / max(s_trades, 1), 4)
         sharpe_proxy = round(s_avg / s_std * math.sqrt(252), 4) if s_std > 0 else None

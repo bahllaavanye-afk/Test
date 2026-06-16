@@ -788,39 +788,57 @@ SECTOR_ETFS = {
     "Materials":        "XLB",
 }
 
+# Approximate S&P 500 GICS sector weights — used only to size heatmap boxes
+SECTOR_WEIGHTS = {
+    "XLK": 0.29, "XLV": 0.13, "XLF": 0.13, "XLY": 0.10, "XLC": 0.09,
+    "XLI": 0.08, "XLP": 0.06, "XLE": 0.04, "XLU": 0.03, "XLRE": 0.02, "XLB": 0.02,
+}
+
+# Largest-cap constituent per sector, surfaced as the heatmap box's "top mover"
+SECTOR_TOP_CONSTITUENT = {
+    "XLK": "NVDA", "XLV": "LLY", "XLF": "JPM", "XLY": "AMZN", "XLC": "META",
+    "XLI": "RTX", "XLP": "KO", "XLE": "XOM", "XLU": "NEE", "XLRE": "AMT", "XLB": "LIN",
+}
+
+
+# Fetch today's bar and yesterday's close for a symbol
+async def _pct_change(sym: str) -> dict:
+    try:
+        start = (datetime.now(UTC) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        bars = await _fetch_alpaca_bars(sym, "1Day", start, limit=5)
+        if len(bars) >= 2:
+            prev_close = bars[-2]["close"]
+            cur_close  = bars[-1]["close"]
+            chg = (cur_close - prev_close) / prev_close * 100 if prev_close else 0.0
+            return {"symbol": sym, "close": cur_close, "change_pct": round(chg, 4)}
+        elif len(bars) == 1:
+            return {"symbol": sym, "close": bars[-1]["close"], "change_pct": 0.0}
+    except Exception as exc:
+        logger.debug("sector heatmap bar fetch failed", symbol=sym, error=str(exc))
+    return {"symbol": sym, "close": None, "change_pct": 0.0}
+
 
 @router.get("/sector-heatmap")
 async def get_sector_heatmap(
     current_user: User = Depends(get_current_user),
 ):
-    """Return % change for each S&P 500 sector ETF for the heatmap widget."""
-    symbols = list(SECTOR_ETFS.values())
+    """Return % change for each S&P 500 sector ETF + its top-cap constituent for the heatmap widget."""
+    etf_symbols = list(SECTOR_ETFS.values())
+    constituent_symbols = list(SECTOR_TOP_CONSTITUENT.values())
+    all_symbols = list(dict.fromkeys(etf_symbols + constituent_symbols))
 
-    # Fetch today's bar and yesterday's close for each ETF concurrently
-    async def _pct_change(sym: str) -> dict:
-        try:
-            start = (datetime.now(UTC) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            bars = await _fetch_alpaca_bars(sym, "1Day", start, limit=5)
-            if len(bars) >= 2:
-                prev_close = bars[-2]["close"]
-                cur_close  = bars[-1]["close"]
-                chg = (cur_close - prev_close) / prev_close * 100 if prev_close else 0.0
-                return {"symbol": sym, "close": cur_close, "change_pct": round(chg, 4)}
-            elif len(bars) == 1:
-                return {"symbol": sym, "close": bars[-1]["close"], "change_pct": 0.0}
-        except Exception as exc:
-            logger.debug("sector heatmap bar fetch failed", symbol=sym, error=str(exc))
-        return {"symbol": sym, "close": None, "change_pct": 0.0}
-
-    results = await asyncio.gather(*[_pct_change(sym) for sym in symbols])
+    results = await asyncio.gather(*[_pct_change(sym) for sym in all_symbols])
     by_sym = {r["symbol"]: r for r in results}
 
     return [
         {
             "sector": sector,
-            "symbol": etf_sym,
+            "etf": etf_sym,
             "change_pct": by_sym.get(etf_sym, {}).get("change_pct", 0.0),
             "close": by_sym.get(etf_sym, {}).get("close"),
+            "weight": SECTOR_WEIGHTS.get(etf_sym, 0.0),
+            "top_mover": SECTOR_TOP_CONSTITUENT.get(etf_sym, ""),
+            "top_mover_pct": by_sym.get(SECTOR_TOP_CONSTITUENT.get(etf_sym, ""), {}).get("change_pct", 0.0),
         }
         for sector, etf_sym in SECTOR_ETFS.items()
     ]

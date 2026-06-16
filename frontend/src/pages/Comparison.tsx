@@ -28,7 +28,7 @@ function EquityChart({ series }: { series: CurveSeries[] }) {
   const W = 800, H = 280, PAD_L = 48, PAD_R = 16, PAD_T = 16, PAD_B = 28
   const chartW = W - PAD_L - PAD_R, chartH = H - PAD_T - PAD_B
   const days = series[0]?.values.length ?? 0
-  if (days === 0) return null
+  if (days < 2) return null
   const allValues = series.flatMap(s => s.values)
   const minV = Math.min(...allValues) * 0.99, maxV = Math.max(...allValues) * 1.005, range = maxV - minV
   const toX = (i: number) => PAD_L + (i / (days - 1)) * chartW
@@ -99,6 +99,7 @@ function OverviewTab({
   const curveSeries: CurveSeries[] = benchmarks
     .filter(b => b.annualReturn != null)
     .map(b => ({ name: b.name, color: b.color, isUs: b.isUs, values: [100] }))
+  const hasCurveData = curveSeries.length > 0 && curveSeries[0].values.length >= 2
 
   const hasComparisons = comparisons.length > 0
   const hasBenchmarks = benchmarks.length > 0
@@ -123,7 +124,7 @@ function OverviewTab({
         </div>
         {benchmarksLoading ? (
           <div className="h-[280px] bg-[#0d0d0d] rounded-lg animate-pulse" />
-        ) : curveSeries.length > 0 ? (
+        ) : hasCurveData ? (
           <EquityChart series={curveSeries} />
         ) : (
           <div className="h-[280px] flex items-center justify-center text-xs text-[#555]">
