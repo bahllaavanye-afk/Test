@@ -1,49 +1,49 @@
 {
-  "checked_at": "2026-06-15T18:11:27.991043+00:00",
+  "checked_at": "2026-06-16T22:56:23.930527+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 41,
+  "skill_count": 50,
   "agent_statuses": [
     {
-      "agent": "continuous_improver",
-      "emoji": "\ud83d\udd27",
+      "agent": "strategy_generator",
+      "emoji": "\ud83e\udde0",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "signal_runner",
-      "emoji": "\ud83d\udce1",
+      "agent": "free_agent_engineer",
+      "emoji": "\ud83e\udd16",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "quick_backtest",
-      "emoji": "\u26a1",
+      "agent": "desk_trader",
+      "emoji": "\ud83d\udcca",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "peer_reviewer",
-      "emoji": "\ud83d\udc41\ufe0f",
+      "agent": "system_watchdog",
+      "emoji": "\ud83d\udee1\ufe0f",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "frontend_design",
-      "emoji": "\ud83c\udfa8",
+      "agent": "ml_trainer",
+      "emoji": "\ud83c\udfcb\ufe0f",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "token_monitor",
-      "emoji": "\ud83d\udcb0",
+      "agent": "standup_agent",
+      "emoji": "\ud83d\udccb",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
