@@ -118,7 +118,7 @@ def _format_slack_thread(team: dict, report: dict, context: dict) -> str:
         "",
         f"📋 *Domain:* {team['domain']}",
         "",
-        f"*Overnight Summary:*",
+        "*Overnight Summary:*",
         analysis,
         "",
     ]

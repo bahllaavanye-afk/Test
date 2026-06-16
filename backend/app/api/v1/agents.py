@@ -6,7 +6,6 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 

@@ -86,8 +86,8 @@ class PolymarketBroker(AbstractBroker):
         return []  # Polymarket doesn't have traditional OHLCV
 
 
-import urllib.request as _urllib_request
 import json as _json
+import urllib.request as _urllib_request
 
 
 class PolymarketPublicClient:

@@ -109,7 +109,7 @@ def _risk_check(ctx: dict) -> dict:
         ]
     else:
         analysis = (
-            f"Regime is UNKNOWN (no HMM signal yet, Redis key 'market:regime' may be unset). "
+            "Regime is UNKNOWN (no HMM signal yet, Redis key 'market:regime' may be unset). "
             "Defaulting to conservative posture until regime detection completes."
         )
         recs = [
