@@ -125,7 +125,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781615840.3683412,
+    "last_updated": 1781616017.0383728,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -186,8 +186,8 @@
     },
     "opinion_score": 2,
     "macro_score": 0,
-    "vix": 16.09,
-    "market_scan_ts": 1781615840.3618007,
+    "vix": 16.08,
+    "market_scan_ts": 1781616017.0331943,
     "sector_leaders": [
       "Tech",
       "Financials",
@@ -519,6 +519,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=0). Leading: Tech, Financials. Gaps: 1, Breakouts: 0, Risk flags: 0.",
       "ts": 1781615840.3693197
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Tech",
+        "Financials",
+        "Energy"
+      ],
+      "gap_count": 1,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=0). Leading: Tech, Financials. Gaps: 1, Breakouts: 0, Risk flags: 0.",
+      "ts": 1781616017.039351
     }
   ]
 }
