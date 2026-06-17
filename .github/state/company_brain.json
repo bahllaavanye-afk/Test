@@ -125,7 +125,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1781701455.319228,
+    "last_updated": 1781731825.080138,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -139,38 +139,38 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-06-16T22:22:11.259268+00:00",
+      "generated_at": "2026-06-17T21:29:58.607247+00:00",
       "signals": {
         "vix": {
-          "value": 16.41,
+          "value": 18.44,
           "trend": "falling"
         },
         "spy": {
-          "price": 750.33,
-          "sma50": 726.61,
-          "sma200": 685.18,
+          "price": 740.96,
+          "sma50": 728.24,
+          "sma200": 685.68,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0495,
-          "median": 1.0523,
-          "signal": "flat_or_inverted"
+          "ratio": 1.0543,
+          "median": 1.0525,
+          "signal": "steepening"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.599,
+          "hyg_lqd_momentum_20d": -0.914,
           "signal": "widening"
         },
         "breadth": {
-          "sectors_above_sma20": 9,
+          "sectors_above_sma20": 4,
           "total_sectors": 11,
-          "breadth_pct": 81.8
+          "breadth_pct": 36.4
         },
         "btc": {
-          "price": 65761,
-          "24h_pct": -0.77
+          "price": 64231,
+          "24h_pct": -2.19
         }
       },
-      "score": 2,
+      "score": 3,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
@@ -184,7 +184,7 @@
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 2,
+    "opinion_score": 3,
     "macro_score": 0,
     "vix": 16.08,
     "market_scan_ts": 1781616017.0331943,
@@ -546,6 +546,18 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1781648555.9532633
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1781731825.0811753
     }
   ]
 }
