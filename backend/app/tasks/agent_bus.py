@@ -7,8 +7,10 @@ Enhanced with:
 - Cross-asset GNN signal broadcasting
 - Signal stream persistence for replay
 """
+import asyncio
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from app.utils.logging import logger
@@ -38,6 +40,49 @@ AGENT_ROSTER = [
 class AgentBus:
     def __init__(self, redis_client):
         self.redis = redis_client
+        self._subscribers: dict[str, list[tuple[str, Callable[[str, dict], Awaitable[None]]]]] = {}
+        self._listen_task: asyncio.Task | None = None
+
+    def subscribe(self, topic: str, callback: Callable[[str, dict], Awaitable[None]]) -> None:
+        """Register `callback(topic, content)` to run whenever `topic` is published.
+
+        `topic` may be a CHANNELS shortcut (e.g. "strategy") or a raw channel
+        name. Call `start()` once all subscriptions are registered to begin
+        dispatching — mirrors knowledge_loop's "subscribe everything, then start".
+        """
+        full_channel = CHANNELS.get(topic, topic)
+        self._subscribers.setdefault(full_channel, []).append((topic, callback))
+
+    async def start(self) -> None:
+        """Open one Redis pub/sub connection covering every subscribed channel
+        and dispatch incoming messages to their registered callbacks."""
+        if not self.redis or not self._subscribers or self._listen_task is not None:
+            return
+        pubsub = self.redis.pubsub()
+        await pubsub.subscribe(*self._subscribers.keys())
+        self._listen_task = asyncio.create_task(self._listen(pubsub))
+
+    async def _listen(self, pubsub) -> None:
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                channel = message.get("channel")
+                raw = message.get("data")
+                try:
+                    payload = json.loads(raw)
+                    content = payload.get("content", payload)
+                except Exception:
+                    content = raw
+                for topic, callback in self._subscribers.get(channel, []):
+                    try:
+                        await callback(topic, content)
+                    except Exception as e:
+                        logger.debug("AgentBus subscriber callback failed", topic=topic, error=str(e))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("AgentBus listen loop terminated", error=str(e))
 
     async def publish(self, channel: str, message: dict, from_agent: str = "system") -> None:
         full_channel = CHANNELS.get(channel, channel)
