@@ -234,12 +234,29 @@ async def lifespan(app: FastAPI):
         logger.warning("Could not load strategies from DB at startup", error=str(_exc))
 
     # Default watchlist used when no strategies are enabled in DB yet
+    # (cold boot before scripts/seed.sh has run). Mirrors the seeded roster
+    # across equity directional, equity arbitrage, and crypto desks so a
+    # fresh deployment still trades a realistic multi-desk book rather than
+    # 3 symbols.
     if not active_strategies:
-        logger.info("No active DB strategies — using default paper watchlist")
+        logger.info("No active DB strategies — using default multi-desk paper watchlist")
         active_strategies = [
-            {"name": "momentum",       "symbols": ["SPY", "QQQ", "AAPL", "TSLA"], "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
-            {"name": "mean_reversion", "symbols": ["SPY", "QQQ"],                  "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
-            {"name": "rsi_macd",       "symbols": ["SPY", "AAPL"],                 "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "momentum",              "symbols": ["SPY", "QQQ"],            "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "mean_reversion",         "symbols": ["AAPL", "MSFT"],          "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "rsi_macd",               "symbols": ["TSLA", "NVDA"],          "params": {}, "tick_interval_seconds": 1800, "confidence_threshold": 0.6},
+            {"name": "breakout",               "symbols": ["AMD", "AMZN"],           "params": {}, "tick_interval_seconds": 1800, "confidence_threshold": 0.6},
+            {"name": "supertrend",             "symbols": ["GOOGL", "META"],         "params": {}, "tick_interval_seconds": 1800, "confidence_threshold": 0.6},
+            {"name": "low_volatility",         "symbols": ["JNJ", "PG"],             "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "sector_rotation",        "symbols": ["XLK", "XLY"],            "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "yield_curve_momentum",   "symbols": ["TLT", "IEF"],            "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "pairs_trading",          "symbols": ["KO", "PEP"],             "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "pca_stat_arb",           "symbols": ["XLF", "XLE"],            "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "skew_arb",               "symbols": ["SPY"],                  "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
+            {"name": "triangular_arb",         "symbols": ["BTC/USDT"],             "params": {}, "tick_interval_seconds": 10,   "confidence_threshold": 0.6},
+            {"name": "funding_rate_arb",       "symbols": ["BTC/USDT", "ETH/USDT"], "params": {}, "tick_interval_seconds": 60,   "confidence_threshold": 0.6},
+            {"name": "btc_eth_stat_arb",       "symbols": ["BTC/USDT", "ETH/USDT"], "params": {}, "tick_interval_seconds": 60,   "confidence_threshold": 0.6},
+            {"name": "dex_cex_arb",            "symbols": ["BTC/USDT"],             "params": {}, "tick_interval_seconds": 60,   "confidence_threshold": 0.6},
+            {"name": "crypto_adaptive_trend",  "symbols": ["ETH/USDT", "SOL/USDT"], "params": {}, "tick_interval_seconds": 300,  "confidence_threshold": 0.6},
         ]
 
     app.state.active_strategies = active_strategies
