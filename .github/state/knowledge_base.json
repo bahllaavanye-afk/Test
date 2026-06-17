@@ -1,18 +1,18 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-16T18:42:11.885540+00:00",
-  "total_learnings_processed": 121,
+  "last_updated": "2026-06-17T14:29:41.207780+00:00",
+  "total_learnings_processed": 139,
   "topics": {
     "ml_models": {
-      "summary": "Here are the two most important actionable points derived from the recent agent learnings:\n\n* Retrain the `SectorSentimentModel` using the `sector_sentiment.py` file and integrate a temporal attention layer to handle model drift.\n* Explore the use of Transformers, specifically the Time Series Transformer, or consider Temporal Fusion Transformers (TFT) for high-frequency stock price data forecasting.",
-      "source_count": 25,
-      "updated_at": "2026-06-15T18:50:49.339107+00:00",
+      "summary": "Here are 3 concise bullet points summarizing the most important actionable knowledge:\n\n* Retrain the `LSTM_model` (found in `backend/app/ml/models/`) as it's showing signs of drift, and consider incorporating a self-attention mechanism to capture temporal dependencies.\n* Explore time-series ensemble methods, such as the Temporal Fusion Transformer (TFT), due to the model's performance drift over time.\n* Consider deploying a hybrid model that combines the existing MLP model with the Time Frequency Transform (TFT) to improve performance.",
+      "source_count": 34,
+      "updated_at": "2026-06-17T14:29:41.207780+00:00",
       "raw_recent": [
-        "[modeling_engineer in #ml-research @ 2026-06-14T22:20] Based on the ongoing discussion and the effectiveness of Temporal Fusion Transformers (TFT) in handling high-frequency stock price data, I recommend r",
-        "[modeling_engineer @ 2026-06-14T23:56] [LLM unavailable \u2014 all providers failed]",
-        "[ml_trainer in #ml-research @ 2026-06-15T18:10] As the ML trainer, I report that the current model status in backend/app/ml/models/ shows that all models are currently idle. The last training run re",
-        "[research_scientist in #ml-research @ 2026-06-15T18:10] Based on the increasing residuals, I would suggest incorporating a non-linear, adaptive approach, such as the Lorentzian K-Nearest Neighbors (KNN) tec",
-        "[modeling_engineer in #ml-research @ 2026-06-15T18:10] Based on the recent discussion on \"Lorentzian KNN for Efficient Time Series Forecasting\" and its potential benefits, I recommend retraining the `loren"
+        "[research_scientist in #ml-research @ 2026-06-16T22:21] Considering the `LSTM_model` loss value and accuracy, I recommend incorporating a self-attention mechanism to capture temporal dependencies. Specifica",
+        "[modeling_engineer in #ml-research @ 2026-06-16T22:21] Based on the discussion, I recommend retraining the `LSTM_model` using the modified architecture from the `Transformer` model in `attention_is_all_you",
+        "[ml_trainer in #ml-research @ 2026-06-17T13:03] I've checked the status of models in backend/app/ml/models/. The last training run result for the LSTM model in models/mlp.json was a 75% test accurac",
+        "[research_scientist in #ml-research @ 2026-06-17T13:03] Given the model's performance drift over the past 48 hours, I suggest exploring the use of time-series ensemble methods, such as the TFT (Temporal Fus",
+        "[modeling_engineer in #ml-research @ 2026-06-17T13:03] Based on our team's discussion, I recommend deploying a hybrid model that combines the existing MLP model with the Time Frequency Transform (TFT) appr"
       ]
     },
     "code_quality": {
@@ -28,27 +28,27 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* All LLM providers have failed to be available, indicating a potential issue with the external services used by the learning agents.\n* Multiple agents have experienced LLM unavailability (investor_pipeline, run_experiments, algo_agent, self_improver, research_scientist, continuous_improver, peer_reviewer, frontend_design, and token_monitor) at different times, suggesting a recurring problem.\n* Potential solutions may include reviewing LLM provider configurations, monitoring usage patterns, and implementing backup/alternative services to ensure uninterrupted agent operations.",
-      "source_count": 54,
-      "updated_at": "2026-06-16T18:42:11.885540+00:00",
+      "summary": "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **LLM Unavailability Issue**: All LLM (Large Language Model) providers are currently unavailable, affecting various agent learnings (Free Agent Engineer, Desk Trader, System Watchdog, ML Trainer, and Standup Agent).\n\u2022 **No New Insights or Data**: Due to the LLM unavailability, no new insights or data have been generated for the past 24 hours.\n\u2022 **Impact on AI Platform Performance**: The LLM unavailability may impact the performance of the quantitative trading AI platform, and it is essential to investigate the cause of this issue and find a resolution as soon as possible.",
+      "source_count": 64,
+      "updated_at": "2026-06-17T14:29:41.207780+00:00",
       "raw_recent": [
-        "[research_scientist @ 2026-06-14T23:56] [LLM unavailable \u2014 all providers failed]",
-        "[continuous_improver @ 2026-06-15T18:11] [LLM unavailable \u2014 all providers failed]",
-        "[peer_reviewer @ 2026-06-15T18:11] [LLM unavailable \u2014 all providers failed]",
-        "[frontend_design @ 2026-06-15T18:11] [LLM unavailable \u2014 all providers failed]",
-        "[token_monitor @ 2026-06-15T18:11] [LLM unavailable \u2014 all providers failed]"
+        "[free_agent_engineer @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
+        "[desk_trader @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
+        "[system_watchdog @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
+        "[ml_trainer @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
+        "[standup_agent @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]"
       ]
     },
     "strategies": {
-      "summary": "Based on the recent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Signal Runner Improvement**: The `signal_runner` function in `signals.py` has been improved (as identified by continuous_improver in #engineering on 2026-06-12T18:33).\n* **Proposed Strategy**: A new strategy variant, \"QQQ_Leader_Bounce,\" has been proposed, combining momentum of NVDA with a bounce in the QQQ (as suggested by strategy_generator in #desk-equities on 2026-06-13T08:33).\n* **Strategy Evaluation**: Daily EMa Crossover + Stochastic Buy/Sell strategy has potential, but may require further evaluation based on similar crossover-based strategies (as noted by quick_backtest in #desk-equities on 2026-06-13T08:33).",
-      "source_count": 14,
-      "updated_at": "2026-06-13T11:00:52.342417+00:00",
+      "summary": "Based on the recent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* The proposed strategy variant \"QQQ_Leader_Bounce\" combines the momentum of NVDA with a daily EMA crossover and stochastic buy/sell signal, showing potential (strategy_generator in #desk-equities @ 2026-06-13T08:33).\n* A similar crossover-based strategy has been backtested with mixed results (quick_backtest in #desk-equities @ 2026-06-13T08:33).\n* Recent LLM failures (5-10) may require re-evaluation of the knowledge sourcing strategy or LLM provider selection.",
+      "source_count": 19,
+      "updated_at": "2026-06-17T14:29:41.207780+00:00",
       "raw_recent": [
-        "[strategy_generator @ 2026-06-12T22:07] [LLM unavailable \u2014 all providers failed]",
-        "[signal_runner in #desk-equities @ 2026-06-13T08:33] I've pulled the signals array from agent_memory.json and processed the data. In the last cycle, the following equity symbols received trading signals:",
-        "[strategy_generator in #desk-equities @ 2026-06-13T08:33] Based on the reported signals, I propose a new strategy variant, which I'll call \"QQQ_Leader_Bounce,\" that combines the momentum of NVDA with the tren",
-        "[quick_backtest in #desk-equities @ 2026-06-13T08:33] I think the proposed strategy (daily_ema_crossover + stochastic_buy_sell) has potential, but based on similar crossover-based strategies, I would esti",
-        "[strategy_generator @ 2026-06-13T10:14] [LLM unavailable \u2014 all providers failed]"
+        "[strategy_generator @ 2026-06-14T10:54] [LLM unavailable \u2014 all providers failed]",
+        "[signal_runner @ 2026-06-15T18:11] [LLM unavailable \u2014 all providers failed]",
+        "[quick_backtest @ 2026-06-15T18:11] [LLM unavailable \u2014 all providers failed]",
+        "[strategy_generator @ 2026-06-16T22:56] [LLM unavailable \u2014 all providers failed]",
+        "[strategy_generator @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]"
       ]
     },
     "risk": {
