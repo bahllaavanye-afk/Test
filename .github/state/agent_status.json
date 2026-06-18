@@ -1,49 +1,49 @@
 {
-  "checked_at": "2026-06-18T12:33:17.427559+00:00",
+  "checked_at": "2026-06-18T23:04:23.113921+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 57,
+  "skill_count": 61,
   "agent_statuses": [
     {
-      "agent": "continuous_improver",
-      "emoji": "\ud83d\udd27",
+      "agent": "investor_pipeline",
+      "emoji": "\ud83d\udcbc",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "signal_runner",
-      "emoji": "\ud83d\udce1",
+      "agent": "run_experiments",
+      "emoji": "\ud83d\udd2c",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "quick_backtest",
-      "emoji": "\u26a1",
+      "agent": "algo_agent",
+      "emoji": "\ud83c\udfb0",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "peer_reviewer",
-      "emoji": "\ud83d\udc41\ufe0f",
+      "agent": "self_improver",
+      "emoji": "\ud83d\udd04",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "frontend_design",
-      "emoji": "\ud83c\udfa8",
+      "agent": "research_scientist",
+      "emoji": "\ud83d\udd2d",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "token_monitor",
-      "emoji": "\ud83d\udcb0",
+      "agent": "modeling_engineer",
+      "emoji": "\u2699\ufe0f",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
