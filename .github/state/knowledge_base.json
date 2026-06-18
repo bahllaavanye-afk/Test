@@ -1,7 +1,7 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-17T14:29:41.207780+00:00",
-  "total_learnings_processed": 139,
+  "last_updated": "2026-06-18T13:53:53.542974+00:00",
+  "total_learnings_processed": 156,
   "topics": {
     "ml_models": {
       "summary": "Here are 3 concise bullet points summarizing the most important actionable knowledge:\n\n* Retrain the `LSTM_model` (found in `backend/app/ml/models/`) as it's showing signs of drift, and consider incorporating a self-attention mechanism to capture temporal dependencies.\n* Explore time-series ensemble methods, such as the Temporal Fusion Transformer (TFT), due to the model's performance drift over time.\n* Consider deploying a hybrid model that combines the existing MLP model with the Time Frequency Transform (TFT) to improve performance.",
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **LLM Unavailability Issue**: All LLM (Large Language Model) providers are currently unavailable, affecting various agent learnings (Free Agent Engineer, Desk Trader, System Watchdog, ML Trainer, and Standup Agent).\n\u2022 **No New Insights or Data**: Due to the LLM unavailability, no new insights or data have been generated for the past 24 hours.\n\u2022 **Impact on AI Platform Performance**: The LLM unavailability may impact the performance of the quantitative trading AI platform, and it is essential to investigate the cause of this issue and find a resolution as soon as possible.",
-      "source_count": 64,
-      "updated_at": "2026-06-17T14:29:41.207780+00:00",
+      "summary": "Based on the recent agent learnings, the most important actionable knowledge is:\n\n* The LLM (Large Language Model) is currently unavailable for all providers, affecting multiple agents' performances.\n* This issue may impact agents such as [desk_trader], [ml_trainer], but further context is needed to identify affected agents.\n* Potential solutions may involve troubleshooting LLM providers or switching to alternative models, as suggested by [continuous_improver] and [peer_reviewer].",
+      "source_count": 73,
+      "updated_at": "2026-06-18T13:53:53.542974+00:00",
       "raw_recent": [
-        "[free_agent_engineer @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
-        "[desk_trader @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
-        "[system_watchdog @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
-        "[ml_trainer @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
-        "[standup_agent @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]"
+        "[standup_agent @ 2026-06-17T22:26] [LLM unavailable \u2014 all providers failed]",
+        "[continuous_improver @ 2026-06-18T12:33] [LLM unavailable \u2014 all providers failed]",
+        "[peer_reviewer @ 2026-06-18T12:33] [LLM unavailable \u2014 all providers failed]",
+        "[frontend_design @ 2026-06-18T12:33] [LLM unavailable \u2014 all providers failed]",
+        "[token_monitor @ 2026-06-18T12:33] [LLM unavailable \u2014 all providers failed]"
       ]
     },
     "strategies": {
