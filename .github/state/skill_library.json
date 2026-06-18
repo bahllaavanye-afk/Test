@@ -62,6 +62,6 @@
     "* This issue may impact agents such as [desk_trader], [ml_trainer], but further context is needed to identify affected agents.",
     "ALLOW_PAID_APIS must always be False \u2014 never change this"
   ],
-  "last_updated": "2026-06-18T13:53:53.542974+00:00",
+  "last_updated": "2026-06-18T20:42:53.859585+00:00",
   "total": 61
 }
