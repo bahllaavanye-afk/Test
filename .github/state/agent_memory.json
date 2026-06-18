@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-18T11:40:25.954622+00:00",
+  "last_updated": "2026-06-18T12:01:51.660932+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -748,6 +748,66 @@
       "reason": "syntax check failed",
       "improvement_type": "edge_cases",
       "timestamp": "2026-06-14T20:29:21.778113+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/poly_calibration_arb.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T11:58:23.371678+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/ml_breakout.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T11:58:44.275854+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/ensemble_model.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T11:59:05.023478+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/normalization.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T11:59:25.874994+00:00"
+    },
+    {
+      "file": "backend/app/execution/iceberg.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T11:59:46.661735+00:00"
+    },
+    {
+      "file": "backend/app/risk/var.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T12:00:07.456831+00:00"
+    },
+    {
+      "file": "backend/app/brokers/polymarket.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T12:00:28.264587+00:00"
+    },
+    {
+      "file": "backend/app/backtest/stress_test.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T12:00:49.147852+00:00"
+    },
+    {
+      "file": "backend/app/comparison/report_builder.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T12:01:10.033903+00:00"
+    },
+    {
+      "file": "backend/app/tasks/automl_desk.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-18T12:01:30.904266+00:00"
     }
   ],
   "improvement_stats": {
