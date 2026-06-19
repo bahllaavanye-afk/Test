@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-18T23:04:23.113921+00:00",
+  "checked_at": "2026-06-19T13:01:19.017516+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
@@ -7,43 +7,43 @@
   "skill_count": 61,
   "agent_statuses": [
     {
-      "agent": "investor_pipeline",
-      "emoji": "\ud83d\udcbc",
+      "agent": "strategy_generator",
+      "emoji": "\ud83e\udde0",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "run_experiments",
-      "emoji": "\ud83d\udd2c",
+      "agent": "free_agent_engineer",
+      "emoji": "\ud83e\udd16",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "algo_agent",
-      "emoji": "\ud83c\udfb0",
+      "agent": "desk_trader",
+      "emoji": "\ud83d\udcca",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "self_improver",
-      "emoji": "\ud83d\udd04",
+      "agent": "system_watchdog",
+      "emoji": "\ud83d\udee1\ufe0f",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "research_scientist",
-      "emoji": "\ud83d\udd2d",
+      "agent": "ml_trainer",
+      "emoji": "\ud83c\udfcb\ufe0f",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "modeling_engineer",
-      "emoji": "\u2699\ufe0f",
+      "agent": "standup_agent",
+      "emoji": "\ud83d\udccb",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
