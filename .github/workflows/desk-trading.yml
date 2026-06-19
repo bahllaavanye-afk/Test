@@ -49,7 +49,7 @@ jobs:
             fastapi pydantic pydantic-settings \
             python-dotenv structlog tenacity anyio \
             python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
-            sqlalchemy[asyncio] httpx aiosqlite \
+            sqlalchemy[asyncio] httpx aiosqlite aiohttp \
             alpaca-py requests yfinance
 
       - name: Verify Python environment
@@ -60,7 +60,6 @@ jobs:
           SECRET_KEY: d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
 
       - name: Run desk order placer
-        continue-on-error: true
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
