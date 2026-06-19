@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-19T22:12:29.760911+00:00",
+  "last_updated": "2026-06-19T22:42:56.897620+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -931,6 +931,66 @@
       "reason": "syntax check failed",
       "improvement_type": "monitoring",
       "timestamp": "2026-06-18T12:01:30.904266+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_slippage.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:39:27.547282+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/low_volatility.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:39:48.506348+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/lorentzian_knn.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:40:09.446144+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/patch_tst.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:40:30.341531+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/technical.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:40:51.195843+00:00"
+    },
+    {
+      "file": "backend/app/execution/rl_exec.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:41:12.067047+00:00"
+    },
+    {
+      "file": "backend/app/risk/correlation_monitor.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:41:32.994104+00:00"
+    },
+    {
+      "file": "backend/app/brokers/alpaca_orders.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:41:53.977707+00:00"
+    },
+    {
+      "file": "backend/app/backtest/engine.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:42:15.022610+00:00"
+    },
+    {
+      "file": "backend/app/comparison/report_builder.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-19T22:42:35.958209+00:00"
     }
   ],
   "improvement_stats": {
