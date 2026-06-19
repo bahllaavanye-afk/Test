@@ -3918,13 +3918,13 @@ def git_recent_commits(since_hours: int = 24, limit: int = 10) -> list[dict]:
         "git", "log",
         f"--since={since_hours} hours ago",
         f"-n{limit}",
-        "--pretty=format:%h|%an|%s|%ct",
+        "--pretty=format:%h%x01%an%x01%s%x01%ct",
     ])
     out = []
     for line in raw.strip().split("\n"):
         if not line.strip():
             continue
-        parts = line.split("|", 3)
+        parts = line.split("\x01")
         if len(parts) == 4:
             sha, author, msg, ts = parts
             out.append({"sha": sha, "author": author, "msg": msg, "ts": int(ts)})
