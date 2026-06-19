@@ -39,7 +39,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install --quiet pytest requests
+        run: pip install --quiet pytest requests httpx
 
       - name: Pure logic tests (no network)
         working-directory: .github/scripts

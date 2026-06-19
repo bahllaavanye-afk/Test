@@ -38,12 +38,11 @@ jobs:
         working-directory: frontend
         run: npm ci --prefer-offline
 
-      - name: Install Playwright + Chromium
-        working-directory: frontend
-        run: npx playwright install chromium --with-deps
-
       - name: Install screenshot runner deps
         run: pip install playwright --quiet
+
+      - name: Install Chromium for screenshot runner's Playwright version
+        run: python -m playwright install chromium --with-deps
 
       - name: Start frontend dev server (background)
         working-directory: frontend
