@@ -8517,6 +8517,21 @@ def _create_github_issues(issues: list[dict]) -> int:
 
 
 def main() -> int:
+    # Hard wall-clock budget: the CI job has a fixed timeout-minutes ceiling and
+    # GitHub force-cancels the job if it's exceeded — killing this process before
+    # save_state()/git push ever run, so a slow run silently discards ALL of its
+    # work (no state persisted, no Slack posts from later phases, no commit).
+    # Bail out of remaining phases once the budget is hit so save_state() always
+    # runs and the run's progress survives even when there's more to do than fits.
+    run_start = time.time()
+    deadline = run_start + 18 * 60  # leave buffer under the job's timeout-minutes
+
+    def out_of_time() -> bool:
+        if time.time() > deadline:
+            print(f"  ⏰ time budget exceeded ({(time.time() - run_start) / 60:.1f}m) — wrapping up early")
+            return True
+        return False
+
     verify_zero_spend()
     token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     if not token.startswith("xoxb-"):
@@ -8616,6 +8631,8 @@ def main() -> int:
     posts_made = 0
     errors = 0
     for ch in inbox_channels:
+        if out_of_time():
+            break
         # ── Handle human thread replies ───────────────────────────────────
         try:
             threads = read_unresponded_threads(
@@ -8782,6 +8799,8 @@ def main() -> int:
 
     # Agent wave — 55% short-form, 45% full report (makes feed feel natural)
     for agent in wave:
+        if out_of_time():
+            break
         agent_tracking[agent.name] = {"posts": 0, "errors": 0, "channels": [], "mode": ""}
         short_fn = _SHORT_FNS.get(agent.name)
         use_short = short_fn is not None and random.random() < 0.55
@@ -8850,10 +8869,14 @@ def main() -> int:
         print("  ⚠ no parent messages posted — skipping discussion pass "
               "(check the bot is invited to the channels)")
         n_chains = 0
+    elif out_of_time():
+        n_chains = 0
     else:
         n_chains = random.randint(min(4, len(chains)), min(7, len(chains)))
     chains_run = 0
     for channel, parent_ts, agent_chain in chains[:n_chains]:
+        if out_of_time():
+            break
         print(f"  💬 discussion in #{channel} ({len(agent_chain)} replies)")
         for username, emoji, text in agent_chain:
             p = Post(channel=channel, text=text, username=username,
@@ -8921,6 +8944,8 @@ def main() -> int:
     benched = [a for a in AGENTS if a.name not in wave_names]
     catchup_count = 0
     for a in benched:
+        if out_of_time():
+            break
         emp_key = a.name.lower().replace(" ", "_")
         last_ts = state.get("last_post_ts", {}).get(emp_key, 0)
         if time.time() - last_ts < 10800:  # 3 hours
@@ -8944,6 +8969,8 @@ def main() -> int:
     posted_today = set(_pt_raw) if not isinstance(_pt_raw, set) else _pt_raw
     state["posted_today"] = posted_today
     for agent in AGENTS:
+        if out_of_time():
+            break
         if agent.name not in posted_today:
             try:
                 catchup_posts = agent.work_fn()

@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: write
       issues: write          # QA agent auto-creates tracking issues for untested strategies
