@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-17T04:59:10.717926+00:00",
+  "timestamp": "2026-06-19T15:42:19.492365+00:00",
   "overall_ok": true,
   "results": [
     {
@@ -14,7 +14,7 @@
       "check": "ruff",
       "ok": false,
       "skipped": false,
-      "detail": "                                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n\nF841 Local variable `topic` is assigned to but never used\n  --> app/ws/agent_logs.py:37:5\n   |\n35 |         return\n36 |\n37 |     topic = f\"{AGENT_LOGS_TOPIC}:{user_id}\"\n   |     ^^^^^\n38 |     # Also subscribe to the broadcast channel so all users get real-time events\n39 |     await manager.connect(websocket, AGENT_LOGS_TOPIC)\n   |\nhelp: Remove assignment to unused variable `topic`\n\nFound 664 errors.\nNo fixes available (31 hidden fixes can be enabled with the `--unsafe-fixes` option).\nwarning: The top-level linter settings are deprecated in favour of their counterparts in the `lint` section. Please update the following options in `pyproject.toml`:\n  - 'select' -> 'lint.select'\n"
+      "detail": "                                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n\nF841 Local variable `topic` is assigned to but never used\n  --> app/ws/agent_logs.py:37:5\n   |\n35 |         return\n36 |\n37 |     topic = f\"{AGENT_LOGS_TOPIC}:{user_id}\"\n   |     ^^^^^\n38 |     # Also subscribe to the broadcast channel so all users get real-time events\n39 |     await manager.connect(websocket, AGENT_LOGS_TOPIC)\n   |\nhelp: Remove assignment to unused variable `topic`\n\nFound 677 errors.\nNo fixes available (31 hidden fixes can be enabled with the `--unsafe-fixes` option).\nwarning: The top-level linter settings are deprecated in favour of their counterparts in the `lint` section. Please update the following options in `pyproject.toml`:\n  - 'select' -> 'lint.select'\n"
     },
     {
       "component": "frontend",
@@ -26,5 +26,5 @@
   ],
   "autofixes_applied": [],
   "issues_escalated": 0,
-  "duration_seconds": 31.34
+  "duration_seconds": 31.96
 }
