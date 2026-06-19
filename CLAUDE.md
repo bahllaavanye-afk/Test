@@ -1,5 +1,9 @@
 # QuantEdge — Root Agent Guide
 
+> **New session? Read [`HANDOFF.md`](./HANDOFF.md) first** — running status, the
+> network-allowlist gotcha (why live data/Slack may be blocked), the test-coverage gap,
+> the Render build diagnosis, and the prioritized open task list.
+
 ## What This Is
 QuantEdge is an institutional-grade quantitative trading platform. It is a startup product.
 It connects to Alpaca (equities), TradeStation (equities), Binance (crypto), and Polymarket (prediction markets).
