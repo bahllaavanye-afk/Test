@@ -1,0 +1,43 @@
+name: Brain Health — LLM cascade canary
+
+# The free-LLM cascade is the agents' brain. It died silently once (Cloudflare
+# 1010) and no one noticed because agent workflows degrade to green. This canary
+# probes every provider hourly and alerts Slack #infra-alerts (red workflow) if
+# the cascade is down.
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # hourly, offset to avoid the top-of-hour rush
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  brain-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Probe the LLM cascade
+        env:
+          GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1:  ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2:  ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3:  ${{ secrets.GEMINI_API_KEY_3 }}
+          GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_1:    ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2:    ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3:    ${{ secrets.GROQ_API_KEY_3 }}
+          CEREBRAS_API_KEY:  ${{ secrets.CEREBRAS_API_KEY }}
+          DEEPSEEK_API_KEY:  ${{ secrets.DEEPSEEK_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          ALERT_CHANNEL:     infra-alerts
+        run: python .github/scripts/brain_health.py
