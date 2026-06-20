@@ -75,6 +75,9 @@ backend/seed_comparisons.py
 .claude/*
 !.claude/settings.json
 
-# Transient LLM response cache written by .github/scripts/llm_common.py
+# Transient LLM response cache/metrics written by .github/scripts/llm_common.py.
+# Ignore wherever they land — running tests from backend/ creates backend/.github/state/.
 .github/state/llm_cache.json
 .github/state/llm_metrics.jsonl
+**/.github/state/llm_cache.json
+**/.github/state/llm_metrics.jsonl
