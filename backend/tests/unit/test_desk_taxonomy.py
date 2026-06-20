@@ -29,10 +29,9 @@ def test_desks_partition_the_registry():
 
 def test_core_desks_present():
     desks = set(list_desks())
-    # Equities + Crypto always exist; Options & TV desks are derived by convention.
+    # Equities + Crypto always exist; the finer desks are derived by convention/lists.
     assert {"Equities", "Crypto"} <= desks
-    assert "Options" in desks
-    assert "TradingView Indicators" in desks
+    assert {"Options", "TradingView Indicators", "Macro", "Rates"} <= desks
 
 
 def test_explicit_desk_attribute_wins(monkeypatch):
