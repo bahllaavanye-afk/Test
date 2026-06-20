@@ -8,8 +8,13 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-# Resolve test DB path relative to this file so it works in any environment
-_TEST_DB = (Path(__file__).resolve().parent.parent / "test.db").as_posix()
+# Resolve test DB path relative to this file so it works in any environment.
+# Under pytest-xdist each worker is a separate process; give every worker its own
+# DB file (via PYTEST_XDIST_WORKER) so one worker's session-teardown drop_all can't
+# pull the tables out from under another worker (the "no such table: users" race).
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
+_DB_FILE = f"test_{_WORKER}.db" if _WORKER else "test.db"
+_TEST_DB = (Path(__file__).resolve().parent.parent / _DB_FILE).as_posix()
 
 # Force test DB — must override parent env to prevent tests from wiping the dev DB
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TEST_DB}"
