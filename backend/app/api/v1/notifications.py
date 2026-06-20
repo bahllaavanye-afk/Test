@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,13 +13,31 @@ import structlog
 
 logger = structlog.get_logger()
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.notifications.tracker import tracker
 from app.notifications.slack import slack
+
+
+def _verify_slack_signature(raw_body: bytes, timestamp: str, signature: str, secret: str) -> bool:
+    """Verify a Slack request signature (X-Slack-Signature) with replay protection.
+
+    Restores a Codex P1 security finding that regressed: without this, anyone can POST
+    forged events to /slack/events. https://api.slack.com/authentication/verifying-requests
+    """
+    if not (secret and signature and timestamp):
+        return False
+    try:
+        if abs(time.time() - int(timestamp)) > 60 * 5:  # reject stale (replay) requests
+            return False
+    except ValueError:
+        return False
+    basestring = b"v0:" + timestamp.encode() + b":" + raw_body
+    expected = "v0=" + hmac.new(secret.encode(), basestring, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -252,7 +273,18 @@ async def slack_events(request: Request):
       https://quantedge-api.onrender.com/api/v1/notifications/slack/events
     Subscribe to bot events: message.channels, message.groups, app_mention
     """
-    body = await request.json()
+    raw_body = await request.body()
+
+    # Verify the Slack request signature (skip only when no signing secret is configured).
+    from app.config import settings as _cfg
+    if _cfg.slack_signing_secret:
+        ts = request.headers.get("X-Slack-Request-Timestamp", "0")
+        sig = request.headers.get("X-Slack-Signature", "")
+        if not _verify_slack_signature(raw_body, ts, sig, _cfg.slack_signing_secret):
+            raise HTTPException(status_code=403, detail="Invalid Slack signature")
+
+    import json as _json
+    body = _json.loads(raw_body)
 
     # Slack URL verification handshake
     if body.get("type") == "url_verification":

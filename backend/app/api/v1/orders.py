@@ -167,6 +167,30 @@ async def submit_order(
     # Try to route to broker if account has broker credentials
     from app.brokers.alpaca_orders import submit_alpaca_order
     if account.broker == "alpaca" and account.encrypted_key:
+        # Risk gate: every manual order passes through the risk manager before the broker.
+        # (Restores a Codex P0 finding that regressed — REST submit must not bypass risk.)
+        risk_mgr = getattr(request.app.state, "risk_manager", None)
+        if risk_mgr is not None:
+            from app.brokers.base import OrderRequest as RiskOrderRequest
+            risk_req = RiskOrderRequest(
+                symbol=order.symbol,
+                quantity=order.quantity or 1.0,
+                side=order.side,
+                order_type=order.order_type,
+                limit_price=order.limit_price,
+                risk_bucket="directional",
+            )
+            risk_decision = await risk_mgr.check_order(risk_req)
+            if not risk_decision.allowed:
+                order.status = "rejected"
+                await db.commit()
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Order rejected by risk manager: {risk_decision.reason}",
+                )
+            if risk_decision.adjusted_quantity is not None:
+                order.quantity = risk_decision.adjusted_quantity
+                await db.commit()
         try:
             alpaca_resp = await submit_alpaca_order(account, {
                 "symbol": order.symbol,
@@ -284,6 +308,33 @@ async def submit_bracket(
     )
 
     await db.commit()
+
+    # Risk gate: every bracket order passes through the risk manager before the broker.
+    # (Restores a Codex P0 finding that regressed.)
+    risk_mgr = getattr(request.app.state, "risk_manager", None) if request else None
+    if risk_mgr is not None:
+        from app.brokers.base import OrderRequest as RiskOrderRequest
+        risk_req = RiskOrderRequest(
+            symbol=body.symbol,
+            quantity=body.quantity or 1.0,
+            side=body.side,
+            order_type=body.order_type,
+            limit_price=body.limit_price,
+            risk_bucket="directional",
+        )
+        risk_decision = await risk_mgr.check_order(risk_req)
+        if not risk_decision.allowed:
+            for o in created_orders:
+                o.status = "rejected"
+            await db.commit()
+            raise HTTPException(
+                status_code=422,
+                detail=f"Order rejected by risk manager: {risk_decision.reason}",
+            )
+        if risk_decision.adjusted_quantity is not None:
+            for o in created_orders:
+                o.quantity = risk_decision.adjusted_quantity
+            await db.commit()
 
     # Try to route the bracket to Alpaca (Alpaca supports bracket natively)
     from app.brokers.alpaca_orders import submit_alpaca_order
