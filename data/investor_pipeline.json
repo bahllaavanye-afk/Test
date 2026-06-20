@@ -1,32 +1,32 @@
 {
-  "last_updated": "2026-06-19",
+  "last_updated": "2026-06-20",
   "pipeline": [
     {
       "name": "a16z Crypto Fund",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "scout@a16z.com",
-      "added": "2026-06-13",
+      "added": "2026-06-20",
       "notes": "Seed to Series A focus"
     },
     {
       "name": "Sequoia Capital",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "founders@sequoiacap.com",
-      "added": "2026-06-13",
+      "added": "2026-06-20",
       "notes": "FinTech + AI portfolio"
     },
     {
       "name": "Coatue Management",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "info@coatue.com",
-      "added": "2026-06-13",
+      "added": "2026-06-20",
       "notes": "Quant + tech focus"
     },
     {
       "name": "Two Sigma Ventures",
-      "stage": "first_call",
+      "stage": "second_call",
       "contact": "ventures@twosigma.com",
-      "added": "2026-06-13",
+      "added": "2026-06-20",
       "notes": "Quant finance background"
     },
     {
