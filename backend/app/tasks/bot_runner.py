@@ -37,7 +37,10 @@ class BotRunner:
 
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
-                    select(Bot).where(Bot.is_enabled == True)  # noqa: E712
+                    select(Bot).where(
+                        Bot.is_enabled == True,  # noqa: E712
+                        Bot.is_archived == False,  # noqa: E712
+                    )
                 )
                 bots = result.scalars().all()
 

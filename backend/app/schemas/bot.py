@@ -100,6 +100,8 @@ class BotOut(BotCreate):
     model_config = ConfigDict(from_attributes=True)
     id: str
     is_enabled: bool
+    is_archived: bool = False
+    archived_at: datetime | None = None
     run_count: int
     last_run_at: datetime | None
     last_signal: str | None

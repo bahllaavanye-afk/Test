@@ -4,21 +4,37 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt
 from cryptography.fernet import Fernet
 from jose import jwt
-from passlib.context import CryptContext
 
 from app.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use the bcrypt library directly rather than passlib's bcrypt backend: passlib 1.7.4
+# cannot read the version of bcrypt >= 4.1 (`module 'bcrypt' has no attribute '__about__'`)
+# and crashes password hashing. The output is still a standard ``$2b$`` hash, so any
+# hashes previously produced by passlib continue to verify unchanged.
+
+
+def _bcrypt_bytes(password: str) -> bytes:
+    """Encode a password for bcrypt, honoring its 72-byte input limit.
+
+    bcrypt only considers the first 72 bytes of the input, and bcrypt >= 5 raises if
+    given more, so we truncate to 72 bytes — semantically identical to bcrypt's own
+    behavior and the standard way to handle long passwords.
+    """
+    return password.encode("utf-8")[:72]
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_bcrypt_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(_bcrypt_bytes(plain), hashed.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:

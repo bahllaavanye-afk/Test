@@ -36,12 +36,19 @@ async def get_templates() -> dict:
 
 @router.get("/", response_model=list[BotOut])
 async def list_bots(
+    archived: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Bot]:
-    """List all bots belonging to the current user."""
+    """List bots belonging to the current user.
+
+    By default returns only active (non-archived) bots. Pass ``?archived=true``
+    to list archived bots instead.
+    """
     result = await db.execute(
-        select(Bot).where(Bot.user_id == current_user.id).order_by(Bot.created_at.desc())
+        select(Bot)
+        .where(Bot.user_id == current_user.id, Bot.is_archived == archived)
+        .order_by(Bot.created_at.desc())
     )
     return result.scalars().all()
 
@@ -88,7 +95,9 @@ async def get_bots_summary(
     Registered before /{bot_id} so FastAPI doesn't capture 'summary' as a bot_id.
     """
     bots_result = await db.execute(
-        select(Bot).where(Bot.user_id == current_user.id).order_by(Bot.created_at.desc())
+        select(Bot)
+        .where(Bot.user_id == current_user.id, Bot.is_archived == False)  # noqa: E712
+        .order_by(Bot.created_at.desc())
     )
     bots = bots_result.scalars().all()
 
@@ -202,12 +211,41 @@ async def delete_bot(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Delete a bot."""
+    """Archive (soft-delete) a bot.
+
+    The row, its configuration, and any linked trades are preserved — the bot is
+    simply marked archived, disabled, and removed from the scheduler. Use
+    ``POST /bots/{id}/restore`` to bring it back. This replaces the old hard delete
+    so bot history and performance are never lost.
+    """
     bot = await _get_user_bot(bot_id, current_user.id, db)
-    await db.delete(bot)
+    bot.is_archived = True
+    bot.archived_at = datetime.now(UTC)
+    bot.is_enabled = False
     await db.commit()
     _maybe_unschedule(bot_id)
-    logger.info("Bot deleted", bot_id=bot_id, user_id=current_user.id)
+    logger.info("Bot archived", bot_id=bot_id, user_id=current_user.id)
+
+
+@router.post("/{bot_id}/restore", response_model=BotOut)
+async def restore_bot(
+    bot_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Bot:
+    """Restore an archived bot back to the active list.
+
+    The bot is left disabled so the user can review it before re-enabling.
+    """
+    bot = await _get_user_bot(bot_id, current_user.id, db)
+    bot.is_archived = False
+    bot.archived_at = None
+    await db.commit()
+    await db.refresh(bot)
+    # Restored bots come back disabled; reschedule only if the user re-enables them.
+    _maybe_reschedule(bot)
+    logger.info("Bot restored", bot_id=bot_id, user_id=current_user.id)
+    return bot
 
 
 @router.post("/{bot_id}/run", response_model=dict)
