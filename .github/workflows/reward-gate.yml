@@ -1,0 +1,47 @@
+name: Reward Gate — verifiable-reward auto-merge for agent PRs
+
+# Sweeps open PRs labelled `agent-auto-merge` and merges one ONLY when it earns a
+# verifiable reward: CI green AND coverage non-regression AND an LLM judge returns
+# REWARD: PASS. Fail-closed and opt-in — human PRs (no label) are never touched.
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: reward-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install --quiet requests
+      - name: Run the reward gate
+        env:
+          GH_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:    ${{ github.repository }}
+          GEMINI_API_KEY_1:  ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2:  ${{ secrets.GEMINI_API_KEY_2 }}
+          GROQ_API_KEY_1:    ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2:    ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3:    ${{ secrets.GROQ_API_KEY_3 }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          OPENROUTER_API_KEY:   ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
+          OPENROUTER_API_KEY_3: ${{ secrets.OPENROUTER_API_KEY_3 }}
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python .github/scripts/reward_gate.py
