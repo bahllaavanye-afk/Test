@@ -68,6 +68,21 @@ _Last updated: 2026-06-20_
 5. **A2A agent protocol** — typed agent-to-agent coordination; demote Slack to a human digest
    (kills the repeated-message noise).
 
+## Desk consolidation (staged — combine best of all desks/orders/tracking/risk)
+> Execution (`execution/`) and risk (`risk/`) are already shared, desk-agnostic layers.
+> `Bot` is already one unified JSON format across equity/crypto/polymarket. The work is
+> consolidation, not a rewrite.
+- [x] **Stage 1 — desk taxonomy (no migration):** `desk_of()` / `strategies_by_desk()` /
+      `list_desks()` derive desks from existing attributes; `GET /strategies/desks` exposes the
+      unified view (Equities 62 · Crypto 16 · TV 12 · Prediction Markets 8 · Options 7) + tests.
+- [ ] **Stage 2 — extend the unified `Bot` format to all desks:** add `options`/`macro`/`rates`
+      to `Bot.market_type`; tag finer desks via an explicit `desk` class attr (override hook
+      already supported by `desk_of`).
+- [ ] **Stage 3 — unified cross-desk tracking:** add `asset_class` + options instrument fields
+      (strike/expiry/right/multiplier) to `Position`/`Order` (Alembic migration).
+- [ ] **Options productization:** options desk is research-complete but not in the Bot builder
+      (blocked on Stage 2/3); move scattered options strategies into `strategies/options/`.
+
 ## Housekeeping
 - [ ] Deprecations: pytest-asyncio `event_loop_policy` fixture, Starlette `TestClient`+httpx,
       now-unused `passlib`.
