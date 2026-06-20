@@ -61,3 +61,29 @@ def test_auto_tier_uses_claude_as_last_resort(monkeypatch):
     monkeypatch.setattr(L, "_call_openrouter", lambda *a, **k: None)
     monkeypatch.setattr(L, "_call_claude", lambda *a, **k: "CLAUDE")
     assert L.llm_routed("hi", tier="auto", **_KW) == "CLAUDE"
+
+
+# ── plain llm() must also escalate when the whole free cascade is down ─────────
+
+def test_llm_escalates_to_openrouter_when_free_down(monkeypatch):
+    monkeypatch.setattr(L, "_call_parallel_race", lambda *a, **k: (None, None))
+    monkeypatch.setattr(L, "_call_openrouter", lambda *a, **k: "OPEN")
+    monkeypatch.setattr(L, "_call_claude", lambda *a, **k: "CLAUDE")
+    out = L.llm("hi", use_cache=False, inject_company_context=False)
+    assert out == "OPEN"
+
+
+def test_llm_escalates_to_claude_when_free_and_open_down(monkeypatch):
+    monkeypatch.setattr(L, "_call_parallel_race", lambda *a, **k: (None, None))
+    monkeypatch.setattr(L, "_call_openrouter", lambda *a, **k: None)
+    monkeypatch.setattr(L, "_call_claude", lambda *a, **k: "CLAUDE")
+    out = L.llm("hi", use_cache=False, inject_company_context=False)
+    assert out == "CLAUDE"
+
+
+def test_llm_returns_sentinel_when_all_tiers_down(monkeypatch):
+    monkeypatch.setattr(L, "_call_parallel_race", lambda *a, **k: (None, None))
+    monkeypatch.setattr(L, "_call_openrouter", lambda *a, **k: None)
+    monkeypatch.setattr(L, "_call_claude", lambda *a, **k: None)
+    out = L.llm("hi", use_cache=False, inject_company_context=False)
+    assert out.startswith("[LLM unavailable")

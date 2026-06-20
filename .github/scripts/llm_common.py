@@ -294,6 +294,20 @@ def llm(
     result, provider_name = _call_parallel_race(system, prompt, max_tokens, temperature)
     _record_metric(provider_name or "none", bool(result), int((time.time() - _t0) * 1000),
                    "" if result else "all providers failed")
+
+    # If the entire FREE cascade is down (e.g. only Groq was configured and it's rate
+    # limited), escalate to the paid ladder — OpenRouter open-mid, then Claude — so a
+    # single-provider outage can't silently blind every agent. Tiers without a key are
+    # skipped automatically, so this needs no key work to stay safe.
+    if not result:
+        result = _call_openrouter(system, prompt, max_tokens, temperature)
+        if result:
+            provider_name = "openrouter"
+        else:
+            result = _call_claude(system, prompt, max_tokens, temperature)
+            if result:
+                provider_name = "claude"
+
     if result:
         _cache_mem[ck] = {"text": result, "ts": time.time(), "provider": provider_name}
         _save_cache()
