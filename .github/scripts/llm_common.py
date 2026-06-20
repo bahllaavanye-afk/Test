@@ -345,6 +345,27 @@ def _provider_key(provider: dict) -> str:
     return key
 
 
+def _provider_keys(provider: dict) -> list[str]:
+    """All configured keys for a provider: primary + numbered variants (_1.._3) + alt.
+
+    Rotating across multiple free keys for the same provider multiplies rate-limit
+    headroom — e.g. 4 working Groq keys behave like ~4x the per-key quota.
+    """
+    base = provider["key_env"]
+    names = [base]
+    if not base[-1:].isdigit():
+        names += [f"{base}_{i}" for i in (1, 2, 3)]
+    alt = provider.get("key_env_alt")
+    if alt:
+        names.append(alt)
+    keys: list[str] = []
+    for n in names:
+        v = os.environ.get(n, "").strip()
+        if v and v != "disabled" and v not in keys:
+            keys.append(v)
+    return keys
+
+
 # Cloudflare (which fronts Groq, Cerebras and several others) blocks the default
 # urllib User-Agent with "error code: 1010". A normal browser UA gets through, so
 # every provider request must send one.
@@ -352,17 +373,17 @@ _UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ch
 
 
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
-    key = _provider_key(provider)
+    keys = _provider_keys(provider)
+    if not keys:
+        raise KeyError(f"No API key for provider {provider['name']}")
     url = provider["url"]
 
     if provider["fmt"] == "gemini":
-        url_with_key = f"{url}?key={key}"
         body = {
             "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{prompt}"}]}],
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
     else:
-        url_with_key = url
         body = {
             "model": provider.get("model", "llama-3.3-70b-versatile"),
             "messages": [
@@ -372,20 +393,32 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-
     data = json.dumps(body).encode()
-    headers = {"Content-Type": "application/json", "User-Agent": _UA}
-    if provider["fmt"] != "gemini":
-        headers["Authorization"] = f"Bearer {key}"
 
-    req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        result = json.loads(resp.read())
-
-    if provider["fmt"] == "gemini":
-        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    else:
-        return result["choices"][0]["message"]["content"].strip()
+    # Rotate across all keys for this provider — a rate-limited/forbidden key
+    # falls through to the next, multiplying effective free capacity.
+    last_exc: Exception | None = None
+    for key in keys:
+        if provider["fmt"] == "gemini":
+            url_with_key = f"{url}?key={key}"
+            headers = {"Content-Type": "application/json", "User-Agent": _UA}
+        else:
+            url_with_key = url
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": _UA,
+                "Authorization": f"Bearer {key}",
+            }
+        req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read())
+            if provider["fmt"] == "gemini":
+                return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+            return result["choices"][0]["message"]["content"].strip()
+        except Exception as exc:  # noqa: BLE001 — try the next key on any failure
+            last_exc = exc
+    raise last_exc if last_exc else RuntimeError(f"{provider['name']}: all keys failed")
 
 
 def _call_provider_messages(
@@ -399,7 +432,9 @@ def _call_provider_messages(
     Used by llm_chat() so that multi-turn history is preserved verbatim.
     All 7 providers accept this format; Gemini needs a small shape translation.
     """
-    key = _provider_key(provider)
+    keys = _provider_keys(provider)
+    if not keys:
+        raise KeyError(f"No API key for provider {provider['name']}")
     url = provider["url"]
 
     if provider["fmt"] == "gemini":
@@ -417,34 +452,41 @@ def _call_provider_messages(
                 content = f"{system_content}\n\n{content}"
                 first_user = False
             gemini_contents.append({"role": role, "parts": [{"text": content}]})
-        url_with_key = f"{url}?key={key}"
         body: dict = {
             "contents": gemini_contents,
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
-        headers: dict = {"Content-Type": "application/json", "User-Agent": _UA}
     else:
-        url_with_key = url
         body = {
             "model": provider.get("model", "llama-3.3-70b-versatile"),
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-            "User-Agent": _UA,
-        }
-
     data = json.dumps(body).encode()
-    req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        result = json.loads(resp.read())
 
-    if provider["fmt"] == "gemini":
-        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    return result["choices"][0]["message"]["content"].strip()
+    last_exc: Exception | None = None
+    for key in keys:
+        if provider["fmt"] == "gemini":
+            url_with_key = f"{url}?key={key}"
+            headers: dict = {"Content-Type": "application/json", "User-Agent": _UA}
+        else:
+            url_with_key = url
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": _UA,
+                "Authorization": f"Bearer {key}",
+            }
+        req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read())
+            if provider["fmt"] == "gemini":
+                return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+            return result["choices"][0]["message"]["content"].strip()
+        except Exception as exc:  # noqa: BLE001 — try the next key on any failure
+            last_exc = exc
+    raise last_exc if last_exc else RuntimeError(f"{provider['name']}: all keys failed")
 
 
 def llm_chat(
