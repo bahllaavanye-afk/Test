@@ -70,8 +70,10 @@ experiments/research_log.jsonl
 experiments/modeling_log.jsonl
 backend/seed_comparisons.py
 
-# Claude Code agent metadata
-.claude/
+# Claude Code agent metadata (ignore local settings, but track the shared
+# SessionStart hook so cross-session auto-resume survives a fresh clone)
+.claude/*
+!.claude/settings.json
 
 # Transient LLM response cache written by .github/scripts/llm_common.py
 .github/state/llm_cache.json
