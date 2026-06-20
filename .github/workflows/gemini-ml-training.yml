@@ -88,13 +88,13 @@ jobs:
             ls -lt ../experiments/results/*.json 2>/dev/null | head -10 | awk '{print $NF}' | while read f; do
               echo "=== $(basename $f) ===" >> "$GITHUB_STEP_SUMMARY"
               python -c "
-import json, sys
-d = json.load(open('$f'))
-print(f'  symbol: {d.get(\"symbol\",\"?\")}')
-print(f'  accuracy: {d.get(\"test_accuracy\",\"?\"):.3f}' if isinstance(d.get('test_accuracy'), float) else f'  accuracy: {d.get(\"test_accuracy\",\"?\")}')
-print(f'  sharpe: {d.get(\"test_sharpe\",\"?\"):.3f}' if isinstance(d.get('test_sharpe'), float) else f'  sharpe: {d.get(\"test_sharpe\",\"?\")}')
-print(f'  status: {d.get(\"status\",\"?\")}')
-" 2>/dev/null || cat "$f" | head -5
+          import json, sys
+          d = json.load(open('$f'))
+          print(f'  symbol: {d.get(\"symbol\",\"?\")}')
+          print(f'  accuracy: {d.get(\"test_accuracy\",\"?\"):.3f}' if isinstance(d.get('test_accuracy'), float) else f'  accuracy: {d.get(\"test_accuracy\",\"?\")}')
+          print(f'  sharpe: {d.get(\"test_sharpe\",\"?\"):.3f}' if isinstance(d.get('test_sharpe'), float) else f'  sharpe: {d.get(\"test_sharpe\",\"?\")}')
+          print(f'  status: {d.get(\"status\",\"?\")}')
+          " 2>/dev/null || cat "$f" | head -5
             done
           fi
           echo '```' >> "$GITHUB_STEP_SUMMARY"

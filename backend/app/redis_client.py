@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 import redis.asyncio as aioredis
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 
 from app.config import settings
 from app.utils.logging import logger
@@ -16,10 +17,34 @@ from app.utils.logging import logger
 _pool: aioredis.ConnectionPool | None = None
 _redis_disabled = not settings.redis_url or settings.redis_url.strip() == ""
 
+# Circuit breaker: an unreachable-but-configured Redis (e.g. the bare default
+# redis://localhost:6379 on a host with no Redis) used to retry — and log — on
+# *every* call, spamming connection-refused. After the first connection failure
+# we trip this breaker, log once, and no-op all cache ops just like an empty URL.
+_redis_tripped = False
+
+# Connection-level failures that should trip the breaker (vs. a one-off op error).
+_CONN_ERRORS = (RedisConnectionError, RedisTimeoutError, ConnectionError, OSError)
+
 
 def _redis_enabled() -> bool:
-    """Return True if a Redis URL is configured."""
-    return not _redis_disabled
+    """Return True if Redis is configured and the breaker has not tripped."""
+    return not _redis_disabled and not _redis_tripped
+
+
+def _note_redis_error(op: str, exc: Exception, **fields) -> None:
+    """Log a Redis error; trip the breaker (log once) on connection failures."""
+    global _redis_tripped
+    if isinstance(exc, _CONN_ERRORS):
+        if not _redis_tripped:
+            _redis_tripped = True
+            logger.warning(
+                "Redis unreachable — falling back to in-memory no-op cache for the "
+                "rest of this process (further Redis errors suppressed)",
+                op=op, error=str(exc), **fields,
+            )
+        return
+    logger.warning(f"redis.{op} failed", error=str(exc), **fields)
 
 
 class _NoopPriceCache:
@@ -81,93 +106,113 @@ def get_redis() -> aioredis.Redis | None:
 
 
 class PriceCache:
-    """Redis price cache. No-ops gracefully when Redis is unavailable."""
+    """Redis price cache. No-ops gracefully when Redis is unavailable.
+
+    Every op first checks ``_client()`` which returns ``None`` once the breaker
+    trips, so a Redis outage degrades to the in-memory no-op behaviour instead of
+    retrying (and logging) on every single call.
+    """
 
     def __init__(self):
         self._r: aioredis.Redis | None = get_redis()
 
+    def _client(self) -> aioredis.Redis | None:
+        """Live Redis client, or None if disabled / the breaker has tripped."""
+        if self._r is None or _redis_tripped:
+            return None
+        return self._r
+
     async def set_price(self, exchange: str, symbol: str, data: dict, ttl: int = 5) -> None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return
         key = f"price:{exchange}:{symbol}"
         try:
-            await self._r.setex(key, ttl, json.dumps(data))
+            await r.setex(key, ttl, json.dumps(data))
         except Exception as exc:
-            logger.warning("redis.set_price failed", key=key, error=str(exc))
+            _note_redis_error("set_price", exc, key=key)
 
     async def get_price(self, exchange: str, symbol: str) -> dict | None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return None
         key = f"price:{exchange}:{symbol}"
         try:
-            raw = await self._r.get(key)
+            raw = await r.get(key)
             return json.loads(raw) if raw else None
         except Exception as exc:
-            logger.warning("redis.get_price failed", key=key, error=str(exc))
+            _note_redis_error("get_price", exc, key=key)
             return None
 
     async def set_ohlcv(self, exchange: str, symbol: str, interval: str, data: list, ttl: int = 60) -> None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return
         key = f"ohlcv:{exchange}:{symbol}:{interval}"
         try:
-            await self._r.setex(key, ttl, json.dumps(data))
+            await r.setex(key, ttl, json.dumps(data))
         except Exception as exc:
-            logger.warning("redis.set_ohlcv failed", key=key, error=str(exc))
+            _note_redis_error("set_ohlcv", exc, key=key)
 
     async def get_ohlcv(self, exchange: str, symbol: str, interval: str) -> list | None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return None
         key = f"ohlcv:{exchange}:{symbol}:{interval}"
         try:
-            raw = await self._r.get(key)
+            raw = await r.get(key)
             return json.loads(raw) if raw else None
         except Exception as exc:
-            logger.warning("redis.get_ohlcv failed", key=key, error=str(exc))
+            _note_redis_error("get_ohlcv", exc, key=key)
             return None
 
     async def set_arb_opportunity(self, key: str, data: dict, ttl: int = 2) -> None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return
         redis_key = f"arb:{key}"
         try:
-            await self._r.setex(redis_key, ttl, json.dumps(data))
+            await r.setex(redis_key, ttl, json.dumps(data))
         except Exception as exc:
-            logger.warning("redis.set_arb failed", key=redis_key, error=str(exc))
+            _note_redis_error("set_arb", exc, key=redis_key)
 
     async def publish(self, channel: str, message: Any) -> None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return
         try:
-            await self._r.publish(channel, json.dumps(message))
+            await r.publish(channel, json.dumps(message))
         except Exception as exc:
-            logger.warning("redis.publish failed", channel=channel, error=str(exc))
+            _note_redis_error("publish", exc, channel=channel)
 
     async def cache_prediction(self, symbol: str, model_id: str, data: dict, ttl: int = 60) -> None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return
         key = f"ml:prediction:{symbol}:{model_id}"
         try:
-            await self._r.setex(key, ttl, json.dumps(data))
+            await r.setex(key, ttl, json.dumps(data))
         except Exception as exc:
-            logger.warning("redis.cache_prediction failed", key=key, error=str(exc))
+            _note_redis_error("cache_prediction", exc, key=key)
 
     async def get(self, key: str) -> str | None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return None
         try:
-            return await self._r.get(key)
+            return await r.get(key)
         except Exception as exc:
-            logger.warning("redis.get failed", key=key, error=str(exc))
+            _note_redis_error("get", exc, key=key)
             return None
 
     async def set(self, key: str, value: str, ttl: int = 300) -> None:
-        if self._r is None:
+        r = self._client()
+        if r is None:
             return
         try:
-            await self._r.setex(key, ttl, value)
+            await r.setex(key, ttl, value)
         except Exception as exc:
-            logger.warning("redis.set failed", key=key, error=str(exc))
+            _note_redis_error("set", exc, key=key)
 
 
 # Module-level singleton — falls back to the no-op cache when Redis is disabled

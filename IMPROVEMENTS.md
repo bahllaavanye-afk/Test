@@ -22,15 +22,21 @@ _Last updated: 2026-06-20_
       Doppler → multi-provider resilience. *(Drop key in Doppler; I wire the rest.)*
 - [ ] **Make the agent "smoke test" a hard gate** that pages on failure (it was red but unwatched).
 
-## P1 — Real bugs found this session (not yet fixed)
-- [ ] **`/ws/prices` all-symbols bug:** subscribes to literal topic `prices:*` but the feed
-      broadcasts `prices:{symbol}` → dashboard `LivePriceTicker.tsx` gets nothing.
-- [ ] **`test_realtime_endpoints.py` auth helper** posts `username` (endpoint wants `email`) +
-      a `.test` email → protected tests silently **skip** (false green). Fix → real E2E coverage.
-- [ ] **Redis default `localhost:6379`** spams connection-refused; memory fallback only triggers
-      on empty URL → fall back on connect failure.
-- [ ] **2 failing scheduled workflows:** "Render — Sync LLM/Slack secrets" (superseded by Doppler —
-      delete) and "TV Indicator SOTA" (investigate).
+## P1 — Real bugs found this session
+- [x] **`/ws/prices` all-symbols bug:** subscribed to literal topic `prices:*` but the feed
+      broadcasts `prices:{symbol}`. Fixed: `ConnectionManager.broadcast` now fans concrete
+      `prices:{symbol}` updates out to `prices:*` wildcard subscribers (+ regression tests).
+- [x] **`test_realtime_endpoints.py` auth helper** — superseded by `test_realtime_live.py`,
+      which authenticates with `email` + an `@example.com` address (no false-green skip).
+- [x] **Redis default `localhost:6379`** spammed connection-refused. Fixed: prod default is
+      now *unset* (`REDIS_URL` empty ⇒ clean no-op cache) **and** a connection-failure circuit
+      breaker trips once, logs once, then no-ops for the rest of the process.
+- [x] **3 broken workflows failing at YAML parse** (run name shown as the file path, 0 jobs):
+      `slack-on-deploy.yml`, `agent-health-check.yml`, `gemini-ml-training.yml` — multi-line
+      `run:` block scalars whose continuation lines lost their indentation. **Direct cause of
+      "Slack dead except scheduled messages"** (deploy/health Slack posts never fired). Fixed;
+      repo-wide workflow YAML lint now shows 0 broken.
+- [ ] **"TV Indicator SOTA" scheduled workflow** — still to investigate.
 
 ## P1 — Issues the agents themselves flagged in Slack (live triage, 69/97 channels active)
 - [ ] `#deploys` — **cross-user data leak fixes** (security; verify it's actually closed).
@@ -42,8 +48,15 @@ _Last updated: 2026-06-20_
 - [ ] `#finance-ops` — **upcoming paid triggers** (add spend caps before they fire).
 
 ## P2 — SOTA upgrades to make this a top-tier AI-first company
+> Full durable research: `docs/research/AI_COMPANY_SOTA.md`,
+> `docs/research/LLM_COST_OPTIMIZATION.md`, `docs/MODEL_ROUTING.md`.
 1. **Observability + model routing** — Langfuse/OpenTelemetry traces on `llm_common`; route by
-   task tier (cheap for bulk classify, strong for plan/code). *(Phase-1 metrics shipped; tracing next.)*
+   task tier. *(Phase-1 metrics shipped; **cost-tiered `llm_routed()` ladder shipped** —
+   free → OpenRouter open-mid → Claude backstop, env-configurable; Langfuse tracing next.)*
+6. **Open-weight mid-tier so Claude is the rare backstop** — ✅ shipped in `llm_routed()` /
+   `docs/MODEL_ROUTING.md`. DeepSeek/Qwen/Kimi/GLM/MiniMax via OpenRouter handle "hard" work at
+   10–50× lower cost; Claude only on `tier="hard"` or last resort. Refresh `OPENROUTER_MODELS`
+   to the exact current SOTA slugs as they rotate.
 2. **Real memory layer** — replace flat `.github/state/*.json` with Mem0 or Letta backed by your
    existing **Supabase pgvector** (episodic + semantic recall).
 3. **Outcome-driven self-improvement** — give the self-improver a *verifiable reward*
