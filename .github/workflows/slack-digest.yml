@@ -1,0 +1,56 @@
+name: Slack Digest
+
+# Runs the Slack message monitor on a schedule (and on demand), triaging every
+# channel with a free-tier LLM and uploading the JSON report + Markdown digest as
+# an artifact. Secrets come from GitHub Actions secrets (kept in sync from Doppler).
+
+on:
+  schedule:
+    - cron: "0 13 * * 1-5" # weekdays 13:00 UTC
+  workflow_dispatch:
+    inputs:
+      since_days:
+        description: "Only triage messages newer than N days"
+        default: "1"
+      provider:
+        description: "Preferred free LLM provider"
+        default: "groq"
+
+permissions:
+  contents: read
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Slack monitor (stdlib only — no deps to install)
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "::warning::SLACK_BOT_TOKEN not set — skipping Slack digest."
+            exit 0
+          fi
+          python scripts/slack_message_monitor.py \
+            --provider "${{ github.event.inputs.provider || 'groq' }}" \
+            --since-days "${{ github.event.inputs.since_days || '1' }}" \
+            --no-threads
+
+      - name: Upload digest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slack-digest
+          path: reports/slack_monitor/
+          if-no-files-found: ignore
+          retention-days: 14
