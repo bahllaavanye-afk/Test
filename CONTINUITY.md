@@ -15,7 +15,8 @@ QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, 
 
 ## How tasks/memory persist (the source-of-truth map)
 - **Canonical task queue:** GitHub Issues labeled `agent-fix-needed`.
-- **Human board:** Notion (mirrors GitHub Issues).
+- **Human board:** [Notion — QuantEdge Tasks](https://app.notion.com/p/bec54f8a79444c2399316365a07e0291)
+  (mirrors GitHub Issues / `IMPROVEMENTS.md`).
 - **Cross-session continuity:** **this file** + `IMPROVEMENTS.md` + `HANDOFF.md`.
 - **Research (durable):** `docs/research/AI_COMPANY_SOTA.md`,
   `docs/research/LLM_COST_OPTIMIZATION.md`, `docs/MODEL_ROUTING.md`.

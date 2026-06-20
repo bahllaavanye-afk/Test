@@ -3,7 +3,8 @@
 > **How tasks are tracked (the answer to "where do tasks live"):**
 > - **Canonical queue:** GitHub Issues labeled `agent-fix-needed` (the agents already
 >   create/work these via `team_lead_issues.py` → `free_agent_engineer.py`).
-> - **Human board:** Notion, auto-mirrored by the *Notion ↔ GitHub Issues Sync* workflow.
+> - **Human board:** [Notion — QuantEdge Tasks](https://app.notion.com/p/bec54f8a79444c2399316365a07e0291)
+>   (seeded from this file; mirror via the *Notion ↔ GitHub Issues Sync* workflow).
 > - **Cross-session continuity:** this file + `HANDOFF.md`, committed to the repo
 >   (chat sessions are ephemeral — only what's committed survives).
 > - **Slack:** notifications/visibility only — never the source of truth.
