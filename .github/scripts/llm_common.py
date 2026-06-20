@@ -66,6 +66,55 @@ _STATE_DIR = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / ".github" / "state"
 _STATE_DIR.mkdir(parents=True, exist_ok=True)
 _BRAIN_FILE = _STATE_DIR / "company_brain.json"
 _CACHE_FILE = _STATE_DIR / "llm_cache.json"
+_METRICS_FILE = _STATE_DIR / "llm_metrics.jsonl"
+
+
+def _record_metric(provider: str, ok: bool, ms: int, error: str = "") -> None:
+    """Append one LLM-call metric so the brain is observable (provider, ok, latency).
+
+    Best-effort and never raises; rolls the file to the last ~500 lines. This is the
+    minimal observability that was missing when the whole cascade silently died.
+    """
+    try:
+        import time as _t
+        with _METRICS_FILE.open("a") as f:
+            f.write(json.dumps({
+                "ts": _t.time(), "provider": provider, "ok": ok, "ms": ms,
+                "error": (error or "")[:160],
+            }) + "\n")
+        if _METRICS_FILE.stat().st_size > 200_000:
+            tail = _METRICS_FILE.read_text().splitlines()[-500:]
+            _METRICS_FILE.write_text("\n".join(tail) + "\n")
+    except Exception:
+        pass
+
+
+def cascade_status(probe: bool = True) -> dict:
+    """Health of the free-LLM cascade: which providers have keys and (if probe)
+    actually answer right now. The brain-health canary uses this so a dead cascade
+    screams instead of silently degrading to green.
+    """
+    import time as _t
+    out: dict = {"checked_at": _t.time(), "providers": {}, "working": [], "healthy": False}
+    for p in _PROVIDERS:
+        name = p["name"]
+        if not _has_key(p):
+            out["providers"][name] = {"has_key": False, "ok": False}
+            continue
+        entry: dict = {"has_key": True, "keys": len(_provider_keys(p))}
+        if probe:
+            t0 = _t.time()
+            try:
+                r = _call_provider(p, "ping", "Reply with: OK", 8, 0.0)
+                entry["ok"] = bool(r and r.strip())
+                entry["ms"] = int((_t.time() - t0) * 1000)
+            except Exception as e:  # noqa: BLE001
+                entry["ok"] = False
+                entry["error"] = str(e)[:140]
+        out["providers"][name] = entry
+    out["working"] = [n for n, v in out["providers"].items() if v.get("ok")]
+    out["healthy"] = bool(out["working"])
+    return out
 
 # ── Provider config ───────────────────────────────────────────────────────────
 
@@ -222,7 +271,10 @@ def llm(
         prompt = prompt[:28000] + "\n\n[...truncated for token efficiency...]"
 
     # Race the first N providers in parallel; fall back sequentially for the rest.
+    _t0 = time.time()
     result, provider_name = _call_parallel_race(system, prompt, max_tokens, temperature)
+    _record_metric(provider_name or "none", bool(result), int((time.time() - _t0) * 1000),
+                   "" if result else "all providers failed")
     if result:
         _cache_mem[ck] = {"text": result, "ts": time.time(), "provider": provider_name}
         _save_cache()

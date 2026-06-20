@@ -75,3 +75,4 @@ backend/seed_comparisons.py
 
 # Transient LLM response cache written by .github/scripts/llm_common.py
 .github/state/llm_cache.json
+.github/state/llm_metrics.jsonl
