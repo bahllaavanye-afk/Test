@@ -1,10 +1,10 @@
 {
-  "checked_at": "2026-06-19T20:53:33.397080+00:00",
+  "checked_at": "2026-06-20T23:53:43.124670+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 71,
+  "skill_count": 74,
   "agent_statuses": [
     {
       "agent": "investor_pipeline",
