@@ -1,0 +1,48 @@
+name: AI PR Review — Cursor-style review on every PR
+
+# Posts an automated AI code review on every pull request (open/update). Advisory only —
+# it never blocks merge; it leaves one upserted review comment using the free-LLM cascade
+# (which auto-escalates to OpenRouter → Claude when the free tier is down).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install --quiet requests
+      - name: AI review this PR
+        env:
+          GH_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:    ${{ github.repository }}
+          PR_NUMBER:  ${{ github.event.pull_request.number }}
+          GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1:  ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2:  ${{ secrets.GEMINI_API_KEY_2 }}
+          GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_1:    ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2:    ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3:    ${{ secrets.GROQ_API_KEY_3 }}
+          CEREBRAS_API_KEY:  ${{ secrets.CEREBRAS_API_KEY }}
+          DEEPSEEK_API_KEY:  ${{ secrets.DEEPSEEK_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python .github/scripts/ai_pr_review.py
