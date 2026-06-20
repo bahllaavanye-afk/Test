@@ -11,6 +11,8 @@ Tests:
 import numpy as np
 import pandas as pd
 import pytest
+
+pytest.importorskip("torch")  # skip this module when the optional [ml] extra (torch) isn't installed
 import torch
 
 
