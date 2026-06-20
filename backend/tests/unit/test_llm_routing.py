@@ -87,3 +87,17 @@ def test_llm_returns_sentinel_when_all_tiers_down(monkeypatch):
     monkeypatch.setattr(L, "_call_claude", lambda *a, **k: None)
     out = L.llm("hi", use_cache=False, inject_company_context=False)
     assert out.startswith("[LLM unavailable")
+
+
+def test_env_keys_collects_numbered_variants_deduped(monkeypatch):
+    for n in ("OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2", "OPENROUTER_API_KEY_3"):
+        monkeypatch.delenv(n, raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "a")
+    monkeypatch.setenv("OPENROUTER_API_KEY_2", "a")   # dup → collapsed
+    monkeypatch.setenv("OPENROUTER_API_KEY_3", "b")
+    assert L._env_keys("OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2",
+                       "OPENROUTER_API_KEY_3") == ["a", "b"]
+    # empty / "disabled" are skipped
+    monkeypatch.setenv("X_K", "")
+    monkeypatch.setenv("X_K2", "disabled")
+    assert L._env_keys("X_K", "X_K2") == []
