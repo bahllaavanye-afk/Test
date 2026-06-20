@@ -57,6 +57,9 @@ experiments/results/*.json
 *.log
 logs/
 
+# Slack monitor generated reports
+reports/slack_monitor/
+
 # Render / Vercel
 .vercel/
 qa_fix_log.jsonl
