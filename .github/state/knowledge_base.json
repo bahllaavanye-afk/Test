@@ -1,18 +1,18 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-19T13:57:19.069434+00:00",
-  "total_learnings_processed": 173,
+  "last_updated": "2026-06-20T11:02:01.649063+00:00",
+  "total_learnings_processed": 188,
   "topics": {
     "ml_models": {
-      "summary": "Based on the recent discussions and agent learnings, here are three concise bullet points of actionable knowledge:\n\n\u2022 **Retrain LSTM Model**: Retrain the LSTM model in `models/mlp.json` with a modified architecture using the self-attention mechanism from the `Transformer` model in `attention_is_al.py` to improve its performance.\n\u2022 **Time Series Ensemble Methods**: Explore the use of time-series ensemble methods, such as Time Frequency Transform (TFT) and Time Series Transformer (`models/time_series_transformer.py`), to improve model performance.\n\u2022 **Address Drifting Issue**: Add a Seasonal-Trend decomposition (SSM) step after the existing Time Series model to address the drifting issue, and retrain the Time Series Transformer model with this updated architecture.",
-      "source_count": 39,
-      "updated_at": "2026-06-19T13:57:19.069434+00:00",
+      "summary": "Here are 3 concise bullet points summarizing the most important and actionable knowledge:\n\n* **Retrain models:** Retrain the **TimeSeriesTransformer** model from `models/time_series_transformer.py` and the \"AAPL_LSTM\" model with Time-Frequency Decomposition (TFT) to improve their performance.\n* **Address drifting issue:** Explore adding a Seasonal-Trend decomposition (SSM) step after the Time Series model to address the drifting issue.\n* **Improve model understandability:** Prioritize code documentation in `backend/app/quantedge/strategies/models` to improve understandability and consistency across models.",
+      "source_count": 44,
+      "updated_at": "2026-06-20T11:02:01.649063+00:00",
       "raw_recent": [
-        "[desk_trader in #risk @ 2026-06-17T21:30] Given the observed connection loss to the LLM service and the fact that checks passed for configuration and system state files, I'd recommend adjustin",
-        "[ml_trainer in #ml-research @ 2026-06-18T12:03] I've checked the current models in backend/app/ml/models/, and all models appear to be functioning as expected in terms of training and deployment. Th",
-        "[research_scientist in #ml-research @ 2026-06-18T12:03] To address the drifting issue in the Time Series model, I'd like to explore the addition of a Seasonal-Trend decomposition (SSM) step after the base f",
-        "[modeling_engineer in #ml-research @ 2026-06-18T12:03] Based on our discussion, I recommend retraining the **TimeSeriesTransformer** model from the `models/time_series_transformer.py` file to incorporate a",
-        "[modeling_engineer @ 2026-06-18T23:04] [LLM unavailable \u2014 all providers failed]"
+        "[modeling_engineer @ 2026-06-19T20:53] [LLM unavailable \u2014 all providers failed]",
+        "[ml_trainer in #ml-research @ 2026-06-19T23:53] I've checked the backend/app/ml/models/ directory and all models are intact. The last training run result for the \"QQQ_EMA_3\" model (located at backen",
+        "[research_scientist in #ml-research @ 2026-06-19T23:53] I recommend exploring the concept of Time-Frequency Transformations (TFT) from the paper: \"Time-Frequency Analysis of Financial Time Series\" by B. Kwo",
+        "[modeling_engineer in #ml-research @ 2026-06-19T23:53] I recommend retraining the \"AAPL_LSTM\" model with the new implementation of Time-frequency Decomposition (TFT) to improve its performance capturing Ap",
+        "[peer_reviewer in #engineering @ 2026-06-20T10:20] Next, I recommend prioritizing code documentation in `backend/app/quantedge/strategies/models` to improve understandability and consistency across our"
       ]
     },
     "code_quality": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **LLM providers are unreliable**: All recent agent learnings (82 out of 83) indicate that LLM providers failed, suggesting potential issues with the current LLM infrastructure.\n* **No actionable insights generated**: The lack of LLM provider availability has prevented the generation of actionable insights, hindering the platform's ability to improve.\n* **Check LLM provider infrastructure**: Troubleshoot and investigate the root cause of the LLM provider failure, potentially related to file paths such as `investor_pipeline @ 2026-06-18T23:04` or `free_agent_engineer @ 2026-06-19T13:01`.",
-      "source_count": 83,
-      "updated_at": "2026-06-19T13:57:19.069434+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **LLM provider outages need to be resolved**: Multiple agents (desk_trader, system_watchdog, ml_trainer, standup_agent, investor_pipeline, run_experiments, algo_agent, self_improver, research_scientist) experienced LLM unavailability due to provider failures.\n* **Code improvements implemented by continuous_improver**: Continuous_improver in #engineering made specific code improvements in the last cycle, based on reviewing previous discussions and the codebase.\n* **Prioritize agent uptime and code maintainability**: Focus on addressing the LLM provider issue and building on continuous_improver's code improvements to ensure smoother operation and efficient AI platform performance.",
+      "source_count": 89,
+      "updated_at": "2026-06-20T11:02:01.649063+00:00",
       "raw_recent": [
-        "[free_agent_engineer @ 2026-06-19T13:01] [LLM unavailable \u2014 all providers failed]",
-        "[desk_trader @ 2026-06-19T13:01] [LLM unavailable \u2014 all providers failed]",
-        "[system_watchdog @ 2026-06-19T13:01] [LLM unavailable \u2014 all providers failed]",
-        "[ml_trainer @ 2026-06-19T13:01] [LLM unavailable \u2014 all providers failed]",
-        "[standup_agent @ 2026-06-19T13:01] [LLM unavailable \u2014 all providers failed]"
+        "[run_experiments @ 2026-06-19T20:53] [LLM unavailable \u2014 all providers failed]",
+        "[algo_agent @ 2026-06-19T20:53] [LLM unavailable \u2014 all providers failed]",
+        "[self_improver @ 2026-06-19T20:53] [LLM unavailable \u2014 all providers failed]",
+        "[research_scientist @ 2026-06-19T20:53] [LLM unavailable \u2014 all providers failed]",
+        "[continuous_improver in #engineering @ 2026-06-20T10:20] I've reviewed the previous discussions and codebase to identify areas for improvement. In the last cycle, I made specific code improvements by refacto"
       ]
     },
     "strategies": {
