@@ -19,16 +19,32 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket, topic: str) -> None:
         self._connections[topic].discard(websocket)
 
+    def _targets_for(self, topic: str) -> set[WebSocket]:
+        """All sockets that should receive a broadcast to ``topic``.
+
+        This includes exact-topic subscribers plus any wildcard subscriber registered
+        under ``"<prefix>:*"`` — e.g. ``/ws/prices`` (all symbols) subscribes to
+        ``"prices:*"`` and must receive every concrete ``"prices:{symbol}"`` update.
+        Without this, the all-symbols ticker silently received nothing.
+        """
+        targets = set(self._connections.get(topic, set()))
+        if ":" in topic and not topic.endswith(":*"):
+            prefix = topic.rsplit(":", 1)[0]
+            targets |= self._connections.get(f"{prefix}:*", set())
+        return targets
+
     async def broadcast(self, topic: str, data: dict) -> None:
         message = json.dumps(data)
         dead = set()
-        for ws in self._connections.get(topic, set()):
+        for ws in self._targets_for(topic):
             try:
                 await ws.send_text(message)
             except Exception:
                 dead.add(ws)
-        for ws in dead:
-            self._connections[topic].discard(ws)
+        # A dead socket may live under either the exact or the wildcard topic — purge both.
+        if dead:
+            for sockets in self._connections.values():
+                sockets -= dead
 
     async def broadcast_all(self, data: dict) -> None:
         for topic in list(self._connections.keys()):

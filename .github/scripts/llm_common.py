@@ -192,6 +192,25 @@ _PROVIDERS = [
 # Providers to race in parallel (first N by index). Others are sequential fallbacks.
 _PARALLEL_RACE_N = 3
 
+# ── Escalation tiers (NOT part of the free race) ──────────────────────────────
+# Cost ladder: FREE cascade → OPEN-MID (OpenRouter) → CLAUDE (rare backstop).
+# Open models have closed the gap with frontier on agentic benchmarks at 10–50× lower
+# cost (DeepSeek V4 / Qwen3 / Kimi K2 / GLM / MiniMax), so the open-mid tier handles the
+# bulk of "hard" work and Claude is reserved for only the hardest tasks. All slugs/models
+# are env-overridable — nothing is hard-coded to a model that may rotate.
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+_OPENROUTER_MODELS = [
+    m.strip() for m in os.environ.get(
+        "OPENROUTER_MODELS",
+        "deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct,"
+        "moonshotai/kimi-k2,z-ai/glm-4.6,minimax/minimax-m2",
+    ).split(",") if m.strip()
+]
+_ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+# Default backstop is a strong-but-not-Opus model; override to claude-haiku-4-5 (cheaper)
+# or claude-opus-4-8 (hardest) via env. Backstop fires only on tier="hard" or last resort.
+_CLAUDE_BACKSTOP_MODEL = os.environ.get("CLAUDE_BACKSTOP_MODEL", "claude-sonnet-4-6")
+
 # ── Response cache ────────────────────────────────────────────────────────────
 
 _CACHE_TTL = 86400  # 24 hours
@@ -318,6 +337,151 @@ def llm_with_provider(
     # Fall back to cascade
     result, used = _call_parallel_race(system, prompt, max_tokens, temperature)
     return (result or "[LLM unavailable]", used or "cascade")
+
+
+def _call_openrouter(system: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
+    """Open-weight mid-tier via OpenRouter. Tries each configured model in order.
+
+    Returns the text, or None if there's no key / every model fails. OpenRouter speaks
+    the OpenAI schema, so this mirrors `_call_provider`'s OpenAI path.
+    """
+    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not key or not _OPENROUTER_MODELS:
+        return None
+    last_exc: Exception | None = None
+    for model in _OPENROUTER_MODELS:
+        body = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }).encode()
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": _UA,
+            "Authorization": f"Bearer {key}",
+            # Optional attribution headers OpenRouter recommends; harmless if unused.
+            "HTTP-Referer": "https://github.com/quantedge",
+            "X-Title": "QuantEdge agents",
+        }
+        req = urllib.request.Request(_OPENROUTER_URL, data=body, headers=headers, method="POST")
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                result = json.loads(resp.read())
+            text = result["choices"][0]["message"]["content"].strip()
+            _record_metric(f"openrouter:{model}", True, int((time.time() - t0) * 1000))
+            return text
+        except Exception as exc:  # noqa: BLE001 — fall through to the next model
+            _record_metric(f"openrouter:{model}", False, int((time.time() - t0) * 1000), str(exc))
+            last_exc = exc
+    logger.debug("OpenRouter open-mid tier exhausted: %s", last_exc)
+    return None
+
+
+def _call_claude(system: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
+    """Claude backstop — the rare top of the ladder for only the hardest tasks.
+
+    Uses the Anthropic Messages API. Returns None when no ANTHROPIC_API_KEY is set so
+    the caller degrades gracefully instead of crashing.
+    """
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        return None
+    body = json.dumps({
+        "model": _CLAUDE_BACKSTOP_MODEL,
+        "system": system,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": _UA,
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+    }
+    req = urllib.request.Request(_ANTHROPIC_URL, data=body, headers=headers, method="POST")
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read())
+        text = "".join(blk.get("text", "") for blk in result.get("content", [])).strip()
+        _record_metric(f"claude:{_CLAUDE_BACKSTOP_MODEL}", bool(text), int((time.time() - t0) * 1000))
+        return text or None
+    except Exception as exc:  # noqa: BLE001
+        _record_metric(f"claude:{_CLAUDE_BACKSTOP_MODEL}", False, int((time.time() - t0) * 1000), str(exc))
+        logger.warning("Claude backstop failed: %s", exc)
+        return None
+
+
+def llm_routed(
+    prompt: str,
+    system: str = "You are a helpful AI agent at QuantEdge, a quantitative trading firm.",
+    max_tokens: int = 400,
+    temperature: float = 0.7,
+    tier: str = "auto",
+    use_cache: bool = True,
+    inject_company_context: bool = True,
+) -> str:
+    """Cost-tiered routing ladder — escalate only on failure so the cheapest capable
+    tier wins and Claude stays a rare backstop.
+
+        FREE cascade  →  OPEN-MID (OpenRouter)  →  CLAUDE backstop
+
+    `tier` sets the escalation *ceiling*:
+      - "cheap": free cascade only (bulk classify/extract/summarize — the 80% case).
+      - "mid":   free → OpenRouter open-mid.
+      - "auto"  (default): free → OpenRouter open-mid. Claude only if BOTH fail.
+      - "hard":  free → OpenRouter → Claude (reserve for the genuinely hardest tasks).
+
+    Drop-in compatible with `llm()`'s caching + company-context injection.
+    """
+    _load_cache()
+    ck = _cache_key(prompt, f"{system}|tier={tier}", max_tokens)
+    if use_cache and ck in _cache_mem:
+        entry = _cache_mem[ck]
+        if time.time() - entry.get("ts", 0) < _CACHE_TTL:
+            return entry["text"]
+
+    if inject_company_context:
+        ctx = _build_context(prompt) if _MEMORY_MANAGER_OK else get_company_context(max_tokens=600)
+        if ctx:
+            prompt = f"{ctx}\n\n---\n\n{prompt}"
+    if len(prompt) > 32000:
+        prompt = prompt[:28000] + "\n\n[...truncated for token efficiency...]"
+
+    result: str | None = None
+    used = "none"
+
+    # Tier 1 — FREE cascade (always tried first; it's free).
+    _t0 = time.time()
+    result, won = _call_parallel_race(system, prompt, max_tokens, temperature)
+    if result:
+        used = won or "free"
+    _record_metric(used if result else "free:none", bool(result), int((time.time() - _t0) * 1000),
+                   "" if result else "free cascade failed")
+
+    # Tier 2 — OPEN-MID via OpenRouter.
+    if not result and tier in ("mid", "auto", "hard"):
+        result = _call_openrouter(system, prompt, max_tokens, temperature)
+        if result:
+            used = "openrouter"
+
+    # Tier 3 — CLAUDE backstop (rare): explicit "hard", or last resort when all else failed.
+    if not result and (tier == "hard" or tier == "auto"):
+        result = _call_claude(system, prompt, max_tokens, temperature)
+        if result:
+            used = "claude"
+
+    if result:
+        _cache_mem[ck] = {"text": result, "ts": time.time(), "provider": used}
+        _save_cache()
+        return result
+    return "[LLM unavailable — all tiers failed]"
 
 
 def _has_key(p: dict) -> bool:

@@ -45,8 +45,11 @@ class Settings(BaseSettings):
             values["database_url"] = url
         return values
 
-    # Redis (Upstash)
-    redis_url: str = "redis://localhost:6379"
+    # Redis (Upstash). Default is UNSET so the app cleanly no-ops the cache when no
+    # Redis is provisioned (local dev / Render free tier) instead of hammering a
+    # non-existent localhost:6379 and spamming connection-refused. In prod, REDIS_URL
+    # is injected via the environment (Upstash rediss:// URL).
+    redis_url: str = ""
 
     # Brokers
     alpaca_api_key: str = ""
