@@ -267,6 +267,56 @@ for _name, _path, _cls in _OPTIONAL_ML_STRATEGIES:
         STRATEGY_REGISTRY[_name] = _strategy_cls
 
 
+# ── Desk taxonomy ─────────────────────────────────────────────────────────────
+# A "desk" is a trading group (Equities, Crypto, Options, Prediction Markets,
+# TradingView Indicators, ...). Membership is *derived* from data each strategy
+# already carries — not a hand-maintained list — so a new strategy lands on a desk
+# automatically. Resolution order (first match wins):
+#   1. an explicit ``desk`` class attribute  (the override hook for finer desks)
+#   2. the ``_tv`` naming convention          → TradingView Indicators
+#   3. membership in OPTIONS_STRATEGIES        → Options
+#   4. the strategy's ``market_type``          → Equities / Crypto / Prediction Markets
+_MARKET_TYPE_DESK = {
+    "equity": "Equities",
+    "crypto": "Crypto",
+    "polymarket": "Prediction Markets",
+}
+
+
+def desk_of(strategy: "str | type[AbstractStrategy]") -> str:
+    """Return the desk a strategy belongs to, derived from its attributes/name."""
+    name = strategy if isinstance(strategy, str) else getattr(strategy, "name", "")
+    cls = STRATEGY_REGISTRY.get(strategy) if isinstance(strategy, str) else strategy
+    if cls is None:
+        return "Unknown"
+    explicit = getattr(cls, "desk", None)
+    if explicit:
+        return str(explicit)
+    if name.endswith("_tv"):
+        return "TradingView Indicators"
+    if name in OPTIONS_STRATEGIES:
+        return "Options"
+    mt = getattr(cls, "market_type", "equity")
+    return _MARKET_TYPE_DESK.get(mt, str(mt).title() or "Unknown")
+
+
+def strategies_by_desk() -> dict[str, list[str]]:
+    """All registered strategies grouped by desk → sorted strategy names."""
+    out: dict[str, list[str]] = {}
+    for sname, cls in STRATEGY_REGISTRY.items():
+        if cls is None:
+            continue
+        out.setdefault(desk_of(sname), []).append(sname)
+    for members in out.values():
+        members.sort()
+    return dict(sorted(out.items()))
+
+
+def list_desks() -> list[str]:
+    """All desks currently represented in the registry."""
+    return sorted({desk_of(n) for n, c in STRATEGY_REGISTRY.items() if c is not None})
+
+
 def get_strategy(name: str, params: dict | None = None) -> AbstractStrategy:
     cls = STRATEGY_REGISTRY.get(name)
     if not cls:

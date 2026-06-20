@@ -6,7 +6,7 @@ from app.database import get_db
 from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
-from app.strategies import STRATEGY_REGISTRY
+from app.strategies import STRATEGY_REGISTRY, desk_of, list_desks, strategies_by_desk
 from pydantic import BaseModel, ConfigDict
 import uuid
 
@@ -48,6 +48,23 @@ async def get_params_schema(current_user: User = Depends(get_current_user)):
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
     return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+
+
+@router.get("/desks")
+async def list_strategy_desks(current_user: User = Depends(get_current_user)):
+    """Unified cross-desk view: every strategy grouped by trading desk.
+
+    Desks are derived from each strategy's own attributes (no hand-maintained list),
+    so the equities/crypto/options/prediction-market/TradingView desks all share one
+    format and a new strategy is placed automatically.
+    """
+    grouped = strategies_by_desk()
+    return {
+        "desks": list_desks(),
+        "by_desk": grouped,
+        "counts": {desk: len(members) for desk, members in grouped.items()},
+        "total": sum(len(m) for m in grouped.values()),
+    }
 
 
 @router.get("/active")
