@@ -353,17 +353,31 @@ def llm_with_provider(
     return (result or "[LLM unavailable]", used or "cascade")
 
 
+def _env_keys(*names: str) -> list[str]:
+    """Collect non-empty, de-duplicated keys from the given env var names, in order.
+
+    Lets the paid tiers rotate across numbered variants (OPENROUTER_API_KEY,
+    OPENROUTER_API_KEY_2, ...) the way the free providers do — more keys = more headroom.
+    """
+    keys: list[str] = []
+    for n in names:
+        v = os.environ.get(n, "").strip()
+        if v and v != "disabled" and v not in keys:
+            keys.append(v)
+    return keys
+
+
 def _call_openrouter(system: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
     """Open-weight mid-tier via OpenRouter. Tries each configured model in order.
 
     Returns the text, or None if there's no key / every model fails. OpenRouter speaks
     the OpenAI schema, so this mirrors `_call_provider`'s OpenAI path.
     """
-    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not key or not _OPENROUTER_MODELS:
+    keys = _env_keys("OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2", "OPENROUTER_API_KEY_3")
+    if not keys or not _OPENROUTER_MODELS:
         return None
     last_exc: Exception | None = None
-    for model in _OPENROUTER_MODELS:
+    for key, model in ((k, m) for k in keys for m in _OPENROUTER_MODELS):
         body = json.dumps({
             "model": model,
             "messages": [
@@ -402,8 +416,8 @@ def _call_claude(system: str, prompt: str, max_tokens: int, temperature: float) 
     Uses the Anthropic Messages API. Returns None when no ANTHROPIC_API_KEY is set so
     the caller degrades gracefully instead of crashing.
     """
-    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not key:
+    keys = _env_keys("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_2")
+    if not keys:
         return None
     body = json.dumps({
         "model": _CLAUDE_BACKSTOP_MODEL,
@@ -412,24 +426,29 @@ def _call_claude(system: str, prompt: str, max_tokens: int, temperature: float) 
         "temperature": temperature,
         "messages": [{"role": "user", "content": prompt}],
     }).encode()
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": _UA,
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-    }
-    req = urllib.request.Request(_ANTHROPIC_URL, data=body, headers=headers, method="POST")
-    t0 = time.time()
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read())
-        text = "".join(blk.get("text", "") for blk in result.get("content", [])).strip()
-        _record_metric(f"claude:{_CLAUDE_BACKSTOP_MODEL}", bool(text), int((time.time() - t0) * 1000))
-        return text or None
-    except Exception as exc:  # noqa: BLE001
-        _record_metric(f"claude:{_CLAUDE_BACKSTOP_MODEL}", False, int((time.time() - t0) * 1000), str(exc))
-        logger.warning("Claude backstop failed: %s", exc)
-        return None
+    last_exc: Exception | None = None
+    for key in keys:
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": _UA,
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+        }
+        req = urllib.request.Request(_ANTHROPIC_URL, data=body, headers=headers, method="POST")
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read())
+            text = "".join(blk.get("text", "") for blk in result.get("content", [])).strip()
+            _record_metric(f"claude:{_CLAUDE_BACKSTOP_MODEL}", bool(text), int((time.time() - t0) * 1000))
+            if text:
+                return text
+        except Exception as exc:  # noqa: BLE001 — try the next key
+            _record_metric(f"claude:{_CLAUDE_BACKSTOP_MODEL}", False, int((time.time() - t0) * 1000), str(exc))
+            last_exc = exc
+    if last_exc:
+        logger.warning("Claude backstop failed: %s", last_exc)
+    return None
 
 
 def llm_routed(
