@@ -30,6 +30,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -126,12 +127,26 @@ class SlackError(RuntimeError):
 def _slack_get(method: str, token: str, **params: Any) -> dict:
     qs = urllib.parse.urlencode({k: v for k, v in params.items() if v not in (None, "")})
     url = f"https://slack.com/api/{method}?{qs}"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read())
-    if not data.get("ok"):
-        raise SlackError(f"{method}: {data.get('error', 'unknown error')}")
-    return data
+    # Slack rate-limits (HTTP 429 with Retry-After, or ok=false/error=ratelimited).
+    # Respect Retry-After and back off exponentially instead of crashing.
+    for attempt in range(7):
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 6:
+                wait = int(e.headers.get("Retry-After", "") or 0) or (2 ** attempt)
+                time.sleep(wait + 1)
+                continue
+            raise
+        if not data.get("ok"):
+            if data.get("error") == "ratelimited" and attempt < 6:
+                time.sleep((2 ** attempt) + 1)
+                continue
+            raise SlackError(f"{method}: {data.get('error', 'unknown error')}")
+        return data
+    raise SlackError(f"{method}: exhausted rate-limit retries")
 
 
 def list_channels(token: str) -> list[dict]:
