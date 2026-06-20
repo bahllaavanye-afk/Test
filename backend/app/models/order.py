@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, Numeric, DateTime, JSON, Index
+from datetime import date
+from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
@@ -42,6 +43,14 @@ class Order(Base, TimestampMixin):
     notional: Mapped[float | None] = mapped_column(Numeric(18, 8))  # buy $500 worth
     bracket_parent_id: Mapped[str | None] = mapped_column(String, ForeignKey("orders.id", ondelete="SET NULL"))
     risk_reward_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4))
+
+    # Cross-desk tracking — one order shape for every desk (equity/crypto/option/...).
+    asset_class: Mapped[str] = mapped_column(String(16), nullable=False, default="equity")
+    underlying_symbol: Mapped[str | None] = mapped_column(String(32))  # options: the underlying
+    expiry: Mapped[date | None] = mapped_column(Date)                  # options/futures
+    strike: Mapped[float | None] = mapped_column(Numeric(18, 8))       # options
+    option_right: Mapped[str | None] = mapped_column(String(4))        # call|put
+    contract_multiplier: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     account: Mapped["Account"] = relationship("Account", back_populates="orders")
     fills: Mapped[list["Fill"]] = relationship("Fill", back_populates="order")

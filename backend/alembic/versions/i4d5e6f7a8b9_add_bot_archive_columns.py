@@ -15,7 +15,10 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "i4d5e6f7a8b9"
-down_revision = "h3c4d5e6f7a8"
+# Was "h3c4d5e6f7a8" — a revision that exists in no file, which broke `alembic upgrade
+# head` (phantom parent → spurious second head). The real parent is create_bots_table,
+# since this migration ALTERs the bots table that revision creates.
+down_revision = "d4e5f6a7b8c9"
 branch_labels = None
 depends_on = None
 
