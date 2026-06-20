@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "perplexity": {
+      "type": "stdio",
+      "command": "doppler",
+      "args": ["run", "--", "npx", "-yq", "@perplexity-ai/mcp-server"],
+      "env": { "DOPPLER_TOKEN": "${DOPPLER_TOKEN}" }
+    },
+    "alpaca": {
+      "type": "stdio",
+      "command": "doppler",
+      "args": ["run", "--", "npx", "-yq", "@alpacahq/alpaca-mcp-server"],
+      "env": { "DOPPLER_TOKEN": "${DOPPLER_TOKEN}", "ALPACA_PAPER": "true" }
+    },
+    "supabase": {
+      "type": "stdio",
+      "command": "doppler",
+      "args": ["run", "--", "npx", "-yq", "@supabase/mcp-server"],
+      "env": { "DOPPLER_TOKEN": "${DOPPLER_TOKEN}" }
+    },
+    "redis": {
+      "type": "stdio",
+      "command": "doppler",
+      "args": ["run", "--", "npx", "-yq", "@redis/mcp-server"],
+      "env": { "DOPPLER_TOKEN": "${DOPPLER_TOKEN}" }
+    },
+    "slack": {
+      "type": "stdio",
+      "command": "doppler",
+      "args": ["run", "--", "npx", "-yq", "@modelcontextprotocol/server-slack"],
+      "env": { "DOPPLER_TOKEN": "${DOPPLER_TOKEN}" }
+    }
+  }
+}
