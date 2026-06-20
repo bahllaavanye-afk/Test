@@ -25,6 +25,11 @@ class Bot(Base, TimestampMixin):
     exit_rules: Mapped[list] = mapped_column(JSON, default=list)
 
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Soft-delete / retire: archived bots are hidden from active lists, the desk
+    # summary, and the scheduler, but their row + config + linked trades are preserved
+    # so they can be restored or audited later.
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     run_count: Mapped[int] = mapped_column(Integer, default=0)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_signal: Mapped[str | None] = mapped_column(String(16), nullable=True)  # buy|sell|hold|alert

@@ -55,6 +55,8 @@ export interface BotOut {
   action: ActionConfig
   exit_rules: ExitRuleConfig[]
   is_enabled: boolean
+  is_archived?: boolean
+  archived_at?: string | null
   run_count: number
   last_run_at: string | null
   last_signal: string | null
@@ -103,6 +105,9 @@ export const botsApi = {
   list: () =>
     api.get<BotOut[]>('/bots/').then((r) => r.data),
 
+  listArchived: () =>
+    api.get<BotOut[]>('/bots/?archived=true').then((r) => r.data),
+
   get: (id: string) =>
     api.get<BotOut>(`/bots/${id}`).then((r) => r.data),
 
@@ -112,8 +117,13 @@ export const botsApi = {
   update: (id: string, data: Partial<BotOut>) =>
     api.patch<BotOut>(`/bots/${id}`, data).then((r) => r.data),
 
-  delete: (id: string) =>
+  // Archive (soft-delete): preserves the bot row, config, and linked trades.
+  archive: (id: string) =>
     api.delete(`/bots/${id}`),
+
+  // Restore an archived bot back to the active list (returns it disabled).
+  restore: (id: string) =>
+    api.post<BotOut>(`/bots/${id}/restore`).then((r) => r.data),
 
   toggle: (id: string) =>
     api.post<BotOut>(`/bots/${id}/toggle`).then((r) => r.data),

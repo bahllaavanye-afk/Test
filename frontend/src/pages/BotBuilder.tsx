@@ -4,7 +4,8 @@ import {
   Bot,
   Plus,
   Play,
-  Trash2,
+  Archive,
+  ArchiveRestore,
   ToggleLeft,
   ToggleRight,
   ChevronDown,
@@ -33,7 +34,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-type ViewMode = 'build' | 'list'
+type ViewMode = 'build' | 'list' | 'archived'
 
 interface SectionProps {
   title: string
@@ -181,6 +182,11 @@ export default function BotBuilder() {
     queryFn: botsApi.list,
   })
 
+  const { data: archivedBots = [], isLoading: loadingArchived, error: archivedError } = useQuery({
+    queryKey: ['bots', 'archived'],
+    queryFn: botsApi.listArchived,
+  })
+
   // Mutations
   const createMutation = useMutation({
     mutationFn: botsApi.create,
@@ -206,8 +212,13 @@ export default function BotBuilder() {
     onError: (err: Error) => setFormError(err.message),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: botsApi.delete,
+  const archiveMutation = useMutation({
+    mutationFn: botsApi.archive,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: botsApi.restore,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   })
 
@@ -371,6 +382,22 @@ export default function BotBuilder() {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setView('archived')}
+            className={`px-4 py-2 text-xs font-mono flex items-center gap-1.5 transition-colors ${
+              view === 'archived'
+                ? 'bg-[#f5a623]/10 text-[#f5a623]'
+                : 'text-[#888] hover:text-[#e8e8e8]'
+            }`}
+          >
+            <Archive size={13} />
+            Archived
+            {archivedBots.length > 0 && (
+              <span className="bg-[#555]/30 text-[#888] text-xs px-1.5 py-0.5 rounded font-mono">
+                {archivedBots.length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -397,6 +424,19 @@ export default function BotBuilder() {
             removeExitRule={removeExitRule}
             onCancelEdit={() => { setEditingId(null); setForm(defaultForm()) }}
           />
+        ) : view === 'archived' ? (
+          <ListView
+            archived
+            bots={archivedBots}
+            isLoading={loadingArchived}
+            error={archivedError as Error | null}
+            runResults={runResults}
+            onEdit={loadBotForEdit}
+            onRestore={(id) => restoreMutation.mutate(id)}
+            onToggle={(id) => toggleMutation.mutate(id)}
+            onRun={(id) => runMutation.mutate(id)}
+            runningId={restoreMutation.isPending ? restoreMutation.variables ?? null : null}
+          />
         ) : (
           <ListView
             bots={bots}
@@ -404,7 +444,7 @@ export default function BotBuilder() {
             error={botsError as Error | null}
             runResults={runResults}
             onEdit={loadBotForEdit}
-            onDelete={(id) => deleteMutation.mutate(id)}
+            onArchive={(id) => archiveMutation.mutate(id)}
             onToggle={(id) => toggleMutation.mutate(id)}
             onRun={(id) => runMutation.mutate(id)}
             runningId={runMutation.isPending ? runMutation.variables ?? null : null}
@@ -1130,10 +1170,12 @@ interface ListViewProps {
   error: Error | null
   runResults: Record<string, { fired: boolean; reason: string; signal: string }>
   onEdit: (bot: BotOut) => void
-  onDelete: (id: string) => void
+  onArchive?: (id: string) => void
+  onRestore?: (id: string) => void
   onToggle: (id: string) => void
   onRun: (id: string) => void
   runningId: string | null
+  archived?: boolean
 }
 
 function ListView({
@@ -1142,10 +1184,12 @@ function ListView({
   error,
   runResults,
   onEdit,
-  onDelete,
+  onArchive,
+  onRestore,
   onToggle,
   onRun,
   runningId,
+  archived = false,
 }: ListViewProps) {
   if (isLoading) {
     return (
@@ -1170,10 +1214,14 @@ function ListView({
   if (bots.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-        <div className="text-6xl mb-4">🤖</div>
-        <p className="text-[#e8e8e8] font-semibold mb-2">No bots yet.</p>
+        <div className="text-6xl mb-4">{archived ? '🗄️' : '🤖'}</div>
+        <p className="text-[#e8e8e8] font-semibold mb-2">
+          {archived ? 'No archived bots.' : 'No bots yet.'}
+        </p>
         <p className="text-[#555] text-sm font-mono">
-          Start with a template on the Build tab to create your first automated bot.
+          {archived
+            ? 'Archiving a bot keeps its config and trade history — restore it here anytime.'
+            : 'Start with a template on the Build tab to create your first automated bot.'}
         </p>
       </div>
     )
@@ -1213,22 +1261,29 @@ function ListView({
                     <span className="text-[#555] ml-1">{bot.market_type}</span>
                   </td>
                   <td className="py-2.5 px-3">
-                    <button
-                      onClick={() => onToggle(bot.id)}
-                      className="flex items-center gap-1.5 transition-colors"
-                    >
-                      {bot.is_enabled ? (
-                        <>
-                          <ToggleRight size={16} className="text-[#00c853]" />
-                          <span className="text-[#00c853]">ON</span>
-                        </>
-                      ) : (
-                        <>
-                          <ToggleLeft size={16} className="text-[#555]" />
-                          <span className="text-[#555]">OFF</span>
-                        </>
-                      )}
-                    </button>
+                    {archived ? (
+                      <span className="flex items-center gap-1.5 text-[#888]">
+                        <Archive size={14} className="text-[#888]" />
+                        Archived
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => onToggle(bot.id)}
+                        className="flex items-center gap-1.5 transition-colors"
+                      >
+                        {bot.is_enabled ? (
+                          <>
+                            <ToggleRight size={16} className="text-[#00c853]" />
+                            <span className="text-[#00c853]">ON</span>
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft size={16} className="text-[#555]" />
+                            <span className="text-[#555]">OFF</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </td>
                   <td className="py-2.5 px-3">
                     <SignalBadge signal={rr?.signal ?? bot.last_signal} />
@@ -1241,34 +1296,52 @@ function ListView({
                   </td>
                   <td className="py-2.5 px-3">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onRun(bot.id)}
-                        disabled={runningId === bot.id}
-                        title="Run now"
-                        className="text-[#888] hover:text-[#f5a623] transition-colors disabled:opacity-50"
-                      >
-                        {runningId === bot.id ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <Play size={14} />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => onEdit(bot)}
-                        title="Edit"
-                        className="text-[#888] hover:text-[#e8e8e8] transition-colors"
-                      >
-                        <Settings size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete bot "${bot.name}"?`)) onDelete(bot.id)
-                        }}
-                        title="Delete"
-                        className="text-[#888] hover:text-[#ff1744] transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {archived ? (
+                        <button
+                          onClick={() => onRestore?.(bot.id)}
+                          disabled={runningId === bot.id}
+                          title="Restore"
+                          className="flex items-center gap-1 text-[#888] hover:text-[#00c853] transition-colors disabled:opacity-50"
+                        >
+                          {runningId === bot.id ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <ArchiveRestore size={14} />
+                          )}
+                          <span>Restore</span>
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => onRun(bot.id)}
+                            disabled={runningId === bot.id}
+                            title="Run now"
+                            className="text-[#888] hover:text-[#f5a623] transition-colors disabled:opacity-50"
+                          >
+                            {runningId === bot.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Play size={14} />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => onEdit(bot)}
+                            title="Edit"
+                            className="text-[#888] hover:text-[#e8e8e8] transition-colors"
+                          >
+                            <Settings size={14} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Archive bot "${bot.name}"? Its config and trade history are kept and can be restored.`)) onArchive?.(bot.id)
+                            }}
+                            title="Archive"
+                            className="text-[#888] hover:text-[#f5a623] transition-colors"
+                          >
+                            <Archive size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                     {rr && (
                       <div

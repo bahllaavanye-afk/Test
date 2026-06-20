@@ -12,11 +12,16 @@ except ImportError:
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
+
+# Use the real nn.Module base when torch is present; fall back to ``object`` so these
+# classes still *import* (as inert placeholders) in torch-free environments. The model
+# registry can then expose them without crashing; instantiating them still needs torch.
+_NNModule = nn.Module if _TORCH_AVAILABLE else object
 import numpy as np
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 
-class GatedLinearUnit(nn.Module):
+class GatedLinearUnit(_NNModule):
     def __init__(self, d: int):
         super().__init__()
         self.fc = nn.Linear(d, d * 2)
@@ -26,7 +31,7 @@ class GatedLinearUnit(nn.Module):
         return h[..., :h.shape[-1]//2] * torch.sigmoid(h[..., h.shape[-1]//2:])
 
 
-class GatedResidualNetwork(nn.Module):
+class GatedResidualNetwork(_NNModule):
     def __init__(self, d_in: int, d_hidden: int, d_out: int, dropout: float = 0.1):
         super().__init__()
         self.fc1 = nn.Linear(d_in, d_hidden)
@@ -44,7 +49,7 @@ class GatedResidualNetwork(nn.Module):
         return self.ln(h)
 
 
-class VariableSelectionNetwork(nn.Module):
+class VariableSelectionNetwork(_NNModule):
     """Softmax-weighted GRN per variable — tells us which features matter."""
     def __init__(self, n_vars: int, d_model: int):
         super().__init__()
@@ -61,7 +66,7 @@ class VariableSelectionNetwork(nn.Module):
         return out.mean(-1), weights.squeeze(-2)
 
 
-class TFTModel(AbstractModel, nn.Module):
+class TFTModel(AbstractModel, _NNModule):
     """
     Simplified Temporal Fusion Transformer.
     Input: (batch, seq_len, n_features)

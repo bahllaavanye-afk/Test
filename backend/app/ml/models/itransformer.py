@@ -39,6 +39,10 @@ except ImportError:
     DataLoader = None    # type: ignore[assignment]
     TensorDataset = None  # type: ignore[assignment]
 
+# Real nn.Module base when torch is present; ``object`` fallback so the class still
+# imports (as an inert placeholder) without torch. Instantiation still requires torch.
+_NNModule = nn.Module if _TORCH_AVAILABLE else object
+
 try:
     from sklearn.metrics import roc_auc_score
     _HAS_SKLEARN = True
@@ -52,7 +56,7 @@ from app.ml.models.base_model import AbstractModel, EvalMetrics
 # Inverted Encoder Layer
 # ---------------------------------------------------------------------------
 
-class InvertedEncoderLayer(nn.Module):
+class InvertedEncoderLayer(_NNModule):
     """
     Single Pre-LN transformer layer where attention is computed over the
     variate (feature) dimension rather than the time dimension.
@@ -107,7 +111,7 @@ class InvertedEncoderLayer(nn.Module):
 # iTransformer
 # ---------------------------------------------------------------------------
 
-class iTransformer(AbstractModel, nn.Module):
+class iTransformer(AbstractModel, _NNModule):
     """
     iTransformer: inverted-attention transformer for multivariate time series.
 
