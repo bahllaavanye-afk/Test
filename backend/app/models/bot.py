@@ -6,6 +6,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.base import TimestampMixin
 
+# Canonical market types / desks a bot can trade. The column stays a free string for
+# forward-compat, but this is the supported set the API advertises and the builder offers.
+# equity/crypto/polymarket were the originals; options/macro/rates added in desk consolidation.
+MARKET_TYPES: list[str] = ["equity", "crypto", "polymarket", "options", "macro", "rates"]
+
 
 class Bot(Base, TimestampMixin):
     __tablename__ = "bots"
@@ -16,7 +21,7 @@ class Bot(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, default="")
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
-    market_type: Mapped[str] = mapped_column(String(20), default="equity")  # equity|crypto|polymarket
+    market_type: Mapped[str] = mapped_column(String(20), default="equity")  # see MARKET_TYPES
 
     trigger: Mapped[dict] = mapped_column(JSON, nullable=False)
     conditions: Mapped[list] = mapped_column(JSON, default=list)

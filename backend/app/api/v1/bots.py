@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.bots.engine import BotEngine
 from app.bots.templates import BOT_TEMPLATES
-from app.models.bot import Bot
+from app.models.bot import Bot, MARKET_TYPES
 from app.models.user import User
 from app.schemas.bot import BotCreate, BotOut, BotUpdate
 from app.utils.logging import logger
@@ -26,6 +26,20 @@ router = APIRouter(prefix="/bots", tags=["bots"])
 async def get_templates() -> dict:
     """Return all pre-built bot templates (no auth required)."""
     return BOT_TEMPLATES
+
+
+@router.get("/market-types", response_model=list[dict])
+async def get_market_types() -> list[dict]:
+    """Market types / desks a bot can trade — drives the builder's desk dropdown."""
+    labels = {
+        "equity": "Equities",
+        "crypto": "Crypto",
+        "polymarket": "Prediction Markets",
+        "options": "Options",
+        "macro": "Macro",
+        "rates": "Rates",
+    }
+    return [{"value": mt, "label": labels.get(mt, mt.title())} for mt in MARKET_TYPES]
 
 
 # ---------------------------------------------------------------------------

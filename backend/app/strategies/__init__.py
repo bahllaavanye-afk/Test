@@ -152,6 +152,22 @@ OPTIONS_STRATEGIES: list[str] = [
     "credit_spread_income",
 ]
 
+# Macro and Rates desks — formalize the comment-grouped sections of STRATEGY_REGISTRY
+# (these trade macro/rates instruments — yields, FX, ETFs — not single equities).
+MACRO_STRATEGIES: list[str] = [
+    "yield_curve_momentum",
+    "macro_risk_barometer",
+    "dollar_carry",
+    "pmi_sector_rotation",
+    "central_bank_window",
+]
+RATES_STRATEGIES: list[str] = [
+    "yield_spread_reversion",
+    "tlt_spy_rotation",
+    "duration_momentum",
+    "breakeven_inflation",
+]
+
 STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "pairs_trading": PairsTradingStrategy,
     "momentum": MomentumStrategy,
@@ -296,6 +312,10 @@ def desk_of(strategy: "str | type[AbstractStrategy]") -> str:
         return "TradingView Indicators"
     if name in OPTIONS_STRATEGIES:
         return "Options"
+    if name in MACRO_STRATEGIES:
+        return "Macro"
+    if name in RATES_STRATEGIES:
+        return "Rates"
     mt = getattr(cls, "market_type", "equity")
     return _MARKET_TYPE_DESK.get(mt, str(mt).title() or "Unknown")
 
