@@ -338,3 +338,7 @@ async def train(
 
     results["artifact_path"] = str(save_path)
     return results
+
+
+# Public registry name: app.ml.models.__init__ imports `iTransformerPredictor`.
+iTransformerPredictor = iTransformer

@@ -155,3 +155,8 @@ class TFTModel(AbstractModel, _NNModule):
         except Exception:
             auc = 0.5
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0, loss=None)
+
+
+# Public registry name: app.ml.models.__init__ imports `TransformerPredictor`.
+# The implementation is the Temporal Fusion Transformer below.
+TransformerPredictor = TFTModel
