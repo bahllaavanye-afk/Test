@@ -105,7 +105,9 @@ def cascade_status(probe: bool = True) -> dict:
         if probe:
             t0 = _t.time()
             try:
-                r = _call_provider(p, "ping", "Reply with: OK", 8, 0.0)
+                # 64 (not 8) tokens so reasoning models (e.g. Cerebras gpt-oss) can emit
+                # content during the probe instead of spending the budget on reasoning.
+                r = _call_provider(p, "ping", "Reply with: OK", 64, 0.0)
                 entry["ok"] = bool(r and r.strip())
                 entry["ms"] = int((_t.time() - t0) * 1000)
             except Exception as e:  # noqa: BLE001
@@ -139,7 +141,8 @@ _PROVIDERS = [
         "url": "https://api.cerebras.ai/v1/chat/completions",
         "key_env": "CEREBRAS_API_KEY",
         "fmt": "openai",
-        "model": "llama-3.3-70b",
+        # Cerebras retired llama-3.3-70b (404). Live-verified current model; env-overridable.
+        "model": os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b"),
         "rpm_free": 30,
     },
     {
@@ -184,7 +187,8 @@ _PROVIDERS = [
         "key_env": "NVIDIA_AGENTS_API_KEYS",
         "key_env_alt": "NVIDIA_NIM_API_KEY",
         "fmt": "openai",
-        "model": "nvidia/llama-3.1-nemotron-70b-instruct",
+        # nemotron-70b ID retired (404). Live-verified current model; env-overridable.
+        "model": os.environ.get("NVIDIA_MODEL", "deepseek-ai/deepseek-v4-flash"),
         "rpm_free": 40,
     },
 ]
