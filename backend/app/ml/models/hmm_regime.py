@@ -69,7 +69,7 @@ class _BaumWelchHMM:
             beta[t] = (self.A @ (B[t + 1] * beta[t + 1])) / (scale[t + 1] or 1e-300)
         return beta
 
-    def fit(self, X: np.ndarray) -> "\_BaumWelchHMM":
+    def fit(self, X: np.ndarray) -> "_BaumWelchHMM":
         prev_ll = -np.inf
         for _ in range(self.n_iter):
             B = self._gaussian_pdf(X)
@@ -208,3 +208,8 @@ class RegimeDetector:
         det._state_map = data.get("state_map", {0: 0, 1: 1, 2: 2})
         det._fitted = data.get("fitted", False)
         return det
+
+
+# Public alias — the model registry (app/ml/models/__init__.py) imports the HMM
+# regime model as ``HMMRegimeModel``; the implementation class is ``RegimeDetector``.
+HMMRegimeModel = RegimeDetector
