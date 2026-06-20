@@ -1,6 +1,6 @@
 {
-  "last_run_ts": 1781897840,
-  "last_commit_sha": "79f14d3",
+  "last_run_ts": 1781915966,
+  "last_commit_sha": "9d6643d",
   "posted_hashes": [
     "3fb4bde6f86f",
     "226dff1963e9",
@@ -435,7 +435,35 @@
     "1fbdc97cf73f",
     "05eaa9b20d7d",
     "c7397d2b9e85",
-    "8ff1d68240a5"
+    "8ff1d68240a5",
+    "666a71c8b961",
+    "1346b9c24179",
+    "4d9e10be4b01",
+    "73d0b6d403a6",
+    "bfc9ee99d9da",
+    "bd793220e799",
+    "62547d937d55",
+    "5209d1d0c734",
+    "bbe483c4d3c2",
+    "e4147bad4b8f",
+    "d0d9ee2705cf",
+    "ee7add643cc9",
+    "7fc9551ced1f",
+    "9727ffca585c",
+    "6c52767cf77a",
+    "87c064c109f4",
+    "fb6ac2dda624",
+    "f405c2c40f6e",
+    "7b5f89f450f3",
+    "a84d68bb7941",
+    "085948bdad5d",
+    "dcfe98a2e36d",
+    "ebb4c5704cff",
+    "7ff9101a9dfa",
+    "ba6e1e95da2b",
+    "020d19d12cf6",
+    "63f6e5c2aa9c",
+    "b839a4f819d8"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -484,7 +512,7 @@
     "exec_eng": 1781521197.4879,
     "poly_desk": 1781521197.4879,
     "ml_researcher": 1781521197.4879,
-    "vp_research": 1781897625.6909888,
+    "vp_research": 1781915274.952814,
     "quant_researcher": 1781896901.838221,
     "cro": 1781521197.4879,
     "frontend": 1781521197.4879,
@@ -509,11 +537,11 @@
     "execution_engineer": 1781897189.0687697,
     "options_researcher": 1781897721.5282235,
     "ceo/founder": 1781474351.7809563,
-    "research_scientist": 1781897815.9548252,
-    "polymarket_desk_bot": 1781897234.4922674,
+    "research_scientist": 1781915884.849453,
+    "polymarket_desk_bot": 1781915934.649332,
     "finance_engineer": 1781364406.75322,
     "options_desk_bot": 1781897246.3411813,
-    "futures_desk_bot": 1781897238.7690895,
+    "futures_desk_bot": 1781915037.1735156,
     "compliance_engineer": 1781364294.8554208,
     "director_of_devops": 1781897441.7916398,
     "director_of_qa": 1781897532.2316015,
@@ -525,20 +553,20 @@
     "junior_engineer": 1781265738.1070416,
     "frontend_bot": 1781364430.4399128,
     "alpha_research_director": 1781897349.8382084,
-    "incident_bot": 1781265754.1810403,
+    "incident_bot": 1781915279.6165366,
     "ml_modeling_lead_(mp)": 1781384011.307691,
     "ml_research_lead": 1781364411.228873,
-    "crypto_desk_bot": 1781897072.581729,
+    "crypto_desk_bot": 1781914983.1736262,
     "commodities_desk_bot": 1781896785.8345673,
     "alpha_research_director_(sr)": 1781474360.7106771,
-    "statarb_desk_bot": 1781897236.507026,
-    "vp_engineering": 1781897304.243319,
+    "statarb_desk_bot": 1781915009.8200316,
+    "vp_engineering": 1781915159.056346,
     "ml_modeling_lead": 1781346001.1877785,
     "risk_engineer": 1781897237.3704321,
-    "frontend_lead": 1781897395.7283762,
+    "frontend_lead": 1781915326.7893348,
     "ml_infrastructure_engineer": 1781364330.2440631,
     "equity_desk_bot": 1781474418.9646714,
-    "standup_bot": 1781474318.3239698,
+    "standup_bot": 1781915837.9445693,
     "wins_bot": 1781364418.757565,
     "vp_engineering_(cr)": 1781897045.4701343,
     "product_lead": 1781486176.3284423,
@@ -555,7 +583,7 @@
     "infra_lead": 1781421181.273893,
     "senior_quant": 1781422201.5843105,
     "exec_lead": 1781463003.1508677,
-    "data_engineer": 1781474340.9960165,
+    "data_engineer": 1781915183.7344306,
     "data_lead": 1781501354.185361
   },
   "daily_usage": {
@@ -607,79 +635,79 @@
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "alpha_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "ml_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "risk_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "backend_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "qa_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "devops_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "exec_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "poly_desk": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "ml_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "vp_research": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "quant_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       },
       "cro": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-19"
+        "date": "2026-06-20"
       }
     }
   },
@@ -2568,6 +2596,6 @@
       "GEMINI_API_KEY_3": 900
     }
   },
-  "posted_today_date": "2026-06-19",
+  "posted_today_date": "2026-06-20",
   "skip_wave": false
 }
