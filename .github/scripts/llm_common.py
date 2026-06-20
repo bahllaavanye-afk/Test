@@ -345,6 +345,12 @@ def _provider_key(provider: dict) -> str:
     return key
 
 
+# Cloudflare (which fronts Groq, Cerebras and several others) blocks the default
+# urllib User-Agent with "error code: 1010". A normal browser UA gets through, so
+# every provider request must send one.
+_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
     key = _provider_key(provider)
     url = provider["url"]
@@ -368,7 +374,7 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
         }
 
     data = json.dumps(body).encode()
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": _UA}
     if provider["fmt"] != "gemini":
         headers["Authorization"] = f"Bearer {key}"
 
@@ -416,7 +422,7 @@ def _call_provider_messages(
             "contents": gemini_contents,
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
-        headers: dict = {"Content-Type": "application/json"}
+        headers: dict = {"Content-Type": "application/json", "User-Agent": _UA}
     else:
         url_with_key = url
         body = {
@@ -428,6 +434,7 @@ def _call_provider_messages(
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {key}",
+            "User-Agent": _UA,
         }
 
     data = json.dumps(body).encode()
