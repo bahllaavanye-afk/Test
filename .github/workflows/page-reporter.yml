@@ -17,54 +17,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Job 1: Real browser screenshots via Playwright ──────────────────────────
+  # ── Job 1: Real browser screenshots of the LIVE production site ─────────────
   screenshots:
     name: Browser Screenshots
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Screenshot the deployed production site (real data) instead of a CI-local dev
+      # server pointed at a dead backend — that was why Slack showed empty localhost pages.
+      SCREENSHOT_BASE_URL: ${{ vars.PUBLIC_SITE_URL || 'https://quantedge.vercel.app' }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
         with:
-          node-version: "20"
-
-      - name: Install frontend deps (cached)
-        working-directory: frontend
-        run: npm ci --prefer-offline
-
-      - name: Install Playwright + Chromium
-        working-directory: frontend
-        run: npx playwright install chromium --with-deps
+          python-version: "3.11"
 
       - name: Install screenshot runner deps
-        run: pip install playwright --quiet
+        run: pip install playwright --quiet && python -m playwright install chromium --with-deps
 
-      - name: Start frontend dev server (background)
-        working-directory: frontend
-        env:
-          # Point at a non-existent backend so pages load in "loading" state
-          VITE_API_URL: http://localhost:8000/api/v1
-          VITE_WS_URL: ws://localhost:8000/ws
-        run: |
-          nohup npm run dev -- --port 5173 --host &
-          echo "Waiting for frontend to start..."
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:5173 > /dev/null && echo "✅ Frontend ready" && break
-            sleep 2
-          done
-
-      - name: Run screenshot runner
+      - name: Run screenshot runner against production
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
           python .github/scripts/page_screenshot_runner.py \
-            --base-url http://localhost:5173 \
+            --base-url "$SCREENSHOT_BASE_URL" \
             --output-dir /tmp/quantedge-screenshots
 
       - name: Upload screenshots as workflow artifacts
