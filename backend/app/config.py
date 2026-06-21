@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     trading_mode: str = "paper"  # 'paper' | 'live'
+    # When true, /auth/demo issues a token for a shared demo user so the login-free public
+    # app is functional (data loads, buttons work). Set false for real multi-user.
+    demo_mode: bool = True
     allowed_origins: str = "http://localhost:5173"
 
     # Security
