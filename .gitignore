@@ -69,3 +69,10 @@ backend/seed_comparisons.py
 
 # Claude Code agent metadata
 .claude/
+
+# Agent runtime artifacts (generated at run time — not source)
+.github/state/llm_cache.json
+reports/
+# Accidental nested .github dirs created by agent scripts run from the wrong cwd
+.github/scripts/.github/
+backend/.github/
