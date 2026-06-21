@@ -75,6 +75,6 @@
     "* To mitigate this, recommend increasing test coverage for new modular components in `app/utils/positions.py` to prevent similar failures.",
     "**Lightweight Backtesting**: Quick backtest will begin running lightweight backtests with no prior runs or successes, likely to test new strategies."
   ],
-  "last_updated": "2026-06-20T20:54:54.286989+00:00",
+  "last_updated": "2026-06-21T10:46:44.570145+00:00",
   "total": 74
 }
