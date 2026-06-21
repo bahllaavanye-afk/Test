@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Flame, Pause, Play, X, CheckCircle } from 'lucide-react'
 import { api } from '../api/client'
 import { getToken } from '../api/client'
+import { wsBase } from '../utils/endpoints'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -125,8 +126,7 @@ export default function AgentLogs() {
   const connectWs = useCallback(() => {
     const token = getToken()
     if (!token) return
-    const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
-    const ws = new WebSocket(`${wsBase}/ws/agent-logs?token=${encodeURIComponent(token)}`)
+    const ws = new WebSocket(`${wsBase()}/ws/agent-logs?token=${encodeURIComponent(token)}`)
     wsRef.current = ws
 
     ws.onmessage = (evt) => {

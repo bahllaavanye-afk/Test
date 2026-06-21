@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import api from '../api/client'
+import { wsBase } from '../utils/endpoints'
 
 interface BenchmarkRow { name: string; annualReturn: number; sharpe: number; maxDd: number; ytd: number; color: string; isUs?: boolean }
 interface CompRow { strategy: string; symbol: string; manualSharpe: number; mlSharpe: number; pValue: number; winner: 'ML' | 'MANUAL' }
@@ -20,7 +21,7 @@ interface SignalEvent {
   manual_only?: boolean
 }
 
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+const WS_BASE = wsBase()
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 

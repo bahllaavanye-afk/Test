@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { wsBase } from '../utils/endpoints'
 
 export type WSMessage = { type: string; [key: string]: unknown }
 
@@ -17,7 +18,7 @@ export function useWebSocket(path: string, enabled = true, shouldReconnect = tru
 
   const connect = useCallback(() => {
     if (!enabled || !mounted.current) return
-    const url = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}${path}`
+    const url = `${wsBase()}${path}`
     ws.current = new WebSocket(url)
 
     ws.current.onopen = () => {

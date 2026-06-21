@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useScrollReveal } from '../hooks/useScrollReveal'
+import { apiBase } from '../utils/endpoints'
 import '../styles/animations.css'
 
 /* ── Live Metrics Hook ────────────────────────────────── */
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://quantedge-api-6orc.onrender.com/api/v1'
+const API_URL = apiBase()
 
 type Metric = {
   label: string
