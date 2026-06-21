@@ -11,7 +11,10 @@ services:
     env: python
     region: oregon
     plan: free
-    buildCommand: cd backend && pip install --upgrade pip && pip install -e "." && pip install "torch==2.5.1+cpu" --index-url https://download.pytorch.org/whl/cpu --no-deps --no-cache-dir || echo "torch not available — ML strategies will degrade gracefully"
+    # torch is intentionally NOT installed here: the ~800MB install OOMs the free-tier
+    # build container (the cause of the failed deploy). ML strategies degrade gracefully
+    # without it; re-add the torch line on a paid plan with a larger build instance.
+    buildCommand: cd backend && pip install --upgrade pip && pip install -e "."
     startCommand: bash backend/start.sh
     envVars:
       - key: PYTHON_VERSION
@@ -53,4 +56,7 @@ services:
       - key: GOOGLE_REDIRECT_URI
         value: "https://quantedge-api-6orc.onrender.com/api/v1/auth/google/callback"
     healthCheckPath: /health
-    autoDeploy: true
+    # Off by default to conserve scarce free-tier pipeline minutes — the autonomous
+    # agents push frequently, and every push would otherwise trigger a build. Deploy
+    # manually, or let the render-autofix workflow trigger one when needed.
+    autoDeploy: false
