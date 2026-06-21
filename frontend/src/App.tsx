@@ -46,8 +46,14 @@ function PageLoader() {
   )
 }
 
+// Open access: skip the login wall so the app opens straight to the trading dashboard.
+// Re-enable auth for multi-user by setting VITE_OPEN_ACCESS=false at build time — all the
+// login/Google-OAuth code stays intact, this just short-circuits the guard.
+const OPEN_ACCESS = (import.meta.env.VITE_OPEN_ACCESS ?? 'true') !== 'false'
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuth = useSelector(selectIsAuthenticated)
+  if (OPEN_ACCESS) return <>{children}</>
   return isAuth ? <>{children}</> : <Navigate to="/login" replace />
 }
 
@@ -77,7 +83,8 @@ export default function App() {
     <Suspense fallback={<PageLoader />}>
       <SessionExpiryHandler />
       <Routes>
-        <Route path="/landing" element={<Landing />} />
+        {/* Open-access: the landing page is bypassed — go straight to the trading app. */}
+        <Route path="/landing" element={OPEN_ACCESS ? <Navigate to="/" replace /> : <Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/" element={<RequireAuth><AppShell /></RequireAuth>}>
@@ -105,6 +112,8 @@ export default function App() {
           <Route path="agents" element={<AgentDashboard />} />
           <Route path="scanners" element={<Scanners />} />
         </Route>
+        {/* Any unknown path lands on the trading app, not a 404 / huge landing. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
     </ErrorBoundary>
