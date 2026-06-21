@@ -10,7 +10,7 @@ SCREENSHOTS_DIR = Path(__file__).parents[3] / "screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-async def capture_dashboard(url: str = "http://localhost:5173", page: str = "") -> str | None:
+async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str = "") -> str | None:
     """
     Capture a screenshot of the dashboard. Returns the filepath or None on failure.
     Requires `playwright` installed: pip install playwright && playwright install chromium
@@ -40,7 +40,7 @@ async def capture_dashboard(url: str = "http://localhost:5173", page: str = "") 
         return None
 
 
-async def capture_all_pages(base_url: str = "http://localhost:5173") -> list[str]:
+async def capture_all_pages(base_url: str = "https://quantedge.vercel.app") -> list[str]:
     """Capture all main dashboard pages."""
     pages = ["", "equity", "crypto", "comparison", "backtest", "experiments", "analytics", "risk"]
     results = []

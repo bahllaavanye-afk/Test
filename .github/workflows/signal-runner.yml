@@ -2,7 +2,7 @@ name: Signal Runner — Every 5 Minutes (All Desks)
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/20 * * * *"
   workflow_dispatch:
 
 jobs:
