@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import torch
+torch = pytest.importorskip("torch")  # skip cleanly when torch isn't installed (CI/free tier)
 
 
 try:
