@@ -25,7 +25,7 @@ jobs:
       - name: Warm the backend
         continue-on-error: true
         run: |
-          URL="https://quantedge-api.onrender.com/health"
+          URL="https://quantedge-api-6orc.onrender.com/health"
           echo "Pinging $URL"
           # --retry handles the cold-start window (a wake can take 30-60s).
           # --max-time bounds each individual attempt; || true never fails the run.
