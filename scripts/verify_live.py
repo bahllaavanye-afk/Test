@@ -29,7 +29,6 @@ import urllib.request
 
 # Keeper first. (The bare quantedge-api.onrender.com host is a known orphan stub.)
 BACKEND_HOSTS = [
-    "https://quantedge-api-6orc.onrender.com",
     "https://quantedge-api-9jz0.onrender.com",
     "https://quantedge-api.onrender.com",
 ]

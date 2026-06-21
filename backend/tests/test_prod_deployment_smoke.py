@@ -22,7 +22,7 @@ import pytest
 pytestmark = pytest.mark.live
 
 # Override with PROD_API_BASE if the canonical host changes.
-PROD_BASE = os.environ.get("PROD_API_BASE", "https://quantedge-api-6orc.onrender.com")
+PROD_BASE = os.environ.get("PROD_API_BASE", "https://quantedge-api-9jz0.onrender.com")
 _TIMEOUT = 10
 # A 3-route stub has ~3 paths; the real app exposes ~100. Anything above this rules
 # out the stub while tolerating route churn.

@@ -54,7 +54,7 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: "https://quantedge-api-6orc.onrender.com/api/v1/auth/google/callback"
+        value: "https://quantedge-api-9jz0.onrender.com/api/v1/auth/google/callback"
     healthCheckPath: /health
     # Off by default to conserve scarce free-tier pipeline minutes — the autonomous
     # agents push frequently, and every push would otherwise trigger a build. Deploy

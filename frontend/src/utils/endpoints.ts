@@ -13,8 +13,8 @@ const isLocalHost =
   /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
 
 // The real Render service. NOTE: the bare `quantedge-api.onrender.com` host is an
-// orphan stub — always use the `-6orc` service (or set VITE_WS_URL on the deploy).
-const PROD_WS_BASE = 'wss://quantedge-api-6orc.onrender.com'
+// orphan stub — always use the `-9jz0` service (or set VITE_WS_URL on the deploy).
+const PROD_WS_BASE = 'wss://quantedge-api-9jz0.onrender.com'
 
 /** Base URL for HTTP API calls (already includes the `/api/v1` prefix). */
 export function apiBase(): string {

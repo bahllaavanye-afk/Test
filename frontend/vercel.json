@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://quantedge-api-6orc.onrender.com/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://quantedge-api-9jz0.onrender.com/api/:path*" },
     { "source": "/((?!api).*)", "destination": "/index.html" }
   ],
   "headers": [

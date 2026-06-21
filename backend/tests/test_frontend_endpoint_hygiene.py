@@ -18,7 +18,7 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND = _REPO_ROOT / "frontend"
 
-# The bare host is an orphan 3-route stub; the real service is `quantedge-api-6orc`.
+# The bare host is an orphan 3-route stub; the real service is `quantedge-api-9jz0`.
 # Anchor on `//` so we match real URLs (https://, wss://) but not documentation prose.
 _ORPHAN_STUB = re.compile(r"//quantedge-api\.onrender\.com")
 # A hardcoded fallback to a localhost URL, e.g.  || 'ws://localhost:8000'
