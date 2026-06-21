@@ -61,6 +61,10 @@ for i in $(seq 1 $MAX_TRIES); do
   fi
 done
 
+# ── Seed demo bots (idempotent, DEMO_MODE-gated) so every desk has live bots ────
+echo "Seeding demo bots (no-op if already seeded)..."
+python -m app.bots.seed || echo "bot seed skipped (non-fatal)"
+
 # ── Start API server ──────────────────────────────────────────────────────────
 echo "Starting uvicorn on port ${PORT:-8000}..."
 exec uvicorn app.main:app \
