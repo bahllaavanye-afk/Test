@@ -58,7 +58,7 @@ except Exception as e:
     SelectiveSSM = None  # type: ignore[assignment,misc]
 
 try:
-    from app.ml.models.hmm_regime import HMMRegimeModel
+    from app.ml.models.hmm_regime import RegimeDetector as HMMRegimeModel
 except Exception as e:
     logger.warning(f"HMMRegimeModel unavailable (missing deps): {e}")
     HMMRegimeModel = None  # type: ignore[assignment,misc]
