@@ -6,7 +6,7 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-06-20._
+_Last updated: 2026-06-21._
 
 ## Mission
 QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, and
@@ -35,6 +35,29 @@ QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, 
 - ✅ Brain observability: `llm_metrics.jsonl`, `cascade_status()`, hourly `brain-health.yml`
   canary → Slack `#infra-alerts` (#146).
 - ✅ Doppler single-source secrets (#139); Bot Archiver soft-delete/restore (#137).
+
+## SESSION 2026-06-21 — deploy + income (landed on `main`)
+- ✅ Deploy-critical (#178): `vercel.json` `/api` proxy → real service `quantedge-api-9jz0`;
+  `render.yaml` dropped torch from build (free-tier OOM) + `autoDeploy: false`; CI torch
+  tests guarded with `importorskip` (884 collect clean); `scripts/verify_live.py` added.
+- ✅ Bot seeder (#179): `app/bots/seed.py` → demo user + paper account + one enabled bot per
+  template on boot (idempotent, DEMO_MODE-gated, wired into `start.sh`).
+- ✅ Ops (#180): throttle `*/5`→`*/20` crons; fix `HMMRegimeModel` import (class is
+  `RegimeDetector`); screenshots default to prod URL.
+- ✅ Income (#184, #185): wheel / iron condor / bull-put credit spread / funding carry +
+  **cash-sweep SGOV** (~risk-free floor). **25 templates** total.
+
+## BLOCKERS — exact operator actions (this sandbox can ONLY reach Doppler `quantedge/dev` + repo)
+It CANNOT write GitHub Secrets, read the Render dashboard, or provision external services.
+1. **Render deploy** → add `RENDER_API_KEY` to **Doppler `quantedge/dev`**
+   (`doppler secrets set RENDER_API_KEY=... -p quantedge -c dev`). Then an agent can create a
+   native-Python service from `main` + deploy via the Render API. Live svc `quantedge-api-9jz0`
+   is Docker + out of **pipeline minutes** (account quota — reset/upgrade only).
+2. **Agent brain in CI** → the 49 agent workflows read LLM keys from **GitHub Actions Secrets**
+   (not Doppler) and they're empty → "all providers failed". Add the LLM keys as GitHub Secrets,
+   OR add `DOPPLER_TOKEN` as a GitHub Secret and rewire workflows to `doppler run`.
+3. **Shared memory** → add `REDIS_URL` (free Upstash) to Doppler `quantedge/dev`. Non-blocking.
+Frontend (Vercel) is live; once the backend is up it serves the real app and all desks self-seed.
 
 ## IN THIS BRANCH (`claude/sota-docs-and-fixes`)
 - ✅ **Cost-tiered routing** `llm_routed()`: free → OpenRouter open-mid → Claude backstop.
