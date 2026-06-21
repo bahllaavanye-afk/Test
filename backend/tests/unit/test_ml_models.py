@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 
 pytest.importorskip("torch")  # skip this module when the optional [ml] extra (torch) isn't installed
-import torch
+import pytest as _pt
+torch = _pt.importorskip("torch")
 from app.ml.models.transformer import TFTModel
 from app.ml.models.foundation_model import FoundationModelSignal, get_foundation_signal
 

@@ -13,7 +13,8 @@ import pandas as pd
 import pytest
 
 pytest.importorskip("torch")  # skip this module when the optional [ml] extra (torch) isn't installed
-import torch
+import pytest as _pt
+torch = _pt.importorskip("torch")
 
 
 # ---------------------------------------------------------------------------
