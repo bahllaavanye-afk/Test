@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-21T21:59:54.843350+00:00",
+  "last_updated": "2026-06-21T22:04:00.652686+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -913,60 +913,6 @@
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
     {
-      "file": "backend/app/comparison/report_builder.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:07.344206+00:00"
-    },
-    {
-      "file": "backend/app/tasks/regime_monitor.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:09.554704+00:00"
-    },
-    {
-      "file": "backend/app/api/v1/regime.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:11.964124+00:00"
-    },
-    {
-      "file": "backend/tests/unit/test_benchmarks.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:14.167986+00:00"
-    },
-    {
-      "file": "backend/app/strategies/manual/supertrend.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:16.383306+00:00"
-    },
-    {
-      "file": "backend/app/strategies/ml_enhanced/rl_trader.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:18.525149+00:00"
-    },
-    {
-      "file": "backend/app/ml/models/multiscale_transformer.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:20.701147+00:00"
-    },
-    {
-      "file": "backend/app/ml/features/multi_timeframe.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:22.894277+00:00"
-    },
-    {
-      "file": "backend/app/execution/iceberg.py",
-      "reason": "LLM returned empty",
-      "improvement_type": "constants",
-      "timestamp": "2026-06-09T18:34:25.027138+00:00"
-    },
-    {
       "file": "backend/app/tasks/self_improving_loop.py",
       "reason": "syntax check failed",
       "improvement_type": "edge_cases",
@@ -1205,6 +1151,66 @@
       "reason": "syntax check failed",
       "improvement_type": "validation",
       "timestamp": "2026-06-21T17:00:46.626772+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_breakout.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:00:32.619635+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/triple_barrier_momentum.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:00:53.445148+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/lorentzian_knn.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:01:14.178673+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/lorentzian_knn.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:01:35.084588+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/multi_timeframe.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:01:55.810074+00:00"
+    },
+    {
+      "file": "backend/app/execution/twap.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:02:16.529045+00:00"
+    },
+    {
+      "file": "backend/app/risk/portfolio_optimizer.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:02:37.464488+00:00"
+    },
+    {
+      "file": "backend/app/brokers/alpaca.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:02:58.207406+00:00"
+    },
+    {
+      "file": "backend/app/backtest/engine.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:03:18.934525+00:00"
+    },
+    {
+      "file": "backend/app/comparison/benchmarks.py",
+      "reason": "syntax check failed",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-06-21T22:03:39.909207+00:00"
     }
   ],
   "improvement_stats": {
