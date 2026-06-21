@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-21T16:55:52.032345+00:00",
+  "last_updated": "2026-06-21T17:01:07.374648+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1121,6 +1121,66 @@
       "reason": "syntax check failed",
       "improvement_type": "strategy_logic",
       "timestamp": "2026-06-19T22:42:35.958209+00:00"
+    },
+    {
+      "file": "backend/app/risk/correlation_monitor.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T16:57:39.867929+00:00"
+    },
+    {
+      "file": "backend/app/brokers/binance.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T16:58:00.587993+00:00"
+    },
+    {
+      "file": "backend/app/backtest/walk_forward.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T16:58:21.311047+00:00"
+    },
+    {
+      "file": "backend/app/comparison/report_builder.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T16:58:42.046130+00:00"
+    },
+    {
+      "file": "backend/app/tasks/strategy_auction.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T16:59:02.785519+00:00"
+    },
+    {
+      "file": "backend/app/api/v1/scanners.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T16:59:23.518610+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_advanced_metrics.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T16:59:44.380854+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/poly_near_resolution.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T17:00:05.156351+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/lorentzian_knn.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T17:00:25.880429+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/timesnet_model.py",
+      "reason": "syntax check failed",
+      "improvement_type": "validation",
+      "timestamp": "2026-06-21T17:00:46.626772+00:00"
     }
   ],
   "improvement_stats": {
