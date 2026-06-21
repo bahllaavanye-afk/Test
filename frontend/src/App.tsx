@@ -7,7 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import Login from './pages/Login'
 import Landing from './pages/Landing'
 import GoogleCallback from './pages/GoogleCallback'
-import { selectIsAuthenticated, selectExpiredAt, sessionExpired } from './store/slices/authSlice'
+import { selectIsAuthenticated, selectExpiredAt, sessionExpired, setCredentials } from './store/slices/authSlice'
 
 // All protected pages — lazy-loaded so each becomes a separate Vite chunk.
 // Users only download the chunk for the page they actually visit.
@@ -57,6 +57,24 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return isAuth ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+// In open-access mode, transparently obtain a demo session token on load so every
+// page/button (all JWT-gated) actually works instead of returning 401 / blank data.
+function DemoAutoLogin() {
+  const dispatch = useDispatch()
+  const isAuth = useSelector(selectIsAuthenticated)
+  useEffect(() => {
+    if (!OPEN_ACCESS || isAuth) return
+    let cancelled = false
+    import('./api/client').then(({ api }) =>
+      api.post('/auth/demo').then((r) => {
+        if (!cancelled) dispatch(setCredentials(r.data))
+      }).catch((e) => console.error('demo auto-login failed', e))
+    )
+    return () => { cancelled = true }
+  }, [isAuth, dispatch])
+  return null
+}
+
 function SessionExpiryHandler() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
@@ -82,6 +100,7 @@ export default function App() {
     <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
       <SessionExpiryHandler />
+      <DemoAutoLogin />
       <Routes>
         {/* Open-access: the landing page is bypassed — go straight to the trading app. */}
         <Route path="/landing" element={OPEN_ACCESS ? <Navigate to="/" replace /> : <Landing />} />

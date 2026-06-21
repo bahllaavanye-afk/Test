@@ -135,6 +135,34 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     )
 
 
+@router.post("/demo", response_model=TokenResponse)
+async def demo_login(db: AsyncSession = Depends(get_db)):
+    """Issue a token for a shared demo user so the login-free public app is functional
+    (every page/button needs a JWT). Gated by DEMO_MODE — disable for real multi-user.
+    """
+    if not settings.demo_mode:
+        raise HTTPException(status_code=404, detail="Demo mode is disabled")
+    import secrets as _secrets
+    email = "demo@quantedge.app"
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user is None:
+        user = User(
+            id=str(uuid.uuid4()),
+            email=email,
+            hashed_password=hash_password(_secrets.token_urlsafe(32)),
+            is_active=True,
+            is_superuser=False,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        refresh_token=create_refresh_token(user.id),
+    )
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     try:
