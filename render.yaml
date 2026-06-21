@@ -11,7 +11,7 @@ services:
     env: python
     region: oregon
     plan: free
-    buildCommand: cd backend && pip install --upgrade pip && pip install -e "." && pip install "torch==2.5.1+cpu" --index-url https://download.pytorch.org/whl/cpu --no-deps --no-cache-dir || echo "torch not available — ML strategies will degrade gracefully"
+    buildCommand: cd backend && pip install --upgrade pip && pip install -e "."
     startCommand: bash backend/start.sh
     envVars:
       - key: PYTHON_VERSION
@@ -43,6 +43,6 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: "https://quantedge-api.onrender.com/api/v1/auth/google/callback"
+        value: "https://quantedge-api-9jz0.onrender.com/api/v1/auth/google/callback"
     healthCheckPath: /health
-    autoDeploy: true
+    autoDeploy: false
