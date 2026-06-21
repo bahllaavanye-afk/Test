@@ -22,6 +22,14 @@ async def test_demo_token_unblocks_protected_endpoints(client):
 
 
 @pytest.mark.asyncio
+async def test_demo_disabled_returns_404(client, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "demo_mode", False)
+    r = await client.post("/api/v1/auth/demo")
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_demo_login_is_idempotent(client):
     a = (await client.post("/api/v1/auth/demo")).json()["access_token"]
     b = (await client.post("/api/v1/auth/demo")).json()["access_token"]

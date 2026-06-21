@@ -68,7 +68,7 @@ function DemoAutoLogin() {
     import('./api/client').then(({ api }) =>
       api.post('/auth/demo').then((r) => {
         if (!cancelled) dispatch(setCredentials(r.data))
-      }).catch(() => {})
+      }).catch((e) => console.error('demo auto-login failed', e))
     )
     return () => { cancelled = true }
   }, [isAuth, dispatch])
