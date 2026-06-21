@@ -65,8 +65,8 @@
     ]
   },
   "consecutive_poor": {
-    "rsi_21_30_70": 19,
-    "momentum_120_20": 19,
-    "momentum_90_20": 19
+    "rsi_21_30_70": 20,
+    "momentum_120_20": 20,
+    "momentum_90_20": 20
   }
 }
