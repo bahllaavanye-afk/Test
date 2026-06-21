@@ -2,7 +2,7 @@ name: System Watchdog — Every 5 Minutes (Self-Healing)
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/20 * * * *"
   workflow_dispatch:
 
 jobs:

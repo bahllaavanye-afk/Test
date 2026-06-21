@@ -12,7 +12,7 @@ name: Slack Summon Watcher — answer @agent within 5 min
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes, 24/7
+    - cron: "*/20 * * * *"   # every 5 minutes, 24/7
   workflow_dispatch:
     inputs:
       test_mode:
