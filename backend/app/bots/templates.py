@@ -424,4 +424,17 @@ BOT_TEMPLATES: dict[str, dict] = {
         "action": {"type": "send_alert", "alert_message": "Positive funding — long spot / short perp to collect carry (market-neutral)"},
         "exit_rules": [],
     },
+    "cash_sweep_tbill": {
+        "name": "Cash Sweep — T-Bill Yield (SGOV)",
+        "description": "Park idle buying power in SGOV (0-3mo T-bills, ~5%/yr) — the near-risk-free income floor of the portfolio. Buys once, holds for yield.",
+        "symbol": "SGOV",
+        "market_type": "equity",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {"type": "open_long", "size_pct": 20},
+        "exit_rules": [],
+    },
 }
