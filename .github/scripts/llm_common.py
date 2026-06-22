@@ -52,6 +52,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Browser User-Agent — REQUIRED. Cloudflare (Groq/Cerebras/…) returns
+# "error code: 1010" and blocks the default Python-urllib UA, which silently
+# killed the whole cascade. Every LLM request must send this.
+_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+
+def _extract_openai_content(result: dict) -> str:
+    """Pull assistant text from an OpenAI-style chat completion, reasoning-safe.
+
+    Reasoning models (Cerebras gpt-oss, DeepSeek-R1) may return
+    ``message.content = None`` with the answer under ``reasoning_content`` /
+    ``reasoning``. The old ``["content"].strip()`` died with a ``'content'``
+    KeyError, silently dropping a whole free provider.
+    """
+    msg = result["choices"][0]["message"]
+    text = msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning")
+    if not text or not str(text).strip():
+        raise ValueError("empty assistant content")
+    return str(text).strip()
+
+
 # Lazy import — memory_manager lives in the same directory.
 # Falls back gracefully if not found (e.g. running outside .github/scripts/).
 try:
@@ -82,7 +103,8 @@ _PROVIDERS = [
         "url": "https://api.cerebras.ai/v1/chat/completions",
         "key_env": "CEREBRAS_API_KEY",
         "fmt": "openai",
-        "model": "llama-3.3-70b",
+        # Cerebras retired llama-3.3-70b (404). Live-verified current model; env-overridable.
+        "model": os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b"),
         "rpm_free": 30,
     },
     {
@@ -142,7 +164,8 @@ _PROVIDERS = [
         "key_env": "NVIDIA_AGENTS_API_KEYS",
         "key_env_alt": "NVIDIA_NIM_API_KEY",
         "fmt": "openai",
-        "model": "nvidia/llama-3.1-nemotron-70b-instruct",
+        # nemotron-70b ID retired (404). Live-verified current model; env-overridable.
+        "model": os.environ.get("NVIDIA_MODEL", "deepseek-ai/deepseek-v4-flash"),
         "rpm_free": 40,
     },
     # ── New providers: Grok, Perplexity, GitHub Models (OpenAI) ──────────────
@@ -486,7 +509,7 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
         }
 
     data = json.dumps(body).encode()
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": _UA}
     if provider["fmt"] != "gemini":
         headers["Authorization"] = f"Bearer {key}"
 
@@ -497,7 +520,7 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
     if provider["fmt"] == "gemini":
         return result["candidates"][0]["content"]["parts"][0]["text"].strip()
     else:
-        return result["choices"][0]["message"]["content"].strip()
+        return _extract_openai_content(result)
 
 
 def _call_provider_messages(
@@ -534,7 +557,7 @@ def _call_provider_messages(
             "contents": gemini_contents,
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
-        headers: dict = {"Content-Type": "application/json"}
+        headers: dict = {"Content-Type": "application/json", "User-Agent": _UA}
     else:
         url_with_key = url
         body = {
@@ -545,6 +568,7 @@ def _call_provider_messages(
         }
         headers = {
             "Content-Type": "application/json",
+            "User-Agent": _UA,
             "Authorization": f"Bearer {key}",
         }
 
@@ -555,7 +579,7 @@ def _call_provider_messages(
 
     if provider["fmt"] == "gemini":
         return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    return result["choices"][0]["message"]["content"].strip()
+    return _extract_openai_content(result)
 
 
 def llm_chat(
