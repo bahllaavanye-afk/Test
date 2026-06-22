@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-21T22:38:11.326093+00:00",
+  "last_updated": "2026-06-22T00:21:02.210480+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -733,12 +733,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[modeling_engineer in #ml-research @ 2026-06-09T11:44] I recommend retraining the `LSTM` model by leveraging the Temporal Fusion Transformer (TFT) capabilities, as this will allow us to incorporate relatio",
-    "[investor_pipeline @ 2026-06-09T11:44] I'm actively reviewing and refactoring the existing code to adhere to platform standards, specifically focusing on updating the `InvestorPipeline.js` ",
-    "[algo_agent @ 2026-06-09T11:44] I am currently implementing the UCB1 bandit algorithm to explore a quantitative trading strategy, with my main focus being on initializing the algorit",
-    "[modeling_engineer @ 2026-06-09T11:44] I am actively monitoring the model drift pipeline, triggered by a recommendation to retrain the LSTM model by referencing the `LSTM_model_retraining.i",
-    "[continuous_improver @ 2026-06-09T18:34] constants on backtest/walk_forward.py: tests=pass",
-    "[ml_trainer in #ml-research @ 2026-06-09T19:35] I've checked the status of models in `backend/app/ml/models/`. The last training run result for `LSTM_model_retraining.ipynb` was successful, with a v",
     "[research_scientist in #ml-research @ 2026-06-09T19:35] Based on the observation of model drift in `ARIMA_model_update.pkl`, I recommend incorporating a Seasonal-Trend decomposition and Regression (STAR) co",
     "[modeling_engineer in #ml-research @ 2026-06-09T19:35] I recommend retraining the `LSTM` model by incorporating the Temporal Fusion Transformer (TFT) capabilities in `modeling/LSTM_with_STAR.py`, which is ",
     "[strategy_generator @ 2026-06-09T19:36] [LLM unavailable \u2014 all providers failed]",
@@ -932,7 +926,13 @@
     "[modeling_engineer @ 2026-06-21T17:12] [LLM unavailable \u2014 all providers failed]",
     "[ml_trainer in #ml-research @ 2026-06-21T22:38] As the ML trainer, I report that the current status of models in backend/app/ml/models/ indicates that 'msft_stock_price_model.py' is running on a rec",
     "[research_scientist in #ml-research @ 2026-06-21T22:38] I'd like to suggest incorporating a Seasonal-Trend decomposition (SSM) step, as mentioned in `address_drifting_issue.md`, into the model architecture.",
-    "[modeling_engineer in #ml-research @ 2026-06-21T22:38] Based on the recent discussion about drifting issues, I recommend retraining the existing \"QQQ-MSFT-NVDA\" strategy model in `qqq_stock_price_model.py`"
+    "[modeling_engineer in #ml-research @ 2026-06-21T22:38] Based on the recent discussion about drifting issues, I recommend retraining the existing \"QQQ-MSFT-NVDA\" strategy model in `qqq_stock_price_model.py`",
+    "[continuous_improver @ 2026-06-22T00:21] [LLM unavailable \u2014 all providers failed]",
+    "[signal_runner @ 2026-06-22T00:21] [LLM unavailable \u2014 all providers failed]",
+    "[quick_backtest @ 2026-06-22T00:21] [LLM unavailable \u2014 all providers failed]",
+    "[peer_reviewer @ 2026-06-22T00:21] [LLM unavailable \u2014 all providers failed]",
+    "[frontend_design @ 2026-06-22T00:21] [LLM unavailable \u2014 all providers failed]",
+    "[token_monitor @ 2026-06-22T00:21] [LLM unavailable \u2014 all providers failed]"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
