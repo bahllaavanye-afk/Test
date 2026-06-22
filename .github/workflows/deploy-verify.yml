@@ -1,0 +1,72 @@
+name: Deploy Verify — live app is the real API (drift guard)
+
+# Catches the failure that hid for a month: a stub / wrong app deployed instead of
+# this repo (the "blank pages" root cause). Runs the HTTP smoke check
+# (scripts/verify_live.py) on push to main, every 6h, and on demand, and alerts
+# #infra-alerts when the live backend is NOT serving the real ~200-route API.
+#
+# Non-blocking for now (backend is pre-launch). After go-live, flip the final step
+# to `exit 1` to make drift a hard, red signal.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-verify
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify live deployment is the real app
+        id: verify
+        run: |
+          set +e
+          python scripts/verify_live.py | tee /tmp/verify.txt
+          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Alert Slack on drift
+        if: steps.verify.outputs.rc != '0'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          [ -z "${SLACK_BOT_TOKEN:-}" ] && { echo "no SLACK_BOT_TOKEN — skipping alert"; exit 0; }
+          python3 - <<'PY'
+          import os, json, urllib.request
+          tok = os.environ["SLACK_BOT_TOKEN"]
+          tail = ""
+          try:
+              tail = open("/tmp/verify.txt").read()[-500:]
+          except Exception:
+              pass
+          text = ":rotating_light: *Deploy drift* — the live backend is NOT serving the real QuantEdge API.\n```" + tail + "```"
+          body = json.dumps({"channel": "#infra-alerts", "text": text}).encode()
+          req = urllib.request.Request("https://slack.com/api/chat.postMessage", data=body,
+                headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
+          try:
+              urllib.request.urlopen(req, timeout=10)
+          except Exception as e:
+              print("slack post failed:", e)
+          PY
+      - name: Summary
+        run: |
+          if [ "${{ steps.verify.outputs.rc }}" = "0" ]; then
+            echo "✅ Live backend serves the real app."
+          else
+            echo "::warning::Live backend is NOT the real app — see scripts/verify_live.py output above. (Pre-launch: non-blocking.)"
+          fi
