@@ -2,11 +2,27 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, Callable
 
 from app.utils.logging import logger
 
 
-async def run_holistic_review(db_session_factory=None) -> None:
+def _validate_callable(name: str, value: Any) -> None:
+    if not callable(value):
+        raise ValueError(f"'{name}' must be a callable returning an async session, got {type(value).__name__}")
+
+
+def _validate_str(name: str, value: Any) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"'{name}' must be a string, got {type(value).__name__}")
+
+
+def _validate_dict(name: str, value: Any) -> None:
+    if not isinstance(value, dict):
+        raise ValueError(f"'{name}' must be a dict, got {type(value).__name__}")
+
+
+async def run_holistic_review(db_session_factory: Callable[[], Any] | None = None) -> None:
     """Review all active strategy promotions and fire Slack alerts for promotion-ready ones."""
     from sqlalchemy import select
 
@@ -15,6 +31,9 @@ async def run_holistic_review(db_session_factory=None) -> None:
 
     if db_session_factory is None:
         from app.database import AsyncSessionLocal as db_session_factory
+
+    # Validate that the provided factory is callable
+    _validate_callable("db_session_factory", db_session_factory)
 
     try:
         # Collect Slack payloads here; notifications fired AFTER commit to prevent
@@ -71,14 +90,24 @@ async def run_holistic_review(db_session_factory=None) -> None:
                 session.add(p)
 
             await session.commit()
-            logger.info("Holistic review complete", reviewed=len(promotions), promotion_ready=promoted_count)
+            logger.info(
+                "Holistic review complete",
+                reviewed=len(promotions),
+                promotion_ready=promoted_count,
+            )
 
         # Fire Slack notifications outside the session; failures don't affect DB state
         for strategy_name, current_stage, metrics, transition in pending_notifications:
             try:
-                await _notify_promotion_ready_simple(strategy_name, current_stage, metrics, transition)
+                await _notify_promotion_ready_simple(
+                    strategy_name, current_stage, metrics, transition
+                )
             except Exception as notify_err:
-                logger.warning("Slack notification failed", error=str(notify_err), strategy=strategy_name)
+                logger.warning(
+                    "Slack notification failed",
+                    error=str(notify_err),
+                    strategy=strategy_name,
+                )
 
     except Exception as e:
         logger.error("Holistic review failed", error=str(e))
@@ -93,15 +122,24 @@ def _get_stage_metrics(promotion) -> dict:
     stage = promotion.current_stage
     if stage == "paper":
         return dict(promotion.paper_metrics or {})
-    elif stage == "shadow":
+    if stage == "shadow":
         return dict(promotion.shadow_metrics or {})
-    elif stage == "staging":
+    if stage == "staging":
         return dict(promotion.staging_metrics or {})
     return {}
 
 
 async def _notify_promotion_ready(promotion, metrics: dict, transition: str) -> None:
     """Kept for backward compatibility with the manual /review endpoint."""
+    if promotion is None:
+        raise ValueError("'promotion' must not be None")
+    if not hasattr(promotion, "strategy_name"):
+        raise ValueError("'promotion' must have attribute 'strategy_name'")
+    if not hasattr(promotion, "current_stage"):
+        raise ValueError("'promotion' must have attribute 'current_stage'")
+    _validate_dict("metrics", metrics)
+    _validate_str("transition", transition)
+
     await _notify_promotion_ready_simple(
         promotion.strategy_name, promotion.current_stage, metrics, transition
     )
@@ -110,10 +148,21 @@ async def _notify_promotion_ready(promotion, metrics: dict, transition: str) -> 
 async def _notify_promotion_ready_simple(
     strategy_name: str, current_stage: str, metrics: dict, transition: str
 ) -> None:
+    """Send a Slack notification for a promotion-ready strategy."""
+    _validate_str("strategy_name", strategy_name)
+    _validate_str("current_stage", current_stage)
+    _validate_dict("metrics", metrics)
+    _validate_str("transition", transition)
+
     from app.notifications.slack import slack
+
     next_stage = transition.split("_to_")[1]
     sharpe_val = metrics.get("sharpe", 0)
-    sharpe_str = f"{sharpe_val:.2f}" if isinstance(sharpe_val, (int, float)) else str(sharpe_val)
+    sharpe_str = (
+        f"{sharpe_val:.2f}"
+        if isinstance(sharpe_val, (int, float))
+        else str(sharpe_val)
+    )
     msg = (
         f":rocket: *Strategy Promotion Ready*\n"
         f"Strategy `{strategy_name}` has passed all criteria "
