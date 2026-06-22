@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSelector, useDispatch } from 'react-redux'
 import AppShell from './components/layout/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { BackendHealthBanner } from './components/BackendHealthBanner'
 // Public pages — eagerly loaded (smallest possible initial bundle)
 import Login from './pages/Login'
 import Landing from './pages/Landing'
@@ -98,6 +99,7 @@ function SessionExpiryHandler() {
 export default function App() {
   return (
     <ErrorBoundary>
+    <BackendHealthBanner />
     <Suspense fallback={<PageLoader />}>
       <SessionExpiryHandler />
       <DemoAutoLogin />
