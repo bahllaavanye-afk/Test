@@ -52,6 +52,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _extract_openai_content(result: dict) -> str:
+    """Pull assistant text from an OpenAI-style chat completion, reasoning-safe.
+
+    Reasoning models (e.g. Cerebras gpt-oss, DeepSeek-R1) may return
+    ``message.content = None`` and put the answer under ``reasoning_content``
+    or ``reasoning``. The old code did ``["content"].strip()`` and died with a
+    ``'content'`` KeyError / ``NoneType.strip`` — silently dropping a whole
+    free provider. This falls back through the reasoning fields and only fails
+    when there is genuinely no text anywhere.
+    """
+    msg = result["choices"][0]["message"]
+    text = msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning")
+    if not text or not str(text).strip():
+        raise ValueError("empty assistant content")
+    return str(text).strip()
+
+
 # Lazy import — memory_manager lives in the same directory.
 # Falls back gracefully if not found (e.g. running outside .github/scripts/).
 try:
@@ -404,7 +422,7 @@ def _call_openrouter(system: str, prompt: str, max_tokens: int, temperature: flo
         try:
             with urllib.request.urlopen(req, timeout=45) as resp:
                 result = json.loads(resp.read())
-            text = result["choices"][0]["message"]["content"].strip()
+            text = _extract_openai_content(result)
             _record_metric(f"openrouter:{model}", True, int((time.time() - t0) * 1000))
             return text
         except Exception as exc:  # noqa: BLE001 — fall through to the next model
@@ -668,7 +686,7 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
                 result = json.loads(resp.read())
             if provider["fmt"] == "gemini":
                 return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-            return result["choices"][0]["message"]["content"].strip()
+            return _extract_openai_content(result)
         except Exception as exc:  # noqa: BLE001 — try the next key on any failure
             last_exc = exc
     raise last_exc if last_exc else RuntimeError(f"{provider['name']}: all keys failed")
@@ -736,7 +754,7 @@ def _call_provider_messages(
                 result = json.loads(resp.read())
             if provider["fmt"] == "gemini":
                 return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-            return result["choices"][0]["message"]["content"].strip()
+            return _extract_openai_content(result)
         except Exception as exc:  # noqa: BLE001 — try the next key on any failure
             last_exc = exc
     raise last_exc if last_exc else RuntimeError(f"{provider['name']}: all keys failed")
