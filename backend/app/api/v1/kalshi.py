@@ -22,6 +22,8 @@ async def list_events(
     current_user: User = Depends(get_current_user),
 ):
     """List open Kalshi prediction events."""
+    if limit < 1 or limit > 1000:
+        raise ValueError("limit must be between 1 and 1000")
     loop = asyncio.get_running_loop()
     try:
         events = await loop.run_in_executor(None, lambda: _client().get_events(limit=limit))
@@ -36,6 +38,8 @@ async def get_market(
     current_user: User = Depends(get_current_user),
 ):
     """Return single Kalshi market detail."""
+    if not ticker or not ticker.strip():
+        raise ValueError("ticker must be a non-empty string")
     loop = asyncio.get_running_loop()
     try:
         market = await loop.run_in_executor(None, lambda: _client().get_market(ticker))
