@@ -26,6 +26,10 @@ class KalshiPublicClient:
 
     def get_events(self, status: str = "open", limit: int = 25) -> list[dict]:
         """Return open prediction events."""
+        if not isinstance(status, str):
+            raise ValueError("Status must be a string")
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError("Limit must be a positive integer")
         data = self._get("/events", {"status": status, "limit": str(limit)})
         if isinstance(data, dict):
             return data.get("events", []) or []
@@ -33,6 +37,8 @@ class KalshiPublicClient:
 
     def get_markets(self, event_ticker: str) -> list[dict]:
         """Return markets for a specific event."""
+        if not isinstance(event_ticker, str):
+            raise ValueError("Event ticker must be a string")
         data = self._get("/markets", {"event_ticker": event_ticker})
         if isinstance(data, dict):
             return data.get("markets", []) or []
@@ -40,6 +46,8 @@ class KalshiPublicClient:
 
     def get_market(self, ticker: str) -> dict:
         """Return a single market's detail."""
+        if not isinstance(ticker, str):
+            raise ValueError("Ticker must be a string")
         data = self._get(f"/markets/{ticker}")
         if isinstance(data, dict):
             return data.get("market", data)
