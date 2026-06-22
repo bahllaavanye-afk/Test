@@ -89,7 +89,18 @@ class HRPOptimizer:
         Returns:
             pd.Series of portfolio weights summing to 1.0, indexed by symbol.
             Falls back to equal weights if data is insufficient or degenerate.
+
+        Raises:
+            ValueError: If `returns` is not a pandas DataFrame or is empty.
         """
+        # Input validation
+        if not isinstance(returns, pd.DataFrame):
+            raise ValueError("`returns` must be a pandas DataFrame.")
+        if returns.empty:
+            raise ValueError("`returns` DataFrame is empty.")
+        if returns.shape[1] == 0:
+            raise ValueError("`returns` DataFrame must contain at least one asset column.")
+
         symbols = list(returns.columns)
         n = len(symbols)
 
