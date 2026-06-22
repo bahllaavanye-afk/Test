@@ -862,6 +862,13 @@ class BotEngine:
                     symbol=bot.symbol,
                     legs=[lg.model_dump() for lg in legs],
                 )
+                # Paper-first: only a genuinely live TradeStation account routes a
+                # real multi-leg order; everything else stays an actionable alert.
+                routed_id = await self._route_option_spread(bot, legs, db)
+                if routed_id:
+                    orders_created.append(routed_id)
+                    signal = "buy"
+                    reason = f"Options spread ROUTED to TradeStation: {plan}"
             else:
                 reason = f"Options spread on {bot.symbol}: no legs configured"
                 logger.warning(
@@ -884,6 +891,71 @@ class BotEngine:
         )
         await self._update_bot_stats(bot, db, result)
         return result
+
+    async def _route_option_spread(self, bot: Bot, legs: list, db: AsyncSession) -> str | None:
+        """Place a real multi-leg order — ONLY for a live TradeStation account.
+
+        Paper-first is absolute: returns None (→ stays an alert) unless the bot's
+        account is ``mode == "live"`` AND ``broker == "tradestation"`` with creds.
+        Delta-based legs need an option-chain lookup to resolve strikes, which
+        can't be validated without live TS data, so only explicit-strike legs are
+        routed today; delta legs fall back to alert. Never raises.
+        """
+        try:
+            if not bot.account_id:
+                return None
+            from app.models.account import Account
+
+            account = (
+                await db.execute(select(Account).where(Account.id == bot.account_id))
+            ).scalar_one_or_none()
+            if account is None or account.mode != "live" or account.broker != "tradestation":
+                return None  # paper / non-TS account → never routes a live order
+
+            if any(lg.strike is None for lg in legs):
+                logger.info(
+                    "Options spread not routed — delta legs need chain resolution (not yet wired)",
+                    bot_id=bot.id,
+                )
+                return None
+
+            from datetime import date, timedelta
+            from app.brokers.tradestation import TradeStationBroker
+            from app.utils.security import decrypt_secret
+
+            client_id = decrypt_secret(account.encrypted_key) if account.encrypted_key else ""
+            client_secret = decrypt_secret(account.encrypted_secret) if account.encrypted_secret else ""
+            ts_account = (account.extra_config or {}).get("tradestation_account_id", "")
+            if not (client_id and client_secret and ts_account):
+                logger.warning("Live TS account missing creds — cannot route spread", bot_id=bot.id)
+                return None
+
+            broker = TradeStationBroker(client_id, client_secret, ts_account, paper=False)
+            broker_legs = [
+                {
+                    "symbol": TradeStationBroker.build_option_symbol(
+                        bot.symbol, date.today() + timedelta(days=lg.dte), lg.strike, lg.option_type
+                    ),
+                    "side": lg.side,
+                    "ratio": lg.ratio,
+                }
+                for lg in legs
+            ]
+            res = await broker.place_option_order(broker_legs, quantity=1, order_type="market")
+            logger.info(
+                "Options spread routed to TradeStation",
+                bot_id=bot.id,
+                order_id=res.broker_order_id,
+                legs=len(broker_legs),
+            )
+            return res.broker_order_id
+        except Exception as exc:  # never let routing break the engine — degrade to alert
+            logger.warning(
+                "Options spread routing failed — staying alert-only",
+                bot_id=bot.id,
+                error=str(exc),
+            )
+            return None
 
     async def _create_paper_order(
         self,
