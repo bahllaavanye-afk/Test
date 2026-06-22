@@ -840,6 +840,33 @@ class BotEngine:
         elif action.type == "reduce_position":
             signal = "sell"
             reason = f"Reduce position by {action.reduce_by_pct}%"
+        elif action.type == "open_option_spread":
+            # Multi-leg options. Emitted as an actionable alert: the options
+            # desk / TradeStation routing consumes the leg plan. Never crashes
+            # if legs are malformed — degrades to a plain alert.
+            legs = action.legs or []
+            signal = "alert"
+            if legs:
+                plan = ", ".join(
+                    f"{lg.side} {lg.option_type}"
+                    + (f" {lg.delta:g}Δ" if lg.delta is not None else "")
+                    + (f" @{lg.strike:g}" if lg.strike is not None else "")
+                    + f" {lg.dte}DTE x{lg.ratio}"
+                    for lg in legs
+                )
+                reason = f"Options spread on {bot.symbol}: {plan}"
+                logger.info(
+                    "Bot options spread",
+                    bot_id=bot.id,
+                    bot_name=bot.name,
+                    symbol=bot.symbol,
+                    legs=[lg.model_dump() for lg in legs],
+                )
+            else:
+                reason = f"Options spread on {bot.symbol}: no legs configured"
+                logger.warning(
+                    "Bot options spread missing legs", bot_id=bot.id, bot_name=bot.name
+                )
         else:
             signal = "hold"
             reason = f"Unknown action: {action.type}"

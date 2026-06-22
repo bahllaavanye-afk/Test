@@ -94,3 +94,38 @@ def test_call_provider_raises_when_no_key(monkeypatch):
         assert False, "expected KeyError"
     except KeyError:
         pass
+
+
+# --- Reasoning-model content extraction -------------------------------------- #
+# Regression: Cerebras gpt-oss / DeepSeek-R1 return message.content=None and put
+# the answer under reasoning_content/reasoning. The old ["content"].strip() died
+# with a 'content' KeyError, silently dropping a whole free provider.
+def test_extract_content_plain():
+    assert L._extract_openai_content({"choices": [{"message": {"content": "hi"}}]}) == "hi"
+
+
+def test_extract_content_falls_back_to_reasoning_content():
+    payload = {"choices": [{"message": {"content": None, "reasoning_content": "answer"}}]}
+    assert L._extract_openai_content(payload) == "answer"
+
+
+def test_extract_content_falls_back_to_reasoning():
+    payload = {"choices": [{"message": {"reasoning": "thought"}}]}
+    assert L._extract_openai_content(payload) == "thought"
+
+
+def test_extract_content_empty_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        L._extract_openai_content({"choices": [{"message": {"content": "  "}}]})
+
+
+def test_call_provider_handles_reasoning_model(monkeypatch):
+    """Full path: a reasoning model (content=None) must not be dropped."""
+    monkeypatch.setenv("TEST_LLM_KEY", "k1")
+
+    def fake_urlopen(req, timeout=30):
+        return _FakeResp({"choices": [{"message": {"content": None, "reasoning_content": "RM"}}]})
+
+    monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
+    assert L._call_provider(_PROVIDER, "sys", "hi", 16, 0.0) == "RM"
