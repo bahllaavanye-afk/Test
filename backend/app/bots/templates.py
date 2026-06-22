@@ -437,4 +437,94 @@ BOT_TEMPLATES: dict[str, dict] = {
         "action": {"type": "open_long", "size_pct": 20},
         "exit_rules": [],
     },
+    # --- Options-market-type templates (structured multi-leg spreads) --------
+    # These carry market_type="options" + a structured leg plan that the engine
+    # turns into an actionable spread alert and the TradeStation options router
+    # can execute (build_option_order_body).
+    "opt_bull_put_spread": {
+        "name": "Options — Bull Put Credit Spread (defined risk)",
+        "description": "Sell a 0.25Δ put, buy a 0.15Δ put below it for downside protection. Uptrend, ~30 DTE, take profit at 50%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "price_vs_ma", "ma_period": 50, "operator": ">"},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 45},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 3,
+            "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.25, "dte": 30, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.15, "dte": 30, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}],
+    },
+    "opt_iron_condor": {
+        "name": "Options — Iron Condor (neutral theta)",
+        "description": "Sell a 16Δ call spread and 16Δ put spread for range-bound, low-IV theta income. Defined risk, ~30 DTE.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 40},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": "<", "value": 60},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 3,
+            "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.16, "dte": 30, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.08, "dte": 30, "ratio": 1},
+                {"side": "sell", "option_type": "call", "delta": 0.16, "dte": 30, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.08, "dte": 30, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}],
+    },
+    "opt_covered_call": {
+        "name": "Options — Covered Call Income (the Wheel)",
+        "description": "Sell a 0.30Δ call against held stock for weekly premium. ~30 DTE, roll or take profit at 50%.",
+        "symbol": "QQQ",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 45},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 5,
+            "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.30, "dte": 30, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}],
+    },
+    "opt_long_straddle_gamma": {
+        "name": "Options — Long Straddle (gamma / event)",
+        "description": "Buy an ATM call + ATM put to be long gamma into an expected volatility expansion (earnings, macro). ~21 DTE.",
+        "symbol": "QQQ",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2,
+            "legs": [
+                {"side": "buy", "option_type": "call", "delta": 0.50, "dte": 21, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.50, "dte": 21, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 240}],
+    },
 }

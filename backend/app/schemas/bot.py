@@ -39,14 +39,32 @@ class ConditionConfig(BaseModel):
     multiplier: float | None = None
 
 
+class OptionLeg(BaseModel):
+    """One leg of a multi-leg options order (spread, condor, straddle, ...)."""
+    side: Literal["buy", "sell"]
+    option_type: Literal["call", "put"]
+    delta: float | None = None        # target delta for strike selection (0-1)
+    strike: float | None = None       # explicit strike (overrides delta if set)
+    dte: int = 30                     # days to expiration target
+    ratio: int = 1                    # contracts per 1x of the spread
+
+
 class ActionConfig(BaseModel):
-    type: Literal["open_long", "open_short", "close_position", "send_alert", "reduce_position"]
+    type: Literal[
+        "open_long",
+        "open_short",
+        "close_position",
+        "send_alert",
+        "reduce_position",
+        "open_option_spread",
+    ]
     size_pct: float = 5.0
     stop_loss_pct: float | None = None
     take_profit_pct: float | None = None
     trailing_stop_pct: float | None = None
     alert_message: str | None = None
     reduce_by_pct: float | None = None
+    legs: list[OptionLeg] | None = None   # required for open_option_spread
 
 
 class ExitRuleConfig(BaseModel):
