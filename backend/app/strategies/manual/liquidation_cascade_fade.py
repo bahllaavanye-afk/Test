@@ -97,65 +97,57 @@ class LiquidationCascadeFadeStrategy(AbstractStrategy):
         Long entry on the bar AFTER the detected cascade day.
         Exit after 1 additional bar (single-day mean reversion).
         """
-        required_cols = {"open", "high", "low", "close", "volume"}
-        min_bars = self.BT_ATR_PERIOD + 5
-        false_series = pd.Series(False, index=df.index, dtype=bool)
+        required_cols = {"o", "h", "l", "c", "v"}
+        missing = required_cols - set(df.columns.str.lower())
+        if missing:
+            raise ValueError(f"Missing required columns for backtest: {missing}")
 
-        if not required_cols.issubset(df.columns) or len(df) < min_bars:
-            return BacktestSignals(
-                entries=false_series,
-                exits=false_series,
-                short_entries=false_series,
-                short_exits=false_series,
-            )
+        # Rename columns to lowercase for consistency
+        df = df.rename(columns=lambda x: x.strip().lower())
 
-        open_  = df["open"].astype(float)
-        high   = df["high"].astype(float)
-        low    = df["low"].astype(float)
-        close  = df["close"].astype(float)
-        volume = df["volume"].astype(float)
-
-        # ATR (Wilder / simple daily true range)
-        prev_close = close.shift(1)
+        # Compute ATR_20
         tr = pd.concat([
-            high - low,
-            (high - prev_close).abs(),
-            (low  - prev_close).abs(),
+            df["h"] - df["l"],
+            (df["h"] - df["c"].shift()).abs(),
+            (df["l"] - df["c"].shift()).abs()
         ], axis=1).max(axis=1)
-        atr20 = tr.rolling(self.BT_ATR_PERIOD, min_periods=self.BT_ATR_PERIOD // 2).mean()
+        atr = tr.rolling(self.BT_ATR_PERIOD).mean()
 
-        # Daily range ratio
-        range_ratio = (high - low) / close.clip(lower=1e-8)
+        # Rolling volume average
+        vol_ma = df["v"].rolling(self.BT_VOL_PERIOD).mean()
 
-        # Rolling average volume
-        avg_vol20 = volume.rolling(self.BT_VOL_PERIOD, min_periods=self.BT_VOL_PERIOD // 2).mean()
+        # Range ratio
+        range_ratio = (df["h"] - df["l"]) / df["c"]
 
-        # Liquidation proxy flags (computed on same bar, before shift)
-        range_spike   = range_ratio > self.BT_ATR_MULT * atr20 / close.clip(lower=1e-8)
-        volume_spike  = volume > self.BT_VOL_MULT * avg_vol20
-        bearish_close = close < open_
-
-        # Bullish liquidation event (long cascade): large range, volume spike, bearish day
-        long_cascade_raw  = range_spike & volume_spike & bearish_close
-
-        # Bullish liquidation event (short cascade): same range/vol criteria, but bullish day
-        short_cascade_raw = range_spike & volume_spike & ~bearish_close
-
-        # shift(1) — signals are generated on the bar AFTER detection
-        long_cascade  = long_cascade_raw.shift(1).fillna(False)
-        short_cascade = short_cascade_raw.shift(1).fillna(False)
-
-        # Entry: day after cascade detected
-        entries       = long_cascade.astype(bool)
-        short_entries = short_cascade.astype(bool)
-
-        # Exit after 1 bar: shift entries by 1 more bar
-        exits       = long_cascade.shift(1).fillna(False).astype(bool)
-        short_exits = short_cascade.shift(1).fillna(False).astype(bool)
-
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
+        # Detect cascade day (long liquidation)
+        cascade_long = (
+            (range_ratio > self.BT_ATR_MULT * atr) &
+            (df["v"] > self.BT_VOL_MULT * vol_ma) &
+            (df["c"] < df["o"])
         )
+
+        # Detect cascade day (short liquidation) # MUTATION: add short-side detection for opposite cascades
+        cascade_short = (
+            (range_ratio > self.BT_ATR_MULT * atr) &
+            (df["v"] > self.BT_VOL_MULT * vol_ma) &
+            (df["c"] > df["o"])
+        )
+
+        # Shift to avoid lookahead bias
+        cascade_long = cascade_long.shift(1).fillna(False)
+        cascade_short = cascade_short.shift(1).fillna(False)
+
+        # Entry signals
+        long_entry = cascade_long
+        short_entry = cascade_short
+
+        # Exit signals (after one bar)
+        exit_signal = long_entry.shift(1).fillna(False) | short_entry.shift(1).fillna(False)
+
+        signals = pd.DataFrame({
+            "long_entry": long_entry,
+            "short_entry": short_entry,
+            "exit": exit_signal
+        })
+
+        return BacktestSignals(signals)
