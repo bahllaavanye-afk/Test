@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-22T18:37:45.551807+00:00",
+  "checked_at": "2026-06-22T23:56:49.265191+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
@@ -7,44 +7,44 @@
   "skill_count": 90,
   "agent_statuses": [
     {
-      "agent": "continuous_improver",
-      "emoji": "\ud83d\udd27",
-      "reply": "I am currently reviewing the `signals.py` file to further improve the `signal_runner` function, building on the enhancements I made earlier as noted in the `.github/state/agent_memo`.",
+      "agent": "investor_pipeline",
+      "emoji": "\ud83d\udcbc",
+      "reply": "We need to respond as investor_pipeline agent. Must be first person, concise, 2 sentences max. One sentence status update. Mention active work. Likely investigating LLM unavailability issues. Also track investor pipeline stage auto-advancement. Provide file path maybe. Should be one sentence. Could be: \"I'm currently monitoring and troubleshooting the LLM unavailability alerts in `backend/llm_monitor.py` to ensure the investor pipeline auto\u2011advancement logic runs without interruption.\"",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "signal_runner",
-      "emoji": "\ud83d\udce1",
-      "reply": "We need to respond as signal_runner agent. One sentence status update. Must be first person, concise, 2 sentences max (so one sentence okay). Mention what actively working on right now. Probably investigating LLM unavailability and testing signal_runner function. Provide file paths. Should be one sentence. Let's craft: \"I'm currently debugging the updated `signal_runner` in `backend/signals.py` and running the test suite (`backend/tests/test_signal_runner.py`) to ensure the new",
+      "agent": "run_experiments",
+      "emoji": "\ud83d\udd2c",
+      "reply": "We need to respond as the run_experiments agent. Must be first person, concise (2 sentences max). One-sentence status update. Should mention what we are actively working on right now. Probably testing signal_runner improvements, running pytest. Provide reference to file paths. Let's craft: \"I'm currently running pytest on the updated signal_runner in backend/signals.py to verify its behavior before scheduling any new experiment runs.\" That's one sentence. Could also mention saving results. Provide file path",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "quick_backtest",
-      "emoji": "\u26a1",
-      "reply": "I\u2019m currently running the full pytest suite (backend/tests/) to validate the recent `signal_runner` improvements in `backend/signals.py` and ensure the Sharpe\u2011ranking backtest pipeline remains stable.",
+      "agent": "algo_agent",
+      "emoji": "\ud83c\udfb0",
+      "reply": "I\u2019m currently executing the UCB1 bandit loop (updating stats in `backend/bandit/ucb1.py`) to",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "peer_reviewer",
-      "emoji": "\ud83d\udc41\ufe0f",
-      "reply": "I\u2019m currently running the full test suite (pytest) on the updated `backend/signals.py`\u202f\u2192\u202f`signal_runner` implementation to verify its correctness and",
+      "agent": "self_improver",
+      "emoji": "\ud83d\udd04",
+      "reply": "We need to respond as self_improver agent, one sentence status update, first person, concise, 2 sentences max. Should mention active work: likely investigating LLM unavailability issues and running pytest after signal_runner improvement. Provide file paths. One sentence. Let's craft: \"I am currently debugging the recent LLM unavailability errors affecting the signal_runner pipeline (see backend/signals.py) and running the full pytest suite (backend/tests/) to ensure no regressions.\" That's",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "frontend_design",
-      "emoji": "\ud83c\udfa8",
-      "reply": "We need to produce a one-sentence status update: what are we actively working on right now. As a frontend_design agent, we are improving React/TS UI in Bloomberg dark theme. Probably working on updating component styles. Must be concise, one sentence. Should reference real file paths? The instruction says be specific, first person, concise (2 sentences max). One sentence fine. Could mention file paths like src/components/Header.tsx etc. Provide status.",
+      "agent": "research_scientist",
+      "emoji": "\ud83d\udd2d",
+      "reply": "I\u2019m currently reviewing the latest \u201cDeep Factor Timing\u201d paper and drafting a prototype alpha\u2011generation script (see\u202fbackend/research/alpha_prototypes.py",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "token_monitor",
-      "emoji": "\ud83d\udcb0",
-      "reply": "I'm currently monitoring API usage patterns in QuantEdge, tracking token consumption across all agents to identify optimization opportunities for reducing costs and preventing provider failures.",
+      "agent": "modeling_engineer",
+      "emoji": "\u2699\ufe0f",
+      "reply": "I'm actively monitoring model drift detection for the QuantEdge signals pipeline, specifically tracking feature distribution shifts in the `signals.py` module to trigger retraining when drift exceeds 3 standard deviations.",
       "runs": 0,
       "successes": 0
     }
