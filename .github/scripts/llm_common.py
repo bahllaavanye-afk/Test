@@ -486,18 +486,44 @@ def _provider_key(provider: dict) -> str:
     return key
 
 
+def _provider_all_keys(provider: dict) -> list[str]:
+    """Every usable key for a provider (primary + numbered + alt), rotation-ordered.
+
+    Returns ALL provisioned keys so `_call_provider` can fall through to the next
+    on a per-key failure (429/forbidden) *within a single call* — not just across
+    calls. The list is rotated by the same per-base offset as `_resolve_env_key`
+    so concurrent runs don't all hammer key 0 first.
+    """
+    keys = _all_env_keys(provider["key_env"])
+    alt = provider.get("key_env_alt", "")
+    if alt:
+        for k in _all_env_keys(alt):
+            if k not in keys:
+                keys.append(k)
+    if not keys:
+        raise KeyError(f"No API key for provider {provider['name']}")
+    if len(keys) > 1:
+        base = provider["key_env"]
+        with _KEY_ROTATION_LOCK:
+            i = _KEY_ROTATION_IDX.get(base)
+            if i is None:
+                i = random.randrange(len(keys))
+            _KEY_ROTATION_IDX[base] = (i + 1) % len(keys)
+        i %= len(keys)
+        keys = keys[i:] + keys[:i]
+    return keys
+
+
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
-    key = _provider_key(provider)
+    keys = _provider_all_keys(provider)
     url = provider["url"]
 
     if provider["fmt"] == "gemini":
-        url_with_key = f"{url}?key={key}"
         body = {
             "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{prompt}"}]}],
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
     else:
-        url_with_key = url
         body = {
             "model": provider.get("model", "llama-3.3-70b-versatile"),
             "messages": [
@@ -507,20 +533,32 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-
     data = json.dumps(body).encode()
-    headers = {"Content-Type": "application/json", "User-Agent": _UA}
-    if provider["fmt"] != "gemini":
-        headers["Authorization"] = f"Bearer {key}"
 
-    req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        result = json.loads(resp.read())
-
-    if provider["fmt"] == "gemini":
-        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    else:
-        return _extract_openai_content(result)
+    # In-call fallthrough: a rate-limited/forbidden key falls through to the next,
+    # so a single call survives a per-key 429 instead of failing the whole request.
+    last_exc: Exception | None = None
+    for key in keys:
+        if provider["fmt"] == "gemini":
+            url_with_key = f"{url}?key={key}"
+            headers = {"Content-Type": "application/json", "User-Agent": _UA}
+        else:
+            url_with_key = url
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": _UA,
+                "Authorization": f"Bearer {key}",
+            }
+        req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read())
+            if provider["fmt"] == "gemini":
+                return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+            return _extract_openai_content(result)
+        except Exception as exc:  # noqa: BLE001 — try the next key on any failure
+            last_exc = exc
+    raise last_exc if last_exc else RuntimeError(f"{provider['name']}: all keys failed")
 
 
 def _call_provider_messages(
