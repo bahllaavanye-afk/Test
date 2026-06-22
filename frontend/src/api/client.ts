@@ -26,10 +26,17 @@ api.interceptors.request.use((config) => {
 let _refreshing: Promise<string> | null = null
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // Any successful response means the backend is reachable.
+    window.dispatchEvent(new Event('backendUp'))
+    return res
+  },
   async (err) => {
+    // No response object = network error / timeout / DNS = backend unreachable
+    // (distinct from an HTTP error, which means the backend answered).
+    if (!err.response) window.dispatchEvent(new Event('backendDown'))
     const original = err.config
-    if (err.response?.status === 401 && !original._retry) {
+    if (err.response?.status === 401 && original && !original._retry) {
       original._retry = true
       const refreshToken = getStoredRefreshToken()
       if (refreshToken && !_refreshing) {
