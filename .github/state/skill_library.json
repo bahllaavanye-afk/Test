@@ -80,8 +80,13 @@
     "Based on the recent agent learnings, the most important actionable knowledge is:",
     "* **Performance Estimation**: Backtests (quick_backtest) for the \"QQQ-MSFT-NVDA\" strategy are recommended using historical data from Jan-Apr 2023 to estimate its Sharpe ratio.",
     "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "* **Address drifting issue:** Explore adding a Seasonal-Trend decomposition (SSM) step after the Time Series model to address the drifting issue."
+    "* **Address drifting issue:** Explore adding a Seasonal-Trend decomposition (SSM) step after the Time Series model to address the drifting issue.",
+    "validation on risk/hrp.py: success \u2014 tests green",
+    "validation on brokers/kalshi.py: success \u2014 tests green",
+    "validation on backtest/cpcv.py: success \u2014 tests green",
+    "validation on tasks/holistic_review.py: success \u2014 tests green",
+    "validation on api/v1/kalshi.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-21T11:58:34.970571+00:00",
+  "last_updated": "2026-06-22T16:19:53.189820+00:00",
   "total": 81
 }
