@@ -850,7 +850,7 @@ class BotEngine:
                 plan = ", ".join(
                     f"{lg.side} {lg.option_type}"
                     + (f" {lg.delta:g}Δ" if lg.delta is not None else "")
-                    + (f" {lg.strike:g}K" if lg.strike is not None else "")
+                    + (f" @{lg.strike:g}" if lg.strike is not None else "")
                     + f" {lg.dte}DTE x{lg.ratio}"
                     for lg in legs
                 )

@@ -222,7 +222,7 @@ class TradeStationBroker(AbstractBroker):
         params: dict = {}
         if expiration is not None:
             params["expiration"] = expiration.strftime("%m-%d-%Y")
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{self.base_url}/marketdata/options/chains/{underlying.upper()}",
                 params=params,
@@ -245,7 +245,7 @@ class TradeStationBroker(AbstractBroker):
         body = self.build_option_order_body(
             self.account_id, legs, quantity, order_type, limit_price, opening=opening
         )
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers()
             )
