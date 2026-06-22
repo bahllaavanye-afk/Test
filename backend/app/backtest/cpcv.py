@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from typing import Iterable, List
 
 
 class CPCV:
@@ -44,12 +45,12 @@ class CPCV:
         purge_days: int = 5,
         embargo_days: int = 2,
     ):
-        if n_splits < 2:
-            raise ValueError(f"n_splits must be >= 2, got {n_splits}")
-        if purge_days < 0:
-            raise ValueError(f"purge_days must be >= 0, got {purge_days}")
-        if embargo_days < 0:
-            raise ValueError(f"embargo_days must be >= 0, got {embargo_days}")
+        if not isinstance(n_splits, int) or n_splits < 2:
+            raise ValueError(f"n_splits must be an integer >= 2, got {n_splits}")
+        if not isinstance(purge_days, int) or purge_days < 0:
+            raise ValueError(f"purge_days must be a non‑negative integer, got {purge_days}")
+        if not isinstance(embargo_days, int) or embargo_days < 0:
+            raise ValueError(f"embargo_days must be a non‑negative integer, got {embargo_days}")
         self.n_splits = n_splits
         self.purge_days = purge_days
         self.embargo_days = embargo_days
@@ -62,7 +63,15 @@ class CPCV:
         Bars within purge_days of test_start or embargo_days of test_end
         are excluded from the training set.
         """
+        if not isinstance(index, pd.DatetimeIndex):
+            raise ValueError("index must be a pandas.DatetimeIndex")
+        if not index.is_monotonic_increasing:
+            raise ValueError("index must be sorted in increasing order")
         n = len(index)
+        if n < self.n_splits:
+            raise ValueError(
+                f"Index length {n} is too short for {self.n_splits} folds"
+            )
         fold_size = n // self.n_splits
         if fold_size == 0:
             raise ValueError(
@@ -96,7 +105,7 @@ class CPCV:
 
     def deflated_sharpe(
         self,
-        sharpe_ratios: list[float],
+        sharpe_ratios: Iterable[float],
         n_trials: int,
     ) -> float:
         """
@@ -110,17 +119,27 @@ class CPCV:
         where SR* is the expected maximum SR over n_trials random draws.
 
         Args:
-            sharpe_ratios: list of SR values from each CPCV fold.
+            sharpe_ratios: iterable of SR values from each CPCV fold.
             n_trials: number of strategy configurations tried (use len(sharpe_ratios)
                       for a single strategy; use larger if parameter-swept).
 
         Returns:
             DSR as float. Positive = strategy is robust. Negative = likely overfit.
         """
-        if not sharpe_ratios:
+        if not isinstance(n_trials, int) or n_trials < 1:
+            raise ValueError(f"n_trials must be an integer >= 1, got {n_trials}")
+
+        # Convert to list to allow multiple passes and length checks
+        sr_list: List[float] = list(sharpe_ratios)
+        if not sr_list:
             return 0.0
 
-        sr = np.array(sharpe_ratios, dtype=float)
+        # Validate each element is numeric
+        for i, val in enumerate(sr_list):
+            if not isinstance(val, (int, float, np.number)):
+                raise ValueError(f"sharpe_ratios element at position {i} is not numeric: {val}")
+
+        sr = np.array(sr_list, dtype=float)
         if len(sr) < 2:
             return float(sr[0])
 
@@ -134,7 +153,7 @@ class CPCV:
         try:
             from scipy.special import erfinv  # type: ignore
             gamma = 0.5772156649  # Euler-Mascheroni constant
-            # Φ⁻¹(p) = √2 * erfinv(2p - 1)
+
             def norm_ppf(p: float) -> float:
                 p = float(np.clip(p, 1e-10, 1 - 1e-10))
                 return float(np.sqrt(2) * erfinv(2 * p - 1))
@@ -173,13 +192,39 @@ class CPCV:
               deflated_sharpe: DSR (adjusted for multiple testing)
               is_overfit: True if DSR < 0.8 × mean_sharpe
         """
+        if not isinstance(signals, pd.Series):
+            raise ValueError("signals must be a pandas.Series")
+        if not isinstance(returns, pd.Series):
+            raise ValueError("returns must be a pandas.Series")
+
+        # Ensure datetime index
         if not isinstance(signals.index, pd.DatetimeIndex):
             signals = signals.copy()
             signals.index = pd.to_datetime(signals.index)
+        if not isinstance(returns.index, pd.DatetimeIndex):
+            returns = returns.copy()
+            returns.index = pd.to_datetime(returns.index)
 
+        if not signals.index.is_monotonic_increasing:
+            raise ValueError("signals index must be sorted in increasing order")
+        if not returns.index.is_monotonic_increasing:
+            raise ValueError("returns index must be sorted in increasing order")
+
+        # Align the two series
         common_idx = signals.index.intersection(returns.index)
+        if common_idx.empty:
+            raise ValueError("signals and returns have no overlapping dates")
         signals = signals.loc[common_idx]
         returns = returns.loc[common_idx]
+
+        if signals.empty or returns.empty:
+            raise ValueError("aligned signals or returns series is empty")
+
+        # Verify numeric data
+        if not np.issubdtype(signals.dtype, np.number):
+            raise ValueError("signals series must contain numeric values")
+        if not np.issubdtype(returns.dtype, np.number):
+            raise ValueError("returns series must contain numeric values")
 
         sharpes: list[float] = []
         for train_idx, test_idx in self.split(pd.DatetimeIndex(signals.index)):
