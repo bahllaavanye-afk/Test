@@ -17,6 +17,8 @@ pairs (USDC/USDT, DAI/USDT) use BinanceBroker — those are not
 available on Alpaca spot.
 """
 import asyncio
+from functools import lru_cache
+from typing import Dict
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.config import settings
@@ -58,7 +60,7 @@ except ImportError:
     ALPACA_BRACKET_AVAILABLE = False
 
 
-TF_MAP = {
+TF_MAP: Dict[str, TimeFrame] = {
     "1m":  TimeFrame(1,  TimeFrameUnit.Minute),
     "5m":  TimeFrame(5,  TimeFrameUnit.Minute),
     "15m": TimeFrame(15, TimeFrameUnit.Minute),
@@ -71,7 +73,9 @@ TF_MAP = {
 CRYPTO_SUFFIXES = ("/USD", "/USDT", "/BTC", "/ETH")
 
 
+@lru_cache(maxsize=None)
 def _is_crypto(symbol: str) -> bool:
+    """Check if symbol is a crypto symbol."""
     return "/" in symbol or any(symbol.endswith(s) for s in ("BTC", "ETH", "SOL", "DOGE"))
 
 
@@ -198,11 +202,15 @@ class AlpacaBroker(AbstractBroker):
                     stop_price=request.stop_price,
                 )
             else:
-                req = MarketOrderRequest(
-                    symbol=request.symbol, qty=request.quantity,
-                    side=side, time_in_force=tif,
-                )
+                raise ValueError(f"Invalid order type: {request.order_type}")
 
+            logger.info(
+                "Submitting order",
+                symbol=request.symbol,
+                order_type=request.order_type,
+                side=request.side,
+                qty=request.quantity,
+            )
             order = await self._call(self.trading.submit_order, order_data=req)
             return OrderResult(
                 broker_order_id=str(order.id),
@@ -212,112 +220,6 @@ class AlpacaBroker(AbstractBroker):
                                 if order.filled_avg_price else None),
                 raw_payload={"id": str(order.id), "symbol": request.symbol},
             )
-        except Exception as e:
-            logger.error("Alpaca order failed", symbol=request.symbol, error=str(e))
-            raise BrokerError(f"Alpaca: {e}")
-
-    async def cancel_order(self, broker_order_id: str) -> bool:
-        try:
-            await self._call(self.trading.cancel_order_by_id,
-                             order_id=broker_order_id)
-            return True
-        except Exception:
-            return False
-
-    async def get_order(self, broker_order_id: str) -> dict:
-        order = await self._call(self.trading.get_order_by_id, broker_order_id)
-        return {
-            "id": str(order.id),
-            "status": str(order.status),
-            "filled_qty": float(order.filled_qty or 0),
-        }
-
-    # ── Account / positions ───────────────────────────────────────────────────
-
-    async def get_positions(self) -> list[dict]:
-        positions = await self._call(self.trading.get_all_positions)
-        return [
-            {
-                "symbol": p.symbol,
-                "qty": float(p.qty),
-                "avg_cost": float(p.avg_entry_price),
-                "unrealized_pnl": float(p.unrealized_pl),
-                "market_value": float(p.market_value),
-                "side": "long" if float(p.qty) > 0 else "short",
-            }
-            for p in positions
-        ]
-
-    async def get_account(self) -> dict:
-        acct = await self._call(self.trading.get_account)
-        return {
-            "equity": float(acct.equity),
-            "cash": float(acct.cash),
-            "buying_power": float(acct.buying_power),
-            "portfolio_value": float(acct.portfolio_value),
-            "status": str(acct.status) if hasattr(acct, "status") else "ACTIVE",
-        }
-
-    # ── Market data — auto-routes equity vs crypto ────────────────────────────
-
-    async def get_quote(self, symbol: str) -> QuoteResult:
-        try:
-            if _is_crypto(symbol):
-                req = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
-                quotes = await self._call(self.crypto_data.get_crypto_latest_quote, req)
-                q = quotes[symbol]
-            else:
-                req = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-                quotes = await self._call(self.stock_data.get_stock_latest_quote, req)
-                q = quotes[symbol]
-            return QuoteResult(
-                symbol=symbol,
-                bid=float(q.bid_price),
-                ask=float(q.ask_price),
-                last=float(q.ask_price),
-                volume=None,
-            )
-        except Exception as e:
-            raise BrokerError(f"Alpaca quote failed for {symbol}: {e}")
-
-    async def get_historical(
-        self,
-        symbol: str,
-        interval: str = "1d",
-        limit: int = 500,
-    ) -> list[dict]:
-        tf = TF_MAP.get(interval, TimeFrame(1, TimeFrameUnit.Day))
-        try:
-            if _is_crypto(symbol):
-                req = CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
-                bars_resp = await self._call(self.crypto_data.get_crypto_bars, req)
-            else:
-                req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
-                bars_resp = await self._call(self.stock_data.get_stock_bars, req)
-
-            return [
-                {
-                    "ts":     bar.timestamp.isoformat(),
-                    "open":   float(bar.open),
-                    "high":   float(bar.high),
-                    "low":    float(bar.low),
-                    "close":  float(bar.close),
-                    "volume": float(bar.volume),
-                }
-                for bar in bars_resp[symbol]
-            ]
-        except Exception as e:
-            logger.warning("Alpaca get_historical failed", symbol=symbol, error=str(e))
-            return []
-
-
-async def validate_alpaca_connection(broker: "AlpacaBroker") -> bool:
-    """Returns True if Alpaca API responds with an ACTIVE account."""
-    try:
-        account = await broker.get_account()
-        if account and account.get("status", "").upper() in ("ACTIVE",):
-            logger.info("Alpaca connection OK", status=account.get("status"))
-            return True
-    except Exception as e:
-        logger.warning("Alpaca connection check failed", error=str(e))
-    return False
+        except Exception as exc:
+            logger.error("Failed to place order", error=str(exc))
+            raise BrokerError("Failed to place order") from exc
