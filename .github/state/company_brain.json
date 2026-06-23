@@ -250,7 +250,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782242892.9013355,
+    "last_updated": 1782248782.138482,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -265,35 +265,35 @@
     "autopilot_overfit_count": 1,
     "market_regime": "neutral",
     "market_opinion": {
-      "generated_at": "2026-06-22T21:50:15.439007+00:00",
+      "generated_at": "2026-06-23T21:06:07.442125+00:00",
       "signals": {
         "vix": {
-          "value": 17.28,
-          "trend": "flat"
+          "value": 19.49,
+          "trend": "rising"
         },
         "spy": {
-          "price": 744.39,
-          "sma50": 729.15,
-          "sma200": 685.03,
+          "price": 733.58,
+          "sma50": 730.26,
+          "sma200": 685.48,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.051,
+          "ratio": 1.0516,
           "median": 1.0525,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.379,
+          "hyg_lqd_momentum_20d": -0.414,
           "signal": "widening"
         },
         "breadth": {
-          "sectors_above_sma20": 5,
+          "sectors_above_sma20": 6,
           "total_sectors": 11,
-          "breadth_pct": 45.5
+          "breadth_pct": 54.5
         },
         "btc": {
-          "price": 64179,
-          "24h_pct": 0.52
+          "price": 62458,
+          "24h_pct": -2.93
         }
       },
       "score": 1,
@@ -303,7 +303,7 @@
         "min_confidence": 0.68,
         "size_multiplier": 0.75
       },
-      "summary": "Morning market brief: The market is in a neutral regime (score 1) with SPY in a strong uptrend but offset by a flat VIX at 17.28 and widening credit spreads, indicating caution. Tactical implication: Favor mean-reversion strategies over momentum today, as breadth is mixed (only 5 of 11 sectors above their 20-SMA) and the flat yield curve suggests limited directional conviction."
+      "summary": "**Morning Brief:** Markets are in a neutral regime with a strong SPY uptrend, but rising VIX to 19.49 and widening credit spreads signal growing caution beneath the surface, while a flat yield curve and mixed sector breadth (6/11 above 20-SMA) keep the backdrop fragile. **Tactical implication:** Favor mean-reversion strategies today to capitalize on intraday volatility without chasing the uptrend into deteriorating risk conditions."
     },
     "strategy_gates": {
       "directional": true,
@@ -722,6 +722,18 @@
       },
       "lesson": "Morning market brief: The market is in a neutral regime (score 1) with SPY in a strong uptrend but offset by a flat VIX at 17.28 and widening credit spreads, indicating caution. Tactical implication: Favor mean-reversion strategies over momentum today, as breadth is mixed (only 5 of 11 sectors above their 20-SMA) and the flat yield curve suggests limited directional conviction.",
       "ts": 1782165020.2933297
+    },
+    {
+      "source": "market_opinion",
+      "regime": "neutral",
+      "score": 1,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.68,
+        "size_multiplier": 0.75
+      },
+      "lesson": "**Morning Brief:** Markets are in a neutral regime with a strong SPY uptrend, but rising VIX to 19.49 and widening credit spreads signal growing caution beneath the surface, while a flat yield curve and mixed sector breadth (6/11 above 20-SMA) keep the backdrop fragile. **Tactical implication:** Favor mean-reversion strategies today to capitalize on intraday volatility without chasing the uptrend into deteriorating risk conditions.",
+      "ts": 1782248782.1397088
     }
   ],
   "github_insights": [
