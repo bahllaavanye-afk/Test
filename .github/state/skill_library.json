@@ -97,8 +97,13 @@
     "optimization on backtest/data_loader.py: success \u2014 tests green",
     "optimization on comparison/engine.py: success \u2014 tests green",
     "optimization on tasks/order_sync.py: success \u2014 tests green",
-    "optimization on api/v1/backtests.py: success \u2014 tests green"
+    "optimization on api/v1/backtests.py: success \u2014 tests green",
+    "strategy_logic on test/unit/test_automl_desk.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/earnings_accruals.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "strategy_logic on ml/models/xgboost_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/microstructure.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-23T17:31:17.080946+00:00",
+  "last_updated": "2026-06-23T22:46:47.787079+00:00",
   "total": 93
 }
