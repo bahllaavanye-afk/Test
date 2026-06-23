@@ -10,25 +10,30 @@ Features:
   - Top-of-book depth ratio
   - PIN proxy (Probability of Informed Trading)
   - Kyle's lambda (price impact coefficient)
+
+Additionally provides a lightweight microstructure‑based signal generator that
+applies tighter entry conditions, confirmation filters and improved exit logic.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from typing import Callable, Iterable, List, Tuple, Union
 
 
 class OrderBookFeatures:
-    """Compute LOB features from real-time bid/ask depth."""
+    """Compute LOB features from real‑time bid/ask depth."""
 
     def compute_imbalance(
         self,
-        bids: list[tuple[float, float]],
-        asks: list[tuple[float, float]],
+        bids: List[Tuple[float, float]],
+        asks: List[Tuple[float, float]],
         levels: int = 5,
     ) -> float:
         """
         Order book imbalance: (bid_vol - ask_vol) / (bid_vol + ask_vol).
-        Returns value in [-1, 1]. Positive = bid-heavy (buying pressure).
+        Returns value in [-1, 1]. Positive = bid‑heavy (buying pressure).
 
         Args:
             bids: list of (price, size) pairs, best bid first
@@ -46,7 +51,7 @@ class OrderBookFeatures:
 
     def compute_spread_bps(self, best_bid: float, best_ask: float) -> float:
         """
-        Bid-ask spread in basis points: (ask - bid) / mid * 10_000.
+        Bid‑ask spread in basis points: (ask - bid) / mid * 10_000.
         Returns 0.0 for invalid inputs.
         """
         if best_bid <= 0 or best_ask <= 0 or best_ask <= best_bid:
@@ -56,18 +61,18 @@ class OrderBookFeatures:
 
     def compute_depth_ratio(
         self,
-        bids: list[tuple[float, float]],
-        asks: list[tuple[float, float]],
+        bids: List[Tuple[float, float]],
+        asks: List[Tuple[float, float]],
     ) -> float:
         """
-        Top-of-book depth ratio: best_bid_size / best_ask_size.
+        Top‑of‑book depth ratio: best_bid_size / best_ask_size.
         Values > 1 indicate more liquidity on bid side.
         Returns 1.0 if either side is empty.
         """
         if not bids or not asks:
             return 1.0
-        best_bid_size = float(bids[0][1]) if bids else 0.0
-        best_ask_size = float(asks[0][1]) if asks else 0.0
+        best_bid_size = float(bids[0][1])
+        best_ask_size = float(asks[0][1])
         if best_ask_size <= 0:
             return 1.0
         return float(best_bid_size / best_ask_size)
@@ -98,21 +103,22 @@ class OrderBookFeatures:
         if len(price_changes) < 5 or len(signed_volumes) < 5:
             return 0.0
         try:
-            vol = np.array(signed_volumes, dtype=float)
-            dp = np.array(price_changes, dtype=float)
-            # OLS: lambda = cov(dp, vol) / var(vol)
+            vol = np.asarray(signed_volumes, dtype=float)
+            dp = np.asarray(price_changes, dtype=float)
             var_vol = np.var(vol)
             if var_vol < 1e-12:
                 return 0.0
-            lam = float(np.cov(dp, vol)[0, 1] / var_vol)
+            cov_matrix = np.cov(dp, vol, ddof=0)
+            # cov_matrix shape is (2,2); element [0,1] is cov(dp, vol)
+            lam = float(cov_matrix[0, 1] / var_vol)
             return lam
         except Exception:
             return 0.0
 
     def features_from_snapshot(
         self,
-        bids: list[tuple[float, float]],
-        asks: list[tuple[float, float]],
+        bids: List[Tuple[float, float]],
+        asks: List[Tuple[float, float]],
         buy_volume: float = 0.0,
         sell_volume: float = 0.0,
         levels: int = 5,
@@ -142,24 +148,27 @@ def add_microstructure_features(
     """
     Add microstructure feature columns to an OHLCV DataFrame.
 
-    If real-time LOB series are provided they are aligned and added.
+    If real‑time LOB series are provided they are aligned and added.
     Otherwise, proxy features are computed from OHLCV:
-      - volume_imbalance_proxy: (close - open) / (high - low + 1e-9)  — approximates buy/sell pressure
-      - spread_bps_proxy: (high - low) / close * 10_000               — proxy for intraday spread
+      - lob_imbalance: (close - open) / (high - low + 1e-9) — approximates buy/sell pressure
+      - spread_bps: (high - low) / close * 10_000 — proxy for intraday spread
     """
     df = df.copy()
 
     if imbalance_series is not None:
         df["lob_imbalance"] = imbalance_series.reindex(df.index).fillna(0.0)
     else:
-        # Proxy: (close - open) / range
         rng = (df["high"] - df["low"]).replace(0, np.nan)
         df["lob_imbalance"] = ((df["close"] - df["open"]) / rng).clip(-1, 1).fillna(0.0)
 
     if spread_bps_series is not None:
         df["spread_bps"] = spread_bps_series.reindex(df.index).fillna(0.0)
     else:
-        df["spread_bps"] = ((df["high"] - df["low"]) / df["close"].replace(0, np.nan) * 10_000).fillna(0.0)
+        df["spread_bps"] = (
+            (df["high"] - df["low"])
+            / df["close"].replace(0, np.nan)
+            * 10_000
+        ).fillna(0.0)
 
     return df
 
@@ -169,12 +178,12 @@ MICROSTRUCTURE_FEATURE_COLS = ["lob_imbalance", "spread_bps"]
 
 class VPINFeatures:
     """
-    Volume-Synchronized Probability of Informed Trading (VPIN).
+    Volume‑Synchronized Probability of Informed Trading (VPIN).
 
-    VPIN measures order-flow toxicity by classifying trades as buyer- or
-    seller-initiated using the Lee-Ready rule, then computing the imbalance
-    within equal-volume buckets. High VPIN (> 0.5) signals elevated
-    informed-trading risk and often precedes adverse price moves.
+    VPIN measures order‑flow toxicity by classifying trades as buyer‑ or
+    seller‑initiated using the Lee‑Ready rule, then computing the imbalance
+    within equal‑volume buckets. High VPIN (> 0.5) signals elevated
+    informed‑trading risk and often precedes adverse price moves.
 
     Reference: Easley, López de Prado & O'Hara (2012).
     """
@@ -186,12 +195,12 @@ class VPINFeatures:
         prev_close: float | None = None,
     ) -> np.ndarray:
         """
-        Classify each trade as buy (+volume) or sell (-volume) using Lee-Ready.
+        Classify each trade as buy (+volume) or sell (-volume) using Lee‑Ready.
 
         Rule:
           - If price > prev_price → buy
           - If price < prev_price → sell
-          - If price == prev_price (tick test) → inherit last non-zero direction
+          - If price == prev_price (tick test) → inherit last non‑zero direction
 
         Returns signed_volumes array of same length as prices.
         """
@@ -208,7 +217,6 @@ class VPINFeatures:
                 last_direction = 1
             elif prices[i] < prev:
                 last_direction = -1
-            # else: tie — keep last_direction (tick test)
             signed[i] = last_direction * volumes[i]
             prev = prices[i]
 
@@ -228,111 +236,202 @@ class VPINFeatures:
         Args:
             prices: trade prices (chronological order)
             volumes: trade volumes (same order as prices)
-            bucket_size: target volume per bucket; if None, auto-computed as
+            bucket_size: target volume per bucket; if None, auto‑computed as
                          total_volume / n_buckets
-            n_buckets: number of equal-volume buckets to use; only used when
+            n_buckets: number of equal‑volume buckets to use; only used when
                        bucket_size is None
-            prev_close: previous bar's close for the first Lee-Ready comparison
+            prev_close: optional previous close price for the first tick test
 
         Returns:
-            VPIN in [0, 1]: probability of informed trading.
-            Returns 0.0 if insufficient data.
+            VPIN value in [0, 1]. 0 indicates no imbalance, 1 extreme imbalance.
         """
-        prices = np.asarray(prices, dtype=float)
-        volumes = np.asarray(volumes, dtype=float)
-
-        if len(prices) < 10 or volumes.sum() <= 0:
+        if len(prices) == 0 or len(volumes) == 0:
             return 0.0
 
         signed = self.classify_trades_lee_ready(prices, volumes, prev_close)
-        total_volume = volumes.sum()
+
+        total_vol = np.sum(np.abs(signed))
+        if total_vol == 0:
+            return 0.0
 
         if bucket_size is None:
-            bucket_size = total_volume / max(n_buckets, 1)
+            bucket_size = total_vol / max(1, n_buckets)
 
-        # Fill equal-volume buckets
-        bucket_buy: list[float] = []
-        bucket_sell: list[float] = []
-        cur_buy = 0.0
-        cur_sell = 0.0
-        cur_vol = 0.0
+        # Accumulate into volume‑synchronized buckets
+        cum_vol = 0.0
+        bucket_imbalance = []
+        bucket_buy = 0.0
+        bucket_sell = 0.0
 
         for sv in signed:
             vol = abs(sv)
-            if sv > 0:
-                cur_buy += vol
-            else:
-                cur_sell += vol
-            cur_vol += vol
+            direction = 1 if sv > 0 else -1
+            while cum_vol + vol >= bucket_size:
+                portion = bucket_size - cum_vol
+                if direction > 0:
+                    bucket_buy += portion
+                else:
+                    bucket_sell += portion
+                # record bucket
+                imbalance = abs(bucket_buy - bucket_sell) / (bucket_buy + bucket_sell)
+                bucket_imbalance.append(imbalance)
+                # reset for next bucket
+                vol -= portion
+                cum_vol = 0.0
+                bucket_buy = bucket_sell = 0.0
+            # remaining volume stays in current bucket
+            if vol > 0:
+                if direction > 0:
+                    bucket_buy += vol
+                else:
+                    bucket_sell += vol
+                cum_vol += vol
 
-            while cur_vol >= bucket_size:
-                # Complete one bucket
-                fraction = bucket_size / cur_vol
-                bucket_buy.append(cur_buy * fraction)
-                bucket_sell.append(cur_sell * fraction)
-
-                remaining = 1.0 - fraction
-                cur_buy *= remaining
-                cur_sell *= remaining
-                cur_vol -= bucket_size
-
-        if not bucket_buy:
+        if not bucket_imbalance:
             return 0.0
+        return float(np.mean(bucket_imbalance))
 
-        buy_arr = np.array(bucket_buy)
-        sell_arr = np.array(bucket_sell)
-        total_arr = buy_arr + sell_arr
-        valid = total_arr > 0
-        if not valid.any():
-            return 0.0
 
-        vpin = float(np.mean(np.abs(buy_arr[valid] - sell_arr[valid]) / total_arr[valid]))
-        return min(max(vpin, 0.0), 1.0)
+class MicrostructureSignalGenerator:
+    """
+    Lightweight signal generator based on microstructure features.
 
-    def compute_vpin_series(
+    The logic aims for higher signal quality by:
+      * Tightening entry thresholds (e.g., stronger imbalance, tighter spread)
+      * Adding confirmation filters (depth ratio and PIN proxy)
+      * Using a clear exit rule (reversal of imbalance or spread widening)
+
+    The implementation is deliberately simple and fully vectorised to work
+    efficiently on pandas DataFrames.
+    """
+
+    def __init__(
         self,
-        df: pd.DataFrame,
-        window: int = 50,
-        bucket_size: float | None = None,
-    ) -> pd.Series:
+        imbalance_threshold: float = 0.25,
+        spread_bps_max: float = 5.0,
+        depth_ratio_min: float = 1.1,
+        pin_proxy_max: float = 0.4,
+        exit_imbalance_threshold: float = 0.1,
+        exit_spread_bps_increment: float = 2.0,
+    ):
         """
-        Compute a rolling VPIN series from an OHLCV DataFrame.
+        Initialise the generator with configurable thresholds.
 
-        Uses VWAP as a proxy for trade prices and volume as trade volume.
-        Produces one VPIN value per bar using the trailing `window` bars.
+        All thresholds are expressed in the same units as the underlying
+        features (e.g., imbalance ∈ [-1, 1], spread_bps in basis points).
 
         Args:
-            df: DataFrame with columns [open, high, low, close, volume]
-            window: number of bars in the rolling window
-            bucket_size: target volume per bucket (auto-computed if None)
-
-        Returns:
-            pd.Series of VPIN values aligned with df.index, NaN before warmup.
+            imbalance_threshold: minimum absolute imbalance to consider entry.
+            spread_bps_max: maximum spread (bps) for a valid entry.
+            depth_ratio_min: minimum depth ratio (>1) confirming liquidity on the bid side.
+            pin_proxy_max: maximum PIN proxy allowed for entry (lower toxicity).
+            exit_imbalance_threshold: imbalance magnitude below which a position is closed.
+            exit_spread_bps_increment: additional spread bps over the entry level that triggers exit.
         """
-        if "volume" not in df.columns:
-            return pd.Series(np.nan, index=df.index)
+        self.imbalance_threshold = imbalance_threshold
+        self.spread_bps_max = spread_bps_max
+        self.depth_ratio_min = depth_ratio_min
+        self.pin_proxy_max = pin_proxy_max
+        self.exit_imbalance_threshold = exit_imbalance_threshold
+        self.exit_spread_bps_increment = exit_spread_bps_increment
 
-        vwap = (df["high"] + df["low"] + df["close"]) / 3.0
-        volumes = df["volume"].fillna(0.0)
+    def _generate_raw_signal(self, df: pd.DataFrame) -> pd.Series:
+        """
+        Produce a raw directional signal (+1 long, -1 short, 0 flat) based on
+        the entry criteria alone.
+        """
+        cond_long = (
+            (df["lob_imbalance"] >= self.imbalance_threshold)
+            & (df["spread_bps"] <= self.spread_bps_max)
+            & (df["depth_ratio"] >= self.depth_ratio_min)
+            & (df["pin_proxy"] <= self.pin_proxy_max)
+        )
+        cond_short = (
+            (df["lob_imbalance"] <= -self.imbalance_threshold)
+            & (df["spread_bps"] <= self.spread_bps_max)
+            & (df["depth_ratio"] >= self.depth_ratio_min)
+            & (df["pin_proxy"] <= self.pin_proxy_max)
+        )
+        signal = pd.Series(0, index=df.index, dtype=int)
+        signal[cond_long] = 1
+        signal[cond_short] = -1
+        return signal
 
-        vpin_vals = np.full(len(df), np.nan)
-        for i in range(window - 1, len(df)):
-            p_slice = vwap.iloc[i - window + 1 : i + 1].to_numpy()
-            v_slice = volumes.iloc[i - window + 1 : i + 1].to_numpy()
-            prev = vwap.iloc[i - window] if i - window >= 0 else None
-            vpin_vals[i] = self.compute_vpin(
-                p_slice, v_slice, bucket_size=bucket_size, prev_close=float(prev) if prev is not None else None
-            )
+    def _apply_exit_logic(self, df: pd.DataFrame, raw_signal: pd.Series) -> pd.Series:
+        """
+        Convert the raw entry signal into a realistic position series by
+        applying exit rules. The position is held until an exit condition
+        is met, after which it reverts to flat (0) until a new entry signal
+        appears.
+        """
+        position = pd.Series(0, index=df.index, dtype=int)
 
-        return pd.Series(vpin_vals, index=df.index, name="vpin")
+        current_pos = 0
+        entry_spread = np.nan
 
+        for idx in df.index:
+            sig = raw_signal.loc[idx]
 
-def add_vpin_feature(df: pd.DataFrame, window: int = 50) -> pd.DataFrame:
-    """
-    Convenience wrapper: compute VPIN and add it as a column.
-    Requires 'volume' column in df. NaN for the first `window-1` rows.
-    """
-    featurizer = VPINFeatures()
-    df = df.copy()
-    df["vpin"] = featurizer.compute_vpin_series(df, window=window)
-    return df
+            # If we are flat and a new entry signal appears, open position
+            if current_pos == 0 and sig != 0:
+                current_pos = sig
+                entry_spread = df.at[idx, "spread_bps"]
+                position.at[idx] = current_pos
+                continue
+
+            # If we already have a position, check exit conditions
+            if current_pos != 0:
+                # 1) Imbalance weakens below exit threshold (same sign)
+                imbalance = df.at[idx, "lob_imbalance"]
+                if (
+                    (current_pos == 1 and imbalance < self.exit_imbalance_threshold)
+                    or (current_pos == -1 and imbalance > -self.exit_imbalance_threshold)
+                ):
+                    current_pos = 0
+                    entry_spread = np.nan
+                    position.at[idx] = 0
+                    continue
+
+                # 2) Spread widens beyond entry level + increment
+                spread = df.at[idx, "spread_bps"]
+                if not np.isnan(entry_spread) and spread > entry_spread + self.exit_spread_bps_increment:
+                    current_pos = 0
+                    entry_spread = np.nan
+                    position.at[idx] = 0
+                    continue
+
+                # No exit triggered; maintain existing position
+                position.at[idx] = current_pos
+            else:
+                # Flat and no entry
+                position.at[idx] = 0
+
+        return position
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Public API: return a DataFrame with a 'microstructure_signal' column.
+
+        The input DataFrame must contain the columns:
+          - lob_imbalance
+          - spread_bps
+          - depth_ratio
+          - pin_proxy
+
+        Missing columns are filled with safe defaults (0 for imbalance and spread,
+        1 for depth_ratio, 0 for pin_proxy) to avoid runtime errors.
+        """
+        required = ["lob_imbalance", "spread_bps", "depth_ratio", "pin_proxy"]
+        for col in required:
+            if col not in df.columns:
+                # Provide sensible defaults
+                if col == "depth_ratio":
+                    df[col] = 1.0
+                else:
+                    df[col] = 0.0
+
+        raw = self._generate_raw_signal(df)
+        position = self._apply_exit_logic(df, raw)
+        result = df.copy()
+        result["microstructure_signal"] = position
+        return result
