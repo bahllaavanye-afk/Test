@@ -233,7 +233,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782215057.0262814,
+    "last_updated": 1782236111.3048866,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -336,7 +336,9 @@
       "GLD",
       "AAPL"
     ],
-    "risk_flags": []
+    "risk_flags": [],
+    "risk_status": "normal",
+    "last_brain_update": 1782236111.3046567
   },
   "episodic": [
     {
@@ -703,6 +705,13 @@
       },
       "lesson": "Morning market brief: The market is in a neutral regime (score 1) with SPY in a strong uptrend but offset by a flat VIX at 17.28 and widening credit spreads, indicating caution. Tactical implication: Favor mean-reversion strategies over momentum today, as breadth is mixed (only 5 of 11 sectors above their 20-SMA) and the flat yield curve suggests limited directional conviction.",
       "ts": 1782165020.2933297
+    }
+  ],
+  "github_insights": [
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1782236111.2958443
     }
   ]
 }
