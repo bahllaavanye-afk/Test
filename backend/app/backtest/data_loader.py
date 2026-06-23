@@ -6,20 +6,36 @@ no broker keys required. yfinance pulls from Yahoo Finance for free.
 from __future__ import annotations
 
 import asyncio
+import functools
 from datetime import date, timedelta
 
 import pandas as pd
 
 from app.utils.logging import logger
 
+try:
+    import yfinance as yf
+except ImportError:  # pragma: no cover
+    yf = None
+    logger.warning("yfinance not installed — synthetic data will be used for all fetches")
+
 
 def _interval_to_yf(interval: str) -> str:
     """Convert internal interval names to yfinance format."""
     _MAP = {
-        "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
-        "1h": "1h", "2h": "2h", "4h": "4h",
-        "1d": "1d", "1wk": "1wk", "1mo": "1mo",
-        "daily": "1d", "hourly": "1h", "weekly": "1wk",
+        "1m": "1m",
+        "5m": "5m",
+        "15m": "15m",
+        "30m": "30m",
+        "1h": "1h",
+        "2h": "2h",
+        "4h": "4h",
+        "1d": "1d",
+        "1wk": "1wk",
+        "1mo": "1mo",
+        "daily": "1d",
+        "hourly": "1h",
+        "weekly": "1wk",
     }
     return _MAP.get(interval.lower(), "1d")
 
@@ -33,6 +49,7 @@ def _symbol_to_yf(symbol: str, market_type: str = "equity") -> str:
     return symbol.upper()
 
 
+@functools.lru_cache(maxsize=128)
 def _synthetic_ohlcv(symbol: str, start: date, end: date, interval: str) -> pd.DataFrame:
     """
     Generate synthetic OHLCV using Geometric Brownian Motion when live data is
@@ -49,15 +66,15 @@ def _synthetic_ohlcv(symbol: str, start: date, end: date, interval: str) -> pd.D
         return pd.DataFrame()
 
     rng = np.random.default_rng(sum(ord(c) for c in symbol))
-    mu = 0.10 / 252    # 10% annual drift
-    sigma = 0.15 / 252 ** 0.5
+    mu = 0.10 / 252  # 10% annual drift
+    sigma = 0.15 / (252 ** 0.5)
     log_returns = rng.normal(mu - 0.5 * sigma ** 2, sigma, n)
     close = 100.0 * np.exp(np.cumsum(log_returns))
     noise = rng.uniform(0.998, 1.002, n)
     open_ = np.roll(close, 1) * noise
     open_[0] = close[0] * 0.999
     high = np.maximum(open_, close) * rng.uniform(1.000, 1.010, n)
-    low  = np.minimum(open_, close) * rng.uniform(0.990, 1.000, n)
+    low = np.minimum(open_, close) * rng.uniform(0.990, 1.000, n)
     volume = rng.integers(1_000_000, 50_000_000, n).astype(float)
 
     df = pd.DataFrame(
@@ -68,6 +85,7 @@ def _synthetic_ohlcv(symbol: str, start: date, end: date, interval: str) -> pd.D
     return df
 
 
+@functools.lru_cache(maxsize=256)
 def fetch_ohlcv_sync(
     symbol: str,
     start: date,
@@ -80,10 +98,11 @@ def fetch_ohlcv_sync(
     Returns DataFrame with columns: open, high, low, close, volume (lowercase).
     Falls back to synthetic GBM data when network is unavailable.
     """
-    try:
-        import yfinance as yf
-    except ImportError:
-        logger.warning("yfinance not installed — using synthetic data")
+    if start > end:
+        logger.warning(f"Start date {start} is after end date {end}; returning empty DataFrame")
+        return pd.DataFrame()
+
+    if yf is None:
         return _synthetic_ohlcv(symbol, start, end, interval)
 
     yf_symbol = _symbol_to_yf(symbol, market_type)
@@ -110,8 +129,8 @@ def fetch_ohlcv_sync(
         df.index = pd.DatetimeIndex(df.index).tz_localize(None)
         df = df.dropna()
         logger.info(f"yfinance: loaded {len(df)} bars for {yf_symbol} ({interval})")
-        return df
-    except Exception as exc:
+        return df.copy()
+    except Exception as exc:  # pragma: no cover
         logger.warning(f"yfinance fetch failed for {yf_symbol}: {exc} — using synthetic")
         return _synthetic_ohlcv(symbol, start, end, interval)
 
