@@ -371,6 +371,90 @@ async def get_polymarket_markets(
         return []
 
 
+# ─── Kalshi ───────────────────────────────────────────────────────────────────
+
+_KALSHI_API_URL = "https://api.elections.kalshi.com/trade-api/v2"
+
+
+def _kalshi_category(market: dict) -> str:
+    """Best-effort category from a Kalshi market's category/title text."""
+    text = " ".join(
+        str(market.get(k, "")) for k in ("category", "title", "subtitle", "event_ticker")
+    ).lower()
+    if any(k in text for k in ("politi", "election", "senate", "congress", "president", "govern")):
+        return "politics"
+    if any(k in text for k in ("crypto", "bitcoin", "ethereum", "btc", "eth")):
+        return "crypto"
+    if any(k in text for k in ("fed", "rate", "inflation", "cpi", "gdp", "jobs", "econ")):
+        return "economics"
+    if any(k in text for k in ("nba", "nfl", "mlb", "soccer", "tennis", "game", "sport")):
+        return "sports"
+    return "other"
+
+
+@router.get("/kalshi")
+async def get_kalshi_markets(
+    filter: str = Query("", description="Optional keyword filter for market title"),
+    sort: str = Query("volume", description="Sort field: volume, end_date"),
+    limit: int = Query(50, ge=1, le=200, description="Number of markets to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Return active Kalshi prediction markets (public read, no auth required).
+
+    Normalises to the same shape as ``/market-data/polymarket`` so the
+    prediction-market desk/UI can consume both uniformly. The Kalshi v2 API
+    quotes prices already in dollars (0–1) via ``*_dollars`` string fields and
+    sizes via ``*_fp`` fields. Returns ``[]`` on upstream failure rather than
+    raising.
+    """
+    def _f(v) -> float:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
+    try:
+        params: dict = {"limit": limit}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{_KALSHI_API_URL}/markets", params=params)
+            if resp.status_code != 200:
+                logger.warning("Kalshi API returned non-200", status=resp.status_code)
+                return []
+            markets = resp.json().get("markets", []) or []
+
+        result = []
+        for m in markets:
+            title = m.get("title", "") or m.get("yes_sub_title", "")
+            if filter and filter.lower() not in title.lower():
+                continue
+            # Prices already in dollars (0–1). Prefer last trade, else yes bid/ask mid.
+            yes_price = _f(m.get("last_price_dollars"))
+            if not yes_price:
+                yb, ya = _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))
+                yes_price = (yb + ya) / 2.0 if (yb or ya) else 0.0
+            status = m.get("status", "active")
+            result.append({
+                "id": m.get("ticker", ""),
+                "title": title,
+                "end_date": m.get("close_time", "") or "",
+                "yes_price": round(yes_price, 4),
+                "no_price": round(max(0.0, 1.0 - yes_price), 4) if yes_price else 0.0,
+                "volume_24h": _f(m.get("volume_24h_fp")),
+                "liquidity": _f(m.get("liquidity_dollars")) or _f(m.get("open_interest_fp")),
+                "category": _kalshi_category(m),
+                "active": status in ("active", "open"),
+                "closed": status not in ("active", "open"),
+            })
+
+        sort_key = "volume_24h" if sort == "volume" else "end_date"
+        result.sort(key=lambda x: x.get(sort_key) or "", reverse=(sort_key == "volume_24h"))
+        return result
+
+    except Exception as exc:
+        logger.warning("kalshi endpoint failed", error=str(exc))
+        return []
+
+
 # ─── IV Rank / IV Percentile ─────────────────────────────────────────────────
 
 async def _compute_iv_rank(symbol: str) -> dict:
@@ -786,6 +870,17 @@ async def get_polymarket_markets_alias(
 ):
     """Underscore-prefix alias for /market-data/polymarket."""
     return await get_polymarket_markets(filter=filter, sort=sort, limit=limit, current_user=current_user)
+
+
+@router_underscore.get("/kalshi")
+async def get_kalshi_markets_alias(
+    filter: str = Query("", description="Optional keyword filter for market title"),
+    sort: str = Query("volume", description="Sort field: volume, end_date"),
+    limit: int = Query(50, ge=1, le=200, description="Number of markets to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Underscore-prefix alias for /market-data/kalshi."""
+    return await get_kalshi_markets(filter=filter, sort=sort, limit=limit, current_user=current_user)
 
 
 @router_underscore.get("/bars")
