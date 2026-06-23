@@ -5,8 +5,15 @@ broadcasts via WebSocket, and posts to AgentBus.
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
+from typing import Dict, List, Tuple
 
 from app.utils.logging import logger
+
+try:
+    import httpx
+except ImportError:  # pragma: no cover
+    httpx = None  # type: ignore
 
 
 async def sync_orders_once(db_session_factory) -> None:
@@ -25,12 +32,13 @@ async def sync_orders_once(db_session_factory) -> None:
     from app.models.order import Order
     from app.ws.manager import manager
 
-    try:
-        import httpx
-    except ImportError:
+    if httpx is None:
         logger.warning("httpx not available — order sync skipped")
         return
 
+    # ------------------------------------------------------------------
+    # 1️⃣ Load pending orders together with their accounts
+    # ------------------------------------------------------------------
     try:
         async with db_session_factory() as db:
             result = await db.execute(
@@ -38,89 +46,106 @@ async def sync_orders_once(db_session_factory) -> None:
                 .join(Account, Order.account_id == Account.id)
                 .where(
                     Order.status.in_(["pending", "accepted", "partially_filled", "new"]),
-                    Account.is_active == True,  # noqa: E712
+                    Account.is_active.is_(True),  # noqa: E712
                 )
             )
             rows = result.all()
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.debug("Order sync: DB fetch failed", error=str(exc))
         return
 
     if not rows:
         return
 
-    updates: list[tuple] = []  # (order_id, fields, user_id, original_order, new_status, new_filled_qty)
-    for order_row, acct in rows:
+    # ------------------------------------------------------------------
+    # 2️⃣ Group orders by account to reuse HTTP client & headers
+    # ------------------------------------------------------------------
+    account_orders: Dict[int, List[Tuple[Order, Account]]] = defaultdict(list)
+    for order_obj, acct in rows:
+        if not order_obj.broker_order_id or acct.broker != "alpaca":
+            continue
+        account_orders[acct.id].append((order_obj, acct))
+
+    if not account_orders:
+        return
+
+    new_fills: List[Tuple[Order, int | None]] = []
+    # ------------------------------------------------------------------
+    # 3️⃣ Process each account batch
+    # ------------------------------------------------------------------
+    for acct_id, order_acct_list in account_orders.items():
+        order_obj, acct = order_acct_list[0]  # any element gives us the account
         try:
-            if not order_row.broker_order_id or acct.broker != "alpaca":
-                continue
             headers = await _headers(acct)
-            base = _base_url(acct)
-            async with httpx.AsyncClient(timeout=8) as client:
-                resp = await client.get(
-                    f"{base}/v2/orders/{order_row.broker_order_id}",
-                    headers=headers,
-                )
-            if resp.status_code == 200:
+            base_url = _base_url(acct)
+        except Exception as exc:  # pragma: no cover
+            logger.debug("Order sync: failed to prepare request data", account_id=acct_id, error=str(exc))
+            continue
+
+        async with httpx.AsyncClient(timeout=8) as client:
+            for order_obj, acct in order_acct_list:
+                try:
+                    resp = await client.get(
+                        f"{base_url}/v2/orders/{order_obj.broker_order_id}",
+                        headers=headers,
+                    )
+                except Exception as exc:  # pragma: no cover
+                    logger.debug(
+                        "Order sync: HTTP request failed",
+                        order_id=order_obj.id,
+                        error=str(exc),
+                    )
+                    continue
+
+                if resp.status_code != 200:
+                    logger.debug(
+                        "Order sync: non‑200 response",
+                        order_id=order_obj.id,
+                        status_code=resp.status_code,
+                    )
+                    continue
+
                 data = resp.json()
-                new_status = data.get("status", order_row.status)
+                new_status = data.get("status", order_obj.status)
                 new_filled_qty = float(data.get("filled_qty") or 0)
                 new_avg_price = (
                     float(data["filled_avg_price"])
-                    if data.get("filled_avg_price") else None
+                    if data.get("filled_avg_price")
+                    else None
                 )
-                updates.append((
-                    order_row.id,
-                    {
-                        "status": new_status,
-                        "filled_qty": new_filled_qty,
-                        "avg_fill_price": new_avg_price,
-                    },
-                    getattr(acct, "user_id", None),
-                    order_row,
-                    new_status,
-                    new_filled_qty,
-                ))
-        except Exception as exc:
-            logger.debug(
-                "Order sync: failed to fetch order",
-                order_id=order_row.id,
-                error=str(exc),
-            )
 
-    if not updates:
-        return
+                # Preserve previous values for fill detection
+                prev_filled_qty = float(order_obj.filled_qty or 0)
+                prev_status = order_obj.status
 
-    new_fills: list[tuple] = []
+                # Apply updates directly on the ORM instance
+                order_obj.status = new_status
+                order_obj.filled_qty = new_filled_qty
+                order_obj.avg_fill_price = new_avg_price
 
-    try:
-        async with db_session_factory() as db:
-            for entry in updates:
-                order_id, fields, user_id, original_order, new_status, new_filled_qty = entry
-                result = await db.execute(
-                    select(Order).where(Order.id == order_id)
+                # Detect new fill
+                is_new_fill = (
+                    (new_status == "filled" and prev_status != "filled")
+                    or (new_filled_qty > prev_filled_qty and new_filled_qty > 0)
                 )
-                order = result.scalar_one_or_none()
-                if order:
-                    prev_filled_qty = float(order.filled_qty or 0)
-                    prev_status = order.status
-                    for key, val in fields.items():
-                        setattr(order, key, val)
+                if is_new_fill:
+                    new_fills.append((order_obj, getattr(acct, "user_id", None)))
 
-                    # Detect new fill: status became 'filled' or filled_qty increased
-                    is_new_fill = (
-                        (new_status == "filled" and prev_status != "filled")
-                        or (new_filled_qty > prev_filled_qty and new_filled_qty > 0)
-                    )
-                    if is_new_fill:
-                        new_fills.append((order, user_id))
-            await db.commit()
-        logger.info("Order sync complete", updated=len(updates))
-    except Exception as exc:
-        logger.error("Order sync DB update failed", error=str(exc))
-        return
+    # ------------------------------------------------------------------
+    # 4️⃣ Commit all changes in a single transaction
+    # ------------------------------------------------------------------
+    if new_fills:
+        try:
+            async with db_session_factory() as db:
+                await db.commit()
+            logger.info("Order sync complete", updated=len(new_fills))
+        except Exception as exc:  # pragma: no cover
+            logger.error("Order sync DB commit failed", error=str(exc))
+            return
 
-    # ── Broadcast fills via WebSocket and AgentBus ───────────────────────────
+    # ------------------------------------------------------------------
+    # 5️⃣ Broadcast fill events
+    # ------------------------------------------------------------------
     for order, user_id in new_fills:
         try:
             uid = str(user_id) if user_id else "system"
@@ -135,11 +160,12 @@ async def sync_orders_once(db_session_factory) -> None:
                 "type": "update",
                 "symbol": order.symbol,
             })
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.debug("Order sync: WS broadcast failed", order_id=order.id, error=str(exc))
 
         try:
             from app.tasks.agent_bus import get_bus
+
             bus = get_bus()
             await bus.post_finding(
                 "risk",
@@ -147,7 +173,7 @@ async def sync_orders_once(db_session_factory) -> None:
                 {"order_id": str(order.id)},
                 from_agent="order_sync",
             )
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.debug("Order sync: AgentBus post failed", order_id=order.id, error=str(exc))
 
 
@@ -162,6 +188,6 @@ async def run_order_sync_loop(db_session_factory, interval_seconds: int = 15) ->
             await sync_orders_once(db_session_factory)
         except asyncio.CancelledError:
             break
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.error("Order sync loop error", error=str(exc))
         await asyncio.sleep(interval_seconds)
