@@ -92,8 +92,13 @@
     "* LLM providers appear to be experiencing issues (investor_pipeline, run_experiments, algo_agent, self_improver, research_scientist).",
     "Based on the recent agent learnings, the following actionable knowledge can be extracted:",
     "git pull --rebase before committing \u2014 prevents push rejections",
-    "* A similar crossover-based strategy has been backtested with mixed results (quick_backtest in #desk-equities @ 2026-06-13T08:33)."
+    "* A similar crossover-based strategy has been backtested with mixed results (quick_backtest in #desk-equities @ 2026-06-13T08:33).",
+    "optimization on brokers/alpaca.py: success \u2014 tests green",
+    "optimization on backtest/data_loader.py: success \u2014 tests green",
+    "optimization on comparison/engine.py: success \u2014 tests green",
+    "optimization on tasks/order_sync.py: success \u2014 tests green",
+    "optimization on api/v1/backtests.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-23T12:24:44.148682+00:00",
+  "last_updated": "2026-06-23T17:31:17.080946+00:00",
   "total": 93
 }
