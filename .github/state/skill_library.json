@@ -102,8 +102,16 @@
     "strategy_logic on strategies/manual/earnings_accruals.py: success \u2014 tests green",
     "strategy_logic on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
     "strategy_logic on ml/models/xgboost_model.py: success \u2014 tests green",
-    "strategy_logic on ml/features/microstructure.py: success \u2014 tests green"
+    "strategy_logic on ml/features/microstructure.py: success \u2014 tests green",
+    "handle NaN values",
+    "check API timeouts",
+    "validate user input",
+    "monitor memory usage",
+    "catch exceptions",
+    "Detect model drift.",
+    "Optimize broker APIs.",
+    "Backtest strategy variants."
   ],
-  "last_updated": "2026-06-23T22:46:47.787079+00:00",
-  "total": 93
+  "last_updated": "2026-06-24T10:34:11.419620+00:00",
+  "total": 111
 }
