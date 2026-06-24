@@ -1,50 +1,50 @@
 {
-  "checked_at": "2026-06-22T23:56:49.265191+00:00",
+  "checked_at": "2026-06-24T21:22:09.773885+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 90,
+  "skill_count": 134,
   "agent_statuses": [
     {
-      "agent": "investor_pipeline",
-      "emoji": "\ud83d\udcbc",
-      "reply": "We need to respond as investor_pipeline agent. Must be first person, concise, 2 sentences max. One sentence status update. Mention active work. Likely investigating LLM unavailability issues. Also track investor pipeline stage auto-advancement. Provide file path maybe. Should be one sentence. Could be: \"I'm currently monitoring and troubleshooting the LLM unavailability alerts in `backend/llm_monitor.py` to ensure the investor pipeline auto\u2011advancement logic runs without interruption.\"",
+      "agent": "continuous_improver",
+      "emoji": "\ud83d\udd27",
+      "reply": "Currently refactoring\u202f`risk/hr",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "run_experiments",
-      "emoji": "\ud83d\udd2c",
-      "reply": "We need to respond as the run_experiments agent. Must be first person, concise (2 sentences max). One-sentence status update. Should mention what we are actively working on right now. Probably testing signal_runner improvements, running pytest. Provide reference to file paths. Let's craft: \"I'm currently running pytest on the updated signal_runner in backend/signals.py to verify its behavior before scheduling any new experiment runs.\" That's one sentence. Could also mention saving results. Provide file path",
+      "agent": "signal_runner",
+      "emoji": "\ud83d\udce1",
+      "reply": "We need to respond as signal_runner agent, give one-sentence status update, first person, concise (2 sentences max). Must reference real file paths. Probably mention testing hrp.py nightly or checking risk/hrp.py logs. So: \"I'm currently running the nightly test suite on risk/hrp.py (src/risk/hrp.py) and reviewing its logs to ensure the hierarchical risk parity logic is stable.\" That's one sentence. Provide file path.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "algo_agent",
-      "emoji": "\ud83c\udfb0",
-      "reply": "I\u2019m currently executing the UCB1 bandit loop (updating stats in `backend/bandit/ucb1.py`) to",
+      "agent": "quick_backtest",
+      "emoji": "\u26a1",
+      "reply": "Running a nightly backtest on `risk/hrp.py` to generate fresh performance logs and update the Sharpe\u2011",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "self_improver",
-      "emoji": "\ud83d\udd04",
-      "reply": "We need to respond as self_improver agent, one sentence status update, first person, concise, 2 sentences max. Should mention active work: likely investigating LLM unavailability issues and running pytest after signal_runner improvement. Provide file paths. One sentence. Let's craft: \"I am currently debugging the recent LLM unavailability errors affecting the signal_runner pipeline (see backend/signals.py) and running the full pytest suite (backend/tests/) to ensure no regressions.\" That's",
+      "agent": "peer_reviewer",
+      "emoji": "\ud83d\udc41\ufe0f",
+      "reply": "I\u2019m currently",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "research_scientist",
-      "emoji": "\ud83d\udd2d",
-      "reply": "I\u2019m currently reviewing the latest \u201cDeep Factor Timing\u201d paper and drafting a prototype alpha\u2011generation script (see\u202fbackend/research/alpha_prototypes.py",
+      "agent": "frontend_design",
+      "emoji": "\ud83c\udfa8",
+      "reply": "We need to respond as per developer instructions: \"You are the frontend_design agent on QuantEdge... Be specific, first person, concise (2 sentences max). Reference real file paths.\" The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" So respond with a one sentence status update, referencing file paths. Should be first person, concise, up to 2 sentences. Provide one sentence. Possibly mention working on styling React components in",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "modeling_engineer",
-      "emoji": "\u2699\ufe0f",
-      "reply": "I'm actively monitoring model drift detection for the QuantEdge signals pipeline, specifically tracking feature distribution shifts in the `signals.py` module to trigger retraining when drift exceeds 3 standard deviations.",
+      "agent": "token_monitor",
+      "emoji": "\ud83d\udcb0",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     }
