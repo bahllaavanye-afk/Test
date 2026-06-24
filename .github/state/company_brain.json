@@ -319,7 +319,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782340789.0955071,
+    "last_updated": 1782344916.8425176,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -423,7 +423,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782340789.0952694
+    "last_brain_update": 1782344916.8420043
   },
   "episodic": [
     {
@@ -919,6 +919,34 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1782340789.091484
+    },
+    {
+      "lesson": "All free LLM providers are failing, causing free-agent engineer to be unable to process any GitHub issues.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782344916.8317125
+    },
+    {
+      "lesson": "Claude is unavailable as a task router and agent, forcing fallback to GPT-4o via GitHub Models as the default agent.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782344916.8333533
+    },
+    {
+      "lesson": "Claude Task Router still assigns tasks to 'codex-task' despite being unavailable, indicating automated assignment without health check.",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782344916.834897
+    },
+    {
+      "lesson": "The system relies on a sub-agent pick-up and Claude review cycle that may fail or delay output acceptance if Claude remains unavailable.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1782344916.8364625
     }
   ],
   "github_insights": [
@@ -946,6 +974,11 @@
       "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
       "item_count": 20,
       "ts": 1782340789.092728
+    },
+    {
+      "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
+      "item_count": 20,
+      "ts": 1782344916.838038
     }
   ]
 }
