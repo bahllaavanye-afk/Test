@@ -120,8 +120,13 @@
     "* **Adhere to platform standards**: `InvestorPipeline.js` and `backend/code` need a thorough review and refactoring to ensure compliance with established standards. ([1], [4])",
     "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "1. **Improve Code Quality**: Continuously review and refactor code to adhere to platform standards and ensure high quality.",
-    "* **Code Quality Review**: Prioritize a code quality review of `api/v1/kalshi.py` due to recent validation successes."
+    "* **Code Quality Review**: Prioritize a code quality review of `api/v1/kalshi.py` due to recent validation successes.",
+    "constants on backtest/stress_test.py: success \u2014 tests green",
+    "constants on comparison/engine.py: success \u2014 tests green",
+    "constants on tasks/self_improver.py: success \u2014 tests green",
+    "constants on api/v1/monitoring.py: success \u2014 tests green",
+    "constants on test/unit/test_risk_advanced.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-24T12:05:08.355897+00:00",
+  "last_updated": "2026-06-24T18:12:50.680187+00:00",
   "total": 121
 }
