@@ -287,7 +287,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782332554.3320398,
+    "last_updated": 1782335331.7257693,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -391,7 +391,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1782328703.3274136
+    "last_brain_update": 1782335331.7254875
   },
   "episodic": [
     {
@@ -817,6 +817,41 @@
       },
       "lesson": "**Morning Brief:** The market remains in a bull regime with strong SPY momentum, but rising VIX and widening credit spreads signal growing caution beneath the surface. **Tactical implication:** Favor short-dated put spreads over outright longs to exploit hedging demand while maintaining upside exposure in steepening yield curve conditions.",
       "ts": 1782332554.3334281
+    },
+    {
+      "lesson": "All free LLM providers are failing, crippling the free-agent engineer pipeline. This is a single point of failure for automated issue processing.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782335331.7155607
+    },
+    {
+      "lesson": "Claude is unavailable, forcing fallback to GPT-4o via GitHub Models. Reliance on a single provider creates systemic risk for task routing and code generation.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782335331.717367
+    },
+    {
+      "lesson": "The CI environment uses Python 3.11.15 with aiohttp 3.14.1 and aiosqlite. These dependencies may have known vulnerabilities or compatibility issues with the agent stack.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782335331.718684
+    },
+    {
+      "lesson": "Claude Task Router is assigning tasks but cannot execute them, creating a backlog of unprocessed issues. This indicates a broken automation workflow that requires manual intervention.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782335331.7200305
+    },
+    {
+      "lesson": "Multiple identical failures suggest a systemic issue with free-tier LLM API endpoints, not a transient outage. A paid provider or local model fallback is needed for reliability.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1782335331.7213948
     }
   ],
   "github_insights": [
@@ -834,6 +869,11 @@
       "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
       "item_count": 20,
       "ts": 1782328703.324401
+    },
+    {
+      "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
+      "item_count": 20,
+      "ts": 1782335331.7227292
     }
   ]
 }
