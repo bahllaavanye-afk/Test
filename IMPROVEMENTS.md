@@ -9,7 +9,26 @@
 >   (chat sessions are ephemeral — only what's committed survives).
 > - **Slack:** notifications/visibility only — never the source of truth.
 
-_Last updated: 2026-06-20_
+_Last updated: 2026-06-24_
+
+---
+
+## Session 2026-06-24 — shipped (11 PRs merged to `main`)
+- [x] **Options productization end-to-end** (#188): `OptionLeg` + `open_option_spread` schema,
+      engine branch, TradeStation options API (chain + multi-leg order builders), 4 templates.
+- [x] **Brain cascade fixed** — reasoning-model content extraction (Cerebras gpt-oss / R1) on
+      `main` (#188) **and** on the default branch (#189: User-Agent, live model IDs) + in-call
+      key fallthrough (#199). Verified live: groq/cerebras/nvidia answer.
+- [x] **Backend-health banner + fresh-Render runbook** (#190) — `docs/RENDER_NEW_ACCOUNT.md`.
+- [x] **TradeStation spread routing** (live-only, paper-first proven) + broker tests (#198).
+- [x] **Kalshi public market reads** wired (#203) — matches the existing Polymarket endpoint.
+- [x] **Tests added/guards:** income/macro strategy contracts (#202), TS options parsing (#198),
+      pytest-asyncio deprecation removed (#206), **momentum lookahead causality guard** (#207),
+      **cross-tenant isolation guard** (#208).
+- [x] **Backlog hygiene:** closed 8 stale tsconfig issues + #193 (brain canary already exists).
+- **Verified deploy-readiness:** booted backend locally → 158 routes, demo auth, seeds 29 bots
+      /13 strategies/3 risk rules, Kalshi live. **Only blocker to going live = Render build-minute
+      quota (#197) + default-branch flip to `main` (#196).**
 
 ---
 
@@ -18,9 +37,9 @@ _Last updated: 2026-06-20_
 - [x] **Cascade used only the primary key** → rotate across numbered variants (#145).
 - [x] **Brain observability + always-on canary** → `cascade_status()`, `llm_metrics.jsonl`,
       `brain_health.py`, hourly `brain-health.yml` that alerts Slack #infra-alerts (this PR).
-- [ ] **Refresh dead provider keys** (only Groq works): Gemini=quota(429), DeepSeek=balance(402),
-      Cerebras=no-access, NVIDIA=404. Add free SambaNova/OpenRouter/Together/Hyperbolic keys to
-      Doppler → multi-provider resilience. *(Drop key in Doppler; I wire the rest.)*
+- [~] **Provider keys** — as of 2026-06-24, **3 work live** (Groq, Cerebras via gpt-oss-120b,
+      NVIDIA via current model). Gemini=quota(429, recovers), DeepSeek=balance(402). Optional:
+      add free SambaNova/Together/Hyperbolic keys to Doppler for more headroom. *(Drop key in Doppler; I wire the rest.)*
 - [ ] **Make the agent "smoke test" a hard gate** that pages on failure (it was red but unwatched).
 
 ## P1 — Real bugs found this session
@@ -40,9 +59,11 @@ _Last updated: 2026-06-20_
 - [ ] **"TV Indicator SOTA" scheduled workflow** — still to investigate.
 
 ## P1 — Issues the agents themselves flagged in Slack (live triage, 69/97 channels active)
-- [ ] `#deploys` — **cross-user data leak fixes** (security; verify it's actually closed).
+- [x] `#deploys` — **cross-user data leak**: verified closed — all core routers scope to
+      `current_user` (bots by user_id; orders/positions/trades by Account.user_id). Guard test (#208).
 - [ ] `#leadership-summary` / risk — **VaR threshold exceeded**.
-- [ ] `#alpha-research` — **lookahead bias** in momentum strategies.
+- [x] `#alpha-research` — **lookahead bias** in momentum strategies: verified — all 13 already
+      `shift(1)`; causality regression guard added (#207).
 - [ ] `#squad-qa` / `#ci-failures` — **test failures / bug** backlog.
 - [ ] `#okrs` — **Sharpe-ratio shortfall** vs target.
 - [ ] `#squad-backend` — **latency issues**; `#squad-frontend` — **screenshot upload failed**.
