@@ -15,6 +15,20 @@ from app.backtest.engine import BacktestMetrics, run_backtest
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
 
+# Constants
+DEFAULT_INITIAL_EQUITY: float = 100_000
+MIN_DATA_LENGTH: int = 10
+IMPROVEMENT_THRESHOLD: float = 0.1
+SIGNIFICANCE_LEVEL: float = 0.05
+LOG_PVALUE_PRECISION: int = 4
+IMPROVEMENT_ROUND: int = 4
+TSTAT_ROUND: int = 4
+PVAL_ROUND: int = 6
+WINNER_ML: str = "ml"
+WINNER_MANUAL: str = "manual"
+WINNER_NEITHER: str = "neither"
+LOG_MESSAGE: str = "Comparison complete"
+
 
 @dataclass
 class ComparisonResult:
@@ -55,7 +69,7 @@ class StrategyComparisonEngine:
         interval: str,
         start_date: date,
         end_date: date,
-        initial_equity: float = 100_000,
+        initial_equity: float = DEFAULT_INITIAL_EQUITY,
     ) -> ComparisonResult:
         # Run backtests (potentially expensive)
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
@@ -75,22 +89,22 @@ class StrategyComparisonEngine:
 
         # Early‑exit for insufficient data
         min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > 10:
+        if min_len > MIN_DATA_LENGTH:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
         else:
             t_stat, p_val = 0.0, 1.0
 
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
-        winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
-        if abs(improvement) < 0.1:
-            winner = "neither"
+        winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
+        if abs(improvement) < IMPROVEMENT_THRESHOLD:
+            winner = WINNER_NEITHER
 
         logger.info(
-            "Comparison complete",
+            LOG_MESSAGE,
             strategy=strategy_name,
             manual_sharpe=manual_metrics.sharpe,
             ml_sharpe=ml_metrics.sharpe,
-            p_value=round(p_val, 4),
+            p_value=round(p_val, LOG_PVALUE_PRECISION),
         )
 
         return ComparisonResult(
@@ -103,9 +117,9 @@ class StrategyComparisonEngine:
             ml_enhanced=ml_metrics,
             benchmark_curves=benchmark_curves,
             benchmark_stats=benchmark_stats,
-            ml_improvement_sharpe=round(improvement, 4),
-            t_statistic=round(float(t_stat), 4),
-            p_value=round(float(p_val), 6),
-            is_significant=(p_val < 0.05),
+            ml_improvement_sharpe=round(improvement, IMPROVEMENT_ROUND),
+            t_statistic=round(float(t_stat), TSTAT_ROUND),
+            p_value=round(float(p_val), PVAL_ROUND),
+            is_significant=(p_val < SIGNIFICANCE_LEVEL),
             winner=winner,
         )
