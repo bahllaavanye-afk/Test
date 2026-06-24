@@ -6,7 +6,7 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-06-20._
+_Last updated: 2026-06-24._
 
 ## Mission
 QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, and
@@ -35,6 +35,12 @@ QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, 
 - ✅ Brain observability: `llm_metrics.jsonl`, `cascade_status()`, hourly `brain-health.yml`
   canary → Slack `#infra-alerts` (#146).
 - ✅ Doppler single-source secrets (#139); Bot Archiver soft-delete/restore (#137).
+- ✅ **2026-06-24 (11 PRs):** options productization (#188); brain cascade fixed on `main`+default
+  branch incl. reasoning-model extraction + in-call key fallthrough (#189/#199); backend-health
+  banner + Render runbook (#190); TradeStation spread routing (#198); Kalshi public reads (#203);
+  guards for income/macro strategies (#202), momentum lookahead (#207), cross-tenant isolation (#208);
+  pytest-asyncio deprecation removed (#206). Backend verified deploy-ready locally (158 routes, seeds
+  29 bots). **Live blockers are human-only: Render build-minutes (#197) + default branch → `main` (#196).**
 
 ## IN THIS BRANCH (`claude/sota-docs-and-fixes`)
 - ✅ **Cost-tiered routing** `llm_routed()`: free → OpenRouter open-mid → Claude backstop.
