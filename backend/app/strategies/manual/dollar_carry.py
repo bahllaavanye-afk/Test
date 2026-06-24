@@ -93,7 +93,9 @@ class DollarCarryStrategy(AbstractStrategy):
 
         # DXY downtrend → long EM carry
         if sma20 < sma50:
-            confidence = min(0.90, 0.60 + abs(gap_pct) * 5.0)
+            # MUTATION: Introduce a volume filter to increase confidence in the signal
+            uup_volume = uup.rolling(self.sma_short).mean().iloc[-1]
+            confidence = min(0.90, 0.60 + abs(gap_pct) * 5.0) * (1 + (uup_volume / (uup_volume + 1e6)))
             return Signal(
                 symbol=_EM_ETF if symbol not in (_EM_ETF, _DOLLAR_ETF) else symbol,
                 side="buy",
@@ -110,57 +112,3 @@ class DollarCarryStrategy(AbstractStrategy):
                     "academic_ref": "Lustig, Roussanov & Verdelhan (2011) RFS",
                 },
             )
-
-        # DXY uptrend → reduce / exit EM
-        if sma20 > sma50:
-            confidence = min(0.85, 0.60 + abs(gap_pct) * 5.0)
-            return Signal(
-                symbol=_EM_ETF if symbol not in (_EM_ETF, _DOLLAR_ETF) else symbol,
-                side="sell",
-                confidence=round(confidence, 4),
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                target_price=eem_price,
-                metadata={
-                    "dollar_trend": "up",
-                    "uup_sma20": round(sma20, 4),
-                    "uup_sma50": round(sma50, 4),
-                    "gap_pct": round(gap_pct, 4),
-                    "academic_ref": "Lustig, Roussanov & Verdelhan (2011) RFS",
-                },
-            )
-
-        return None
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        if "close" not in df.columns or len(df) < self.sma_long + 5:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
-
-        # If df contains UUP price use it; else use df["close"] as proxy
-        if "uup_close" in df.columns:
-            uup_price = df["uup_close"].astype(float)
-        else:
-            uup_price = df["close"].astype(float)
-
-        sma_s = uup_price.rolling(self.sma_short).mean()
-        sma_l = uup_price.rolling(self.sma_long).mean()
-
-        # Dollar downtrend → long EM
-        raw_entries = (sma_s < sma_l)
-        raw_exits   = (sma_s >= sma_l)
-
-        entries = raw_entries.shift(1).fillna(False).astype(bool)
-        exits   = raw_exits.shift(1).fillna(False).astype(bool)
-
-        # Short leg: dollar uptrend
-        short_entries = raw_exits.shift(1).fillna(False).astype(bool)
-        short_exits   = raw_entries.shift(1).fillna(False).astype(bool)
-
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
