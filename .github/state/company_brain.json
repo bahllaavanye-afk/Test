@@ -287,7 +287,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782328703.3276765,
+    "last_updated": 1782332554.3320398,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -299,54 +299,54 @@
     "autopilot_best_oos_sharpe": 1.1346,
     "autopilot_best_blended": 0.4334,
     "autopilot_overfit_count": 1,
-    "market_regime": "neutral",
+    "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-06-23T21:06:07.442125+00:00",
+      "generated_at": "2026-06-24T20:22:29.067185+00:00",
       "signals": {
         "vix": {
-          "value": 19.49,
+          "value": 18.68,
           "trend": "rising"
         },
         "spy": {
-          "price": 733.58,
-          "sma50": 730.26,
-          "sma200": 685.48,
+          "price": 733.3,
+          "sma50": 731.24,
+          "sma200": 685.95,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0516,
-          "median": 1.0525,
-          "signal": "flat_or_inverted"
+          "ratio": 1.0647,
+          "median": 1.0528,
+          "signal": "steepening"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.414,
+          "hyg_lqd_momentum_20d": -0.854,
           "signal": "widening"
         },
         "breadth": {
-          "sectors_above_sma20": 6,
+          "sectors_above_sma20": 7,
           "total_sectors": 11,
-          "breadth_pct": 54.5
+          "breadth_pct": 63.6
         },
         "btc": {
-          "price": 62458,
-          "24h_pct": -2.93
+          "price": 60655,
+          "24h_pct": -2.78
         }
       },
-      "score": 1,
-      "regime": "neutral",
+      "score": 3,
+      "regime": "bull",
       "strategy_gates": {
         "directional": true,
-        "min_confidence": 0.68,
-        "size_multiplier": 0.75
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
       },
-      "summary": "**Morning Brief:** Markets are in a neutral regime with a strong SPY uptrend, but rising VIX to 19.49 and widening credit spreads signal growing caution beneath the surface, while a flat yield curve and mixed sector breadth (6/11 above 20-SMA) keep the backdrop fragile. **Tactical implication:** Favor mean-reversion strategies today to capitalize on intraday volatility without chasing the uptrend into deteriorating risk conditions."
+      "summary": "**Morning Brief:** The market remains in a bull regime with strong SPY momentum, but rising VIX and widening credit spreads signal growing caution beneath the surface. **Tactical implication:** Favor short-dated put spreads over outright longs to exploit hedging demand while maintaining upside exposure in steepening yield curve conditions."
     },
     "strategy_gates": {
       "directional": true,
-      "min_confidence": 0.68,
-      "size_multiplier": 0.75
+      "min_confidence": 0.6,
+      "size_multiplier": 1.0
     },
-    "opinion_score": 1,
+    "opinion_score": 3,
     "macro_score": 0,
     "vix": 16.08,
     "market_scan_ts": 1781616017.0331943,
@@ -805,6 +805,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1782328689.5560038
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "**Morning Brief:** The market remains in a bull regime with strong SPY momentum, but rising VIX and widening credit spreads signal growing caution beneath the surface. **Tactical implication:** Favor short-dated put spreads over outright longs to exploit hedging demand while maintaining upside exposure in steepening yield curve conditions.",
+      "ts": 1782332554.3334281
     }
   ],
   "github_insights": [
