@@ -125,8 +125,16 @@
     "constants on comparison/engine.py: success \u2014 tests green",
     "constants on tasks/self_improver.py: success \u2014 tests green",
     "constants on api/v1/monitoring.py: success \u2014 tests green",
-    "constants on test/unit/test_risk_advanced.py: success \u2014 tests green"
+    "constants on test/unit/test_risk_advanced.py: success \u2014 tests green",
+    "Monitor api/v1/kalshi.py",
+    "Refactor InvestorPipeline.js",
+    "Review backend/code daily",
+    "Test hrp.py nightly",
+    "Check risk/hrp.py logs",
+    "Analyze agent memory.",
+    "Test strategy logic.",
+    "Backtest new variants."
   ],
-  "last_updated": "2026-06-24T18:12:50.680187+00:00",
-  "total": 121
+  "last_updated": "2026-06-24T20:17:00.071860+00:00",
+  "total": 134
 }
