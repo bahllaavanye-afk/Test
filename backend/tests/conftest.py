@@ -1,7 +1,6 @@
 """Shared test fixtures for all tests."""
 from __future__ import annotations
 
-import asyncio
 import os
 from pathlib import Path
 
@@ -26,11 +25,6 @@ os.environ.setdefault("DEBUG", "false")
 os.environ.setdefault("ALPACA_API_KEY", "test-key")
 os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
 os.environ.setdefault("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
-
-
-@pytest.fixture(scope="session")
-def event_loop_policy():
-    return asyncio.DefaultEventLoopPolicy()
 
 
 @pytest_asyncio.fixture(scope="session")
