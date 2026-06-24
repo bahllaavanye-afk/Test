@@ -133,8 +133,13 @@
     "Check risk/hrp.py logs",
     "Analyze agent memory.",
     "Test strategy logic.",
-    "Backtest new variants."
+    "Backtest new variants.",
+    "Validate API keys",
+    "Check data types",
+    "Log trade errors",
+    "Verify dependencies",
+    "Test for timeouts"
   ],
-  "last_updated": "2026-06-24T20:17:00.071860+00:00",
-  "total": 134
+  "last_updated": "2026-06-24T21:52:39.086266+00:00",
+  "total": 139
 }
