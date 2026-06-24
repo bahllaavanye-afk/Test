@@ -287,7 +287,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782325363.732882,
+    "last_updated": 1782328703.3276765,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -391,7 +391,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1782252674.4040048
+    "last_brain_update": 1782328703.3274136
   },
   "episodic": [
     {
@@ -770,6 +770,41 @@
       },
       "lesson": "**Morning Brief:** Markets are in a neutral regime with a strong SPY uptrend, but rising VIX to 19.49 and widening credit spreads signal growing caution beneath the surface, while a flat yield curve and mixed sector breadth (6/11 above 20-SMA) keep the backdrop fragile. **Tactical implication:** Favor mean-reversion strategies today to capitalize on intraday volatility without chasing the uptrend into deteriorating risk conditions.",
       "ts": 1782248782.1397088
+    },
+    {
+      "lesson": "All free LLM providers are failing, crippling the free-agent engineer pipeline. This is a single point of failure for automated issue processing.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782328689.5504017
+    },
+    {
+      "lesson": "Claude is unavailable, forcing fallback to GPT-4o via GitHub Models. Reliance on a single provider creates systemic risk for task routing and code generation.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782328689.5518973
+    },
+    {
+      "lesson": "The CI environment uses Python 3.11.15 with aiohttp 3.14.1 and aiosqlite. These dependencies may have known vulnerabilities or compatibility issues with the agent stack.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782328689.5532362
+    },
+    {
+      "lesson": "Claude Task Router is assigning tasks but cannot execute them, creating a backlog of unprocessed issues. This indicates a broken automation workflow that requires manual intervention.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782328689.5545926
+    },
+    {
+      "lesson": "Multiple identical failures suggest a systemic issue with free-tier LLM API endpoints, not a transient outage. A paid provider or local model fallback is needed for reliability.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1782328689.5560038
     }
   ],
   "github_insights": [
@@ -782,6 +817,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1782252674.3938181
+    },
+    {
+      "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
+      "item_count": 20,
+      "ts": 1782328703.324401
     }
   ]
 }
