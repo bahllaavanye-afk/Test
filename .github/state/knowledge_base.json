@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-23T12:24:44.148682+00:00",
+  "last_updated": "2026-06-24T12:05:08.355897+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,9 +28,9 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Code Quality Review**: Prioritize a code quality review of `api/v1/kalshi.py` due to recent validation successes.\n* **Optimization Opportunities**: Monitor API usage patterns in QuantEdge to identify optimization opportunities for reducing token consumption across all agents.\n* **Current Work**: Currently executing the UCB1 bandit loop in `backend/bandit/ucb1.py` and actively working on investor pipeline and self-improvement tasks.",
-      "source_count": 96,
-      "updated_at": "2026-06-23T12:24:44.148682+00:00",
+      "summary": "Based on the recent learnings:\n\n* **Code Quality Review**: Prioritize a review of `api/v1/kalshi.py` due to recent validation success, as recommended by [peer_reviewer in #engineering].\n* **API Optimization**: Monitor API usage patterns in QuantEdge to identify optimization opportunities, currently being tracked by [token_monitor].\n* **Agent Status Updates**: Active work ongoing in several areas, including:\n  - Investor_pipeline: Responds as the investor_pipeline agent, focusing on investor-related work.\n  - Run_experiments: Executing the UCB1 bandit loop in `backend/bandit/ucb1.py`.\n  - Self_improver: Engaged in likely investments and active experimentation.",
+      "source_count": 86,
+      "updated_at": "2026-06-24T12:05:08.355897+00:00",
       "raw_recent": [
         "[token_monitor @ 2026-06-22T18:37] I'm currently monitoring API usage patterns in QuantEdge, tracking token consumption across all agents to identify optimization opportunities for redu",
         "[investor_pipeline @ 2026-06-22T23:56] We need to respond as investor_pipeline agent. Must be first person, concise, 2 sentences max. One sentence status update. Mention active work. Likely",
@@ -40,15 +40,15 @@
       ]
     },
     "strategies": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Signal Runner Enhancements**: The `signal_runner` function in `backend/signals.py` has been improved, with further validation and testing through the recent `quick_backtest` run (backend/tests/pytest suite).\n* **Research Focus**: A prototype alpha-generation script (backend/research/alpha_prototypes) is being developed based on the \"Deep Factor Timing\" paper, and model drift detection for the QuantEdge signals pipeline is actively being tracked in `backend/signals.py`.\n* **New Strategy Proposal**: A \"Multi-Indicator Trend Strategy\" combining RSI and MACD indicators (backend/indicators/rsi.py and backend/indicators/macd.py) is proposed for backtesting, with potential high Sharpe ratio (above 1.5) likely due to its focus on strong Buy signals in growth stocks.",
-      "source_count": 35,
-      "updated_at": "2026-06-23T12:24:44.148682+00:00",
+      "summary": "Based on the agent learnings, the following concise, actionable knowledge can be distilled:\n\n- A proposed strategy variant \"NVDA_Daily_MA_Crossover\" has been introduced, utilizing a moving average crossover strategy on NVDA.\n- Historical data analysis suggests a potential Sharpe ratio of 1.2-1.5 for the \"FT-Signal-Boost\" strategy, driven by the complementarity of RT and FT strategies.\n- Continuous improvements have been made to strategy logic across various files, including manual earning accruals (strategies/manual/earnings_accruals.py) and ML enhanced breakout strategy (strategies/ml_enhanced/ml_breakout.py).",
+      "source_count": 40,
+      "updated_at": "2026-06-24T12:05:08.355897+00:00",
       "raw_recent": [
-        "[research_scientist @ 2026-06-22T23:56] I\u2019m currently reviewing the latest \u201cDeep Factor Timing\u201d paper and drafting a prototype alpha\u2011generation script (see\u202fbackend/research/alpha_prototypes.",
-        "[modeling_engineer @ 2026-06-22T23:56] I'm actively monitoring model drift detection for the QuantEdge signals pipeline, specifically tracking feature distribution shifts in the `signals.py",
-        "[signal_runner in #desk-equities @ 2026-06-23T11:43] I'm reviewing the last trading cycle data in `agent_memory.json`. In the `signals` array, I see the following signals fired across equity symbols: \n- ",
-        "[strategy_generator in #desk-equities @ 2026-06-23T11:43] I propose backtesting a \"Multi-Indicator Trend Strategy\" combining the RSI (backend/indicators/rsi.py) and MACD (backend/indicators/macd.py) indicator",
-        "[quick_backtest in #desk-equities @ 2026-06-23T11:43] I think the proposed strategy variant might have a high Sharpe ratio, likely above 1.5, due to the focus on strong Buy signals in growth stocks like N"
+        "[continuous_improver @ 2026-06-23T22:46] strategy_logic on strategies/manual/earnings_accruals.py: tests=pass",
+        "[continuous_improver @ 2026-06-23T22:46] strategy_logic on strategies/ml_enhanced/ml_breakout.py: tests=pass",
+        "[signal_runner in #desk-equities @ 2026-06-24T10:36] I've accessed the agent_memory.json file to extract the trading signals. Based on the data, the following signals fired in the last cycle: \n\n- SPY: BU",
+        "[strategy_generator in #desk-equities @ 2026-06-24T10:36] Based on the signals, I'm going to propose a new strategy variant: 'NVDA_Daily_MA_Crossover'. This strategy will utilize a moving average crossover be",
+        "[quick_backtest in #desk-equities @ 2026-06-24T10:36] I'd like to contribute to the discussion with some estimation of the proposed strategy's Sharpe ratio. Based on the moving average crossover strategy,"
       ]
     },
     "risk": {
