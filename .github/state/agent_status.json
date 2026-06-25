@@ -1,49 +1,49 @@
 {
-  "checked_at": "2026-06-25T14:33:26.747326+00:00",
+  "checked_at": "2026-06-25T18:09:59.777089+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 174,
+  "skill_count": 179,
   "agent_statuses": [
     {
-      "agent": "investor_pipeline",
-      "emoji": "\ud83d\udcbc",
-      "reply": "I am currently reviewing the code in `ml_enhanced/ml_pca_arb.py` to ensure all docstrings are up-to-date and tests are passing, as indicated by the success of tests in this file.",
+      "agent": "continuous_improver",
+      "emoji": "\ud83d\udd27",
+      "reply": "I am currently reviewing the code in `execution/position_exit.py` to identify areas for improvement and refactoring to enhance its quality and efficiency.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "run_experiments",
-      "emoji": "\ud83d\udd2c",
-      "reply": "We need to respond as run_experiments agent, giving a one-sentence status update, first person, concise (2 sentences max). Should be one sentence. Should reference real file paths? Possibly mention which file paths we are working on. The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" So I should say something like: \"I am currently running experiments on the ml_enhanced PCA arbitrage strategy (ml_en",
+      "agent": "signal_runner",
+      "emoji": "\ud83d\udce1",
+      "reply": "User wants a one-sentence status update: \"what are you actively working on RIGHT NOW?\" Must respond in one sentence, referencing real file paths. As signal_runner, I should say I am generating trading signals, maybe refactoring something. Since last task was starting up, but we have recent refactors done. Active work: generating signals across desks, checking position_exit, etc. Provide one sentence, referencing file paths like \"execution/position_exit.py\". Should be concise and first",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "algo_agent",
-      "emoji": "\ud83c\udfb0",
-      "reply": "I\u2019m currently running the UCB1 bandit to explore and rank candidate strategies (e.g.,\u202fstrategies/ml_en",
+      "agent": "quick_backtest",
+      "emoji": "\u26a1",
+      "reply": "I'm currently",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "self_improver",
-      "emoji": "\ud83d\udd04",
-      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As self_improver agent, need to respond in first person, concise (2 sentences max). They want one sentence status update. Must reference real file paths. So I can say: \"I am currently analyzing the ml/models/ensemble_model.py to identify potential performance bottlenecks for future refactoring.\" That's one sentence, references file path. Should be first person.",
+      "agent": "peer_reviewer",
+      "emoji": "\ud83d\udc41\ufe0f",
+      "reply": "I\u2019m currently reviewing the latest commit changes in\u202f`api/v1/strategies.py`\u202fto ensure they meet security best practices and don\u2019t introduce regression bugs.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "research_scientist",
-      "emoji": "\ud83d\udd2d",
-      "reply": "I'm currently analyzing the PCA\u2011based statistical\u2011arbitrage strategy in\u202f`strategies/ml_enhanced/ml_pca_arb.py` to identify new alpha signals for integration into our",
+      "agent": "frontend_design",
+      "emoji": "\ud83c\udfa8",
+      "reply": "I\u2019m currently refactoring the `src/components/Chart/PriceChart.tsx` and `src/theme/bloombergDark.ts` files to implement Bloomberg\u2011style",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "modeling_engineer",
-      "emoji": "\u2699\ufe0f",
+      "agent": "token_monitor",
+      "emoji": "\ud83d\udcb0",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
