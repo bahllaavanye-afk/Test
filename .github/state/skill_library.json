@@ -161,8 +161,15 @@
     "Test network connectivity",
     "* The `signal_runner` agent is processing files in `backtest/engine.py` and `risk/hrp.py` for performance metrics and updated Sharpe rankings.",
     "[desk_trader in #risk @ 2026-06-19T12:37] Based on current market conditions and the 70/30 arb/directional allocation policy, I recommend increasing d",
-    "* Retrain the `SectorSentimentModel` using the `sector_sentiment.py` file and integrate a temporal attention layer to handle model drift."
+    "* Retrain the `SectorSentimentModel` using the `sector_sentiment.py` file and integrate a temporal attention layer to handle model drift.",
+    "Check data feeds",
+    "Monitor algo-agent",
+    "Log sync errors",
+    "Test HRP modules",
+    "* Refine TFT models",
+    "* Implement Attention",
+    "* Fix flaky tests"
   ],
-  "last_updated": "2026-06-25T11:59:40.378378+00:00",
-  "total": 162
+  "last_updated": "2026-06-25T12:14:55.066348+00:00",
+  "total": 169
 }
