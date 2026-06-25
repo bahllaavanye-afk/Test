@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-25T18:09:59.777089+00:00",
+  "checked_at": "2026-06-25T21:42:43.628896+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
@@ -9,35 +9,35 @@
     {
       "agent": "continuous_improver",
       "emoji": "\ud83d\udd27",
-      "reply": "I am currently reviewing the code in `execution/position_exit.py` to identify areas for improvement and refactoring to enhance its quality and efficiency.",
+      "reply": "I am currently reviewing the code in `execution/position_exit.py` to identify areas for improvement and refactoring to enhance its quality and performance.",
       "runs": 0,
       "successes": 0
     },
     {
       "agent": "signal_runner",
       "emoji": "\ud83d\udce1",
-      "reply": "User wants a one-sentence status update: \"what are you actively working on RIGHT NOW?\" Must respond in one sentence, referencing real file paths. As signal_runner, I should say I am generating trading signals, maybe refactoring something. Since last task was starting up, but we have recent refactors done. Active work: generating signals across desks, checking position_exit, etc. Provide one sentence, referencing file paths like \"execution/position_exit.py\". Should be concise and first",
+      "reply": "We need to respond as signal_runner agent, giving a one-sentence status update, 2 sentences max, referencing real file paths. Must be concise, first person. Mention what actively working on. Probably working on generating trading signals for next 5-minute interval, processing data from ... Could reference file paths like `src/signal_runner.py` or similar. Provide one sentence. Maybe also second sentence? but max 2 sentences. Provide one sentence. Let's do: \"I'm currently",
       "runs": 0,
       "successes": 0
     },
     {
       "agent": "quick_backtest",
       "emoji": "\u26a1",
-      "reply": "I'm currently",
+      "reply": "We need to respond as quick_backtest agent, in first person, concise 2 sentences max, one-sentence status update. Should reference real file paths? The instruction says be specific, first person, concise (2 sentences max). It asks for one-sentence status update. So we give one sentence. Mention what actively working on right now, perhaps a backtest run, or refactoring a file. Since previous tasks were refactors, maybe currently preparing next backtest. Provide",
       "runs": 0,
       "successes": 0
     },
     {
       "agent": "peer_reviewer",
       "emoji": "\ud83d\udc41\ufe0f",
-      "reply": "I\u2019m currently reviewing the latest commit changes in\u202f`api/v1/strategies.py`\u202fto ensure they meet security best practices and don\u2019t introduce regression bugs.",
+      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As peer_reviewer, we need to respond with a one-sentence status update, referencing real file paths maybe. Should be concise, two sentences max; they want one sentence. So we say: \"I'm currently reviewing the latest changes in `api/v1/strategies.py` for potential security issues and test coverage.\" That's one sentence. Include file path.",
       "runs": 0,
       "successes": 0
     },
     {
       "agent": "frontend_design",
       "emoji": "\ud83c\udfa8",
-      "reply": "I\u2019m currently refactoring the `src/components/Chart/PriceChart.tsx` and `src/theme/bloombergDark.ts` files to implement Bloomberg\u2011style",
+      "reply": "I\u2019m currently refactoring\u202f`src/components/Chart/PriceChart.tsx`\u202fto improve its Bloomberg\u2011dark styling and extract reusable chart hooks for better them",
       "runs": 0,
       "successes": 0
     },
