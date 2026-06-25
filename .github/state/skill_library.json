@@ -138,8 +138,15 @@
     "Check data types",
     "Log trade errors",
     "Verify dependencies",
-    "Test for timeouts"
+    "Test for timeouts",
+    "Check DB connections",
+    "Verify config files",
+    "Monitor system resources",
+    "Track API rate limits",
+    "Ping external services",
+    "Refactor agent memory",
+    "Implement TFT models"
   ],
-  "last_updated": "2026-06-25T01:31:09.695290+00:00",
-  "total": 139
+  "last_updated": "2026-06-25T06:04:03.690407+00:00",
+  "total": 146
 }
