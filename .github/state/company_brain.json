@@ -376,7 +376,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782398860.1714962,
+    "last_updated": 1782400975.3711233,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -480,7 +480,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782390344.103836
+    "last_brain_update": 1782400975.3708017
   },
   "episodic": [
     {
@@ -1137,6 +1137,41 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1782390344.0992455
+    },
+    {
+      "lesson": "Free LLM provider reliability is critically low, with 5 consecutive failures blocking all free-agent processing.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782400975.3598437
+    },
+    {
+      "lesson": "No fallback mechanism exists for when free LLM providers fail \u2014 entire pipeline halts instead of degrading gracefully.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782400975.3615398
+    },
+    {
+      "lesson": "Immediate need to evaluate and integrate paid or self-hosted LLM providers to ensure uptime for the free-agent system.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782400975.3630702
+    },
+    {
+      "lesson": "The free-agent engineer lacks retry logic or provider rotation \u2014 all providers fail without diagnostic detail.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782400975.3645866
+    },
+    {
+      "lesson": "No error logging or alerting distinguishes transient provider outages from permanent model failures \u2014 obscures root cause.",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782400975.3661299
     }
   ],
   "github_insights": [
@@ -1189,6 +1224,11 @@
       "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
       "item_count": 20,
       "ts": 1782390344.1007428
+    },
+    {
+      "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
+      "item_count": 20,
+      "ts": 1782400975.3676765
     }
   ]
 }
