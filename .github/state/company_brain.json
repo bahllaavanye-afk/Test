@@ -406,7 +406,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782421871.497009,
+    "last_updated": 1782427535.858756,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -509,7 +509,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782421871.4965422
+    "last_brain_update": 1782427535.8582761
   },
   "episodic": [
     {
@@ -1318,6 +1318,41 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1782421871.4897192
+    },
+    {
+      "lesson": "All five free LLM providers are failing simultaneously, indicating a systemic outage or rate-limit exhaustion rather than isolated provider failures.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782427535.8422549
+    },
+    {
+      "lesson": "The free-agent engineer has no fallback mechanism beyond free tiers, creating a single point of failure for all issue processing.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782427535.8445535
+    },
+    {
+      "lesson": "Dependency on free-tier LLM APIs introduces unacceptable operational risk for production issue processing.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782427535.8467855
+    },
+    {
+      "lesson": "Implement a retry-backoff mechanism or queuing system to handle transient provider failures without blocking the agent.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782427535.849038
+    },
+    {
+      "lesson": "Add monitoring and alerting for LLM provider health to proactively detect outages before they cascade into agent failures.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1782427535.8513412
     }
   ],
   "github_insights": [
@@ -1390,6 +1425,11 @@
       "summary": "The GitHub issue repeatedly reports that a free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors.",
       "item_count": 20,
       "ts": 1782421871.491926
+    },
+    {
+      "summary": "The GitHub issue repeatedly reports that a free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors.",
+      "item_count": 20,
+      "ts": 1782427535.85364
     }
   ]
 }
