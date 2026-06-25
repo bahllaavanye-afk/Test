@@ -1,9 +1,12 @@
 """
-Advanced order types:
-  - BracketOrder: entry + take-profit + stop-loss together
-  - OCOOrder: one-cancels-other (two opposing orders, fill one → cancel the other)
-  - TrailingStop: stop that follows price by N% or $N
+Advanced order types for QuantEdge execution engine.
+
+Provides:
+- BracketOrder: entry order followed by a take‑profit and stop‑loss submitted as an OCO pair.
+- OCOOrder: one‑cancels‑other logic for two opposing orders.
+- TrailingStop: dynamic stop that trails the market price by a percentage.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,20 +18,53 @@ from app.utils.logging import logger
 
 @dataclass
 class BracketOrderConfig:
+    """Configuration for a bracket order.
+
+    Attributes
+    ----------
     entry: OrderRequest
-    take_profit_pct: float    # e.g. 0.05 = +5% TP
-    stop_loss_pct: float      # e.g. 0.02 = -2% SL
+        The initial entry order to be placed.
+    take_profit_pct: float
+        Desired take‑profit as a proportion of the entry price (e.g. ``0.05`` for 5 %).
+    stop_loss_pct: float
+        Desired stop‑loss as a proportion of the entry price (e.g. ``0.02`` for 2 %).
+    """
+    entry: OrderRequest
+    take_profit_pct: float
+    stop_loss_pct: float
 
 
 class BracketOrder:
+    """Handles a bracket order workflow.
+
+    The entry order is placed first. Once it is filled (or partially filled) the
+    take‑profit and stop‑loss orders are submitted as an OCO pair. Whichever of
+    those fills first will cancel the other.
     """
-    Submit entry, then watch for fill. Once filled, submit take-profit and stop-loss
-    as OCO pair. Whichever fills cancels the other.
-    """
-    def __init__(self, broker: AbstractBroker):
+
+    def __init__(self, broker: AbstractBroker) -> None:
+        """
+        Parameters
+        ----------
+        broker: AbstractBroker
+            Broker implementation used to place and query orders.
+        """
         self.broker = broker
 
     async def execute(self, config: BracketOrderConfig) -> OrderResult:
+        """Execute the bracket order.
+
+        Parameters
+        ----------
+        config: BracketOrderConfig
+            Configuration containing the entry order and TP/SL percentages.
+
+        Returns
+        -------
+        OrderResult
+            Result of the OCO order if it was submitted, otherwise the entry
+            order result.
+        """
         # 1. Submit entry
         entry_result = await self.broker.place_order(config.entry)
         if entry_result.status not in ("filled", "partially_filled"):
@@ -49,6 +85,7 @@ class BracketOrder:
             tp_side = "buy"
 
         sl_side = tp_side  # same side: both TP and SL close the position
+
         # 3. Submit TP limit + SL stop as OCO pair so only one fills
         tp_req = OrderRequest(
             account_id=config.entry.account_id,
@@ -77,24 +114,56 @@ class BracketOrder:
 
         oco = OCOOrder(self.broker)
         oco_result = await oco.execute(tp_req, sl_req)
-        logger.info("Bracket OCO submitted",
-                    symbol=config.entry.symbol, entry=fill_price,
-                    tp=tp_price, sl=sl_price,
-                    oco_order_id=oco_result.broker_order_id if oco_result else None)
+        logger.info(
+            "Bracket OCO submitted",
+            symbol=config.entry.symbol,
+            entry=fill_price,
+            tp=tp_price,
+            sl=sl_price,
+            oco_order_id=oco_result.broker_order_id if oco_result else None,
+        )
 
         return oco_result or entry_result
 
 
 class OCOOrder:
+    """One‑Cancels‑Other order handling.
+
+    Submits two opposing orders and continuously polls their status. When one
+    order fills or closes, the counterpart is cancelled.
     """
-    One-Cancels-Other: submit two opposing orders. Poll; whichever fills, cancel the other.
-    """
-    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_wait_seconds: int = 28800):
+
+    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_wait_seconds: int = 28800) -> None:
+        """
+        Parameters
+        ----------
+        broker: AbstractBroker
+            Broker used for order placement and status queries.
+        poll_seconds: int, optional
+            Interval between status polls (default ``5`` seconds).
+        max_wait_seconds: int, optional
+            Maximum time to wait before giving up (default ``28800`` seconds).
+        """
         self.broker = broker
         self.poll_seconds = poll_seconds
         self.max_wait_seconds = max_wait_seconds
 
     async def execute(self, order_a: OrderRequest, order_b: OrderRequest) -> OrderResult:
+        """Execute an OCO pair.
+
+        Parameters
+        ----------
+        order_a: OrderRequest
+            First order in the pair.
+        order_b: OrderRequest
+            Second order in the pair.
+
+        Returns
+        -------
+        OrderResult
+            The result of the order that filled first; if neither fills within the
+            wait window, returns the result of ``order_a``.
+        """
         ra = await self.broker.place_order(order_a)
         rb = await self.broker.place_order(order_b)
         elapsed = 0
@@ -107,6 +176,7 @@ class OCOOrder:
                 await asyncio.sleep(self.poll_seconds)
                 elapsed += self.poll_seconds
                 continue
+
             if sa.get("status") in ("filled", "closed"):
                 await self.broker.cancel_order(rb.broker_order_id)
                 logger.info("OCO: order A filled, B cancelled")
@@ -115,28 +185,62 @@ class OCOOrder:
                 await self.broker.cancel_order(ra.broker_order_id)
                 logger.info("OCO: order B filled, A cancelled")
                 return rb
+
             await asyncio.sleep(self.poll_seconds)
             elapsed += self.poll_seconds
+
         return ra
 
 
 class TrailingStop:
+    """Trailing stop implementation.
+
+    Adjusts the stop price as the market moves favorably. When the price
+    retraces to the stop level, a market order is placed to exit the position.
     """
-    Trailing stop that follows price by trail_pct. Continually adjusts stop price upward
-    (or downward for shorts) as price moves favorably.
-    """
-    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_hold_seconds: int = 28800):
+
+    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_hold_seconds: int = 28800) -> None:
+        """
+        Parameters
+        ----------
+        broker: AbstractBroker
+            Broker used for quotes and order execution.
+        poll_seconds: int, optional
+            Frequency of price polling (default ``5`` seconds).
+        max_hold_seconds: int, optional
+            Maximum duration to keep the trailing stop active (default ``28800`` seconds).
+        """
         self.broker = broker
         self.poll_seconds = poll_seconds
         self.max_hold_seconds = max_hold_seconds
 
     async def execute(self, request: OrderRequest, trail_pct: float = 0.05) -> OrderResult:
+        """Run a trailing stop for the given order.
+
+        Parameters
+        ----------
+        request: OrderRequest
+            The original order to be protected by a trailing stop.
+        trail_pct: float, optional
+            Percentage distance from the high/low water mark to set the stop
+            (default ``0.05`` for 5 %).
+
+        Returns
+        -------
+        OrderResult
+            Result of the final market order that exits the position.
+        """
         if request.side == "sell":
-            # selling long position with trailing stop
+            # Selling long position with trailing stop
             quote = await self.broker.get_quote(request.symbol)
             high_water = quote.last
             stop_price = high_water * (1 - trail_pct)
-            logger.info("Trailing stop starting", symbol=request.symbol, hw=high_water, stop=stop_price)
+            logger.info(
+                "Trailing stop starting",
+                symbol=request.symbol,
+                hw=high_water,
+                stop=stop_price,
+            )
 
             start_time = asyncio.get_running_loop().time()
             while True:
@@ -144,22 +248,24 @@ class TrailingStop:
                     logger.warning(f"TrailingStop for {request.symbol} timed out")
                     market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
                     return await self.broker.place_order(market_req)
+
                 await asyncio.sleep(self.poll_seconds)
                 try:
                     quote = await self.broker.get_quote(request.symbol)
                 except Exception:
                     continue
+
                 if quote.last > high_water:
                     high_water = quote.last
                     stop_price = high_water * (1 - trail_pct)
+
                 if quote.last <= stop_price:
-                    # Fire market sell
                     market_req = OrderRequest(
                         **{**request.__dict__, "order_type": "market", "limit_price": None}
                     )
                     return await self.broker.place_order(market_req)
         else:
-            # buying short / cover with trailing stop on the way down
+            # Buying short / covering with trailing stop on the way down
             quote = await self.broker.get_quote(request.symbol)
             low_water = quote.last
             stop_price = low_water * (1 + trail_pct)
@@ -169,14 +275,17 @@ class TrailingStop:
                     logger.warning(f"TrailingStop for {request.symbol} timed out")
                     market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
                     return await self.broker.place_order(market_req)
+
                 await asyncio.sleep(self.poll_seconds)
                 try:
                     quote = await self.broker.get_quote(request.symbol)
                 except Exception:
                     continue
+
                 if quote.last < low_water:
                     low_water = quote.last
                     stop_price = low_water * (1 + trail_pct)
+
                 if quote.last >= stop_price:
                     market_req = OrderRequest(
                         **{**request.__dict__, "order_type": "market", "limit_price": None}
