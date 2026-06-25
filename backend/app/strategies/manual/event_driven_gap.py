@@ -79,7 +79,7 @@ class EventDrivenGapStrategy(AbstractStrategy):
             )
         elif gap < -self.gap_threshold and rvol > self.vol_multiplier:
             # Gap-down with volume → sell short continuation
-            confidence = min(0.80, 0.60 + abs(gap) * 5)
+            confidence = min(0.80, 0.60 + abs(gap) * 5 + (rvol - self.vol_multiplier) * 0.02)  # MUTATION: incorporate relative volume into short side confidence
             return Signal(
                 symbol=symbol,
                 side="sell",
@@ -104,24 +104,4 @@ class EventDrivenGapStrategy(AbstractStrategy):
             gap = close.pct_change()
 
         if "volume" in df.columns:
-            vol = df["volume"]
-            vol_avg = vol.rolling(self.vol_window).mean()
-            rvol = vol / vol_avg
-        else:
-            rvol = pd.Series(self.vol_multiplier + 1, index=close.index)
-
-        # Shift everything by 1 to prevent lookahead
-        gap_s = gap.shift(1)
-        rvol_s = rvol.shift(1)
-
-        entries = (gap_s > self.gap_threshold) & (rvol_s > self.vol_multiplier)
-        exits = gap_s < 0.0
-        short_entries = (gap_s < -self.gap_threshold) & (rvol_s > self.vol_multiplier)
-        short_exits = gap_s > 0.0
-
-        return BacktestSignals(
-            entries=entries.fillna(False),
-            exits=exits.fillna(False),
-            short_entries=short_entries.fillna(False),
-            short_exits=short_exits.fillna(False),
-        )
+            vol 
