@@ -168,8 +168,13 @@
     "Test HRP modules",
     "* Refine TFT models",
     "* Implement Attention",
-    "* Fix flaky tests"
+    "* Fix flaky tests",
+    "docstrings on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "docstrings on ml/models/ensemble_model.py: success \u2014 tests green",
+    "docstrings on ml/features/store.py: success \u2014 tests green",
+    "docstrings on execution/advanced_orders.py: success \u2014 tests green",
+    "docstrings on risk/rl_position_sizer.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-25T12:14:55.066348+00:00",
+  "last_updated": "2026-06-25T12:17:17.015473+00:00",
   "total": 169
 }
