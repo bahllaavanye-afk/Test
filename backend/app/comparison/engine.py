@@ -64,6 +64,50 @@ class StrategyComparisonEngine:
             self._benchmark_cache[cache_key] = await fetch_benchmark_curves(start, end)
         return self._benchmark_cache[cache_key]
 
+    def _run_backtests(
+        self,
+        manual_signals: pd.Series,
+        ml_signals: pd.Series,
+        prices: pd.Series,
+        initial_equity: float,
+    ) -> Tuple[BacktestMetrics, BacktestMetrics]:
+        """Execute backtests for manual and ML‑enhanced signals."""
+        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
+        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        return manual_metrics, ml_metrics
+
+    def _extract_equity_series(self, metrics: BacktestMetrics) -> pd.Series:
+        """Convert a BacktestMetrics equity_curve into a pandas Series of equity values."""
+        return pd.Series([e[EQUITY_KEY] for e in metrics.equity_curve])
+
+    def _compute_statistics(
+        self,
+        manual_eq: pd.Series,
+        ml_eq: pd.Series,
+    ) -> Tuple[float, float]:
+        """Calculate t‑statistic and p‑value for the equity return series."""
+        manual_ret = manual_eq.pct_change().dropna()
+        ml_ret = ml_eq.pct_change().dropna()
+        min_len = min(len(manual_ret), len(ml_ret))
+        if min_len > MIN_DATA_LENGTH:
+            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+        else:
+            t_stat, p_val = DEFAULT_T_STAT, DEFAULT_P_VAL
+        return t_stat, p_val
+
+    def _determine_winner(
+        self,
+        ml_sharpe: float,
+        manual_sharpe: float,
+    ) -> Tuple[str, float]:
+        """Decide the winner based on Sharpe improvement and threshold."""
+        improvement = ml_sharpe - manual_sharpe
+        if abs(improvement) < IMPROVEMENT_THRESHOLD:
+            winner = WINNER_NEITHER
+        else:
+            winner = WINNER_ML if ml_sharpe > manual_sharpe else WINNER_MANUAL
+        return winner, improvement
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -77,32 +121,23 @@ class StrategyComparisonEngine:
         initial_equity: float = DEFAULT_INITIAL_EQUITY,
     ) -> ComparisonResult:
         # Run backtests (potentially expensive)
-        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
-        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        manual_metrics, ml_metrics = self._run_backtests(
+            manual_signals, ml_signals, prices, initial_equity
+        )
 
         # Cached retrieval of benchmark data
         benchmark_curves = await self._get_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
-        # Vectorized extraction of equity curves
-        manual_eq = pd.Series([e[EQUITY_KEY] for e in manual_metrics.equity_curve])
-        ml_eq = pd.Series([e[EQUITY_KEY] for e in ml_metrics.equity_curve])
+        # Extract equity series for statistical analysis
+        manual_eq = self._extract_equity_series(manual_metrics)
+        ml_eq = self._extract_equity_series(ml_metrics)
 
-        # Compute daily returns
-        manual_ret = manual_eq.pct_change().dropna()
-        ml_ret = ml_eq.pct_change().dropna()
+        # Compute t‑statistic and p‑value
+        t_stat, p_val = self._compute_statistics(manual_eq, ml_eq)
 
-        # Early‑exit for insufficient data
-        min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > MIN_DATA_LENGTH:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
-        else:
-            t_stat, p_val = DEFAULT_T_STAT, DEFAULT_P_VAL
-
-        improvement = ml_metrics.sharpe - manual_metrics.sharpe
-        winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
-        if abs(improvement) < IMPROVEMENT_THRESHOLD:
-            winner = WINNER_NEITHER
+        # Determine winner and Sharpe improvement
+        winner, improvement = self._determine_winner(ml_metrics.sharpe, manual_metrics.sharpe)
 
         logger.info(
             LOG_MESSAGE,
