@@ -376,7 +376,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782400975.3711233,
+    "last_updated": 1782404080.4394557,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -390,25 +390,25 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-06-24T20:22:29.067185+00:00",
+      "generated_at": "2026-06-25T16:14:32.680403+00:00",
       "signals": {
         "vix": {
-          "value": 18.68,
-          "trend": "rising"
+          "value": 18.98,
+          "trend": "flat"
         },
         "spy": {
-          "price": 733.3,
-          "sma50": 731.24,
-          "sma200": 685.95,
+          "price": 735.63,
+          "sma50": 732.1,
+          "sma200": 686.42,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0647,
-          "median": 1.0528,
+          "ratio": 1.0643,
+          "median": 1.053,
           "signal": "steepening"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.854,
+          "hyg_lqd_momentum_20d": -0.602,
           "signal": "widening"
         },
         "breadth": {
@@ -417,8 +417,8 @@
           "breadth_pct": 63.6
         },
         "btc": {
-          "price": 60655,
-          "24h_pct": -2.78
+          "price": 59654,
+          "24h_pct": -1.27
         }
       },
       "score": 3,
@@ -428,7 +428,7 @@
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "**Morning Brief:** The market remains in a bull regime with strong SPY momentum, but rising VIX and widening credit spreads signal growing caution beneath the surface. **Tactical implication:** Favor short-dated put spreads over outright longs to exploit hedging demand while maintaining upside exposure in steepening yield curve conditions."
+      "summary": "**Morning Market Brief:** The tape is bullish with strong SPY momentum and broad sector participation, though widening credit spreads and a flat VIX trend warrant caution against chasing extended moves. **Tactical implication:** Favor trend-following strategies over mean-reversion given the steep yield curve and robust uptrend."
     },
     "strategy_gates": {
       "directional": true,
@@ -1172,6 +1172,18 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1782400975.3661299
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "**Morning Market Brief:** The tape is bullish with strong SPY momentum and broad sector participation, though widening credit spreads and a flat VIX trend warrant caution against chasing extended moves. **Tactical implication:** Favor trend-following strategies over mean-reversion given the steep yield curve and robust uptrend.",
+      "ts": 1782404080.4414096
     }
   ],
   "github_insights": [
