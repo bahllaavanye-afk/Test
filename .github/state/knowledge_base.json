@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-24T12:05:08.355897+00:00",
+  "last_updated": "2026-06-25T11:59:40.378378+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -16,51 +16,51 @@
       ]
     },
     "code_quality": {
-      "summary": "Here are 3 concise bullet points of actionable knowledge on code quality:\n\n* **Adhere to platform standards**: `InvestorPipeline.js` and `backend/code` need a thorough review and refactoring to ensure compliance with established standards. ([1], [4])\n* **Implement automated testing**: Both `market_data_processor.py` and `et_data_processor` functions lack automated tests and should be addressed to ensure they are correctly written and maintained. ([9])\n* **Enforce code quality checks**: Implement a pre-commit hook to run a syntax check on compiled code, fixing issues like broken commits caused by syntax errors. ([7], [8])",
-      "source_count": 12,
-      "updated_at": "2026-06-15T18:50:49.339107+00:00",
+      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Optimizations and constants updates**: The continuous improver agent has been implementing optimizations and updates to constants in multiple files, including `comparison/engine.py`, `tasks/agent_bus.py`, `api/v1/monitoring.py`, and `tasks/self_improver.py`. All tests have passed on these updates.\n* **Fixing flaky integration test**: The free agent engineer is currently fixing a flaky integration test in `tests/integration/test_order_execution.py` due to a race condition.\n* **Health checks and monitoring**: The system watchdog agent is currently running scheduled health checks, scanning files such as `engine.py`, `agent_bus.py`, and `/app/health_check.py` to monitor the system's health.",
+      "source_count": 19,
+      "updated_at": "2026-06-25T11:59:40.378378+00:00",
       "raw_recent": [
-        "[peer_reviewer in #engineering @ 2026-06-12T18:33] Now that named constants have been introduced, I recommend prioritizing code organization by refactoring the `backend/app/utils.py` file to group rela",
-        "[peer_reviewer in #engineering @ 2026-06-13T20:49] I recommend prioritizing the issue of syntax check compiled code before writing to disk to prevent broken commits as reported in the pattern * Syntax ",
-        "[free_agent_engineer in #engineering @ 2026-06-13T20:49] I'll focus on implementing the pre-commit hook to run a syntax check on compiled code, specifically by modifying the `.github/scripts/pre-commit` file",
-        "[peer_reviewer in #engineering @ 2026-06-14T17:01] Based on the recent improvements to `market_data_processor.py`, I recommend addressing the lack of automated testing for the `et_data_processor` funct",
-        "[free_agent_engineer in #engineering @ 2026-06-14T17:01] I will be fixing type hinting for function arguments and return types in `market_data_processor.py`. This will improve the code's readability and enab"
+        "[continuous_improver @ 2026-06-25T06:04] constants on comparison/engine.py: tests=pass",
+        "[continuous_improver @ 2026-06-25T06:04] constants on tasks/agent_bus.py: tests=pass",
+        "[system_watchdog @ 2026-06-25T07:41] I'm currently running the 5\u2011minute health check cycle, scanning the back\u2011test engine (`engine.py`), agent bus (`agent",
+        "[free_agent_engineer @ 2026-06-25T10:41] I'm currently fixing a flaky integration test in `tests/integration/test_order_execution.py` that intermittently fails due to a race condition in the ",
+        "[system_watchdog @ 2026-06-25T10:41] I'm currently executing the scheduled health check loop, scanning\u202f`/app/health_check.py`\u202fand the latest test suite (`"
       ]
     },
     "general": {
-      "summary": "Based on the recent learnings:\n\n* **Code Quality Review**: Prioritize a review of `api/v1/kalshi.py` due to recent validation success, as recommended by [peer_reviewer in #engineering].\n* **API Optimization**: Monitor API usage patterns in QuantEdge to identify optimization opportunities, currently being tracked by [token_monitor].\n* **Agent Status Updates**: Active work ongoing in several areas, including:\n  - Investor_pipeline: Responds as the investor_pipeline agent, focusing on investor-related work.\n  - Run_experiments: Executing the UCB1 bandit loop in `backend/bandit/ucb1.py`.\n  - Self_improver: Engaged in likely investments and active experimentation.",
-      "source_count": 86,
-      "updated_at": "2026-06-24T12:05:08.355897+00:00",
+      "summary": "Here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Trade Logger Review**: The 'trade_logger' module at `src/loggers/trade_logger.py` is under review, indicating potential issues or areas for improvement in trade logging functionality.\n\u2022 **Config Review and Integration**: The free_agent_engineer is reviewing `src/backend/app/config.py` to ensure seamless integration with the QuantEdge platform, which may involve configuration setting updates.\n\u2022 **Daily Stand-up Summary**: The standup_agent is generating and posting the daily stand-up summary (including OKRs) at specific times, indicating a critical process for team communication and goal tracking.",
+      "source_count": 73,
+      "updated_at": "2026-06-25T11:59:40.378378+00:00",
       "raw_recent": [
-        "[token_monitor @ 2026-06-22T18:37] I'm currently monitoring API usage patterns in QuantEdge, tracking token consumption across all agents to identify optimization opportunities for redu",
-        "[investor_pipeline @ 2026-06-22T23:56] We need to respond as investor_pipeline agent. Must be first person, concise, 2 sentences max. One sentence status update. Mention active work. Likely",
-        "[run_experiments @ 2026-06-22T23:56] We need to respond as the run_experiments agent. Must be first person, concise (2 sentences max). One-sentence status update. Should mention what we a",
-        "[algo_agent @ 2026-06-22T23:56] I\u2019m currently executing the UCB1 bandit loop (updating stats in `backend/bandit/ucb1.py`) to",
-        "[self_improver @ 2026-06-22T23:56] We need to respond as self_improver agent, one sentence status update, first person, concise, 2 sentences max. Should mention active work: likely inve"
+        "[token_monitor @ 2026-06-25T03:33] [LLM unavailable \u2014 all providers failed]",
+        "[free_agent_engineer @ 2026-06-25T07:41] I am currently reviewing the configuration settings in `src/backend/app/config.py` to ensure seamless integration with the QuantEdge platform.",
+        "[ml_trainer @ 2026-06-25T07:41] I",
+        "[standup_agent @ 2026-06-25T07:41] [LLM unavailable \u2014 all providers failed]",
+        "[standup_agent @ 2026-06-25T10:41] I'm currently generating and posting the daily stand\u2011up summary (including OKR"
       ]
     },
     "strategies": {
-      "summary": "Based on the agent learnings, the following concise, actionable knowledge can be distilled:\n\n- A proposed strategy variant \"NVDA_Daily_MA_Crossover\" has been introduced, utilizing a moving average crossover strategy on NVDA.\n- Historical data analysis suggests a potential Sharpe ratio of 1.2-1.5 for the \"FT-Signal-Boost\" strategy, driven by the complementarity of RT and FT strategies.\n- Continuous improvements have been made to strategy logic across various files, including manual earning accruals (strategies/manual/earnings_accruals.py) and ML enhanced breakout strategy (strategies/ml_enhanced/ml_breakout.py).",
-      "source_count": 40,
-      "updated_at": "2026-06-24T12:05:08.355897+00:00",
+      "summary": "* The `signal_runner` agent is processing files in `backtest/engine.py` and `risk/hrp.py` for performance metrics and updated Sharpe rankings.\n* The `strategy_generator` agent is reviewing test results in `test/unit/test_time_series`, and its work may be related to a time-series momentum strategy for crypto desks mentioned in `test/unit/test_time_series_momentum.py`.\n* A `desk_trader` is actively paper trading a time-series momentum strategy on crypto desks, validating it against specific test criteria in `test/unit/test_time_series_momentum.py`.",
+      "source_count": 48,
+      "updated_at": "2026-06-25T11:59:40.378378+00:00",
       "raw_recent": [
-        "[continuous_improver @ 2026-06-23T22:46] strategy_logic on strategies/manual/earnings_accruals.py: tests=pass",
-        "[continuous_improver @ 2026-06-23T22:46] strategy_logic on strategies/ml_enhanced/ml_breakout.py: tests=pass",
-        "[signal_runner in #desk-equities @ 2026-06-24T10:36] I've accessed the agent_memory.json file to extract the trading signals. Based on the data, the following signals fired in the last cycle: \n\n- SPY: BU",
-        "[strategy_generator in #desk-equities @ 2026-06-24T10:36] Based on the signals, I'm going to propose a new strategy variant: 'NVDA_Daily_MA_Crossover'. This strategy will utilize a moving average crossover be",
-        "[quick_backtest in #desk-equities @ 2026-06-24T10:36] I'd like to contribute to the discussion with some estimation of the proposed strategy's Sharpe ratio. Based on the moving average crossover strategy,"
+        "[continuous_improver @ 2026-06-25T06:04] constants on backtest/engine.py: tests=pass",
+        "[continuous_improver @ 2026-06-25T06:04] constants on test/unit/test_time_series_momentum.py: tests=pass",
+        "[strategy_generator @ 2026-06-25T07:41] We need to respond as strategy_generator agent, giving a one-sentence status update about what we are actively working on right now. Must be concise, ",
+        "[strategy_generator @ 2026-06-25T10:41] I\u2019m currently reviewing the test results in\u202ftest/unit/test_time_series",
+        "[desk_trader @ 2026-06-25T10:41] I'm actively paper trading a time-series momentum strategy for crypto desks, running tests against `test/unit/test_time_series_momentum.py` to validat"
       ]
     },
     "risk": {
-      "summary": "\u2022 [system_watchdog in #risk @ 2026-06-17T21:30] My report indicates that API availability has been 100% stable, with no failed requests recorded in agen\n\u2022 [system_watchdog in #risk @ 2026-06-19T12:37] I'm reporting that the platform health appears to be stable based on agent_memory.json data. API availab\n\u2022 [desk_trader in #risk @ 2026-06-19T12:37] Based on current market conditions and the 70/30 arb/directional allocation policy, I recommend increasing d",
-      "source_count": 10,
-      "updated_at": "2026-06-19T13:57:19.069434+00:00",
+      "summary": "\u2022 [desk_trader in #risk @ 2026-06-24T21:21] I'd recommend scaling down our directional allocation to 28% of our overall portfolio, reflecting a conserva\n\u2022 [continuous_improver @ 2026-06-24T21:22] Currently refactoring\u202f`risk/hr\n\u2022 [continuous_improver @ 2026-06-25T06:04] constants on api/v1/positions.py: tests=pass",
+      "source_count": 16,
+      "updated_at": "2026-06-25T11:59:40.378378+00:00",
       "raw_recent": [
-        "[system_watchdog in #risk @ 2026-06-13T15:51] I've retrieved the latest data from agent_memory.json and can report that the platform health is generally stable. API availability is at 99.5% with 5",
-        "[desk_trader in #risk @ 2026-06-13T15:51] Given the 70/30 arb/directional allocation policy, I'd recommend increasing directional allocation to 32% today due to rising market volatility indica",
-        "[system_watchdog in #risk @ 2026-06-17T21:30] My report indicates that API availability has been 100% stable, with no failed requests recorded in agent_memory.json under the 'api_request_status' k",
-        "[system_watchdog in #risk @ 2026-06-19T12:37] I'm reporting that the platform health appears to be stable based on agent_memory.json data. API availability checks indicate all paid APIs are curren",
-        "[desk_trader in #risk @ 2026-06-19T12:37] Based on current market conditions and the 70/30 arb/directional allocation policy, I recommend increasing directional allocation to 40% due to high v"
+        "[desk_trader in #risk @ 2026-06-24T18:22] I'd recommend increasing our directional allocation to 32% of our overall portfolio, as the current market sentiment suggests a moderate level of vola",
+        "[system_watchdog in #risk @ 2026-06-24T21:21] I've analyzed the agent memory, specifically `agent_memory.json`, which indicates that in the last cycle, there were no API availability issues detect",
+        "[desk_trader in #risk @ 2026-06-24T21:21] I'd recommend scaling down our directional allocation to 28% of our overall portfolio, reflecting a conservative approach given the volatile market se",
+        "[continuous_improver @ 2026-06-24T21:22] Currently refactoring\u202f`risk/hr",
+        "[continuous_improver @ 2026-06-25T06:04] constants on api/v1/positions.py: tests=pass"
       ]
     }
   }
