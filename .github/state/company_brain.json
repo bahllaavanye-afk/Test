@@ -391,7 +391,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782404080.4394557,
+    "last_updated": 1782408558.0386157,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -495,7 +495,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782400975.3708017
+    "last_brain_update": 1782408558.038162
   },
   "episodic": [
     {
@@ -1199,6 +1199,41 @@
       },
       "lesson": "**Morning Market Brief:** The tape is bullish with strong SPY momentum and broad sector participation, though widening credit spreads and a flat VIX trend warrant caution against chasing extended moves. **Tactical implication:** Favor trend-following strategies over mean-reversion given the steep yield curve and robust uptrend.",
       "ts": 1782404080.4414096
+    },
+    {
+      "lesson": "Free LLM provider reliability is critically low, with 5 consecutive failures blocking all free-agent processing.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782408558.023637
+    },
+    {
+      "lesson": "No fallback mechanism exists for when free LLM providers fail \u2014 entire pipeline halts instead of degrading gracefully.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782408558.0257916
+    },
+    {
+      "lesson": "Immediate need to evaluate and integrate paid or self-hosted LLM providers to ensure uptime for the free-agent system.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782408558.0278196
+    },
+    {
+      "lesson": "The free-agent engineer lacks retry logic or provider rotation \u2014 all providers fail without diagnostic detail.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782408558.029868
+    },
+    {
+      "lesson": "No error logging or alerting distinguishes transient provider outages from permanent model failures \u2014 obscures root cause.",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782408558.0319176
     }
   ],
   "github_insights": [
@@ -1256,6 +1291,11 @@
       "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
       "item_count": 20,
       "ts": 1782400975.3676765
+    },
+    {
+      "summary": "The issue repeatedly reports that the free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors, indicating a systemic outage or exhaustion of free-tier API resources.",
+      "item_count": 20,
+      "ts": 1782408558.0339975
     }
   ]
 }
