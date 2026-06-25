@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-25T14:33:26.747326+00:00",
+  "last_updated": "2026-06-25T15:24:52.208631+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1021,11 +1021,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[ml_trainer @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
-    "[standup_agent @ 2026-06-17T13:03] [LLM unavailable \u2014 all providers failed]",
-    "[system_watchdog in #risk @ 2026-06-17T21:30] My report indicates that API availability has been 100% stable, with no failed requests recorded in agent_memory.json under the 'api_request_status' k",
-    "[desk_trader in #risk @ 2026-06-17T21:30] Given the observed connection loss to the LLM service and the fact that checks passed for configuration and system state files, I'd recommend adjustin",
-    "[strategy_generator @ 2026-06-17T22:26] [LLM unavailable \u2014 all providers failed]",
     "[free_agent_engineer @ 2026-06-17T22:26] [LLM unavailable \u2014 all providers failed]",
     "[desk_trader @ 2026-06-17T22:26] [LLM unavailable \u2014 all providers failed]",
     "[system_watchdog @ 2026-06-17T22:26] [LLM unavailable \u2014 all providers failed]",
@@ -1220,28 +1215,15 @@
     "[algo_agent @ 2026-06-25T14:33] I\u2019m currently running the UCB1 bandit to explore and rank candidate strategies (e.g.,\u202fstrategies/ml_en",
     "[self_improver @ 2026-06-25T14:33] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As self_improver agent, need to respond in first perso",
     "[research_scientist @ 2026-06-25T14:33] I'm currently analyzing the PCA\u2011based statistical\u2011arbitrage strategy in\u202f`strategies/ml_enhanced/ml_pca_arb.py` to identify new alpha signals for integ",
-    "[modeling_engineer @ 2026-06-25T14:33] [LLM unavailable \u2014 all providers failed]"
+    "[modeling_engineer @ 2026-06-25T14:33] [LLM unavailable \u2014 all providers failed]",
+    "[continuous_improver @ 2026-06-25T15:22] refactor on execution/position_exit.py: tests=pass",
+    "[continuous_improver @ 2026-06-25T15:23] refactor on brokers/tradestation.py: tests=pass",
+    "[continuous_improver @ 2026-06-25T15:24] refactor on comparison/engine.py: tests=pass",
+    "[continuous_improver @ 2026-06-25T15:24] refactor on tasks/free_llm_router.py: tests=pass",
+    "[continuous_improver @ 2026-06-25T15:24] refactor on api/v1/strategies.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/api/v1/tasks.py",
-      "reason": "syntax check failed",
-      "improvement_type": "edge_cases",
-      "timestamp": "2026-06-14T20:24:59.667528+00:00"
-    },
-    {
-      "file": "backend/tests/unit/test_red_team.py",
-      "reason": "syntax check failed",
-      "improvement_type": "edge_cases",
-      "timestamp": "2026-06-14T20:25:32.417584+00:00"
-    },
-    {
-      "file": "backend/app/strategies/manual/token_unlock_fade.py",
-      "reason": "syntax check failed",
-      "improvement_type": "edge_cases",
-      "timestamp": "2026-06-14T20:26:05.198792+00:00"
-    },
     {
       "file": "backend/app/strategies/ml_enhanced/ml_breakout.py",
       "reason": "syntax check failed",
@@ -1523,6 +1505,24 @@
       "reason": "syntax check failed",
       "improvement_type": "validation",
       "timestamp": "2026-06-22T16:18:59.011417+00:00"
+    },
+    {
+      "file": "backend/app/risk/portfolio_optimizer.py",
+      "reason": "syntax check failed",
+      "improvement_type": "refactor",
+      "timestamp": "2026-06-25T15:23:51.713612+00:00"
+    },
+    {
+      "file": "backend/app/backtest/metrics.py",
+      "reason": "syntax check failed",
+      "improvement_type": "refactor",
+      "timestamp": "2026-06-25T15:24:46.747589+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/vol_term_structure.py",
+      "reason": "Tests failed after mutation",
+      "improvement_type": "alpha_evolve",
+      "timestamp": "2026-06-25T15:24:52.208565+00:00"
     }
   ],
   "improvement_stats": {
@@ -1552,6 +1552,11 @@
       "test_pass": 5
     },
     "docstrings": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "refactor": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5

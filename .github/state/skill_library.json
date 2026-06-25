@@ -173,8 +173,13 @@
     "docstrings on ml/models/ensemble_model.py: success \u2014 tests green",
     "docstrings on ml/features/store.py: success \u2014 tests green",
     "docstrings on execution/advanced_orders.py: success \u2014 tests green",
-    "docstrings on risk/rl_position_sizer.py: success \u2014 tests green"
+    "docstrings on risk/rl_position_sizer.py: success \u2014 tests green",
+    "refactor on execution/position_exit.py: success \u2014 tests green",
+    "refactor on brokers/tradestation.py: success \u2014 tests green",
+    "refactor on comparison/engine.py: success \u2014 tests green",
+    "refactor on tasks/free_llm_router.py: success \u2014 tests green",
+    "refactor on api/v1/strategies.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-25T12:17:17.015473+00:00",
+  "last_updated": "2026-06-25T15:24:51.689718+00:00",
   "total": 169
 }
