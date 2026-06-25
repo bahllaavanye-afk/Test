@@ -7,6 +7,7 @@ Enhanced with:
 - Cross-asset GNN signal broadcasting
 - Signal stream persistence for replay
 """
+
 import asyncio
 import json
 import uuid
@@ -14,6 +15,18 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from app.utils.logging import logger
+
+# ------------------------------
+# Constants
+# ------------------------------
+DEFAULT_FROM_AGENT = "system"
+DEFAULT_COORDINATOR_AGENT = "coordinator"
+DEFAULT_PRIORITY = 2
+DEFAULT_HELP_TOKEN_BUDGET = 5_000
+
+TASK_TTL_SECONDS = 86400  # 1 day
+SIGNAL_STREAM_MAX_LENGTH = 5000
+SIGNAL_STREAM_TTL_SECONDS = 604800  # 7 days
 
 CHANNELS = {
     "strategy": "agent:findings:strategy",
@@ -84,7 +97,7 @@ class AgentBus:
         except Exception as e:
             logger.warning("AgentBus listen loop terminated", error=str(e))
 
-    async def publish(self, channel: str, message: dict, from_agent: str = "system") -> None:
+    async def publish(self, channel: str, message: dict, from_agent: str = DEFAULT_FROM_AGENT) -> None:
         full_channel = CHANNELS.get(channel, channel)
         payload = json.dumps({
             "id": str(uuid.uuid4()),
@@ -99,7 +112,7 @@ class AgentBus:
             except Exception as e:
                 logger.warning("AgentBus.publish failed", channel=channel, error=str(e))
 
-    async def post_task(self, target_agent: str, task: dict, from_agent: str = "system") -> str:
+    async def post_task(self, target_agent: str, task: dict, from_agent: str = DEFAULT_FROM_AGENT) -> str:
         task_id = str(uuid.uuid4())
         entry = json.dumps({
             "task_id": task_id,
@@ -112,7 +125,7 @@ class AgentBus:
         if self.redis:
             try:
                 await self.redis.lpush(f"agent:taskqueue:{target_agent}", entry)
-                await self.redis.expire(f"agent:taskqueue:{target_agent}", 86400)
+                await self.redis.expire(f"agent:taskqueue:{target_agent}", TASK_TTL_SECONDS)
             except Exception as e:
                 logger.warning("AgentBus.post_task failed", target=target_agent, error=str(e))
         return task_id
@@ -137,7 +150,7 @@ class AgentBus:
         summary: str,
         details: dict,
         from_agent: str,
-        priority: int = 2,
+        priority: int = DEFAULT_PRIORITY,
     ) -> None:
         await self.publish(channel, {
             "summary": summary,
@@ -152,7 +165,7 @@ class AgentBus:
         details: dict,
         from_agent: str,
         tokens_used: int = 0,
-        priority: int = 2,
+        priority: int = DEFAULT_PRIORITY,
     ) -> None:
         """post_finding + records token spend against the agent's daily budget."""
         try:
@@ -167,7 +180,7 @@ class AgentBus:
         from_agent: str,
         to_agent: str,
         task: dict,
-        token_budget: int = 5_000,
+        token_budget: int = DEFAULT_HELP_TOKEN_BUDGET,
     ) -> str:
         """
         Agent-to-agent collaboration: one agent requests help from another.
@@ -191,7 +204,7 @@ class AgentBus:
         task["_token_budget"] = token_budget
         return await self.post_task(to_agent, task, from_agent=from_agent)
 
-    async def broadcast_signal(self, signal: dict, from_agent: str = "coordinator") -> None:
+    async def broadcast_signal(self, signal: dict, from_agent: str = DEFAULT_COORDINATOR_AGENT) -> None:
         """
         Broadcast a cross-asset ML signal to all subscriber agents.
         Used by GNN coordinator to fan-out enhanced signals to strategy agents.
@@ -202,56 +215,11 @@ class AgentBus:
         if self.redis:
             try:
                 await self.redis.lpush("agent:signals:stream", json.dumps(enriched))
-                await self.redis.ltrim("agent:signals:stream", 0, 4999)  # keep last 5000
-                await self.redis.expire("agent:signals:stream", 604800)  # 7 days
+                await self.redis.ltrim(
+                    "agent:signals:stream",
+                    0,
+                    SIGNAL_STREAM_MAX_LENGTH - 1
+                )  # keep last SIGNAL_STREAM_MAX_LENGTH
+                await self.redis.expire("agent:signals:stream", SIGNAL_STREAM_TTL_SECONDS)  # 7 days
             except Exception as e:
                 logger.debug("AgentBus.broadcast_signal stream write failed", error=str(e))
-
-    async def get_recent_signals(self, limit: int = 50) -> list[dict]:
-        """Retrieve recent cross-asset signals from the stream."""
-        if not self.redis:
-            return []
-        try:
-            raw_list = await self.redis.lrange("agent:signals:stream", 0, limit - 1)
-            result = []
-            for raw in (raw_list or []):
-                try:
-                    result.append(json.loads(raw))
-                except Exception:
-                    pass
-            return result
-        except Exception:
-            return []
-
-    async def slack_notify(self, message: str, from_agent: str, level: str = "info") -> None:
-        """Route a Slack notification through the bus → slack_handler picks it up."""
-        await self.publish("slack", {
-            "text": message,
-            "level": level,
-        }, from_agent=from_agent)
-
-    async def get_agent_status(self) -> list[dict]:
-        """Return token budget status for all known agents."""
-        try:
-            from app.tasks.token_budget import get_token_budget
-            return await get_token_budget().all_usage()
-        except Exception:
-            return []
-
-
-# ── Global singleton ──────────────────────────────────────────────────────────
-
-_bus: AgentBus | None = None
-
-
-def get_bus(redis_client=None) -> AgentBus:
-    global _bus
-    if _bus is None:
-        if redis_client is None:
-            try:
-                from app.redis_client import get_redis
-                redis_client = get_redis()
-            except Exception:
-                redis_client = None
-        _bus = AgentBus(redis_client)
-    return _bus
