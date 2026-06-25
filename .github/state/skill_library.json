@@ -145,8 +145,12 @@
     "Track API rate limits",
     "Ping external services",
     "Refactor agent memory",
-    "Implement TFT models"
+    "Implement TFT models",
+    "constants on backtest/engine.py: success \u2014 tests green",
+    "constants on tasks/agent_bus.py: success \u2014 tests green",
+    "constants on api/v1/positions.py: success \u2014 tests green",
+    "constants on test/unit/test_time_series_momentum.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-25T06:04:03.690407+00:00",
+  "last_updated": "2026-06-25T06:04:59.509874+00:00",
   "total": 146
 }
