@@ -15,6 +15,22 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+DEFAULT_INITIAL_EQUITY: float = 100_000.0
+DEFAULT_COMMISSION_PCT: float = 0.001
+DEFAULT_SLIPPAGE_PCT: float = 0.0005
+DEFAULT_RISK_FREE_ANNUAL: float = 0.05
+
+TRADING_DAYS_PER_YEAR: int = 252
+EPSILON: float = 1e-10
+SLIPPAGE_CAP_MULTIPLIER: float = 5.0
+OMEGA_THRESHOLD_DEFAULT: float = 0.0
+
+EQUITY_CURVE_DATE_KEY: str = "date"
+EQUITY_CURVE_EQUITY_KEY: str = "equity"
+
 
 @dataclass
 class BacktestMetrics:
@@ -46,7 +62,7 @@ class BacktestMetrics:
     equity_curve: list[dict] = field(default_factory=list)
 
 
-def _omega_ratio(returns: np.ndarray, threshold: float = 0.0) -> float:
+def _omega_ratio(returns: np.ndarray, threshold: float = OMEGA_THRESHOLD_DEFAULT) -> float:
     """Omega ratio: sum(gains above threshold) / sum(losses below threshold)."""
     gains = returns[returns > threshold] - threshold
     losses = threshold - returns[returns <= threshold]
@@ -73,14 +89,14 @@ def _adaptive_slippage(
     slippage = base * sqrt(participation_rate)
     where participation_rate = trade_size / (price * daily_volume).
 
-    Caps at 5× base to avoid extreme values on illiquid days.
+    Caps at SLIPPAGE_CAP_MULTIPLIER× base to avoid extreme values on illiquid days.
     """
     if volume_usd is None or (volume_usd == 0).all():
         return pd.Series(base_slippage_pct, index=trade_size_usd.index)
 
     participation = (trade_size_usd / volume_usd.clip(lower=1)).clip(0, 1)
     scaled = base_slippage_pct * np.sqrt(participation)
-    return scaled.clip(upper=base_slippage_pct * 5)
+    return scaled.clip(upper=base_slippage_pct * SLIPPAGE_CAP_MULTIPLIER)
 
 
 def run_backtest(
@@ -88,11 +104,11 @@ def run_backtest(
     prices: pd.Series,
     opens: pd.Series | None = None,
     volume: pd.Series | None = None,
-    initial_equity: float = 100_000.0,
-    commission_pct: float = 0.001,
-    slippage_pct: float = 0.0005,
+    initial_equity: float = DEFAULT_INITIAL_EQUITY,
+    commission_pct: float = DEFAULT_COMMISSION_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
     fill_at_open: bool = True,
-    risk_free_annual: float = 0.05,
+    risk_free_annual: float = DEFAULT_RISK_FREE_ANNUAL,
 ) -> BacktestMetrics:
     """
     Vectorized backtest.
@@ -145,19 +161,19 @@ def run_backtest(
 
     equity = df["equity"].values
     returns = df["pnl"].values
-    rf_daily = risk_free_annual / 252.0
+    rf_daily = risk_free_annual / TRADING_DAYS_PER_YEAR
 
     # ── Sharpe ────────────────────────────────────────────────────────────────
     excess = returns - rf_daily
     _excess_std = float(np.std(excess))
-    sharpe = float(excess.mean() / _excess_std * np.sqrt(252)) if _excess_std > 1e-10 else 0.0
+    sharpe = float(excess.mean() / _excess_std * np.sqrt(TRADING_DAYS_PER_YEAR)) if _excess_std > EPSILON else 0.0
 
     # ── Sortino ───────────────────────────────────────────────────────────────
     downside = returns[returns < rf_daily]
     _down_std = float(np.std(downside)) if len(downside) > 1 else 0.0
     sortino = (
-        float(excess.mean() / _down_std * np.sqrt(252))
-        if _down_std > 1e-10 else 0.0
+        float(excess.mean() / _down_std * np.sqrt(TRADING_DAYS_PER_YEAR))
+        if _down_std > EPSILON else 0.0
     )
 
     # ── Drawdown ──────────────────────────────────────────────────────────────
@@ -175,8 +191,8 @@ def run_backtest(
         max_dur = max(max_dur, cur_dur)
 
     # ── Calmar ────────────────────────────────────────────────────────────────
-    years = len(df) / 252.0
-    ann_return = float((equity[-1] / initial_equity) ** (1.0 / max(years, 1e-6)) - 1.0)
+    years = len(df) / TRADING_DAYS_PER_YEAR
+    ann_return = float((equity[-1] / initial_equity) ** (1.0 / max(years, EPSILON)) - 1.0)
     calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
 
     # ── Omega / Ulcer ─────────────────────────────────────────────────────────
@@ -213,8 +229,8 @@ def run_backtest(
     # ── Equity curve ──────────────────────────────────────────────────────────
     equity_curve = [
         {
-            "date": str(idx.date() if hasattr(idx, "date") else idx),
-            "equity": round(float(val), 2),
+            EQUITY_CURVE_DATE_KEY: str(idx.date() if hasattr(idx, "date") else idx),
+            EQUITY_CURVE_EQUITY_KEY: round(float(val), 2),
         }
         for idx, val in zip(df.index, df["equity"])
     ]
@@ -222,21 +238,21 @@ def run_backtest(
     total_return = float(equity[-1] / initial_equity - 1.0)
 
     return BacktestMetrics(
-        total_return=round(total_return, 4),
-        annualized_return=round(ann_return, 4),
-        sharpe=round(sharpe, 4),
-        sortino=round(sortino, 4),
-        calmar=round(calmar, 4),
-        omega_ratio=round(min(omega, 99.99), 4),
-        ulcer_index=round(ulcer, 4),
-        max_drawdown=round(max_dd, 4),
-        avg_drawdown=round(avg_dd, 4),
-        max_drawdown_duration_days=max_dur,
+        total_return=total_return,
+        annualized_return=ann_return,
+        sharpe=sharpe,
+        sortino=sortino,
+        calmar=calmar,
+        omega_ratio=omega,
+        ulcer_index=ulcer,
+        max_drawdown=max_dd,
+        avg_drawdown=avg_dd,
+        max_drawdown_duration_days=int(max_dur),
         num_trades=len(trade_pnls),
-        win_rate=round(win_rate, 4),
-        avg_win_pct=round(avg_win * 100, 4),
-        avg_loss_pct=round(avg_loss * 100, 4),
-        profit_factor=round(profit_factor, 4),
-        expectancy=round(expectancy * 100, 4),
+        win_rate=win_rate,
+        avg_win_pct=avg_win,
+        avg_loss_pct=avg_loss,
+        profit_factor=profit_factor,
+        expectancy=expectancy,
         equity_curve=equity_curve,
     )
