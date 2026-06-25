@@ -29,6 +29,11 @@ WINNER_MANUAL: str = "manual"
 WINNER_NEITHER: str = "neither"
 LOG_MESSAGE: str = "Comparison complete"
 
+# Extracted magic strings and default numeric values
+EQUITY_KEY: str = "equity"
+DEFAULT_T_STAT: float = 0.0
+DEFAULT_P_VAL: float = 1.0
+
 
 @dataclass
 class ComparisonResult:
@@ -80,8 +85,8 @@ class StrategyComparisonEngine:
         benchmark_stats = get_benchmark_stats()
 
         # Vectorized extraction of equity curves
-        manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
-        ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
+        manual_eq = pd.Series([e[EQUITY_KEY] for e in manual_metrics.equity_curve])
+        ml_eq = pd.Series([e[EQUITY_KEY] for e in ml_metrics.equity_curve])
 
         # Compute daily returns
         manual_ret = manual_eq.pct_change().dropna()
@@ -92,7 +97,7 @@ class StrategyComparisonEngine:
         if min_len > MIN_DATA_LENGTH:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
         else:
-            t_stat, p_val = 0.0, 1.0
+            t_stat, p_val = DEFAULT_T_STAT, DEFAULT_P_VAL
 
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
