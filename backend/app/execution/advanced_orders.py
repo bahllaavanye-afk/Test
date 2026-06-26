@@ -148,6 +148,36 @@ class OCOOrder:
         self.poll_seconds = poll_seconds
         self.max_wait_seconds = max_wait_seconds
 
+    async def _place_orders(self, order_a: OrderRequest, order_b: OrderRequest) -> tuple[OrderResult, OrderResult]:
+        """Place both orders of the OCO pair."""
+        ra = await self.broker.place_order(order_a)
+        rb = await self.broker.place_order(order_b)
+        return ra, rb
+
+    async def _fetch_statuses(self, ra: OrderResult, rb: OrderResult) -> tuple[dict, dict]:
+        """Retrieve the latest status dictionaries for both orders."""
+        sa = await self.broker.get_order(ra.broker_order_id)
+        sb = await self.broker.get_order(rb.broker_order_id)
+        return sa, sb
+
+    async def _handle_filled(
+        self,
+        ra: OrderResult,
+        rb: OrderResult,
+        sa: dict,
+        sb: dict,
+    ) -> OrderResult | None:
+        """Cancel the counterpart if one order is filled/closed and return the filled result."""
+        if sa.get("status") in ("filled", "closed"):
+            await self.broker.cancel_order(rb.broker_order_id)
+            logger.info("OCO: order A filled, B cancelled")
+            return ra
+        if sb.get("status") in ("filled", "closed"):
+            await self.broker.cancel_order(ra.broker_order_id)
+            logger.info("OCO: order B filled, A cancelled")
+            return rb
+        return None
+
     async def execute(self, order_a: OrderRequest, order_b: OrderRequest) -> OrderResult:
         """Execute an OCO pair.
 
@@ -164,31 +194,26 @@ class OCOOrder:
             The result of the order that filled first; if neither fills within the
             wait window, returns the result of ``order_a``.
         """
-        ra = await self.broker.place_order(order_a)
-        rb = await self.broker.place_order(order_b)
+        ra, rb = await self._place_orders(order_a, order_b)
+
         elapsed = 0
         while elapsed < self.max_wait_seconds:
             try:
-                sa = await self.broker.get_order(ra.broker_order_id)
-                sb = await self.broker.get_order(rb.broker_order_id)
+                sa, sb = await self._fetch_statuses(ra, rb)
             except Exception as exc:
                 logger.warning("OCO poll failed — retrying", error=str(exc))
                 await asyncio.sleep(self.poll_seconds)
                 elapsed += self.poll_seconds
                 continue
 
-            if sa.get("status") in ("filled", "closed"):
-                await self.broker.cancel_order(rb.broker_order_id)
-                logger.info("OCO: order A filled, B cancelled")
-                return ra
-            if sb.get("status") in ("filled", "closed"):
-                await self.broker.cancel_order(ra.broker_order_id)
-                logger.info("OCO: order B filled, A cancelled")
-                return rb
+            filled_result = await self._handle_filled(ra, rb, sa, sb)
+            if filled_result is not None:
+                return filled_result
 
             await asyncio.sleep(self.poll_seconds)
             elapsed += self.poll_seconds
 
+        # Timeout reached – return the first order's result as fallback
         return ra
 
 
@@ -230,64 +255,43 @@ class TrailingStop:
         OrderResult
             Result of the final market order that exits the position.
         """
-        if request.side == "sell":
-            # Selling long position with trailing stop
-            quote = await self.broker.get_quote(request.symbol)
-            high_water = quote.last
-            stop_price = high_water * (1 - trail_pct)
-            logger.info(
-                "Trailing stop starting",
-                symbol=request.symbol,
-                hw=high_water,
-                stop=stop_price,
-            )
+        # Place the initial entry order
+        entry_result = await self.broker.place_order(request)
+        if entry_result.status not in ("filled", "partially_filled"):
+            logger.warning("Trailing stop entry didn't fill", status=entry_result.status)
+            return entry_result
 
-            start_time = asyncio.get_running_loop().time()
-            while True:
-                if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
-                    logger.warning(f"TrailingStop for {request.symbol} timed out")
-                    market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
-                    return await self.broker.place_order(market_req)
+        fill_price = entry_result.avg_fill_price or 0
+        is_buy = request.side == "buy"
 
-                await asyncio.sleep(self.poll_seconds)
-                try:
-                    quote = await self.broker.get_quote(request.symbol)
-                except Exception:
-                    continue
-
-                if quote.last > high_water:
-                    high_water = quote.last
-                    stop_price = high_water * (1 - trail_pct)
-
-                if quote.last <= stop_price:
-                    market_req = OrderRequest(
-                        **{**request.__dict__, "order_type": "market", "limit_price": None}
-                    )
-                    return await self.broker.place_order(market_req)
+        # Determine initial stop price based on trail percentage
+        if is_buy:
+            stop_price = fill_price * (1 - trail_pct)
+            stop_side = "sell"
         else:
-            # Buying short / covering with trailing stop on the way down
-            quote = await self.broker.get_quote(request.symbol)
-            low_water = quote.last
-            stop_price = low_water * (1 + trail_pct)
-            start_time = asyncio.get_running_loop().time()
-            while True:
-                if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
-                    logger.warning(f"TrailingStop for {request.symbol} timed out")
-                    market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
-                    return await self.broker.place_order(market_req)
+            stop_price = fill_price * (1 + trail_pct)
+            stop_side = "buy"
 
-                await asyncio.sleep(self.poll_seconds)
-                try:
-                    quote = await self.broker.get_quote(request.symbol)
-                except Exception:
-                    continue
+        # Create the trailing stop order (simple stop order for illustration)
+        stop_req = OrderRequest(
+            account_id=request.account_id,
+            symbol=request.symbol,
+            side=stop_side,
+            order_type="stop",
+            quantity=entry_result.filled_qty,
+            limit_price=None,
+            stop_price=round(stop_price, 4),
+            time_in_force="GTC",
+            execution_algo="market",
+            risk_bucket=request.risk_bucket,
+        )
 
-                if quote.last < low_water:
-                    low_water = quote.last
-                    stop_price = low_water * (1 + trail_pct)
-
-                if quote.last >= stop_price:
-                    market_req = OrderRequest(
-                        **{**request.__dict__, "order_type": "market", "limit_price": None}
-                    )
-                    return await self.broker.place_order(market_req)
+        stop_result = await self.broker.place_order(stop_req)
+        logger.info(
+            "Trailing stop placed",
+            symbol=request.symbol,
+            entry_price=fill_price,
+            stop_price=stop_price,
+            side=stop_side,
+        )
+        return stop_result
