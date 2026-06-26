@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-26T13:27:47.296850+00:00",
+  "last_updated": "2026-06-26T13:29:17.566274+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1149,12 +1149,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[modeling_engineer @ 2026-06-20T23:53] [LLM unavailable \u2014 all providers failed]",
-    "[system_watchdog in #risk @ 2026-06-21T10:54] I've reviewed the agent_memory.json file and reported the following on platform health: API availability is compromised due to LLM (Large Language Mod",
-    "[desk_trader in #risk @ 2026-06-21T10:54] Given the current market conditions, I recommend a conservative 10% position size for directional trades, allocating 90% to arbitrage strategies throu",
-    "[investor_pipeline @ 2026-06-21T11:33] [LLM unavailable \u2014 all providers failed]",
-    "[run_experiments @ 2026-06-21T11:33] [LLM unavailable \u2014 all providers failed]",
-    "[algo_agent @ 2026-06-21T11:33] [LLM unavailable \u2014 all providers failed]",
     "[self_improver @ 2026-06-21T11:33] [LLM unavailable \u2014 all providers failed]",
     "[research_scientist @ 2026-06-21T11:33] [LLM unavailable \u2014 all providers failed]",
     "[modeling_engineer @ 2026-06-21T11:33] [LLM unavailable \u2014 all providers failed]",
@@ -1348,16 +1342,16 @@
     "[continuous_improver @ 2026-06-26T11:26] monitoring on ml/models/transformer.py: tests=pass",
     "[continuous_improver @ 2026-06-26T11:27] monitoring on risk/drawdown_recovery.py: tests=pass",
     "[continuous_improver @ 2026-06-26T11:27] monitoring on brokers/tradestation.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T11:27] alpha_evolve on strategies/manual/intraday_seasonality.py: tests=pass"
+    "[continuous_improver @ 2026-06-26T11:27] alpha_evolve on strategies/manual/intraday_seasonality.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T13:29] error_handling on ml/models/hmm_regime.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T13:29] error_handling on ml/features/advanced_indicators.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T13:29] error_handling on execution/slippage_tracker.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T13:29] error_handling on risk/circuit_breaker.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T13:29] error_handling on backtest/metrics.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T13:29] alpha_evolve on strategies/manual/open_close_revert.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/ml/features/advanced_indicators.py",
-      "reason": "syntax check failed",
-      "improvement_type": "edge_cases",
-      "timestamp": "2026-06-14T20:27:43.541887+00:00"
-    },
     {
       "file": "backend/app/execution/advanced_orders.py",
       "reason": "syntax check failed",
@@ -1651,6 +1645,12 @@
       "reason": "syntax check failed",
       "improvement_type": "monitoring",
       "timestamp": "2026-06-26T11:27:27.943718+00:00"
+    },
+    {
+      "file": "backend/app/brokers/alpaca.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-26T13:29:11.495020+00:00"
     }
   ],
   "improvement_stats": {
@@ -1665,9 +1665,9 @@
       "test_pass": 5
     },
     "alpha_evolve": {
-      "successes": 4,
+      "successes": 5,
       "failures": 0,
-      "test_pass": 4
+      "test_pass": 5
     },
     "optimization": {
       "successes": 5,
@@ -1695,6 +1695,11 @@
       "test_pass": 5
     },
     "monitoring": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "error_handling": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5
