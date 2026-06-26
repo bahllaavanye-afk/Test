@@ -165,6 +165,18 @@ class TradeStationBroker(AbstractBroker):
             "filled_qty": float(o.get("FilledQuantity", 0)),
         }
 
+    def _parse_position(self, raw: dict) -> dict:
+        """Convert raw position dict from API to a normalized dict."""
+        quantity = float(raw.get("Quantity", 0))
+        return {
+            "symbol": raw.get("Symbol"),
+            "qty": quantity,
+            "market_value": float(raw.get("MarketValue", 0)),
+            "avg_entry_price": float(raw.get("AveragePrice", 0)),
+            "unrealized_pnl": float(raw.get("UnrealizedProfitLoss", 0)),
+            "side": "long" if quantity > 0 else "short",
+        }
+
     @_log_metrics
     async def get_positions(self) -> List[dict]:
         async with httpx.AsyncClient() as client:
@@ -174,19 +186,8 @@ class TradeStationBroker(AbstractBroker):
             )
             resp.raise_for_status()
         data = resp.json()
-        positions = []
-        for p in data.get("Positions", []):
-            positions.append(
-                {
-                    "symbol": p.get("Symbol"),
-                    "qty": float(p.get("Quantity", 0)),
-                    "market_value": float(p.get("MarketValue", 0)),
-                    "avg_entry_price": float(p.get("AveragePrice", 0)),
-                    "unrealized_pnl": float(p.get("UnrealizedProfitLoss", 0)),
-                    "side": "long" if float(p.get("Quantity", 0)) > 0 else "short",
-                }
-            )
-        return positions
+        raw_positions = data.get("Positions", [])
+        return [self._parse_position(p) for p in raw_positions]
 
     @_log_metrics
     async def get_account(self) -> dict:
@@ -214,75 +215,11 @@ class TradeStationBroker(AbstractBroker):
             )
             resp.raise_for_status()
         data = resp.json()
-        quotes = data.get("Quotes", [{}])
-        q = quotes[0] if quotes else {}
+        quote = data.get("Quote", {})
         return QuoteResult(
             symbol=symbol,
-            bid=float(q.get("Bid", 0)),
-            ask=float(q.get("Ask", 0)),
-            last=float(q.get("Last", 0)),
-            volume=int(q.get("Volume", 0)),
+            bid=float(quote.get("Bid", 0)),
+            ask=float(quote.get("Ask", 0)),
+            last=float(quote.get("Last", 0)),
+            volume=int(quote.get("Volume", 0)),
         )
-
-    @_log_metrics
-    async def get_historical(self, symbol: str, interval: str, start: datetime, end: datetime) -> List[dict]:
-        """
-        Retrieve historical bar data for a symbol.
-
-        Parameters
-        ----------
-        symbol : str
-            Ticker symbol.
-        interval : str
-            One of the supported intervals (e.g., "1m", "5m", "1h", "1d").
-        start : datetime
-            Start time (unused by TradeStation API; kept for interface compatibility).
-        end : datetime
-            End time (unused by TradeStation API; kept for interface compatibility).
-
-        Returns
-        -------
-        List[dict]
-            List of bar dictionaries with keys: ts, open, high, low, close, volume.
-        """
-        params = self._build_historical_params(interval)
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/barcharts/{symbol}",
-                params=params,
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        return self._parse_historical_data(data)
-
-    def _build_historical_params(self, interval: str, bars_back: int = 500) -> dict:
-        """
-        Construct query parameters for the historical request.
-        """
-        unit = "Minute" if interval != "1d" else "Daily"
-        interval_value = self.INTERVAL_MAP.get(interval, "1")
-        return {
-            "unit": unit,
-            "interval": interval_value,
-            "barsBack": str(bars_back),
-        }
-
-    def _parse_historical_data(self, data: dict) -> List[dict]:
-        """
-        Parse raw historical data into a list of dictionaries.
-        """
-        bars = data.get("Bars", [])
-        parsed = []
-        for bar in bars:
-            parsed.append(
-                {
-                    "ts": datetime.fromtimestamp(bar.get("Timestamp", 0), tz=UTC),
-                    "open": float(bar.get("Open", 0)),
-                    "high": float(bar.get("High", 0)),
-                    "low": float(bar.get("Low", 0)),
-                    "close": float(bar.get("Close", 0)),
-                    "volume": int(bar.get("Volume", 0)),
-                }
-            )
-        return parsed
