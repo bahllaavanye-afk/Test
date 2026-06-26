@@ -445,14 +445,14 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782461968.2017705,
+    "last_updated": 1782466945.683276,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "rsi_10_25_75",
       "mean_rev_20_1.5"
     ],
-    "last_autopilot_run": 1782447625.5886962,
+    "last_autopilot_run": 1782466945.6726193,
     "autopilot_best_sharpe": 0.3026,
     "autopilot_best_oos_sharpe": 1.159,
     "autopilot_best_blended": 0.4356,
