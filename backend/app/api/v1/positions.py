@@ -2,7 +2,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,15 +55,57 @@ router = APIRouter(prefix="/positions", tags=["positions"])
 
 
 class PositionOut(BaseModel):
-    id: str | None = None
-    symbol: str
-    quantity: float
-    avg_cost: float
-    current_price: float | None
-    unrealized_pnl: float | None
-    side: str
+    """Schema representing a position returned by the API."""
+
+    id: str | None = Field(
+        default=None,
+        description="Unique identifier of the position (asset ID).",
+        example="e3c8a0f2-5b6d-4f7e-9c1a-2d5f6b7c8d9e",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the asset.",
+        example="AAPL",
+    )
+    quantity: float = Field(
+        ...,
+        description="Number of shares (positive for long, negative for short).",
+        example=150.0,
+    )
+    avg_cost: float = Field(
+        ...,
+        description="Average entry price per share.",
+        example=145.23,
+    )
+    current_price: float | None = Field(
+        default=None,
+        description="Latest market price for the asset.",
+        example=148.50,
+    )
+    unrealized_pnl: float | None = Field(
+        default=None,
+        description="Unrealized profit and loss in currency units.",
+        example=490.5,
+    )
+    side: str = Field(
+        ...,
+        description="Position side – either 'long' or 'short'.",
+        example="long",
+    )
 
     model_config = ConfigDict(from_attributes=True)
+
+    @validator("side")
+    def validate_side(cls, v: str) -> str:
+        if v not in {DEFAULT_SIDE_LONG, DEFAULT_SIDE_SHORT}:
+            raise ValueError(f"side must be '{DEFAULT_SIDE_LONG}' or '{DEFAULT_SIDE_SHORT}'")
+        return v
+
+    @validator("quantity")
+    def validate_quantity(cls, v: float) -> float:
+        if v == 0:
+            raise ValueError("quantity must be non‑zero")
+        return v
 
 
 def _alpaca_position_to_out(p: dict) -> dict:
@@ -219,44 +261,74 @@ async def get_position_exit_config(
 
 
 class ExitOptionsUpdate(BaseModel):
-    stop_loss: float | None = None
-    take_profit: float | None = None
-    profit_target_pct: float | None = None
-    stop_loss_pct: float | None = None
-    trailing_stop_pct: float | None = None
-    expiration_days: int | None = None
-    pricing_method: str | None = None
-    bid_ask_guard: bool | None = None
-    notes: str | None = None
-    tags: list[str] | None = None
+    """Schema for updating exit configuration of a position."""
 
+    stop_loss: float | None = Field(
+        default=None,
+        description="Absolute stop loss price.",
+        example=140.0,
+        ge=0,
+    )
+    take_profit: float | None = Field(
+        default=None,
+        description="Absolute take profit price.",
+        example=160.0,
+        ge=0,
+    )
+    profit_target_pct: float | None = Field(
+        default=None,
+        description="Target profit expressed as a percentage of entry price.",
+        example=10.0,
+        ge=0,
+        le=100,
+    )
+    stop_loss_pct: float | None = Field(
+        default=None,
+        description="Stop loss expressed as a percentage of entry price.",
+        example=5.0,
+        ge=0,
+        le=100,
+    )
+    trailing_stop_pct: float | None = Field(
+        default=None,
+        description="Trailing stop distance as a percentage.",
+        example=2.5,
+        ge=0,
+        le=100,
+    )
+    expiration_days: int | None = Field(
+        default=None,
+        description="Number of days after which the position should be closed.",
+        example=30,
+        ge=1,
+    )
+    pricing_method: str | None = Field(
+        default=None,
+        description="Pricing method to use for order execution (e.g., 'mid', 'bid', 'ask').",
+        example="mid",
+    )
+    bid_ask: str | None = Field(
+        default=None,
+        description="Preferred side for execution when using bid/ask pricing.",
+        example="bid",
+    )
 
-@router.patch("/{symbol}/exit-config")
-async def update_position_exit_config(
-    symbol: str,
-    body: ExitOptionsUpdate,
-    current_user: User = Depends(get_current_user),
-):
-    """Update the active exit conditions for an open position in Redis."""
-    from app.redis_client import get_redis
+    @validator("pricing_method")
+    def validate_pricing_method(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        allowed = {"mid", "bid", "ask"}
+        if v not in allowed:
+            raise ValueError(f"pricing_method must be one of {allowed}")
+        return v
 
-    redis_client = get_redis()
-    if redis_client is None:
-        raise HTTPException(status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=ERR_REDIS_UNAVAILABLE_GENERIC)
+    @validator("bid_ask")
+    def validate_bid_ask(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        allowed = {"bid", "ask"}
+        if v not in allowed:
+            raise ValueError(f"bid_ask must be one of {allowed}")
+        return v
 
-    try:
-        raw = await redis_client.get(f"{REDIS_POS_EXIT_PREFIX}{symbol}")
-    except Exception:
-        raise HTTPException(status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=ERR_REDIS_READ_FAILED)
-
-    config: dict = json.loads(raw) if raw else {}
-
-    updates = body.model_dump(exclude_none=True)
-    config.update(updates)
-
-    try:
-        await redis_client.set(f"{REDIS_POS_EXIT_PREFIX}{symbol}", json.dumps(config), ex=REDIS_TTL_SECONDS)
-    except Exception:
-        raise HTTPException(status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=ERR_REDIS_WRITE_FAILED)
-
-    return {"symbol": symbol, "updated": True, "config": config}
+    model_config = ConfigDict(extra="forbid")
