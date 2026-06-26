@@ -4,11 +4,12 @@ compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import field
 from datetime import date
 from typing import Dict, Tuple
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from scipy import stats
 
 from app.backtest.engine import BacktestMetrics, run_backtest
@@ -35,22 +36,97 @@ DEFAULT_T_STAT: float = 0.0
 DEFAULT_P_VAL: float = 1.0
 
 
-@dataclass
-class ComparisonResult:
-    strategy_name: str
-    symbol: str
-    interval: str
-    start_date: date
-    end_date: date
-    manual: BacktestMetrics | None = None
-    ml_enhanced: BacktestMetrics | None = None
-    benchmark_curves: dict = field(default_factory=dict)
-    benchmark_stats: dict = field(default_factory=dict)
-    ml_improvement_sharpe: float = 0.0
-    t_statistic: float = 0.0
-    p_value: float = 1.0
-    is_significant: bool = False
-    winner: str = "neither"
+class ComparisonResult(BaseModel):
+    """Result of a strategy comparison between manual and ML‑enhanced signals."""
+
+    strategy_name: str = Field(
+        ...,
+        description="Human‑readable identifier for the strategy under test.",
+        example="rsi_10_25_75",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol the strategy was applied to.",
+        example="AAPL",
+    )
+    interval: str = Field(
+        ...,
+        description="Timeframe of the price data (e.g., '1h', 'daily').",
+        example="1h",
+    )
+    start_date: date = Field(
+        ...,
+        description="Inclusive start date for the backtest period.",
+        example="2023-01-01",
+    )
+    end_date: date = Field(
+        ...,
+        description="Inclusive end date for the backtest period.",
+        example="2023-12-31",
+    )
+    manual: BacktestMetrics | None = Field(
+        default=None,
+        description="Metrics from the backtest using manual signals.",
+    )
+    ml_enhanced: BacktestMetrics | None = Field(
+        default=None,
+        description="Metrics from the backtest using ML‑enhanced signals.",
+    )
+    benchmark_curves: dict = Field(
+        default_factory=dict,
+        description="Benchmark equity curves over the same period.",
+        example={"SP500": [100000, 101200, 102500]},
+    )
+    benchmark_stats: dict = Field(
+        default_factory=dict,
+        description="Statistical summary of benchmark performance.",
+        example={"SP500_sharpe": 0.85},
+    )
+    ml_improvement_sharpe: float = Field(
+        default=0.0,
+        description="Absolute Sharpe improvement of the ML strategy over manual.",
+        example=0.15,
+    )
+    t_statistic: float = Field(
+        default=0.0,
+        description="t‑statistic from the two‑sample test of returns.",
+        example=1.23,
+    )
+    p_value: float = Field(
+        default=1.0,
+        description="p‑value associated with the t‑statistic.",
+        example=0.215,
+    )
+    is_significant: bool = Field(
+        default=False,
+        description="Whether the p‑value is below the significance threshold.",
+        example=False,
+    )
+    winner: str = Field(
+        default=WINNER_NEITHER,
+        description="Identifier of the winning approach ('ml', 'manual', or 'neither').",
+        example="ml",
+    )
+
+    @validator("end_date")
+    def check_dates(cls, v: date, values: dict) -> date:
+        """Ensure end_date is not earlier than start_date."""
+        start = values.get("start_date")
+        if start and v < start:
+            raise ValueError("end_date must be on or after start_date")
+        return v
+
+    @validator("winner")
+    def validate_winner(cls, v: str) -> str:
+        """Validate that winner is one of the predefined constants."""
+        allowed = {WINNER_ML, WINNER_MANUAL, WINNER_NEITHER}
+        if v not in allowed:
+            raise ValueError(f"winner must be one of {allowed}")
+        return v
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {date: lambda d: d.isoformat()}
 
 
 class StrategyComparisonEngine:
