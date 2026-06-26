@@ -96,6 +96,23 @@ class RLPositionSizer:
                 # Loading failed – keep ``_loaded`` as ``False`` to use fallback.
                 pass
 
+    def _state_to_tensor(self, state: Mapping[str, float]) -> torch.Tensor:
+        """Convert a state mapping into a tensor suitable for the network."""
+        values = [
+            float(state.get("portfolio_heat", 0.5)),
+            float(state.get("strategy_sharpe_30d", 1.0)),
+            float(state.get("drawdown_pct", 0.0)),
+            float(state.get("regime", 1)),
+            float(state.get("volatility_ratio", 1.0)),
+            float(state.get("win_streak", 0)),
+            float(state.get("loss_streak", 0)),
+        ]
+        return torch.tensor(values, dtype=torch.float32).unsqueeze(0)
+
+    def _select_action(self, logits: torch.Tensor) -> int:
+        """Select the action index with the highest logit."""
+        return int(logits.argmax(dim=-1).item())
+
     def scale_factor(self, state: Mapping[str, float]) -> float:
         """Return the Kelly multiplier for the given portfolio state.
 
@@ -116,22 +133,11 @@ class RLPositionSizer:
         if not self._loaded:
             return 1.0
 
-        vec = torch.tensor(
-            [
-                float(state.get("portfolio_heat", 0.5)),
-                float(state.get("strategy_sharpe_30d", 1.0)),
-                float(state.get("drawdown_pct", 0.0)),
-                float(state.get("regime", 1)),
-                float(state.get("volatility_ratio", 1.0)),
-                float(state.get("win_streak", 0)),
-                float(state.get("loss_streak", 0)),
-            ],
-            dtype=torch.float32,
-        ).unsqueeze(0)
+        vec = self._state_to_tensor(state)
 
         self._net.eval()
         with torch.no_grad():
             logits, _ = self._net(vec)
-            action = int(logits.argmax(dim=-1).item())
+            action = self._select_action(logits)
 
         return KELLY_MULTIPLIERS[action]
