@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import numpy as np
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.brokers.base import OrderRequest, OrderResult
@@ -42,6 +43,7 @@ class SlippageTracker:
     ) -> None:
         if not result.avg_fill_price:
             return
+
         key = f"{request.account_id}:{request.symbol}"
         signal_price = self._signal_prices.pop(key, None)
 
@@ -85,36 +87,65 @@ class SlippageTracker:
                 algo=request.execution_algo,
             )
 
-            from app.notifications.slack import slack
-            from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
-            await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
-                algo=request.execution_algo,
-            )
+            try:
+                from app.notifications.slack import slack
+                from app.notifications.tracker import tracker
+
+                tracker.record(
+                    "order_filled",
+                    "order",
+                    f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
+                    slippage_bps=round(slippage_bps, 2),
+                    algo=request.execution_algo,
+                )
+                await slack.notify_order_filled(
+                    request.symbol,
+                    request.side,
+                    request.quantity,
+                    result.avg_fill_price,
+                    slippage_bps=round(slippage_bps, 2),
+                    algo=request.execution_algo,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to send fill notification",
+                    symbol=request.symbol,
+                    side=request.side,
+                    exception=str(exc),
+                )
 
             if self.db:
-                record = SlippageRecord(
-                    id=str(uuid.uuid4()),
-                    order_id=result.broker_order_id,
-                    signal_price=signal_price,
-                    expected_price=signal_price,
-                    fill_price=result.avg_fill_price,
-                    slippage_bps=slippage_bps,
-                    execution_algo=request.execution_algo,
-                    created_at=datetime.now(UTC),
-                    # Item 5: IS fields
-                    arrival_price=arrival_price,
-                    is_cost_bps=is_cost_bps,
-                    vwap_shortfall_bps=vwap_shortfall_bps,
-                    period_vwap=period_vwap,
-                    execution_duration_seconds=execution_duration_seconds,
-                )
-                self.db.add(record)
-                await self.db.commit()
+                try:
+                    record = SlippageRecord(
+                        id=str(uuid.uuid4()),
+                        order_id=result.broker_order_id,
+                        signal_price=signal_price,
+                        expected_price=signal_price,
+                        fill_price=result.avg_fill_price,
+                        slippage_bps=slippage_bps,
+                        execution_algo=request.execution_algo,
+                        created_at=datetime.now(UTC),
+                        # Item 5: IS fields
+                        arrival_price=arrival_price,
+                        is_cost_bps=is_cost_bps,
+                        vwap_shortfall_bps=vwap_shortfall_bps,
+                        period_vwap=period_vwap,
+                        execution_duration_seconds=execution_duration_seconds,
+                    )
+                    self.db.add(record)
+                    await self.db.commit()
+                except SQLAlchemyError as db_err:
+                    logger.error(
+                        "Database error while recording slippage",
+                        order_id=result.broker_order_id,
+                        exception=str(db_err),
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Unexpected error while recording slippage",
+                        order_id=result.broker_order_id,
+                        exception=str(exc),
+                    )
 
     async def get_execution_quality_stats(self, algo: str, days: int = 30) -> dict:
         """
@@ -129,6 +160,7 @@ class SlippageTracker:
             raise RuntimeError("DB session required for execution quality stats")
 
         from datetime import timedelta
+
         cutoff = datetime.now(UTC) - timedelta(days=days)
 
         stmt = (
@@ -136,7 +168,25 @@ class SlippageTracker:
             .where(SlippageRecord.execution_algo == algo)
             .where(SlippageRecord.created_at >= cutoff)
         )
-        result = await self.db.execute(stmt)
+        try:
+            result = await self.db.execute(stmt)
+        except SQLAlchemyError as db_err:
+            logger.error(
+                "Database error while fetching execution quality stats",
+                algo=algo,
+                days=days,
+                exception=str(db_err),
+            )
+            raise RuntimeError("Failed to retrieve execution quality stats") from db_err
+        except Exception as exc:
+            logger.error(
+                "Unexpected error while fetching execution quality stats",
+                algo=algo,
+                days=days,
+                exception=str(exc),
+            )
+            raise RuntimeError("Failed to retrieve execution quality stats") from exc
+
         records = result.scalars().all()
 
         if not records:
