@@ -4,9 +4,14 @@ Polymarket Binary Arbitrage.
 If YES_price + NO_price < $0.97 (accounting for fees), buy both sides.
 At resolution, one side pays $1.00 — guaranteed profit.
 """
+import logging
+import time
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+
+logger = logging.getLogger(__name__)
 
 
 class PolyBinaryArbStrategy(AbstractStrategy):
@@ -33,9 +38,20 @@ class PolyBinaryArbStrategy(AbstractStrategy):
         self.max_sum = 1.0 - self.min_edge_pct / 100.0
         self.min_liquidity = params.get("min_liquidity", 100) if params else 100  # $100 minimum depth
 
+        # Monitoring metrics
+        self._signal_count: int = 0
+        self._cumulative_expected_profit: float = 0.0
+
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        start_time = time.perf_counter()
+
         # data has 'yes_price', 'no_price', 'yes_liquidity', 'no_liquidity'
         if "yes_price" not in data.columns:
+            exec_time_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "PolyBinaryArb analyze skipped: missing yes_price column",
+                extra={"execution_time_ms": exec_time_ms, "symbol": symbol},
+            )
             return None
 
         yes = data["yes_price"].iloc[-1]
@@ -49,7 +65,8 @@ class PolyBinaryArbStrategy(AbstractStrategy):
         if price_sum < self.max_sum and min_liq >= self.min_liquidity:
             profit_pct = (1.0 - price_sum) / price_sum
             confidence = min(0.99, 0.80 + profit_pct * 2)  # higher spread = higher confidence
-            return Signal(
+
+            signal = Signal(
                 symbol=symbol,
                 side="buy",   # buy BOTH yes and no
                 confidence=confidence,
@@ -64,6 +81,28 @@ class PolyBinaryArbStrategy(AbstractStrategy):
                     "arb_type": "binary_both_sides",
                 },
             )
+
+            # Update monitoring metrics
+            self._signal_count += 1
+            self._cumulative_expected_profit += profit_pct
+
+            exec_time_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "PolyBinaryArb signal generated",
+                extra={
+                    "signal_count": self._signal_count,
+                    "execution_time_ms": exec_time_ms,
+                    "expected_profit_pct": round(profit_pct * 100, 4),
+                    "symbol": symbol,
+                },
+            )
+            return signal
+
+        exec_time_ms = (time.perf_counter() - start_time) * 1000
+        logger.debug(
+            "PolyBinaryArb analyze completed: no arbitrage opportunity",
+            extra={"execution_time_ms": exec_time_ms, "symbol": symbol},
+        )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
