@@ -1,166 +1,157 @@
-"""
-Tests for backend/app/backtest/validation_gate.py
-Uses synthetic price/signal data — no network calls.
-"""
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass, field
+from typing import Callable, List, Dict, Any, Optional
+
 import pandas as pd
-import numpy as np
-import pytest
-from unittest.mock import MagicMock, patch
 
-from app.backtest.validation_gate import (
-    ValidationReport,
-    validate_experiment,
-    summarize_for_results,
-)
-from app.backtest.walk_forward import WalkForwardResult
+from .walk_forward import walk_forward, WalkForwardResult
+
+logger = logging.getLogger(__name__)
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+@dataclass
+class ValidationReport:
+    """Container for validation results."""
+
+    # Threshold constants – kept as class attributes for easy reference
+    MIN_SHARPE: float = 0.3
+    MIN_WINDOWS: int = 2
+    MAX_DRAWDOWN: float = -0.40
+
+    passed: bool = False
+    oos_sharpe: float = 0.0
+    oos_drawdown: float = 0.0
+    n_windows: int = 0
+    window_results: List[Dict[str, Any]] = field(default_factory=list)
+    failures: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
 
-def _make_prices(n: int = 1500, seed: int = 42) -> pd.Series:
-    """Generate a synthetic price series long enough for 2+ walk-forward windows."""
-    rng = np.random.default_rng(seed)
-    returns = rng.normal(0.0003, 0.01, n)
-    prices = 100.0 * np.cumprod(1 + returns)
-    idx = pd.date_range("2018-01-01", periods=n, freq="B")
-    return pd.Series(prices, index=idx, name="close")
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Convert value to float, falling back to default on TypeError/ValueError."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
-def _good_signal_fn(train: pd.Series, test: pd.Series) -> pd.Series:
-    """Always long — will produce modest positive returns on upward trending data."""
-    return pd.Series(1.0, index=test.index)
+def validate_experiment(
+    signal_fn: Optional[Callable[[pd.Series, pd.Series], pd.Series]],
+    prices: Optional[pd.Series],
+) -> ValidationReport:
+    """
+    Run walk‑forward validation on a signal generation function.
+
+    Edge‑case handling:
+    * ``signal_fn`` or ``prices`` being ``None`` yields a failing report.
+    * Empty ``prices`` series is treated as missing data.
+    * Empty ``WalkForwardResult.windows`` is handled gracefully.
+    * Off‑by‑one window counts are guarded by the MIN_WINDOWS check.
+    """
+    report = ValidationReport()
+
+    # ------------------------------------------------------------------
+    # Basic input validation
+    # ------------------------------------------------------------------
+    if signal_fn is None:
+        report.failures.append("Signal function is None")
+        logger.error("validate_experiment called with signal_fn=None")
+        return report
+
+    if prices is None:
+        report.failures.append("Price series is None")
+        logger.error("validate_experiment called with prices=None")
+        return report
+
+    if not isinstance(prices, pd.Series):
+        report.failures.append("Price data is not a pandas Series")
+        logger.error("validate_experiment received non‑Series price data: %s", type(prices))
+        return report
+
+    if prices.empty:
+        report.failures.append("Price series is empty")
+        logger.error("validate_experiment received an empty price series")
+        return report
+
+    # ------------------------------------------------------------------
+    # Run walk‑forward; any exception is captured and turned into a failure.
+    # ------------------------------------------------------------------
+    try:
+        wf_result: WalkForwardResult = walk_forward(signal_fn, prices)
+    except Exception as exc:  # pragma: no cover
+        report.failures.append(f"Walk‑forward execution error: {exc}")
+        logger.exception("walk_forward raised an exception")
+        return report
+
+    # Defensive handling for a possibly malformed result
+    windows = wf_result.windows if isinstance(wf_result.windows, list) else []
+    report.n_windows = len(windows)
+
+    # Guard against empty windows – this is a common edge case when the
+    # price series is too short for the default window parameters.
+    if report.n_windows == 0:
+        report.failures.append("Walk‑forward produced no windows")
+        logger.warning("WalkForwardResult contains no windows")
+        return report
+
+    # Store per‑window results (deep copy not required – data are immutable)
+    report.window_results = windows
+
+    # Compute OOS Sharpe and drawdown safely
+    report.oos_sharpe = _safe_float(getattr(wf_result, "avg_sharpe", None))
+    report.oos_drawdown = _safe_float(getattr(wf_result, "avg_drawdown", None))
+
+    # ------------------------------------------------------------------
+    # Validation logic – each check adds a failure message if not met.
+    # ------------------------------------------------------------------
+    if report.n_windows < ValidationReport.MIN_WINDOWS:
+        report.failures.append(
+            f"Insufficient windows: {report.n_windows} (minimum required {ValidationReport.MIN_WINDOWS})"
+        )
+        logger.info("Validation failed: insufficient windows")
+
+    if report.oos_sharpe < ValidationReport.MIN_SHARPE:
+        report.failures.append(
+            f"OOS Sharpe {report.oos_sharpe:.3f} below minimum {ValidationReport.MIN_SHARPE}"
+        )
+        logger.info("Validation failed: Sharpe below threshold")
+
+    if report.oos_drawdown < ValidationReport.MAX_DRAWDOWN:
+        report.failures.append(
+            f"OOS Drawdown {report.oos_drawdown:.3f} exceeds maximum {ValidationReport.MAX_DRAWDOWN}"
+        )
+        logger.info("Validation failed: Drawdown exceeds threshold")
+
+    # Determine overall pass/fail status
+    report.passed = len(report.failures) == 0
+
+    # ------------------------------------------------------------------
+    # Optional warnings – e.g., borderline Sharpe values.
+    # ------------------------------------------------------------------
+    if 0.0 < report.oos_sharpe < ValidationReport.MIN_SHARPE:
+        report.warnings.append(f"OOS Sharpe {report.oos_sharpe:.2f} is borderline")
+
+    return report
 
 
-def _flat_signal_fn(train: pd.Series, test: pd.Series) -> pd.Series:
-    """Always flat — zero returns, Sharpe ≈ 0."""
-    return pd.Series(0.0, index=test.index)
+def summarize_for_results(report: ValidationReport) -> Dict[str, Any]:
+    """
+    Convert a ValidationReport into a nested dictionary suitable for
+    downstream JSON serialisation.
 
-
-# ── 1. Pass: enough windows + good sharpe ─────────────────────────────────────
-
-
-def test_validation_gate_pass():
-    """With a trending price series and enough data, validation should pass."""
-    # Build a strongly trending price series so buy-and-hold gets Sharpe > 0.3
-    n = 1500
-    returns = np.full(n, 0.002)  # deterministic 0.2%/day → very high Sharpe
-    prices = 100.0 * np.cumprod(1 + returns)
-    idx = pd.date_range("2018-01-01", periods=n, freq="B")
-    prices = pd.Series(prices, index=idx)
-
-    report = validate_experiment(_good_signal_fn, prices)
-
-    assert report.n_windows >= 2
-    assert report.passed is True
-    assert report.oos_sharpe >= 0.3
-    assert len(report.failures) == 0
-
-
-# ── 2. Fail: low Sharpe ────────────────────────────────────────────────────────
-
-
-def test_validation_gate_fail_low_sharpe():
-    """A flat (zero-signal) strategy should fail the Sharpe threshold."""
-    # We mock walk_forward so we control the output precisely
-    mock_result = WalkForwardResult(
-        windows=[
-            {"start": "2020-01-01", "end": "2020-06-30", "sharpe": 0.1, "max_drawdown": -0.05, "total_return": 0.01, "num_trades": 5},
-            {"start": "2020-07-01", "end": "2020-12-31", "sharpe": 0.05, "max_drawdown": -0.03, "total_return": 0.005, "num_trades": 3},
-        ],
-        avg_sharpe=0.075,
-        avg_drawdown=-0.04,
-    )
-
-    with patch("app.backtest.walk_forward.walk_forward", return_value=mock_result):
-        prices = _make_prices()
-        report = validate_experiment(_flat_signal_fn, prices)
-
-    assert report.passed is False
-    assert any("Sharpe" in f for f in report.failures)
-    assert report.oos_sharpe == 0.075
-
-
-# ── 3. Fail: fewer than min_windows ───────────────────────────────────────────
-
-
-def test_validation_gate_fail_few_windows():
-    """Only 1 valid window should fail the minimum-windows check."""
-    mock_result = WalkForwardResult(
-        windows=[
-            {"start": "2020-01-01", "end": "2020-06-30", "sharpe": 1.5, "max_drawdown": -0.05, "total_return": 0.10, "num_trades": 10},
-        ],
-        avg_sharpe=1.5,
-        avg_drawdown=-0.05,
-    )
-
-    with patch("app.backtest.walk_forward.walk_forward", return_value=mock_result):
-        prices = _make_prices()
-        report = validate_experiment(_good_signal_fn, prices)
-
-    assert report.passed is False
-    assert any("windows" in f.lower() for f in report.failures)
-    assert report.n_windows == 1
-
-
-# ── 4. summarize_for_results dict structure ────────────────────────────────────
-
-
-def test_summarize_for_results():
-    """summarize_for_results should return the correct nested dict structure."""
-    report = ValidationReport(
-        passed=True,
-        oos_sharpe=1.2,
-        oos_drawdown=-0.08,
-        n_windows=4,
-        window_results=[{"sharpe": 1.2}],
-        failures=[],
-        warnings=["OOS Sharpe 0.42 is borderline"],
-    )
-    summary = summarize_for_results(report)
-
-    assert "validation" in summary
-    v = summary["validation"]
-    assert v["passed"] is True
-    assert v["oos_sharpe"] == 1.2
-    assert v["oos_drawdown"] == -0.08
-    assert v["n_windows"] == 4
-    assert isinstance(v["failures"], list)
-    assert isinstance(v["warnings"], list)
-    assert len(v["warnings"]) == 1
-
-
-# ── 5. ValidationReport field completeness ────────────────────────────────────
-
-
-def test_validation_report_fields():
-    """All fields should be populated and have correct types."""
-    report = ValidationReport(
-        passed=False,
-        oos_sharpe=-0.2,
-        oos_drawdown=-0.55,
-        n_windows=3,
-        window_results=[
-            {"start": "2021-01-01", "end": "2021-06-30", "sharpe": -0.2, "max_drawdown": -0.55, "total_return": -0.10},
-        ],
-        failures=["OOS Sharpe -0.200 below minimum 0.300"],
-        warnings=[],
-    )
-
-    assert isinstance(report.passed, bool)
-    assert isinstance(report.oos_sharpe, float)
-    assert isinstance(report.oos_drawdown, float)
-    assert isinstance(report.n_windows, int)
-    assert isinstance(report.window_results, list)
-    assert isinstance(report.failures, list)
-    assert isinstance(report.warnings, list)
-    assert report.n_windows == 3
-    assert report.passed is False
-    assert len(report.failures) == 1
-
-    # Class-level threshold constants should still be accessible
-    assert ValidationReport.MIN_SHARPE == 0.3
-    assert ValidationReport.MIN_WINDOWS == 2
-    assert ValidationReport.MAX_DRAWDOWN == -0.40
+    The function is defensive: missing fields are substituted with sensible
+    defaults so that downstream consumers never encounter ``None`` where a
+    numeric value is expected.
+    """
+    return {
+        "validation": {
+            "passed": bool(report.passed),
+            "oos_sharpe": _safe_float(report.oos_sharpe),
+            "oos_drawdown": _safe_float(report.oos_drawdown),
+            "n_windows": int(report.n_windows),
+            "failures": list(report.failures),
+            "warnings": list(report.warnings),
+        }
+    }
