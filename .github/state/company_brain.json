@@ -470,7 +470,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782488402.9406803,
+    "last_updated": 1782489951.347384,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -484,25 +484,25 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-06-25T16:14:32.680403+00:00",
+      "generated_at": "2026-06-26T16:05:40.311830+00:00",
       "signals": {
         "vix": {
-          "value": 18.98,
-          "trend": "flat"
+          "value": 18.71,
+          "trend": "rising"
         },
         "spy": {
-          "price": 735.63,
-          "sma50": 732.1,
-          "sma200": 686.42,
+          "price": 735.07,
+          "sma50": 732.81,
+          "sma200": 686.87,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0643,
+          "ratio": 1.0622,
           "median": 1.053,
           "signal": "steepening"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": -0.602,
+          "hyg_lqd_momentum_20d": -0.528,
           "signal": "widening"
         },
         "breadth": {
@@ -511,8 +511,8 @@
           "breadth_pct": 63.6
         },
         "btc": {
-          "price": 59654,
-          "24h_pct": -1.27
+          "price": 60333,
+          "24h_pct": 1.14
         }
       },
       "score": 3,
@@ -522,7 +522,7 @@
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "**Morning Market Brief:** The tape is bullish with strong SPY momentum and broad sector participation, though widening credit spreads and a flat VIX trend warrant caution against chasing extended moves. **Tactical implication:** Favor trend-following strategies over mean-reversion given the steep yield curve and robust uptrend."
+      "summary": "**Morning Brief:** Markets open in a bullish regime (score 3) with strong SPY uptrend and broad sector participation (7/11 sectors above 20-SMA), but rising VIX to 18.71 alongside widening credit spreads signals growing risk-off undertow beneath the surface. **Tactical implication:** Favor short-dated put spreads or tail-risk hedges today to profit from the divergence between bullish price action and deteriorating credit/volatility conditions."
     },
     "strategy_gates": {
       "directional": true,
@@ -1572,6 +1572,18 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1782480460.5601041
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "**Morning Brief:** Markets open in a bullish regime (score 3) with strong SPY uptrend and broad sector participation (7/11 sectors above 20-SMA), but rising VIX to 18.71 alongside widening credit spreads signals growing risk-off undertow beneath the surface. **Tactical implication:** Favor short-dated put spreads or tail-risk hedges today to profit from the divergence between bullish price action and deteriorating credit/volatility conditions.",
+      "ts": 1782489951.3499467
     }
   ],
   "github_insights": [
