@@ -445,7 +445,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782466945.683276,
+    "last_updated": 1782472917.3947735,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -549,7 +549,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1782461968.2012548
+    "last_brain_update": 1782472917.394219
   },
   "episodic": [
     {
@@ -1484,6 +1484,41 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1782461968.1941464
+    },
+    {
+      "lesson": "Claude is repeatedly unavailable, causing automatic fallback to GPT-4o for complex logic tasks; this creates a single point of failure and inconsistent model utilization.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782472915.8192554
+    },
+    {
+      "lesson": "Free-agent engineer completely failed to process an issue because all LLM providers were exhausted, indicating no fallback mechanism exists beyond free-tier models.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782472915.8218472
+    },
+    {
+      "lesson": "The Claude Task Router is generating duplicate assignments (same issue assigned 4 times), suggesting a looping or retry logic bug that wastes resources.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782472915.8243175
+    },
+    {
+      "lesson": "GPT-4o via GitHub Models is the only fallback agent for complex logic when Claude is down; no alternative models or local inference are configured.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782472915.8267615
+    },
+    {
+      "lesson": "The system relies entirely on external LLM providers for task execution with no offline or degraded-mode capability, risking complete agent outage.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782472915.8292284
     }
   ],
   "github_insights": [
@@ -1576,6 +1611,11 @@
       "summary": "The GitHub issue repeatedly reports that a free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors.",
       "item_count": 20,
       "ts": 1782461968.1965199
+    },
+    {
+      "summary": "The discussion shows a repetitive assignment pattern where the Claude Task Router repeatedly assigns a task to the same GPT-4o agent for a complex task, indicating a potential loop or misconfiguration in the routing system.",
+      "item_count": 20,
+      "ts": 1782472917.387175
     }
   ]
 }
