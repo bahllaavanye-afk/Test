@@ -13,10 +13,15 @@ from __future__ import annotations
 
 import os
 import pickle
+import logging
+from typing import Any
 
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 # ── Baum-Welch fallback (pure NumPy) ─────────────────────────────────────────
+
 
 class _BaumWelchHMM:
     """Minimal Gaussian HMM via Baum-Welch EM. 2-feature input."""
@@ -27,7 +32,7 @@ class _BaumWelchHMM:
         self.tol = tol
         self._init_params()
 
-    def _init_params(self):
+    def _init_params(self) -> None:
         K = self.n_states
         self.pi = np.ones(K) / K
         self.A = np.full((K, K), 1.0 / K)
@@ -68,7 +73,7 @@ class _BaumWelchHMM:
             beta[t] = (self.A @ (B[t + 1] * beta[t + 1])) / (scale[t + 1] or 1e-300)
         return beta
 
-    def fit(self, X: np.ndarray) -> "\_BaumWelchHMM":
+    def fit(self, X: np.ndarray) -> "_BaumWelchHMM":
         prev_ll = -np.inf
         for _ in range(self.n_iter):
             B = self._gaussian_pdf(X)
@@ -115,6 +120,7 @@ class _BaumWelchHMM:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+
 class RegimeDetector:
     """
     3-state HMM for market regime detection.
@@ -128,36 +134,48 @@ class RegimeDetector:
         self._model: _BaumWelchHMM | None = None
         self._state_map: dict[int, int] = {0: 0, 1: 1, 2: 2}
         self._use_hmmlearn = False
-        self._hmmlearn_model = None
+        self._hmmlearn_model: Any = None
         self._fitted = False
 
     def _build_features(self, returns: np.ndarray) -> np.ndarray:
         r = np.asarray(returns, dtype=float)
         return np.column_stack([r, np.abs(r)])
 
-    def fit(self, returns: np.ndarray) -> RegimeDetector:
+    def fit(self, returns: np.ndarray) -> "RegimeDetector":
         X = self._build_features(returns)
         try:
             from hmmlearn.hmm import GaussianHMM  # type: ignore[import]
-            model = GaussianHMM(
-                n_components=self.N_STATES,
-                covariance_type="diag",
-                n_iter=200,
-                tol=1e-4,
-                random_state=42,
-            )
-            model.fit(X)
+        except ImportError as e:
+            logger.info("hmmlearn not available; falling back to pure NumPy implementation: %s", e)
+            self._model = _BaumWelchHMM(n_states=self.N_STATES, n_iter=150)
+            try:
+                self._model.fit(X)
+            except Exception as exc:
+                logger.error("Failed to fit Baum-Welch HMM: %s", exc, exc_info=True)
+                raise RuntimeError("Baum-Welch model fitting failed") from exc
+            self._use_hmmlearn = False
+        else:
+            try:
+                model = GaussianHMM(
+                    n_components=self.N_STATES,
+                    covariance_type="diag",
+                    n_iter=200,
+                    tol=1e-4,
+                    random_state=42,
+                )
+                model.fit(X)
+            except Exception as exc:
+                logger.error("Failed to fit hmmlearn GaussianHMM: %s", exc, exc_info=True)
+                raise RuntimeError("hmmlearn model fitting failed") from exc
             self._hmmlearn_model = model
             self._use_hmmlearn = True
-        except ImportError:
-            self._model = _BaumWelchHMM(n_states=self.N_STATES, n_iter=150)
-            self._model.fit(X)
-            self._use_hmmlearn = False
 
         # Establish state → regime label by drift ordering
         states = self.predict(returns)
-        means = [float(returns[states == k].mean()) if (states == k).any() else 0.0
-                 for k in range(self.N_STATES)]
+        means = [
+            float(returns[states == k].mean()) if (states == k).any() else 0.0
+            for k in range(self.N_STATES)
+        ]
         # Sort states by mean drift: lowest→bear(0), middle→sideways(1), highest→bull(2)
         order = sorted(range(self.N_STATES), key=lambda k: means[k])
         self._state_map = {raw: label for label, raw in enumerate(order)}
@@ -171,6 +189,7 @@ class RegimeDetector:
             return self._hmmlearn_model.predict(X)
         if self._model is not None:
             return self._model.predict(X)
+        logger.error("Attempted to predict without a fitted model")
         raise RuntimeError("Model not fitted — call fit() first")
 
     def predict_regimes(self, returns: np.ndarray) -> np.ndarray:
@@ -187,19 +206,31 @@ class RegimeDetector:
 
     def save(self, path: str) -> None:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with open(path, "wb") as f:
-            pickle.dump({
-                "model": self._model,
-                "hmmlearn_model": self._hmmlearn_model,
-                "use_hmmlearn": self._use_hmmlearn,
-                "state_map": self._state_map,
-                "fitted": self._fitted,
-            }, f)
+        try:
+            with open(path, "wb") as f:
+                pickle.dump(
+                    {
+                        "model": self._model,
+                        "hmmlearn_model": self._hmmlearn_model,
+                        "use_hmmlearn": self._use_hmmlearn,
+                        "state_map": self._state_map,
+                        "fitted": self._fitted,
+                    },
+                    f,
+                )
+        except OSError as exc:
+            logger.error("Failed to save RegimeDetector to %s: %s", path, exc, exc_info=True)
+            raise
 
     @classmethod
-    def load(cls, path: str) -> RegimeDetector:
-        with open(path, "rb") as f:
-            data = pickle.load(f)
+    def load(cls, path: str) -> "RegimeDetector":
+        try:
+            with open(path, "rb") as f:
+                data = pickle.load(f)
+        except (OSError, pickle.UnpicklingError) as exc:
+            logger.error("Failed to load RegimeDetector from %s: %s", path, exc, exc_info=True)
+            raise
+
         det = cls()
         det._model = data.get("model")
         det._hmmlearn_model = data.get("hmmlearn_model")
@@ -207,3 +238,5 @@ class RegimeDetector:
         det._state_map = data.get("state_map", {0: 0, 1: 1, 2: 2})
         det._fitted = data.get("fitted", False)
         return det
+
+# End of file
