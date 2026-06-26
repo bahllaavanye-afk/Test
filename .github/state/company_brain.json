@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "created_at": "2026-06-10T01:07:41.067390+00:00",
-  "last_updated": "2026-06-26T08:47:24.703507+00:00",
+  "last_updated": "2026-06-26T11:59:17.362405+00:00",
   "platform": {
     "name": "QuantEdge",
     "type": "institutional_quant_trading",
@@ -430,13 +430,22 @@
         "desk-kalshi",
         "ml-experiments"
       ]
+    },
+    {
+      "source": "build_discussion_chains",
+      "learning": "Discussion chains built across 1 threads in 1 channels: #desk-stat-arb",
+      "timestamp": "2026-06-26T11:59:17.362405+00:00",
+      "chain_count": 1,
+      "channels": [
+        "desk-stat-arb"
+      ]
     }
   ],
   "experiments": [],
   "agent_insights": {
     "build_discussion_chains": {
-      "last_learning": "Discussion chains built across 4 threads in 4 channels: #general, #engineering, #desk-kalshi, #ml-experiments",
-      "last_updated": "2026-06-26T08:47:24.703507+00:00"
+      "last_learning": "Discussion chains built across 1 threads in 1 channels: #desk-stat-arb",
+      "last_updated": "2026-06-26T11:59:17.362405+00:00"
     }
   },
   "strategy_notes": {},
