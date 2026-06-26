@@ -204,8 +204,12 @@
     "error_handling on ml/features/advanced_indicators.py: success \u2014 tests green",
     "error_handling on execution/slippage_tracker.py: success \u2014 tests green",
     "error_handling on risk/circuit_breaker.py: success \u2014 tests green",
-    "error_handling on backtest/metrics.py: success \u2014 tests green"
+    "error_handling on backtest/metrics.py: success \u2014 tests green",
+    "refactor on execution/advanced_orders.py: success \u2014 tests green",
+    "refactor on risk/rl_position_sizer.py: success \u2014 tests green",
+    "refactor on backtest/engine.py: success \u2014 tests green",
+    "refactor on comparison/report_builder.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-26T13:29:15.612122+00:00",
+  "last_updated": "2026-06-26T15:41:11.007777+00:00",
   "total": 200
 }
