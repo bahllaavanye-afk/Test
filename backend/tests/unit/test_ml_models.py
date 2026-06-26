@@ -1,9 +1,69 @@
 """Unit tests for TFT, LightGBM, and Foundation model."""
 import numpy as np
 import pytest
+from pydantic import BaseModel, Field, validator
+from typing import List
+
 torch = pytest.importorskip("torch")  # skip module when optional [ml] extra (torch) is absent
 from app.ml.models.transformer import TFTModel
 from app.ml.models.foundation_model import FoundationModelSignal, get_foundation_signal
+
+
+class ForecastResult(BaseModel):
+    """Schema representing a forecast result from a foundation model.
+
+    Attributes
+    ----------
+    model: str
+        Identifier of the model that generated the forecast.
+    direction: int
+        Predicted direction: -1 (down), 0 (neutral), or 1 (up).
+    confidence: float
+        Confidence score in the range [0, 1].
+    forecast_median: List[float]
+        Median forecast values for each step in the horizon.
+    forecast_q10: List[float]
+        10th percentile forecast values for each step in the horizon.
+    forecast_q90: List[float]
+        90th percentile forecast values for each step in the horizon.
+    """
+
+    model: str = Field(..., description="Name of the model used for forecasting", example="naive")
+    direction: int = Field(..., description="Predicted direction: -1 (down), 0 (neutral), 1 (up)", example=1)
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score of the forecast, between 0 and 1",
+        example=0.85,
+    )
+    forecast_median: List[float] = Field(
+        ..., description="Median forecast values for each horizon step", example=[100.1, 100.2, 100.3]
+    )
+    forecast_q10: List[float] = Field(
+        ..., description="10th percentile forecast values", example=[99.9, 100.0, 100.1]
+    )
+    forecast_q90: List[float] = Field(
+        ..., description="90th percentile forecast values", example=[100.3, 100.4, 100.5]
+    )
+
+    @validator("direction")
+    def direction_must_be_valid(cls, v):
+        if v not in (-1, 0, 1):
+            raise ValueError("direction must be -1, 0, or 1")
+        return v
+
+    @validator("forecast_median", "forecast_q10", "forecast_q90")
+    def lists_must_match_lengths(cls, v, values, **kwargs):
+        # Ensure all forecast lists have the same length
+        other_keys = {"forecast_median", "forecast_q10", "forecast_q90"} - {kwargs["field"].name}
+        lengths = [len(v)]
+        for key in other_keys:
+            if key in values:
+                lengths.append(len(values[key]))
+        if len(set(lengths)) > 1:
+            raise ValueError("All forecast lists must have the same length")
+        return v
 
 
 class TestTFTModel:
@@ -42,6 +102,8 @@ class TestFoundationModelSignal:
         sig = FoundationModelSignal("naive")
         prices = [100 + i * 0.1 for i in range(50)]
         result = sig.forecast(prices, horizon=5)
+        # Validate schema
+        ForecastResult(**result)
         assert result["direction"] in (-1, 1)
         assert 0 <= result["confidence"] <= 1
         assert len(result["forecast_median"]) == 5
@@ -49,6 +111,8 @@ class TestFoundationModelSignal:
     def test_short_prices_returns_zero_direction(self):
         sig = FoundationModelSignal("naive")
         result = sig.forecast([100, 101, 102], horizon=3)
+        # Validate schema (direction should be 0)
+        ForecastResult(**result)
         assert result["direction"] == 0
 
     def test_get_foundation_signal_singleton(self):
@@ -59,8 +123,7 @@ class TestFoundationModelSignal:
     def test_forecast_dict_keys(self):
         sig = FoundationModelSignal("naive")
         result = sig.forecast(list(range(50, 100)), horizon=3)
-        assert "model" in result
-        assert "direction" in result
-        assert "forecast_median" in result
-        assert "forecast_q10" in result
-        assert "forecast_q90" in result
+        for key in ["model", "direction", "forecast_median", "forecast_q10", "forecast_q90"]:
+            assert key in result
+        # Validate full schema
+        ForecastResult(**result)
