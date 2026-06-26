@@ -1,14 +1,5 @@
 {
   "skills": [
-    "optimization on comparison/engine.py: success \u2014 tests green",
-    "[system_watchdog in #risk @ 2026-06-19T12:37] I'm reporting that the platform health appears to be stable based on agent_memory.json data. API availab",
-    "* Retrain the `SectorSentimentModel` using the `sector_sentiment.py` file and integrate a temporal attention layer to handle model drift.",
-    "* Potential solutions may include reviewing LLM provider configurations, monitoring usage patterns, and implementing backup/alternative services to ensure uninterrupted agent operations.",
-    "Backtest strategy variants.",
-    "**Lightweight Backtesting**: Quick backtest will begin running lightweight backtests with no prior runs or successes, likely to test new strategies.",
-    "* **Performance Estimation**: Backtests (quick_backtest) for the \"QQQ-MSFT-NVDA\" strategy are recommended using historical data from Jan-Apr 2023 to estimate its Sharpe ratio.",
-    "Log trade errors",
-    "Check data feeds",
     "* The new strategy variant \"Short MSFT\" proposed by `strategy_generator` has a predicted Sharpe ratio of 0.5-0.7, which indicates high risk due to a short position limit of 80.",
     "Backtest new variants.",
     "Based on the recent agent learnings, the following actionable knowledge can be extracted:",
@@ -210,6 +201,6 @@
     "refactor on backtest/engine.py: success \u2014 tests green",
     "refactor on comparison/report_builder.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-26T15:41:11.007777+00:00",
+  "last_updated": "2026-06-26T17:44:10.929969+00:00",
   "total": 200
 }
