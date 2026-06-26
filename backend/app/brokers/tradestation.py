@@ -3,9 +3,61 @@ from datetime import UTC, datetime, timedelta
 from typing import List, Dict
 
 import httpx
+import functools
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.logging import logger
+
+
+def _log_metrics(func):
+    """Async decorator to log execution time and key metrics for broker methods."""
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        start = datetime.now(UTC)
+        result = await func(self, *args, **kwargs)
+        end = datetime.now(UTC)
+        duration = (end - start).total_seconds()
+        metrics = {
+            "method": func.__name__,
+            "execution_time_s": duration,
+        }
+
+        # Add method‑specific metrics
+        if func.__name__ == "place_order" and isinstance(result, OrderResult):
+            metrics.update(
+                {
+                    "order_id": result.broker_order_id,
+                    "status": result.status,
+                    "filled_qty": result.filled_qty,
+                }
+            )
+        elif func.__name__ == "cancel_order":
+            metrics["canceled"] = result
+        elif func.__name__ == "get_order":
+            metrics.update(result or {})
+        elif func.__name__ == "get_positions":
+            metrics["position_count"] = len(result)
+            total_pnl = sum(p.get("unrealized_pnl", 0) for p in result)
+            metrics["total_unrealized_pnl"] = total_pnl
+        elif func.__name__ == "get_account":
+            metrics.update(result or {})
+        elif func.__name__ == "get_quote":
+            metrics.update(
+                {
+                    "symbol": result.symbol,
+                    "bid": result.bid,
+                    "ask": result.ask,
+                    "last": result.last,
+                    "volume": result.volume,
+                }
+            )
+        elif func.__name__ == "get_historical":
+            metrics["bars_returned"] = len(result)
+
+        logger.info("TradeStation broker operation", **metrics)
+        return result
+
+    return wrapper
 
 
 class TradeStationBroker(AbstractBroker):
@@ -52,6 +104,7 @@ class TradeStationBroker(AbstractBroker):
         token = await self._get_token()
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
+    @_log_metrics
     async def place_order(self, request: OrderRequest) -> OrderResult:
         body = {
             "AccountID": self.account_id,
@@ -87,6 +140,7 @@ class TradeStationBroker(AbstractBroker):
             avg_fill_price=avg_fill,
         )
 
+    @_log_metrics
     async def cancel_order(self, broker_order_id: str) -> bool:
         async with httpx.AsyncClient() as client:
             resp = await client.delete(
@@ -95,6 +149,7 @@ class TradeStationBroker(AbstractBroker):
             )
         return resp.status_code == 200
 
+    @_log_metrics
     async def get_order(self, broker_order_id: str) -> dict:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
@@ -110,6 +165,7 @@ class TradeStationBroker(AbstractBroker):
             "filled_qty": float(o.get("FilledQuantity", 0)),
         }
 
+    @_log_metrics
     async def get_positions(self) -> List[dict]:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
@@ -132,6 +188,7 @@ class TradeStationBroker(AbstractBroker):
             )
         return positions
 
+    @_log_metrics
     async def get_account(self) -> dict:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
@@ -148,6 +205,7 @@ class TradeStationBroker(AbstractBroker):
             "day_trade_count": 0,
         }
 
+    @_log_metrics
     async def get_quote(self, symbol: str) -> QuoteResult:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
@@ -166,6 +224,7 @@ class TradeStationBroker(AbstractBroker):
             volume=int(q.get("Volume", 0)),
         )
 
+    @_log_metrics
     async def get_historical(self, symbol: str, interval: str, start: datetime, end: datetime) -> List[dict]:
         """
         Retrieve historical bar data for a symbol.
@@ -206,23 +265,24 @@ class TradeStationBroker(AbstractBroker):
         return {
             "unit": unit,
             "interval": interval_value,
-            "barsback": bars_back,
+            "barsBack": str(bars_back),
         }
 
     def _parse_historical_data(self, data: dict) -> List[dict]:
         """
-        Parse the raw JSON response into a list of bar dictionaries.
+        Parse raw historical data into a list of dictionaries.
         """
-        bars: List[dict] = []
-        for b in data.get("Bars", []):
-            bars.append(
+        bars = data.get("Bars", [])
+        parsed = []
+        for bar in bars:
+            parsed.append(
                 {
-                    "ts": b.get("TimeStamp"),
-                    "open": float(b.get("Open", 0)),
-                    "high": float(b.get("High", 0)),
-                    "low": float(b.get("Low", 0)),
-                    "close": float(b.get("Close", 0)),
-                    "volume": float(b.get("TotalVolume", 0)),
+                    "ts": datetime.fromtimestamp(bar.get("Timestamp", 0), tz=UTC),
+                    "open": float(bar.get("Open", 0)),
+                    "high": float(bar.get("High", 0)),
+                    "low": float(bar.get("Low", 0)),
+                    "close": float(bar.get("Close", 0)),
+                    "volume": int(bar.get("Volume", 0)),
                 }
             )
-        return bars
+        return parsed
