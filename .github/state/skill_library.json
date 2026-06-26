@@ -199,8 +199,13 @@
     "Validate user inputs",
     "Check disk space",
     "Verify clock sync",
-    "Test DB connections"
+    "Test DB connections",
+    "monitoring on strategies/manual/poly_binary_arb.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "monitoring on ml/models/transformer.py: success \u2014 tests green",
+    "monitoring on risk/drawdown_recovery.py: success \u2014 tests green",
+    "monitoring on brokers/tradestation.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-26T11:25:10.026478+00:00",
+  "last_updated": "2026-06-26T11:27:31.702891+00:00",
   "total": 200
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-26T11:25:10.026478+00:00",
+  "last_updated": "2026-06-26T11:27:32.862481+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1149,12 +1149,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[modeling_engineer in #ml-research @ 2026-06-20T21:56] I recommend deploying a TFT model with a self-attention mechanism using the `PyTorch-TFT` library, specifically the `TFT` model from `backend/app/ml/m",
-    "[investor_pipeline @ 2026-06-20T23:53] [LLM unavailable \u2014 all providers failed]",
-    "[run_experiments @ 2026-06-20T23:53] [LLM unavailable \u2014 all providers failed]",
-    "[algo_agent @ 2026-06-20T23:53] [LLM unavailable \u2014 all providers failed]",
-    "[self_improver @ 2026-06-20T23:53] [LLM unavailable \u2014 all providers failed]",
-    "[research_scientist @ 2026-06-20T23:53] [LLM unavailable \u2014 all providers failed]",
     "[modeling_engineer @ 2026-06-20T23:53] [LLM unavailable \u2014 all providers failed]",
     "[system_watchdog in #risk @ 2026-06-21T10:54] I've reviewed the agent_memory.json file and reported the following on platform health: API availability is compromised due to LLM (Large Language Mod",
     "[desk_trader in #risk @ 2026-06-21T10:54] Given the current market conditions, I recommend a conservative 10% position size for directional trades, allocating 90% to arbitrage strategies throu",
@@ -1348,22 +1342,16 @@
     "[desk_trader @ 2026-06-26T10:51] We need to produce a one-sentence status update, first person, concise (2 sentences max). Must reference real file paths. As the desk_trader agent, we",
     "[system_watchdog @ 2026-06-26T10:51] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As system_watchdog agent, need to respond in first per",
     "[ml_trainer @ 2026-06-26T10:51] We need to respond as ml_trainer, giving a one-sentence status update, referencing real file paths, 2 sentences max but they ask one-sentence. Should ",
-    "[standup_agent @ 2026-06-26T10:51] I'm currently integrating a Seasonal-Trend decomposition (STL) module into `strategies/ml_enhanced/ml_momentum.py` to improve regime detection, and ju"
+    "[standup_agent @ 2026-06-26T10:51] I'm currently integrating a Seasonal-Trend decomposition (STL) module into `strategies/ml_enhanced/ml_momentum.py` to improve regime detection, and ju",
+    "[continuous_improver @ 2026-06-26T11:26] monitoring on strategies/manual/poly_binary_arb.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T11:26] monitoring on strategies/ml_enhanced/ml_pca_arb.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T11:26] monitoring on ml/models/transformer.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T11:27] monitoring on risk/drawdown_recovery.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T11:27] monitoring on brokers/tradestation.py: tests=pass",
+    "[continuous_improver @ 2026-06-26T11:27] alpha_evolve on strategies/manual/intraday_seasonality.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/strategies/ml_enhanced/ml_breakout.py",
-      "reason": "syntax check failed",
-      "improvement_type": "edge_cases",
-      "timestamp": "2026-06-14T20:26:38.033785+00:00"
-    },
-    {
-      "file": "backend/app/ml/models/base_model.py",
-      "reason": "syntax check failed",
-      "improvement_type": "edge_cases",
-      "timestamp": "2026-06-14T20:27:10.749418+00:00"
-    },
     {
       "file": "backend/app/ml/features/advanced_indicators.py",
       "reason": "syntax check failed",
@@ -1651,6 +1639,18 @@
       "reason": "Tests failed after mutation",
       "improvement_type": "alpha_evolve",
       "timestamp": "2026-06-25T15:24:52.208565+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/technical.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-26T11:27:25.892340+00:00"
+    },
+    {
+      "file": "backend/app/execution/advanced_orders.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-26T11:27:27.943718+00:00"
     }
   ],
   "improvement_stats": {
@@ -1665,9 +1665,9 @@
       "test_pass": 5
     },
     "alpha_evolve": {
-      "successes": 3,
+      "successes": 4,
       "failures": 0,
-      "test_pass": 3
+      "test_pass": 4
     },
     "optimization": {
       "successes": 5,
@@ -1690,6 +1690,11 @@
       "test_pass": 5
     },
     "edge_cases": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "monitoring": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5
