@@ -4,10 +4,14 @@ Given current drawdown and historical avg daily return, estimate when portfolio 
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,7 +28,9 @@ class RecoveryEstimate:
             "current_drawdown_pct": round(self.current_drawdown_pct * 100, 2),
             "avg_daily_return_pct": round(self.avg_daily_return * 100, 3),
             "expected_recovery_days": self.expected_recovery_days,
-            "expected_recovery_date": self.expected_recovery_date.isoformat() if self.expected_recovery_date else None,
+            "expected_recovery_date": self.expected_recovery_date.isoformat()
+            if self.expected_recovery_date
+            else None,
             "probability_recover_30d": round(self.probability_recover_30d, 3),
             "probability_recover_90d": round(self.probability_recover_90d, 3),
         }
@@ -41,23 +47,58 @@ def estimate_recovery(
         returns: Historical daily returns list
         current_drawdown: Current drawdown as fraction (e.g. 0.05 = 5% below peak)
     """
+    start_time = time.time()
+
+    # Validate inputs
     if not returns or current_drawdown <= 0:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "drawdown_recovery_estimate",
+            extra={
+                "signal_count": len(returns),
+                "execution_time_ms": elapsed_ms,
+                "current_drawdown_pct": current_drawdown,
+                "avg_daily_return": 0.0,
+                "expected_recovery_days": 0,
+                "probability_recover_30d": 1.0,
+                "probability_recover_90d": 1.0,
+            },
+        )
         return RecoveryEstimate(
-            current_drawdown_pct=0, avg_daily_return=0,
-            expected_recovery_days=0, expected_recovery_date=date.today(),
-            probability_recover_30d=1.0, probability_recover_90d=1.0,
+            current_drawdown_pct=0,
+            avg_daily_return=0,
+            expected_recovery_days=0,
+            expected_recovery_date=date.today(),
+            probability_recover_30d=1.0,
+            probability_recover_90d=1.0,
         )
 
     arr = np.array(returns)
     mu = float(np.mean(arr))
     sigma = float(np.std(arr, ddof=1))
 
+    # Negative drift — unlikely to recover
     if mu <= 0:
-        # Negative drift — unlikely to recover
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "drawdown_recovery_estimate",
+            extra={
+                "signal_count": len(returns),
+                "execution_time_ms": elapsed_ms,
+                "current_drawdown_pct": current_drawdown,
+                "avg_daily_return": mu,
+                "expected_recovery_days": None,
+                "probability_recover_30d": 0.1,
+                "probability_recover_90d": 0.25,
+            },
+        )
         return RecoveryEstimate(
-            current_drawdown_pct=current_drawdown, avg_daily_return=mu,
-            expected_recovery_days=None, expected_recovery_date=None,
-            probability_recover_30d=0.1, probability_recover_90d=0.25,
+            current_drawdown_pct=current_drawdown,
+            avg_daily_return=mu,
+            expected_recovery_days=None,
+            expected_recovery_date=None,
+            probability_recover_30d=0.1,
+            probability_recover_90d=0.25,
         )
 
     # Simple estimate: days = drawdown / avg_daily_return
@@ -83,8 +124,24 @@ def estimate_recovery(
     median_days = int(np.median(first_recovery)) if first_recovery else naive_days
 
     recovery_date = date.today() + timedelta(days=median_days)
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    logger.info(
+        "drawdown_recovery_estimate",
+        extra={
+            "signal_count": len(returns),
+            "execution_time_ms": elapsed_ms,
+            "current_drawdown_pct": current_drawdown,
+            "avg_daily_return": mu,
+            "expected_recovery_days": median_days,
+            "probability_recover_30d": recover_30,
+            "probability_recover_90d": recover_90,
+        },
+    )
+
     return RecoveryEstimate(
-        current_drawdown_pct=current_drawdown, avg_daily_return=mu,
+        current_drawdown_pct=current_drawdown,
+        avg_daily_return=mu,
         expected_recovery_days=median_days,
         expected_recovery_date=recovery_date,
         probability_recover_30d=recover_30,
