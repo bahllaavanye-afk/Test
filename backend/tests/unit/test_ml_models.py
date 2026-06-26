@@ -1,7 +1,7 @@
 """Unit tests for TFT, LightGBM, and Foundation model."""
 import numpy as np
 import pytest
-import torch
+torch = pytest.importorskip("torch")  # skip module when optional [ml] extra (torch) is absent
 from app.ml.models.transformer import TFTModel
 from app.ml.models.foundation_model import FoundationModelSignal, get_foundation_signal
 
