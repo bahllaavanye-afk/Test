@@ -1,18 +1,5 @@
 {
   "skills": [
-    "handle NaN values",
-    "* A `desk_trader` is actively paper trading a time-series momentum strategy on crypto desks, validating it against specific test criteria in `test/unit/test_time_series_momentum.py`.",
-    "constants on api/v1/monitoring.py: success \u2014 tests green",
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important and actionable knowledge:",
-    "* **LLM providers are unreliable**: All recent agent learnings (82 out of 83) indicate that LLM providers failed, suggesting potential issues with the current LLM infrastructure.",
-    "Test strategy logic.",
-    "check API timeouts",
-    "Run_experiments: Executing the UCB1 bandit loop in `backend/bandit/ucb1.py`.",
-    "Based on the recent agent learnings, here are 3 concise bullet points of actionable knowledge:",
-    "Track API rate limits",
-    "* **Code Quality Review**: Prioritize a code quality review of `api/v1/kalshi.py` due to recent validation successes.",
-    "Log sync errors",
-    "Test HRP modules",
     "optimization on comparison/engine.py: success \u2014 tests green",
     "[system_watchdog in #risk @ 2026-06-19T12:37] I'm reporting that the platform health appears to be stable based on agent_memory.json data. API availab",
     "* Retrain the `SectorSentimentModel` using the `sector_sentiment.py` file and integrate a temporal attention layer to handle model drift.",
@@ -204,8 +191,16 @@
     "monitoring on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
     "monitoring on ml/models/transformer.py: success \u2014 tests green",
     "monitoring on risk/drawdown_recovery.py: success \u2014 tests green",
-    "monitoring on brokers/tradestation.py: success \u2014 tests green"
+    "monitoring on brokers/tradestation.py: success \u2014 tests green",
+    "Check RAM usage",
+    "Verify API keys",
+    "Test network latency",
+    "Log trade timeouts",
+    "Validate order IDs",
+    "Implement try-except blocks",
+    "Enhance error handling",
+    "Test edge cases"
   ],
-  "last_updated": "2026-06-26T11:27:31.702891+00:00",
+  "last_updated": "2026-06-26T13:27:47.296850+00:00",
   "total": 200
 }
