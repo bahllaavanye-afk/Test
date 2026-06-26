@@ -199,8 +199,13 @@
     "refactor on execution/advanced_orders.py: success \u2014 tests green",
     "refactor on risk/rl_position_sizer.py: success \u2014 tests green",
     "refactor on backtest/engine.py: success \u2014 tests green",
-    "refactor on comparison/report_builder.py: success \u2014 tests green"
+    "refactor on comparison/report_builder.py: success \u2014 tests green",
+    "schemas on comparison/engine.py: success \u2014 tests green",
+    "schemas on tasks/order_sync.py: success \u2014 tests green",
+    "schemas on api/v1/positions.py: success \u2014 tests green",
+    "schemas on test/unit/test_ml_models.py: success \u2014 tests green",
+    "schemas on strategies/manual/pmi_sector_rotation.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-26T17:44:10.929969+00:00",
+  "last_updated": "2026-06-26T19:43:54.300435+00:00",
   "total": 200
 }
