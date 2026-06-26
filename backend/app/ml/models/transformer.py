@@ -5,6 +5,10 @@ Attention mechanism provides interpretable feature importance per timestep.
 """
 from __future__ import annotations
 
+import logging
+import time
+from typing import Any
+
 try:
     import torch
     import torch.nn as nn
@@ -17,6 +21,14 @@ import numpy as np
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
+_logger = logging.getLogger(__name__)
+
+
+def _log_structured(event: str, **metrics: Any) -> None:
+    """Emit a structured log record at INFO level."""
+    if _logger.isEnabledFor(logging.INFO):
+        _logger.info(event, extra=metrics)
+
 
 class GatedLinearUnit(nn.Module):
     def __init__(self, d: int):
@@ -25,7 +37,7 @@ class GatedLinearUnit(nn.Module):
 
     def forward(self, x):
         h = self.fc(x)
-        return h[..., :h.shape[-1]//2] * torch.sigmoid(h[..., h.shape[-1]//2:])
+        return h[..., :h.shape[-1] // 2] * torch.sigmoid(h[..., h.shape[-1] // 2:])
 
 
 class GatedResidualNetwork(nn.Module):
@@ -55,7 +67,12 @@ class VariableSelectionNetwork(nn.Module):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # x: (batch, seq, n_vars * d_model) — pre-embedded features
-        processed = [self.grns[i](x[..., i*x.shape[-1]//len(self.grns):(i+1)*x.shape[-1]//len(self.grns)]) for i in range(len(self.grns))]
+        processed = [
+            self.grns[i](
+                x[..., i * x.shape[-1] // len(self.grns) : (i + 1) * x.shape[-1] // len(self.grns)]
+            )
+            for i in range(len(self.grns))
+        ]
         stacked = torch.stack(processed, dim=-1)   # (batch, seq, d, n_vars)
         flat = x.reshape(x.shape[0], x.shape[1], -1)
         weights = torch.softmax(self.softmax_grn(flat), dim=-1).unsqueeze(-2)  # (batch, seq, 1, n_vars)
@@ -102,6 +119,8 @@ class TFTModel(AbstractModel, nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run a forward pass and emit structured metrics."""
+        start_ts = time.time()
         # x: (batch, seq, features)
         h = self.input_proj(x)                      # → (batch, seq, d_model)
         h, _ = self.lstm(h)                          # temporal encoding
@@ -112,8 +131,16 @@ class TFTModel(AbstractModel, nn.Module):
         h = self.ln1(h + self.dropout(attn_out))
         h = self.ln2(h + self.attn_grn(h))
 
-        # Use last timestep for classification
-        return self.head(h[:, -1, :])
+        out = self.head(h[:, -1, :])
+        exec_time_ms = (time.time() - start_ts) * 1000
+        signal_count = int(x.shape[0] * x.shape[1])  # batch * seq_len
+        _log_structured(
+            "tft_forward",
+            signal_count=signal_count,
+            execution_time_ms=exec_time_ms,
+            pnl=None,
+        )
+        return out
 
     def get_attention_weights(self) -> np.ndarray | None:
         """Returns attention weights for interpretability (last forward pass)."""
@@ -122,8 +149,10 @@ class TFTModel(AbstractModel, nn.Module):
         return None
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
+        """Train for one epoch and log aggregate metrics."""
+        epoch_start = time.time()
         self.train()
-        total_loss, total_acc, n = 0.0, 0.0, 0
+        total_loss, total_acc, total_signals, n = 0.0, 0.0, 0, 0
         for x, y in loader:
             optimizer.zero_grad()
             pred = self(x).squeeze(-1)
@@ -131,16 +160,34 @@ class TFTModel(AbstractModel, nn.Module):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
             optimizer.step()
+            batch_signals = int(x.shape[0] * x.shape[1])
+            total_signals += batch_signals
             total_loss += loss.item()
             total_acc += ((pred > 0.5) == y.bool()).float().mean().item()
             n += 1
-        return {"loss": total_loss / max(n, 1), "acc": total_acc / max(n, 1)}
+        epoch_time_ms = (time.time() - epoch_start) * 1000
+        avg_loss = total_loss / max(n, 1)
+        avg_acc = total_acc / max(n, 1)
+        _log_structured(
+            "tft_train_epoch",
+            signal_count=total_signals,
+            execution_time_ms=epoch_time_ms,
+            avg_loss=avg_loss,
+            avg_accuracy=avg_acc,
+            pnl=None,
+        )
+        return {"loss": avg_loss, "acc": avg_acc}
 
     def evaluate(self, loader) -> EvalMetrics:
+        """Evaluate on a validation set and log key performance indicators."""
+        eval_start = time.time()
         self.eval()
         preds, labels = [], []
+        total_signals = 0
         with torch.no_grad():
             for x, y in loader:
+                batch_signals = int(x.shape[0] * x.shape[1])
+                total_signals += batch_signals
                 preds.extend(self(x).squeeze(-1).numpy())
                 labels.extend(y.numpy())
         preds = np.array(preds)
@@ -151,6 +198,15 @@ class TFTModel(AbstractModel, nn.Module):
             auc = float(roc_auc_score(labels, preds))
         except Exception:
             auc = 0.5
+        exec_time_ms = (time.time() - eval_start) * 1000
+        _log_structured(
+            "tft_evaluate",
+            signal_count=total_signals,
+            execution_time_ms=exec_time_ms,
+            accuracy=acc,
+            auc=auc,
+            pnl=None,
+        )
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0, loss=None)
 
 
