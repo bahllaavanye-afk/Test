@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-20",
+  "last_updated": "2026-06-26",
   "pipeline": [
     {
       "name": "a16z Crypto Fund",
@@ -45,16 +45,16 @@
     },
     {
       "name": "Founders Fund",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "info@foundersfund.com",
-      "added": "2026-06-12",
+      "added": "2026-06-26",
       "notes": "Peter Thiel aligned, tech-first"
     },
     {
       "name": "Andreessen Horowitz",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "a16z-fintech@a16z.com",
-      "added": "2026-06-12",
+      "added": "2026-06-26",
       "notes": "FinTech team"
     },
     {
@@ -66,9 +66,9 @@
     },
     {
       "name": "QED Investors",
-      "stage": "diligence",
+      "stage": "term_sheet",
       "contact": "info@qedinvestors.com",
-      "added": "2026-06-05",
+      "added": "2026-06-26",
       "notes": "FinTech-only VC"
     }
   ],
