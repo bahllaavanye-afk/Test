@@ -481,7 +481,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782494601.7031405,
+    "last_updated": 1782501426.7768543,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -584,8 +584,8 @@
       "AAPL"
     ],
     "risk_flags": [],
-    "risk_status": "normal",
-    "last_brain_update": 1782494601.702567
+    "risk_status": "alert",
+    "last_brain_update": 1782501426.7762449
   },
   "episodic": [
     {
@@ -1595,6 +1595,34 @@
       },
       "lesson": "**Morning Brief:** Markets open in a bullish regime (score 3) with strong SPY uptrend and broad sector participation (7/11 sectors above 20-SMA), but rising VIX to 18.71 alongside widening credit spreads signals growing risk-off undertow beneath the surface. **Tactical implication:** Favor short-dated put spreads or tail-risk hedges today to profit from the divergence between bullish price action and deteriorating credit/volatility conditions.",
       "ts": 1782489951.3499467
+    },
+    {
+      "lesson": "All free LLM providers are failing, causing free-agent engineer to stall on issues. Need paid provider failover or fallback logic.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782501426.759784
+    },
+    {
+      "lesson": "CI debug log shows Python 3.11.15 and aiohttp 3.14.1 installed, but no indication of provider configuration or error details. Missing structured logging for LLM failures.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782501426.7625632
+    },
+    {
+      "lesson": "Repeated identical failures across multiple issues suggest systemic provider outage, not isolated incident. Requires monitoring and alerting for provider health.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782501426.765217
+    },
+    {
+      "lesson": "No fallback to local/open-source models or cached responses when free providers fail. Increases downtime risk for automated engineering tasks.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782501426.7679768
     }
   ],
   "github_insights": [
@@ -1707,6 +1735,11 @@
       "summary": "The GitHub issue repeatedly reports that a free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors.",
       "item_count": 20,
       "ts": 1782494601.696767
+    },
+    {
+      "summary": "The GitHub issue repeatedly reports that a free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors.",
+      "item_count": 20,
+      "ts": 1782501426.7707133
     }
   ]
 }
