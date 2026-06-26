@@ -492,7 +492,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782507942.1064932,
+    "last_updated": 1782513335.175006,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -595,7 +595,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782507942.1058948
+    "last_brain_update": 1782513335.1743846
   },
   "episodic": [
     {
@@ -1668,6 +1668,41 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1782507942.097885
+    },
+    {
+      "lesson": "All free LLM providers are failing, causing cascading task failures across the automation pipeline.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782513335.1542172
+    },
+    {
+      "lesson": "Claude task router is unavailable, forcing fallback to GPT-4o which may have different performance characteristics.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782513335.157314
+    },
+    {
+      "lesson": "No retry logic, fallback chain, or circuit breaker is in place when free providers fail \u2014 system has single point of failure.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782513335.1601803
+    },
+    {
+      "lesson": "Dependency on free-tier LLM APIs creates fragile automation \u2014 invest in reserved capacity or self-hosted models.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782513335.1630044
+    },
+    {
+      "lesson": "The task routing system lacks monitoring for provider health \u2014 should proactively detect and route around failures.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1782513335.165794
     }
   ],
   "github_insights": [
@@ -1790,6 +1825,11 @@
       "summary": "The Claude Task Router assigned this issue to a codex task, but the GPT-4o agent was unable to process it because all free LLM providers failed.",
       "item_count": 20,
       "ts": 1782507942.1005857
+    },
+    {
+      "summary": "The Claude Task Router assigned this issue to a codex task, but the GPT-4o agent was unable to process it because all free LLM providers failed.",
+      "item_count": 20,
+      "ts": 1782513335.1686273
     }
   ]
 }
