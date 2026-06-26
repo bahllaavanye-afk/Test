@@ -1,14 +1,5 @@
 {
   "skills": [
-    "* The new strategy variant \"Short MSFT\" proposed by `strategy_generator` has a predicted Sharpe ratio of 0.5-0.7, which indicates high risk due to a short position limit of 80.",
-    "Backtest new variants.",
-    "Based on the recent agent learnings, the following actionable knowledge can be extracted:",
-    "* Investigate and resolve LLM (Large Language Model) unavailability issues, which seem to be affecting multiple agents, to prevent potential system downtime and performance degradation.",
-    "2. **Monitor Model Drift**: Regularly check and update machine learning models to prevent degradation and maintain performance.",
-    "* The current LLM (Language Model) is experiencing connectivity issues and unavailable from multiple providers. Resolve this issue to ensure reliable information extraction.",
-    "Self_improver: Engaged in likely investments and active experimentation.",
-    "* **API Optimization**: Monitor API usage patterns in QuantEdge to identify optimization opportunities, currently being tracked by [token_monitor].",
-    "* `quick_backtest` is executing a lightweight backtest of the \"mean-reversion-v2\" strategy, which is stored in `strategies/mean_reversion_v2.py`.",
     "Here are the two most important actionable points derived from the recent agent learnings:",
     "Based on the recent discussions and agent learnings, here are three concise bullet points of actionable knowledge:",
     "* **Agent Status Updates**: Active work ongoing in several areas, including:",
@@ -204,8 +195,12 @@
     "schemas on tasks/order_sync.py: success \u2014 tests green",
     "schemas on api/v1/positions.py: success \u2014 tests green",
     "schemas on test/unit/test_ml_models.py: success \u2014 tests green",
-    "schemas on strategies/manual/pmi_sector_rotation.py: success \u2014 tests green"
+    "schemas on strategies/manual/pmi_sector_rotation.py: success \u2014 tests green",
+    "validate inputs",
+    "check timeouts",
+    "handle NaNs",
+    "retry connections"
   ],
-  "last_updated": "2026-06-26T19:43:54.300435+00:00",
+  "last_updated": "2026-06-26T19:45:44.981033+00:00",
   "total": 200
 }
