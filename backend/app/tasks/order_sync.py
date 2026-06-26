@@ -1,6 +1,6 @@
 """
 Order sync task: polls broker every 15 seconds, detects new fills,
-broadcasts via WebSocket, and posts to AgentBus.
+broadcasts via WebSocket, and posts to AgentBus risk channel.
 """
 from __future__ import annotations
 
@@ -8,12 +8,67 @@ import asyncio
 from collections import defaultdict
 from typing import Dict, List, Tuple
 
+from pydantic import BaseModel, Field, validator
+
 from app.utils.logging import logger
 
 try:
     import httpx
 except ImportError:  # pragma: no cover
     httpx = None  # type: ignore
+
+
+class FillEventSchema(BaseModel):
+    """Schema for fill events broadcast to WebSocket listeners."""
+
+    type: str = Field(
+        "fill",
+        description="Event type identifier.",
+        examples=["fill"],
+    )
+    order_id: str = Field(
+        ...,
+        description="Unique identifier of the order.",
+        examples=["12345"],
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the filled order.",
+        examples=["AAPL"],
+    )
+    filled_qty: float = Field(
+        ...,
+        ge=0,
+        description="Quantity filled for the order.",
+        examples=[10.0],
+    )
+    filled_avg_price: float = Field(
+        ...,
+        ge=0,
+        description="Average price at which the order was filled.",
+        examples=[150.25],
+    )
+
+    @validator("filled_qty", "filled_avg_price")
+    def non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("must be non‑negative")
+        return v
+
+
+class PositionUpdateSchema(BaseModel):
+    """Schema for position update events broadcast to WebSocket listeners."""
+
+    type: str = Field(
+        "update",
+        description="Event type identifier.",
+        examples=["update"],
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol whose position was updated.",
+        examples=["AAPL"],
+    )
 
 
 async def sync_orders_once(db_session_factory) -> None:
@@ -79,7 +134,11 @@ async def sync_orders_once(db_session_factory) -> None:
             headers = await _headers(acct)
             base_url = _base_url(acct)
         except Exception as exc:  # pragma: no cover
-            logger.debug("Order sync: failed to prepare request data", account_id=acct_id, error=str(exc))
+            logger.debug(
+                "Order sync: failed to prepare request data",
+                account_id=acct_id,
+                error=str(exc),
+            )
             continue
 
         async with httpx.AsyncClient(timeout=8) as client:
@@ -149,19 +208,21 @@ async def sync_orders_once(db_session_factory) -> None:
     for order, user_id in new_fills:
         try:
             uid = str(user_id) if user_id else "system"
-            await manager.broadcast(f"orders:{uid}", {
-                "type": "fill",
-                "order_id": str(order.id),
-                "symbol": order.symbol,
-                "filled_qty": float(order.filled_qty or 0),
-                "filled_avg_price": float(order.avg_fill_price or 0),
-            })
-            await manager.broadcast(f"positions:{uid}", {
-                "type": "update",
-                "symbol": order.symbol,
-            })
+            fill_payload = FillEventSchema(
+                order_id=str(order.id),
+                symbol=order.symbol,
+                filled_qty=float(order.filled_qty or 0),
+                filled_avg_price=float(order.avg_fill_price or 0),
+            )
+            await manager.broadcast(f"orders:{uid}", fill_payload.dict())
+            position_payload = PositionUpdateSchema(symbol=order.symbol)
+            await manager.broadcast(f"positions:{uid}", position_payload.dict())
         except Exception as exc:  # pragma: no cover
-            logger.debug("Order sync: WS broadcast failed", order_id=order.id, error=str(exc))
+            logger.debug(
+                "Order sync: WS broadcast failed",
+                order_id=order.id,
+                error=str(exc),
+            )
 
         try:
             from app.tasks.agent_bus import get_bus
