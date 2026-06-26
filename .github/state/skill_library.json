@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Here are 3 concise bullet points summarizing the most important and actionable knowledge:",
-    "Based on the recent agent learnings, here are 3 concise bullet points:",
     "handle NaN values",
     "* A `desk_trader` is actively paper trading a time-series momentum strategy on crypto desks, validating it against specific test criteria in `test/unit/test_time_series_momentum.py`.",
     "constants on api/v1/monitoring.py: success \u2014 tests green",
@@ -197,8 +195,12 @@
     "edge_cases on api/v1/pipeline.py: success \u2014 tests green",
     "edge_cases on test/unit/test_validation_gate.py: success \u2014 tests green",
     "edge_cases on strategies/manual/low_volatility.py: success \u2014 tests green",
-    "edge_cases on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green"
+    "edge_cases on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "Validate user inputs",
+    "Check disk space",
+    "Verify clock sync",
+    "Test DB connections"
   ],
-  "last_updated": "2026-06-26T08:28:51.296521+00:00",
-  "total": 193
+  "last_updated": "2026-06-26T11:25:10.026478+00:00",
+  "total": 200
 }
