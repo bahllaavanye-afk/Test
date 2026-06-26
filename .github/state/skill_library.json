@@ -192,8 +192,13 @@
     "Check dependency versions",
     "Monitor API timeouts",
     "Refactor styling logic",
-    "Debug flaky connections"
+    "Debug flaky connections",
+    "edge_cases on tasks/backtest_worker.py: success \u2014 tests green",
+    "edge_cases on api/v1/pipeline.py: success \u2014 tests green",
+    "edge_cases on test/unit/test_validation_gate.py: success \u2014 tests green",
+    "edge_cases on strategies/manual/low_volatility.py: success \u2014 tests green",
+    "edge_cases on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-26T08:28:13.571467+00:00",
+  "last_updated": "2026-06-26T08:28:51.296521+00:00",
   "total": 193
 }
