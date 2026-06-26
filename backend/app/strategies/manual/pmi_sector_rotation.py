@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -47,6 +48,36 @@ def _fetch_yf(symbol: str, period: str = "2y") -> pd.Series | None:
         return None
 
 
+class PMISectorRotationParams(BaseModel):
+    """
+    Configuration parameters for the PMI Sector Rotation strategy.
+    """
+
+    momentum_days: int = Field(
+        default=_MOMENTUM_DAYS,
+        ge=1,
+        description="Number of days used to compute the 3‑month momentum for each sector ETF.",
+        example=63,
+    )
+    top_n: int = Field(
+        default=_TOP_N,
+        ge=1,
+        description="Number of top‑ranking sectors to hold as long positions.",
+        example=3,
+    )
+
+    @validator("top_n")
+    def top_n_cannot_exceed_total_sectors(cls, v):
+        if v > len(_ALL_SECTORS):
+            raise ValueError(
+                f"top_n ({v}) cannot exceed total number of sectors ({len(_ALL_SECTORS)})"
+            )
+        return v
+
+    class Config:
+        extra = "ignore"  # ignore unexpected keys in the input dict
+
+
 class PMISectorRotationStrategy(AbstractStrategy):
     """
     Rotates across 9 SPDR sector ETFs using 3-month momentum as PMI proxy.
@@ -63,9 +94,9 @@ class PMISectorRotationStrategy(AbstractStrategy):
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        p = params or {}
-        self.momentum_days = int(p.get("momentum_days", _MOMENTUM_DAYS))
-        self.top_n         = int(p.get("top_n",         _TOP_N))
+        validated_params = PMISectorRotationParams(**(params or {}))
+        self.momentum_days = int(validated_params.momentum_days)
+        self.top_n = int(validated_params.top_n)
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         series = {}
@@ -77,19 +108,25 @@ class PMISectorRotationStrategy(AbstractStrategy):
         if len(series) < 4:
             return None
 
-        returns = {etf: float(s.iloc[-1] / s.iloc[-self.momentum_days] - 1)
-                   for etf, s in series.items()}
+        returns = {
+            etf: float(s.iloc[-1] / s.iloc[-self.momentum_days] - 1)
+            for etf, s in series.items()
+        }
 
         ranked = sorted(returns.items(), key=lambda x: x[1], reverse=True)
-        top_sectors = [etf for etf, _ in ranked[:self.top_n]]
+        top_sectors = [etf for etf, _ in ranked[: self.top_n]]
         bottom_sectors = [etf for etf, _ in ranked[-2:]]
 
         trade_sym = symbol if symbol in _ALL_SECTORS else top_sectors[0]
         in_top = trade_sym in top_sectors
         in_bottom = trade_sym in bottom_sectors
 
-        cyclical_avg  = np.mean([returns.get(s, 0) for s in _CYCLICAL_SECTORS if s in returns])
-        defensive_avg = np.mean([returns.get(s, 0) for s in _DEFENSIVE_SECTORS if s in returns])
+        cyclical_avg = np.mean(
+            [returns.get(s, 0) for s in _CYCLICAL_SECTORS if s in returns]
+        )
+        defensive_avg = np.mean(
+            [returns.get(s, 0) for s in _DEFENSIVE_SECTORS if s in returns]
+        )
         regime = "expansion" if cyclical_avg > defensive_avg else "contraction"
 
         if in_top:
@@ -139,6 +176,6 @@ class PMISectorRotationStrategy(AbstractStrategy):
 
         # Signal: buy when momentum > 0 (proxy for being in a top-ranked sector)
         entries = (momentum.shift(1) > 0).fillna(False)
-        exits   = (momentum.shift(1) < -0.02).fillna(False)
+        exits = (momentum.shift(1) < -0.02).fillna(False)
 
         return BacktestSignals(entries=entries, exits=exits)
