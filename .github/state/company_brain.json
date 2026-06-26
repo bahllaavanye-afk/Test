@@ -422,7 +422,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782447625.59851,
+    "last_updated": 1782448743.4599438,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -526,7 +526,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782432383.8809266
+    "last_brain_update": 1782448743.4594347
   },
   "episodic": [
     {
@@ -1405,6 +1405,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1782432378.2030022
+    },
+    {
+      "lesson": "All free LLM providers are failing, causing free-agent engineer to be unable to process issues. This is a systemic availability risk.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782448743.4448214
+    },
+    {
+      "lesson": "Claude is unavailable and falling back to GPT-4o via GitHub Models for task routing, indicating a dependency on a single provider for complex logic.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782448743.4473546
+    },
+    {
+      "lesson": "Task routing automatically defaults to GPT-4o when Claude is unavailable, but the design includes Claude review step, creating a bottleneck if Claude remains down.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782448743.4497418
+    },
+    {
+      "lesson": "The same failure pattern is repeating across multiple GitHub issues, suggesting a persistent free-tier API outage rather than a transient error.",
+      "category": "ml",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782448743.4521296
     }
   ],
   "github_insights": [
@@ -1487,6 +1515,11 @@
       "summary": "The Claude Task Router assigned this issue to a codex task, but the GPT-4o agent was unable to process it because all free LLM providers failed.",
       "item_count": 20,
       "ts": 1782432383.874654
+    },
+    {
+      "summary": "The GitHub issue repeatedly reports that a free-agent engineer failed to process a task because all free LLM providers were unavailable or returned errors.",
+      "item_count": 20,
+      "ts": 1782448743.454547
     }
   ]
 }
