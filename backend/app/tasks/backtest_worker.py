@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from typing import Any, List, Optional
 
 import pandas as pd
 from sqlalchemy import select
@@ -25,12 +26,33 @@ async def run_backtest_job(run_id: str) -> None:
     from app.strategies import STRATEGY_REGISTRY
 
     async with AsyncSessionLocal() as db:
-        run = await db.get(BacktestRun, run_id)
+        run: Optional[BacktestRun] = await db.get(BacktestRun, run_id)
         if not run or run.status != "queued":
             return
+
+        # Basic validation of required fields
+        required_fields = {
+            "symbol": run.symbol,
+            "start_date": run.start_date,
+            "end_date": run.end_date,
+            "interval": run.interval,
+            "strategy_name": run.strategy_name,
+        }
+        missing = [name for name, val in required_fields.items() if val is None]
+        if missing:
+            logger.error(
+                f"Backtest {run_id} missing required fields: {', '.join(missing)}"
+            )
+            run.status = "failed"
+            run.error_message = f"Missing fields: {', '.join(missing)}"
+            run.completed_at = datetime.now(UTC)
+            await db.commit()
+            return
+
         run.status = "running"
         run.started_at = datetime.now(UTC)
         await db.commit()
+
         # capture fields before session closes
         symbol = run.symbol
         start_date = run.start_date
@@ -40,8 +62,10 @@ async def run_backtest_job(run_id: str) -> None:
         initial_equity = (run.params or {}).get("initial_equity", 100_000.0)
 
     try:
-        df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
-        if df.empty:
+        df: pd.DataFrame = await fetch_ohlcv(
+            symbol=symbol, start=start_date, end=end_date, interval=interval
+        )
+        if df is None or df.empty:
             raise ValueError(f"No OHLCV data for {symbol} ({start_date}–{end_date})")
 
         StratClass = STRATEGY_REGISTRY.get(strategy_name)
@@ -53,19 +77,35 @@ async def run_backtest_job(run_id: str) -> None:
         import inspect
 
         from app.strategies.base import BacktestSignals as _BSig
+
         _result = strategy.backtest_signals(df)
-        raw_signals = (await _result) if inspect.isawaitable(_result) else _result
+        raw_signals = await _result if inspect.isawaitable(_result) else _result
 
         # Convert BacktestSignals → pd.Series[int] expected by run_backtest
         if isinstance(raw_signals, _BSig):
             sig = pd.Series(0, index=df.index, dtype=int)
-            sig[raw_signals.entries.astype(bool)] = 1
-            sig[raw_signals.exits.astype(bool)] = 0
+            # Guard against None arrays inside BacktestSignals
+            if raw_signals.entries is not None:
+                sig[raw_signals.entries.astype(bool)] = 1
+            if raw_signals.exits is not None:
+                sig[raw_signals.exits.astype(bool)] = 0
             if raw_signals.short_entries is not None:
                 sig[raw_signals.short_entries.astype(bool)] = -1
             signals_series = sig
+        elif isinstance(raw_signals, pd.Series):
+            signals_series = raw_signals
         else:
-            signals_series = raw_signals  # already a pd.Series
+            # Fallback: create empty signal series matching df index
+            logger.warning(
+                f"Backtest {run_id} returned unexpected signal type {type(raw_signals)}; using empty series"
+            )
+            signals_series = pd.Series(0, index=df.index, dtype=int)
+
+        # Ensure signals and price series align length-wise
+        if len(signals_series) != len(df):
+            raise ValueError(
+                f"Signal length ({len(signals_series)}) does not match price data length ({len(df)})"
+            )
 
         metrics = run_backtest(
             signals=signals_series,
@@ -128,11 +168,15 @@ async def backtest_worker_loop() -> None:
                     .order_by(BacktestRun.created_at)
                     .limit(5)
                 )
-                queued = result.scalars().all()
-                run_ids = [r.id for r in queued]
+                queued: List[BacktestRun] = result.scalars().all()
+                run_ids: List[str] = [r.id for r in queued if r.id]
 
-            for run_id in run_ids:
-                asyncio.create_task(run_backtest_job(run_id))
+            # Guard against empty queue
+            if not run_ids:
+                logger.debug("No queued backtest runs found")
+            else:
+                for run_id in run_ids:
+                    asyncio.create_task(run_backtest_job(run_id))
 
         except Exception as exc:
             logger.warning(f"Backtest worker poll error: {exc}")
