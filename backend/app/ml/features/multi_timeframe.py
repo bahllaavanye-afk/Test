@@ -7,11 +7,14 @@ All features are properly aligned and lagged (shift(1)) to prevent lookahead bia
 Exports:
   add_multi_timeframe_features(df_base, timeframes=None) -> pd.DataFrame
   MTF_FEATURE_COLS: list[str]
+  MultiTimeframeConfig: pydantic.BaseModel
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 import app.ml.features.pandas_ta_compat as ta
 
@@ -36,6 +39,51 @@ _TF_MINUTES: dict[str, float] = {
 }
 
 ALL_TIMEFRAMES = ["5min", "15min", "1h", "4h", "1D", "1W"]
+
+
+class MultiTimeframeConfig(BaseModel):
+    """
+    Configuration model for multi‑timeframe feature generation.
+
+    Attributes
+    ----------
+    timeframes: Optional[list[str]]
+        A list of timeframe identifiers to compute features for. If omitted,
+        all supported timeframes are used. The list is limited to a maximum of
+        six entries and each entry must be one of the identifiers defined in
+        ``ALL_TIMEFRAMES``.
+    """
+
+    timeframes: list[str] | None = Field(
+        default=None,
+        description=(
+            "List of timeframe labels (e.g., ['5min', '1h']). "
+            "If ``None``, all supported timeframes are processed."
+        ),
+        example=["5min", "1h", "4h"],
+    )
+
+    @validator("timeframes")
+    def validate_timeframes(cls, v: list[str] | None) -> list[str] | None:
+        """
+        Validate that each timeframe label is recognized and that the list
+        does not exceed the maximum supported count.
+        """
+        if v is None:
+            return v
+        if len(v) > 6:
+            raise ValueError("A maximum of 6 timeframes can be specified.")
+        unknown = [tf for tf in v if tf not in ALL_TIMEFRAMES]
+        if unknown:
+            raise ValueError(f"Unknown timeframe(s): {', '.join(unknown)}")
+        # Preserve order while removing duplicates
+        seen = set()
+        cleaned = []
+        for tf in v:
+            if tf not in seen:
+                seen.add(tf)
+                cleaned.append(tf)
+        return cleaned
 
 
 def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
@@ -63,8 +111,8 @@ def _detect_base_tf_minutes(df: pd.DataFrame) -> float:
 
 def _compute_tf_features(tf: pd.DataFrame, tf_label: str) -> pd.DataFrame:
     """
-    Compute per-TF indicator columns on a resampled OHLCV dataframe.
-    Returns a DataFrame with columns named tf_{tf_label}_{indicator}.
+    Compute per‑TF indicator columns on a resampled OHLCV dataframe.
+    Returns a DataFrame with columns named ``tf_{tf_label}_{indicator}``.
     """
     out = pd.DataFrame(index=tf.index)
     prefix = f"tf_{tf_label}"
@@ -125,7 +173,7 @@ def _compute_tf_features(tf: pd.DataFrame, tf_label: str) -> pd.DataFrame:
     else:
         out[f"{prefix}_momentum"] = 0.0
 
-    # Garman-Klass vol (simplified): rolling mean of 0.5*(ln H/L)^2
+    # Garman‑Klass vol (simplified): rolling mean of 0.5*(ln H/L)^2
     gk = (0.5 * np.log(tf["high"] / tf["low"].replace(0, np.nan)) ** 2)
     gk_len = min(10, n - 1)
     if gk_len >= 2:
@@ -145,12 +193,19 @@ def add_multi_timeframe_features(
     Given a base OHLCV dataframe (index=DatetimeIndex), compute features on
     up to 6 timeframes, merge back (forward fill + shift(1)) to prevent lookahead.
 
-    Args:
-        df_base: OHLCV DataFrame with DatetimeIndex
-        timeframes: list of TF labels from ALL_TIMEFRAMES; default=all 6
+    Parameters
+    ----------
+    df_base : pd.DataFrame
+        OHLCV dataframe with a ``DatetimeIndex``.
+    timeframes : list[str] | None, optional
+        List of TF labels from ``ALL_TIMEFRAMES``; defaults to all supported
+        timeframes. ``None`` is interpreted as ``ALL_TIMEFRAMES``.
 
-    Returns:
-        df with per-TF feature columns + cross-TF aggregate columns appended.
+    Returns
+    -------
+    pd.DataFrame
+        Original dataframe augmented with per‑TF feature columns and cross‑TF
+        aggregate columns.
     """
     if timeframes is None:
         timeframes = ALL_TIMEFRAMES
@@ -201,7 +256,7 @@ def add_multi_timeframe_features(
         active_tfs.append(tf_label)
 
     # -----------------------------------------------------------------------
-    # Cross-TF aggregate features
+    # Cross‑TF aggregate features
     # -----------------------------------------------------------------------
     trend_cols = [f"tf_{tf}_trend" for tf in active_tfs if f"tf_{tf}_trend" in df.columns]
     momentum_cols = [f"tf_{tf}_momentum" for tf in active_tfs if f"tf_{tf}_momentum" in df.columns]
@@ -232,36 +287,6 @@ def add_multi_timeframe_features(
 
     if vol_cols:
         vol_mat = df[vol_cols]
-        df["tf_vol_agreement"] = vol_mat.std(axis=1).fillna(0.0)
-    else:
-        df["tf_vol_agreement"] = 0.0
+        df["tf_vol_agreement"] = vol_mat.std(axis=1)  # type: ignore[arg-type]
 
     return df
-
-
-def _build_mtf_feature_cols(timeframes: list[str] | None = None) -> list[str]:
-    """Build the expected MTF feature column list for the given TF set."""
-    if timeframes is None:
-        timeframes = ALL_TIMEFRAMES
-    per_tf_suffixes = [
-        "_rsi", "_adx", "_trend", "_bb_pos", "_vol_ratio", "_momentum", "_gk_vol"
-    ]
-    cols: list[str] = []
-    for tf_label in timeframes:
-        for suf in per_tf_suffixes:
-            cols.append(f"tf_{tf_label}{suf}")
-    # Cross-TF aggregates
-    cols += [
-        "tf_trend_score",
-        "tf_momentum_score",
-        "tf_bull_count",
-        "tf_bear_count",
-        "tf_vol_agreement",
-        "tf_trend_divergence",
-    ]
-    return cols
-
-
-# Exported column list (assumes all 6 TFs are active; engineer.py should use
-# only columns actually present in the DataFrame after the call)
-MTF_FEATURE_COLS: list[str] = _build_mtf_feature_cols(ALL_TIMEFRAMES)
