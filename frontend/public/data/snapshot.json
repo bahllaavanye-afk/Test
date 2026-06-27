@@ -1,0 +1,202 @@
+{
+  "generated_at": "2026-06-27T20:18:43.001143+00:00",
+  "generated_ts": 1782591523,
+  "platform": "QuantEdge",
+  "trading_mode": "paper",
+  "repo": {
+    "strategy_count": 92,
+    "strategies": [
+      "analyst_revision_momentum",
+      "avellaneda_stoikov_mm",
+      "basis_carry",
+      "bond_equity_rotation",
+      "breakeven_inflation",
+      "breakout",
+      "btc_eth_stat_arb",
+      "central_bank_window",
+      "credit_spread_income",
+      "cross_asset_carry",
+      "cross_sectional_momentum",
+      "crypto_adaptive_trend",
+      "crypto_basis_roll",
+      "crypto_whale_momentum",
+      "dex_cex_arb",
+      "dispersion_trading",
+      "dollar_carry",
+      "duration_momentum",
+      "earnings_accruals",
+      "ensemble",
+      "event_driven_gap",
+      "fifty_two_week_high",
+      "funding_rate_arb",
+      "funding_settlement_timer",
+      "gamma_exposure",
+      "hmm_regime",
+      "idio_vol_anomaly",
+      "interest_rate_differential",
+      "intraday_fomc_momentum",
+      "intraday_seasonality",
+      "kalman_pairs",
+      "liquidation_cascade_fade",
+      "lorentzian_knn",
+      "low_volatility",
+      "macro_risk_barometer",
+      "mean_reversion",
+      "micro_cap_momentum",
+      "ml_breakout",
+      "ml_mean_reversion",
+      "ml_momentum",
+      "ml_pca_arb",
+      "moc_auction_imbalance",
+      "momentum",
+      "multi_factor_equity",
+      "mvrv_zscore_timing",
+      "news_momentum",
+      "on_chain_exchange_netflow",
+      "open_close_revert",
+      "opening_range_breakout",
+      "options_gamma_scalp",
+      "options_pcr_reversal",
+      "options_strategies",
+      "order_flow_imbalance",
+      "overnight_return",
+      "pairs_trading",
+      "pca_stat_arb",
+      "pead_sue",
+      "pmi_sector_rotation",
+      "poly_binary_arb",
+      "poly_calibration_arb",
+      "poly_cross_market_hedge",
+      "poly_kalshi_arb",
+      "poly_late_resolution",
+      "poly_liquidity_provision",
+      "poly_market_maker",
+      "poly_near_resolution",
+      "poly_time_value_fade",
+      "polymarket_sentiment_momentum",
+      "put_call_ratio_contrarian",
+      "realized_vol_asymmetry",
+      "residual_momentum",
+      "rl_trader",
+      "rsi_macd",
+      "sector_rotation",
+      "skew_arb",
+      "stablecoin_depeg_arb",
+      "stat_arb_etf",
+      "supertrend",
+      "time_series_momentum",
+      "tlt_spy_rotation",
+      "token_unlock_fade",
+      "triangular_arb",
+      "triple_barrier_momentum",
+      "tv_indicators",
+      "vix_mean_reversion",
+      "vol_carry_short",
+      "vol_of_vol_timing",
+      "vol_term_structure",
+      "vrp_systematic",
+      "vwap_reversion",
+      "yield_curve_momentum",
+      "yield_spread_reversion"
+    ],
+    "model_count": 19,
+    "models": [
+      "xgboost_model",
+      "lightgbm_model",
+      "itransformer",
+      "ensemble_model",
+      "lstm",
+      "gnn_signal",
+      "ssm_model",
+      "a3c_lstm",
+      "lorentzian_knn",
+      "foundation_model",
+      "hawkes_arrival",
+      "nbeats_model",
+      "patch_tst",
+      "timesnet_model",
+      "mamba_trader",
+      "hmm_regime",
+      "gemini_signal",
+      "transformer",
+      "multiscale_transformer"
+    ]
+  },
+  "desks": [
+    {
+      "name": "Equities",
+      "symbols": [
+        "SPY",
+        "QQQ",
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "TSLA",
+        "AMZN",
+        "GOOGL",
+        "META",
+        "JPM"
+      ],
+      "count": 10
+    },
+    {
+      "name": "Crypto",
+      "symbols": [
+        "BTC/USD",
+        "ETH/USD",
+        "SOL/USD",
+        "AVAX/USD"
+      ],
+      "count": 4
+    },
+    {
+      "name": "Options",
+      "symbols": [
+        "SPY",
+        "QQQ",
+        "AAPL",
+        "TSLA",
+        "NVDA"
+      ],
+      "count": 5
+    },
+    {
+      "name": "Polymarket",
+      "symbols": [
+        "SPY"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Macro/FX",
+      "symbols": [
+        "GLD",
+        "TLT",
+        "UUP",
+        "EWJ",
+        "EEM"
+      ],
+      "count": 5
+    },
+    {
+      "name": "StatArb",
+      "symbols": [
+        "SPY",
+        "QQQ",
+        "IWM",
+        "GLD",
+        "TLT"
+      ],
+      "count": 5
+    }
+  ],
+  "brain": {
+    "healthy": null,
+    "working": [],
+    "note": "module 'llm_common' has no attribute 'cascade_status'"
+  },
+  "trading": {
+    "available": false,
+    "reason": "no Alpaca keys or unreachable"
+  }
+}

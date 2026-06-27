@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 // Public pages — eagerly loaded (smallest possible initial bundle)
 import Login from './pages/Login'
 import Landing from './pages/Landing'
+import LiveSnapshot from './pages/LiveSnapshot'
 import { selectIsAuthenticated, selectExpiredAt, sessionExpired } from './store/slices/authSlice'
 
 // All protected pages — lazy-loaded so each becomes a separate Vite chunk.
@@ -90,6 +91,7 @@ export default function App() {
       <SessionExpiryHandler />
       <Routes>
         <Route path="/landing" element={<Landing />} />
+        <Route path="/live" element={<LiveSnapshot />} />
         <Route path="/login" element={<Login />} />
         <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/" element={<AppShell />}>
