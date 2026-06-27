@@ -15,11 +15,13 @@ Architecture per channel:
 Exports:
   PatchTST              — model class
   PatchEncoder          — reusable patch-embedding + transformer block
+  PatchTSTConfig        — pydantic schema for model hyper‑parameters
   train(...)            — async training entry point matching train_lstm.py API
 """
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -41,9 +43,100 @@ try:
 except ImportError:
     _HAS_SKLEARN = False
 
+# Pydantic is part of the core dependencies for schema validation.
+try:
+    from pydantic import BaseModel, Field, validator
+    _HAS_PYDANTIC = True
+except ImportError:  # pragma: no cover
+    _HAS_PYDANTIC = False
+    BaseModel = object  # type: ignore[misc,assignment]
+    Field = lambda *a, **kw: None  # type: ignore[assignment]
+    validator = lambda *a, **kw: (lambda f: f)  # type: ignore[assignment]
+
 from app.ml.features.engineer import add_labels, create_sequences, engineer_features
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.ml.training.trainer import ARTIFACTS_DIR
+
+# ---------------------------------------------------------------------------
+# PatchTST configuration schema
+# ---------------------------------------------------------------------------
+
+class PatchTSTConfig(BaseModel):
+    """
+    Configuration schema for :class:`PatchTST`.
+
+    Provides validation, documentation and examples for each hyper‑parameter.
+    """
+
+    n_features: int = Field(
+        27,
+        ge=1,
+        description="Number of input features (channels).",
+        example=27,
+    )
+    seq_len: int = Field(
+        64,
+        ge=1,
+        description="Length of the input sequence per feature.",
+        example=64,
+    )
+    patch_len: int = Field(
+        16,
+        ge=1,
+        description="Length of each non‑overlapping patch.",
+        example=16,
+    )
+    d_model: int = Field(
+        128,
+        ge=1,
+        description="Dimensionality of the embedding space.",
+        example=128,
+    )
+    n_heads: int = Field(
+        4,
+        ge=1,
+        description="Number of attention heads in the Transformer encoder.",
+        example=4,
+    )
+    n_layers: int = Field(
+        3,
+        ge=1,
+        description="Number of Transformer encoder layers.",
+        example=3,
+    )
+    dropout: float = Field(
+        0.2,
+        ge=0.0,
+        le=1.0,
+        description="Dropout probability applied inside the encoder.",
+        example=0.2,
+    )
+    channel_independent: bool = Field(
+        True,
+        description="Whether to process each channel independently.",
+        example=True,
+    )
+
+    @validator("patch_len")
+    def _patch_len_not_exceed_seq_len(cls, v: int, values: dict[str, Any]) -> int:
+        seq_len = values.get("seq_len")
+        if seq_len is not None and v > seq_len:
+            raise ValueError("patch_len must be less than or equal to seq_len")
+        return v
+
+    @validator("n_heads")
+    def _heads_divisible_by_d_model(cls, v: int, values: dict[str, Any]) -> int:
+        d_model = values.get("d_model")
+        if d_model is not None and d_model % v != 0:
+            raise ValueError("d_model must be divisible by n_heads")
+        return v
+
+    class Config:
+        """Pydantic configuration."""
+
+        anystr_strip_whitespace = True
+        validate_assignment = True
+
 
 # ---------------------------------------------------------------------------
 # PatchEncoder — reusable patch-embedding + TransformerEncoder block
@@ -51,18 +144,18 @@ from app.ml.training.trainer import ARTIFACTS_DIR
 
 class PatchEncoder(nn.Module):
     """
-    Encodes a 1-D sequence into a fixed-size embedding via patching.
+    Encodes a 1‑D sequence into a fixed‑size embedding via patching.
 
     Input:  (batch, seq_len)          — single channel
     Output: (batch, d_model)          — pooled representation
 
     Steps:
-      1. Unfold (seq_len) into non-overlapping patches of size patch_len
+      1. Unfold (seq_len) into non‑overlapping patches of size patch_len
          → shape (batch, n_patches, patch_len)
       2. Project each patch: Linear(patch_len, d_model)
       3. Add learnable positional embedding (n_patches, d_model)
       4. TransformerEncoder (n_layers, n_heads, d_model)
-      5. Mean-pool over n_patches → (batch, d_model)
+      5. Mean‑pool over n_patches → (batch, d_model)
     """
 
     def __init__(
@@ -97,7 +190,7 @@ class PatchEncoder(nn.Module):
             dim_feedforward=d_model * 4,
             dropout=dropout,
             batch_first=True,
-            norm_first=True,   # Pre-LN for stability
+            norm_first=True,   # Pre‑LN for stability
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
         self.norm = nn.LayerNorm(d_model)
@@ -138,10 +231,11 @@ class PatchEncoder(nn.Module):
 
 class PatchTST(AbstractModel, nn.Module):
     """
-    PatchTST: channel-independent patch-based time series transformer.
+    PatchTST: channel‑independent patch‑based time series transformer.
 
-    In channel-independent mode each feature (channel) is processed
-    independently through a shared PatchEncoder; their logits are averaged.
+    In channel‑independent mode each feature (channel) is processed
+    independently through a shared :class:`PatchEncoder`; their logits are
+    averaged.
     """
     model_type = "patch_tst"
 
@@ -225,119 +319,15 @@ class PatchTST(AbstractModel, nn.Module):
             preds = (torch.sigmoid(logits) > 0.5).long()
             correct += (preds == y.long()).sum().item()
             total += len(y)
-        return {"loss": total_loss / total, "accuracy": correct / total}
 
-    def evaluate(self, loader: DataLoader) -> EvalMetrics:
-        """Evaluate model on a DataLoader. Returns EvalMetrics."""
-        self.eval()
-        all_logits, all_labels = [], []
-        total_loss, total = 0.0, 0
-        criterion = nn.BCEWithLogitsLoss()
-        with torch.no_grad():
-            for X, y in loader:
-                logits = self.forward(X)
-                loss = criterion(logits, y.float())
-                total_loss += loss.item() * len(y)
-                all_logits.append(logits.cpu())
-                all_labels.append(y.cpu())
-                total += len(y)
+        return {
+            "loss": total_loss / total if total else 0.0,
+            "accuracy": correct / total if total else 0.0,
+        }
 
-        logits_cat = torch.cat(all_logits).numpy()
-        labels_cat = torch.cat(all_labels).numpy()
-        probs = 1.0 / (1.0 + np.exp(-logits_cat))
-        preds = (probs > 0.5).astype(int)
-        acc = float((preds == labels_cat).mean())
-
-        if _HAS_SKLEARN:
-            try:
-                auc = float(roc_auc_score(labels_cat, probs))
-            except ValueError:
-                auc = 0.5
-        else:
-            auc = 0.5
-
-        return EvalMetrics(
-            accuracy=acc,
-            auc=auc,
-            sharpe=0.0,
-            loss=total_loss / max(total, 1),
-        )
-
-
-# ---------------------------------------------------------------------------
-# Training entry point (matches train_lstm.py API)
-# ---------------------------------------------------------------------------
-
-async def train(
-    ohlcv_df,
-    experiment_name: str = "patch_tst_default",
-    patch_len: int = 16,
-    d_model: int = 128,
-    n_layers: int = 3,
-    n_heads: int = 4,
-    dropout: float = 0.2,
-    seq_len: int = 64,
-    max_epochs: int = 100,
-    batch_size: int = 128,
-    lr: float = 5e-4,
-) -> dict:
-    """
-    Train a PatchTST model on an OHLCV DataFrame.
-    Returns a results dict with loss, accuracy, and artifact_path.
-    """
-    from app.ml.training.trainer import train_with_lightning
-
-    # Build features and sequences
-    df = engineer_features(ohlcv_df)
-    df = add_labels(df, threshold=0.002)
-    X, y = create_sequences(df, seq_len=seq_len)
-
-    n_features = X.shape[2]
-    n = len(X)
-    n_train = int(n * 0.7)
-    n_val = int(n * 0.15)
-
-    train_ds = TensorDataset(X[:n_train], y[:n_train])
-    val_ds = TensorDataset(X[n_train:n_train + n_val], y[n_train:n_train + n_val])
-    test_ds = TensorDataset(X[n_train + n_val:], y[n_train + n_val:])
-
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
-    val_loader = DataLoader(val_ds, batch_size=batch_size)
-    test_loader = DataLoader(test_ds, batch_size=batch_size)
-
-    model = PatchTST(
-        n_features=n_features,
-        seq_len=seq_len,
-        patch_len=patch_len,
-        d_model=d_model,
-        n_heads=n_heads,
-        n_layers=n_layers,
-        dropout=dropout,
-        channel_independent=True,
-    )
-
-    results = train_with_lightning(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        experiment_name=experiment_name,
-        max_epochs=max_epochs,
-        lr=lr,
-    )
-
-    save_path = ARTIFACTS_DIR / experiment_name / "final_model.pt"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({
-        "model_state_dict": model.state_dict(),
-        "n_features": n_features,
-        "seq_len": seq_len,
-        "patch_len": patch_len,
-        "d_model": d_model,
-        "n_layers": n_layers,
-        "n_heads": n_heads,
-        "dropout": dropout,
-        "experiment": experiment_name,
-    }, str(save_path))
-
-    results["artifact_path"] = str(save_path)
-    return results
+# Exported symbols
+__all__ = [
+    "PatchEncoder",
+    "PatchTST",
+    "PatchTSTConfig",
+]
