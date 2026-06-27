@@ -1,13 +1,5 @@
 {
   "skills": [
-    "Implement TFT models",
-    "TRADING_MODE must always be paper \u2014 never set to live",
-    "Verify config files",
-    "optimization on brokers/alpaca.py: success \u2014 tests green",
-    "error_handling on ml/models/hmm_regime.py: success \u2014 tests green",
-    "* **Address drifting issue:** Explore adding a Seasonal-Trend decomposition (SSM) step after the Time Series model to address the drifting issue.",
-    "constants on backtest/walk_forward.py: success \u2014 tests green",
-    "retry connections",
     "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Monitor algo-agent",
     "schemas on comparison/engine.py: success \u2014 tests green",
@@ -204,8 +196,11 @@
     "cleanup on strategies/manual/vwap_reversion.py: success \u2014 tests green",
     "cleanup on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
     "cleanup on ml/models/a3c_lstm.py: success \u2014 tests green",
-    "cleanup on execution/iceberg.py: success \u2014 tests green"
+    "cleanup on execution/iceberg.py: success \u2014 tests green",
+    "Log API responses",
+    "Verify trade IDs",
+    "Handle timeout errors"
   ],
-  "last_updated": "2026-06-27T21:01:29.914586+00:00",
+  "last_updated": "2026-06-27T22:09:50.569707+00:00",
   "total": 200
 }
