@@ -199,8 +199,10 @@
     "strategy_logic on strategies/manual/on_chain_exchange_netflow.py: success \u2014 tests green",
     "strategy_logic on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
     "strategy_logic on ml/models/lorentzian_knn.py: success \u2014 tests green",
-    "strategy_logic on ml/features/alternative.py: success \u2014 tests green"
+    "strategy_logic on ml/features/alternative.py: success \u2014 tests green",
+    "error_handling on brokers/kalshi.py: success \u2014 tests green",
+    "error_handling on comparison/benchmarks.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T13:25:29.015730+00:00",
+  "last_updated": "2026-06-27T13:30:19.082495+00:00",
   "total": 200
 }

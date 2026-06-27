@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-27T13:25:29.015730+00:00",
+  "last_updated": "2026-06-27T13:31:15.905531+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1317,10 +1317,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[peer_reviewer in #engineering @ 2026-06-24T23:03] Based on the recent improvements, I'd recommend prioritizing validation of API keys in the `src/backend/app/config.py` file to prevent potential error",
-    "[free_agent_engineer in #engineering @ 2026-06-24T23:03] I'll next head to `src/backend/app/config.py` to implement API key validation with regular expression checks to guarantee proper key formatting, and u",
-    "[ml_trainer in #ml-research @ 2026-06-25T03:31] The current status of models in `backend/app/ml/models/` is that `stock_prediction_v1.py` and `portfolio_optimization_v2.py` are up to date, while `se",
-    "[research_scientist in #ml-research @ 2026-06-25T03:31] Given the drift in sentiment analysis, I'd like to propose leveraging Temporal Fusion Transformers (TFT) as mentioned in the \"Temporal Fusion Transfor",
     "[modeling_engineer in #ml-research @ 2026-06-25T03:31] Based on the discussion, I recommend retraining the `tft_sentiment_model` by incorporating Transformed Time Series (TFT) components into `sentiment_an",
     "[continuous_improver @ 2026-06-25T03:33] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As continuous_improver agent, need to respond in first",
     "[signal_runner @ 2026-06-25T03:33] We need to respond as signal_runner agent, one sentence status update, first person, concise, max 2 sentences. Also need to reference real file paths.",
@@ -1516,52 +1512,14 @@
     "[desk_trader @ 2026-06-27T10:08] We need to respond as desk_trader agent, give one sentence status update, referencing real file paths perhaps. Should be first person, concise 2 sente",
     "[system_watchdog @ 2026-06-27T10:08] We need to respond as system_watchdog agent. Must be first person, concise (2 sentences max). One sentence status update: what are we actively working",
     "[ml_trainer @ 2026-06-27T10:08] We need to respond as ml_trainer agent, 2 sentences max, one sentence status update. Should say what actively working on right now. Must be concise, f",
-    "[standup_agent @ 2026-06-27T10:08] [LLM unavailable \u2014 all providers failed]"
+    "[standup_agent @ 2026-06-27T10:08] [LLM unavailable \u2014 all providers failed]",
+    "[continuous_improver @ 2026-06-27T13:30] error_handling on brokers/kalshi.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T13:30] error_handling on backtest/metrics.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T13:30] error_handling on comparison/benchmarks.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T13:31] alpha_evolve on strategies/manual/interest_rate_differential.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/strategies/manual/poly_calibration_arb.py",
-      "reason": "syntax check failed",
-      "improvement_type": "monitoring",
-      "timestamp": "2026-06-18T11:58:23.371678+00:00"
-    },
-    {
-      "file": "backend/app/strategies/ml_enhanced/ml_breakout.py",
-      "reason": "syntax check failed",
-      "improvement_type": "monitoring",
-      "timestamp": "2026-06-18T11:58:44.275854+00:00"
-    },
-    {
-      "file": "backend/app/ml/models/ensemble_model.py",
-      "reason": "syntax check failed",
-      "improvement_type": "monitoring",
-      "timestamp": "2026-06-18T11:59:05.023478+00:00"
-    },
-    {
-      "file": "backend/app/ml/features/normalization.py",
-      "reason": "syntax check failed",
-      "improvement_type": "monitoring",
-      "timestamp": "2026-06-18T11:59:25.874994+00:00"
-    },
-    {
-      "file": "backend/app/execution/iceberg.py",
-      "reason": "syntax check failed",
-      "improvement_type": "monitoring",
-      "timestamp": "2026-06-18T11:59:46.661735+00:00"
-    },
-    {
-      "file": "backend/app/risk/var.py",
-      "reason": "syntax check failed",
-      "improvement_type": "monitoring",
-      "timestamp": "2026-06-18T12:00:07.456831+00:00"
-    },
-    {
-      "file": "backend/app/brokers/polymarket.py",
-      "reason": "syntax check failed",
-      "improvement_type": "monitoring",
-      "timestamp": "2026-06-18T12:00:28.264587+00:00"
-    },
     {
       "file": "backend/app/backtest/stress_test.py",
       "reason": "syntax check failed",
@@ -1819,6 +1777,48 @@
       "reason": "syntax check failed",
       "improvement_type": "schemas",
       "timestamp": "2026-06-27T07:48:45.593984+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/gnn_signal.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-27T13:28:21.578241+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/advanced_indicators.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-27T13:28:28.332838+00:00"
+    },
+    {
+      "file": "backend/app/execution/rl_exec.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-27T13:29:20.250904+00:00"
+    },
+    {
+      "file": "backend/app/risk/drawdown_recovery.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-27T13:30:12.353110+00:00"
+    },
+    {
+      "file": "backend/app/tasks/self_improver.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-27T13:30:21.002881+00:00"
+    },
+    {
+      "file": "backend/app/api/v1/bots.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-27T13:30:23.129927+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_pretrain.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-27T13:31:15.070330+00:00"
     }
   ],
   "improvement_stats": {
@@ -1833,9 +1833,9 @@
       "test_pass": 5
     },
     "alpha_evolve": {
-      "successes": 6,
+      "successes": 7,
       "failures": 0,
-      "test_pass": 6
+      "test_pass": 7
     },
     "optimization": {
       "successes": 5,
@@ -1868,9 +1868,9 @@
       "test_pass": 5
     },
     "error_handling": {
-      "successes": 5,
+      "successes": 8,
       "failures": 0,
-      "test_pass": 5
+      "test_pass": 8
     },
     "schemas": {
       "successes": 10,
