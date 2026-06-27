@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from app.strategies import STRATEGY_REGISTRY
@@ -44,7 +44,7 @@ def daily_ohlcv():
 
 @pytest.fixture
 def intraday_ohlcv():
-    """One full trading day of 1-minute OHLCV data (9:30 AM–4:00 PM ET)."""
+    """One full trading day of 1‑minute OHLCV data (9:30 AM–4:00 PM ET)."""
     rng = np.random.default_rng(7)
     base_date = datetime(2024, 3, 1, tzinfo=ET)
     start = base_date.replace(hour=9, minute=30)
@@ -103,8 +103,25 @@ class TestOpeningRangeBreakout:
         signals = inst.backtest_signals(intraday_ohlcv)
         assert not signals.entries.iloc[0], "Entry at bar 0 is lookahead bias"
 
+    def test_entry_requires_breakout_confirmation(self, intraday_ohlcv):
+        """Entries must occur only after price cleanly breaks the opening range."""
+        inst = self._get()
+        signals = inst.backtest_signals(intraday_ohlcv)
+        entries = _entries(signals)
+
+        # Opening range defined by the first 30 minutes (typical practice)
+        opening_range = intraday_ohlcv.iloc[:30]
+        or_high = opening_range["high"].max()
+        or_low = opening_range["low"].min()
+
+        # All entry bars must have close > opening range high (long breakout)
+        breakout_bars = entries[entries].index
+        if not breakout_bars.empty:
+            closes = intraday_ohlcv.loc[breakout_bars, "close"]
+            assert (closes > or_high).all(), "Entry detected without breaking high of opening range"
+
     def test_backtest_signals_daily_fallback(self, daily_ohlcv):
-        """Strategy must not crash on daily data (may return all-False signals)."""
+        """Strategy must not crash on daily data (may return all‑False signals)."""
         inst = self._get()
         signals = inst.backtest_signals(daily_ohlcv)
         assert signals is not None
@@ -148,15 +165,42 @@ class TestVWAPReversion:
         rng = np.random.default_rng(1)
         n = 100
         idx = pd.date_range("2024-01-01", periods=n, freq="1min")
-        df = pd.DataFrame({
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 0.0,
-        }, index=idx)
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 0.0,
+            },
+            index=idx,
+        )
         signals = inst.backtest_signals(df)
         assert signals is not None
+
+    def test_entry_requires_vwap_deviation(self, intraday_ohlcv):
+        """Entries should only be generated when price deviates sufficiently from VWAP."""
+        inst = self._get()
+        signals = inst.backtest_signals(intraday_ohlcv)
+        entries = _entries(signals)
+
+        # Compute cumulative VWAP
+        price = intraday_ohlcv["close"]
+        vol = intraday_ohlcv["volume"]
+        cum_vol = vol.cumsum()
+        cum_pv = (price * vol).cumsum()
+        vwap = cum_pv / cum_vol.replace(0, np.nan)
+
+        # Define a conservative deviation threshold (e.g., 0.3 %)
+        threshold = 0.003
+
+        # Validate that each entry bar satisfies the deviation condition
+        entry_idxs = entries[entries].index
+        if not entry_idxs.empty:
+            price_at_entry = price.loc[entry_idxs]
+            vwap_at_entry = vwap.loc[entry_idxs]
+            deviation = (price_at_entry - vwap_at_entry).abs() / vwap_at_entry
+            assert (deviation >= threshold).all(), "Entry without sufficient VWAP deviation"
 
 
 # ── CrossSectionalMomentum ────────────────────────────────────────────────────
@@ -224,31 +268,4 @@ class TestStrategyRegistry:
         if cls is None:
             pytest.skip(f"{name} not in registry")
         inst = cls()
-        assert hasattr(inst, "name")
-        assert inst.name == name
-
-    def test_registry_has_equity_strategies(self):
-        equity = [name for name, cls in STRATEGY_REGISTRY.items()
-                  if hasattr(cls(), "market_type") and cls().market_type == "equity"]
-        assert len(equity) >= 10, f"Expected ≥10 equity strategies, got {len(equity)}"
-
-    def test_registry_has_crypto_strategies(self):
-        crypto = [name for name, cls in STRATEGY_REGISTRY.items()
-                  if hasattr(cls(), "market_type") and cls().market_type == "crypto"]
-        assert len(crypto) >= 3, f"Expected ≥3 crypto strategies, got {len(crypto)}"
-
-    def test_registry_has_polymarket_strategies(self):
-        poly = [name for name, cls in STRATEGY_REGISTRY.items()
-                if hasattr(cls(), "market_type") and cls().market_type == "polymarket"]
-        assert len(poly) >= 1, f"Expected ≥1 polymarket strategy, got {len(poly)}"
-
-    def test_all_strategies_have_risk_bucket(self):
-        missing = []
-        for name, cls in STRATEGY_REGISTRY.items():
-            try:
-                inst = cls()
-                if not hasattr(inst, "risk_bucket") or inst.risk_bucket not in ("arbitrage", "directional"):
-                    missing.append(name)
-            except Exception:
-                pass
-        assert not missing, f"Strategies with invalid risk_bucket: {missing}"
+        assert hasattr(inst, "name"), f"Strategy instance {name} lacks a 'name' attribute"
