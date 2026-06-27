@@ -16,67 +16,102 @@ Key insight:
   embargo gaps (to prevent backward leakage) around each test fold.
   The Deflated Sharpe Ratio corrects for multiple-testing inflation.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 from typing import Iterable, List
 
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+
+DEFAULT_N_SPLITS: int = 6
+DEFAULT_PURGE_DAYS: int = 5
+DEFAULT_EMBARGO_DAYS: int = 2
+
+# Numerical tolerances / small numbers
+EPSILON: float = 1e-10
+
+# Over‑fit detection factor (DSR < OVERFIT_FACTOR * mean_sharpe → overfit)
+OVERFIT_FACTOR: float = 0.8
+
+# Euler–Mascheroni constant (used in DSR approximation)
+GAMMA: float = 0.5772156649
+
+# Annualisation factor for daily returns (trading days per year)
+ANNUALIZATION_FACTOR: float = 252.0
+
 
 class CPCV:
     """
     Combinatorial Purged Cross-Validation for financial time series.
 
-    Parameters:
-        n_splits: number of time-series folds (6 gives C(6,1)=6 test periods)
-        purge_days: bars to drop before the test fold (prevents train→test leakage)
-        embargo_days: bars to drop after the test fold (prevents test→train leakage)
+    Parameters
+    ----------
+    n_splits : int, default ``DEFAULT_N_SPLITS``
+        Number of time‑series folds (e.g., 6 gives C(6,1)=6 test periods).
+    purge_days : int, default ``DEFAULT_PURGE_DAYS``
+        Bars to drop before the test fold (prevents train→test leakage).
+    embargo_days : int, default ``DEFAULT_EMBARGO_DAYS``
+        Bars to drop after the test fold (prevents test→train leakage).
 
-    Usage:
-        cpcv = CPCV(n_splits=6, purge_days=5, embargo_days=2)
-        results = cpcv.validate(signals, returns)
-        print(f"Deflated Sharpe: {results['deflated_sharpe']:.3f}")
-        print(f"Overfit: {results['is_overfit']}")
+    Usage
+    -----
+    >>> cpcv = CPCV()
+    >>> results = cpcv.validate(signals, returns)
+    >>> print(f"Deflated Sharpe: {results['deflated_sharpe']:.3f}")
+    >>> print(f"Overfit: {results['is_overfit']}")
     """
 
     def __init__(
         self,
-        n_splits: int = 6,
-        purge_days: int = 5,
-        embargo_days: int = 2,
-    ):
+        n_splits: int = DEFAULT_N_SPLITS,
+        purge_days: int = DEFAULT_PURGE_DAYS,
+        embargo_days: int = DEFAULT_EMBARGO_DAYS,
+    ) -> None:
         if not isinstance(n_splits, int) or n_splits < 2:
             raise ValueError(f"n_splits must be an integer >= 2, got {n_splits}")
         if not isinstance(purge_days, int) or purge_days < 0:
             raise ValueError(f"purge_days must be a non‑negative integer, got {purge_days}")
         if not isinstance(embargo_days, int) or embargo_days < 0:
             raise ValueError(f"embargo_days must be a non‑negative integer, got {embargo_days}")
+
         self.n_splits = n_splits
         self.purge_days = purge_days
         self.embargo_days = embargo_days
 
-    def split(self, index: pd.DatetimeIndex):
+    # --------------------------------------------------------------------- #
+    # Split generation
+    # --------------------------------------------------------------------- #
+    def split(self, index: pd.DatetimeIndex) -> Iterable[tuple[list[int], list[int]]]:
         """
-        Yield (train_idx, test_idx) pairs with purge/embargo gaps.
+        Yield ``(train_idx, test_idx)`` pairs with purge/embargo gaps.
 
-        train_idx and test_idx are lists of integer positions into `index`.
-        Bars within purge_days of test_start or embargo_days of test_end
-        are excluded from the training set.
+        Parameters
+        ----------
+        index : pd.DatetimeIndex
+            Ordered datetime index of the full dataset.
+
+        Yields
+        ------
+        train_idx : list[int]
+            Integer positions of the training set after applying purge/embargo.
+        test_idx : list[int]
+            Integer positions of the test fold.
         """
         if not isinstance(index, pd.DatetimeIndex):
             raise ValueError("index must be a pandas.DatetimeIndex")
         if not index.is_monotonic_increasing:
             raise ValueError("index must be sorted in increasing order")
+
         n = len(index)
         if n < self.n_splits:
-            raise ValueError(
-                f"Index length {n} is too short for {self.n_splits} folds"
-            )
+            raise ValueError(f"Index length {n} is too short for {self.n_splits} folds")
         fold_size = n // self.n_splits
         if fold_size == 0:
-            raise ValueError(
-                f"Index length {n} is too short for {self.n_splits} folds"
-            )
+            raise ValueError(f"Index length {n} is too short for {self.n_splits} folds")
 
         folds: list[range] = [
             range(i * fold_size, min((i + 1) * fold_size, n))
@@ -103,6 +138,9 @@ class CPCV:
 
             yield train_idx, test_idx
 
+    # --------------------------------------------------------------------- #
+    # Deflated Sharpe Ratio
+    # --------------------------------------------------------------------- #
     def deflated_sharpe(
         self,
         sharpe_ratios: Iterable[float],
@@ -113,28 +151,31 @@ class CPCV:
 
         Adjusts observed Sharpe Ratio downward for:
         1. Multiple testing: the more trials, the higher the expected best SR by luck.
-        2. Non-normality: excess kurtosis inflates SR under normality assumption.
+        2. Non‑normality: excess kurtosis inflates SR under normality assumption.
 
         DSR = (mean_SR - SR*) / std_SR
-        where SR* is the expected maximum SR over n_trials random draws.
+        where SR* is the expected maximum SR over ``n_trials`` random draws.
 
-        Args:
-            sharpe_ratios: iterable of SR values from each CPCV fold.
-            n_trials: number of strategy configurations tried (use len(sharpe_ratios)
-                      for a single strategy; use larger if parameter-swept).
+        Parameters
+        ----------
+        sharpe_ratios : iterable of float
+            SR values from each CPCV fold.
+        n_trials : int
+            Number of strategy configurations tried (use ``len(sharpe_ratios)`` for a
+            single strategy; use larger if a parameter sweep was performed).
 
-        Returns:
-            DSR as float. Positive = strategy is robust. Negative = likely overfit.
+        Returns
+        -------
+        float
+            DSR. Positive → robust; Negative → likely over‑fit.
         """
         if not isinstance(n_trials, int) or n_trials < 1:
             raise ValueError(f"n_trials must be an integer >= 1, got {n_trials}")
 
-        # Convert to list to allow multiple passes and length checks
         sr_list: List[float] = list(sharpe_ratios)
         if not sr_list:
             return 0.0
 
-        # Validate each element is numeric
         for i, val in enumerate(sr_list):
             if not isinstance(val, (int, float, np.number)):
                 raise ValueError(f"sharpe_ratios element at position {i} is not numeric: {val}")
@@ -144,31 +185,44 @@ class CPCV:
             return float(sr[0])
 
         mean_sr = float(np.mean(sr))
-        std_sr = float(np.std(sr, ddof=1)) + 1e-10
+        std_sr = float(np.std(sr, ddof=1)) + EPSILON
 
-        # Expected maximum SR under n_trials independent tests
-        # Approximation: E[max_SR] ≈ (1 - γ)*Φ⁻¹(1 - 1/n) + γ*Φ⁻¹(1 - 1/(n·e))
-        # where γ is Euler-Mascheroni constant
-        # Uses scipy.special.erfinv for the normal quantile
         try:
             from scipy.special import erfinv  # type: ignore
-            gamma = 0.5772156649  # Euler-Mascheroni constant
 
             def norm_ppf(p: float) -> float:
-                p = float(np.clip(p, 1e-10, 1 - 1e-10))
+                p = float(np.clip(p, EPSILON, 1 - EPSILON))
                 return float(np.sqrt(2) * erfinv(2 * p - 1))
 
             p1 = 1.0 - 1.0 / max(n_trials, 1)
             p2 = 1.0 - 1.0 / max(n_trials * np.e, 1)
-            sr_star = (1 - gamma) * norm_ppf(p1) + gamma * norm_ppf(p2)
-            # Scale by empirical std of SR distribution
+            sr_star = (1 - GAMMA) * norm_ppf(p1) + GAMMA * norm_ppf(p2)
+            # Scale by empirical variance to keep units comparable
             sr_star = sr_star * float(np.sqrt(np.var(sr) + 1))
         except ImportError:
-            # Fallback: simple approximation
+            # Fallback simple approximation when scipy is unavailable
             sr_star = float(np.log(n_trials + 1) * 0.5)
 
         dsr = (mean_sr - sr_star) / std_sr
         return float(dsr)
+
+    # --------------------------------------------------------------------- #
+    # Validation driver
+    # --------------------------------------------------------------------- #
+    def _annualized_sharpe(self, pnl: pd.Series) -> float:
+        """
+        Compute annualised Sharpe Ratio for a profit‑and‑loss series.
+
+        Returns
+        -------
+        float
+            Annualised Sharpe (mean / std * sqrt(ANNUALIZATION_FACTOR)).
+        """
+        if pnl.empty:
+            return 0.0
+        mean = pnl.mean()
+        std = pnl.std(ddof=1) + EPSILON
+        return float(mean / std * np.sqrt(ANNUALIZATION_FACTOR))
 
     def validate(
         self,
@@ -176,28 +230,34 @@ class CPCV:
         returns: pd.Series,
     ) -> dict:
         """
-        Run CPCV on signals vs returns.
+        Run CPCV on ``signals`` vs ``returns``.
 
-        Computes Sharpe Ratio on each out-of-sample fold using the signals
-        shifted by 1 bar to prevent lookahead bias.
+        Computes Sharpe Ratio on each out‑of‑sample fold using the signals
+        shifted by one bar to prevent look‑ahead bias.
 
-        Args:
-            signals: pd.Series of strategy signals (-1, 0, +1) indexed by datetime.
-            returns: pd.Series of asset returns at the same frequency.
+        Parameters
+        ----------
+        signals : pd.Series
+            Strategy signals (-1, 0, +1) indexed by datetime.
+        returns : pd.Series
+            Asset returns at the same frequency.
 
-        Returns:
-            dict with:
-              fold_sharpes: list of per-fold Sharpe Ratios (annualized)
-              mean_sharpe: mean across folds
-              deflated_sharpe: DSR (adjusted for multiple testing)
-              is_overfit: True if DSR < 0.8 × mean_sharpe
+        Returns
+        -------
+        dict
+            ``{
+                "fold_sharpes": List[float],
+                "mean_sharpe": float,
+                "deflated_sharpe": float,
+                "is_overfit": bool,
+            }``
         """
         if not isinstance(signals, pd.Series):
             raise ValueError("signals must be a pandas.Series")
         if not isinstance(returns, pd.Series):
             raise ValueError("returns must be a pandas.Series")
 
-        # Ensure datetime index
+        # Ensure datetime index for both series
         if not isinstance(signals.index, pd.DatetimeIndex):
             signals = signals.copy()
             signals.index = pd.to_datetime(signals.index)
@@ -205,50 +265,30 @@ class CPCV:
             returns = returns.copy()
             returns.index = pd.to_datetime(returns.index)
 
-        if not signals.index.is_monotonic_increasing:
-            raise ValueError("signals index must be sorted in increasing order")
-        if not returns.index.is_monotonic_increasing:
-            raise ValueError("returns index must be sorted in increasing order")
+        # Align the two series on the intersection of their indexes
+        signals, returns = signals.align(returns, join="inner")
+        if signals.empty:
+            raise ValueError("No overlapping dates between signals and returns after alignment")
 
-        # Align the two series
-        common_idx = signals.index.intersection(returns.index)
-        if common_idx.empty:
-            raise ValueError("signals and returns have no overlapping dates")
-        signals = signals.loc[common_idx]
-        returns = returns.loc[common_idx]
+        # Apply 1‑bar shift to avoid look‑ahead bias
+        shifted_signals = signals.shift(1).fillna(0)
 
-        if signals.empty or returns.empty:
-            raise ValueError("aligned signals or returns series is empty")
-
-        # Verify numeric data
-        if not np.issubdtype(signals.dtype, np.number):
-            raise ValueError("signals series must contain numeric values")
-        if not np.issubdtype(returns.dtype, np.number):
-            raise ValueError("returns series must contain numeric values")
-
-        sharpes: list[float] = []
-        for train_idx, test_idx in self.split(pd.DatetimeIndex(signals.index)):
-            test_signals = signals.iloc[test_idx]
+        # Compute per‑fold Sharpe ratios
+        fold_sharpes: List[float] = []
+        for train_idx, test_idx in self.split(signals.index):
+            # Build test P&L using shifted signals only on the test indices
+            test_signals = shifted_signals.iloc[test_idx]
             test_returns = returns.iloc[test_idx]
-            # Shift signals by 1 to prevent lookahead
-            pnl = test_signals.shift(1).fillna(0) * test_returns
-            sr = pnl.mean() / (pnl.std() + 1e-10) * np.sqrt(252)
-            sharpes.append(float(sr))
+            pnl = test_signals * test_returns
+            fold_sharpes.append(self._annualized_sharpe(pnl))
 
-        if not sharpes:
-            return {
-                "fold_sharpes": [],
-                "mean_sharpe": 0.0,
-                "deflated_sharpe": 0.0,
-                "is_overfit": True,
-            }
-
-        mean_sr = float(np.mean(sharpes))
-        dsr = self.deflated_sharpe(sharpes, n_trials=len(sharpes))
+        mean_sharpe = float(np.mean(fold_sharpes)) if fold_sharpes else 0.0
+        deflated_sharpe = self.deflated_sharpe(fold_sharpes, n_trials=len(fold_sharpes))
+        is_overfit = deflated_sharpe < OVERFIT_FACTOR * mean_sharpe
 
         return {
-            "fold_sharpes": sharpes,
-            "mean_sharpe": mean_sr,
-            "deflated_sharpe": dsr,
-            "is_overfit": dsr < 0.8 * mean_sr,
+            "fold_sharpes": fold_sharpes,
+            "mean_sharpe": mean_sharpe,
+            "deflated_sharpe": deflated_sharpe,
+            "is_overfit": is_overfit,
         }
