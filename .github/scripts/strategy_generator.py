@@ -157,8 +157,25 @@ def _generate_strategy_code(market_type: str, existing: list[str]) -> str:
         existing=", ".join(existing[:20]),
         market_type=market_type,
     )
-    # Try Gemini first, fall back to Claude
-    code = _call_gemini(prompt)
+    # PRIMARY: the full free-LLM cascade (groq/cerebras/nvidia + Gemini key
+    # rotation, with in-call fallthrough). The old path tried Gemini-only then
+    # Claude — and with Gemini quota-exhausted (429) and no Anthropic key it
+    # generated NOTHING, so zero new strategies were ever added. use_cache=False
+    # so every run produces a fresh strategy, not a cached repeat.
+    code = ""
+    try:
+        import llm_common
+        out = llm_common.llm(
+            prompt, max_tokens=4096, temperature=0.85,
+            use_cache=False, inject_company_context=False,
+        ) or ""
+        if out and not out.lstrip().startswith("[LLM"):
+            code = out
+    except Exception as e:
+        print(f"llm_common cascade failed: {e}", file=sys.stderr)
+    # Fallbacks if the cascade is somehow unavailable.
+    if not code:
+        code = _call_gemini(prompt)
     if not code:
         code = _call_claude(prompt)
     return code
