@@ -1,4 +1,10 @@
-"""Drawdown-based circuit breakers — halt trading at configurable thresholds."""
+"""Drawdown-based circuit breakers — halt trading at configurable thresholds.
+
+This module defines a simple circuit breaker that monitors equity drawdown and
+halts trading when the drawdown exceeds a configured threshold. It provides
+methods to update the equity snapshot, reset the breaker, and query its state.
+"""
+
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -8,12 +14,42 @@ from app.utils.logging import logger
 
 
 class BreakerState(str, Enum):
+    """Enumeration of possible circuit‑breaker states.
+
+    Attributes
+    ----------
+    NORMAL : str
+        The breaker is active and trading may continue.
+    HALTED : str
+        The breaker has tripped; trading should be halted.
+    """
+
     NORMAL = "normal"
     HALTED = "halted"
 
 
 @dataclass
 class CircuitBreaker:
+    """Circuit breaker that halts trading based on equity drawdown.
+
+    Parameters
+    ----------
+    name : str
+        Identifier for the circuit breaker instance.
+    max_drawdown_pct : float
+        Maximum allowed drawdown as a fraction (e.g., 0.10 for 10%).
+    peak_equity : float, optional
+        Highest equity observed; initialised to ``0.0``.
+    current_equity : float, optional
+        Most recent equity snapshot; initialised to ``0.0``.
+    state : BreakerState, optional
+        Current breaker state; defaults to :class:`BreakerState.NORMAL`.
+    halted_at : datetime | None, optional
+        Timestamp when the breaker last tripped; ``None`` if not halted.
+    halt_reasons : list[str], optional
+        Accumulated reasons for halting; starts empty.
+    """
+
     name: str
     max_drawdown_pct: float          # e.g. 0.10 = 10%
     peak_equity: float = 0.0
@@ -23,14 +59,38 @@ class CircuitBreaker:
     halt_reasons: list[str] = field(default_factory=list)
 
     def _validate_equity(self, equity: float) -> None:
-        """Validate that equity is a numeric, non‑negative value."""
+        """Validate that ``equity`` is a numeric, non‑negative value.
+
+        Raises
+        ------
+        TypeError
+            If ``equity`` is not a numeric type.
+        ValueError
+            If ``equity`` is negative.
+        """
         if not isinstance(equity, Number):
             raise TypeError(f"Equity must be a numeric type, got {type(equity).__name__}")
         if equity < 0:
             raise ValueError("Equity cannot be negative")
 
     def update(self, equity: float) -> bool:
-        """Call on every equity snapshot. Returns True if still NORMAL."""
+        """Process a new equity snapshot.
+
+        Updates internal peak and current equity values and checks whether the
+        drawdown exceeds ``max_drawdown_pct``. If the breaker trips, it records
+        the halt time and reason.
+
+        Parameters
+        ----------
+        equity : float
+            Latest equity value.
+
+        Returns
+        -------
+        bool
+            ``True`` if the breaker remains in the ``NORMAL`` state; ``False`` if
+            it is ``HALTED`` or an error occurred.
+        """
         try:
             self._validate_equity(equity)
 
@@ -76,7 +136,13 @@ class CircuitBreaker:
             return False
 
     def reset(self, equity: float) -> None:
-        """Reset the circuit breaker to a normal state using the provided equity."""
+        """Reset the circuit breaker to a normal state using the provided equity.
+
+        Parameters
+        ----------
+        equity : float
+            Equity value to initialise ``peak_equity`` after reset.
+        """
         try:
             self._validate_equity(equity)
             self.state = BreakerState.NORMAL
@@ -101,10 +167,15 @@ class CircuitBreaker:
 
     @property
     def is_halted(self) -> bool:
+        """Indicates whether the breaker is currently halted."""
         return self.state == BreakerState.HALTED
 
     @property
     def current_drawdown(self) -> float:
+        """Current drawdown as a fraction of ``peak_equity``.
+
+        Returns ``0.0`` if ``peak_equity`` is zero.
+        """
         if self.peak_equity == 0:
             return 0.0
         return max(0.0, (self.peak_equity - self.current_equity) / self.peak_equity)
