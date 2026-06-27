@@ -71,7 +71,10 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Crypto",
         slack_channel="#desk-crypto",
-        symbols=["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD"],
+        # The ONLY genuinely 24/7 venue here (Alpaca crypto). Widened so the desk
+        # has real opportunity on weekends when every equity desk is closed.
+        symbols=["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "LTC/USD",
+                 "LINK/USD", "UNI/USD", "AAVE/USD", "DOT/USD", "BCH/USD"],
         strategy_names=[
             "crypto_adaptive_trend", "mean_reversion", "breakout",
             "basis_carry", "btc_eth_stat_arb", "mvrv_zscore_timing",
@@ -79,7 +82,9 @@ DESKS: list[DeskConfig] = [
             "on_chain_exchange_netflow", "vol_of_vol_timing",
         ],
         notional_usd=300.0,
-        confidence_min=0.70,
+        # Lowered 0.70→0.58: at 0.70 the 24/7 crypto desk almost never fired, so
+        # there were no weekend trades at all. Paper mode — more activity is safe.
+        confidence_min=0.58,
     ),
     DeskConfig(
         name="Options",

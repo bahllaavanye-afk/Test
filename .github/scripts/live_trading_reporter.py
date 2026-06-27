@@ -353,6 +353,22 @@ def main() -> int:
     print(f"   Positions: {len(data['positions'])}")
     print(f"   Orders today: {len(data['orders'])}")
 
+    # ── Throttle: don't repost identical P&L/desk reports when nothing changed ──
+    # The #pnl-daily "dead, repeated messages": market closed (weekend) → equity
+    # frozen → the same report every 15 min. Post the repetitive channels only
+    # when the account state actually changes, or once every ~6h as a heartbeat.
+    import json as _json, time as _time
+    from pathlib import Path as _Path
+    _state_f = _Path(os.environ.get("GITHUB_WORKSPACE", ".")) / ".github" / "state" / "pnl_reporter_state.json"
+    _is_open = bool((data.get("clock") or {}).get("is_open", False))
+    _sig = f"{round(equity)}|{len(data.get('positions', []))}|{_is_open}"
+    try:
+        _last = _json.loads(_state_f.read_text())
+    except Exception:
+        _last = {}
+    _unchanged = (_last.get("sig") == _sig) and ((_time.time() - float(_last.get("ts", 0))) < 6 * 3600)
+    _REPETITIVE = {"pnl-daily", "desk-equities", "desk-crypto", "allquantedge"}
+
     posts = []
 
     # 1. P&L report → #pnl-daily
@@ -385,6 +401,19 @@ def main() -> int:
     exec_msg = report_exec_summary(data)
     if exec_msg:
         posts.append(("allquantedge", exec_msg, "Trading Desk", ":bar_chart:"))
+
+    # Apply the throttle: drop repetitive channels when nothing changed.
+    if _unchanged:
+        _dropped = [c for c, *_ in posts if c in _REPETITIVE]
+        posts = [p for p in posts if p[0] not in _REPETITIVE]
+        print(f"  ⏸ account state unchanged (market {'open' if _is_open else 'closed'}) — "
+              f"skipping repetitive posts: {_dropped}")
+    else:
+        try:
+            _state_f.parent.mkdir(parents=True, exist_ok=True)
+            _state_f.write_text(_json.dumps({"sig": _sig, "ts": _time.time()}))
+        except Exception:
+            pass
 
     # Post all
     posted = 0
