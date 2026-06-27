@@ -199,8 +199,13 @@
     "Verify market hours",
     "Limit trade size",
     "Monitor memory usage",
-    "Catch HTTP errors"
+    "Catch HTTP errors",
+    "cleanup on api/v1/regime.py: success \u2014 tests green",
+    "cleanup on strategies/manual/vwap_reversion.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
+    "cleanup on ml/models/a3c_lstm.py: success \u2014 tests green",
+    "cleanup on execution/iceberg.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T20:59:05.423678+00:00",
+  "last_updated": "2026-06-27T21:01:29.914586+00:00",
   "total": 200
 }
