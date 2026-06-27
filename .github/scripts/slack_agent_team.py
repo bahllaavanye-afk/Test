@@ -4623,7 +4623,10 @@ def risk_eng_risk() -> list[Post]:
     ai, provider = employee_provider_prompt(
         "risk_eng",
         (f"Risk system status: {risk_summary}. "
-         "Name the single most important risk gap to close next. 1-2 sentences, Slack-ready."),
+         "Based ONLY on this status, give one concrete, real next risk improvement in 1-2 sentences. "
+         "Do NOT invent desk names, strategy IDs, file paths, or breach percentages. If everything in the "
+         "status looks healthy, say so plainly ('Risk modules nominal — no gap to close right now'). "
+         "Slack-ready."),
     state=state,
     )
     if ai:
@@ -4876,10 +4879,15 @@ def security_eng_security() -> list[Post]:
     task = (
         f"You are the security engineer at QuantEdge. Live secret scan result: {scan_summary}. "
         + (f"Matches (first 3): {'; '.join(suspicious[:3])[:300]}. " if suspicious else "")
-        + "Beyond secret leaks, identify the single most critical security gap in an algo-trading platform "
-        "running on GitHub Actions + Render + Supabase + Slack. "
-        "Consider: JWT expiry, CORS policy, Slack token scope creep, order-injection via API, "
-        "or unencrypted broker key storage. Name the exact file and the patch. Be specific."
+        + "Report ONLY a finding you can ground in the scan result above or a file you are certain exists. "
+        "Do NOT invent vulnerabilities, file paths, CVEs, or metrics, and do NOT call something CRITICAL "
+        "unless it is real and currently unmitigated. ALREADY IN PLACE — do not re-flag these as gaps: "
+        "JWT auth on every route via get_current_user; per-account ownership checks on "
+        "orders/positions/trades (a user cannot touch another's data); Fernet-encrypted broker "
+        "credentials (encryption.py); CORS restricted to known origins. "
+        "If the scan is clean and you have no concrete, verifiable, unmitigated issue, reply EXACTLY: "
+        "':white_check_mark: No new security issues found.' Otherwise give the real file path you are "
+        "confident exists, a concrete patch, and an honest severity (most findings are low/info)."
     )
     ai, _ = employee_provider_prompt("security_eng", task, state=state)
     if not ai:
