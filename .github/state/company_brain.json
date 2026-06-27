@@ -546,7 +546,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782558225.9887264,
+    "last_updated": 1782562676.7874134,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -649,7 +649,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782558225.988015
+    "last_brain_update": 1782562676.7866783
   },
   "episodic": [
     {
@@ -1932,6 +1932,34 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1782558225.9781165
+    },
+    {
+      "lesson": "Free LLM providers are failing repeatedly, blocking free-agent engineer from processing issues.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782562676.7673295
+    },
+    {
+      "lesson": "Claude Task Router is unavailable, forcing automatic fallback to GPT-4o for complex logic tasks.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782562676.7706244
+    },
+    {
+      "lesson": "Agent assignment and routing system is still functioning, but depends on unreliable free-tier LLM availability.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782562676.77382
+    },
+    {
+      "lesson": "Claude reviews and rejects outputs it cannot produce itself, creating a potential bottleneck or quality gap.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1782562676.7769783
     }
   ],
   "github_insights": [
@@ -2084,6 +2112,11 @@
       "summary": "The discussion shows a repetitive assignment pattern where the Claude Task Router repeatedly assigns a task to the same GPT-4o agent for a complex task, indicating a potential loop or misconfiguration in the routing system.",
       "item_count": 20,
       "ts": 1782558225.981396
+    },
+    {
+      "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
+      "item_count": 20,
+      "ts": 1782562676.7801793
     }
   ]
 }
