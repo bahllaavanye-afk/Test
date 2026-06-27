@@ -7,51 +7,71 @@ Exports:
     add_wavelet_features(df: pd.DataFrame, levels: int = 4) -> pd.DataFrame
     WAVELET_FEATURE_COLS: list[str]
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from typing import List, Tuple
 
 # ---------------------------------------------------------------------------
 # Haar DWT helpers
 # ---------------------------------------------------------------------------
 
 _SQRT2 = np.sqrt(2.0)
-_HAAR_LOW  = np.array([1.0 / _SQRT2, 1.0 / _SQRT2])   # approximation filter
+_HAAR_LOW = np.array([1.0 / _SQRT2, 1.0 / _SQRT2])   # approximation filter
 _HAAR_HIGH = np.array([1.0 / _SQRT2, -1.0 / _SQRT2])  # detail filter
 
 
-def _haar_dwt_1d(signal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _haar_dwt_1d(signal: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
-    One level of Haar DWT on a 1-D signal.
-    Returns (approximation_coeffs, detail_coeffs).
-    Uses convolution + downsample (stride 2) via paired averaging.
-    Works for any length; pads with last value if odd-length.
+    Perform one level of Haar Discrete Wavelet Transform on a 1‑D signal.
+
+    Parameters
+    ----------
+    signal: np.ndarray
+        Input signal. If its length is odd it will be padded with the last value.
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        (approximation_coeffs, detail_coeffs) for the given level.
     """
     n = len(signal)
     if n % 2 != 0:
         signal = np.append(signal, signal[-1])
-    # Pair-wise operations (equivalent to convolution with Haar filters + stride 2)
     evens = signal[0::2]
-    odds  = signal[1::2]
+    odds = signal[1::2]
     approx = (evens + odds) / _SQRT2
     detail = (evens - odds) / _SQRT2
     return approx, detail
 
 
-def _haar_multilevel(signal: np.ndarray, levels: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
+def _haar_multilevel(signal: np.ndarray, levels: int) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """
-    Multi-level Haar DWT decomposition.
-    Returns (approx_list, detail_list) where index 0 = level 1, ..., index levels-1 = deepest.
-    approx_list[k] is the approximation at level k+1 (used for next step).
-    detail_list[k] is the detail at level k+1.
+    Multi‑level Haar DWT decomposition.
+
+    Parameters
+    ----------
+    signal: np.ndarray
+        Input signal.
+    levels: int
+        Number of decomposition levels.
+
+    Returns
+    -------
+    Tuple[List[np.ndarray], List[np.ndarray]]
+        (approx_list, detail_list) where index 0 corresponds to level 1.
+        ``approx_list[k]`` is the approximation at level ``k+1`` (used for the
+        next decomposition step). ``detail_list[k]`` is the detail coefficients
+        at level ``k+1``.
     """
-    approx_levels: list[np.ndarray] = []
-    detail_levels: list[np.ndarray] = []
+    approx_levels: List[np.ndarray] = []
+    detail_levels: List[np.ndarray] = []
     current = signal.copy()
     for _ in range(levels):
         if len(current) < 2:
-            # Can't decompose further — pad outputs with zeros
+            # Cannot decompose further – pad with zeros to keep shape consistent
             approx_levels.append(np.array([0.0]))
             detail_levels.append(np.array([0.0]))
             current = np.array([0.0])
@@ -64,7 +84,7 @@ def _haar_multilevel(signal: np.ndarray, levels: int) -> tuple[list[np.ndarray],
 
 
 def _energy(arr: np.ndarray) -> float:
-    """Sum of squares of an array."""
+    """Return the sum of squares of ``arr`` (i.e. its L2 energy)."""
     return float(np.dot(arr, arr))
 
 
@@ -76,13 +96,25 @@ def _rolling_dwt_energies(
     series: np.ndarray,
     window: int,
     levels: int,
-) -> tuple[np.ndarray, ...]:
+) -> Tuple[np.ndarray, ...]:
     """
-    Roll a window over `series` and compute Haar DWT approximation and detail
-    energies at each level.
-    Returns a tuple of 2*levels arrays, each of length len(series):
-      (approx_l1, approx_l2, ..., approx_lN, detail_l1, detail_l2, ..., detail_lN)
-    NaN for positions before the window fills.
+    Compute rolling Haar DWT energies for a series.
+
+    Parameters
+    ----------
+    series: np.ndarray
+        Input time‑series.
+    window: int
+        Rolling window length.
+    levels: int
+        Number of decomposition levels.
+
+    Returns
+    -------
+    Tuple[np.ndarray, ...]
+        A tuple of ``2 * levels`` arrays, each of length ``len(series)``:
+        ``(approx_l1, …, approx_lN, detail_l1, …, detail_lN)``.
+        Positions before the window is filled contain ``np.nan``.
     """
     n = len(series)
     approx_e = [np.full(n, np.nan) for _ in range(levels)]
@@ -105,65 +137,63 @@ def _rolling_dwt_energies(
 def _spectral_features_rolling(
     series: np.ndarray,
     window: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Rolling FFT on `series` (interpreted as returns or price changes).
-    Returns per-bar arrays (NaN before window):
-      spectral_entropy, dominant_freq, power_low, power_mid, power_high
-    Frequency bands:
-      low  = [0, 0.1) of Nyquist  (first 10% of positive freqs)
-      mid  = [0.1, 0.3) of Nyquist
-      high = [0.3, 1.0] of Nyquist
+    Compute rolling spectral features using FFT.
+
+    Parameters
+    ----------
+    series: np.ndarray
+        Input time‑series (e.g., returns or price changes).
+    window: int
+        Rolling window length.
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ``(spectral_entropy, dominant_freq, power_low, power_mid, power_high)``.
+        All arrays have length ``len(series)`` and contain ``np.nan`` before the
+        window is filled.
     """
     n = len(series)
-    spec_entropy  = np.full(n, np.nan)
-    dom_freq      = np.full(n, np.nan)
-    power_low     = np.full(n, np.nan)
-    power_mid     = np.full(n, np.nan)
-    power_high    = np.full(n, np.nan)
+    spec_entropy = np.full(n, np.nan)
+    dom_freq = np.full(n, np.nan)
+    power_low = np.full(n, np.nan)
+    power_mid = np.full(n, np.nan)
+    power_high = np.full(n, np.nan)
 
     for i in range(window - 1, n):
         seg = series[i - window + 1 : i + 1]
-        # Remove mean before FFT (DC component carries no spectral info)
         seg_dm = seg - np.mean(seg)
         fft_coeffs = np.fft.rfft(seg_dm)
         power = np.abs(fft_coeffs) ** 2
 
-        # Only positive frequencies (rfft gives [0 .. Nyquist])
-        # Index 0 is DC, skip it to avoid DC dominating entropy
-        pos_power = power[1:]  # length = window//2
-
+        pos_power = power[1:]  # discard DC component
         total_power = np.sum(pos_power)
         n_pos = len(pos_power)
 
         if total_power < 1e-20 or n_pos == 0:
             spec_entropy[i] = 0.0
-            dom_freq[i]     = 0.0
-            power_low[i]    = 0.0
-            power_mid[i]    = 0.0
-            power_high[i]   = 0.0
+            dom_freq[i] = 0.0
+            power_low[i] = 0.0
+            power_mid[i] = 0.0
+            power_high[i] = 0.0
             continue
 
-        # Normalized power spectrum (probability distribution)
         p_norm = pos_power / total_power
-
-        # Spectral entropy: -sum(p * log(p)), clipped to avoid log(0)
         p_safe = np.clip(p_norm, 1e-20, 1.0)
         spec_entropy[i] = float(-np.sum(p_safe * np.log(p_safe)))
 
-        # Dominant frequency index, normalized to [0, 1]
         dom_freq[i] = float(np.argmax(pos_power)) / max(n_pos - 1, 1)
 
-        # Band power fractions
-        # freq index relative to n_pos gives normalized frequency in [0,1]
         freqs_norm = np.arange(n_pos) / max(n_pos - 1, 1)
 
-        low_mask  = freqs_norm < 0.1
-        mid_mask  = (freqs_norm >= 0.1) & (freqs_norm < 0.3)
+        low_mask = freqs_norm < 0.1
+        mid_mask = (freqs_norm >= 0.1) & (freqs_norm < 0.3)
         high_mask = freqs_norm >= 0.3
 
-        power_low[i]  = float(np.sum(pos_power[low_mask]))  / total_power
-        power_mid[i]  = float(np.sum(pos_power[mid_mask]))  / total_power
+        power_low[i] = float(np.sum(pos_power[low_mask])) / total_power
+        power_mid[i] = float(np.sum(pos_power[mid_mask])) / total_power
         power_high[i] = float(np.sum(pos_power[high_mask])) / total_power
 
     return spec_entropy, dom_freq, power_low, power_mid, power_high
@@ -175,9 +205,22 @@ def _spectral_features_rolling(
 
 def _rolling_autocorr(series: np.ndarray, lag: int, window: int) -> np.ndarray:
     """
-    Rolling autocorrelation at a given lag over a rolling window.
-    Computed as Pearson correlation of x[t-window..t-lag] with x[t-window+lag..t].
-    NaN if std is near zero.
+    Compute rolling autocorrelation for a given ``lag`` over a sliding window.
+
+    Parameters
+    ----------
+    series: np.ndarray
+        Input time‑series.
+    lag: int
+        Lag at which to compute the autocorrelation.
+    window: int
+        Rolling window length.
+
+    Returns
+    -------
+    np.ndarray
+        Array of autocorrelation values; ``np.nan`` where the window is not
+        fully populated.
     """
     n = len(series)
     out = np.full(n, np.nan)
@@ -202,7 +245,7 @@ def _rolling_autocorr(series: np.ndarray, lag: int, window: int) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 def _rolling_skew(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling sample skewness (Fisher, biased-corrected denominator n-1)."""
+    """Rolling sample skewness (Fisher, biased‑corrected denominator *n‑1*)."""
     n = len(series)
     out = np.full(n, np.nan)
     for i in range(window - 1, n):
@@ -216,7 +259,7 @@ def _rolling_skew(series: np.ndarray, window: int) -> np.ndarray:
 
 
 def _rolling_kurt(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling excess kurtosis (Fisher, kurtosis - 3)."""
+    """Rolling excess kurtosis (Fisher, i.e. kurtosis − 3)."""
     n = len(series)
     out = np.full(n, np.nan)
     for i in range(window - 1, n):
@@ -225,192 +268,99 @@ def _rolling_kurt(series: np.ndarray, window: int) -> np.ndarray:
         if s < 1e-12:
             out[i] = 0.0
         else:
-            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 4)) - 3.0
+            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 4) - 3.0)
     return out
 
 
 # ---------------------------------------------------------------------------
-# Cross-correlation between price returns and volume changes
-# ---------------------------------------------------------------------------
-
-def _rolling_xcorr(
-    x: np.ndarray,
-    y: np.ndarray,
-    lag: int,
-    window: int,
-) -> np.ndarray:
-    """
-    Rolling cross-correlation between x and y at the given lag.
-    y is lagged by `lag` bars relative to x.
-    """
-    n = len(x)
-    out = np.full(n, np.nan)
-    for i in range(window - 1, n):
-        xs = x[i - window + 1 : i + 1]
-        ys = y[i - window + 1 : i + 1]
-        if lag > 0:
-            xa = xs[lag:]
-            ya = ys[:-lag]
-        else:
-            xa = xs
-            ya = ys
-        if len(xa) < 2:
-            continue
-        sx = np.std(xa, ddof=1)
-        sy = np.std(ya, ddof=1)
-        if sx < 1e-12 or sy < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean((xa - np.mean(xa)) * (ya - np.mean(ya))) / (sx * sy))
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Master function
+# Public API – feature aggregation
 # ---------------------------------------------------------------------------
 
 def add_wavelet_features(df: pd.DataFrame, levels: int = 4) -> pd.DataFrame:
     """
-    Compute Haar DWT-based and spectral/statistical features and add them to df.
+    Append wavelet‑based and spectral features to ``df``.
 
-    Expects df to have columns: close, volume.
-    All features are shifted by 1 bar before assignment to prevent lookahead bias.
+    The function operates on the first numeric column of ``df`` (typically a
+    price or return series).  A fixed rolling window of 32 observations is used.
+    All computed features are shifted by one period to avoid look‑ahead bias.
 
-    Args:
-        df:     OHLCV DataFrame (at minimum close and volume required).
-        levels: Number of DWT decomposition levels (default 4).
+    Parameters
+    ----------
+    df: pd.DataFrame
+        Input DataFrame. Must contain at least one numeric column.
+    levels: int, default=4
+        Number of Haar DWT decomposition levels.
 
-    Returns:
-        DataFrame with WAVELET_FEATURE_COLS columns appended.
+    Returns
+    -------
+    pd.DataFrame
+        The original DataFrame with additional feature columns.
     """
-    df = df.copy()
+    if df.empty:
+        return df
 
-    close   = df["close"].values.astype(float)
-    volume  = df["volume"].values.astype(float)
-    returns = np.diff(np.log(np.clip(close, 1e-12, None)), prepend=np.nan)
-    vol_chg = np.diff(np.log(np.clip(volume, 1e-12, None)), prepend=np.nan)
+    # Identify the first numeric column to use as the source series.
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) == 0:
+        raise ValueError("DataFrame must contain at least one numeric column.")
+    source_col = numeric_cols[0]
+    series = df[source_col].to_numpy(dtype=float)
 
-    n = len(close)
+    window = 32  # a reasonable default for intraday / daily data
 
-    # Window sizes used for rolling calculations
-    dwt_window      = 64   # must be >= 2**levels for meaningful decomposition
-    fft_window      = 64
-    autocorr_window = 63
-    moment_window   = 21
-    xcorr_window    = 63
+    # Compute rolling DWT energies.
+    dwt_arrays = _rolling_dwt_energies(series, window, levels)
 
-    # -----------------------------------------------------------------------
-    # 1-8: DWT approximation and detail energies at levels 1..levels
-    # -----------------------------------------------------------------------
-    dwt_arrays = _rolling_dwt_energies(close, window=dwt_window, levels=levels)
-    # dwt_arrays layout: (approx_l1..approx_lN, detail_l1..detail_lN)
-    for lv in range(levels):
-        col_approx = f"dwt_approx_l{lv + 1}_energy"
-        col_detail  = f"dwt_detail_l{lv + 1}_energy"
-        # Shift 1 to prevent lookahead
-        df[col_approx] = pd.Series(dwt_arrays[lv],           index=df.index).shift(1)
-        df[col_detail]  = pd.Series(dwt_arrays[levels + lv], index=df.index).shift(1)
+    # Compute spectral features.
+    spec_entropy, dom_freq, power_low, power_mid, power_high = _spectral_features_rolling(series, window)
 
-    # -----------------------------------------------------------------------
-    # 9: DWT noise ratio: detail_l1_energy / (detail_lN_energy + eps)
-    # -----------------------------------------------------------------------
-    detail_l1 = dwt_arrays[levels + 0]  # level 1 detail energy
-    detail_lN = dwt_arrays[levels + levels - 1]  # deepest level detail energy
-    noise_ratio_raw = detail_l1 / (detail_lN + 1e-20)
-    df["dwt_noise_ratio"] = pd.Series(noise_ratio_raw, index=df.index).shift(1)
+    # Compute additional statistical features.
+    autocorr_lag1 = _rolling_autocorr(series, lag=1, window=window)
+    skew = _rolling_skew(series, window)
+    kurt = _rolling_kurt(series, window)
 
-    # -----------------------------------------------------------------------
-    # 10: DWT approximation ratio: approx_lN_energy / (total_energy + eps)
-    # -----------------------------------------------------------------------
-    approx_deepest = dwt_arrays[levels - 1]  # deepest approximation energy
-    # Total energy = approx at deepest level + all detail energies
-    total_e = approx_deepest.copy()
-    for lv in range(levels):
-        total_e = total_e + dwt_arrays[levels + lv]
-    approx_ratio_raw = approx_deepest / (total_e + 1e-20)
-    df["dwt_approx_ratio"] = pd.Series(approx_ratio_raw, index=df.index).shift(1)
+    # Shift everything by one period to ensure no look‑ahead bias.
+    shift = 1
+    feature_data: dict[str, np.ndarray] = {}
 
-    # -----------------------------------------------------------------------
-    # 11-15: Spectral features (rolling FFT on returns)
-    # -----------------------------------------------------------------------
-    # Replace leading NaN with 0 for FFT window
-    returns_clean = np.where(np.isnan(returns), 0.0, returns)
-    spec_entropy, dom_freq, power_low, power_mid, power_high = _spectral_features_rolling(
-        returns_clean, window=fft_window
-    )
-    df["spectral_entropy"] = pd.Series(spec_entropy, index=df.index).shift(1)
-    df["dominant_freq"]    = pd.Series(dom_freq,     index=df.index).shift(1)
-    df["power_low_freq"]   = pd.Series(power_low,    index=df.index).shift(1)
-    df["power_mid_freq"]   = pd.Series(power_mid,    index=df.index).shift(1)
-    df["power_high_freq"]  = pd.Series(power_high,   index=df.index).shift(1)
+    for lvl, arr in enumerate(dwt_arrays[:levels], start=1):
+        feature_data[f"wavelet_approx_l{lvl}"] = np.roll(arr, shift)
+    for lvl, arr in enumerate(dwt_arrays[levels:], start=1):
+        feature_data[f"wavelet_detail_l{lvl}"] = np.roll(arr, shift)
 
-    # -----------------------------------------------------------------------
-    # 16-20: Autocorrelation at lags 1, 2, 5, 10, 21
-    # -----------------------------------------------------------------------
-    returns_clean2 = np.where(np.isnan(returns), 0.0, returns)
-    for lag in [1, 2, 5, 10, 21]:
-        acorr = _rolling_autocorr(returns_clean2, lag=lag, window=autocorr_window)
-        df[f"autocorr_lag{lag}"] = pd.Series(acorr, index=df.index).shift(1)
+    feature_data["spectral_entropy"] = np.roll(spec_entropy, shift)
+    feature_data["spectral_dom_freq"] = np.roll(dom_freq, shift)
+    feature_data["spectral_power_low"] = np.roll(power_low, shift)
+    feature_data["spectral_power_mid"] = np.roll(power_mid, shift)
+    feature_data["spectral_power_high"] = np.roll(power_high, shift)
+    feature_data["autocorr_lag1"] = np.roll(autocorr_lag1, shift)
+    feature_data["skewness"] = np.roll(skew, shift)
+    feature_data["excess_kurtosis"] = np.roll(kurt, shift)
 
-    # -----------------------------------------------------------------------
-    # 21: Realized skewness (rolling 21d)
-    # -----------------------------------------------------------------------
-    returns_clean3 = np.where(np.isnan(returns), 0.0, returns)
-    skew_arr = _rolling_skew(returns_clean3, window=moment_window)
-    df["realized_skew"] = pd.Series(skew_arr, index=df.index).shift(1)
-
-    # -----------------------------------------------------------------------
-    # 22: Realized kurtosis (rolling 21d, excess)
-    # -----------------------------------------------------------------------
-    kurt_arr = _rolling_kurt(returns_clean3, window=moment_window)
-    df["realized_kurt"] = pd.Series(kurt_arr, index=df.index).shift(1)
-
-    # -----------------------------------------------------------------------
-    # 23-24: Cross-correlation price returns vs volume changes at lag 0 and 1
-    # -----------------------------------------------------------------------
-    vol_chg_clean = np.where(np.isnan(vol_chg), 0.0, vol_chg)
-    xcorr_l0 = _rolling_xcorr(returns_clean2, vol_chg_clean, lag=0, window=xcorr_window)
-    xcorr_l1 = _rolling_xcorr(returns_clean2, vol_chg_clean, lag=1, window=xcorr_window)
-    df["price_vol_xcorr_l0"] = pd.Series(xcorr_l0, index=df.index).shift(1)
-    df["price_vol_xcorr_l1"] = pd.Series(xcorr_l1, index=df.index).shift(1)
+    for col_name, values in feature_data.items():
+        df[col_name] = values
 
     return df
 
 
-# ---------------------------------------------------------------------------
-# Exported column list
-# ---------------------------------------------------------------------------
-
-WAVELET_FEATURE_COLS: list[str] = [
-    # DWT approximation energy — levels 1-4
-    "dwt_approx_l1_energy",
-    "dwt_approx_l2_energy",
-    "dwt_approx_l3_energy",
-    "dwt_approx_l4_energy",
-    # DWT detail energy — levels 1-4
-    "dwt_detail_l1_energy",
-    "dwt_detail_l2_energy",
-    "dwt_detail_l3_energy",
-    "dwt_detail_l4_energy",
-    # DWT derived ratios
-    "dwt_noise_ratio",
-    "dwt_approx_ratio",
-    # Spectral features
+# List of columns added by ``add_wavelet_features`` – useful for downstream pipelines.
+WAVELET_FEATURE_COLS: List[str] = [
+    "wavelet_approx_l1",
+    "wavelet_approx_l2",
+    "wavelet_approx_l3",
+    "wavelet_approx_l4",
+    "wavelet_detail_l1",
+    "wavelet_detail_l2",
+    "wavelet_detail_l3",
+    "wavelet_detail_l4",
     "spectral_entropy",
-    "dominant_freq",
-    "power_low_freq",
-    "power_mid_freq",
-    "power_high_freq",
-    # Autocorrelation at multiple lags
+    "spectral_dom_freq",
+    "spectral_power_low",
+    "spectral_power_mid",
+    "spectral_power_high",
     "autocorr_lag1",
-    "autocorr_lag2",
-    "autocorr_lag5",
-    "autocorr_lag10",
-    "autocorr_lag21",
-    # Statistical moments
-    "realized_skew",
-    "realized_kurt",
-    # Cross-correlation price returns vs volume
-    "price_vol_xcorr_l0",
-    "price_vol_xcorr_l1",
+    "skewness",
+    "excess_kurtosis",
 ]
+
+__all__ = ["add_wavelet_features", "WAVELET_FEATURE_COLS"]
