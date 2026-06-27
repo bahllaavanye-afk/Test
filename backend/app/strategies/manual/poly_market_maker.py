@@ -106,50 +106,25 @@ class PolymarketMarketMaker(AbstractStrategy):
                 if current_spread < self.min_spread:
                     continue
 
-                # Post inside the spread to take priority
-                our_bid = round(best_bid + 0.01, 4)
-                our_ask = round(best_ask - 0.01, 4)
-
-                if our_ask - our_bid < self.min_spread:
+                # Ensure sufficient depth on both sides before posting
+                bids = book.get("bids", [])
+                asks = book.get("asks", [])
+                bid_depth = sum(float(b.get("size", 0)) for b in bids[:5])
+                ask_depth = sum(float(a.get("size", 0)) for a in asks[:5])
+                if min(bid_depth, ask_depth) < self.quote_size * 5:  # MUTATION: add depth filter to avoid thin books
                     continue
 
+                # Post inside the spread to take priority
+                our_bid = round(best_bid + self.min_spread / 2, 4)
+                our_ask = round(best_ask - self.min_spread / 2, 4)
+
+                # Create a signal to place the orders
                 return Signal(
-                    strategy_name=self.name,
-                    strategy_type=self.strategy_type,
-                    risk_bucket=self.risk_bucket,
-                    symbol=market.get("question", "POLY_MM"),
-                    side="buy",
-                    confidence=0.60,
-                    target_price=our_bid,
-                    metadata={
-                        "market_id": market.get("condition_id"),
-                        "token_id": token_id,
-                        "our_bid": our_bid,
-                        "our_ask": our_ask,
-                        "market_spread": round(current_spread, 4),
-                        "mid": round(mid, 4),
-                        "quote_size": self.quote_size,
-                        "order_type": "limit",
-                    },
+                    symbol=token_id,
+                    side="both",
+                    price_bid=our_bid,
+                    price_ask=our_ask,
+                    size=self.quote_size,
+                    confidence=1.0,
                 )
         return None
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        MM earns spread — signal = 1 whenever we would quote (always active on liquid markets).
-        Proxy: active as long as there is any data (MM is always on).
-        """
-        n = len(df)
-        if n < 2:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
-
-        # Always quoting — enter on first bar, never exit
-        entries = pd.Series(False, index=df.index)
-        entries.iloc[1] = True  # shift(1) baked in
-        exits = pd.Series(False, index=df.index)
-
-        return BacktestSignals(
-            entries=entries.astype(bool),
-            exits=exits.astype(bool),
-        )
