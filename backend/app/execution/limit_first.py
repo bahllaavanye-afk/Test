@@ -14,59 +14,78 @@ class LimitFirstExecution:
         self.fallback_seconds = fallback_seconds
 
     async def execute(self, request: OrderRequest) -> OrderResult:
-        # Get current quote
         try:
             quote = await self.broker.get_quote(request.symbol)
-            ref_price = quote.ask if request.side == "buy" else quote.bid
-            offset = ref_price * self.offset_bps / 10_000
+            limit_price = self._calculate_limit_price(quote, request.side)
+            limit_result = await self._place_limit_order(request, limit_price)
 
-            if request.side == "buy":
-                limit_price = quote.ask - offset    # post below ask to improve fill
-            else:
-                limit_price = quote.bid + offset    # post above bid to improve fill
+            if limit_result.status in ("filled", "partially_filled"):
+                return limit_result
 
-            limit_req = OrderRequest(
-                **{**request.__dict__, "order_type": "limit", "limit_price": round(limit_price, 4)}
-            )
-            result = await self.broker.place_order(limit_req)
+            filled_result = await self._wait_for_fill(limit_result, request)
+            if filled_result:
+                return filled_result
 
-            if result.status in ("filled", "partially_filled"):
-                return result
-
-            # Wait for fill, then fallback to market
-            for _ in range(self.fallback_seconds):
-                await asyncio.sleep(1)
-                order_status = await self.broker.get_order(result.broker_order_id)
-                if order_status.get("status") in ("filled", "closed"):
-                    result.status = "filled"
-                    result.filled_qty = float(order_status.get("filled_qty", request.quantity))
-                    return result
-
-            # Cancel limit, then only market-order the UNFILLED remainder.
-            # Submitting the full quantity here would double-execute any qty
-            # that filled while we were polling.
-            await self.broker.cancel_order(result.broker_order_id)
-            filled_so_far = 0.0
-            try:
-                final_status = await self.broker.get_order(result.broker_order_id)
-                filled_so_far = float(final_status.get("filled_qty", 0) or 0)
-            except Exception:
-                filled_so_far = float(getattr(result, "filled_qty", 0) or 0)
-
-            remaining = float(request.quantity) - filled_so_far
-            if remaining <= 0:
-                result.status = "filled"
-                result.filled_qty = float(request.quantity)
-                return result
-
-            market_req = OrderRequest(
-                **{**request.__dict__, "order_type": "market",
-                   "limit_price": None, "quantity": remaining}
-            )
-            return await self.broker.place_order(market_req)
-
+            return await self._fallback_market_order(request, limit_result)
         except Exception:
-            # Pre-order failure (e.g. quote fetch) — safe to fall back to a full
-            # market order because no limit order was successfully placed.
+            # Any pre‑order failure (e.g., quote fetch) – fall back to a full market order.
             market_req = OrderRequest(**{**request.__dict__, "order_type": "market"})
             return await self.broker.place_order(market_req)
+
+    def _calculate_limit_price(self, quote, side: str) -> float:
+        """Calculate the limit price using the offset based on the side."""
+        ref_price = quote.ask if side == "buy" else quote.bid
+        offset = ref_price * self.offset_bps / 10_000
+        if side == "buy":
+            return quote.ask - offset
+        return quote.bid + offset
+
+    async def _place_limit_order(self, request: OrderRequest, limit_price: float) -> OrderResult:
+        """Submit a limit order with the calculated price."""
+        limit_req = OrderRequest(
+            **{**request.__dict__, "order_type": "limit", "limit_price": round(limit_price, 4)}
+        )
+        return await self.broker.place_order(limit_req)
+
+    async def _wait_for_fill(self, limit_result: OrderResult, request: OrderRequest) -> OrderResult | None:
+        """Poll the limit order for the configured fallback period."""
+        for _ in range(self.fallback_seconds):
+            await asyncio.sleep(1)
+            order_status = await self.broker.get_order(limit_result.broker_order_id)
+            if order_status.get("status") in ("filled", "closed"):
+                limit_result.status = "filled"
+                limit_result.filled_qty = float(
+                    order_status.get("filled_qty", request.quantity)
+                )
+                return limit_result
+        return None
+
+    async def _fallback_market_order(self, request: OrderRequest, limit_result: OrderResult) -> OrderResult:
+        """Cancel the limit order and place a market order for any remaining quantity."""
+        await self.broker.cancel_order(limit_result.broker_order_id)
+
+        filled_so_far = await self._determine_filled_quantity(limit_result)
+        remaining_qty = float(request.quantity) - filled_so_far
+
+        if remaining_qty <= 0:
+            limit_result.status = "filled"
+            limit_result.filled_qty = float(request.quantity)
+            return limit_result
+
+        market_req = OrderRequest(
+            **{
+                **request.__dict__,
+                "order_type": "market",
+                "limit_price": None,
+                "quantity": remaining_qty,
+            }
+        )
+        return await self.broker.place_order(market_req)
+
+    async def _determine_filled_quantity(self, limit_result: OrderResult) -> float:
+        """Retrieve the filled quantity after cancellation, handling possible errors."""
+        try:
+            final_status = await self.broker.get_order(limit_result.broker_order_id)
+            return float(final_status.get("filled_qty", 0) or 0)
+        except Exception:
+            return float(getattr(limit_result, "filled_qty", 0) or 0)
