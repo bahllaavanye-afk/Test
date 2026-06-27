@@ -199,8 +199,12 @@
     "validate inputs",
     "check timeouts",
     "handle NaNs",
-    "retry connections"
+    "retry connections",
+    "docstrings on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
+    "docstrings on ml/features/wavelet_features.py: success \u2014 tests green",
+    "docstrings on execution/twap.py: success \u2014 tests green",
+    "docstrings on risk/circuit_breaker.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-26T22:43:47.241341+00:00",
+  "last_updated": "2026-06-27T00:04:46.634108+00:00",
   "total": 200
 }
