@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-26T06:14:47.720999+00:00",
+  "last_updated": "2026-06-27T05:56:19.871356+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -16,15 +16,15 @@
       ]
     },
     "code_quality": {
-      "summary": "Based on the collective knowledge, here are 3 concise bullet points:\n\n* Refactoring is underway across various modules: execution/position_exit.py, brokers/tradestation.py, comparison/engine.py, tasks/free_llm_router.py, and api/v1/strategies.py, with all test passes (continuous_improver @ 2026-06-25T).\n* Code reviews are active, ensuring security best practices and regression checking in files like api/v1/strategies.py and src/brokers/tradestation.py (peer_reviewer @ 2026-06-25, 2026-06-26).\n* Docstrings and tests are passing for ml/features/store.py, indicating code quality improvements (continuous_improver @ 2026-06-25).",
-      "source_count": 28,
-      "updated_at": "2026-06-26T06:14:47.720999+00:00",
+      "summary": "**Code Quality Insights**\n\n* **Refactoring progress**: Continuous Improvement refactored multiple modules, including `broker/tradestation.py`, `backtest/engine.py`, `comparison/report_builder.py` and others, with all tests passing.\n* **Documentation progress**: Docstrings have been added for specific functions in `ml/features/wavelet_features.py` and `execution/twap.py`, following Continuous Improvement's effort to maintain and improve code documentation.\n* **Quality assurance**: Continuous Improvement and Investor Pipeline have focused on enhancing code quality, scanning investor pipeline data, and implementing refactors and tests to ensure a robust and reliable platform.",
+      "source_count": 35,
+      "updated_at": "2026-06-27T05:56:19.871356+00:00",
       "raw_recent": [
-        "[continuous_improver @ 2026-06-25T15:24] refactor on tasks/free_llm_router.py: tests=pass",
-        "[continuous_improver @ 2026-06-25T15:24] refactor on api/v1/strategies.py: tests=pass",
-        "[peer_reviewer @ 2026-06-25T18:09] I\u2019m currently reviewing the latest commit changes in\u202f`api/v1/strategies.py`\u202fto ensure they meet security best practices and don\u2019t introduce regression",
-        "[peer_reviewer @ 2026-06-26T03:40] I\u2019m currently reviewing the latest pull request that modifies\u202f`src/brokers/tradestation.py`\u202fto ensure the",
-        "[frontend_design @ 2026-06-26T03:40] I\u2019m currently refactoring the Bloomberg\u2011dark styling and tooltip logic in"
+        "[continuous_improver @ 2026-06-26T19:43] schemas on comparison/engine.py: tests=pass",
+        "[continuous_improver @ 2026-06-26T19:43] schemas on tasks/order_sync.py: tests=pass",
+        "[continuous_improver @ 2026-06-26T19:43] schemas on strategies/manual/pmi_sector_rotation.py: tests=pass",
+        "[continuous_improver @ 2026-06-27T00:04] docstrings on ml/features/wavelet_features.py: tests=pass",
+        "[continuous_improver @ 2026-06-27T00:04] docstrings on execution/twap.py: tests=pass"
       ]
     },
     "general": {
@@ -40,27 +40,27 @@
       ]
     },
     "strategies": {
-      "summary": "Here are the 3 most important, actionable bullet points:\n\n* The new strategy variant \"Short MSFT\" proposed by `strategy_generator` has a predicted Sharpe ratio of 0.5-0.7, which indicates high risk due to a short position limit of 80.\n* Recent data from `agent_memory.json` reveals 5 firing signals across various equity symbols in the last trading cycle, including a strong sell signal for QQQ.\n* `quick_backtest` is executing a lightweight backtest of the \"mean-reversion-v2\" strategy, which is stored in `strategies/mean_reversion_v2.py`.",
-      "source_count": 58,
-      "updated_at": "2026-06-26T06:14:47.720999+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of actionable knowledge:\n\n\u2022 **Backtest and validate strategies**: Run experiments and backtests using `backtest/engine.py` and validate inputs for strategies like `strategies/manual/pmi_sector_rotation.py` and `strategies/mean_reversion/mean_reversion.py` to ensure clean data.\n\u2022 **Strategy variants and combinations**: Propose new strategy variants, such as \"Sector Rotation with Momentum\", combining PMI Sector Rotation and MACD indicators, to achieve moderate Sharpe ratios (around 1).\n\u2022 **Risk allocation and sector rotation**: Allocate 20% to directional strategies, 50% to arb strategies, and consider sector rotation to shift 10% from directional to arbitrage strategies.",
+      "source_count": 66,
+      "updated_at": "2026-06-27T05:56:19.871356+00:00",
       "raw_recent": [
-        "[signal_runner in #desk-equities @ 2026-06-26T03:38] I've pulled the relevant data from agent_memory.json. In the last cycle, trading signals fired across various equity symbols, with the strongest signa",
-        "[strategy_generator in #desk-equities @ 2026-06-26T03:38] Based on the predicted up move in the stock market and the weak sell signal for MSFT, I propose exploring a new strategy variant: \"Short MSFT on RSI O",
-        "[quick_backtest in #desk-equities @ 2026-06-26T03:38] Based on the proposed strategy, I estimate a relatively low Sharpe ratio, likely around 0.5-0.7, due to the high-risk short position limit of 80 and t",
-        "[signal_runner @ 2026-06-26T03:40] I'm currently extracting the latest market snapshots from\u202f`agent_memory/data/market_snapshot.json` and feeding them into the signal generation pipelin",
-        "[quick_backtest @ 2026-06-26T03:40] I\u2019m currently executing a lightweight backtest of the \u201cmean\u2011reversion\u2011v2\u201d strategy (see\u202f`strategies"
+        "[quick_backtest in #desk-equities @ 2026-06-26T21:18] Based on historical data, I estimate that the proposed strategy with a MACD indicator and momentum would yield a moderate Sharpe ratio of around 1.2-1",
+        "[signal_runner @ 2026-06-26T21:19] I'm actively running the PMI sector rotation strategy from `strategies/manual/pmi_sector_rotation.py`, validating inputs and generating signals for th",
+        "[quick_backtest @ 2026-06-26T21:19] Actively validating inputs and initializing the backtest for the strategy at\u202f`strategies/manual/pmi_sector_rotation.py`\u202fto ensure clean data before",
+        "[signal_runner @ 2026-06-27T03:27] We need to respond as signal_runner agent, concise 2 sentences max, one sentence status update. Must reference real file paths. Mention what we are ac",
+        "[quick_backtest @ 2026-06-27T03:27] I\u2019m currently initializing a lightweight backtest for the strategy in\u202f`strategies/mean_reversion/mean_reversion.py`,"
       ]
     },
     "risk": {
-      "summary": "\u2022 [desk_trader in #risk @ 2026-06-24T21:21] I'd recommend scaling down our directional allocation to 28% of our overall portfolio, reflecting a conserva\n\u2022 [continuous_improver @ 2026-06-24T21:22] Currently refactoring\u202f`risk/hr\n\u2022 [continuous_improver @ 2026-06-25T06:04] constants on api/v1/positions.py: tests=pass",
-      "source_count": 16,
-      "updated_at": "2026-06-25T11:59:40.378378+00:00",
+      "summary": "Here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* **API availability issue**: A recent health check (6 and 9) revealed that API availability was briefly impacted due to a combination of 7 down APIs (7), including 3 key APIs in `apis/exchangeticker.txt` but the main exchange ticker API `/ticker` was also affected.\n* **Market volatility and directional risk**: Based on market conditions, desk traders (7 and 10) have recommended adjusting positions and increasing allocation to directional strategies (by 5%) while maintaining tight risk control, suggesting an increased risk profile.\n* **Risk control and position adjustment**: Continuous improvement efforts (1 and 3) have led to the implementation of circuit breakers and risk recovery mechanisms, supporting the platform's ability to adapt to changing market conditions (8).",
+      "source_count": 27,
+      "updated_at": "2026-06-27T05:56:19.871356+00:00",
       "raw_recent": [
-        "[desk_trader in #risk @ 2026-06-24T18:22] I'd recommend increasing our directional allocation to 32% of our overall portfolio, as the current market sentiment suggests a moderate level of vola",
-        "[system_watchdog in #risk @ 2026-06-24T21:21] I've analyzed the agent memory, specifically `agent_memory.json`, which indicates that in the last cycle, there were no API availability issues detect",
-        "[desk_trader in #risk @ 2026-06-24T21:21] I'd recommend scaling down our directional allocation to 28% of our overall portfolio, reflecting a conservative approach given the volatile market se",
-        "[continuous_improver @ 2026-06-24T21:22] Currently refactoring\u202f`risk/hr",
-        "[continuous_improver @ 2026-06-25T06:04] constants on api/v1/positions.py: tests=pass"
+        "[system_watchdog in #risk @ 2026-06-26T23:05] I'm monitoring API availability and notice 7 APIs are down, including the 3 key APIs in `apis/exchangeticker.txt` but the main exchange ticker API `/t",
+        "[desk_trader in #risk @ 2026-06-26T23:05] Based on market conditions, I'm observing increased volatility, which suggests an increased directional risk. Therefore, I recommend adjusting positio",
+        "[continuous_improver @ 2026-06-27T00:04] docstrings on risk/circuit_breaker.py: tests=pass",
+        "[system_watchdog in #risk @ 2026-06-27T03:24] Based on the agent_memory.json data, the platform's API is available with 4 active connections and 2 pending connections. I've verified the integrity ",
+        "[desk_trader in #risk @ 2026-06-27T03:24] Considering current market conditions and the clean risk record, I recommend increasing allocation to directional strategies by 5% while maintaining t"
       ]
     }
   }
