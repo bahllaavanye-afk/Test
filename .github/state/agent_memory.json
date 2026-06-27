@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-27T19:39:39.557602+00:00",
+  "last_updated": "2026-06-27T19:53:49.012688+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1405,11 +1405,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[continuous_improver @ 2026-06-25T12:17] docstrings on execution/advanced_orders.py: tests=pass",
-    "[continuous_improver @ 2026-06-25T12:17] docstrings on risk/rl_position_sizer.py: tests=pass",
-    "[continuous_improver @ 2026-06-25T12:17] alpha_evolve on strategies/manual/event_driven_gap.py: tests=pass",
-    "[signal_runner in #desk-equities @ 2026-06-25T14:31] I've retrieved the signals data from agent_memory.json. In the last cycle, the following trading signals fired across equity symbols:\n\n- SPY: 2 long s",
-    "[strategy_generator in #desk-equities @ 2026-06-25T14:31] Based on the reported signals, I propose a new strategy variant called \"NVIDIA Strong Buyer\" with the indicator combination of NVDA long signals with ",
     "[quick_backtest in #desk-equities @ 2026-06-25T14:31] I'd estimate a moderate Sharpe ratio of 0.7-0.9 for this proposed strategy, considering the leverage it would require to capture the potential upside ",
     "[investor_pipeline @ 2026-06-25T14:33] I am currently reviewing the code in `ml_enhanced/ml_pca_arb.py` to ensure all docstrings are up-to-date and tests are passing, as indicated by the su",
     "[run_experiments @ 2026-06-25T14:33] We need to respond as run_experiments agent, giving a one-sentence status update, first person, concise (2 sentences max). Should be one sentence. Sho",
@@ -1604,28 +1599,15 @@
     "[continuous_improver @ 2026-06-27T18:00] constants on test/unit/test_a3c_lstm.py: tests=pass",
     "[ml_trainer in #ml-research @ 2026-06-27T19:19] I've checked the backend/app/ml/models/ directory and the models are currently up to date. My last run was a few hours ago, and results from model_a3c",
     "[research_scientist in #ml-research @ 2026-06-27T19:19] Based on the model report, I think we can improve the performance of model_dtw.py by incorporating a Lorentzian kernel-based similarity metric in the ",
-    "[modeling_engineer in #ml-research @ 2026-06-27T19:19] I recommend deploying the existing A3C model (model_a3c.py) with transfer learning to model_dtw.py, by loading the pre-trained A3C weights and fine-tu"
+    "[modeling_engineer in #ml-research @ 2026-06-27T19:19] I recommend deploying the existing A3C model (model_a3c.py) with transfer learning to model_dtw.py, by loading the pre-trained A3C weights and fine-tu",
+    "[continuous_improver @ 2026-06-27T19:51] schemas on comparison/benchmarks.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T19:52] schemas on strategies/manual/earnings_accruals.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T19:52] schemas on strategies/ml_enhanced/ml_breakout.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T19:52] schemas on ml/models/patch_tst.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T19:52] schemas on ml/features/multi_timeframe.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/strategies/ml_enhanced/lorentzian_knn.py",
-      "reason": "syntax check failed",
-      "improvement_type": "strategy_logic",
-      "timestamp": "2026-06-19T22:40:09.446144+00:00"
-    },
-    {
-      "file": "backend/app/ml/models/patch_tst.py",
-      "reason": "syntax check failed",
-      "improvement_type": "strategy_logic",
-      "timestamp": "2026-06-19T22:40:30.341531+00:00"
-    },
-    {
-      "file": "backend/app/ml/features/technical.py",
-      "reason": "syntax check failed",
-      "improvement_type": "strategy_logic",
-      "timestamp": "2026-06-19T22:40:51.195843+00:00"
-    },
     {
       "file": "backend/app/execution/rl_exec.py",
       "reason": "syntax check failed",
@@ -1907,6 +1889,24 @@
       "reason": "syntax check failed",
       "improvement_type": "refactor",
       "timestamp": "2026-06-27T15:05:40.788798+00:00"
+    },
+    {
+      "file": "backend/app/tasks/qa_monitor.py",
+      "reason": "syntax check failed",
+      "improvement_type": "schemas",
+      "timestamp": "2026-06-27T19:51:55.321035+00:00"
+    },
+    {
+      "file": "backend/app/api/v1/options.py",
+      "reason": "syntax check failed",
+      "improvement_type": "schemas",
+      "timestamp": "2026-06-27T19:51:57.229770+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_advanced_metrics.py",
+      "reason": "syntax check failed",
+      "improvement_type": "schemas",
+      "timestamp": "2026-06-27T19:52:49.457696+00:00"
     }
   ],
   "improvement_stats": {
@@ -1961,9 +1961,9 @@
       "test_pass": 8
     },
     "schemas": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     }
   },
   "last_health_check": "2026-06-27T18:37:02.459331+00:00"

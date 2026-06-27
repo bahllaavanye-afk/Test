@@ -199,8 +199,13 @@
     "check API rate limits",
     "handle NaN values",
     "timeout on slow trades",
-    "log exception stacks"
+    "log exception stacks",
+    "schemas on comparison/benchmarks.py: success \u2014 tests green",
+    "schemas on strategies/manual/earnings_accruals.py: success \u2014 tests green",
+    "schemas on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "schemas on ml/models/patch_tst.py: success \u2014 tests green",
+    "schemas on ml/features/multi_timeframe.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T19:39:39.557602+00:00",
+  "last_updated": "2026-06-27T19:52:56.739901+00:00",
   "total": 200
 }
