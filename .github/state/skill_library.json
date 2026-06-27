@@ -1,13 +1,5 @@
 {
   "skills": [
-    "* Investigate and address any systemic issues related to these connectivity problems, potentially affecting other agents and tasks.",
-    "Monitor api/v1/kalshi.py",
-    "refactor on execution/position_exit.py: success \u2014 tests green",
-    "Files > 8000 chars cause LLM truncation \u2014 always truncate before sending to LLM",
-    "* Further investigation into LLM provider reliability is recommended.",
-    "Monitor API timeouts",
-    "**UCB1 Bandit Algorithm Implementation**: The algo_agent is implementing the UCB1 bandit algorithm in a quantitative trading strategy.",
-    "Verify API keys",
     "[continuous_improver @ 2026-06-24T21:22] Currently refactoring\u202f`risk/hr",
     "Implement retry logic",
     "Check DB connections",
@@ -199,8 +191,16 @@
     "* **Adhere to platform standards**: `InvestorPipeline.js` and `backend/code` need a thorough review and refactoring to ensure compliance with established standards. ([1], [4])",
     "Based on the recent agent learnings:",
     "optimization on backtest/data_loader.py: success \u2014 tests green",
-    "monitoring on ml/models/transformer.py: success \u2014 tests green"
+    "monitoring on ml/models/transformer.py: success \u2014 tests green",
+    "Update error_handler.py",
+    "Check data types in signals.py",
+    "Test LSTM_model_retraining.ipynb",
+    "Refactor backtest/engine.py",
+    "Improve data_loader.py",
+    "Review code standards",
+    "Refactor InvestorPipeline",
+    "Monitor API usage"
   ],
-  "last_updated": "2026-06-27T05:56:19.871356+00:00",
+  "last_updated": "2026-06-27T07:46:39.089350+00:00",
   "total": 200
 }
