@@ -42,8 +42,18 @@ PROMPT_INSTRUCTION = (
 HISTORY_ENTRY_TEMPLATE = "  params={params} -> sharpe={sharpe:.3f}"
 
 # --------------------------------------------------------------------------- #
+# Hyper‑parameter sweep settings
+# --------------------------------------------------------------------------- #
+
+# Number of random configurations to evaluate per strategy during a sweep
+NUM_RANDOM_CONFIGS = 5
+
+# Minimum Sharpe improvement (fraction) required to consider a promotion
+SHARPE_IMPROVEMENT_THRESHOLD = 0.10  # 10 %
+
+# --------------------------------------------------------------------------- #
 # Parameter search spaces per strategy — covers all major strategies across all desks.
-# Add a new entry here to make any strategy auto-tunable by the LLM-guided sweep.
+# Add a new entry here to make any strategy auto-tunable by the LLM‑guided sweep.
 # --------------------------------------------------------------------------- #
 PARAM_SPACES: dict[str, dict[str, list]] = {
     # ── Equities — directional ──────────────────────────────────────────────
@@ -225,43 +235,76 @@ class SelfImprover:
         """
         Ask the free-LLM fleet to propose the next promising config given the
         search space and results tried so far. Returns a valid params dict drawn
-        strictly from `space`, or None if no LLM keys / invalid response.
+        strictly from `space`, or None if no free-LLM keys / invalid response.
         Degrades gracefully to random sampling when no free-LLM keys are set.
         """
         try:
             from app.tasks.free_llm_router import available_keys, call_routed
             if not available_keys():
-                return None  # No free-LLM keys configured — caller falls back to random
-
-            history = "\n".join(
-                HISTORY_ENTRY_TEMPLATE.format(
-                    params=json.dumps(p),
-                    sharpe=s,
-                )
-                for p, s in tried[-8:]
-            ) or "  (none yet)"
+                return None  # No free-LLM keys configured — caller falls back
+            # Build prompt
             prompt = (
                 PROMPT_HEADER.format(strategy=strategy)
                 + PROMPT_SPACE_DESC
                 + json.dumps(space, indent=2)
                 + "\n"
                 + PROMPT_RESULTS_DESC
-                + history
+                + "\n".join(
+                    HISTORY_ENTRY_TEMPLATE.format(params=p, sharpe=s) for p, s in tried
+                )
                 + "\n"
                 + PROMPT_INSTRUCTION
             )
-            raw = await call_routed(
-                [{"role": "user", "content": prompt}], task_type="fast", max_tokens=256
-            )
-            if not raw:
+            response = await call_routed(prompt)
+            # Expect a JSON dict; validate keys against space
+            try:
+                parsed = json.loads(response)
+                if not isinstance(parsed, dict):
+                    return None
+                # Ensure every key exists in space and value is allowed
+                for k, v in parsed.items():
+                    if k not in space or v not in space[k]:
+                        return None
+                return parsed
+            except json.JSONDecodeError:
                 return None
-            # Extract the JSON object from the response defensively
-            start, end = raw.find("{"), raw.rfind("}")
-            if start < 0 or end <= start:
-                return None
-            # Parsing step omitted for brevity
-        except Exception as e:
-            logger.error("LLM proposal failed: %s", e)
+        except Exception as exc:
+            logger.error("LLM proposal failed for %s: %s", strategy, exc)
             return None
 
-# ... (truncated for brevity)
+    async def _evaluate_config(self, strategy: str, params: dict) -> float:
+        """
+        Simulate evaluation of a config. In production this would trigger a back‑test
+        and return the resulting Sharpe. Here we mock with a deterministic UUID‑based
+        pseudo‑random value to keep the autoloop deterministic for unit tests.
+        """
+        # Deterministic pseudo‑random Sharpe based on strategy+params
+        seed = f"{strategy}:{json.dumps(params, sort_keys=True)}"
+        random_val = random.Random(uuid.uuid5(uuid.NAMESPACE_DNS, seed)).random()
+        # Scale to a realistic Sharpe range (0‑2)
+        return random_val * 2.0
+
+    async def _run_iteration(self):
+        """Perform a single self‑improvement iteration."""
+        if not self.algo_agent:
+            logger.warning("SelfImprover started without an AlgoAgent instance.")
+            return
+
+        # 1️⃣ Retrieve top‑3 strategies from the AlgoAgent leaderboard
+        top_strategies = await self.algo_agent.get_top_strategies(limit=3)
+        logger.info("SelfImprover iteration %s – top strategies: %s", self._iteration, top_strategies)
+
+        for strategy in top_strategies:
+            space = PARAM_SPACES.get(strategy, {})
+            if not space:
+                logger.debug("No parameter space defined for strategy %s – skipping.", strategy)
+                continue
+
+            # 2️⃣ Generate random configs and evaluate them
+            tried: list[tuple[dict, float]] = []
+            for _ in range(NUM_RANDOM_CONFIGS):
+                params = self._sample_params(strategy)
+                sharpe = await self._evaluate_config(strategy, params)
+                tried.append((params, sharpe))
+
+                # Update best known config for
