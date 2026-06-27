@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Verify clock sync",
-    "error_handling on ml/features/advanced_indicators.py: success \u2014 tests green",
     "Test network latency",
     "Historical data analysis suggests a potential Sharpe ratio of 1.2-1.5 for the \"FT-Signal-Boost\" strategy, driven by the complementarity of RT and FT strategies.",
     "* Refine TFT models",
@@ -203,6 +201,6 @@
     "error_handling on brokers/kalshi.py: success \u2014 tests green",
     "error_handling on comparison/benchmarks.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T13:30:19.082495+00:00",
+  "last_updated": "2026-06-27T15:00:26.049564+00:00",
   "total": 200
 }
