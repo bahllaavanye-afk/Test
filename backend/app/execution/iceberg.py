@@ -11,12 +11,32 @@ from app.utils.logging import logger
 
 
 class IcebergExecution:
+    """Execute orders using the iceberg strategy.
+
+    The strategy splits a large order into smaller visible slices. After each slice
+    is filled, the next slice is submitted after a configurable delay.
+    """
+
     def __init__(self, broker: AbstractBroker, visible_pct: float = 0.10, refill_delay_seconds: int = 5):
+        """
+        Args:
+            broker: Broker implementation used to place orders.
+            visible_pct: Fraction of the total quantity to expose per slice (0 < pct <= 1).
+            refill_delay_seconds: Seconds to wait between submitting slices.
+        """
         self.broker = broker
         self.visible_pct = visible_pct
         self.refill_delay_seconds = refill_delay_seconds
 
     async def execute(self, request: OrderRequest) -> OrderResult:
+        """Execute the iceberg order.
+
+        Args:
+            request: The original order request.
+
+        Returns:
+            An OrderResult summarising the aggregated execution.
+        """
         visible_qty = max(1.0, request.quantity * self.visible_pct)
         remaining = request.quantity
         total_filled = 0.0
@@ -30,12 +50,17 @@ class IcebergExecution:
             )
             try:
                 result = await self.broker.place_order(slice_req)
-                total_filled += result.filled_qty
-                remaining -= result.filled_qty
-                if result.avg_fill_price:
-                    total_cost += result.avg_fill_price * result.filled_qty
+                filled = result.filled_qty or 0.0
+                total_filled += filled
+                remaining -= filled
+                if result.avg_fill_price is not None:
+                    total_cost += result.avg_fill_price * filled
                 last_result = result
-                logger.debug("Iceberg slice", filled=result.filled_qty, remaining=remaining)
+                logger.debug("Iceberg slice", filled=filled, remaining=remaining)
+
+                if filled == 0:
+                    logger.warning("Iceberg slice filled zero quantity, aborting to avoid infinite loop")
+                    break
 
                 if remaining > 0.01:
                     await asyncio.sleep(self.refill_delay_seconds)
