@@ -16,7 +16,9 @@ from app.backtest.engine import BacktestMetrics, run_backtest
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
 
+# ------------------------------
 # Constants
+# ------------------------------
 DEFAULT_INITIAL_EQUITY: float = 100_000
 MIN_DATA_LENGTH: int = 10
 IMPROVEMENT_THRESHOLD: float = 0.1
@@ -25,12 +27,12 @@ LOG_PVALUE_PRECISION: int = 4
 IMPROVEMENT_ROUND: int = 4
 TSTAT_ROUND: int = 4
 PVAL_ROUND: int = 6
+
 WINNER_ML: str = "ml"
 WINNER_MANUAL: str = "manual"
 WINNER_NEITHER: str = "neither"
 LOG_MESSAGE: str = "Comparison complete"
 
-# Extracted magic strings and default numeric values
 EQUITY_KEY: str = "equity"
 DEFAULT_T_STAT: float = 0.0
 DEFAULT_P_VAL: float = 1.0
@@ -234,8 +236,8 @@ class StrategyComparisonEngine:
             benchmark_curves=benchmark_curves,
             benchmark_stats=benchmark_stats,
             ml_improvement_sharpe=round(improvement, IMPROVEMENT_ROUND),
-            t_statistic=round(float(t_stat), TSTAT_ROUND),
-            p_value=round(float(p_val), PVAL_ROUND),
-            is_significant=(p_val < SIGNIFICANCE_LEVEL),
+            t_statistic=round(t_stat, TSTAT_ROUND),
+            p_value=round(p_val, PVAL_ROUND),
+            is_significant=p_val < SIGNIFICANCE_LEVEL,
             winner=winner,
         )
