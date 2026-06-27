@@ -201,6 +201,6 @@
     "strategy_logic on ml/models/lorentzian_knn.py: success \u2014 tests green",
     "strategy_logic on ml/features/alternative.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T11:52:39.613591+00:00",
+  "last_updated": "2026-06-27T13:25:29.015730+00:00",
   "total": 200
 }
