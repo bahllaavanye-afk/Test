@@ -199,8 +199,13 @@
     "Improve data_loader.py",
     "Review code standards",
     "Refactor InvestorPipeline",
-    "Monitor API usage"
+    "Monitor API usage",
+    "schemas on tasks/token_budget.py: success \u2014 tests green",
+    "schemas on api/v1/copy_trading.py: success \u2014 tests green",
+    "schemas on test/unit/test_workflow_scripts.py: success \u2014 tests green",
+    "schemas on strategies/manual/vrp_systematic.py: success \u2014 tests green",
+    "schemas on ml/models/foundation_model.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T07:46:39.089350+00:00",
+  "last_updated": "2026-06-27T07:48:47.272604+00:00",
   "total": 200
 }
