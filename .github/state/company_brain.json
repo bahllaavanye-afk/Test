@@ -596,7 +596,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782589165.4434803,
+    "last_updated": 1782592982.5512524,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -699,7 +699,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782589016.8292892
+    "last_brain_update": 1782592982.550466
   },
   "episodic": [
     {
@@ -2283,6 +2283,11 @@
       "summary": "The issue was assigned to `codex-task` for processing, but the GPT-4o agent and a free-agent engineer both failed to handle it due to all LLM providers being unavailable.",
       "item_count": 20,
       "ts": 1782589016.8217328
+    },
+    {
+      "summary": "The CI debug logs show two separate runs (commits `53517ef` and `f7c2b20`) both using Python 3.11.15 with identical truncated package listings, suggesting a potential environment or dependency issue being investigated.",
+      "item_count": 20,
+      "ts": 1782592982.5435092
     }
   ]
 }
