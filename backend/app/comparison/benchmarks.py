@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.utils.logging import logger
@@ -31,6 +32,73 @@ def _alpaca_headers() -> dict:
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
+
+
+class BenchmarkPoint(BaseModel):
+    """Single point of a benchmark equity curve."""
+
+    date: date = Field(..., description="Date of the observation", example="2024-01-02")
+    value: float = Field(
+        ...,
+        description="Normalized equity value (base = 100)",
+        example=102.34,
+        ge=0,
+    )
+
+    @validator("value")
+    def no_nan(cls, v: float) -> float:
+        if pd.isna(v):
+            raise ValueError("value must not be NaN")
+        return v
+
+
+class BenchmarkCurveResponse(BaseModel):
+    """Mapping of ticker symbols to their equity curve data."""
+
+    __root__: Mapping[str, List[BenchmarkPoint]] = Field(
+        ...,
+        description="Dictionary where each key is a ticker and each value is a list of equity points",
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "SPY": [
+                    {"date": "2024-01-02", "value": 100.0},
+                    {"date": "2024-01-03", "value": 101.2},
+                ],
+                "ALL_WEATHER": [
+                    {"date": "2024-01-02", "value": 100.0},
+                    {"date": "2024-02-01", "value": 101.5},
+                ],
+            }
+        }
+
+
+class BenchmarkStatItem(BaseModel):
+    """Static reference statistics for a benchmark."""
+
+    name: str = Field(..., description="Human‑readable name of the benchmark", example="S&P 500")
+    annual_return: float = Field(
+        ...,
+        description="Annualized total return (as a decimal)",
+        example=0.10,
+        ge=-1,
+        le=5,
+    )
+    sharpe: float = Field(
+        ...,
+        description="Sharpe ratio",
+        example=0.47,
+        ge=-10,
+        le=10,
+    )
+    max_dd: float = Field(
+        ...,
+        description="Maximum drawdown (as a decimal, negative)",
+        example=-0.57,
+        le=0,
+    )
 
 
 async def _fetch_ticker_bars(
@@ -90,8 +158,12 @@ async def _fetch_ticker_bars(
     return series
 
 
-async def fetch_benchmark_curves(start: date, end: date) -> Dict[str, List[Dict[str, Any]]]:
-    """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
+async def fetch_benchmark_curves(start: date, end: date) -> BenchmarkCurveResponse:
+    """Returns normalized equity curves for each benchmark ticker.
+
+    The curves are expressed as a list of ``BenchmarkPoint`` objects and are
+    normalized to a value of 100 at the start date.
+    """
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
     async with httpx.AsyncClient(timeout=20.0) as client:
@@ -117,7 +189,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> Dict[str, List[Dict[
         if not series.empty
     }
 
-    result: Dict[str, List[Dict[str, Any]]] = {}
+    result: Dict[str, List[BenchmarkPoint]] = {}
 
     for ticker in BENCHMARKS:
         if ticker not in closes_dict:
@@ -127,7 +199,8 @@ async def fetch_benchmark_curves(start: date, end: date) -> Dict[str, List[Dict[
             continue
         normalized = (series / series.iloc[0] * 100).round(2)
         result[ticker] = [
-            {"date": str(idx.date()), "value": float(v)} for idx, v in normalized.items()
+            BenchmarkPoint(date=idx.date(), value=float(v))
+            for idx, v in normalized.items()
         ]
 
     # All Weather: monthly rebalanced weighted portfolio
@@ -141,17 +214,19 @@ async def fetch_benchmark_curves(start: date, end: date) -> Dict[str, List[Dict[
         aw_ret = (monthly_returns * weights).sum(axis=1)
         aw_equity = (1 + aw_ret).cumprod() * 100
         result["ALL_WEATHER"] = [
-            {"date": str(idx.date()), "value": round(float(v), 2)} for idx, v in aw_equity.items()
+            BenchmarkPoint(date=idx.date(), value=round(float(v), 2))
+            for idx, v in aw_equity.items()
         ]
 
-    return result
+    return BenchmarkCurveResponse(__root__=result)
 
 
-def get_benchmark_stats() -> dict:
+def get_benchmark_stats() -> Dict[str, BenchmarkStatItem]:
     """Static benchmark reference stats for display."""
-    return {
+    raw = {
         "SPY": {"name": "S&P 500", "annual_return": 0.100, "sharpe": 0.47, "max_dd": -0.57},
         "QQQ": {"name": "NASDAQ 100", "annual_return": 0.145, "sharpe": 0.61, "max_dd": -0.83},
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+    return {k: BenchmarkStatItem(**v) for k, v in raw.items()}
