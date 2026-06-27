@@ -1,0 +1,52 @@
+name: Snapshot Publisher — static live data (no-backend site)
+
+# The customer site goes dark whenever the Render backend is down (free
+# build-minute quota). This publishes the data the site needs — Alpaca paper
+# P&L/positions, strategy library, desk roster, brain health — to
+# frontend/public/data/snapshot.json, which Vercel serves statically at
+# /data/snapshot.json. So the site shows REAL numbers with no backend at all.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: snapshot-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Generate snapshot
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
+          TRADING_MODE: paper
+        run: python .github/scripts/snapshot_publisher.py
+      - name: Commit if changed
+        run: |
+          git config user.name "quantedge-snapshot-bot"
+          git config user.email "snapshot-bot@quantedge.local"
+          git add frontend/public/data/snapshot.json
+          if git diff --cached --quiet; then
+            echo "no snapshot change"
+          else
+            git commit -m "chore(snapshot): refresh live data [skip ci]"
+            for i in 1 2 3; do git push && break || sleep $((2**i)); done
+          fi
