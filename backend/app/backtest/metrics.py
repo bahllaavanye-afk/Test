@@ -7,6 +7,12 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+
+class MetricComputationError(Exception):
+    """Custom exception for errors occurring during metric computation."""
+    pass
+
+
 @dataclass
 class BacktestMetrics:
     # Returns
@@ -65,78 +71,109 @@ def compute_metrics(
         # ------------------------------------------------------------------
         # Returns
         # ------------------------------------------------------------------
-        initial = float(equity.iloc[0])
-        final = float(equity.iloc[-1])
-        total_return = (final / initial) - 1.0
-        total_return_pct = round(total_return * 100, 4)
+        try:
+            initial = float(equity.iloc[0])
+            final = float(equity.iloc[-1])
+            total_return = (final / initial) - 1.0
+            total_return_pct = round(total_return * 100, 4)
 
-        n_days = len(equity)
-        years = n_days / 252.0
-        annual_return = (final / initial) ** (1.0 / max(years, 1e-6)) - 1.0
-        annual_return_pct = round(annual_return * 100, 4)
+            n_days = len(equity)
+            years = n_days / 252.0
+            annual_return = (final / initial) ** (1.0 / max(years, 1e-6)) - 1.0
+            annual_return_pct = round(annual_return * 100, 4)
+        except (IndexError, ZeroDivisionError) as e:
+            logger.error("Error computing returns", exc_info=True)
+            raise MetricComputationError("Failed to compute returns") from e
 
         # ------------------------------------------------------------------
         # Sharpe  (rf = 0)
         # ------------------------------------------------------------------
-        daily_std = float(daily_returns.std())
-        if daily_std > 0:
-            sharpe = float(daily_returns.mean() / daily_std * np.sqrt(252))
-        else:
-            sharpe = 0.0
+        try:
+            daily_std = float(daily_returns.std())
+            sharpe = (
+                float(daily_returns.mean() / daily_std * np.sqrt(252))
+                if daily_std > 0
+                else 0.0
+            )
+        except Exception as e:
+            logger.error("Error computing Sharpe ratio", exc_info=True)
+            raise MetricComputationError("Failed to compute Sharpe ratio") from e
 
         # ------------------------------------------------------------------
         # Sortino  (downside deviation below 0)
         # ------------------------------------------------------------------
-        downside = daily_returns[daily_returns < 0]
-        downside_std = float(downside.std()) if len(downside) > 1 else 0.0
-        if downside_std > 0:
-            sortino = float(daily_returns.mean() / downside_std * np.sqrt(252))
-        else:
-            sortino = 0.0
+        try:
+            downside = daily_returns[daily_returns < 0]
+            downside_std = float(downside.std()) if len(downside) > 1 else 0.0
+            sortino = (
+                float(daily_returns.mean() / downside_std * np.sqrt(252))
+                if downside_std > 0
+                else 0.0
+            )
+        except Exception as e:
+            logger.error("Error computing Sortino ratio", exc_info=True)
+            raise MetricComputationError("Failed to compute Sortino ratio") from e
 
         # ------------------------------------------------------------------
         # Drawdown
         # ------------------------------------------------------------------
-        rolling_max = equity.cummax()
-        drawdown_series = (equity - rolling_max) / rolling_max  # <= 0
+        try:
+            rolling_max = equity.cummax()
+            drawdown_series = (equity - rolling_max) / rolling_max  # <= 0
 
-        max_drawdown = float(drawdown_series.min())       # most negative
-        max_drawdown_pct = round(max_drawdown * 100, 4)
-        avg_drawdown_pct = round(float(drawdown_series[drawdown_series < 0].mean()) * 100, 4) if (drawdown_series < 0).any() else 0.0
+            max_drawdown = float(drawdown_series.min())  # most negative
+            max_drawdown_pct = round(max_drawdown * 100, 4)
 
-        # Max drawdown duration: longest streak of bars below the peak
-        in_dd = (drawdown_series < 0).astype(int)
-        if in_dd.any():
-            # group consecutive drawdown bars
-            groups = (in_dd != in_dd.shift()).cumsum()
-            dd_lengths = in_dd.groupby(groups).sum()
-            max_dd_duration = int(dd_lengths.max())
-        else:
-            max_dd_duration = 0
+            if (drawdown_series < 0).any():
+                avg_drawdown_pct = round(
+                    float(drawdown_series[drawdown_series < 0].mean()) * 100, 4
+                )
+            else:
+                avg_drawdown_pct = 0.0
+
+            # Max drawdown duration: longest streak of bars below the peak
+            in_dd = (drawdown_series < 0).astype(int)
+            if in_dd.any():
+                groups = (in_dd != in_dd.shift()).cumsum()
+                dd_lengths = in_dd.groupby(groups).sum()
+                max_dd_duration = int(dd_lengths.max())
+            else:
+                max_dd_duration = 0
+        except Exception as e:
+            logger.error("Error computing drawdown metrics", exc_info=True)
+            raise MetricComputationError("Failed to compute drawdown metrics") from e
 
         # ------------------------------------------------------------------
         # Calmar
         # ------------------------------------------------------------------
-        if max_drawdown != 0:
-            calmar = round(annual_return / abs(max_drawdown), 4)
-        else:
-            calmar = 0.0
+        try:
+            calmar = round(annual_return / abs(max_drawdown), 4) if max_drawdown != 0 else 0.0
+        except Exception as e:
+            logger.error("Error computing Calmar ratio", exc_info=True)
+            raise MetricComputationError("Failed to compute Calmar ratio") from e
 
         # ------------------------------------------------------------------
         # Recovery factor
         # ------------------------------------------------------------------
-        if max_drawdown != 0:
-            recovery_factor = round(total_return / abs(max_drawdown), 4)
-        else:
-            recovery_factor = 0.0
+        try:
+            recovery_factor = (
+                round(total_return / abs(max_drawdown), 4) if max_drawdown != 0 else 0.0
+            )
+        except Exception as e:
+            logger.error("Error computing recovery factor", exc_info=True)
+            raise MetricComputationError("Failed to compute recovery factor") from e
 
         # ------------------------------------------------------------------
         # VaR and CVaR (95%)
         # ------------------------------------------------------------------
-        ret_arr = daily_returns.values
-        var_95 = float(np.percentile(ret_arr, 5))       # 5th percentile = 95% VaR
-        cvar_mask = ret_arr <= var_95
-        cvar_95 = float(ret_arr[cvar_mask].mean()) if cvar_mask.any() else var_95
+        try:
+            ret_arr = daily_returns.values
+            var_95 = float(np.percentile(ret_arr, 5))  # 5th percentile = 95% VaR
+            cvar_mask = ret_arr <= var_95
+            cvar_95 = float(ret_arr[cvar_mask].mean()) if cvar_mask.any() else var_95
+        except Exception as e:
+            logger.error("Error computing VaR/CVaR", exc_info=True)
+            raise MetricComputationError("Failed to compute VaR/CVaR") from e
 
         # ------------------------------------------------------------------
         # Information ratio vs benchmark
@@ -145,12 +182,10 @@ def compute_metrics(
         if benchmark is not None and len(benchmark) > 1:
             try:
                 bm = benchmark.dropna().astype(float)
-                # Align on common index
                 common_idx = equity.index.intersection(bm.index)
                 if len(common_idx) > 1:
                     strat_ret = equity.loc[common_idx].pct_change().dropna()
                     bm_ret = bm.loc[common_idx].pct_change().dropna()
-                    # Re-align after pct_change
                     common2 = strat_ret.index.intersection(bm_ret.index)
                     if len(common2) > 1:
                         active_returns = strat_ret.loc[common2] - bm_ret.loc[common2]
@@ -160,23 +195,27 @@ def compute_metrics(
                                 float(active_returns.mean()) * 252 / tracking_error, 4
                             )
             except Exception as e:
-                logger.error(f"Error calculating information ratio: {str(e)}")
+                logger.error("Error calculating information ratio", exc_info=True)
 
         # ------------------------------------------------------------------
         # Monthly best/worst
         # ------------------------------------------------------------------
-        if hasattr(equity.index, 'to_period'):
-            monthly = equity.resample("ME").last()
-            monthly_returns = monthly.pct_change().dropna()
-        else:
-            monthly_returns = pd.Series(dtype=float)
+        try:
+            if hasattr(equity.index, "to_period"):
+                monthly = equity.resample("ME").last()
+                monthly_returns = monthly.pct_change().dropna()
+            else:
+                monthly_returns = pd.Series(dtype=float)
 
-        if len(monthly_returns) > 0:
-            best_month_pct = round(float(monthly_returns.max()) * 100, 4)
-            worst_month_pct = round(float(monthly_returns.min()) * 100, 4)
-        else:
-            best_month_pct = 0.0
-            worst_month_pct = 0.0
+            if len(monthly_returns) > 0:
+                best_month_pct = round(float(monthly_returns.max()) * 100, 4)
+                worst_month_pct = round(float(monthly_returns.min()) * 100, 4)
+            else:
+                best_month_pct = 0.0
+                worst_month_pct = 0.0
+        except Exception as e:
+            logger.error("Error computing monthly best/worst", exc_info=True)
+            raise MetricComputationError("Failed to compute monthly best/worst") from e
 
         # ------------------------------------------------------------------
         # Trade-level stats (from trades DataFrame if provided)
@@ -193,56 +232,47 @@ def compute_metrics(
                 total_trades = len(pnl)
                 wins = pnl[pnl > 0]
                 losses = pnl[pnl <= 0]
+
                 win_rate = round(len(wins) / total_trades, 4) if total_trades > 0 else 0.0
                 avg_win_pct = round(float(wins.mean()) * 100, 4) if len(wins) > 0 else 0.0
                 avg_loss_pct = round(float(losses.mean()) * 100, 4) if len(losses) > 0 else 0.0
-                sum_losses = float(losses.sum())
-                if sum_losses != 0:
-                    profit_factor = round(float(wins.sum()) / abs(sum_losses), 4)
-                else:
-                    profit_factor = float("inf") if len(wins) > 0 else 0.0
+
+                loss_sum = float(losses.sum())
+                profit_factor = (
+                    round(float(wins.sum()) / abs(loss_sum), 4)
+                    if loss_sum != 0
+                    else np.inf
+                )
             except Exception as e:
-                logger.error(f"Error calculating trade-level stats: {str(e)}")
-        else:
-            # Infer rough trade stats from equity curve sign-changes in daily returns
-            signs = np.sign(daily_returns.values)
-            sign_changes = np.where(np.diff(signs) != 0)[0]
-            total_trades = len(sign_changes)
+                logger.error("Error calculating trade statistics", exc_info=True)
 
-            pos_returns = daily_returns[daily_returns > 0]
-            neg_returns = daily_returns[daily_returns <= 0]
-            n_total = len(daily_returns)
-            win_rate = round(len(pos_returns) / n_total, 4) if n_total > 0 else 0.0
-            avg_win_pct = round(float(pos_returns.mean()) * 100, 4) if len(pos_returns) > 0 else 0.0
-            avg_loss_pct = round(float(neg_returns.mean()) * 100, 4) if len(neg_returns) > 0 else 0.0
-
+        # ------------------------------------------------------------------
+        # Assemble results
+        # ------------------------------------------------------------------
         return BacktestMetrics(
-            total_return_pct,
-            annual_return_pct,
-            sharpe,
-            sortino,
-            calmar,
-            max_drawdown_pct,
-            avg_drawdown_pct,
-            max_dd_duration,
-            total_trades,
-            win_rate,
-            avg_win_pct,
-            avg_loss_pct,
-            profit_factor,
-            var_95,
-            cvar_95,
-            information_ratio,
-            best_month_pct,
-            worst_month_pct,
-            recovery_factor
+            total_return_pct=total_return_pct,
+            annual_return_pct=annual_return_pct,
+            sharpe=sharpe,
+            sortino=sortino,
+            calmar=calmar,
+            max_drawdown_pct=max_drawdown_pct,
+            avg_drawdown_pct=avg_drawdown_pct,
+            max_drawdown_duration_days=max_dd_duration,
+            total_trades=total_trades,
+            win_rate=win_rate,
+            avg_win_pct=avg_win_pct,
+            avg_loss_pct=avg_loss_pct,
+            profit_factor=profit_factor,
+            var_95=var_95,
+            cvar_95=cvar_95,
+            information_ratio=information_ratio,
+            best_month_pct=best_month_pct,
+            worst_month_pct=worst_month_pct,
+            recovery_factor=recovery_factor,
         )
-    except ValueError as e:
-        logger.error(f"ValueError: {str(e)}")
-        raise
-    except TypeError as e:
-        logger.error(f"TypeError: {str(e)}")
+    except MetricComputationError:
+        # Already logged; re‑raise to caller
         raise
     except Exception as e:
-        logger.error(f"Error calculating metrics: {str(e)}")
-        raise
+        logger.exception("Unexpected error during metric computation")
+        raise MetricComputationError("Unexpected error during metric computation") from e
