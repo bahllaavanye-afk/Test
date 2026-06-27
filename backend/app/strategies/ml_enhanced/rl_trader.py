@@ -139,6 +139,33 @@ class RLTraderStrategy(AbstractStrategy):
             )
         return None
 
+    def _prepare_input_tensor(self, df: pd.DataFrame) -> torch.Tensor | None:
+        """Create the feature tensor for a given DataFrame window."""
+        return _build_feature_tensor(df, seq_len=self.SEQ_LEN)
+
+    def _pad_tensor(self, x: torch.Tensor) -> torch.Tensor:
+        """Pad or trim the feature dimension to match the model's expectation."""
+        if x.shape[-1] == self._agent.n_features:
+            return x
+        pad_size = self._agent.n_features - x.shape[-1]
+        if pad_size > 0:
+            # Pad with zeros
+            padding = torch.zeros(*x.shape[:2], pad_size, dtype=x.dtype)
+            return torch.cat([x, padding], dim=-1)
+        # Trim excess features
+        return x[..., : self._agent.n_features]
+
+    def _infer_action(self, x: torch.Tensor) -> tuple[int, float, list[float]]:
+        """
+        Run the model on the tensor and return the selected action,
+        its confidence, and the full probability list.
+        """
+        action = self._agent.select_action(x)
+        action_probs, _ = self._agent.forward(x)
+        confidence = float(action_probs[0, action].item())
+        probs = action_probs[0].tolist()
+        return int(action), confidence, probs
+
     # ------------------------------------------------------------------
     # AbstractStrategy interface
     # ------------------------------------------------------------------
@@ -150,24 +177,12 @@ class RLTraderStrategy(AbstractStrategy):
         if self._agent is None:
             return self._rsi_signal(data, symbol)
 
-        x = _build_feature_tensor(data, seq_len=self.SEQ_LEN)
+        x = self._prepare_input_tensor(data)
         if x is None:
             return self._rsi_signal(data, symbol)
 
-        # Pad or trim feature dimension to match model expectations
-        if x.shape[-1] != self._agent.n_features:
-            # Pad with zeros to match training feature count
-            pad_size = self._agent.n_features - x.shape[-1]
-            if pad_size > 0:
-                x = torch.cat(
-                    [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                )
-            else:
-                x = x[..., : self._agent.n_features]
-
-        action = self._agent.select_action(x)
-        action_probs, _ = self._agent.forward(x)
-        confidence = float(action_probs[0, action].item())
+        x = self._pad_tensor(x)
+        action, confidence, probs = self._infer_action(x)
         close = float(data["close"].iloc[-1])
 
         if action == _BUY and confidence >= self.confidence_threshold:
@@ -179,7 +194,7 @@ class RLTraderStrategy(AbstractStrategy):
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
                 target_price=close,
-                metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
+                metadata={"source": "a3c_lstm", "action_probs": probs},
             )
         if action == _SELL and confidence >= self.confidence_threshold:
             return Signal(
@@ -190,7 +205,7 @@ class RLTraderStrategy(AbstractStrategy):
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
                 target_price=close,
-                metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
+                metadata={"source": "a3c_lstm", "action_probs": probs},
             )
         return None
 
@@ -206,38 +221,19 @@ class RLTraderStrategy(AbstractStrategy):
             exits = (rsi_series > 70).fillna(False)
             return BacktestSignals(entries=entries, exits=exits)
 
-        actions = pd.Series(index=df.index, dtype=int)
-        actions[:] = _HOLD
+        actions = pd.Series(_HOLD, index=df.index, dtype=int)
 
         self._agent.eval()
         with torch.no_grad():
             for i in range(self.SEQ_LEN, len(df)):
                 window = df.iloc[i - self.SEQ_LEN : i]
-                x = _build_feature_tensor(window, seq_len=self.SEQ_LEN)
+                x = self._prepare_input_tensor(window)
                 if x is None:
                     continue
-                if x.shape[-1] != self._agent.n_features:
-                    pad_size = self._agent.n_features - x.shape[-1]
-                    if pad_size > 0:
-                        x = torch.cat(
-                            [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                        )
-                    else:
-                        x = x[..., : self._agent.n_features]
-                action_probs, _ = self._agent.forward(x)
-                actions.iloc[i] = int(action_probs[0].argmax().item())
+                x = self._pad_tensor(x)
+                action, _, _ = self._infer_action(x)
+                actions.iloc[i] = action
 
-        # Apply shift(1) — no lookahead
-        actions = actions.shift(1).fillna(_HOLD).astype(int)
-
-        entries = actions == _BUY
-        exits = actions == _SELL
-        short_entries = actions == _SELL
-        short_exits = actions == _BUY
-
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
+        entries = (actions == _BUY).shift(1).fillna(False)
+        exits = (actions == _SELL).shift(1).fillna(False)
+        return BacktestSignals(entries=entries, exits=exits)
