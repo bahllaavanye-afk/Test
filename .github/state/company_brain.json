@@ -596,7 +596,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782592982.5512524,
+    "last_updated": 1782596692.4747968,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -698,8 +698,8 @@
       "AAPL"
     ],
     "risk_flags": [],
-    "risk_status": "alert",
-    "last_brain_update": 1782592982.550466
+    "risk_status": "normal",
+    "last_brain_update": 1782596692.4739861
   },
   "episodic": [
     {
@@ -2101,6 +2101,27 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1782578736.187363
+    },
+    {
+      "lesson": "Free LLM providers are failing consistently - need to evaluate paid provider fallback strategy or local model deployment",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782596692.4565039
+    },
+    {
+      "lesson": "CI pipeline failing at Python 3.11.15 with no clear dependency resolution - likely aiohttp/aiosqlite version conflict",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782596692.4600203
+    },
+    {
+      "lesson": "Vercel deployment token visible in issue body - immediate rotation required to prevent unauthorized access",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782596692.463465
     }
   ],
   "github_insights": [
@@ -2288,6 +2309,11 @@
       "summary": "The CI debug logs show two separate runs (commits `53517ef` and `f7c2b20`) both using Python 3.11.15 with identical truncated package listings, suggesting a potential environment or dependency issue being investigated.",
       "item_count": 20,
       "ts": 1782592982.5435092
+    },
+    {
+      "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
+      "item_count": 20,
+      "ts": 1782596692.4669156
     }
   ]
 }
