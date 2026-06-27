@@ -10,9 +10,7 @@ import pandas as pd
 
 try:
     import torch
-    _TORCH_AVAILABLE = True
-except ImportError:
-    _TORCH_AVAILABLE = False
+except ImportError:  # pragma: no cover
     torch = None  # type: ignore[assignment]
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -38,7 +36,7 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
 def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor | None:
     """
     Build a (1, seq_len, n_features) tensor from the last `seq_len` rows
-    of an OHLCV DataFrame.  Returns None if df is too short.
+    of an OHLCV DataFrame. Returns None if df is too short.
     """
     if len(df) < seq_len + 1:
         return None
@@ -81,7 +79,7 @@ class RLTraderStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.60
 
-    # Feature dimension expected by the model.  Must match training config.
+    # Feature dimension expected by the model. Must match training config.
     N_FEATURES = 3
     SEQ_LEN = 30
 
@@ -105,7 +103,7 @@ class RLTraderStrategy(AbstractStrategy):
 
             self._agent = A3CLSTMAgent.load(str(self._model_path))
             self._agent.eval()
-        except Exception:
+        except Exception:  # pragma: no cover
             self._agent = None
 
     def _rsi_signal(self, df: pd.DataFrame, symbol: str) -> Signal | None:
@@ -149,10 +147,8 @@ class RLTraderStrategy(AbstractStrategy):
             return x
         pad_size = self._agent.n_features - x.shape[-1]
         if pad_size > 0:
-            # Pad with zeros
             padding = torch.zeros(*x.shape[:2], pad_size, dtype=x.dtype)
             return torch.cat([x, padding], dim=-1)
-        # Trim excess features
         return x[..., : self._agent.n_features]
 
     def _infer_action(self, x: torch.Tensor) -> tuple[int, float, list[float]]:
@@ -221,19 +217,25 @@ class RLTraderStrategy(AbstractStrategy):
             exits = (rsi_series > 70).fillna(False)
             return BacktestSignals(entries=entries, exits=exits)
 
-        actions = pd.Series(_HOLD, index=df.index, dtype=int)
+        # RL inference over rolling windows
+        entries = pd.Series(False, index=df.index)
+        exits = pd.Series(False, index=df.index)
 
-        self._agent.eval()
-        with torch.no_grad():
-            for i in range(self.SEQ_LEN, len(df)):
-                window = df.iloc[i - self.SEQ_LEN : i]
-                x = self._prepare_input_tensor(window)
-                if x is None:
-                    continue
-                x = self._pad_tensor(x)
-                action, _, _ = self._infer_action(x)
-                actions.iloc[i] = action
+        for idx in range(self.SEQ_LEN, len(df)):
+            window = df.iloc[idx - self.SEQ_LEN : idx]
+            x = self._prepare_input_tensor(window)
+            if x is None:
+                continue
+            x = self._pad_tensor(x)
+            action, confidence, _ = self._infer_action(x)
+            if confidence < self.confidence_threshold:
+                continue
+            if action == _BUY:
+                entries.iloc[idx] = True
+            elif action == _SELL:
+                exits.iloc[idx] = True
 
-        entries = (actions == _BUY).shift(1).fillna(False)
-        exits = (actions == _SELL).shift(1).fillna(False)
+        # Shift to ensure signals are based on past data only
+        entries = entries.shift(1).fillna(False)
+        exits = exits.shift(1).fillna(False)
         return BacktestSignals(entries=entries, exits=exits)
