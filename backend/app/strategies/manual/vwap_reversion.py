@@ -26,20 +26,24 @@ def _compute_vwap(df: pd.DataFrame) -> pd.Series:
     Compute VWAP for an OHLCV DataFrame.
     VWAP = cumulative(typical_price * volume) / cumulative(volume)
     Typical price = (high + low + close) / 3
+    Returns a Series aligned with the input index; NaN series if required columns are missing.
     """
     close_col = "close" if "close" in df.columns else "Close"
     high_col = "high" if "high" in df.columns else "High"
     low_col = "low" if "low" in df.columns else "Low"
     vol_col = "volume" if "volume" in df.columns else "Volume"
 
-    if not all(c in df.columns for c in [close_col, high_col, low_col, vol_col]):
-        return df[close_col] if close_col in df.columns else pd.Series(np.nan, index=df.index)
+    required = {close_col, high_col, low_col, vol_col}
+    if not required.issubset(df.columns):
+        # Return a NaN series to signal insufficient data
+        return pd.Series(np.nan, index=df.index)
 
     typical = (df[high_col] + df[low_col] + df[close_col]) / 3.0
     volume = df[vol_col].replace(0, np.nan).fillna(1.0)
 
     tp_vol = typical * volume
-    vwap = tp_vol.rolling(window=min(len(df), 390)).sum() / volume.rolling(window=min(len(df), 390)).sum()
+    window = min(len(df), 390)  # max intraday minutes
+    vwap = tp_vol.rolling(window=window).sum() / volume.rolling(window=window).sum()
     return vwap
 
 
@@ -114,7 +118,7 @@ class VWAPReversionStrategy(AbstractStrategy):
             )
 
         # Above VWAP band → expect reversion downward → sell
-        elif z_score > self.band_std:
+        if z_score > self.band_std:
             confidence = min(0.85, 0.60 + abs(z_score) * 0.05)
             return Signal(
                 symbol=symbol,
@@ -148,8 +152,8 @@ class VWAPReversionStrategy(AbstractStrategy):
         z_score = (deviation / rolling_std.replace(0, np.nan)).fillna(0)
 
         signals = pd.Series(0, index=df.index, dtype=float)
-        signals[z_score < -self.band_std] = 1     # buy when below band
-        signals[z_score > self.band_std] = -1      # sell when above band
+        signals[z_score < -self.band_std] = 1   # buy when below band
+        signals[z_score > self.band_std] = -1   # sell when above band
 
-        # CRITICAL: shift(1) to prevent lookahead
+        # Shift to prevent lookahead bias
         return signals.shift(1).fillna(0)
