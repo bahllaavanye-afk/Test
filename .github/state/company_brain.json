@@ -518,7 +518,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782517614.395978,
+    "last_updated": 1782528289.109886,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -621,7 +621,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782517614.3953185
+    "last_brain_update": 1782528289.1092079
   },
   "episodic": [
     {
@@ -1764,6 +1764,41 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1782517613.5132003
+    },
+    {
+      "lesson": "All free LLM providers are failing, causing a complete processing block for the free-agent engineer.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782528289.0882115
+    },
+    {
+      "lesson": "Task routing automatically fell back from Claude to GPT-4o, indicating no provider diversity or failover for critical reasoning tasks.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782528289.0913553
+    },
+    {
+      "lesson": "Claude's unavailability forces dependency on a single model (GPT-4o), creating a single point of failure in the automation pipeline.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782528289.094265
+    },
+    {
+      "lesson": "The system lacks a paid or reserved LLM tier to handle sustained free-tier outages, threatening continuous operations.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782528289.0971837
+    },
+    {
+      "lesson": "Multiple identical failure logs suggest no retry logic or circuit breaker is implemented for LLM provider calls.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782528289.100171
     }
   ],
   "github_insights": [
@@ -1896,6 +1931,11 @@
       "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
       "item_count": 20,
       "ts": 1782517614.3875043
+    },
+    {
+      "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
+      "item_count": 20,
+      "ts": 1782528289.1031744
     }
   ]
 }
