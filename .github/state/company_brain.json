@@ -606,7 +606,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782600286.9878354,
+    "last_updated": 1782603836.888347,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -708,8 +708,8 @@
       "AAPL"
     ],
     "risk_flags": [],
-    "risk_status": "normal",
-    "last_brain_update": 1782600286.9870045
+    "risk_status": "alert",
+    "last_brain_update": 1782603836.887535
   },
   "episodic": [
     {
@@ -2153,6 +2153,41 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1782600286.9762762
+    },
+    {
+      "lesson": "Free LLM providers are failing systematically, indicating a critical dependency risk on unreliable external APIs.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782603836.8615642
+    },
+    {
+      "lesson": "Automated agent pipeline is producing zero output due to repeated provider failures, halting all downstream tasks.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782603836.8653617
+    },
+    {
+      "lesson": "No fallback mechanism or retry logic is in place for LLM provider failures, exposing a design gap in the agent architecture.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782603836.8688996
+    },
+    {
+      "lesson": "Over-reliance on free-tier LLM services creates a single point of failure; consider paid or self-hosted alternatives.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782603836.8724725
+    },
+    {
+      "lesson": "Lack of monitoring or alerting for provider availability suggests missing observability in the agent infrastructure.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1782603836.8766046
     }
   ],
   "github_insights": [
@@ -2350,6 +2385,11 @@
       "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
       "item_count": 20,
       "ts": 1782600286.9798024
+    },
+    {
+      "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
+      "item_count": 20,
+      "ts": 1782603836.8801985
     }
   ]
 }
