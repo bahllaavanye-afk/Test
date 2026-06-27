@@ -1,0 +1,63 @@
+name: Frontend CI — build gate
+
+# Catches the failure class that broke Vercel for days: an agent committed a
+# truncated / syntactically-broken component (RegimeIndicator.tsx ended mid-line
+# at `60_`), and nothing ran `npm run build` before it shipped — only Vercel
+# noticed, after a failed production deploy. This runs the real production build
+# on every push + PR and goes RED (and pings #ci-failures) the moment the
+# frontend doesn't compile, so broken UI code never reaches Vercel again.
+
+on:
+  push:
+    paths:
+      - "frontend/**"
+  pull_request:
+    paths:
+      - "frontend/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Build (tsc + vite) — the real production build
+        id: build
+        run: npm run build
+      - name: Alert Slack on build failure
+        if: failure()
+        working-directory: .
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          [ -z "${SLACK_BOT_TOKEN:-}" ] && { echo "no SLACK_BOT_TOKEN — skip"; exit 0; }
+          python3 - <<'PY'
+          import os, json, urllib.request
+          tok = os.environ["SLACK_BOT_TOKEN"]
+          text = (":red_circle: *Frontend build FAILED* — `npm run build` does not compile on "
+                  f"`{os.environ.get('GITHUB_REF_NAME','?')}`. Broken UI code was blocked before "
+                  "reaching Vercel. See the Frontend CI run.")
+          body = json.dumps({"channel": "#ci-failures", "text": text}).encode()
+          req = urllib.request.Request("https://slack.com/api/chat.postMessage", data=body,
+                headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
+          try: urllib.request.urlopen(req, timeout=10)
+          except Exception as e: print("slack post failed:", e)
+          PY
