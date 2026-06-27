@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Test network latency",
-    "Historical data analysis suggests a potential Sharpe ratio of 1.2-1.5 for the \"FT-Signal-Boost\" strategy, driven by the complementarity of RT and FT strategies.",
-    "* Refine TFT models",
-    "**Code Quality Insights**",
-    "* **Retrain LSTM model:** Retrain the \"AAPL_LSTM\" model using Time-frequency Decomposition (TFT) to improve its performance capturing complex patterns.",
     "monitoring on risk/drawdown_recovery.py: success \u2014 tests green",
     "* The `signal_runner` agent is processing files in `backtest/engine.py` and `risk/hrp.py` for performance metrics and updated Sharpe rankings.",
     "Check risk/hrp.py logs",
@@ -206,6 +201,6 @@
     "refactor on api/v1/analytics.py: success \u2014 tests green",
     "refactor on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T15:05:43.372580+00:00",
+  "last_updated": "2026-06-27T16:37:12.698785+00:00",
   "total": 200
 }
