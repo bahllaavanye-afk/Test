@@ -7,9 +7,10 @@ Install: pip install chronos-forecasting
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, List
 
 import numpy as np
+from pydantic import BaseModel, Field, validator, root_validator
 
 from app.utils.logging import logger
 
@@ -25,6 +26,98 @@ try:
     HAS_CHRONOS = True
 except ImportError:
     HAS_CHRONOS = False
+
+
+class ForecastRequest(BaseModel):
+    """
+    Input schema for foundation model forecasts.
+    """
+
+    prices: List[float] = Field(
+        ...,
+        description="Historical close prices. Minimum 30 observations required for Chronos models.",
+        example=[100.5, 101.2, 99.8, 100.1, 100.9],
+        min_items=1,
+    )
+    horizon: int = Field(
+        5,
+        description="Number of future steps to forecast.",
+        example=5,
+        gt=0,
+    )
+
+    @validator("prices")
+    def prices_must_be_finite(cls, v: List[float]) -> List[float]:
+        if not all(np.isfinite(v)):
+            raise ValueError("All price values must be finite numbers.")
+        return v
+
+    @root_validator
+    def check_length_for_chronos(cls, values):
+        prices = values.get("prices", [])
+        # Chronos requires at least 30 points; enforce for all models to keep consistent behavior.
+        if len(prices) < 30:
+            # Allow naive fallback but warn via logger.
+            logger.warning("Price series shorter than 30; Chronos may fallback to naive baseline.")
+        return values
+
+
+class ForecastResult(BaseModel):
+    """
+    Output schema for foundation model forecasts.
+    """
+
+    model: str = Field(
+        ...,
+        description="Identifier of the model used for forecasting.",
+        example="chronos",
+    )
+    direction: int = Field(
+        ...,
+        description="Predicted price direction: +1 for up, -1 for down, 0 for neutral (naive fallback).",
+        example=1,
+    )
+    confidence: float = Field(
+        ...,
+        description="Confidence score between 0 and 1 indicating strength of the direction signal.",
+        example=0.78,
+        ge=0.0,
+        le=1.0,
+    )
+    forecast_median: List[float] = Field(
+        ...,
+        description="Median forecasted price for each step in the horizon.",
+        example=[101.2, 101.4, 101.6],
+    )
+    forecast_q10: List[float] = Field(
+        ...,
+        description="10th percentile forecasted price for each step in the horizon.",
+        example=[100.9, 101.1, 101.3],
+    )
+    forecast_q90: List[float] = Field(
+        ...,
+        description="90th percentile forecasted price for each step in the horizon.",
+        example=[101.5, 101.7, 101.9],
+    )
+    horizon: int = Field(
+        ...,
+        description="Number of steps the forecast covers.",
+        example=5,
+        gt=0,
+    )
+
+    @validator("direction")
+    def direction_must_be_valid(cls, v: int) -> int:
+        if v not in (-1, 0, 1):
+            raise ValueError("direction must be -1, 0, or 1")
+        return v
+
+    @validator("forecast_median", "forecast_q10", "forecast_q90")
+    def forecasts_must_match_horizon(cls, v: List[float], values, **kwargs) -> List[float]:
+        horizon = values.get("horizon")
+        if horizon is not None and len(v) != horizon:
+            raise ValueError(f"Length of forecast list must equal horizon ({horizon})")
+        return v
 
 
 class FoundationModelSignal:
@@ -59,46 +152,55 @@ class FoundationModelSignal:
             self.model_name = "naive"
         self._loaded = True
 
-    def forecast(self, prices: list[float], horizon: int = 5) -> dict:
+    def forecast(self, prices: List[float], horizon: int = 5) -> dict:
         """
         Generate price direction forecast.
+
         Args:
-            prices: Historical close prices (min 30)
-            horizon: Number of steps to forecast
+            prices: Historical close prices (min 30 for Chronos models).
+            horizon: Number of steps to forecast.
+
         Returns:
-            dict with: direction (+1/-1), confidence, quantile forecasts
+            A dictionary conforming to :class:`ForecastResult`.
         """
+        # Validate inputs using the Pydantic request schema
+        request = ForecastRequest(prices=prices, horizon=horizon)
+
         self._load()
-        arr = np.array(prices, dtype=np.float32)
+        arr = np.array(request.prices, dtype=np.float32)
 
         if self.model_name == "naive" or not HAS_CHRONOS:
-            return self._naive_forecast(arr, horizon)
+            raw_result = self._naive_forecast(arr, request.horizon)
+        else:
+            # Chronos forecast
+            try:
+                context = torch.tensor(arr).unsqueeze(0)  # (1, T)
+                forecast = self._pipeline.predict(context, prediction_length=request.horizon, num_samples=20)
+                # forecast shape: (num_samples, 1, horizon)
+                samples = forecast[0].numpy()  # (num_samples, horizon)
+                median = np.median(samples, axis=0)
+                q10 = np.percentile(samples, 10, axis=0)
+                q90 = np.percentile(samples, 90, axis=0)
+                last_price = arr[-1]
+                forecast_end = float(np.median(samples[:, -1]))
+                direction = 1 if forecast_end > last_price else -1
+                confidence = min(abs(forecast_end - last_price) / (last_price * 0.01 + 1e-9), 1.0)
+                raw_result = {
+                    "model": "chronos",
+                    "direction": direction,
+                    "confidence": round(float(confidence), 3),
+                    "forecast_median": median.tolist(),
+                    "forecast_q10": q10.tolist(),
+                    "forecast_q90": q90.tolist(),
+                    "horizon": request.horizon,
+                }
+            except Exception as e:
+                logger.error(f"Chronos forecast error: {e}")
+                raw_result = self._naive_forecast(arr, request.horizon)
 
-        # Chronos forecast
-        try:
-            context = torch.tensor(arr).unsqueeze(0)  # (1, T)
-            forecast = self._pipeline.predict(context, prediction_length=horizon, num_samples=20)
-            # forecast shape: (num_samples, 1, horizon)
-            samples = forecast[0].numpy()  # (num_samples, horizon)
-            median = np.median(samples, axis=0)
-            q10 = np.percentile(samples, 10, axis=0)
-            q90 = np.percentile(samples, 90, axis=0)
-            last_price = arr[-1]
-            forecast_end = float(np.median(samples[:, -1]))
-            direction = 1 if forecast_end > last_price else -1
-            confidence = min(abs(forecast_end - last_price) / (last_price * 0.01 + 1e-9), 1.0)
-            return {
-                "model": "chronos",
-                "direction": direction,
-                "confidence": round(float(confidence), 3),
-                "forecast_median": median.tolist(),
-                "forecast_q10": q10.tolist(),
-                "forecast_q90": q90.tolist(),
-                "horizon": horizon,
-            }
-        except Exception as e:
-            logger.error(f"Chronos forecast error: {e}")
-            return self._naive_forecast(arr, horizon)
+        # Validate and format the output using the Pydantic result schema
+        result = ForecastResult(**raw_result)
+        return result.dict()
 
     def _naive_forecast(self, arr: np.ndarray, horizon: int) -> dict:
         """Simple momentum baseline: 20-day SMA direction."""
