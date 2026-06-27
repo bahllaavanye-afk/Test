@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 
 from app.utils.logging import logger
@@ -20,8 +21,34 @@ class KalshiPublicClient:
         try:
             with urllib.request.urlopen(url, timeout=10) as resp:
                 return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as http_err:
+            logger.error(
+                "KalshiPublicClient HTTP error",
+                url=url,
+                status=http_err.code,
+                reason=str(http_err.reason),
+            )
+            return {}
+        except urllib.error.URLError as url_err:
+            logger.error(
+                "KalshiPublicClient URL error",
+                url=url,
+                error=str(url_err.reason),
+            )
+            return {}
+        except json.JSONDecodeError as json_err:
+            logger.error(
+                "KalshiPublicClient JSON decode error",
+                url=url,
+                error=str(json_err),
+            )
+            return {}
         except Exception as exc:
-            logger.debug("KalshiPublicClient fetch failed", url=url, error=str(exc))
+            logger.error(
+                "KalshiPublicClient unexpected error",
+                url=url,
+                error=str(exc),
+            )
             return {}
 
     def get_events(self, status: str = "open", limit: int = 25) -> list[dict]:
