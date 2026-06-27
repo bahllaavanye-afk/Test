@@ -2,10 +2,15 @@
 RSI + MACD combined strategy.
 ~73% win rate in backtests with consistent parameter settings.
 """
+import logging
+import time
+
 import pandas as pd
 
 import app.ml.features.pandas_ta_compat as ta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+logger = logging.getLogger(__name__)
 
 
 class RSIMACDStrategy(AbstractStrategy):
@@ -34,9 +39,17 @@ class RSIMACDStrategy(AbstractStrategy):
         self.macd_fast = effective["macd_fast"]
         self.macd_slow = effective["macd_slow"]
         self.macd_signal = effective["macd_signal"]
+        self._signal_count = 0
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        start_time = time.perf_counter()
+
         if len(data) < self.macd_slow + self.macd_signal + 5:
+            exec_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "RSI_MACD analysis skipped (insufficient data)",
+                extra={"symbol": symbol, "execution_time_ms": exec_ms, "signal_generated": False},
+            )
             return None
 
         close = data["close"]
@@ -44,6 +57,11 @@ class RSIMACDStrategy(AbstractStrategy):
         macd_df = ta.macd(close, fast=self.macd_fast, slow=self.macd_slow, signal=self.macd_signal)
 
         if rsi is None or macd_df is None:
+            exec_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "RSI_MACD analysis failed (indicator generation error)",
+                extra={"symbol": symbol, "execution_time_ms": exec_ms, "signal_generated": False},
+            )
             return None
 
         # Use previous bar's values (iloc[-2]) to avoid lookahead bias —
@@ -57,40 +75,92 @@ class RSIMACDStrategy(AbstractStrategy):
         macd_crossover_up = macd_val > macd_sig and macd_prev <= macd_sig_prev
         macd_crossover_down = macd_val < macd_sig and macd_prev >= macd_sig_prev
 
+        signal: Signal | None = None
+
         if rsi_val < self.rsi_oversold and macd_crossover_up:
-            confidence = min(0.85, 0.60 + (self.rsi_oversold - rsi_val) / self.rsi_oversold * 0.3)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"rsi": round(rsi_val, 2), "macd_crossover": "up"})
+            confidence = min(
+                0.85,
+                0.60 + (self.rsi_oversold - rsi_val) / self.rsi_oversold * 0.3,
+            )
+            signal = Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={"rsi": round(rsi_val, 2), "macd_crossover": "up"},
+            )
 
         if rsi_val > self.rsi_overbought and macd_crossover_down:
-            confidence = min(0.85, 0.60 + (rsi_val - self.rsi_overbought) / (100 - self.rsi_overbought) * 0.3)
-            return Signal(symbol=symbol, side="sell", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"rsi": round(rsi_val, 2), "macd_crossover": "down"})
-        return None
+            confidence = min(
+                0.85,
+                0.60 + (rsi_val - self.rsi_overbought) / (100 - self.rsi_overbought) * 0.3,
+            )
+            signal = Signal(
+                symbol=symbol,
+                side="sell",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={"rsi": round(rsi_val, 2), "macd_crossover": "down"},
+            )
+
+        exec_ms = (time.perf_counter() - start_time) * 1000
+        if signal:
+            self._signal_count += 1
+
+        logger.info(
+            "RSI_MACD analysis completed",
+            extra={
+                "symbol": symbol,
+                "execution_time_ms": exec_ms,
+                "signal_generated": bool(signal),
+                "signal_count": self._signal_count,
+                "pnl": signal.metadata.get("pnl") if signal and signal.metadata else None,
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.perf_counter()
+
         close = df["close"]
         rsi = ta.rsi(close, length=self.rsi_period)
         macd_df = ta.macd(close, fast=self.macd_fast, slow=self.macd_slow, signal=self.macd_signal)
 
         if rsi is None or macd_df is None:
             empty = pd.Series(False, index=df.index)
+            exec_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "RSI_MACD backtest generation failed (indicator error)",
+                extra={"execution_time_ms": exec_ms},
+            )
             return BacktestSignals(entries=empty, exits=empty)
 
         rsi_s = rsi.shift(1)
         macd_s = macd_df["MACD_12_26_9"].shift(1)
         macd_sig_s = macd_df["MACDs_12_26_9"].shift(1)
-        macd_cross_up = (macd_s > macd_sig_s) & (macd_df["MACD_12_26_9"].shift(2) <= macd_df["MACDs_12_26_9"].shift(2))
-        macd_cross_dn = (macd_s < macd_sig_s) & (macd_df["MACD_12_26_9"].shift(2) >= macd_df["MACDs_12_26_9"].shift(2))
+        macd_cross_up = (
+            (macd_s > macd_sig_s)
+            & (macd_df["MACD_12_26_9"].shift(2) <= macd_df["MACDs_12_26_9"].shift(2))
+        )
+        macd_cross_dn = (
+            (macd_s < macd_sig_s)
+            & (macd_df["MACD_12_26_9"].shift(2) >= macd_df["MACDs_12_26_9"].shift(2))
+        )
 
         entries = (rsi_s < self.rsi_oversold) & macd_cross_up
         exits = rsi_s > 50
         short_entries = (rsi_s > self.rsi_overbought) & macd_cross_dn
         short_exits = rsi_s < 50
+
+        exec_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "RSI_MACD backtest signals generated",
+            extra={"execution_time_ms": exec_ms},
+        )
 
         return BacktestSignals(
             entries=entries.fillna(False),
