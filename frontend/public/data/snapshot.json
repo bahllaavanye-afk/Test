@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-27T20:18:43.001143+00:00",
-  "generated_ts": 1782591523,
+  "generated_at": "2026-06-27T21:38:23.123978+00:00",
+  "generated_ts": 1782596303,
   "platform": "QuantEdge",
   "trading_mode": "paper",
   "repo": {
@@ -101,25 +101,25 @@
     ],
     "model_count": 19,
     "models": [
-      "xgboost_model",
-      "lightgbm_model",
       "itransformer",
-      "ensemble_model",
-      "lstm",
-      "gnn_signal",
-      "ssm_model",
-      "a3c_lstm",
-      "lorentzian_knn",
+      "lightgbm_model",
       "foundation_model",
-      "hawkes_arrival",
-      "nbeats_model",
+      "xgboost_model",
+      "lorentzian_knn",
+      "gnn_signal",
       "patch_tst",
       "timesnet_model",
-      "mamba_trader",
-      "hmm_regime",
-      "gemini_signal",
+      "ssm_model",
+      "lstm",
       "transformer",
-      "multiscale_transformer"
+      "gemini_signal",
+      "hawkes_arrival",
+      "mamba_trader",
+      "a3c_lstm",
+      "ensemble_model",
+      "multiscale_transformer",
+      "nbeats_model",
+      "hmm_regime"
     ]
   },
   "desks": [
@@ -145,9 +145,15 @@
         "BTC/USD",
         "ETH/USD",
         "SOL/USD",
-        "AVAX/USD"
+        "AVAX/USD",
+        "LTC/USD",
+        "LINK/USD",
+        "UNI/USD",
+        "AAVE/USD",
+        "DOT/USD",
+        "BCH/USD"
       ],
-      "count": 4
+      "count": 10
     },
     {
       "name": "Options",
@@ -196,7 +202,109 @@
     "note": "module 'llm_common' has no attribute 'cascade_status'"
   },
   "trading": {
-    "available": false,
-    "reason": "no Alpaca keys or unreachable"
+    "available": true,
+    "equity": 24899.37,
+    "day_pnl": 0.3,
+    "day_pnl_pct": 0.001,
+    "cash": 20014.78,
+    "market_open": false,
+    "open_positions": [
+      {
+        "symbol": "AAPL",
+        "qty": "1.524525874",
+        "market_value": 432.63,
+        "unrealized_pl": 1.82
+      },
+      {
+        "symbol": "BTCUSD",
+        "qty": "0.000675554",
+        "market_value": 40.74,
+        "unrealized_pl": -7.61
+      },
+      {
+        "symbol": "QQQ",
+        "qty": "1.084580357",
+        "market_value": 766.28,
+        "unrealized_pl": -33.68
+      },
+      {
+        "symbol": "SPY",
+        "qty": "5",
+        "market_value": 3644.95,
+        "unrealized_pl": -23.2
+      }
+    ],
+    "recent_orders": [
+      {
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": "1",
+        "status": "accepted",
+        "submitted_at": "2026-06-26T21:01:21.477983Z"
+      },
+      {
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": "1",
+        "status": "filled",
+        "submitted_at": "2026-06-26T19:14:52.920712Z"
+      },
+      {
+        "symbol": "AAPL",
+        "side": "sell",
+        "qty": null,
+        "status": "filled",
+        "submitted_at": "2026-06-26T18:26:22.332781Z"
+      },
+      {
+        "symbol": "AAPL",
+        "side": "sell",
+        "qty": null,
+        "status": "filled",
+        "submitted_at": "2026-06-26T16:10:40.916043Z"
+      },
+      {
+        "symbol": "SPY",
+        "side": "buy",
+        "qty": "1",
+        "status": "filled",
+        "submitted_at": "2026-06-26T08:00:20.974406Z"
+      },
+      {
+        "symbol": "SPY",
+        "side": "buy",
+        "qty": "1",
+        "status": "filled",
+        "submitted_at": "2026-06-25T17:01:14.484021Z"
+      },
+      {
+        "symbol": "AAPL",
+        "side": "sell",
+        "qty": null,
+        "status": "filled",
+        "submitted_at": "2026-06-25T16:18:34.981774Z"
+      },
+      {
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": "1",
+        "status": "filled",
+        "submitted_at": "2026-06-25T09:22:53.449672Z"
+      },
+      {
+        "symbol": "SPY",
+        "side": "buy",
+        "qty": "1",
+        "status": "filled",
+        "submitted_at": "2026-06-25T08:00:29.297615Z"
+      },
+      {
+        "symbol": "SPY",
+        "side": "buy",
+        "qty": "1",
+        "status": "filled",
+        "submitted_at": "2026-06-25T08:00:29.215306Z"
+      }
+    ]
   }
 }
