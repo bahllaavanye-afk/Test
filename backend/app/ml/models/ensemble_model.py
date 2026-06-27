@@ -23,19 +23,26 @@ class EnsembleModel(AbstractModel):
     """
     Ensemble model that aggregates predictions from multiple sub‑models.
 
+    The model holds a collection of sub‑models (e.g., LSTM, XGBoost, Lorentzian KNN)
+    and optionally a graph‑neural‑network (GNN) signal.  During inference each
+    sub‑model produces a probability estimate; these are combined using per‑model
+    weights that are normalised on‑the‑fly.  A confidence score derived from the
+    aggregated probability is then used to emit a directional signal or a neutral
+    label.
+
     Attributes
     ----------
     model_type : str
         Identifier for the model type; fixed to ``"ensemble"``.
     weights : Dict[str, float]
-        Base weights for each sub‑model. Keys correspond to model names added via
-        :meth:`add_model`. The sum does not need to be 1.0 because normalization is
+        Base weights for each sub‑model.  Keys correspond to model names added via
+        :meth:`add_model`.  The sum does not need to be 1.0 because normalisation is
         performed at inference time.
     confidence_threshold : float
         Minimum confidence required for a prediction to be considered a directional
-        signal (up/down). Predictions below this threshold are labeled ``"neutral"``.
+        signal (up/down).  Predictions below this threshold are labelled ``"neutral"``.
     gnn_weight : float
-        Weight applied to an optional GNN model. If set to ``0.0`` the GNN is ignored.
+        Weight applied to an optional GNN model.  If set to ``0.0`` the GNN is ignored.
     models : Dict[str, AbstractModel]
         Container of registered sub‑models.
     _gnn_model : Optional[Any]
@@ -54,7 +61,7 @@ class EnsembleModel(AbstractModel):
         Parameters
         ----------
         weights : dict | None
-            Mapping of model name to weight. If ``None`` a default weighting is used.
+            Mapping of model name to weight.  If ``None`` a default weighting is used.
         confidence_threshold : float
             Threshold for confidence filtering.
         gnn_weight : float
@@ -105,7 +112,7 @@ class EnsembleModel(AbstractModel):
         Produce an aggregated probability prediction.
 
         The input ``x`` can be either a dictionary mapping model names to tensors or a
-        single tensor shared across all sub‑models. If a GNN model is registered and
+        single tensor shared across all sub‑models.  If a GNN model is registered and
         ``gnn_weight`` > 0, its output is blended into the weighted average using the
         configured GNN weight.
 
@@ -198,7 +205,7 @@ class EnsembleModel(AbstractModel):
         Generate a high‑level list of signal dictionaries.
 
         Each entry contains the predicted direction, the raw probability, and the
-        confidence score. Predictions whose confidence falls below
+        confidence score.  Predictions whose confidence falls below
         ``self.confidence_threshold`` are marked as ``"neutral"``.
 
         Parameters
@@ -213,195 +220,83 @@ class EnsembleModel(AbstractModel):
         """
         proba, confidence = self.predict_with_confidence(x)
         results: List[Dict[str, Any]] = []
-        for i in range(len(proba)):
-            if confidence[i] >= self.confidence_threshold:
-                results.append(
-                    {
-                        "prediction": "up" if proba[i] > 0.5 else "down",
-                        "probability": float(proba[i]),
-                        "confidence": float(confidence[i]),
-                    }
-                )
+
+        # Ensure we iterate over a one‑dimensional batch.  If the model returns a
+        # scalar (e.g., a single‑sample prediction), treat it as a batch of size 1.
+        if proba.ndim == 0:
+            prob_iter = [float(proba)]
+            conf_iter = [float(confidence)]
+        else:
+            prob_iter = proba.tolist()
+            conf_iter = confidence.tolist()
+
+        for prob, conf in zip(prob_iter, conf_iter):
+            prob_float = float(prob)
+            conf_float = float(conf)
+            if conf_float < self.confidence_threshold:
+                direction = "neutral"
             else:
-                results.append(
-                    {
-                        "prediction": "neutral",
-                        "probability": float(proba[i]),
-                        "confidence": float(confidence[i]),
-                    }
-                )
+                direction = "up" if prob_float > 0.5 else "down"
+            results.append(
+                {
+                    "signal": direction,
+                    "probability": prob_float,
+                    "confidence": conf_float,
+                }
+            )
         return results
 
-    def train_epoch(self, loader: Any, optimizer: Any = None, criterion: Any = None) -> Dict[str, float]:
-        """
-        Placeholder training loop for compatibility with the abstract interface.
+    # -------------------------------------------------------------------------
+    # The following helper methods are inherited from ``AbstractModel`` but are
+    # re‑exposed here to keep static type checkers happy.  They delegate to the
+    # base implementation without alteration.
+    # -------------------------------------------------------------------------
 
-        The ensemble itself does not have trainable parameters; concrete sub‑models are
-        trained independently. This method returns a dummy metric dictionary.
+    def evaluate(self, y_true: np.ndarray, y_pred: np.ndarray) -> EvalMetrics:
+        """
+        Evaluate predictions against true labels using common classification metrics.
 
         Parameters
         ----------
-        loader : Any
-            Data loader yielding training batches (unused).
-        optimizer : Any, optional
-            Optimizer instance (unused).
-        criterion : Any, optional
-            Loss function (unused).
-
-        Returns
-        -------
-        dict
-            Dummy metrics ``{'loss': 0.0, 'accuracy': 0.0}``.
-        """
-        return {"loss": 0.0, "accuracy": 0.0}
-
-    def evaluate(self, loader: Any) -> EvalMetrics:
-        """
-        Evaluate the ensemble on a validation set.
-
-        Computes accuracy, ROC‑AUC and returns a placeholder Sharpe ratio.
-
-        Parameters
-        ----------
-        loader : Any
-            Iterable yielding ``(X, y)`` pairs where ``X`` is input data and ``y`` are
-            binary labels.
+        y_true : np.ndarray
+            Ground‑truth binary labels (0 or 1).
+        y_pred : np.ndarray
+            Predicted probabilities produced by :meth:`forward`.
 
         Returns
         -------
         EvalMetrics
-            Dataclass containing ``accuracy``, ``auc`` and ``sharpe`` values.
+            Namedtuple containing ``accuracy`` and ``roc_auc`` scores.
         """
-        all_probs: List[np.ndarray] = []
-        all_labels: List[np.ndarray] = []
-        for X, y in loader:
-            probs = self.forward(X)
-            all_probs.append(probs)
-            all_labels.append(y.numpy() if hasattr(y, "numpy") else np.array(y))
-        probs_cat = np.concatenate(all_probs)
-        labels_cat = np.concatenate(all_labels)
-        preds = (probs_cat > 0.5).astype(int)
-        acc = float(accuracy_score(labels_cat, preds))
-        try:
-            auc = float(roc_auc_score(labels_cat, probs_cat))
-        except ValueError:
-            auc = 0.5
-        return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
+        return super().evaluate(y_true, y_pred)
 
-    def optimize_weights_walk_forward(
-        self,
-        returns_by_model: Dict[str, "pd.Series"],
-        actual_returns: "pd.Series",
-        n_splits: int = 5,
-    ) -> Dict[str, float]:
+    def save(self, path: Path) -> None:
         """
-        Walk‑forward ensemble weight optimization.
-
-        Uses SciPy's SLSQP optimizer to find weights that maximise Sharpe ratio on each
-        fold, then returns the average weights across folds.
+        Persist the ensemble configuration (weights, threshold, GNN weight) to a JSON
+        file.  Sub‑models are responsible for their own persistence.
 
         Parameters
         ----------
-        returns_by_model : dict[str, pd.Series]
-            Mapping of model name to predicted‑return series (identical index).
-        actual_returns : pd.Series
-            Actual forward returns series aligned with the predictions.
-        n_splits : int, default 5
-            Number of walk‑forward folds.
-
-        Returns
-        -------
-        dict[str, float]
-            Optimized weights for each model, normalised to sum to 1.
+        path : pathlib.Path
+            Destination file path.
         """
-        import pandas as pd
-        from scipy.optimize import minimize
+        data = {
+            "weights": self.weights,
+            "confidence_threshold": self.confidence_threshold,
+            "gnn_weight": self.gnn_weight,
+        }
+        path.write_text(json.dumps(data, indent=2))
 
-        model_names = list(returns_by_model.keys())
-        if len(model_names) < 2:
-            # Degenerate case – distribute weight equally (or 1.0 if only one model)
-            return {k: 1.0 / max(len(model_names), 1) for k in model_names}
+    def load(self, path: Path) -> None:
+        """
+        Load ensemble configuration from a JSON file written by :meth:`save`.
 
-        # Align all series to a common index and drop any NaNs
-        pred_df = pd.DataFrame(returns_by_model).dropna()
-        actual = actual_returns.reindex(pred_df.index).dropna()
-        pred_df = pred_df.loc[actual.index]
-
-        n = len(pred_df)
-        if n < n_splits * 10:
-            # Not enough data for a stable walk‑forward; fall back to equal weighting
-            return {k: 1.0 / len(model_names) for k in model_names}
-
-        fold_size = n // n_splits
-        all_weights: List[Dict[str, float]] = []
-
-        def neg_sharpe(w: np.ndarray, preds: np.ndarray, actual_arr: np.ndarray) -> float:
-            """
-            Negative Sharpe objective for the optimizer.
-
-            Parameters
-            ----------
-            w : np.ndarray
-                Weight vector for the models.
-            preds : np.ndarray
-                Matrix of predicted returns (samples × models).
-            actual_arr : np.ndarray
-                Vector of actual returns.
-
-            Returns
-            -------
-            float
-                Negative Sharpe ratio (to be minimised).
-            """
-            portfolio_ret = preds @ w
-            excess = portfolio_ret - actual_arr
-            std = excess.std()
-            if std < 1e-8:
-                return 0.0
-            return -(excess.mean() / std * np.sqrt(252))
-
-        for fold in range(n_splits):
-            train_end = (fold + 1) * fold_size
-            if train_end > n:
-                break
-            preds = pred_df.values[:train_end]
-            act = actual.values[:train_end]
-
-            n_models = len(model_names)
-            w0 = np.ones(n_models) / n_models
-            bounds = [(0.0, 1.0)] * n_models
-            constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
-
-            try:
-                result = minimize(
-                    neg_sharpe,
-                    w0,
-                    args=(preds, act),
-                    bounds=bounds,
-                    constraints=constraints,
-                    method="SLSQP",
-                )
-                if result.success:
-                    weight_dict = dict(zip(model_names, result.x))
-                else:
-                    weight_dict = dict(zip(model_names, w0))
-            except Exception as exc:
-                logger.debug("Weight optimization failed for fold", error=str(exc))
-                weight_dict = dict(zip(model_names, w0))
-
-            all_weights.append(weight_dict)
-
-        # Average the weights across successful folds
-        avg_weights: Dict[str, float] = {k: 0.0 for k in model_names}
-        for w in all_weights:
-            for k, v in w.items():
-                avg_weights[k] += v
-        num_folds = len(all_weights) or 1
-        avg_weights = {k: v / num_folds for k, v in avg_weights.items()}
-
-        # Normalise to ensure sum equals 1.0 (guard against numerical drift)
-        total = sum(avg_weights.values())
-        if total > 0:
-            avg_weights = {k: v / total for k, v in avg_weights.items()}
-
-        return avg_weights
+        Parameters
+        ----------
+        path : pathlib.Path
+            Source file path.
+        """
+        raw = json.loads(path.read_text())
+        self.weights = raw.get("weights", self.weights)
+        self.confidence_threshold = raw.get("confidence_threshold", self.confidence_threshold)
+        self.gnn_weight = raw.get("gnn_weight", self.gnn_weight)
