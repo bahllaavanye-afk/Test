@@ -24,23 +24,6 @@ class LorentzianStrategy(AbstractStrategy):
     This strategy builds a Lorentzian distance based KNN model on historical price data
     and uses it to generate buy/sell signals based on the probability that the next
     price bar will be higher.
-
-    Attributes
-    ----------
-    name : str
-        Internal identifier for the strategy.
-    display_name : str
-        Human‑readable name for UI display.
-    market_type : str
-        Market classification (e.g., "equity").
-    strategy_type : str
-        Category of the strategy (e.g., "ml_enhanced").
-    risk_bucket : str
-        Risk classification used for portfolio allocation.
-    tick_interval_seconds : float
-        Minimum time between ticks for this strategy.
-    confidence_threshold : float
-        Minimum confidence required to emit a signal.
     """
 
     name = "lorentzian_knn"
@@ -109,22 +92,57 @@ class LorentzianStrategy(AbstractStrategy):
             A populated :class:`Signal` object if confidence exceeds the threshold,
             otherwise ``None``.
         """
-        if len(data) < 50:
+        # Need at least two bars to apply a confirmation filter
+        if len(data) < 51:
             return None
+
         model = self._get_or_build_model(data)
+
         feat_df = compute_lorentzian_features(data)
-        latest_features = feat_df[LORENTZIAN_FEATURES].fillna(0).values[-1:]
+        features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
 
         import torch
 
-        x = torch.tensor(latest_features, dtype=torch.float32)
-        prob = float(model.forward(x).item())
-        confidence = abs(prob - 0.5) * 2
+        # Current bar probability
+        latest_features = features[-1:].astype(np.float32)
+        x_curr = torch.tensor(latest_features, dtype=torch.float32)
+        prob_curr = float(model.forward(x_curr).item())
 
+        # Previous bar probability for confirmation
+        prev_features = features[-2:-1].astype(np.float32)
+        x_prev = torch.tensor(prev_features, dtype=torch.float32)
+        prob_prev = float(model.forward(x_prev).item())
+
+        confidence = abs(prob_curr - 0.5) * 2
         if confidence < self.confidence_threshold:
             return None
 
-        side = "buy" if prob > 0.5 else "sell"
+        entry_margin = self.confidence_threshold / 2
+
+        # Simple momentum filter based on price direction of the latest bar
+        price_up = data["close"].iloc[-1] > data["open"].iloc[-1]
+        price_down = data["close"].iloc[-1] < data["open"].iloc[-1]
+
+        # Long entry: probability above midpoint with upward trend and confirmation
+        long_condition = (
+            prob_curr > 0.5 + entry_margin
+            and prob_curr > prob_prev
+            and price_up
+        )
+        # Short entry: probability below midpoint with downward trend and confirmation
+        short_condition = (
+            prob_curr < 0.5 - entry_margin
+            and prob_curr < prob_prev
+            and price_down
+        )
+
+        if long_condition:
+            side = "buy"
+        elif short_condition:
+            side = "sell"
+        else:
+            return None
+
         return Signal(
             symbol=symbol,
             side=side,
@@ -132,7 +150,7 @@ class LorentzianStrategy(AbstractStrategy):
             strategy_name=self.name,
             strategy_type=self.strategy_type,
             risk_bucket=self.risk_bucket,
-            metadata={"lorentzian_prob": round(prob, 4), "k": self.k},
+            metadata={"lorentzian_prob": round(prob_curr, 4), "k": self.k},
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
@@ -158,7 +176,6 @@ class LorentzianStrategy(AbstractStrategy):
         features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
         labels = (df["close"].shift(-1) > df["close"]).astype(int).fillna(0).values
 
-        # Build library on first half, predict on second half (walk-forward)
         split = len(features) // 2
         model.fit_library(features[:split], labels[:split])
 
@@ -168,7 +185,7 @@ class LorentzianStrategy(AbstractStrategy):
         for i in range(split, len(features)):
             x = torch.tensor(features[i : i + 1], dtype=torch.float32)
             probs[i] = float(model.forward(x).item())
-            # Update library incrementally
+
             if i % self.subsample == 0 and i + 1 < len(features):
                 model._library_X = torch.cat(
                     [model._library_X, torch.tensor(features[i : i + 1], dtype=torch.float32)]
@@ -178,14 +195,26 @@ class LorentzianStrategy(AbstractStrategy):
                 )
 
         prob_series = pd.Series(probs, index=df.index).shift(1)
-        entries = prob_series > 0.5 + self.confidence_threshold / 2
-        exits = prob_series < 0.5
-        short_entries = prob_series < 0.5 - self.confidence_threshold / 2
-        short_exits = prob_series > 0.5
+
+        entry_margin = self.confidence_threshold / 2
+
+        # Tightened entry: require two consecutive bars satisfying the margin
+        long_entries = (
+            (prob_series > 0.5 + entry_margin)
+            & (prob_series.shift(1) > 0.5 + entry_margin)
+        )
+        short_entries = (
+            (prob_series < 0.5 - entry_margin)
+            & (prob_series.shift(1) < 0.5 - entry_margin)
+        )
+
+        # Exit logic: soften the threshold to allow earlier exits while avoiding whipsaws
+        long_exits = prob_series < 0.5 + entry_margin / 2
+        short_exits = prob_series > 0.5 - entry_margin / 2
 
         return BacktestSignals(
-            entries=entries.fillna(False),
-            exits=exits.fillna(False),
+            entries=long_entries.fillna(False),
+            exits=long_exits.fillna(False),
             short_entries=short_entries.fillna(False),
             short_exits=short_exits.fillna(False),
         )
