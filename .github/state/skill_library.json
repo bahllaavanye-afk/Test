@@ -1,10 +1,5 @@
 {
   "skills": [
-    "validation on api/v1/kalshi.py: success \u2014 tests green",
-    "Enhance error handling",
-    "Test for timeouts",
-    "**LLM Unavailability**: All agents encountered LLM unavailability across multiple providers on June 13-14, indicating potential LLM infrastructure issues that need to be addressed.",
-    "Refactor styling logic",
     "Verify clock sync",
     "error_handling on ml/features/advanced_indicators.py: success \u2014 tests green",
     "Test network latency",
@@ -206,6 +201,6 @@
     "strategy_logic on ml/models/lorentzian_knn.py: success \u2014 tests green",
     "strategy_logic on ml/features/alternative.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T10:05:49.662537+00:00",
+  "last_updated": "2026-06-27T11:52:39.613591+00:00",
   "total": 200
 }
