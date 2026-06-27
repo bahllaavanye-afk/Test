@@ -11,19 +11,18 @@ LSTM memory: retains market context across time steps
 Used in: ml_enhanced/rl_trader.py strategy
 Training: experiments/configs/ppo_execution.yaml
 """
-import json
-from pathlib import Path
+from typing import Any, Iterable, List, Tuple
 
 try:
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
-    F = None      # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+    F = None  # type: ignore[assignment]
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
@@ -33,7 +32,6 @@ class LSTMActor(nn.Module):
 
     def __init__(self, n_features: int, hidden_size: int = 128, n_actions: int = 3):
         super().__init__()
-        self.hidden_size = hidden_size
         self.lstm = nn.LSTM(
             input_size=n_features,
             hidden_size=hidden_size,
@@ -66,7 +64,6 @@ class LSTMCritic(nn.Module):
 
     def __init__(self, n_features: int, hidden_size: int = 128):
         super().__init__()
-        self.hidden_size = hidden_size
         self.lstm = nn.LSTM(
             input_size=n_features,
             hidden_size=hidden_size,
@@ -124,7 +121,7 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
     # Core forward pass
     # ------------------------------------------------------------------
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             x: (batch, seq_len, n_features)
@@ -162,7 +159,7 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
 
     def compute_returns(
         self,
-        rewards: list[float],
+        rewards: List[float],
         values: torch.Tensor,
         gamma: float = 0.99,
     ) -> torch.Tensor:
@@ -171,17 +168,17 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
 
         Args:
             rewards: list of per-step rewards
-            values:  (T, 1) critic estimates
+            values:  (T, 1) critic estimates (unused for bootstrapping here)
             gamma:   discount factor
         Returns:
             returns: (T,) tensor of discounted returns
         """
-        returns = []
+        returns: List[float] = []
         R = 0.0
         for r in reversed(rewards):
             R = r + gamma * R
             returns.insert(0, R)
-        returns_tensor = torch.tensor(returns, dtype=torch.float32)
+        returns_tensor = torch.tensor(returns, dtype=torch.float32, device=values.device)
         return returns_tensor
 
     # ------------------------------------------------------------------
@@ -192,8 +189,8 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         self,
         states: torch.Tensor,
         actions: torch.Tensor,
-        rewards: list[float],
-        dones: list[bool],
+        rewards: List[float],
+        dones: List[bool],
         gamma: float = 0.99,
         entropy_coef: float = 0.01,
         value_coef: float = 0.5,
@@ -205,7 +202,7 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
             states:  (T, seq_len, n_features)
             actions: (T,) int tensor
             rewards: list[float] length T
-            dones:   list[bool]  length T
+            dones:   list[bool]  length T (unused in current formulation)
         Returns:
             dict with keys: loss, policy_loss, value_loss, entropy
         """
@@ -239,67 +236,96 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
     # AbstractModel interface
     # ------------------------------------------------------------------
 
-    def train_epoch(self, loader, optimizer, criterion=None) -> dict:
-        """Standard epoch training — used when loader yields (states, actions, rewards)."""
+    def train_epoch(
+        self,
+        loader: Iterable[Tuple[torch.Tensor, torch.Tensor, List[float]]],
+        optimizer: torch.optim.Optimizer,
+        criterion: Any = None,
+    ) -> dict:
+        """
+        Run a single training epoch over the provided data loader.
+
+        Each batch is expected to be a tuple (states, actions, rewards).
+        Optional ``dones`` can be supplied as a fourth element; if omitted,
+        a list of ``False`` values is used.
+
+        Returns a dictionary with average loss metrics for the epoch.
+        """
         self.train()
+        total_loss = 0.0
+        total_policy = 0.0
+        total_value = 0.0
+        total_entropy = 0.0
+        steps = 0
+
+        for batch in loader:
+            # Unpack batch; support both 3‑tuple and 4‑tuple formats
+            if len(batch) == 3:
+                states, actions, rewards = batch
+                dones = [False] * len(rewards)
+            else:
+                states, actions, rewards, dones = batch
+
+            optimizer.zero_grad()
+            loss_dict = self.actor_critic_loss(
+                states,
+                actions,
+                rewards,
+                dones,
+            )
+            loss_dict["loss"].backward()
+            optimizer.step()
+
+            total_loss += loss_dict["loss"].item()
+            total_policy += loss_dict["policy_loss"].item()
+            total_value += loss_dict["value_loss"].item()
+            total_entropy += loss_dict["entropy"].item()
+            steps += 1
+
+        if steps == 0:
+            raise ValueError("Data loader yielded no batches during training epoch.")
+
+        return {
+            "avg_loss": total_loss / steps,
+            "avg_policy_loss": total_policy / steps,
+            "avg_value_loss": total_value / steps,
+            "avg_entropy": total_entropy / steps,
+        }
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return action probabilities for given input states.
+        """
+        self.eval()
+        with torch.no_grad():
+            action_probs, _ = self.forward(x)
+        return action_probs
+
+    def evaluate(self, loader: Iterable[Any]) -> EvalMetrics:
+        """
+        Evaluate the model on a validation loader and return metrics.
+        This implementation computes average loss using the same loss
+        function as training; more sophisticated metrics can be added
+        by downstream code.
+        """
+        self.eval()
         total_loss = 0.0
         steps = 0
         for batch in loader:
-            states, actions, rewards = batch[0], batch[1], batch[2]
-            dones = [False] * len(rewards)
-            optimizer.zero_grad()
-            result = self.actor_critic_loss(states, actions, rewards, dones)
-            result["loss"].backward()
-            nn.utils.clip_grad_norm_(self.parameters(), 0.5)
-            optimizer.step()
-            total_loss += result["loss"].item()
+            if len(batch) == 3:
+                states, actions, rewards = batch
+                dones = [False] * len(rewards)
+            else:
+                states, actions, rewards, dones = batch
+
+            loss_dict = self.actor_critic_loss(
+                states,
+                actions,
+                rewards,
+                dones,
+            )
+            total_loss += loss_dict["loss"].item()
             steps += 1
-        return {"loss": total_loss / max(steps, 1)}
 
-    def evaluate(self, loader) -> EvalMetrics:
-        """
-        Evaluate on a DataLoader that yields (x, y) pairs where
-        y is the ground-truth action (0=buy, 1=hold, 2=sell).
-        """
-        self.eval()
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for X, y in loader:
-                action_probs, _ = self.forward(X)
-                preds = action_probs.argmax(dim=-1)
-                correct += (preds == y.long()).sum().item()
-                total += len(y)
-        accuracy = correct / max(total, 1)
-        return EvalMetrics(accuracy=accuracy, auc=0.5, sharpe=0.0)
-
-    # ------------------------------------------------------------------
-    # Save / load
-    # ------------------------------------------------------------------
-
-    def save(self, path: str, metadata: dict | None = None) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        init_kwargs = {
-            "n_features": self.n_features,
-            "hidden_size": self.hidden_size,
-            "n_actions": self.n_actions,
-        }
-        full_meta = {"init_kwargs": init_kwargs, **(metadata or {})}
-        torch.save(
-            {
-                "state_dict": self.state_dict(),
-                "model_type": self.model_type,
-                "metadata": full_meta,
-            },
-            path,
-        )
-        meta_path = Path(path).with_suffix(".json")
-        meta_path.write_text(json.dumps(full_meta, default=str, indent=2))
-
-    @classmethod
-    def load(cls, path: str) -> "A3CLSTMAgent":
-        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-        init_kwargs = checkpoint.get("metadata", {}).get("init_kwargs", {})
-        model = cls(**init_kwargs)
-        model.load_state_dict(checkpoint["state_dict"])
-        return model
+        avg_loss = total_loss / steps if steps > 0 else float("nan")
+        return EvalMetrics(loss=avg_loss)
