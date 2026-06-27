@@ -1,5 +1,6 @@
 """Promotion criteria thresholds for each stage."""
 from dataclasses import dataclass
+from typing import Tuple, List, Dict, Any
 
 
 @dataclass(frozen=True)
@@ -46,38 +47,78 @@ TRANSITION_MAP = {
 }
 
 
-def check_criteria(metrics: dict, transition: str) -> tuple[bool, list[str]]:
-    """Returns (passed, list_of_failures)"""
-    c = CRITERIA.get(transition)
-    if not c:
+def _check_min_days(metrics: Dict[str, Any], criteria: StageCriteria) -> str | None:
+    days = metrics.get("days_in_stage", 0)
+    if days < criteria.min_days:
+        return f"Too few days: {days} < {criteria.min_days}"
+    return None
+
+
+def _check_sharpe(metrics: Dict[str, Any], criteria: StageCriteria) -> str | None:
+    sharpe = metrics.get("sharpe", 0.0)
+    if sharpe < criteria.min_sharpe:
+        return f"Sharpe too low: {sharpe:.2f} < {criteria.min_sharpe}"
+    return None
+
+
+def _check_win_rate(metrics: Dict[str, Any], criteria: StageCriteria) -> str | None:
+    win_rate = metrics.get("win_rate", 0.0)
+    if win_rate < criteria.min_win_rate:
+        return (
+            f"Win rate too low: {win_rate:.2%} < {criteria.min_win_rate:.2%}"
+        )
+    return None
+
+
+def _check_drawdown(metrics: Dict[str, Any], criteria: StageCriteria) -> str | None:
+    max_dd = metrics.get("max_drawdown", -1.0)
+    if max_dd < criteria.max_drawdown:
+        return (
+            f"Max drawdown too large: {max_dd:.2%} < {criteria.max_drawdown:.2%}"
+        )
+    return None
+
+
+def _check_trades(metrics: Dict[str, Any], criteria: StageCriteria) -> str | None:
+    num_trades = metrics.get("num_trades", 0)
+    if num_trades < criteria.min_trades:
+        return f"Too few trades: {num_trades} < {criteria.min_trades}"
+    return None
+
+
+def _check_p_value(metrics: Dict[str, Any], criteria: StageCriteria) -> str | None:
+    if not criteria.require_p_value:
+        return None
+    p_value = metrics.get("p_value")
+    if p_value is None or p_value >= 0.05:
+        return f"ML significance not established: p_value={p_value} (need < 0.05)"
+    return None
+
+
+def check_criteria(metrics: dict, transition: str) -> Tuple[bool, List[str]]:
+    """Validate a set of performance metrics against promotion criteria.
+
+    Returns:
+        (passed, failures): ``passed`` is True when all criteria are satisfied.
+        ``failures`` contains human‑readable messages for each unmet criterion.
+    """
+    criteria = CRITERIA.get(transition)
+    if not criteria:
         return False, [f"Unknown transition: {transition}"]
 
-    failures = []
-    days = metrics.get("days_in_stage", 0)
-    if days < c.min_days:
-        failures.append(f"Too few days: {days} < {c.min_days}")
+    checks = [
+        _check_min_days,
+        _check_sharpe,
+        _check_win_rate,
+        _check_drawdown,
+        _check_trades,
+        _check_p_value,
+    ]
 
-    sharpe = metrics.get("sharpe", 0.0)
-    if sharpe < c.min_sharpe:
-        failures.append(f"Sharpe too low: {sharpe:.2f} < {c.min_sharpe}")
-
-    win_rate = metrics.get("win_rate", 0.0)
-    if win_rate < c.min_win_rate:
-        failures.append(f"Win rate too low: {win_rate:.2%} < {c.min_win_rate:.2%}")
-
-    max_dd = metrics.get("max_drawdown", -1.0)
-    if max_dd < c.max_drawdown:
-        failures.append(f"Max drawdown too large: {max_dd:.2%} < {c.max_drawdown:.2%}")
-
-    num_trades = metrics.get("num_trades", 0)
-    if num_trades < c.min_trades:
-        failures.append(f"Too few trades: {num_trades} < {c.min_trades}")
-
-    if c.require_p_value:
-        p_value = metrics.get("p_value")
-        if p_value is None or p_value >= 0.05:
-            failures.append(
-                f"ML significance not established: p_value={p_value} (need < 0.05)"
-            )
+    failures: List[str] = []
+    for check in checks:
+        result = check(metrics, criteria)
+        if result:
+            failures.append(result)
 
     return len(failures) == 0, failures
