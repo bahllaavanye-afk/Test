@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Monitor algo-agent",
-    "schemas on comparison/engine.py: success \u2014 tests green",
-    "Analyze agent memory.",
     "refactor on comparison/report_builder.py: success \u2014 tests green",
     "Validate user input",
     "constants on test/unit/test_risk_advanced.py: success \u2014 tests green",
@@ -199,8 +195,12 @@
     "cleanup on execution/iceberg.py: success \u2014 tests green",
     "Log API responses",
     "Verify trade IDs",
-    "Handle timeout errors"
+    "Handle timeout errors",
+    "Validate order size",
+    "Track market hours",
+    "Bind API timeouts",
+    "Detect stale quotes"
   ],
-  "last_updated": "2026-06-27T22:09:50.569707+00:00",
+  "last_updated": "2026-06-27T23:33:30.432389+00:00",
   "total": 200
 }
