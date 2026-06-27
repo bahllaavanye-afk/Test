@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-27T10:03:52.736171+00:00",
+  "last_updated": "2026-06-27T10:06:41.745585+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1293,11 +1293,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[continuous_improver @ 2026-06-24T18:12] constants on api/v1/monitoring.py: tests=pass",
-    "[continuous_improver @ 2026-06-24T18:12] constants on test/unit/test_risk_advanced.py: tests=pass",
-    "[continuous_improver @ 2026-06-24T18:12] alpha_evolve on strategies/manual/dollar_carry.py: tests=pass",
-    "[system_watchdog in #risk @ 2026-06-24T18:22] Based on my analysis of the agent memory, in the last cycle, there were no API availability issues detected, and all state files appear to be intact w",
-    "[desk_trader in #risk @ 2026-06-24T18:22] I'd recommend increasing our directional allocation to 32% of our overall portfolio, as the current market sentiment suggests a moderate level of vola",
     "[system_watchdog in #risk @ 2026-06-24T21:21] I've analyzed the agent memory, specifically `agent_memory.json`, which indicates that in the last cycle, there were no API availability issues detect",
     "[desk_trader in #risk @ 2026-06-24T21:21] I'd recommend scaling down our directional allocation to 28% of our overall portfolio, reflecting a conservative approach given the volatile market se",
     "[continuous_improver @ 2026-06-24T21:22] Currently refactoring\u202f`risk/hr",
@@ -1492,7 +1487,12 @@
     "[continuous_improver @ 2026-06-27T07:47] schemas on test/unit/test_workflow_scripts.py: tests=pass",
     "[continuous_improver @ 2026-06-27T07:47] schemas on strategies/manual/vrp_systematic.py: tests=pass",
     "[continuous_improver @ 2026-06-27T07:48] schemas on ml/models/foundation_model.py: tests=pass",
-    "[continuous_improver @ 2026-06-27T07:48] alpha_evolve on strategies/manual/poly_market_maker.py: tests=pass"
+    "[continuous_improver @ 2026-06-27T07:48] alpha_evolve on strategies/manual/poly_market_maker.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T10:05] strategy_logic on test/unit/test_new_strategies.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T10:05] strategy_logic on strategies/manual/on_chain_exchange_netflow.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T10:05] strategy_logic on strategies/ml_enhanced/lorentzian_knn.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T10:05] strategy_logic on ml/models/lorentzian_knn.py: tests=pass",
+    "[continuous_improver @ 2026-06-27T10:05] strategy_logic on ml/features/alternative.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1819,9 +1819,9 @@
       "test_pass": 5
     },
     "strategy_logic": {
-      "successes": 5,
+      "successes": 10,
       "failures": 0,
-      "test_pass": 5
+      "test_pass": 10
     },
     "docstrings": {
       "successes": 10,

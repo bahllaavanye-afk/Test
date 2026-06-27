@@ -199,8 +199,13 @@
     "schemas on test/unit/test_workflow_scripts.py: success \u2014 tests green",
     "schemas on strategies/manual/vrp_systematic.py: success \u2014 tests green",
     "schemas on ml/models/foundation_model.py: success \u2014 tests green",
-    "Verify timeout settings"
+    "Verify timeout settings",
+    "strategy_logic on test/unit/test_new_strategies.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/on_chain_exchange_netflow.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
+    "strategy_logic on ml/models/lorentzian_knn.py: success \u2014 tests green",
+    "strategy_logic on ml/features/alternative.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T10:03:52.736171+00:00",
+  "last_updated": "2026-06-27T10:05:49.662537+00:00",
   "total": 200
 }
