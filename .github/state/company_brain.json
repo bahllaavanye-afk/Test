@@ -606,7 +606,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782596692.4747968,
+    "last_updated": 1782600286.9878354,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -709,7 +709,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1782596692.4739861
+    "last_brain_update": 1782600286.9870045
   },
   "episodic": [
     {
@@ -2132,6 +2132,27 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1782596692.463465
+    },
+    {
+      "lesson": "Free LLM providers are failing consistently - need to evaluate paid provider fallback strategy or local model deployment",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782600286.9689515
+    },
+    {
+      "lesson": "CI pipeline failing at Python 3.11.15 with no clear dependency resolution - likely aiohttp/aiosqlite version conflict",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1782600286.9727557
+    },
+    {
+      "lesson": "Vercel deployment token visible in issue body - immediate rotation required to prevent unauthorized access",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1782600286.9762762
     }
   ],
   "github_insights": [
@@ -2324,6 +2345,11 @@
       "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
       "item_count": 20,
       "ts": 1782596692.4669156
+    },
+    {
+      "summary": "The discussion repeatedly reports that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, indicating a systemic outage or exhaustion of free-tier AI services.",
+      "item_count": 20,
+      "ts": 1782600286.9798024
     }
   ]
 }
