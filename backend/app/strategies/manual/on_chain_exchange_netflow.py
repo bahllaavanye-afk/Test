@@ -1,19 +1,3 @@
-"""
-On-Chain Exchange Netflow (Crypto)
-Academic basis: CryptoQuant research (2020-2023); Gerstein, Yu, Luk (2022)
-"Bitcoin Futures-Based ETF vs. Bitcoin: A Comparative Analysis".
-
-Exchange netflow = BTC flowing INTO exchanges (sell pressure) vs OUT (accumulation).
-Proxy: change in perpetual futures Open Interest (OI) from Binance public REST.
-
-When OI rises AND price rises → new longs being opened → continuation (buy)
-When OI falls AND price falls → liquidations/unwinding → continuation (sell)
-When OI rises AND price falls → shorts being opened → bearish
-When OI falls AND price rises → shorts being squeezed → bullish
-
-Endpoints (no API key required):
-  GET https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1d
-"""
 from __future__ import annotations
 
 import asyncio
@@ -28,22 +12,37 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 _FAPI_BASE = "https://fapi.binance.com"
 
 _SYMBOL_MAP: dict[str, str] = {
-    "BTC/USD":  "BTCUSDT",
-    "ETH/USD":  "ETHUSDT",
-    "SOL/USD":  "SOLUSDT",
+    "BTC/USD": "BTCUSDT",
+    "ETH/USD": "ETHUSDT",
+    "SOL/USD": "SOLUSDT",
     "AVAX/USD": "AVAXUSDT",
-    "BNB/USD":  "BNBUSDT",
-    "XRP/USD":  "XRPUSDT",
+    "BNB/USD": "BNBUSDT",
+    "XRP/USD": "XRPUSDT",
     "DOGE/USD": "DOGEUSDT",
-    "ADA/USD":  "ADAUSDT",
+    "ADA/USD": "ADAUSDT",
 }
 
 
 def _binance_get(path: str, params: dict) -> Any:
-    qs  = "&".join(f"{k}={v}" for k, v in params.items())
+    """Fetch JSON from Binance REST endpoint."""
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
     url = f"{_FAPI_BASE}{path}?{qs}"
     with urllib.request.urlopen(url, timeout=8) as resp:
         return json.loads(resp.read())
+
+
+def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """Calculate Relative Strength Index."""
+    delta = series.diff()
+    up = delta.clip(lower=0)
+    down = -delta.clip(upper=0)
+
+    # Use exponential moving average for smoothing
+    roll_up = up.ewm(alpha=1 / period, adjust=False).mean()
+    roll_down = down.ewm(alpha=1 / period, adjust=False).mean()
+    rs = roll_up / roll_down
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
 
 
 class OnChainExchangeNetflowStrategy(AbstractStrategy):
@@ -55,18 +54,26 @@ class OnChainExchangeNetflowStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.65
 
-    OI_LOOKBACK       = 8    # days of OI history
-    OI_THRESHOLD      = 0.02 # 2% OI change required to signal
-    PRICE_THRESHOLD   = 0.01 # 1% price move required
+    # --- Configurable thresholds ---
+    OI_LOOKBACK = 8  # days of OI history to pull
+    OI_THRESHOLD = 0.02  # minimum absolute OI change (2%)
+    PRICE_THRESHOLD = 0.01  # minimum absolute price change (1%)
+    SMA_PERIOD = 20  # SMA period for trend confirmation
+    RSI_PERIOD = 14  # RSI period for overbought/oversold filter
+    RSI_OVERBOUGHT = 70
+    RSI_OVERSOLD = 30
+    CONFIDENCE_BASE = 0.63
+    CONFIDENCE_SCALE = 0.13
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Generate a trading signal based on OI and price dynamics."""
         binance_sym = _SYMBOL_MAP.get(symbol)
         if binance_sym is None:
             return None
-        if len(data) < 5 or "close" not in data.columns:
+        if len(data) < max(self.SMA_PERIOD, self.OI_LOOKBACK) or "close" not in data.columns:
             return None
 
-        # Fetch OI history from Binance (blocking, run in thread pool)
+        # Fetch OI history (blocking I/O moved to thread pool)
         try:
             raw_oi = await asyncio.to_thread(
                 _binance_get,
@@ -81,63 +88,125 @@ class OnChainExchangeNetflowStrategy(AbstractStrategy):
             return None
 
         oi_values = [float(r.get("sumOpenInterest", 0)) for r in raw_oi]
-        if oi_values[-4] <= 0:
+        if any(v <= 0 for v in oi_values[-4:]):
             return None
 
+        # OI change over the last 3 days
         oi_change_3d = oi_values[-1] / oi_values[-4] - 1.0
 
         close = data["close"].astype(float)
-        if len(close) < 4:
-            return None
-        price_change_3d = float(close.iloc[-1] / close.iloc[-4] - 1.0)
+        price_change_3d = close.iloc[-1] / close.iloc[-4] - 1.0
 
-        # Signal grid: OI direction × price direction
-        oi_sign    = 1 if oi_change_3d > self.OI_THRESHOLD else (-1 if oi_change_3d < -self.OI_THRESHOLD else 0)
-        price_sign = 1 if price_change_3d > self.PRICE_THRESHOLD else (-1 if price_change_3d < -self.PRICE_THRESHOLD else 0)
-
+        # Determine direction signs
+        oi_sign = (
+            1
+            if oi_change_3d > self.OI_THRESHOLD
+            else -1
+            if oi_change_3d < -self.OI_THRESHOLD
+            else 0
+        )
+        price_sign = (
+            1
+            if price_change_3d > self.PRICE_THRESHOLD
+            else -1
+            if price_change_3d < -self.PRICE_THRESHOLD
+            else 0
+        )
         if oi_sign == 0 or price_sign == 0:
             return None
 
+        # Netflow direction (positive → bullish, negative → bearish)
         netflow = oi_sign * price_sign
-        side    = "buy" if netflow > 0 else "sell"
+        side = "buy" if netflow > 0 else "sell"
 
-        oi_mag    = min(abs(oi_change_3d) / 0.10, 1.0)
+        # --- Confirmation filters ---
+        # 1. Trend confirmation via SMA
+        sma = close.rolling(self.SMA_PERIOD).mean()
+        if pd.isna(sma.iloc[-1]):
+            return None
+        price_above_sma = close.iloc[-1] > sma.iloc[-1]
+        if (side == "buy" and not price_above_sma) or (side == "sell" and price_above_sma):
+            return None
+
+        # 2. RSI filter to avoid extreme overbought/oversold conditions
+        rsi_series = _rsi(close, period=self.RSI_PERIOD)
+        rsi_latest = rsi_series.iloc[-1]
+        if side == "buy" and rsi_latest > self.RSI_OVERBOUGHT:
+            return None
+        if side == "sell" and rsi_latest < self.RSI_OVERSOLD:
+            return None
+
+        # --- Confidence calculation ---
+        oi_mag = min(abs(oi_change_3d) / 0.10, 1.0)
         price_mag = min(abs(price_change_3d) / 0.05, 1.0)
-        conf      = min(0.63 + (oi_mag + price_mag) * 0.13, 0.89)
-
-        if conf < self.confidence_threshold:
+        confidence = min(
+            self.CONFIDENCE_BASE + (oi_mag + price_mag) * self.CONFIDENCE_SCALE,
+            0.89,
+        )
+        if confidence < self.confidence_threshold:
             return None
 
         spot = float(close.iloc[-1])
         return Signal(
             symbol=symbol,
             side=side,
-            confidence=conf,
+            confidence=confidence,
             strategy_name=self.name,
             strategy_type=self.strategy_type,
             risk_bucket=self.risk_bucket,
             target_price=spot,
             metadata={
-                "oi_change_3d":    round(oi_change_3d, 4),
+                "oi_change_3d": round(oi_change_3d, 4),
                 "price_change_3d": round(price_change_3d, 4),
-                "oi_sign":         oi_sign,
-                "price_sign":      price_sign,
-                "binance_sym":     binance_sym,
+                "oi_sign": oi_sign,
+                "price_sign": price_sign,
+                "binance_sym": binance_sym,
+                "sma": round(sma.iloc[-1], 2),
+                "rsi": round(rsi_latest, 2),
             },
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        if "close" not in df.columns or len(df) < 20:
+        """Generate back‑testable entry/exit signals using only price data."""
+        if "close" not in df.columns or len(df) < max(self.SMA_PERIOD, 20):
             return BacktestSignals(
                 entries=pd.Series(False, index=df.index),
                 exits=pd.Series(False, index=df.index),
+                short_entries=pd.Series(False, index=df.index),
             )
-        close = df["close"].astype(float)
-        ret3  = close.pct_change(3)
-        ret7  = close.pct_change(7)
 
-        # OI unavailable offline; use short + medium momentum agreement as proxy
-        entries       = ((ret3.shift(1) > self.PRICE_THRESHOLD) & (ret7.shift(1) > 0.02)).fillna(False)
-        short_entries = ((ret3.shift(1) < -self.PRICE_THRESHOLD) & (ret7.shift(1) < -0.02)).fillna(False)
-        exits         = (ret3.shift(1).abs() < 0.005).fillna(False)
-        return BacktestSignals(entries=entries, exits=exits, short_entries=short_entries)
+        close = df["close"].astype(float)
+        price_change_3d = close.pct_change(3)
+        sma = close.rolling(self.SMA_PERIOD).mean()
+        rsi_series = _rsi(close, period=self.RSI_PERIOD)
+
+        # Entry filter: price momentum + trend + RSI
+        bullish_entry = (
+            (price_change_3d.shift(1) > self.PRICE_THRESHOLD)
+            & (close.shift(1) > sma.shift(1))
+            & (rsi_series.shift(1) < self.RSI_OVERBOUGHT)
+        )
+        bearish_entry = (
+            (price_change_3d.shift(1) < -self.PRICE_THRESHOLD)
+            & (close.shift(1) < sma.shift(1))
+            & (rsi_series.shift(1) > self.RSI_OVERSOLD)
+        )
+
+        # Exit filter: price stagnation or reversal
+        exit_condition = (
+            price_change_3d.shift(1).abs() < 0.005
+        ) | (
+            (price_change_3d.shift(1) > self.PRICE_THRESHOLD) & (close.shift(1) < sma.shift(1))
+        ) | (
+            (price_change_3d.shift(1) < -self.PRICE_THRESHOLD) & (close.shift(1) > sma.shift(1))
+        )
+
+        entries = bullish_entry.fillna(False)
+        short_entries = bearish_entry.fillna(False)
+        exits = exit_condition.fillna(False)
+
+        return BacktestSignals(
+            entries=entries,
+            short_entries=short_entries,
+            exits=exits,
+        )
