@@ -1,13 +1,5 @@
 {
   "skills": [
-    "monitoring on risk/drawdown_recovery.py: success \u2014 tests green",
-    "* The `signal_runner` agent is processing files in `backtest/engine.py` and `risk/hrp.py` for performance metrics and updated Sharpe rankings.",
-    "Check risk/hrp.py logs",
-    "constants on test/unit/test_time_series_momentum.py: success \u2014 tests green",
-    "* All LLM providers have failed to be available, indicating a potential issue with the external services used by the learning agents.",
-    "* Recent data from `agent_memory.json` reveals 5 firing signals across various equity symbols in the last trading cycle, including a strong sell signal for QQQ.",
-    "optimization on tasks/order_sync.py: success \u2014 tests green",
-    "error_handling on backtest/metrics.py: success \u2014 tests green",
     "Test network connectivity",
     "* Consider deploying a hybrid model that combines the existing MLP model with the Time Frequency Transform (TFT) to improve performance.",
     "Test DB connections",
@@ -202,8 +194,13 @@
     "refactor on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
     "constants on backtest/cpcv.py: success \u2014 tests green",
     "constants on api/v1/orders.py: success \u2014 tests green",
-    "constants on test/unit/test_a3c_lstm.py: success \u2014 tests green"
+    "constants on test/unit/test_a3c_lstm.py: success \u2014 tests green",
+    "validate user input",
+    "check API rate limits",
+    "handle NaN values",
+    "timeout on slow trades",
+    "log exception stacks"
   ],
-  "last_updated": "2026-06-27T18:00:34.663217+00:00",
+  "last_updated": "2026-06-27T19:39:39.557602+00:00",
   "total": 200
 }
