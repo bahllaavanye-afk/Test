@@ -1,15 +1,5 @@
 {
   "skills": [
-    "Test network connectivity",
-    "* Consider deploying a hybrid model that combines the existing MLP model with the Time Frequency Transform (TFT) to improve performance.",
-    "Test DB connections",
-    "check timeouts",
-    "* This issue may impact agents such as [desk_trader], [ml_trainer], but further context is needed to identify affected agents.",
-    "docstrings on ml/features/store.py: success \u2014 tests green",
-    "Here are 3 concise bullet points summarizing the most important actionable knowledge:",
-    "**Trade Logger Review**: The 'trade_logger' module at `src/loggers/trade_logger.py` is under review, indicating potential issues or areas for improvement in trade logging functionality.",
-    "constants on api/v1/positions.py: success \u2014 tests green",
-    "edge_cases on strategies/manual/low_volatility.py: success \u2014 tests green",
     "Implement TFT models",
     "TRADING_MODE must always be paper \u2014 never set to live",
     "Verify config files",
@@ -204,8 +194,13 @@
     "schemas on strategies/manual/earnings_accruals.py: success \u2014 tests green",
     "schemas on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
     "schemas on ml/models/patch_tst.py: success \u2014 tests green",
-    "schemas on ml/features/multi_timeframe.py: success \u2014 tests green"
+    "schemas on ml/features/multi_timeframe.py: success \u2014 tests green",
+    "Check API keys",
+    "Verify market hours",
+    "Limit trade size",
+    "Monitor memory usage",
+    "Catch HTTP errors"
   ],
-  "last_updated": "2026-06-27T19:52:56.739901+00:00",
+  "last_updated": "2026-06-27T20:59:05.423678+00:00",
   "total": 200
 }
