@@ -89,6 +89,10 @@ class InterestRateDifferentialStrategy(AbstractStrategy):
 
         yield_rising = current_yield > yield_ma
 
+        # MUTATION: add VIX volatility filter to avoid entering in high volatility regimes
+        if "vix" in data.columns and float(data["vix"].iloc[-1]) > 20.0:
+            return None
+
         if current_yield > self.yield_threshold and yield_rising:
             confidence = min(0.80, 0.60 + (current_yield - self.yield_threshold) * 0.1)
             return Signal(
@@ -97,50 +101,21 @@ class InterestRateDifferentialStrategy(AbstractStrategy):
                 confidence=confidence,
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                metadata={
-                    "us10y_yield": round(current_yield, 3),
-                    "yield_trend": "rising",
-                    "trade_type": "long_em_short_tlt",
-                },
+                risk=self.risk_bucket,
+                entry_price=data["close"].iloc[-1],
+                timestamp=data.index[-1]
             )
-        elif current_yield < self.exit_yield:
+
+        # Exit condition
+        if current_yield < self.exit_yield:
             return Signal(
                 symbol=symbol,
                 side="sell",
-                confidence=0.75,
+                confidence=0.9,
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                metadata={"us10y_yield": round(current_yield, 3), "signal": "exit"},
+                risk=self.risk_bucket,
+                entry_price=data["close"].iloc[-1],
+                timestamp=data.index[-1]
             )
         return None
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        if "us10y_yield" in df.columns:
-            y = df["us10y_yield"]
-        else:
-            # Proxy: invert TLT price movements as yield proxy
-            close = df["close"]
-            # Normalize to approximate yield range 1-5%
-            pnorm = (close - close.rolling(252).min()) / (
-                close.rolling(252).max() - close.rolling(252).min() + 1e-10
-            )
-            y = 5.0 - pnorm * 4.0  # maps [min,max] price to [1,5]% yield range
-
-        y_ma = y.rolling(self.yield_momentum_days).mean()
-        # Shift to prevent lookahead
-        y_s = y.shift(1)
-        y_ma_s = y_ma.shift(1)
-
-        entries = (y_s > self.yield_threshold) & (y_s > y_ma_s)
-        exits = y_s < self.exit_yield
-        short_entries = y_s < self.exit_yield   # short when yields falling
-        short_exits = y_s > self.yield_threshold
-
-        return BacktestSignals(
-            entries=entries.fillna(False),
-            exits=exits.fillna(False),
-            short_entries=short_entries.fillna(False),
-            short_exits=short_exits.fillna(False),
-        )
