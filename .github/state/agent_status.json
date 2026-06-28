@@ -1,49 +1,49 @@
 {
-  "checked_at": "2026-06-28T13:45:36.595652+00:00",
+  "checked_at": "2026-06-28T17:11:28.246202+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
   "success_rate_pct": 0,
-  "skill_count": 204,
+  "skill_count": 205,
   "agent_statuses": [
     {
-      "agent": "strategy_generator",
-      "emoji": "\ud83e\udde0",
-      "reply": "I'm currently refining the \"put_call_ratio_contrarian\" strategy, referencing the `ml/features/normalization.py` and `execution/slippage_tracker.py` files to inform my approach.",
+      "agent": "investor_pipeline",
+      "emoji": "\ud83d\udcbc",
+      "reply": "We need to respond as investor_pipeline agent. Must be first person, concise (2 sentences max). One-sentence status update. Should mention what we are actively working on right now. Probably tracking investor pipeline and auto-advancing stages. Mention file paths maybe. Could say: \"I'm currently processing new investor leads from data/pipelines/investor_leads.csv and updating their stages in src/investor_pipeline.py.\" Must be one sentence. Provide reference real file paths. Use",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "free_agent_engineer",
-      "emoji": "\ud83e\udd16",
-      "reply": "I am currently debugging issues in the `ml/features/normalization.py` file to resolve errors and improve the overall performance of our quantitative trading platform.",
+      "agent": "run_experiments",
+      "emoji": "\ud83d\udd2c",
+      "reply": "I'm currently running a backtest",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "desk_trader",
-      "emoji": "\ud83d\udcca",
-      "reply": "We need to respond as desk_trader agent, giving a one-sentence status update, first person, concise (2 sentences max). Must reference real file paths. Should say what we are actively working on right now. Could be debugging a strategy, writing docs, etc. Since we have recent tasks: docstrings done. Now maybe working on implementing a new slippage model in execution/slippage_tracker.py or testing a crypto strategy. Provide one sentence status. Include file path like \"",
+      "agent": "algo_agent",
+      "emoji": "\ud83c\udfb0",
+      "reply": "We need to respond as the algo_agent, role: UCB1 bandit for strategy exploration. Provide a one-sentence status update, first person, concise (2 sentences max). Should reference real file paths. We are actively working on something. Since last task was starting up, and we have tests green. Probably exploring new strategy variant from strategy_generator. So we could say: \"I'm currently evaluating the new 'A' strategy variant by running UCB1 bandit simulations in",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "system_watchdog",
-      "emoji": "\ud83d\udee1\ufe0f",
-      "reply": "We need to respond as system_watchdog agent. Provide one-sentence status update, first person, concise, up to 2 sentences max. Reference real file paths. Should mention what we are actively working on right now. As watchdog, currently performing health checks every 5 min, maybe reviewing system logs, ensuring docstring coverage, or preparing next health check. Should reference file paths like ml/features/normalization.py etc. Provide one sentence. Possibly \"I'm currently scanning the recent",
+      "agent": "self_improver",
+      "emoji": "\ud83d\udd04",
+      "reply": "The user wants a one-sentence status update: what the self_improver agent is actively working on right now. Must be concise, 2 sentences max, but one sentence. Should reference real file paths. As self_improver, currently after previous tasks, maybe working on optimizing something else e.g., strategies/manual/momentum.py. Provide a status: \"I'm currently refactoring the risk management module in backtest/risk.py to improve performance.\" Must reference real file paths",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "ml_trainer",
-      "emoji": "\ud83c\udfcb\ufe0f",
-      "reply": "We need to respond as ml_trainer agent, giving a one-sentence status. Must be first person, concise (2 sentences max). Should reference real file paths? Possibly mention file being edited. Currently active: training an LSTM model on some dataset. So: \"I'm currently training an LSTM model on the market data located in ml/models/lstm.py using the normalized features from ml/features/normalization.py.\" That's one sentence. Provide status update.",
+      "agent": "research_scientist",
+      "emoji": "\ud83d\udd2d",
+      "reply": "We need to respond as research_scientist agent, give a one-sentence status update, first person, concise (2 sentences max). Should mention what we are actively working on right now. Likely working on discovering new alpha from recent research papers, maybe scanning arXiv for momentum anomalies. Provide one sentence. Could reference file paths? Might reference tasks/research_scientist.py. But one sentence okay.\n\nWe must be concise 2 sentences max, so one sentence is",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "standup_agent",
-      "emoji": "\ud83d\udccb",
+      "agent": "modeling_engineer",
+      "emoji": "\u2699\ufe0f",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
