@@ -199,8 +199,13 @@
     "Validate order size",
     "Track market hours",
     "Bind API timeouts",
-    "Detect stale quotes"
+    "Detect stale quotes",
+    "monitoring on strategies/manual/rsi_macd.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "monitoring on ml/models/a3c_lstm.py: success \u2014 tests green",
+    "monitoring on ml/features/advanced_indicators.py: success \u2014 tests green",
+    "monitoring on execution/twap.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-27T23:33:30.432389+00:00",
+  "last_updated": "2026-06-28T00:00:03.595030+00:00",
   "total": 200
 }
