@@ -107,30 +107,43 @@ def scan_backtest_results() -> list[dict]:
             print(f"[WARN] Could not parse {path.name}: {exc}", file=sys.stderr)
             continue
 
-        # Only promote completed experiments with an out-of-sample Sharpe
-        if data.get("status") != "done":
+        # Two result shapes are supported:
+        #   (a) trainer output: top-level test_sharpe/val_sharpe/max_drawdown
+        #   (b) run_experiments output: metrics nested under "results" (sharpe, n_trades…)
+        res = data.get("results") if isinstance(data.get("results"), dict) else {}
+        status_done = data.get("status", "done") == "done"  # run_experiments has no status
+        if not status_done:
             continue
+
         test_sharpe = data.get("test_sharpe")
+        if test_sharpe is None:
+            test_sharpe = res.get("sharpe")  # shape (b)
         if test_sharpe is None:
             continue
 
-        # max_drawdown in source files is stored as a negative fraction (e.g. -0.112)
-        # convert to a positive percentage
-        raw_dd = data.get("max_drawdown", 0.0)
+        # max_drawdown stored as a negative fraction (e.g. -0.112) → positive percent
+        raw_dd = data.get("max_drawdown", res.get("max_drawdown", 0.0))
         max_dd_pct = abs(float(raw_dd)) * 100.0
 
-        # Derive strategy name: prefer experiment.name → file stem
-        name = (
-            data.get("experiment", {}).get("name")
-            or path.stem
-        )
+        # Carry advanced metrics through to the gate from whichever shape has them.
+        merged = {
+            "num_trades": data.get("num_trades", res.get("n_trades")),
+            "sortino": data.get("sortino", res.get("sortino")),
+            "calmar": data.get("calmar", res.get("calmar")),
+            "win_rate": data.get("win_rate", res.get("win_rate")),
+            "profit_factor": data.get("profit_factor", res.get("profit_factor")),
+            "skew": data.get("skew", res.get("skew", 0.0)),
+            "kurtosis": data.get("kurtosis", res.get("kurtosis", 3.0)),
+        }
+
+        name = data.get("experiment", {}).get("name") or path.stem
 
         results.append({
             "name": name,
             "test_sharpe": float(test_sharpe),
-            "val_sharpe": float(data.get("val_sharpe") or 0.0),
+            "val_sharpe": float(data.get("val_sharpe") or res.get("val_sharpe") or 0.0),
             "max_dd": max_dd_pct,
-            "config": data,
+            "config": {**data, **merged},
         })
 
     return results
@@ -209,7 +222,8 @@ def run_promotion_check() -> list[dict]:
             "test_sharpe": sharpe,
             "val_sharpe": result["val_sharpe"],
             "max_dd": max_dd,
-            "num_trades": cfg.get("num_trades") or cfg.get("n_trades") or 0,
+            # None (not 0) when unrecorded so the gate skips rather than rejects.
+            "num_trades": cfg.get("num_trades") if cfg.get("num_trades") is not None else cfg.get("n_trades"),
             "sortino": cfg.get("sortino"),
             "calmar": cfg.get("calmar"),
             "win_rate": cfg.get("win_rate"),

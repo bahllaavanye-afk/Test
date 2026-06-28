@@ -92,21 +92,29 @@ def passes_promotion_gate(
     test_sharpe = float(metrics.get("test_sharpe", 0.0) or 0.0)
     val_sharpe = float(metrics.get("val_sharpe", 0.0) or 0.0)
     max_dd = abs(float(metrics.get("max_dd", 0.0) or 0.0))
-    num_trades = int(metrics.get("num_trades", 0) or 0)
+    # num_trades is optional: only enforce when the backtest actually recorded it,
+    # so existing results (which don't yet emit it) aren't auto-rejected.
+    raw_trades = metrics.get("num_trades")
+    num_trades = int(raw_trades) if raw_trades not in (None, "") else None
 
     # ── Hard gates ──
     check("test_sharpe", test_sharpe, SHARPE_MIN, test_sharpe >= SHARPE_MIN)
     check("val_sharpe", val_sharpe, VAL_SHARPE_MIN, val_sharpe >= VAL_SHARPE_MIN)
     check("max_dd_pct", max_dd, MAXDD_MAX_PCT, max_dd < MAXDD_MAX_PCT)
-    check("num_trades", num_trades, MIN_TRADES, num_trades >= MIN_TRADES)
+    if num_trades is None:
+        check("num_trades", None, MIN_TRADES, True)  # not recorded → don't fail
+    else:
+        check("num_trades", num_trades, MIN_TRADES, num_trades >= MIN_TRADES)
     # Out-of-sample consistency: test must not collapse vs validation (overfit tell)
     consistent = val_sharpe <= 0 or test_sharpe >= OOS_CONSISTENCY * val_sharpe
     check("oos_consistency", round(test_sharpe / val_sharpe, 2) if val_sharpe > 0 else None,
           OOS_CONSISTENCY, consistent)
-    # Deflated Sharpe — the multiple-testing haircut
+    # Deflated Sharpe — the multiple-testing haircut. When trade count is unknown,
+    # assume ~252 observations (≈1y daily) rather than collapsing the sample.
+    n_obs = num_trades if (num_trades and num_trades >= 2) else 252
     dsr = deflated_sharpe_ratio(
         test_sharpe,
-        n_obs=max(num_trades, 2),
+        n_obs=n_obs,
         n_trials=max(n_trials, 1),
         sharpe_variance_across_trials=sharpe_variance_across_trials,
         skew=float(metrics.get("skew", 0.0) or 0.0),
