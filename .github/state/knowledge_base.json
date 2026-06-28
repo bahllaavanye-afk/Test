@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-27T05:56:19.871356+00:00",
+  "last_updated": "2026-06-28T06:22:22.023993+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -16,15 +16,15 @@
       ]
     },
     "code_quality": {
-      "summary": "**Code Quality Insights**\n\n* **Refactoring progress**: Continuous Improvement refactored multiple modules, including `broker/tradestation.py`, `backtest/engine.py`, `comparison/report_builder.py` and others, with all tests passing.\n* **Documentation progress**: Docstrings have been added for specific functions in `ml/features/wavelet_features.py` and `execution/twap.py`, following Continuous Improvement's effort to maintain and improve code documentation.\n* **Quality assurance**: Continuous Improvement and Investor Pipeline have focused on enhancing code quality, scanning investor pipeline data, and implementing refactors and tests to ensure a robust and reliable platform.",
-      "source_count": 35,
-      "updated_at": "2026-06-27T05:56:19.871356+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important and actionable knowledge on code quality:\n\n* **Automated testing is effective**: Continuous improvements in various files such as `strategies/manual/earnings_accruals.py`, `execution/iceberg.py`, and `test/unit/test_strategies.py` have resulted in passing tests, indicating that automated testing is a reliable means of ensuring code quality.\n* **Code cleanup and refactoring improves maintainability**: Cleanups on files like `strategies/ml_enhanced/rl_trader.py` and `execution/twap.py` suggest that regular refactoring efforts can improve code readability and reduce technical debt.\n* **Monitoring and validation are essential**: Monitoring of features in `strategies/manual/rsi_macd.py` and validation of brokers in `brokers/alpaca_headers.py` indicates the importance of regular monitoring and validation to prevent errors and ensure correct functionality.",
+      "source_count": 48,
+      "updated_at": "2026-06-28T06:22:22.023993+00:00",
       "raw_recent": [
-        "[continuous_improver @ 2026-06-26T19:43] schemas on comparison/engine.py: tests=pass",
-        "[continuous_improver @ 2026-06-26T19:43] schemas on tasks/order_sync.py: tests=pass",
-        "[continuous_improver @ 2026-06-26T19:43] schemas on strategies/manual/pmi_sector_rotation.py: tests=pass",
-        "[continuous_improver @ 2026-06-27T00:04] docstrings on ml/features/wavelet_features.py: tests=pass",
-        "[continuous_improver @ 2026-06-27T00:04] docstrings on execution/twap.py: tests=pass"
+        "[continuous_improver @ 2026-06-28T00:00] monitoring on ml/features/advanced_indicators.py: tests=pass",
+        "[continuous_improver @ 2026-06-28T00:00] monitoring on execution/twap.py: tests=pass",
+        "[continuous_improver @ 2026-06-28T04:44] validation on brokers/alpaca_headers.py: tests=pass",
+        "[continuous_improver @ 2026-06-28T04:44] validation on comparison/benchmarks.py: tests=pass",
+        "[continuous_improver @ 2026-06-28T04:45] validation on test/unit/test_strategies.py: tests=pass"
       ]
     },
     "general": {
@@ -40,15 +40,15 @@
       ]
     },
     "strategies": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of actionable knowledge:\n\n\u2022 **Backtest and validate strategies**: Run experiments and backtests using `backtest/engine.py` and validate inputs for strategies like `strategies/manual/pmi_sector_rotation.py` and `strategies/mean_reversion/mean_reversion.py` to ensure clean data.\n\u2022 **Strategy variants and combinations**: Propose new strategy variants, such as \"Sector Rotation with Momentum\", combining PMI Sector Rotation and MACD indicators, to achieve moderate Sharpe ratios (around 1).\n\u2022 **Risk allocation and sector rotation**: Allocate 20% to directional strategies, 50% to arb strategies, and consider sector rotation to shift 10% from directional to arbitrage strategies.",
-      "source_count": 66,
-      "updated_at": "2026-06-27T05:56:19.871356+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important and actionable knowledge:\n\n* **Allocate 28% to directional trading strategies**: According to desk_trader's recommendation, based on current market conditions, it's suggested to allocate 28% to directional trading strategies, given the 70/30 arbitrage directional policy.\n* **Sharpe ratio of 0.5-0.7**: quick_backtest estimates a low Sharpe ratio for a particular strategy, likely around 0.5-0.7, due to its reliance on short-term trends and high-frequency movements.\n* **Signals generation and backtesting**: signal_runner is generating trading signals every 5 minutes across all desks, referencing `/data/market_data.csv`, and quick_backtest is running lightweight backtests on equity mean-reversion variants in `backtest/cpcv.py`.",
+      "source_count": 63,
+      "updated_at": "2026-06-28T06:22:22.023993+00:00",
       "raw_recent": [
-        "[quick_backtest in #desk-equities @ 2026-06-26T21:18] Based on historical data, I estimate that the proposed strategy with a MACD indicator and momentum would yield a moderate Sharpe ratio of around 1.2-1",
-        "[signal_runner @ 2026-06-26T21:19] I'm actively running the PMI sector rotation strategy from `strategies/manual/pmi_sector_rotation.py`, validating inputs and generating signals for th",
-        "[quick_backtest @ 2026-06-26T21:19] Actively validating inputs and initializing the backtest for the strategy at\u202f`strategies/manual/pmi_sector_rotation.py`\u202fto ensure clean data before",
-        "[signal_runner @ 2026-06-27T03:27] We need to respond as signal_runner agent, concise 2 sentences max, one sentence status update. Must reference real file paths. Mention what we are ac",
-        "[quick_backtest @ 2026-06-27T03:27] I\u2019m currently initializing a lightweight backtest for the strategy in\u202f`strategies/mean_reversion/mean_reversion.py`,"
+        "[quick_backtest in #desk-equities @ 2026-06-27T23:02] I'd estimate a relatively low Sharpe ratio for this strategy, likely around 0.5-0.7, due to its reliance on short-term trends and high-frequency marke",
+        "[signal_runner @ 2026-06-28T03:50] I'm currently generating trading signals every 5 minutes across all desks, referencing the latest market data from `/data/market_data.csv` and refinin",
+        "[quick_backtest @ 2026-06-28T03:50] Running a lightweight backtest on the equity mean\u2011reversion variants located in\u202f`",
+        "[continuous_improver @ 2026-06-28T04:44] validation on backtest/cpcv.py: tests=pass",
+        "[continuous_improver @ 2026-06-28T04:45] alpha_evolve on strategies/manual/put_call_ratio_contrarian.py: tests=pass"
       ]
     },
     "risk": {
