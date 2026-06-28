@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-28T12:01:32.210425+00:00",
+  "last_updated": "2026-06-28T12:19:39.433986+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1509,11 +1509,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[continuous_improver @ 2026-06-26T11:26] monitoring on strategies/manual/poly_binary_arb.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T11:26] monitoring on strategies/ml_enhanced/ml_pca_arb.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T11:26] monitoring on ml/models/transformer.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T11:27] monitoring on risk/drawdown_recovery.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T11:27] monitoring on brokers/tradestation.py: tests=pass",
     "[continuous_improver @ 2026-06-26T11:27] alpha_evolve on strategies/manual/intraday_seasonality.py: tests=pass",
     "[continuous_improver @ 2026-06-26T13:29] error_handling on ml/models/hmm_regime.py: tests=pass",
     "[continuous_improver @ 2026-06-26T13:29] error_handling on ml/features/advanced_indicators.py: tests=pass",
@@ -1708,46 +1703,15 @@
     "[continuous_improver @ 2026-06-28T10:39] strategy_logic on strategies/manual/polymarket_sentiment_momentum.py: tests=pass",
     "[continuous_improver @ 2026-06-28T10:39] strategy_logic on strategies/ml_enhanced/ml_momentum.py: tests=pass",
     "[continuous_improver @ 2026-06-28T10:39] strategy_logic on ml/models/ssm_model.py: tests=pass",
-    "[continuous_improver @ 2026-06-28T10:39] strategy_logic on ml/features/engineer.py: tests=pass"
+    "[continuous_improver @ 2026-06-28T10:39] strategy_logic on ml/features/engineer.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T12:15] docstrings on strategies/ml_enhanced/lorentzian_knn.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T12:16] docstrings on ml/features/normalization.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T12:16] docstrings on execution/slippage_tracker.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T12:18] docstrings on comparison/engine.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T12:19] docstrings on api/v1/regime.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/comparison/report_builder.py",
-      "reason": "syntax check failed",
-      "improvement_type": "strategy_logic",
-      "timestamp": "2026-06-19T22:42:35.958209+00:00"
-    },
-    {
-      "file": "backend/app/risk/correlation_monitor.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T16:57:39.867929+00:00"
-    },
-    {
-      "file": "backend/app/brokers/binance.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T16:58:00.587993+00:00"
-    },
-    {
-      "file": "backend/app/backtest/walk_forward.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T16:58:21.311047+00:00"
-    },
-    {
-      "file": "backend/app/comparison/report_builder.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T16:58:42.046130+00:00"
-    },
-    {
-      "file": "backend/app/tasks/strategy_auction.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T16:59:02.785519+00:00"
-    },
     {
       "file": "backend/app/api/v1/scanners.py",
       "reason": "syntax check failed",
@@ -2011,6 +1975,42 @@
       "reason": "syntax check failed",
       "improvement_type": "validation",
       "timestamp": "2026-06-28T04:45:32.821835+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/itransformer.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-28T12:16:01.784794+00:00"
+    },
+    {
+      "file": "backend/app/risk/kelly.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-28T12:16:57.244548+00:00"
+    },
+    {
+      "file": "backend/app/brokers/alpaca_orders.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-28T12:17:49.799911+00:00"
+    },
+    {
+      "file": "backend/app/backtest/walk_forward.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-28T12:18:42.103035+00:00"
+    },
+    {
+      "file": "backend/app/tasks/promotion_metrics_sync.py",
+      "reason": "syntax check failed",
+      "improvement_type": "docstrings",
+      "timestamp": "2026-06-28T12:19:36.557340+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/options_pcr_reversal.py",
+      "reason": "Tests failed after mutation",
+      "improvement_type": "alpha_evolve",
+      "timestamp": "2026-06-28T12:19:39.433934+00:00"
     }
   ],
   "improvement_stats": {
@@ -2040,9 +2040,9 @@
       "test_pass": 15
     },
     "docstrings": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     },
     "refactor": {
       "successes": 15,

@@ -199,8 +199,12 @@
     "retry_failed_requests",
     "Refine LSTM models",
     "Test edge cases",
-    "Debug strategies"
+    "Debug strategies",
+    "docstrings on ml/features/normalization.py: success \u2014 tests green",
+    "docstrings on execution/slippage_tracker.py: success \u2014 tests green",
+    "docstrings on comparison/engine.py: success \u2014 tests green",
+    "docstrings on api/v1/regime.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T12:01:32.210425+00:00",
+  "last_updated": "2026-06-28T12:19:38.128609+00:00",
   "total": 200
 }
