@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Here are the 3 most important, actionable bullet points:",
-    "refactor on brokers/alpaca_headers.py: success \u2014 tests green",
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Based on the recent agent learnings, I've extracted the following actionable insights:",
     "monitoring on ml/features/advanced_indicators.py: success \u2014 tests green",
     "Verify trade IDs",
     "monitoring on ml/models/a3c_lstm.py: success \u2014 tests green",
@@ -205,6 +201,6 @@
     "docstrings on comparison/engine.py: success \u2014 tests green",
     "docstrings on api/v1/regime.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T12:19:38.128609+00:00",
+  "last_updated": "2026-06-28T14:21:27.429394+00:00",
   "total": 200
 }
