@@ -1,8 +1,12 @@
 """ML-enhanced momentum: Jegadeesh-Titman signals filtered by LSTM + XGBoost ensemble."""
+import logging
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.strategies.manual.momentum import MomentumStrategy
 from app.ml.inference import get_inference_service
+
+
+logger = logging.getLogger(__name__)
 
 
 class MLMomentumStrategy(AbstractStrategy):
@@ -29,21 +33,27 @@ class MLMomentumStrategy(AbstractStrategy):
             ml_result = await inference.predict(data, symbol)
             if ml_result is None or ml_result["prediction"] == "neutral":
                 return None
+
             # Only pass if ML agrees with indicator direction
             if ml_result["prediction"] == "up" and base_signal.side == "buy":
-                base_signal.confidence = min(0.95, (base_signal.confidence + ml_result["confidence"]) / 2)
+                base_signal.confidence = min(
+                    0.95, (base_signal.confidence + ml_result["confidence"]) / 2
+                )
                 base_signal.strategy_name = self.name
                 base_signal.strategy_type = self.strategy_type
                 base_signal.metadata["ml_confidence"] = ml_result["confidence"]
                 return base_signal
             elif ml_result["prediction"] == "down" and base_signal.side == "sell":
-                base_signal.confidence = min(0.95, (base_signal.confidence + ml_result["confidence"]) / 2)
+                base_signal.confidence = min(
+                    0.95, (base_signal.confidence + ml_result["confidence"]) / 2
+                )
                 base_signal.strategy_name = self.name
                 base_signal.strategy_type = self.strategy_type
                 base_signal.metadata["ml_confidence"] = ml_result["confidence"]
                 return base_signal
-        except Exception:
-            pass  # Fall back to base signal if ML unavailable
+        except Exception as e:
+            logger.exception("ML inference failed for %s: %s", symbol, e)
+
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
