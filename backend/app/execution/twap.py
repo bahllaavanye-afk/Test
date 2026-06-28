@@ -8,6 +8,8 @@ fill information from each slice and returns a combined ``OrderResult``.
 """
 
 import asyncio
+import time
+from typing import Optional
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
@@ -53,10 +55,11 @@ class TWAPExecution:
             execution. The ``status`` is ``filled`` if at least 95 % of the
             requested quantity was filled; otherwise it is ``partial``.
         """
+        start_time = time.time()
         slice_qty = request.quantity / self.slices
-        total_filled = 0.0
-        total_cost = 0.0
-        last_result: OrderResult | None = None
+        total_filled: float = 0.0
+        total_cost: float = 0.0
+        last_result: Optional[OrderResult] = None
         consecutive_failures = 0
 
         for i in range(self.slices):
@@ -72,7 +75,9 @@ class TWAPExecution:
                 consecutive_failures = 0
             except Exception as e:
                 consecutive_failures += 1
-                logger.warning(f"TWAP slice {i+1}/{self.slices} failed for {request.symbol}: {e}")
+                logger.warning(
+                    f"TWAP slice {i + 1}/{self.slices} failed for {request.symbol}: {e}"
+                )
                 if consecutive_failures >= 3:
                     logger.error(
                         f"TWAP {request.symbol}: {consecutive_failures} consecutive failures — aborting"
@@ -83,6 +88,19 @@ class TWAPExecution:
                 await asyncio.sleep(self.sleep_seconds)
 
         avg_price = total_cost / total_filled if total_filled > 0 else None
+
+        # Compute P&L if reference price is available on the request
+        pnl: Optional[float] = None
+        if total_filled > 0 and hasattr(request, "price") and request.price is not None:
+            pnl = (avg_price - request.price) * total_filled if avg_price is not None else None
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"TWAP execution completed for {request.symbol}: "
+            f"slices={self.slices}, exec_time={elapsed:.2f}s, "
+            f"filled_qty={total_filled:.4f}, pnl={pnl:.4f if pnl is not None else 'N/A'}"
+        )
+
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "twap",
             status="filled"
