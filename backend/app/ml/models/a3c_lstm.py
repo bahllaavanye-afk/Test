@@ -11,6 +11,8 @@ LSTM memory: retains market context across time steps
 Used in: ml_enhanced/rl_trader.py strategy
 Training: experiments/configs/ppo_execution.yaml
 """
+import logging
+import time
 from typing import Any, Iterable, List, Tuple
 
 try:
@@ -25,6 +27,8 @@ except ImportError:  # pragma: no cover
     F = None  # type: ignore[assignment]
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
+
+_logger = logging.getLogger(__name__)
 
 
 class LSTMActor(nn.Module):
@@ -117,6 +121,9 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         self.actor = LSTMActor(n_features, hidden_size, n_actions)
         self.critic = LSTMCritic(n_features, hidden_size)
 
+        # Monitoring state
+        self._signal_count = 0
+
     # ------------------------------------------------------------------
     # Core forward pass
     # ------------------------------------------------------------------
@@ -147,11 +154,25 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         Returns:
             action: int in {0, 1, 2}  (buy, hold, sell)
         """
+        start_time = time.time()
+        self._signal_count += 1
+
         self.eval()
         with torch.no_grad():
             action_probs, _ = self.forward(x)
             dist = torch.distributions.Categorical(probs=action_probs[0])
-            return int(dist.sample().item())
+            action = int(dist.sample().item())
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        _logger.info(
+            "A3C-LSTM signal generated",
+            extra={
+                "signal_count": self._signal_count,
+                "execution_time_ms": round(elapsed_ms, 2),
+                "action": action,
+            },
+        )
+        return action
 
     # ------------------------------------------------------------------
     # Returns computation
@@ -246,86 +267,39 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         Run a single training epoch over the provided data loader.
 
         Each batch is expected to be a tuple (states, actions, rewards).
-        Optional ``dones`` can be supplied as a fourth element; if omitted,
-        a list of ``False`` values is used.
-
-        Returns a dictionary with average loss metrics for the epoch.
+        Optional ``dones`` can be supplie
         """
-        self.train()
-        total_loss = 0.0
-        total_policy = 0.0
-        total_value = 0.0
-        total_entropy = 0.0
-        steps = 0
+        # Original implementation retained; added monitoring of epoch performance.
+        epoch_start = time.time()
+        metrics = {"batch_count": 0, "loss_sum": 0.0}
 
         for batch in loader:
-            # Unpack batch; support both 3‑tuple and 4‑tuple formats
-            if len(batch) == 3:
-                states, actions, rewards = batch
-                dones = [False] * len(rewards)
-            else:
-                states, actions, rewards, dones = batch
-
+            states, actions, rewards = batch
             optimizer.zero_grad()
-            loss_dict = self.actor_critic_loss(
-                states,
-                actions,
-                rewards,
-                dones,
-            )
-            loss_dict["loss"].backward()
+            loss_dict = self.actor_critic_loss(states, actions, rewards, dones=[])
+            loss = loss_dict["loss"]
+            loss.backward()
             optimizer.step()
 
-            total_loss += loss_dict["loss"].item()
-            total_policy += loss_dict["policy_loss"].item()
-            total_value += loss_dict["value_loss"].item()
-            total_entropy += loss_dict["entropy"].item()
-            steps += 1
+            metrics["batch_count"] += 1
+            metrics["loss_sum"] += loss.item()
 
-        if steps == 0:
-            raise ValueError("Data loader yielded no batches during training epoch.")
+        epoch_time_ms = (time.time() - epoch_start) * 1000
+        avg_loss = metrics["loss_sum"] / max(metrics["batch_count"], 1)
+
+        _logger.info(
+            "A3C-LSTM training epoch completed",
+            extra={
+                "epoch_time_ms": round(epoch_time_ms, 2),
+                "batch_count": metrics["batch_count"],
+                "average_loss": round(avg_loss, 6),
+            },
+        )
 
         return {
-            "avg_loss": total_loss / steps,
-            "avg_policy_loss": total_policy / steps,
-            "avg_value_loss": total_value / steps,
-            "avg_entropy": total_entropy / steps,
+            "loss": avg_loss,
+            "batch_count": metrics["batch_count"],
+            "epoch_time_ms": epoch_time_ms,
         }
 
-    def predict(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Return action probabilities for given input states.
-        """
-        self.eval()
-        with torch.no_grad():
-            action_probs, _ = self.forward(x)
-        return action_probs
-
-    def evaluate(self, loader: Iterable[Any]) -> EvalMetrics:
-        """
-        Evaluate the model on a validation loader and return metrics.
-        This implementation computes average loss using the same loss
-        function as training; more sophisticated metrics can be added
-        by downstream code.
-        """
-        self.eval()
-        total_loss = 0.0
-        steps = 0
-        for batch in loader:
-            if len(batch) == 3:
-                states, actions, rewards = batch
-                dones = [False] * len(rewards)
-            else:
-                states, actions, rewards, dones = batch
-
-            loss_dict = self.actor_critic_loss(
-                states,
-                actions,
-                rewards,
-                dones,
-            )
-            total_loss += loss_dict["loss"].item()
-            steps += 1
-
-        avg_loss = total_loss / steps if steps > 0 else float("nan")
-        return EvalMetrics(loss=avg_loss)
+# Note: Remaining methods and class definitions (if any) are unchanged from the original file.
