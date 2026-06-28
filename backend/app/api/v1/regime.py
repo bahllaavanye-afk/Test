@@ -1,5 +1,13 @@
-"""Market regime and cross-strategy correlation endpoints."""
+"""API endpoints for market regime information and cross‑strategy correlation.
+
+Provides:
+- Current aggregated market regime.
+- Per‑symbol regime states.
+- Live correlation matrix and recent alerts.
+"""
+
 from collections import Counter
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -10,8 +18,8 @@ from app.risk.correlation_monitor import correlation_monitor
 
 router = APIRouter(prefix="/regime", tags=["regime"])
 
-# Mapping from detector regime identifiers to frontend-friendly labels
-_LABEL_MAP = {
+# Mapping from detector regime identifiers to frontend‑friendly labels
+_LABEL_MAP: Dict[str, str] = {
     "trending": "bull",
     "mean_reverting": "sideways",
     "high_vol": "bear",
@@ -20,19 +28,24 @@ _LABEL_MAP = {
 
 
 @router.get("/current")
-async def get_current_regime(current_user: User = Depends(get_current_user)):
-    """Overall market regime — aggregated across all tracked symbols.
+async def get_current_regime(current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
+    """Return the overall market regime aggregated across all tracked symbols.
 
-    Returns the most common regime (bull/bear/sideways mapped from detector enums)
-    and average confidence. Falls back to safe defaults when no data is available.
+    The response includes:
+    - ``regime``: The most common regime label (bull, bear, sideways, unknown).
+    - ``confidence``: Average confidence score across symbols, rounded to three decimals.
+    - ``updated_at``: Timestamp of the most recent regime update.
+    - ``symbol_count``: Number of symbols with regime data.
+
+    If no regime data is available, safe default values are returned.
     """
     states = regime_monitor.all_states()
     if not states:
         return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
 
-    label_counts: Counter = Counter()
-    confidences: list[float] = []
-    latest_updated: str | None = None
+    label_counts: Counter[str] = Counter()
+    confidences: List[float] = []
+    latest_updated: Optional[str] = None
 
     for sym_state in states.values():
         raw = sym_state.get("regime", "unknown")
@@ -55,13 +68,24 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/states")
-async def get_regime_states(current_user: User = Depends(get_current_user)):
-    """Current regime classification for all tracked symbols."""
+async def get_regime_states(current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
+    """Return the current regime classification for all tracked symbols."""
     return regime_monitor.all_states()
 
 
 @router.get("/states/{symbol}")
-async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+async def get_regime_for_symbol(
+    symbol: str, current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Return the regime state for a specific symbol.
+
+    Args:
+        symbol: Ticker symbol (case‑insensitive).
+
+    Returns:
+        A dictionary representation of the regime state, or an error message if
+        no data is available for the requested symbol.
+    """
     state = regime_monitor.get(symbol.upper())
     if not state:
         return {"error": f"No regime data for {symbol}. Feed price data first."}
@@ -69,8 +93,8 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 
 
 @router.get("/correlation")
-async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
-    """Live cross-strategy correlation matrix."""
+async def get_correlation_matrix(current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
+    """Return the live cross‑strategy correlation matrix and recent alerts."""
     return {
         "matrix": correlation_monitor.matrix_as_list(),
         "reduced_strategies": list(correlation_monitor._reduced),
@@ -79,5 +103,6 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 
 
 @router.get("/correlation/alerts")
-async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
+async def get_correlation_alerts(current_user: User = Depends(get_current_user)) -> List[Dict[str, Any]]:
+    """Return recent correlation alerts (up to 50)."""
     return correlation_monitor.recent_alerts(50)
