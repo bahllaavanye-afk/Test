@@ -654,7 +654,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782668111.8718588,
+    "last_updated": 1782672596.3675973,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -757,7 +757,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782668111.8709753
+    "last_brain_update": 1782672596.366717
   },
   "episodic": [
     {
@@ -2496,6 +2496,11 @@
       "summary": "The discussion indicates that a free-agent engineer failed to process an issue because all free LLM providers were unavailable, and the task was subsequently reassigned to `codex-task` via the Claude Task Router.",
       "item_count": 20,
       "ts": 1782668111.861193
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1782672596.3583202
     }
   ]
 }
