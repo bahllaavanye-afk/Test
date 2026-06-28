@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Refine UI components",
-    "schemas on strategies/manual/pmi_sector_rotation.py: success \u2014 tests green",
-    "validation on risk/circuit_breaker.py: success \u2014 tests green",
-    "refactor on tasks/promotion_criteria.py: success \u2014 tests green",
-    "schemas on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
     "docstrings on execution/twap.py: success \u2014 tests green",
     "Monitor memory usage",
     "constants on backtest/engine.py: success \u2014 tests green",
@@ -206,6 +201,6 @@
     "edge_cases on strategies/manual/vol_term_structure.py: success \u2014 tests green",
     "edge_cases on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T08:19:42.674212+00:00",
+  "last_updated": "2026-06-28T10:24:53.834008+00:00",
   "total": 200
 }
