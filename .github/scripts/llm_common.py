@@ -290,6 +290,14 @@ def llm(
         _save_cache()
         return result
 
+    # All free providers failed → fall back to Claude so the company never goes
+    # dark. Inert (no extra cost) unless ANTHROPIC_API_KEY is configured.
+    claude = _call_claude(system, prompt, max_tokens, temperature)
+    if claude:
+        _cache_mem[ck] = {"text": claude, "ts": time.time(), "provider": "claude"}
+        _save_cache()
+        return claude
+
     return "[LLM unavailable — all providers failed]"
 
 
@@ -492,6 +500,47 @@ def _extract_openai_content(result: dict) -> str:
         if val:
             return val.strip()
     raise ValueError("no content in OpenAI-style response")
+
+
+def _call_claude(system: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
+    """Last-resort backstop: Anthropic Claude when ALL free providers are down.
+
+    Inert (returns None) unless ANTHROPIC_API_KEY is set, so it costs nothing until
+    the free cascade is genuinely exhausted *and* a key is present. This is the
+    "company never goes dark" guarantee: if every free provider is rate-limited or
+    out of balance, Claude answers so no employee/desk loses its brain.
+    Set ANTHROPIC_MODEL to override the default backstop model.
+    """
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        return None
+    model = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+    body = json.dumps({
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "system": system,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode()
+    headers = {
+        "content-type": "application/json",
+        "User-Agent": _BROWSER_UA,
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+    }
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=body, headers=headers, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        text = "".join(
+            p.get("text", "") for p in result.get("content", []) if p.get("type") == "text"
+        ).strip()
+        return text or None
+    except Exception as exc:
+        print(f"[llm] claude backstop failed: {exc}", flush=True)
+        return None
 
 
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
