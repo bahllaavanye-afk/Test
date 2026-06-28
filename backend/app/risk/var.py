@@ -6,9 +6,15 @@ VaR(95%) = worst 5% of daily returns threshold
 CVaR(95%) = average loss in the worst 5% of days
 """
 from __future__ import annotations
-import numpy as np
+
+import logging
+import time
 from dataclasses import dataclass
 from typing import Literal
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,18 +56,37 @@ def historical_var(
         portfolio_value: Current portfolio value in USD
         method: 'historical' (empirical) or 'parametric' (Gaussian)
     """
+    start_time = time.perf_counter()
+
     arr = np.array(returns, dtype=float)
     n = len(arr)
 
     if n < 10:
         # Not enough data — return conservative estimates
-        return VaRResult(
-            var_95=0.02, var_99=0.03, cvar_95=0.03, cvar_99=0.04,
-            method="default_insufficient_data", n_observations=n,
+        result = VaRResult(
+            var_95=0.02,
+            var_99=0.03,
+            cvar_95=0.03,
+            cvar_99=0.04,
+            method="default_insufficient_data",
+            n_observations=n,
             portfolio_value=portfolio_value,
             var_95_usd=portfolio_value * 0.02,
             var_99_usd=portfolio_value * 0.03,
         )
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "VaR calculation completed (insufficient data)",
+            extra={
+                "signal_count": n,
+                "execution_time_ms": round(elapsed_ms, 2),
+                "pnl_usd": portfolio_value,
+                "var_95_usd": result.var_95_usd,
+                "var_99_usd": result.var_99_usd,
+                "method": result.method,
+            },
+        )
+        return result
 
     if method == "historical":
         var_95 = float(-np.percentile(arr, 5))
@@ -74,6 +99,7 @@ def historical_var(
     else:
         # Parametric (Gaussian)
         from scipy.stats import norm
+
         mu, sigma = float(np.mean(arr)), float(np.std(arr, ddof=1))
         var_95 = float(-(mu + norm.ppf(0.05) * sigma))
         var_99 = float(-(mu + norm.ppf(0.01) * sigma))
@@ -81,11 +107,28 @@ def historical_var(
         cvar_95 = float(-(mu - sigma * norm.pdf(norm.ppf(0.05)) / 0.05))
         cvar_99 = float(-(mu - sigma * norm.pdf(norm.ppf(0.01)) / 0.01))
 
-    return VaRResult(
-        var_95=max(var_95, 0), var_99=max(var_99, 0),
-        cvar_95=max(cvar_95, 0), cvar_99=max(cvar_99, 0),
-        method=method, n_observations=n,
+    result = VaRResult(
+        var_95=max(var_95, 0),
+        var_99=max(var_99, 0),
+        cvar_95=max(cvar_95, 0),
+        cvar_99=max(cvar_99, 0),
+        method=method,
+        n_observations=n,
         portfolio_value=portfolio_value,
         var_95_usd=portfolio_value * max(var_95, 0),
         var_99_usd=portfolio_value * max(var_99, 0),
     )
+
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        "VaR calculation completed",
+        extra={
+            "signal_count": n,
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl_usd": portfolio_value,
+            "var_95_usd": result.var_95_usd,
+            "var_99_usd": result.var_99_usd,
+            "method": method,
+        },
+    )
+    return result
