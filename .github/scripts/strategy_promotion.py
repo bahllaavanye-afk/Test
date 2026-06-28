@@ -410,9 +410,29 @@ def _format_slack_message(events: list[dict]) -> str:
             lines.append(f"  → Strategy confirmed as consistently profitable in paper trading")
 
         elif to_stage == "live_candidate":
-            lines.append(f":white_check_mark: *PAPER → LIVE CANDIDATE:* `{name}`")
-            lines.append(f"  Paper Sharpe ({days}d): {sharpe:.2f} | Max DD: {max_dd:.1f}% | {days} days active")
-            lines.append(f"  → Flagged for manual live review")
+            extra = ev.get("extra", {}) or {}
+            sc = extra.get("scorecard", {}) or {}
+            def _m(key):  # pull a metric value from the scorecard if present
+                v = (sc.get(key) or {}).get("value")
+                return v
+            lines.append(f":rotating_light: *GO-LIVE APPROVAL REQUESTED:* `{name}`")
+            lines.append(
+                f"  Proven on paper *{days} days* — Sharpe *{sharpe:.2f}*, Max DD {max_dd:.1f}%"
+            )
+            # Surface the richer SOTA metrics when the gate recorded them.
+            extras = []
+            for label, key in (("Sortino", "sortino"), ("Calmar", "calmar"),
+                               ("DSR", "deflated_sharpe"), ("Omega", "omega"),
+                               ("WinRate", "win_rate"), ("ProfitFactor", "profit_factor"),
+                               ("Recovery", "recovery_factor")):
+                val = _m(key)
+                if val is not None:
+                    extras.append(f"{label} {val}")
+            if extras:
+                lines.append("  " + " | ".join(extras))
+            lines.append("  *Ready to trade live* — but it stays on PAPER until a human approves.")
+            lines.append("  → React :white_check_mark: to *approve going live*, or :x: to keep on paper. "
+                         "(cc <!subteam^deskleads> )")
 
         lines.append("")  # blank line between entries
 
