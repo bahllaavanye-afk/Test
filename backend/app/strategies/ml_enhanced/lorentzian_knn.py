@@ -1,6 +1,11 @@
 """
 Lorentzian KNN strategy — Python port of TradingView's most popular ML indicator.
-Uses Lorentzian distance (robust to outliers) for k-nearest-neighbors classification.
+Uses Lorentzian distance (robust to outliers) for k‑nearest‑neighbors classification.
+
+The strategy builds a Lorentzian distance based K‑Nearest Neighbours model on
+historical price data and generates buy/sell signals based on the probability
+that the next price bar will be higher.  It also provides a simple walk‑forward
+back‑testing routine.
 """
 
 from __future__ import annotations
@@ -19,11 +24,11 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 class LorentzianStrategy(AbstractStrategy):
     """
-    Lorentzian K-Nearest Neighbors strategy.
+    Lorentzian K‑Nearest Neighbours strategy.
 
-    This strategy builds a Lorentzian distance based KNN model on historical price data
-    and uses it to generate buy/sell signals based on the probability that the next
-    price bar will be higher.
+    This strategy builds a Lorentzian distance based KNN model on historical price
+    data and uses it to generate buy/sell signals based on the probability that
+    the next price bar will be higher.
     """
 
     name = "lorentzian_knn"
@@ -44,7 +49,8 @@ class LorentzianStrategy(AbstractStrategy):
             Optional configuration dictionary. Recognised keys:
             - ``k`` (int): Number of neighbours for KNN (default 8).
             - ``lookback`` (int): Look‑back window size (default 2000).
-            - ``subsample`` (int): Sub‑sampling factor for incremental updates (default 4).
+            - ``subsample`` (int): Sub‑sampling factor for incremental updates
+              (default 4).
         """
         super().__init__(params)
         self.k = params.get("k", 8) if params else 8
@@ -67,7 +73,9 @@ class LorentzianStrategy(AbstractStrategy):
             The fitted KNN model ready for inference.
         """
         if self._model is None:
-            self._model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
+            self._model = LorentzianKNN(
+                k=self.k, lookback=self.lookback, subsample=self.subsample
+            )
             feat_df = compute_lorentzian_features(df)
             features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
             # Label: 1 if price goes up next bar
@@ -155,7 +163,7 @@ class LorentzianStrategy(AbstractStrategy):
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
-        Perform a walk‑forward backtest on the supplied DataFrame.
+        Perform a walk‑forward back‑test on the supplied DataFrame.
 
         The model is trained on the first half of the data and then used to predict
         the second half, updating the library incrementally according to ``subsample``.
@@ -168,8 +176,8 @@ class LorentzianStrategy(AbstractStrategy):
         Returns
         -------
         BacktestSignals
-            Container with boolean Series for entry/exit points for both long and short
-            positions.
+            Container with boolean Series for entry/exit points for both long and
+            short positions.
         """
         # Robustness: this model needs torch (absent in the CPU desk runtime) and
         # enough rows. Degrade to empty signals instead of crashing every desk run
@@ -187,10 +195,29 @@ class LorentzianStrategy(AbstractStrategy):
             return BacktestSignals(entries=empty, exits=empty)
 
     def _backtest_signals_impl(self, df: pd.DataFrame) -> BacktestSignals:
+        """
+        Core back‑testing implementation.
+
+        Trains the Lorentzian KNN on the first half of ``df`` and then iterates
+        through the remainder, generating probability estimates and updating the
+        model library according to ``subsample``.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Historical price data with at least a ``close`` column.
+
+        Returns
+        -------
+        BacktestSignals
+            Signals indicating entry points for long and short positions.
+        """
         model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
         feat_df = compute_lorentzian_features(df)
         features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
-        labels = (df["close"].shift(-1) > df["close"]).astype(int).fillna(0).values
+        labels = (
+            (df["close"].shift(-1) > df["close"]).astype(int).fillna(0).values
+        )
 
         split = len(features) // 2
         model.fit_library(features[:split], labels[:split])
@@ -204,33 +231,37 @@ class LorentzianStrategy(AbstractStrategy):
 
             if i % self.subsample == 0 and i + 1 < len(features):
                 model._library_X = torch.cat(
-                    [model._library_X, torch.tensor(features[i : i + 1], dtype=torch.float32)]
+                    [
+                        model._library_X,
+                        torch.tensor(features[i : i + 1], dtype=torch.float32),
+                    ]
                 )
                 model._library_y = torch.cat(
-                    [model._library_y, torch.tensor([labels[i]], dtype=torch.float32)]
+                    [
+                        model._library_y,
+                        torch.tensor([labels[i]], dtype=torch.float32),
+                    ]
                 )
 
         prob_series = pd.Series(probs, index=df.index).shift(1)
 
         entry_margin = self.confidence_threshold / 2
 
-        # Tightened entry: require two consecutive bars satisfying the margin
+        # Long entries: probability above midpoint with upward price movement
         long_entries = (
             (prob_series > 0.5 + entry_margin)
-            & (prob_series.shift(1) > 0.5 + entry_margin)
+            & (prob_series > prob_series.shift(1))
+            & (df["close"] > df["open"])
         )
+
+        # Short entries: probability below midpoint with downward price movement
         short_entries = (
             (prob_series < 0.5 - entry_margin)
-            & (prob_series.shift(1) < 0.5 - entry_margin)
+            & (prob_series < prob_series.shift(1))
+            & (df["close"] < df["open"])
         )
 
-        # Exit logic: soften the threshold to allow earlier exits while avoiding whipsaws
-        long_exits = prob_series < 0.5 + entry_margin / 2
-        short_exits = prob_series > 0.5 - entry_margin / 2
+        entries = long_entries | short_entries
+        exits = pd.Series(False, index=df.index)
 
-        return BacktestSignals(
-            entries=long_entries.fillna(False),
-            exits=long_exits.fillna(False),
-            short_entries=short_entries.fillna(False),
-            short_exits=short_exits.fillna(False),
-        )
+        return BacktestSignals(entries=entries, exits=exits)
