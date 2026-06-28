@@ -63,6 +63,8 @@ class CorrelationGraph:
 
     def build_tensor(self, returns: pd.DataFrame) -> torch.Tensor:
         """Returns (n_assets, n_assets) torch.Tensor."""
+        if not _TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch is not available; cannot build tensor.")
         return torch.tensor(self.build(returns), dtype=torch.float32)
 
 
