@@ -6,7 +6,7 @@ SCRIPTS = Path(__file__).resolve().parents[3] / ".github" / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import reward_gate as G  # noqa: E402
+import reward_gate as G
 
 
 def test_ci_conclusion_pending_failure_success():
