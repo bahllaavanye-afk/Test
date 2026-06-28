@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-28T01:34:30.683735+00:00",
-  "generated_ts": 1782610470,
+  "generated_at": "2026-06-28T06:23:23.417050+00:00",
+  "generated_ts": 1782627803,
   "platform": "QuantEdge",
   "trading_mode": "paper",
   "repo": {
@@ -203,9 +203,9 @@
   },
   "trading": {
     "available": true,
-    "equity": 24899.24,
-    "day_pnl": 0.17,
-    "day_pnl_pct": 0.001,
+    "equity": 24899.09,
+    "day_pnl": 0.02,
+    "day_pnl_pct": 0.0,
     "cash": 20014.78,
     "market_open": false,
     "open_positions": [
@@ -218,8 +218,8 @@
       {
         "symbol": "BTCUSD",
         "qty": "0.000675554",
-        "market_value": 40.61,
-        "unrealized_pl": -7.74
+        "market_value": 40.45,
+        "unrealized_pl": -7.89
       },
       {
         "symbol": "QQQ",
