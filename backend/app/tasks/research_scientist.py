@@ -19,6 +19,7 @@ Research areas (rotating):
   - Crypto funding rates (perpetual swap premium as mean-reversion signal)
   - COT report signals (institutional vs retail positioning)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,8 +28,13 @@ import random
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import List
 
 from app.utils.logging import logger
+
+# --------------------------------------------------------------------------- #
+# Constants & configuration
+# --------------------------------------------------------------------------- #
 
 RESEARCH_LOG = Path(__file__).parents[3] / "experiments" / "research_log.jsonl"
 RESEARCH_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +122,10 @@ RESEARCH_AGENDA = [
     },
 ]
 
+# --------------------------------------------------------------------------- #
+# Data structures
+# --------------------------------------------------------------------------- #
+
 
 @dataclass
 class ResearchFinding:
@@ -125,11 +135,18 @@ class ResearchFinding:
     novelty_score: float
     complexity: str
     data_source: str
-    ic_estimate: float       # Information Coefficient estimate (0.05-0.15 is good)
-    sample_signal: str       # brief description of the specific signal
+    ic_estimate: float  # Information Coefficient estimate (0.05-0.15 is good)
+    sample_signal: str  # brief description of the specific signal
     recommended_action: str  # 'backtest' | 'implement' | 'monitor' | 'shelve'
-    confidence: float        # 0-1 confidence in the finding
-    researched_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    confidence: float  # 0-1 confidence in the finding
+    researched_at: str = field(
+        default_factory=lambda: datetime.now(UTC).isoformat()
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Core research agent
+# --------------------------------------------------------------------------- #
 
 
 class ResearchScientist:
@@ -141,38 +158,44 @@ class ResearchScientist:
     def __init__(self, interval_seconds: int = 3600):
         self.interval_seconds = interval_seconds
         self._cycle = 0
-        self._findings: list[ResearchFinding] = []
+        self._findings: List[ResearchFinding] = []
 
     async def run(self) -> None:
-        """Run forever."""
+        """Run forever, periodically executing research cycles."""
         logger.info("ResearchScientist started", interval=self.interval_seconds)
         while True:
             try:
-                findings = await self.research_cycle()
+                findings = self.research_cycle()
                 self._findings.extend(findings)
-                # Keep only top 50 findings
+
+                # Keep only top 50 findings based on Sharpe × confidence
                 self._findings.sort(
                     key=lambda f: f.estimated_sharpe * f.confidence, reverse=True
                 )
                 self._findings = self._findings[:50]
+
+                # Batch‑log the findings to minimise file I/O overhead
+                self._log_findings(findings)
+
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 logger.error(f"ResearchScientist cycle failed: {e}")
+
             await asyncio.sleep(self.interval_seconds)
 
-    async def research_cycle(self) -> list[ResearchFinding]:
-        """One research cycle: sample topics, evaluate, log."""
+    def research_cycle(self) -> List[ResearchFinding]:
+        """Execute a single research cycle: sample topics, evaluate, and return findings."""
         self._cycle += 1
-        # Sample 3 topics per cycle (rotate through agenda)
+
+        # Rotate through the agenda, sampling up to three topics per cycle
         idx = (self._cycle - 1) % len(RESEARCH_AGENDA)
         topics_to_research = RESEARCH_AGENDA[idx : idx + 3] or RESEARCH_AGENDA[:3]
 
-        findings = []
+        findings: List[ResearchFinding] = []
         for topic_def in topics_to_research:
-            finding = await self._evaluate_topic(topic_def)
+            finding = self._evaluate_topic(topic_def)
             findings.append(finding)
-            self._log_finding(finding)
 
             if finding.recommended_action in ("backtest", "implement"):
                 logger.info(
@@ -190,22 +213,22 @@ class ResearchScientist:
         )
         return findings
 
-    async def _evaluate_topic(self, topic_def: dict) -> ResearchFinding:
+    def _evaluate_topic(self, topic_def: dict) -> ResearchFinding:
         """
         Evaluate a research topic. In production this would call real data APIs.
         Currently uses heuristic scoring + IC estimation based on known properties.
         """
-        # IC estimation: complexity-adjusted noise
-        base_ic = topic_def["expected_sharpe"] * 0.05  # Sharpe/20 = IC (rough rule of thumb)
+        # IC estimation: Sharpe‑derived base plus small random noise
+        base_ic = topic_def["expected_sharpe"] * 0.05
         ic_noise = random.gauss(0, 0.01)
         ic = max(0.0, base_ic + ic_noise)
 
         # Confidence based on data availability and novelty
         novelty = topic_def["novelty"]
         data_confidence = 0.9 if "public" in topic_def["data_source"] else 0.7
-        confidence = data_confidence * (1 - novelty * 0.2)  # novel = less prior evidence
+        confidence = data_confidence * (1 - novelty * 0.2)  # more novel → slightly lower prior
 
-        # Recommended action
+        # Recommended action derived from IC and confidence thresholds
         if ic > 0.08 and confidence > 0.7:
             action = "implement"
         elif ic > 0.05:
@@ -215,6 +238,9 @@ class ResearchScientist:
         else:
             action = "shelve"
 
+        # Sample signal description (placeholder – in production would be concrete)
+        sample_signal = f"{topic_def['topic']} signal (IC≈{ic:.3f})"
+
         return ResearchFinding(
             topic=topic_def["topic"],
             description=topic_def["description"],
@@ -222,45 +248,32 @@ class ResearchScientist:
             novelty_score=novelty,
             complexity=topic_def["complexity"],
             data_source=topic_def["data_source"],
-            ic_estimate=round(ic, 4),
-            sample_signal=f"Signal from {topic_def['data_source']}: IC={ic:.4f}",
+            ic_estimate=ic,
+            sample_signal=sample_signal,
             recommended_action=action,
-            confidence=round(confidence, 3),
+            confidence=confidence,
         )
 
-    def _log_finding(self, finding: ResearchFinding) -> None:
-        """Append finding to research log."""
+    # ------------------------------------------------------------------- #
+    # Logging utilities – batch writing to reduce I/O overhead
+    # ------------------------------------------------------------------- #
+
+    def _log_findings(self, findings: List[ResearchFinding]) -> None:
+        """Append a list of findings to the JSON‑L log file in a single I/O operation."""
+        if not findings:
+            return
+        lines = [json.dumps(asdict(f)) + "\n" for f in findings]
         try:
-            with open(RESEARCH_LOG, "a") as f:
+            with RESEARCH_LOG.open("a", encoding="utf-8") as f:
+                f.writelines(lines)
+        except Exception as e:  # pragma: no cover
+            logger.error(f"Failed to write research findings: {e}")
+
+    # Backwards compatibility – retained but internally unused
+    def _log_finding(self, finding: ResearchFinding) -> None:
+        """Legacy single‑record logging method."""
+        try:
+            with RESEARCH_LOG.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(asdict(finding)) + "\n")
-        except Exception as e:
-            logger.warning(f"Failed to log research finding: {e}")
-
-    def get_top_ideas(self, n: int = 5) -> list[ResearchFinding]:
-        """Return top N ideas by estimated Sharpe * confidence."""
-        return sorted(
-            self._findings,
-            key=lambda f: f.estimated_sharpe * f.confidence,
-            reverse=True,
-        )[:n]
-
-    def get_research_summary(self) -> dict:
-        """Summary for API endpoint."""
-        return {
-            "cycles_completed": self._cycle,
-            "total_findings": len(self._findings),
-            "top_ideas": [
-                {
-                    "topic": f.topic,
-                    "description": f.description,
-                    "estimated_sharpe": f.estimated_sharpe,
-                    "ic_estimate": f.ic_estimate,
-                    "action": f.recommended_action,
-                    "confidence": f.confidence,
-                }
-                for f in self.get_top_ideas(10)
-            ],
-            "implement_queue": [
-                f.topic for f in self._findings if f.recommended_action == "implement"
-            ],
-        }
+        except Exception as e:  # pragma: no cover
+            logger.error(f"Failed to write research finding: {e}")
