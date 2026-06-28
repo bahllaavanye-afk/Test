@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-28T07:51:42.493997+00:00",
+  "last_updated": "2026-06-28T08:20:35.267347+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1493,11 +1493,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[desk_trader @ 2026-06-26T07:53] We need to respond as desk_trader agent, give one sentence status update, referencing real file paths. Must be concise, 2 sentences max, but they ask ",
-    "[system_watchdog @ 2026-06-26T07:53] I'm currently executing the 5\u2011minute health check loop, scanning the risk subsystem (e.g., `risk/rl_position_sizer.py`) for any drift anomalies and lo",
-    "[ml_trainer @ 2026-06-26T07:53] I\u2019m currently adding a Seasonal\u2011Trend decomposition (SSM) step after the time\u2011series model in\u202f`backend/app/ml/models",
-    "[standup_agent @ 2026-06-26T07:53] I'm actively working on integrating a Seasonal-Trend decomposition (SSM) step after the Time Series model in `backend/app/ml/models/` to resolve the d",
-    "[continuous_improver @ 2026-06-26T08:28] edge_cases on tasks/backtest_worker.py: tests=pass",
     "[continuous_improver @ 2026-06-26T08:28] edge_cases on api/v1/pipeline.py: tests=pass",
     "[continuous_improver @ 2026-06-26T08:28] edge_cases on test/unit/test_validation_gate.py: tests=pass",
     "[continuous_improver @ 2026-06-26T08:28] edge_cases on strategies/manual/low_volatility.py: tests=pass",
@@ -1692,7 +1687,12 @@
     "[desk_trader @ 2026-06-28T07:51] We need to respond as desk_trader agent, 2 sentences max, referencing real file paths. Must give one-sentence status update. Should be concise, first ",
     "[system_watchdog @ 2026-06-28T07:51] We need to respond as system_watchdog agent, 2 sentences max, first person, concise. Must reference real file paths. Active work: performing health ch",
     "[ml_trainer @ 2026-06-28T07:51] We need to respond as ml_trainer agent. Must be first person, concise (2 sentences max). Must give one-sentence status update: what are we actively wo",
-    "[standup_agent @ 2026-06-28T07:51] [LLM unavailable \u2014 all providers failed]"
+    "[standup_agent @ 2026-06-28T07:51] [LLM unavailable \u2014 all providers failed]",
+    "[continuous_improver @ 2026-06-28T08:19] edge_cases on tasks/research_pipeline.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T08:19] edge_cases on api/v1/promotions.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T08:19] edge_cases on test/unit/test_avellaneda_stoikov_mm.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T08:19] edge_cases on strategies/manual/vol_term_structure.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T08:19] edge_cases on strategies/ml_enhanced/ml_pca_arb.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -2034,9 +2034,9 @@
       "test_pass": 15
     },
     "edge_cases": {
-      "successes": 5,
+      "successes": 10,
       "failures": 0,
-      "test_pass": 5
+      "test_pass": 10
     },
     "monitoring": {
       "successes": 10,
