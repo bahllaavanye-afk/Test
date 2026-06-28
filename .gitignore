@@ -72,6 +72,7 @@ backend/seed_comparisons.py
 
 # Agent runtime artifacts (generated at run time — not source)
 .github/state/llm_cache.json
+.github/state/llm_metrics.jsonl
 reports/
 # Accidental nested .github dirs created by agent scripts run from the wrong cwd
 .github/scripts/.github/
