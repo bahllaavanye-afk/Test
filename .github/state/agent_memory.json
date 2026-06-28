@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-28T17:05:36.853133+00:00",
+  "last_updated": "2026-06-28T17:08:49.192693+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1549,12 +1549,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[continuous_improver @ 2026-06-26T15:41] refactor on risk/rl_position_sizer.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T15:41] refactor on brokers/tradestation.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T15:41] refactor on backtest/engine.py: tests=pass",
-    "[continuous_improver @ 2026-06-26T15:41] refactor on comparison/report_builder.py: tests=pass",
-    "[signal_runner in #desk-equities @ 2026-06-26T17:47] In my last cycle, trading signals fired across various equity symbols. According to agent_memory.json, the strongest signal was for symbol MSFT, with ",
-    "[strategy_generator in #desk-equities @ 2026-06-26T17:47] I propose backtesting a strategy variant called \"MSFT_TechMix_30min\". This strategy would combine the Relative Strength Index (RSI) and Moving Average",
     "[quick_backtest in #desk-equities @ 2026-06-26T17:47] I'm concerned that relying solely on a 30-minute timeframe won't account for the significant price movements and volatility often seen in MSFT's histo",
     "[investor_pipeline @ 2026-06-26T17:48] I\u2019m currently scanning the investor pipeline data in\u202f`pipeline/data/investor_pipeline.csv` to auto\u2011advance leads to their next",
     "[run_experiments @ 2026-06-26T17:48] I am currently running a backtest experiment using the `backtest/engine.py` module and will save the results to a JSON file once completed, with my cu",
@@ -1748,22 +1742,16 @@
     "[continuous_improver @ 2026-06-28T15:48] refactor on backtest/monte_carlo.py: tests=pass",
     "[continuous_improver @ 2026-06-28T15:48] refactor on comparison/benchmarks.py: tests=pass",
     "[continuous_improver @ 2026-06-28T15:49] refactor on api/v1/alerts.py: tests=pass",
-    "[continuous_improver @ 2026-06-28T15:49] alpha_evolve on strategies/manual/vol_term_structure.py: tests=pass"
+    "[continuous_improver @ 2026-06-28T15:49] alpha_evolve on strategies/manual/vol_term_structure.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T17:07] optimization on brokers/polymarket.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T17:07] optimization on backtest/engine.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T17:07] optimization on comparison/benchmarks.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T17:07] optimization on tasks/research_scientist.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T17:08] optimization on strategies/manual/mean_reversion.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T17:08] alpha_evolve on strategies/manual/multi_factor_equity.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/strategies/manual/poly_near_resolution.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T17:00:05.156351+00:00"
-    },
-    {
-      "file": "backend/app/strategies/ml_enhanced/lorentzian_knn.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T17:00:25.880429+00:00"
-    },
     {
       "file": "backend/app/ml/models/timesnet_model.py",
       "reason": "syntax check failed",
@@ -2051,6 +2039,18 @@
       "reason": "syntax check failed",
       "improvement_type": "refactor",
       "timestamp": "2026-06-28T15:49:12.675666+00:00"
+    },
+    {
+      "file": "backend/app/api/v1/backtests.py",
+      "reason": "syntax check failed",
+      "improvement_type": "optimization",
+      "timestamp": "2026-06-28T17:07:54.512417+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_time_series_momentum.py",
+      "reason": "syntax check failed",
+      "improvement_type": "optimization",
+      "timestamp": "2026-06-28T17:08:46.932534+00:00"
     }
   ],
   "improvement_stats": {
@@ -2065,14 +2065,14 @@
       "test_pass": 10
     },
     "alpha_evolve": {
-      "successes": 9,
+      "successes": 10,
       "failures": 0,
-      "test_pass": 9
+      "test_pass": 10
     },
     "optimization": {
-      "successes": 5,
+      "successes": 10,
       "failures": 0,
-      "test_pass": 5
+      "test_pass": 10
     },
     "strategy_logic": {
       "successes": 15,
