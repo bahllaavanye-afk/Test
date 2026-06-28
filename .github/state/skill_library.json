@@ -1,10 +1,5 @@
 {
   "skills": [
-    "edge_cases on test/unit/test_validation_gate.py: success \u2014 tests green",
-    "cleanup on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
-    "schemas on ml/features/multi_timeframe.py: success \u2014 tests green",
-    "ALLOW_PAID_APIS must always be False \u2014 never change this",
-    "* **Retrain LSTM model:** Retrain the \"AAPL_LSTM\" model using Time-frequency Decomposition (TFT) to improve its performance capturing complex patterns.",
     "Optimize broker APIs.",
     "Optimize strategy variants.",
     "Add data validation",
@@ -206,6 +201,6 @@
     "refactor on comparison/benchmarks.py: success \u2014 tests green",
     "refactor on api/v1/alerts.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T15:49:13.561316+00:00",
+  "last_updated": "2026-06-28T17:05:36.853133+00:00",
   "total": 200
 }
