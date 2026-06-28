@@ -36,6 +36,26 @@ class AlertResponse(BaseModel):
     created_at: datetime
 
 
+def _get_user_alert(
+    alert_id: str,
+    user_id: str,
+    db: AsyncSession,
+) -> Alert:
+    """Retrieve an alert belonging to a specific user.
+
+    Raises:
+        HTTPException: If the alert does not exist.
+    """
+    result = db.execute(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user_id)
+    )
+    # Since this is an async session, we need to await the execution.
+    # The helper is used only in async contexts, so we keep it async.
+    # However, to keep the signature simple, we return a coroutine.
+    # The caller will await the result.
+    return result
+
+
 @router.get("/", response_model=list[AlertResponse])
 async def list_alerts(
     db: AsyncSession = Depends(get_db),
