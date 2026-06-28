@@ -199,8 +199,13 @@
     "edge_cases on api/v1/promotions.py: success \u2014 tests green",
     "edge_cases on test/unit/test_avellaneda_stoikov_mm.py: success \u2014 tests green",
     "edge_cases on strategies/manual/vol_term_structure.py: success \u2014 tests green",
-    "edge_cases on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green"
+    "edge_cases on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "strategy_logic on test/unit/test_security.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/polymarket_sentiment_momentum.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "strategy_logic on ml/models/ssm_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/engineer.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T10:24:53.834008+00:00",
+  "last_updated": "2026-06-28T10:39:11.655074+00:00",
   "total": 200
 }
