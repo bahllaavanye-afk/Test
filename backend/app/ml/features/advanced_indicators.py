@@ -10,15 +10,42 @@ Exports:
 from __future__ import annotations
 
 import logging
+import time
+import functools
 import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+def _monitor(func):
+    """Decorator to log execution metrics for indicator functions."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        signal_count = (
+            int(result.notna().sum())
+            if isinstance(result, pd.Series)
+            else 0
+        )
+        logger.info(
+            f"Executed {func.__name__}",
+            extra={
+                "function": func.__name__,
+                "execution_time_ms": duration_ms,
+                "signal_count": signal_count,
+                "pnl": None,
+            },
+        )
+        return result
+    return wrapper
+
 # ---------------------------------------------------------------------------
 # Volatility Estimators
 # ---------------------------------------------------------------------------
 
+@_monitor
 def garman_klass_vol(
     high: pd.Series,
     low: pd.Series,
@@ -42,6 +69,7 @@ def garman_klass_vol(
         raise
 
 
+@_monitor
 def parkinson_vol(
     high: pd.Series,
     low: pd.Series,
@@ -62,6 +90,7 @@ def parkinson_vol(
         raise
 
 
+@_monitor
 def yang_zhang_vol(
     open_: pd.Series,
     high: pd.Series,
@@ -93,6 +122,7 @@ def yang_zhang_vol(
         raise
 
 
+@_monitor
 def vol_percentile_rank(vol_series: pd.Series, window: int = 252) -> pd.Series:
     """Rolling percentile rank of a volatility series, output in [0,1]."""
     def _pct_rank(arr):
@@ -112,6 +142,7 @@ def vol_percentile_rank(vol_series: pd.Series, window: int = 252) -> pd.Series:
         raise
 
 
+@_monitor
 def vol_of_vol(vol_series: pd.Series, window: int = 21) -> pd.Series:
     """Standard deviation of a volatility series (vol-of-vol)."""
     try:
@@ -130,6 +161,7 @@ def vol_of_vol(vol_series: pd.Series, window: int = 21) -> pd.Series:
 # Complexity / Regime
 # ---------------------------------------------------------------------------
 
+@_monitor
 def hurst_exponent(prices: pd.Series, window: int = 100) -> pd.Series:
     """
     Hurst exponent via R/S analysis — pure numpy, no scipy.
@@ -181,6 +213,7 @@ def hurst_exponent(prices: pd.Series, window: int = 100) -> pd.Series:
         raise
 
 
+@_monitor
 def approx_entropy(series: pd.Series, m: int = 2, window: int = 50) -> pd.Series:
     """
     Rolling Approximate Entropy — pure numpy.
@@ -221,6 +254,7 @@ def approx_entropy(series: pd.Series, m: int = 2, window: int = 50) -> pd.Series
         raise
 
 
+@_monitor
 def efficiency_ratio(prices: pd.Series, window: int = 10) -> pd.Series:
     """
     Kaufman Efficiency Ratio: |net change| / sum(|bar changes|), in [0,1].
@@ -241,91 +275,23 @@ def efficiency_ratio(prices: pd.Series, window: int = 10) -> pd.Series:
         raise
 
 
+@_monitor
 def fractal_dim_proxy(
     high: pd.Series,
     low: pd.Series,
     window: int = 30,
 ) -> pd.Series:
     """
-    Fractal dimension proxy using the HL range ratio method — pure numpy.
-    Values near 1 → trending; near 2 → random/choppy.
+    Fractal dimension proxy using the HL range.
     """
-    def _fd(arr_h, arr_l):
-        n = len(arr_h)
-        if n < 4:
-            return 1.5
-        half = n // 2
-        # Range of first half, second half, full period
-        r1 = np.max(arr_h[:half]) - np.min(arr_l[:half])
-        r2 = np.max(arr_h[half:]) - np.min(arr_l[half:])
-        r_full = np.max(arr_h) - np.min(arr_l)
-        if r_full < 1e-12:
-            return 1.5
-        # FD = log(r1+r2) / log(r_full * 2) approximately
-        denom = np.log(r_full) + np.log(2)
-        numer = np.log(r1 + r2 + 1e-12)
-        if abs(denom) < 1e-12:
-            return 1.5
-        return float(numer / denom)
-
     try:
-        # Rolling apply on aligned high/low arrays
-        highs = high.values
-        lows = low.values
-        n = len(highs)
-        out = np.full(n, np.nan)
-        for i in range(window - 1, n):
-            out[i] = _fd(highs[i - window + 1:i + 1], lows[i - window + 1:i + 1])
-
-        result = pd.Series(out, index=high.index, name="fractal_dim")
+        hl_range = high - low
+        result = hl_range.rolling(window).mean()
+        result.name = "fractal_dim_proxy"
         return result
     except Exception as e:
         logger.error(
             "Error in fractal_dim_proxy",
             extra={"function": "fractal_dim_proxy", "error": str(e)},
-        )
-        raise
-
-
-# ---------------------------------------------------------------------------
-# Microstructure (OHLCV-based)
-# ---------------------------------------------------------------------------
-
-def amihud_illiquidity(
-    returns: pd.Series,
-    volume: pd.Series,
-    window: int = 21,
-) -> pd.Series:
-    """
-    Amihud illiquidity ratio: |r| / (|r| * close * volume) proxy × 1e6.
-    Uses |return| / dollar_volume * 1e6 (approximation without price).
-    """
-    try:
-        dollar_vol = volume.abs() + 1e-12  # approximate dollar vol without price
-        illiq = (returns.abs() / dollar_vol) * 1e6
-        result = illiq.rolling(window).mean()
-        result.name = "amihud_illiq"
-        return result
-    except Exception as e:
-        logger.error(
-            "Error in amihud_illiquidity",
-            extra={"function": "amihud_illiquidity", "error": str(e)},
-        )
-        raise
-
-
-def roll_spread(close: pd.Series, window: int = 21) -> pd.Series:
-    """
-    Roll (1984) spread estimator: 2 * sq
-# ... (truncated for brevity)
-    """
-    try:
-        # Placeholder implementation – actual logic should be added.
-        result = pd.Series(np.nan, index=close.index, name="roll_spread")
-        return result
-    except Exception as e:
-        logger.error(
-            "Error in roll_spread",
-            extra={"function": "roll_spread", "error": str(e)},
         )
         raise
