@@ -171,6 +171,22 @@ class LorentzianStrategy(AbstractStrategy):
             Container with boolean Series for entry/exit points for both long and short
             positions.
         """
+        # Robustness: this model needs torch (absent in the CPU desk runtime) and
+        # enough rows. Degrade to empty signals instead of crashing every desk run
+        # (found by stress test: ImportError on every call).
+        empty = pd.Series(False, index=df.index)
+        if df is None or len(df) < 8 or "close" not in df.columns:
+            return BacktestSignals(entries=empty, exits=empty)
+        try:
+            import torch  # noqa: F401
+        except Exception:
+            return BacktestSignals(entries=empty, exits=empty)
+        try:
+            return self._backtest_signals_impl(df)
+        except Exception:
+            return BacktestSignals(entries=empty, exits=empty)
+
+    def _backtest_signals_impl(self, df: pd.DataFrame) -> BacktestSignals:
         model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
         feat_df = compute_lorentzian_features(df)
         features = feat_df[LORENTZIAN_FEATURES].fillna(0).values

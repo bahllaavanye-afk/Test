@@ -211,7 +211,19 @@ class KalmanPairsStrategy(AbstractStrategy):
                 exits=pd.Series(False, index=df.index),
             )
 
-        _, _, z_scores = kalman_filter_regression(y, x)
+        # Robustness: NaN/constant/non-positive prices make the Kalman regression
+        # singular (LinAlgError) or produce non-finite logs. Degrade to empty
+        # signals instead of crashing the desk (found by stress test).
+        empty = BacktestSignals(
+            entries=pd.Series(False, index=df.index),
+            exits=pd.Series(False, index=df.index),
+        )
+        if len(y) < 8 or not (np.all(np.isfinite(y)) and np.all(np.isfinite(x))):
+            return empty
+        try:
+            _, _, z_scores = kalman_filter_regression(y, x)
+        except Exception:
+            return empty
         z = pd.Series(z_scores, index=df.index)
 
         # Long entry: z very negative (y cheap vs x)
