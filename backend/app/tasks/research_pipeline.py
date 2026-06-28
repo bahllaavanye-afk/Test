@@ -17,6 +17,7 @@ import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, List
 
 from app.tasks.agent_memory import AgentMemory
 from app.tasks.free_llm_router import call_race
@@ -37,14 +38,21 @@ class ResearchPipeline:
         try:
             context = await self._build_market_context()
             ideas = await self._generate_research_ideas(context)
+            # Guard against None returns
+            ideas = ideas or []
             configs = await self._ideas_to_experiment_configs(ideas)
+            # Guard against None returns
+            configs = configs or []
             await self._queue_experiments(configs)
             if self._memory:
-                await self._memory.write("research_findings", {
-                    "ideas_count": len(ideas),
-                    "configs_queued": len(configs),
-                    "ideas": ideas[:3],
-                })
+                await self._memory.write(
+                    "research_findings",
+                    {
+                        "ideas_count": len(ideas),
+                        "configs_queued": len(configs),
+                        "ideas": ideas[:3],
+                    },
+                )
             logger.info("ResearchPipeline: queued %d experiments", len(configs))
         except Exception as e:
             logger.exception("ResearchPipeline error: %s", e)
@@ -53,13 +61,17 @@ class ResearchPipeline:
         """Build a short market context string from memory (if available)."""
         if not self._memory:
             return "Unknown market regime. Assume neutral conditions."
+
         regime_data = await self._memory.get_latest("market_regime")
         platform_data = await self._memory.get_latest("platform_health")
-        recent_suggestions = await self._memory.read_recent("llm_suggestions", n=3)
+        recent_suggestions = await self._memory.read_recent("llm_suggestions", n=3) or []
 
-        regime = regime_data.get("regime", "unknown") if regime_data else "unknown"
-        health = platform_data.get("health_ratio", 0.5) if platform_data else 0.5
-        prev_ideas = [s.get("suggestion", "")[:100] for s in recent_suggestions]
+        regime = regime_data.get("regime", "unknown") if isinstance(regime_data, dict) else "unknown"
+        health = platform_data.get("health_ratio", 0.5) if isinstance(platform_data, dict) else 0.5
+
+        prev_ideas = [
+            s.get("suggestion", "")[:100] for s in recent_suggestions if isinstance(s, dict)
+        ]
 
         return (
             f"Current market regime: {regime}. "
@@ -67,7 +79,9 @@ class ResearchPipeline:
             f"Recent LLM suggestions: {'; '.join(prev_ideas[:2])}"
         )
 
-    async def _generate_research_ideas(self, context: str) -> list[dict]:
+    async def _generate_research_ideas(self, context: str | None) -> List[dict]:
+        """Ask the LLM for research ideas based on the provided market context."""
+        context = context or ""
         prompt = f"""You are a quantitative trading researcher.
 
 Market context: {context}
@@ -85,40 +99,51 @@ Respond as JSON array:
             temperature=0.5,
             max_tokens=800,
         )
-        if not response:
+        if not response or not getattr(response, "content", None):
             return []
 
         try:
             content = response.content.strip()
-            # Extract JSON array
             start = content.find("[")
             end = content.rfind("]") + 1
             if start >= 0 and end > start:
-                return json.loads(content[start:end])
+                parsed = json.loads(content[start:end])
+                if isinstance(parsed, list):
+                    return parsed
         except Exception as e:
             logger.warning("ResearchPipeline: failed to parse LLM ideas: %s", e)
         return []
 
-    async def _ideas_to_experiment_configs(self, ideas: list[dict]) -> list[Path]:
+    async def _ideas_to_experiment_configs(self, ideas: List[dict]) -> List[Path]:
         """Convert LLM ideas to YAML experiment configs."""
+        if not ideas:
+            return []
+
         CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
-        configs = []
+        configs: List[Path] = []
 
         for idea in ideas[:2]:  # limit to 2 per cycle
-            name = idea.get("name", f"auto_{int(time.time())}")
+            if not isinstance(idea, dict):
+                continue
+
+            name = idea.get("name") or f"auto_{int(time.time())}"
+            # Ensure filename safety: replace path separators
+            safe_name = name.replace("/", "_").replace("\\", "_")
             model = idea.get("model", "lstm")
             symbol = idea.get("symbol", "BTC/USDT")
             interval = idea.get("interval", "1h")
             features = idea.get("features", ["rsi_14", "macd", "bb_width"])
+            if not isinstance(features, list):
+                features = ["rsi_14", "macd", "bb_width"]
 
-            config_path = CONFIGS_DIR / f"{name}.yaml"
+            config_path = CONFIGS_DIR / f"{safe_name}.yaml"
             if config_path.exists():
                 continue
 
             yaml_content = f"""# Auto-generated by ResearchPipeline at {datetime.now(UTC).isoformat()}
 # Hypothesis: {idea.get('hypothesis', 'N/A')}
 experiment:
-  name: "{name}"
+  name: "{safe_name}"
   model: "{model}"
   symbol: "{symbol}"
   exchange: "{'binance' if '/' in symbol else 'alpaca'}"
@@ -160,8 +185,12 @@ strategy:
 
         return configs
 
-    async def _queue_experiments(self, configs: list[Path]) -> None:
+    async def _queue_experiments(self, configs: List[Path]) -> None:
         """Fire-and-forget experiment runs as background subprocesses."""
+        if not configs:
+            logger.info("ResearchPipeline: no configs to queue")
+            return
+
         script = EXPERIMENTS_DIR / "run_experiment.py"
         if not script.exists():
             logger.warning("ResearchPipeline: run_experiment.py not found at %s", script)
