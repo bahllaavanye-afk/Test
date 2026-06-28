@@ -98,6 +98,15 @@ def main() -> None:
     topics = _get_topics(mem)
     emp_keys = list(_EMPLOYEE_PERSONAS.keys())
 
+    # Optional cap (CI smoke / rate-limit budgets): EMPLOYEE_RUNNER_LIMIT=N runs
+    # only the first N employees. Unset/<=0 runs the full roster.
+    try:
+        _limit = int(os.environ.get("EMPLOYEE_RUNNER_LIMIT", "0"))
+    except ValueError:
+        _limit = 0
+    if _limit > 0:
+        emp_keys = emp_keys[:_limit]
+
     state: dict = {}
     responded: list[str] = []
     failed: list[str] = []
