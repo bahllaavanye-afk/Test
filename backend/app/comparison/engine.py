@@ -2,11 +2,12 @@
 Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
+
 from __future__ import annotations
 
 from dataclasses import field
 from datetime import date
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Awaitable
 
 import pandas as pd
 from pydantic import BaseModel, Field, validator
@@ -132,11 +133,24 @@ class ComparisonResult(BaseModel):
 
 
 class StrategyComparisonEngine:
+    """Engine that compares manual and ML‑enhanced trading strategies."""
+
     # Simple in‑memory cache for benchmark curves keyed by (start_date, end_date)
     _benchmark_cache: Dict[Tuple[date, date], dict] = {}
 
     async def _get_benchmark_curves(self, start: date, end: date) -> dict:
-        """Return benchmark curves, using an in‑memory cache to avoid repeated async fetches."""
+        """
+        Retrieve benchmark equity curves for the given period.
+
+        Uses an in‑memory cache to avoid repeated asynchronous fetches.
+
+        Args:
+            start: Inclusive start date for the benchmark data.
+            end: Inclusive end date for the benchmark data.
+
+        Returns:
+            A dictionary containing benchmark curves.
+        """
         cache_key = (start, end)
         if cache_key not in self._benchmark_cache:
             self._benchmark_cache[cache_key] = await fetch_benchmark_curves(start, end)
@@ -149,13 +163,32 @@ class StrategyComparisonEngine:
         prices: pd.Series,
         initial_equity: float,
     ) -> Tuple[BacktestMetrics, BacktestMetrics]:
-        """Execute backtests for manual and ML‑enhanced signals."""
+        """
+        Execute backtests for manual and ML‑enhanced signals.
+
+        Args:
+            manual_signals: Series of binary/manual signals.
+            ml_signals: Series of binary/ML‑enhanced signals.
+            prices: Series of price data aligned with the signals.
+            initial_equity: Starting capital for the backtest.
+
+        Returns:
+            A tuple containing metrics for the manual and ML backtests.
+        """
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
         return manual_metrics, ml_metrics
 
     def _extract_equity_series(self, metrics: BacktestMetrics) -> pd.Series:
-        """Convert a BacktestMetrics equity_curve into a pandas Series of equity values."""
+        """
+        Convert a BacktestMetrics equity_curve into a pandas Series of equity values.
+
+        Args:
+            metrics: BacktestMetrics object containing an equity curve.
+
+        Returns:
+            pandas Series of equity values.
+        """
         return pd.Series([e[EQUITY_KEY] for e in metrics.equity_curve])
 
     def _compute_statistics(
@@ -163,7 +196,17 @@ class StrategyComparisonEngine:
         manual_eq: pd.Series,
         ml_eq: pd.Series,
     ) -> Tuple[float, float]:
-        """Calculate t‑statistic and p‑value for the equity return series."""
+        """
+        Calculate t‑statistic and p‑value for the equity return series.
+
+        Args:
+            manual_eq: Equity series from the manual backtest.
+            ml_eq: Equity series from the ML‑enhanced backtest.
+
+        Returns:
+            Tuple of (t_statistic, p_value). If data length is insufficient,
+            returns default constants.
+        """
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
         min_len = min(len(manual_ret), len(ml_ret))
@@ -178,7 +221,16 @@ class StrategyComparisonEngine:
         ml_sharpe: float,
         manual_sharpe: float,
     ) -> Tuple[str, float]:
-        """Decide the winner based on Sharpe improvement and threshold."""
+        """
+        Decide the winner based on Sharpe improvement and a predefined threshold.
+
+        Args:
+            ml_sharpe: Sharpe ratio of the ML‑enhanced strategy.
+            manual_sharpe: Sharpe ratio of the manual strategy.
+
+        Returns:
+            Tuple of (winner identifier, Sharpe improvement).
+        """
         improvement = ml_sharpe - manual_sharpe
         if abs(improvement) < IMPROVEMENT_THRESHOLD:
             winner = WINNER_NEITHER
@@ -198,6 +250,26 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = DEFAULT_INITIAL_EQUITY,
     ) -> ComparisonResult:
+        """
+        Run the full comparison pipeline and produce a structured result.
+
+        This includes backtesting both signal sets, fetching benchmark data,
+        statistical testing, and winner determination.
+
+        Args:
+            manual_signals: Series of manual trading signals.
+            ml_signals: Series of ML‑enhanced trading signals.
+            prices: Series of price data aligned with the signals.
+            strategy_name: Human‑readable name of the strategy.
+            symbol: Ticker symbol.
+            interval: Data frequency (e.g., '1h', 'daily').
+            start_date: Inclusive start date for the backtest period.
+            end_date: Inclusive end date for the backtest period.
+            initial_equity: Starting capital; defaults to DEFAULT_INITIAL_EQUITY.
+
+        Returns:
+            A ComparisonResult instance containing all relevant metrics.
+        """
         # Run backtests (potentially expensive)
         manual_metrics, ml_metrics = self._run_backtests(
             manual_signals, ml_signals, prices, initial_equity
