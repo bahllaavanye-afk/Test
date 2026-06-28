@@ -1,0 +1,67 @@
+name: Desk Trading — Crypto 24/7 (Paper Orders)
+
+# Crypto markets trade 24/7, but desk-trading.yml gates ALL desks to the US
+# equity weekday window (*/15 9-22 * * 1-5). This additive workflow runs ONLY
+# the crypto desk round the clock so the genuinely-always-on market is never idle.
+# Equities/options/futures stay on desk-trading.yml (correct — those markets close).
+
+on:
+  push:
+    branches: [claude/stoic-johnson-7z4wtz]
+    paths:
+      - ".github/workflows/desk-trading-crypto-24x7.yml"
+      - ".github/scripts/desk_order_placer.py"
+  schedule:
+    # Every 20 minutes, every day — crypto never closes. Off-:00 minute to avoid
+    # the fleet-wide top-of-hour spike.
+    - cron: "7,27,47 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  place-crypto-orders:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/stoic-johnson-7z4wtz
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-desk-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-desk-
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            pandas numpy scipy statsmodels scikit-learn \
+            fastapi pydantic pydantic-settings \
+            python-dotenv structlog tenacity anyio \
+            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
+            sqlalchemy[asyncio] httpx aiosqlite aiohttp \
+            alpaca-py requests yfinance
+
+      - name: Run crypto desk order placer (24/7)
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          DESK_FILTER:       crypto
+          TRADING_MODE:      paper
+          # Hardcoded paper-trading key — not a production secret
+          SECRET_KEY:        d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
+          DATABASE_URL:      ""
+          REDIS_URL:         ""
+          PYTHONPATH:        ${{ github.workspace }}/backend
+        run: python .github/scripts/desk_order_placer.py

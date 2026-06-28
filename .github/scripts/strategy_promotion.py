@@ -20,9 +20,11 @@ from __future__ import annotations
 import json, os, sys, time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from statistics import pvariance
 
 sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, slack_post, memory_write, core_update, core_get
+from strategy_gate import passes_promotion_gate
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 RESULTS_DIR = REPO_ROOT / "backend" / "experiments" / "results"
@@ -183,6 +185,12 @@ def run_promotion_check() -> list[dict]:
     events: list[dict] = []
     now = time.time()
 
+    # Multiple-testing context: deflate each Sharpe by how many strategies were
+    # screened and how widely their Sharpes vary (selection-bias correction).
+    n_trials = max(len(backtest_results), 1)
+    _sharpes = [r["test_sharpe"] for r in backtest_results]
+    sharpe_var = pvariance(_sharpes) if len(_sharpes) > 1 else 0.25
+
     # ── Gate 1: backtest → paper_candidate ────────────────────────────────────
     for result in backtest_results:
         name = result["name"]
@@ -194,15 +202,40 @@ def run_promotion_check() -> list[dict]:
         sharpe = result["test_sharpe"]
         max_dd = result["max_dd"]
 
-        if sharpe >= BACKTEST_SHARPE_MIN and max_dd < BACKTEST_MAXDD_MAX:
+        # Multi-criteria gate: Sharpe + Sortino + Calmar + max-DD + win-rate +
+        # profit-factor + min-trades + OOS consistency + Deflated Sharpe.
+        cfg = result.get("config", {})
+        metrics = {
+            "test_sharpe": sharpe,
+            "val_sharpe": result["val_sharpe"],
+            "max_dd": max_dd,
+            "num_trades": cfg.get("num_trades") or cfg.get("n_trades") or 0,
+            "sortino": cfg.get("sortino"),
+            "calmar": cfg.get("calmar"),
+            "win_rate": cfg.get("win_rate"),
+            "profit_factor": cfg.get("profit_factor"),
+            "skew": cfg.get("skew", 0.0),
+            "kurtosis": cfg.get("kurtosis", 3.0),
+        }
+        passed, scorecard = passes_promotion_gate(metrics, n_trials, sharpe_var)
+        if not passed:
+            failed = [k for k, c in scorecard.items() if not c["ok"]]
+            print(f"[GATE] {name}: REJECTED — failed {failed}")
+            continue
+
+        if passed:
+            dsr = scorecard["deflated_sharpe"]["value"]
             promotions[name] = {
                 "stage": "paper_candidate",
                 "promoted_at": now,
                 "sharpe": sharpe,
                 "max_dd": max_dd,
+                "deflated_sharpe": dsr,
+                "scorecard": scorecard,
                 "notes": (
                     f"Auto-promoted from backtest. "
-                    f"test_sharpe={sharpe:.2f}, val_sharpe={result['val_sharpe']:.2f}, max_dd={max_dd:.1f}%"
+                    f"test_sharpe={sharpe:.2f}, val_sharpe={result['val_sharpe']:.2f}, "
+                    f"max_dd={max_dd:.1f}%, DSR={dsr}, trials={n_trials}"
                 ),
             }
             events.append({
