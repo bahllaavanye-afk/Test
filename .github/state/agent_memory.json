@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-28T21:37:15.842680+00:00",
+  "last_updated": "2026-06-28T23:03:29.416938+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -241,7 +241,12 @@
     "[continuous_improver @ 2026-06-28T21:37] cleanup on test/unit/test_reward_gate.py: tests=pass",
     "[continuous_improver @ 2026-06-28T21:37] cleanup on strategies/manual/moc_auction_imbalance.py: tests=pass",
     "[continuous_improver @ 2026-06-28T21:37] cleanup on strategies/ml_enhanced/ml_momentum.py: tests=pass",
-    "[continuous_improver @ 2026-06-28T21:37] cleanup on ml/models/gnn_signal.py: tests=pass"
+    "[continuous_improver @ 2026-06-28T21:37] cleanup on ml/models/gnn_signal.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T23:01] monitoring on strategies/ml_enhanced/lorentzian_knn.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T23:03] monitoring on execution/limit_first.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T23:03] monitoring on risk/var.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T23:03] monitoring on brokers/alpaca_orders.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T23:03] monitoring on backtest/cpcv.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -418,6 +423,24 @@
       "reason": "syntax check failed",
       "improvement_type": "cleanup",
       "timestamp": "2026-06-11T21:37:24.009947+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/opening_range_breakout.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-28T23:01:12.914309+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/patch_tst.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-28T23:02:19.772185+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/pandas_ta_compat.py",
+      "reason": "syntax check failed",
+      "improvement_type": "monitoring",
+      "timestamp": "2026-06-28T23:03:23.881753+00:00"
     }
   ],
   "improvement_stats": {
@@ -427,6 +450,11 @@
       "test_pass": 1
     },
     "cleanup": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "monitoring": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5

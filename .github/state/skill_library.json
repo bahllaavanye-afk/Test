@@ -30,8 +30,13 @@
     "cleanup on test/unit/test_reward_gate.py: success \u2014 tests green",
     "cleanup on strategies/manual/moc_auction_imbalance.py: success \u2014 tests green",
     "cleanup on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
-    "cleanup on ml/models/gnn_signal.py: success \u2014 tests green"
+    "cleanup on ml/models/gnn_signal.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
+    "monitoring on execution/limit_first.py: success \u2014 tests green",
+    "monitoring on risk/var.py: success \u2014 tests green",
+    "monitoring on brokers/alpaca_orders.py: success \u2014 tests green",
+    "monitoring on backtest/cpcv.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T21:37:15.842477+00:00",
+  "last_updated": "2026-06-28T23:03:29.416737+00:00",
   "total": 26
 }
