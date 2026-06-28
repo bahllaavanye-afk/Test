@@ -82,7 +82,10 @@ _PROVIDERS = [
         "url": "https://api.cerebras.ai/v1/chat/completions",
         "key_env": "CEREBRAS_API_KEY",
         "fmt": "openai",
-        "model": "llama-3.3-70b",
+        # llama-3.3-70b was retired on the free account (404); gpt-oss-120b is the
+        # current free model. It is a reasoning model (answer arrives after a
+        # reasoning pass) — _extract_openai_content handles the response shape.
+        "model": "gpt-oss-120b",
         "rpm_free": 30,
     },
     {
@@ -142,7 +145,9 @@ _PROVIDERS = [
         "key_env": "NVIDIA_AGENTS_API_KEYS",
         "key_env_alt": "NVIDIA_NIM_API_KEY",
         "fmt": "openai",
-        "model": "nvidia/llama-3.1-nemotron-70b-instruct",
+        # nvidia/llama-3.1-nemotron-70b-instruct was retired (404 "function not
+        # found"); meta/llama-3.3-70b-instruct is the current free instruct model.
+        "model": "meta/llama-3.3-70b-instruct",
         "rpm_free": 40,
     },
     # ── New providers: Grok, Perplexity, GitHub Models (OpenAI) ──────────────
@@ -463,6 +468,32 @@ def _provider_key(provider: dict) -> str:
     return key
 
 
+# Cloudflare fronts several providers (groq, cerebras) and rejects the default
+# urllib User-Agent ("Python-urllib/x.y") with HTTP 403 "error code: 1010".
+# Sending a browser User-Agent on every request avoids the block. Do NOT remove.
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+
+def _extract_openai_content(result: dict) -> str:
+    """Pull the answer from an OpenAI-style response.
+
+    Reasoning models (e.g. Cerebras gpt-oss-120b, DeepSeek-R1) return
+    message.content = None and put text in `reasoning_content` / `reasoning`.
+    Prefer real content; fall back to the reasoning field so a reasoning model
+    never raises KeyError and silently kills the provider. Raises ValueError if
+    nothing usable is present so the caller falls through to the next provider.
+    """
+    msg = result["choices"][0]["message"]
+    for field in ("content", "reasoning_content", "reasoning"):
+        val = msg.get(field)
+        if val:
+            return val.strip()
+    raise ValueError("no content in OpenAI-style response")
+
+
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
     key = _provider_key(provider)
     url = provider["url"]
@@ -486,7 +517,7 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
         }
 
     data = json.dumps(body).encode()
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
     if provider["fmt"] != "gemini":
         headers["Authorization"] = f"Bearer {key}"
 
@@ -497,7 +528,7 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
     if provider["fmt"] == "gemini":
         return result["candidates"][0]["content"]["parts"][0]["text"].strip()
     else:
-        return result["choices"][0]["message"]["content"].strip()
+        return _extract_openai_content(result)
 
 
 def _call_provider_messages(
@@ -534,7 +565,7 @@ def _call_provider_messages(
             "contents": gemini_contents,
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
-        headers: dict = {"Content-Type": "application/json"}
+        headers: dict = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
     else:
         url_with_key = url
         body = {
@@ -545,6 +576,7 @@ def _call_provider_messages(
         }
         headers = {
             "Content-Type": "application/json",
+            "User-Agent": _BROWSER_UA,
             "Authorization": f"Bearer {key}",
         }
 
@@ -555,7 +587,7 @@ def _call_provider_messages(
 
     if provider["fmt"] == "gemini":
         return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    return result["choices"][0]["message"]["content"].strip()
+    return _extract_openai_content(result)
 
 
 def llm_chat(
