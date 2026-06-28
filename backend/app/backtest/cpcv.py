@@ -18,9 +18,15 @@ Key insight:
 """
 from __future__ import annotations
 
+import logging
+import time
+from itertools import combinations
+from typing import List
+
 import numpy as np
 import pandas as pd
-from itertools import combinations
+
+logger = logging.getLogger(__name__)
 
 
 class CPCV:
@@ -70,7 +76,7 @@ class CPCV:
                 f"Index length {n} is too short for {self.n_splits} folds"
             )
 
-        folds: list[range] = [
+        folds: List[range] = [
             range(i * fold_size, min((i + 1) * fold_size, n))
             for i in range(self.n_splits)
         ]
@@ -80,7 +86,7 @@ class CPCV:
             test_start = test_idx[0]
             test_end = test_idx[-1]
 
-            train_idx: list[int] = []
+            train_idx: List[int] = []
             for i, fold in enumerate(folds):
                 if i == test_fold_idx:
                     continue
@@ -135,7 +141,7 @@ class CPCV:
         try:
             from scipy.special import erfinv  # type: ignore
             gamma = 0.5772156649  # Euler-Mascheroni constant
-            # Φ⁻¹(p) = √2 * erfinv(2p - 1)
+
             def norm_ppf(p: float) -> float:
                 p = float(np.clip(p, 1e-10, 1 - 1e-10))
                 return float(np.sqrt(2) * erfinv(2 * p - 1))
@@ -174,6 +180,8 @@ class CPCV:
               deflated_sharpe: DSR (adjusted for multiple testing)
               is_overfit: True if DSR < 0.8 × mean_sharpe
         """
+        start_time = time.time()
+
         if not isinstance(signals.index, pd.DatetimeIndex):
             signals = signals.copy()
             signals.index = pd.to_datetime(signals.index)
@@ -182,29 +190,47 @@ class CPCV:
         signals = signals.loc[common_idx]
         returns = returns.loc[common_idx]
 
+        signal_count = int(len(signals))
+
         sharpes: list[float] = []
+        total_pnl = 0.0
+
         for train_idx, test_idx in self.split(pd.DatetimeIndex(signals.index)):
             test_signals = signals.iloc[test_idx]
             test_returns = returns.iloc[test_idx]
             # Shift signals by 1 to prevent lookahead
             pnl = test_signals.shift(1).fillna(0) * test_returns
+            total_pnl += float(pnl.sum())
             sr = pnl.mean() / (pnl.std() + 1e-10) * np.sqrt(252)
             sharpes.append(float(sr))
 
         if not sharpes:
-            return {
+            result = {
                 "fold_sharpes": [],
                 "mean_sharpe": 0.0,
                 "deflated_sharpe": 0.0,
                 "is_overfit": True,
             }
+        else:
+            mean_sr = float(np.mean(sharpes))
+            dsr = self.deflated_sharpe(sharpes, n_trials=len(sharpes))
 
-        mean_sr = float(np.mean(sharpes))
-        dsr = self.deflated_sharpe(sharpes, n_trials=len(sharpes))
+            result = {
+                "fold_sharpes": sharpes,
+                "mean_sharpe": mean_sr,
+                "deflated_sharpe": dsr,
+                "is_overfit": dsr < 0.8 * mean_sr,
+            }
 
-        return {
-            "fold_sharpes": sharpes,
-            "mean_sharpe": mean_sr,
-            "deflated_sharpe": dsr,
-            "is_overfit": dsr < 0.8 * mean_sr,
-        }
+        exec_time = time.time() - start_time
+
+        logger.info(
+            "CPCV validation completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_sec": exec_time,
+                "total_pnl": total_pnl,
+            },
+        )
+
+        return result
