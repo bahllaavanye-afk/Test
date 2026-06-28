@@ -11,7 +11,7 @@ Key features over a naive engine:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -81,7 +81,7 @@ def _ulcer_index(equity: np.ndarray) -> float:
 
 def _adaptive_slippage(
     trade_size_usd: pd.Series,
-    volume_usd: pd.Series | None,
+    volume_usd: Optional[pd.Series],
     base_slippage_pct: float,
 ) -> pd.Series:
     """
@@ -103,11 +103,11 @@ def _adaptive_slippage(
 def _prepare_dataframe(
     signals: pd.Series,
     prices: pd.Series,
-    opens: pd.Series | None,
+    opens: Optional[pd.Series],
     fill_at_open: bool,
-    volume: pd.Series | None,
+    volume: Optional[pd.Series],
     initial_equity: float,
-) -> tuple[pd.DataFrame, pd.Series | None, pd.Series]:
+) -> tuple[pd.DataFrame, Optional[pd.Series], pd.Series]:
     """Create the working DataFrame and auxiliary series."""
     fill_prices = opens if (fill_at_open and opens is not None) else prices
 
@@ -120,7 +120,7 @@ def _prepare_dataframe(
     ).dropna(subset=["signal", "price"])
 
     # Volume expressed in USD (price * volume) aligned to df index.
-    volume_usd: pd.Series | None = None
+    volume_usd: Optional[pd.Series] = None
     if volume is not None:
         volume_usd = volume.reindex(df.index).fillna(0) * df["price"]
 
@@ -161,8 +161,12 @@ def _apply_costs_and_equity(
     df["bar_return"] = df["price"].pct_change().fillna(0)
     df["pnl"] = df["position"] * df["bar_return"] - total_cost_pct
 
-    df["equity"] = df["pnl"].add(1).cumprod() * df["equity"].iloc[0] if "equity" in df.columns else None
+    # Initialise equity column if absent.
     if "equity" not in df.columns:
+        df["equity"] = df["pnl"].add(1).cumprod() * DEFAULT_INITIAL_EQUITY
+
+    # If equity already exists (e.g., from a previous run), update it.
+    else:
         df["equity"] = df["pnl"].add(1).cumprod() * df["equity"].iloc[0]
 
     df["equity"] = df["equity"].ffill().fillna(df["equity"].iloc[0])
@@ -233,41 +237,50 @@ def _compute_return_metrics(
     }
 
 
-def _compute_trade_statistics(
-    df: pd.DataFrame,
-) -> dict:
-    """Derive trade‑level performance metrics."""
-    entries = df.index[df["trade"] != 0].tolist()
-    trade_pnls: List[float] = []
+def _compute_trade_statistics(df: pd.DataFrame) -> dict:
+    """
+    Derive trade‑level performance metrics using vectorised operations.
+    """
+    # Identify rows where a trade occurs (position change)
+    trade_mask = df["trade"] != 0
+    if not trade_mask.any():
+        # No trades – return neutral statistics
+        return {
+            "num_trades": 0,
+            "win_rate": 0.0,
+            "avg_win_pct": 0.0,
+            "avg_loss_pct": 0.0,
+            "profit_factor": 0.0,
+            "expectancy": 0.0,
+        }
 
-    pos_series = df["position"]
-    fill_series = df["fill_price"]
+    trade_entries = df[trade_mask].copy()
 
-    for i in range(len(entries) - 1):
-        t0, t1 = entries[i], entries[i + 1]
-        side = float(pos_series.loc[t0])
-        if side == 0:
-            continue
-        entry_price = float(fill_series.loc[t0])
-        exit_price = float(fill_series.loc[t1])
-        trade_pnls.append((exit_price - entry_price) * side / entry_price)
+    # Side (position) and entry price
+    sides = trade_entries["position"]
+    entry_prices = trade_entries["fill_price"]
 
-    wins = [p for p in trade_pnls if p > 0]
-    losses = [p for p in trade_pnls if p <= 0]
+    # Exit prices are the fill_price of the *next* trade entry
+    exit_prices = entry_prices.shift(-1)
 
-    num_trades = len(trade_pnls)
-    win_rate = len(wins) / num_trades if num_trades > 0 else 0.0
-    avg_win_pct = float(np.mean(wins)) if wins else 0.0
-    avg_loss_pct = -float(np.mean(losses)) if losses else 0.0  # positive magnitude
+    # Drop the last entry where there is no subsequent exit
+    valid = exit_prices.notna()
+    sides = sides[valid]
+    entry_prices = entry_prices[valid]
+    exit_prices = exit_prices[valid]
 
-    profit_factor = (
-        float(np.sum(wins) / -np.sum(losses)) if np.sum(losses) != 0 else float("inf")
-    )
-    expectancy = (
-        avg_win_pct * win_rate - avg_loss_pct * (1 - win_rate)
-        if num_trades > 0
-        else 0.0
-    )
+    # Trade P&L as percentage return
+    trade_pnls = (exit_prices - entry_prices) * sides / entry_prices
+
+    wins = trade_pnls[trade_pnls > 0]
+    losses = trade_pnls[trade_pnls <= 0]
+
+    num_trades = int(trade_pnls.shape[0])
+    win_rate = float(wins.shape[0] / num_trades) if num_trades > 0 else 0.0
+    avg_win_pct = float(wins.mean()) if not wins.empty else 0.0
+    avg_loss_pct = -float(losses.mean()) if not losses.empty else 0.0
+    profit_factor = float(wins.sum() / -losses.sum()) if losses.sum() != 0 else float("inf")
+    expectancy = avg_win_pct * win_rate - avg_loss_pct * (1 - win_rate)
 
     return {
         "num_trades": num_trades,
@@ -282,63 +295,72 @@ def _compute_trade_statistics(
 def run_backtest(
     signals: pd.Series,
     prices: pd.Series,
-    opens: pd.Series | None = None,
-    volume: pd.Series | None = None,
+    opens: Optional[pd.Series] = None,
+    volume: Optional[pd.Series] = None,
+    fill_at_open: bool = True,
     initial_equity: float = DEFAULT_INITIAL_EQUITY,
     commission_pct: float = DEFAULT_COMMISSION_PCT,
     slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
-    fill_at_open: bool = True,
     risk_free_annual: float = DEFAULT_RISK_FREE_ANNUAL,
 ) -> BacktestMetrics:
     """
-    Vectorized backtest.
-
-    Parameters
-    ----------
-    signals     : +1 buy, -1 sell, 0 hold. Must be pre‑shifted to avoid lookahead.
-    prices      : OHLCV close prices (used for mark‑to‑market).
-    opens       : Open prices. When fill_at_open=True, trades execute at next open.
-                  Falls back to close if not provided.
-    volume      : Daily volume (shares or contracts). Used for adaptive slippage.
-                  Pass None to use flat slippage_pct.
-    fill_at_open: If True, position changes fill at the bar's OPEN price, not
-                  the previous bar's close. This is more realistic for EOD signals.
+    Execute a vectorised backtest and return a populated BacktestMetrics instance.
     """
     # ------------------------------------------------------------------
-    # 1. Build core DataFrame and auxiliary series
+    # 1. Prepare data frame and auxiliary series
     # ------------------------------------------------------------------
     df, volume_usd, trade_size_usd = _prepare_dataframe(
-        signals, prices, opens, fill_at_open, volume, initial_equity
+        signals=signals,
+        prices=prices,
+        opens=opens,
+        fill_at_open=fill_at_open,
+        volume=volume,
+        initial_equity=initial_equity,
     )
 
     # ------------------------------------------------------------------
-    # 2. Compute slippage (only on bars where a trade occurs)
+    # 2. Compute slippage series (volume‑adaptive)
     # ------------------------------------------------------------------
-    trade_mask = df["trade"] != 0
-    slip_series = _adaptive_slippage(trade_size_usd, volume_usd, slippage_pct)
+    slippage_series = _adaptive_slippage(
+        trade_size_usd=trade_size_usd,
+        volume_usd=volume_usd,
+        base_slippage_pct=slippage_pct,
+    )
 
     # ------------------------------------------------------------------
-    # 3. Apply costs, compute P&L and equity curve
+    # 3. Apply transaction costs and compute equity curve
     # ------------------------------------------------------------------
-    df = _apply_costs_and_equity(df, slip_series, commission_pct, trade_mask)
-
-    equity = df["equity"].values
-    returns = df["pnl"].values
-
-    # ------------------------------------------------------------------
-    # 4. Return‑level metrics (Sharpe, Sortino, Calmar, etc.)
-    # ------------------------------------------------------------------
-    return_metrics = _compute_return_metrics(equity, returns, risk_free_annual)
+    df = _apply_costs_and_equity(
+        df=df,
+        slip_series=slippage_series,
+        commission_pct=commission_pct,
+        trade_mask=df["trade"].abs() > 0,
+    )
 
     # ------------------------------------------------------------------
-    # 5. Trade‑level statistics
+    # 4. Assemble return series for risk metrics
+    # ------------------------------------------------------------------
+    equity = df["equity"].to_numpy()
+    returns = df["bar_return"].to_numpy()
+
+    # ------------------------------------------------------------------
+    # 5. Compute risk‑adjusted and drawdown metrics
+    # ------------------------------------------------------------------
+    return_metrics = _compute_return_metrics(
+        equity=equity,
+        returns=returns,
+        risk_free_annual=risk_free_annual,
+    )
+
+    # ------------------------------------------------------------------
+    # 6. Compute trade‑level statistics
     # ------------------------------------------------------------------
     trade_stats = _compute_trade_statistics(df)
 
     # ------------------------------------------------------------------
-    # 6. Assemble final BacktestMetrics object
+    # 7. Build final BacktestMetrics dataclass
     # ------------------------------------------------------------------
-    total_return = float(equity[-1] / initial_equity - 1.0)
+    total_return = float(equity[-1] / equity[0] - 1.0)
 
     equity_curve = [
         {EQUITY_CURVE_DATE_KEY: idx, EQUITY_CURVE_EQUITY_KEY: val}
