@@ -199,8 +199,13 @@
     "check_data_types",
     "validate_user_input",
     "track_memory_usage",
-    "limit_concurrent_requests"
+    "limit_concurrent_requests",
+    "refactor on execution/almgren_chriss.py: success \u2014 tests green",
+    "refactor on risk/manager.py: success \u2014 tests green",
+    "refactor on backtest/monte_carlo.py: success \u2014 tests green",
+    "refactor on comparison/benchmarks.py: success \u2014 tests green",
+    "refactor on api/v1/alerts.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T15:47:18.659931+00:00",
+  "last_updated": "2026-06-28T15:49:13.561316+00:00",
   "total": 200
 }

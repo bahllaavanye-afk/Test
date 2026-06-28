@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-28T15:47:18.659931+00:00",
+  "last_updated": "2026-06-28T15:49:15.039825+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1549,12 +1549,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[run_experiments @ 2026-06-26T14:24] I'm currently orchestrating a backtest run for the new \"AdvancedRegimeAlpha\" strategy (see\u202f`strategies/",
-    "[algo_agent @ 2026-06-26T14:24] We need to respond as the algo_agent, giving a one-sentence status update. Must be first person, concise (2 sentences max). So one sentence. Should re",
-    "[self_improver @ 2026-06-26T14:24] The user wants a one-sentence status update: what are you actively working on right now? As self_improver agent, we need to answer in first person, co",
-    "[research_scientist @ 2026-06-26T14:24] We need to give one-sentence status update, first person, concise 2 sentences max (so one sentence is fine). Must reference real file paths? Possibly ",
-    "[modeling_engineer @ 2026-06-26T14:24] [LLM unavailable \u2014 all providers failed]",
-    "[continuous_improver @ 2026-06-26T15:41] refactor on execution/advanced_orders.py: tests=pass",
     "[continuous_improver @ 2026-06-26T15:41] refactor on risk/rl_position_sizer.py: tests=pass",
     "[continuous_improver @ 2026-06-26T15:41] refactor on brokers/tradestation.py: tests=pass",
     "[continuous_improver @ 2026-06-26T15:41] refactor on backtest/engine.py: tests=pass",
@@ -1748,22 +1742,16 @@
     "[standup_agent @ 2026-06-28T13:45] [LLM unavailable \u2014 all providers failed]",
     "[signal_runner in #desk-equities @ 2026-06-28T15:17] I've parsed the signals array from agent_memory.json: across equity symbols (SPY, QQQ, AAPL, MSFT, NVDA), 35 new signals were fired in the last cycle ",
     "[strategy_generator in #desk-equities @ 2026-06-28T15:17] I propose a new strategy variant called 'AAPL Trend Continuation' which combines the signals from Relative Strength Index (RSI) and Exponential Moving",
-    "[quick_backtest in #desk-equities @ 2026-06-28T15:17] I'm concerned that with the proposed strategy relying on technical indicators alone, such as RSI and EMA crossovers, the Sharpe ratio may be relativel"
+    "[quick_backtest in #desk-equities @ 2026-06-28T15:17] I'm concerned that with the proposed strategy relying on technical indicators alone, such as RSI and EMA crossovers, the Sharpe ratio may be relativel",
+    "[continuous_improver @ 2026-06-28T15:48] refactor on execution/almgren_chriss.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T15:48] refactor on risk/manager.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T15:48] refactor on backtest/monte_carlo.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T15:48] refactor on comparison/benchmarks.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T15:49] refactor on api/v1/alerts.py: tests=pass",
+    "[continuous_improver @ 2026-06-28T15:49] alpha_evolve on strategies/manual/vol_term_structure.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
-    {
-      "file": "backend/app/api/v1/scanners.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T16:59:23.518610+00:00"
-    },
-    {
-      "file": "backend/tests/unit/test_advanced_metrics.py",
-      "reason": "syntax check failed",
-      "improvement_type": "validation",
-      "timestamp": "2026-06-21T16:59:44.380854+00:00"
-    },
     {
       "file": "backend/app/strategies/manual/poly_near_resolution.py",
       "reason": "syntax check failed",
@@ -2051,6 +2039,18 @@
       "reason": "Tests failed after mutation",
       "improvement_type": "alpha_evolve",
       "timestamp": "2026-06-28T12:19:39.433934+00:00"
+    },
+    {
+      "file": "backend/app/brokers/tradestation.py",
+      "reason": "syntax check failed",
+      "improvement_type": "refactor",
+      "timestamp": "2026-06-28T15:48:17.313290+00:00"
+    },
+    {
+      "file": "backend/app/tasks/agent_dispatcher.py",
+      "reason": "syntax check failed",
+      "improvement_type": "refactor",
+      "timestamp": "2026-06-28T15:49:12.675666+00:00"
     }
   ],
   "improvement_stats": {
@@ -2065,9 +2065,9 @@
       "test_pass": 10
     },
     "alpha_evolve": {
-      "successes": 8,
+      "successes": 9,
       "failures": 0,
-      "test_pass": 8
+      "test_pass": 9
     },
     "optimization": {
       "successes": 5,
@@ -2085,9 +2085,9 @@
       "test_pass": 15
     },
     "refactor": {
-      "successes": 15,
+      "successes": 20,
       "failures": 0,
-      "test_pass": 15
+      "test_pass": 20
     },
     "edge_cases": {
       "successes": 10,
