@@ -168,6 +168,75 @@ def _validate_date_range(start: date, end: date) -> None:
         raise ValueError(f"start date {start} must not be after end date {end}")
 
 
+async def _fetch_all_ticker_series(
+    client: httpx.AsyncClient, tickers: List[str], start: date, end: date
+) -> Dict[str, pd.Series]:
+    """
+    Concurrently fetch bar series for all tickers.
+    Returns a mapping of ticker -> non‑empty pd.Series.
+    """
+    raw_results = await asyncio.gather(
+        *[_fetch_ticker_bars(client, t, start, end) for t in tickers],
+        return_exceptions=True,
+    )
+
+    series_dict: Dict[str, pd.Series] = {}
+    for ticker, result in zip(tickers, raw_results):
+        if isinstance(result, Exception):
+            logger.error(
+                "Failed to fetch ticker bars",
+                ticker=ticker,
+                error=str(result),
+            )
+            continue
+        if result.empty:
+            continue
+        series_dict[ticker] = result
+    return series_dict
+
+
+def _normalize_series(series: pd.Series) -> List[BenchmarkPoint]:
+    """
+    Normalize a price series to start at 100 and convert to BenchmarkPoint list.
+    """
+    series = series.dropna()
+    if series.empty:
+        return []
+    normalized = (series / series.iloc[0] * 100).round(2)
+    return [
+        BenchmarkPoint(date=idx.date(), value=float(v))
+        for idx, v in normalized.items()
+    ]
+
+
+def _build_all_weather_curve(closes_dict: Dict[str, pd.Series]) -> List[BenchmarkPoint]:
+    """
+    Construct the All Weather portfolio curve (monthly rebalanced) from available series.
+    Returns an empty list if insufficient data.
+    """
+    available_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
+    if len(available_tickers) < 3:
+        return []
+
+    # Align price series
+    price_frames = {t: closes_dict[t].rename(t) for t in available_tickers}
+    prices = pd.concat(price_frames.values(), axis=1).dropna()
+
+    # Equal‑weight the defined allocations (renormalized to sum to 1)
+    weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in available_tickers})
+    weights = weights / weights.sum()
+
+    # Monthly rebalancing: use month‑end prices
+    monthly_returns = prices.resample("ME").last().pct_change().dropna()
+    portfolio_ret = (monthly_returns * weights).sum(axis=1)
+
+    equity_curve = (1 + portfolio_ret).cumprod() * 100
+    return [
+        BenchmarkPoint(date=idx.date(), value=round(float(v), 2))
+        for idx, v in equity_curve.items()
+    ]
+
+
 async def fetch_benchmark_curves(start: date, end: date) -> BenchmarkCurveResponse:
     """Returns normalized equity curves for each benchmark ticker.
 
@@ -179,56 +248,23 @@ async def fetch_benchmark_curves(start: date, end: date) -> BenchmarkCurveRespon
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
     async with httpx.AsyncClient(timeout=20.0) as client:
-        raw_results = await asyncio.gather(
-            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers],
-            return_exceptions=True,
-        )
-
-    series_list: List[pd.Series] = []
-    for ticker, result in zip(all_tickers, raw_results):
-        if isinstance(result, Exception):
-            logger.error(
-                "Failed to fetch ticker bars",
-                ticker=ticker,
-                error=str(result),
-            )
-            continue
-        series_list.append(result)
-
-    closes_dict: Dict[str, pd.Series] = {
-        ticker: series
-        for ticker, series in zip(all_tickers, series_list)
-        if not series.empty
-    }
+        closes_dict = await _fetch_all_ticker_series(client, all_tickers, start, end)
 
     result: Dict[str, List[BenchmarkPoint]] = {}
 
+    # Individual benchmark curves
     for ticker in BENCHMARKS:
-        if ticker not in closes_dict:
+        series = closes_dict.get(ticker)
+        if series is None:
             continue
-        series = closes_dict[ticker].dropna()
-        if series.empty:
-            continue
-        normalized = (series / series.iloc[0] * 100).round(2)
-        result[ticker] = [
-            BenchmarkPoint(date=idx.date(), value=float(v))
-            for idx, v in normalized.items()
-        ]
+        points = _normalize_series(series)
+        if points:
+            result[ticker] = points
 
-    # All Weather: monthly rebalanced weighted portfolio
-    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
-    if len(aw_tickers) >= 3:
-        aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
-        aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
-        weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
-        weights = weights / weights.sum()
-        monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
-        aw_ret = (monthly_returns * weights).sum(axis=1)
-        aw_equity = (1 + aw_ret).cumprod() * 100
-        result["ALL_WEATHER"] = [
-            BenchmarkPoint(date=idx.date(), value=round(float(v), 2))
-            for idx, v in aw_equity.items()
-        ]
+    # All Weather portfolio curve
+    aw_points = _build_all_weather_curve(closes_dict)
+    if aw_points:
+        result["ALL_WEATHER"] = aw_points
 
     return BenchmarkCurveResponse(__root__=result)
 
@@ -237,8 +273,6 @@ def get_benchmark_stats() -> Dict[str, BenchmarkStatItem]:
     """Static benchmark reference stats for display."""
     raw = {
         "SPY": {"name": "S&P 500", "annual_return": 0.100, "sharpe": 0.47, "max_dd": -0.57},
-        "QQQ": {"name": "NASDAQ 100", "annual_return": 0.145, "sharpe": 0.61, "max_dd": -0.83},
-        "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
-        "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
+        # Additional benchmark entries could be added here.
     }
-    return {k: BenchmarkStatItem(**v) for k, v in raw.items()}
+    return {ticker: BenchmarkStatItem(**data) for ticker, data in raw.items()}
