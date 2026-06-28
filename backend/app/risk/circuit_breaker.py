@@ -58,6 +58,19 @@ class CircuitBreaker:
     halted_at: datetime | None = None
     halt_reasons: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        """Validate constructor arguments."""
+        if not isinstance(self.name, str) or not self.name:
+            raise ValueError("name must be a non‑empty string")
+        if not isinstance(self.max_drawdown_pct, Number):
+            raise ValueError(
+                f"max_drawdown_pct must be a numeric type, got {type(self.max_drawdown_pct).__name__}"
+            )
+        if not (0.0 <= self.max_drawdown_pct <= 1.0):
+            raise ValueError("max_drawdown_pct must be between 0 and 1 inclusive")
+        self._validate_equity(self.peak_equity)
+        self._validate_equity(self.current_equity)
+
     def _validate_equity(self, equity: float) -> None:
         """Validate that ``equity`` is a numeric, non‑negative value.
 
@@ -89,11 +102,12 @@ class CircuitBreaker:
         -------
         bool
             ``True`` if the breaker remains in the ``NORMAL`` state; ``False`` if
-            it is ``HALTED`` or an error occurred.
+            it is ``HALTED``.
         """
-        try:
-            self._validate_equity(equity)
+        # Input validation – will raise ValueError/TypeError on invalid input.
+        self._validate_equity(equity)
 
+        try:
             if equity > self.peak_equity:
                 self.peak_equity = equity
             self.current_equity = equity
@@ -106,7 +120,9 @@ class CircuitBreaker:
                 if drawdown >= self.max_drawdown_pct:
                     self.state = BreakerState.HALTED
                     self.halted_at = datetime.now(UTC)
-                    reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%}"
+                    reason = (
+                        f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%}"
+                    )
                     self.halt_reasons.append(reason)
                     logger.error(
                         "Circuit breaker TRIPPED",
@@ -118,14 +134,6 @@ class CircuitBreaker:
                     return False
 
             return True
-        except (TypeError, ValueError) as e:
-            logger.error(
-                "Circuit breaker update validation error",
-                name=self.name,
-                error=str(e),
-                equity=equity,
-            )
-            return False
         except Exception as e:
             logger.exception(
                 "Unexpected error during circuit breaker update",
@@ -133,7 +141,7 @@ class CircuitBreaker:
                 equity=equity,
                 error=str(e),
             )
-            return False
+            raise
 
     def reset(self, equity: float) -> None:
         """Reset the circuit breaker to a normal state using the provided equity.
@@ -143,20 +151,15 @@ class CircuitBreaker:
         equity : float
             Equity value to initialise ``peak_equity`` after reset.
         """
+        # Input validation – will raise ValueError/TypeError on invalid input.
+        self._validate_equity(equity)
+
         try:
-            self._validate_equity(equity)
             self.state = BreakerState.NORMAL
             self.peak_equity = equity
             self.halted_at = None
             self.halt_reasons = []
             logger.info("Circuit breaker RESET", name=self.name, equity=equity)
-        except (TypeError, ValueError) as e:
-            logger.error(
-                "Circuit breaker reset validation error",
-                name=self.name,
-                error=str(e),
-                equity=equity,
-            )
         except Exception as e:
             logger.exception(
                 "Unexpected error during circuit breaker reset",
@@ -164,6 +167,7 @@ class CircuitBreaker:
                 equity=equity,
                 error=str(e),
             )
+            raise
 
     @property
     def is_halted(self) -> bool:
