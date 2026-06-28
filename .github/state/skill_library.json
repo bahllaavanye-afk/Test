@@ -1,10 +1,5 @@
 {
   "skills": [
-    "monitoring on ml/features/advanced_indicators.py: success \u2014 tests green",
-    "Verify trade IDs",
-    "monitoring on ml/models/a3c_lstm.py: success \u2014 tests green",
-    "* **Algorithm implementation testing**: The `ucb1.py` implementation in `backend/algorithms/` should be tested thoroughly, exploring strategies for the QuantEdge platform.",
-    "cleanup on execution/iceberg.py: success \u2014 tests green",
     "edge_cases on test/unit/test_validation_gate.py: success \u2014 tests green",
     "cleanup on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
     "schemas on ml/features/multi_timeframe.py: success \u2014 tests green",
@@ -199,8 +194,13 @@
     "docstrings on ml/features/normalization.py: success \u2014 tests green",
     "docstrings on execution/slippage_tracker.py: success \u2014 tests green",
     "docstrings on comparison/engine.py: success \u2014 tests green",
-    "docstrings on api/v1/regime.py: success \u2014 tests green"
+    "docstrings on api/v1/regime.py: success \u2014 tests green",
+    "log_api_errors",
+    "check_data_types",
+    "validate_user_input",
+    "track_memory_usage",
+    "limit_concurrent_requests"
   ],
-  "last_updated": "2026-06-28T14:21:27.429394+00:00",
+  "last_updated": "2026-06-28T15:47:18.659931+00:00",
   "total": 200
 }
