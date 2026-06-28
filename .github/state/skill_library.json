@@ -1,18 +1,5 @@
 {
   "skills": [
-    "docstrings on execution/twap.py: success \u2014 tests green",
-    "Monitor memory usage",
-    "constants on backtest/engine.py: success \u2014 tests green",
-    "schemas on tasks/order_sync.py: success \u2014 tests green",
-    "Verify timeout settings",
-    "strategy_logic on ml/features/microstructure.py: success \u2014 tests green",
-    "refactor on execution/advanced_orders.py: success \u2014 tests green",
-    "Validate order IDs",
-    "monitoring on execution/twap.py: success \u2014 tests green",
-    "error_handling on comparison/benchmarks.py: success \u2014 tests green",
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important and actionable knowledge on code quality:",
-    "validation on comparison/benchmarks.py: success \u2014 tests green",
-    "* All LLM (Large Language Model) providers failed to retrieve information, indicating a possible external service disruption.",
     "Here are the 3 most important, actionable bullet points:",
     "refactor on brokers/alpaca_headers.py: success \u2014 tests green",
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
@@ -204,8 +191,16 @@
     "strategy_logic on strategies/manual/polymarket_sentiment_momentum.py: success \u2014 tests green",
     "strategy_logic on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
     "strategy_logic on ml/models/ssm_model.py: success \u2014 tests green",
-    "strategy_logic on ml/features/engineer.py: success \u2014 tests green"
+    "strategy_logic on ml/features/engineer.py: success \u2014 tests green",
+    "check_null_orders",
+    "validate_trade-sizing",
+    "monitor_api_latency",
+    "handle_connection_timeout",
+    "retry_failed_requests",
+    "Refine LSTM models",
+    "Test edge cases",
+    "Debug strategies"
   ],
-  "last_updated": "2026-06-28T10:39:11.655074+00:00",
+  "last_updated": "2026-06-28T12:01:32.210425+00:00",
   "total": 200
 }
