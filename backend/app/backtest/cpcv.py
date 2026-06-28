@@ -207,88 +207,108 @@ class CPCV:
         return float(dsr)
 
     # --------------------------------------------------------------------- #
-    # Validation driver
+    # Helper: annualized Sharpe calculation
     # --------------------------------------------------------------------- #
-    def _annualized_sharpe(self, pnl: pd.Series) -> float:
+    def _annualized_sharpe(self, returns: pd.Series) -> float:
         """
-        Compute annualised Sharpe Ratio for a profit‑and‑loss series.
+        Compute the annualized Sharpe ratio of a return series.
+
+        Parameters
+        ----------
+        returns : pd.Series
+            Daily (or period) returns.
 
         Returns
         -------
         float
-            Annualised Sharpe (mean / std * sqrt(ANNUALIZATION_FACTOR)).
+            Annualized Sharpe ratio. Returns 0.0 if the standard deviation is too
+            small or the series is empty.
         """
-        if pnl.empty:
+        if not isinstance(returns, pd.Series):
+            raise ValueError("returns must be a pandas Series")
+        if returns.empty:
             return 0.0
-        mean = pnl.mean()
-        std = pnl.std(ddof=1) + EPSILON
-        return float(mean / std * np.sqrt(ANNUALIZATION_FACTOR))
 
-    def validate(
-        self,
-        signals: pd.Series,
-        returns: pd.Series,
-    ) -> dict:
+        mean_ret = returns.mean()
+        std_ret = returns.std(ddof=1)
+        if std_ret < EPSILON:
+            return 0.0
+
+        annualized_sr = float(np.sqrt(ANNUALIZATION_FACTOR) * mean_ret / std_ret)
+        return annualized_sr
+
+    # --------------------------------------------------------------------- #
+    # Public validation driver
+    # --------------------------------------------------------------------- #
+    def validate(self, signals: pd.Series, returns: pd.Series) -> dict:
         """
-        Run CPCV on ``signals`` vs ``returns``.
-
-        Computes Sharpe Ratio on each out‑of‑sample fold using the signals
-        shifted by one bar to prevent look‑ahead bias.
+        Run CPCV on a signal series and return metrics.
 
         Parameters
         ----------
         signals : pd.Series
-            Strategy signals (-1, 0, +1) indexed by datetime.
+            Position or signal series (e.g., -1, 0, 1) indexed by datetime.
         returns : pd.Series
-            Asset returns at the same frequency.
+            Asset returns series indexed by datetime.
 
         Returns
         -------
         dict
-            ``{
-                "fold_sharpes": List[float],
-                "mean_sharpe": float,
-                "deflated_sharpe": float,
-                "is_overfit": bool,
-            }``
+            Dictionary containing:
+            * ``deflated_sharpe`` – the DSR value.
+            * ``sharpe_ratios`` – list of per‑fold Sharpe ratios.
+            * ``is_overfit`` – boolean flag indicating over‑fit according to
+              ``OVERFIT_FACTOR``.
         """
+        # Input validation
         if not isinstance(signals, pd.Series):
-            raise ValueError("signals must be a pandas.Series")
+            raise ValueError("signals must be a pandas Series")
         if not isinstance(returns, pd.Series):
-            raise ValueError("returns must be a pandas.Series")
-
-        # Ensure datetime index for both series
+            raise ValueError("returns must be a pandas Series")
         if not isinstance(signals.index, pd.DatetimeIndex):
-            signals = signals.copy()
-            signals.index = pd.to_datetime(signals.index)
+            raise ValueError("signals index must be a pandas.DatetimeIndex")
         if not isinstance(returns.index, pd.DatetimeIndex):
-            returns = returns.copy()
-            returns.index = pd.to_datetime(returns.index)
+            raise ValueError("returns index must be a pandas.DatetimeIndex")
+        if not signals.index.is_monotonic_increasing:
+            raise ValueError("signals index must be sorted in increasing order")
+        if not returns.index.is_monotonic_increasing:
+            raise ValueError("returns index must be sorted in increasing order")
+        if len(signals) != len(returns):
+            raise ValueError(
+                f"signals and returns must have the same length; "
+                f"got {len(signals)} and {len(returns)}"
+            )
+        if not signals.index.equals(returns.index):
+            raise ValueError("signals and returns must share the same datetime index")
+        if signals.isnull().any():
+            raise ValueError("signals contains NaN values")
+        if returns.isnull().any():
+            raise ValueError("returns contains NaN values")
 
-        # Align the two series on the intersection of their indexes
-        signals, returns = signals.align(returns, join="inner")
-        if signals.empty:
-            raise ValueError("No overlapping dates between signals and returns after alignment")
-
-        # Apply 1‑bar shift to avoid look‑ahead bias
-        shifted_signals = signals.shift(1).fillna(0)
-
-        # Compute per‑fold Sharpe ratios
-        fold_sharpes: List[float] = []
+        # Generate splits and compute Sharpe for each test fold
+        sharpe_list: List[float] = []
         for train_idx, test_idx in self.split(signals.index):
-            # Build test P&L using shifted signals only on the test indices
-            test_signals = shifted_signals.iloc[test_idx]
+            # Align signals and returns to test indices
+            test_signals = signals.iloc[test_idx]
             test_returns = returns.iloc[test_idx]
-            pnl = test_signals * test_returns
-            fold_sharpes.append(self._annualized_sharpe(pnl))
 
-        mean_sharpe = float(np.mean(fold_sharpes)) if fold_sharpes else 0.0
-        deflated_sharpe = self.deflated_sharpe(fold_sharpes, n_trials=len(fold_sharpes))
-        is_overfit = deflated_sharpe < OVERFIT_FACTOR * mean_sharpe
+            # Compute strategy returns for the test period
+            strat_returns = test_signals * test_returns
+
+            # Compute Sharpe ratio for this fold
+            sr = self._annualized_sharpe(strat_returns)
+            sharpe_list.append(sr)
+
+        # Deflated Sharpe computation
+        n_trials = len(sharpe_list) if sharpe_list else 1
+        deflated_sr = self.deflated_sharpe(sharpe_list, n_trials=n_trials)
+
+        # Over‑fit detection
+        mean_sr = float(np.mean(sharpe_list)) if sharpe_list else 0.0
+        is_overfit = deflated_sr < OVERFIT_FACTOR * mean_sr
 
         return {
-            "fold_sharpes": fold_sharpes,
-            "mean_sharpe": mean_sharpe,
-            "deflated_sharpe": deflated_sharpe,
+            "deflated_sharpe": deflated_sr,
+            "sharpe_ratios": sharpe_list,
             "is_overfit": is_overfit,
         }
