@@ -543,6 +543,91 @@ def _call_claude(system: str, prompt: str, max_tokens: int, temperature: float) 
         return None
 
 
+# ── Self-healing model resolution ──────────────────────────────────────────────
+# When a provider retires a model it returns HTTP 404 ("model does not exist").
+# Rather than letting that kill the provider, query its /models endpoint, pick a
+# working chat model, persist the choice and retry. A retired model can never take
+# the brain down again (the exact failure that left 0/6 providers live 2026-06-28).
+_OVERRIDES_FILE = _STATE_DIR / "model_overrides.json"
+_model_overrides: dict | None = None
+_BAD_MODEL_HINTS = ("embed", "rerank", "guard", "vision", "whisper", "tts",
+                    "bge", "moderation", "image", "audio", "ocr")
+
+
+def _load_overrides() -> dict:
+    global _model_overrides
+    if _model_overrides is None:
+        try:
+            _model_overrides = json.loads(_OVERRIDES_FILE.read_text())
+        except Exception:
+            _model_overrides = {}
+    return _model_overrides
+
+
+def _provider_model(provider: dict) -> str:
+    return _load_overrides().get(provider["name"]) or provider.get("model", "llama-3.3-70b-versatile")
+
+
+def _save_override(name: str, model: str) -> None:
+    ov = _load_overrides()
+    ov[name] = model
+    try:
+        _OVERRIDES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _OVERRIDES_FILE.write_text(json.dumps(ov, indent=2))
+    except Exception:
+        pass
+
+
+def _pick_chat_model(ids: list[str]) -> str | None:
+    clean = [m for m in ids if m and not any(b in m.lower() for b in _BAD_MODEL_HINTS)]
+    pref = [m for m in clean if any(h in m.lower() for h in
+            ("instruct", "chat", "-oss", "glm", "nemotron", "llama", "qwen", "mixtral", "gemma"))]
+    pool = pref or clean
+    return pool[0] if pool else None
+
+
+def _autoheal_model(provider: dict) -> str | None:
+    """On a retired-model 404, discover a working model and persist it. openai-fmt only."""
+    if provider.get("fmt") != "openai":
+        return None
+    try:
+        base = provider["url"].rsplit("/chat/completions", 1)[0]
+        key = _provider_key(provider)
+        req = urllib.request.Request(
+            base + "/models",
+            headers={"User-Agent": _BROWSER_UA, "Authorization": f"Bearer {key}"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        ids = [m.get("id") for m in data.get("data", data.get("models", [])) if m.get("id")]
+        model = _pick_chat_model(ids)
+        if model:
+            _save_override(provider["name"], model)
+            print(f"[llm] auto-healed {provider['name']} model → {model}", flush=True)
+        return model
+    except Exception as exc:
+        print(f"[llm] auto-heal failed for {provider['name']}: {exc}", flush=True)
+        return None
+
+
+def _post_openai(url: str, key: str, model: str, system: str, prompt: str,
+                 max_tokens: int, temperature: float) -> dict:
+    body = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }).encode()
+    headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA,
+               "Authorization": f"Bearer {key}"}
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read())
+
+
 def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, temperature: float) -> str:
     key = _provider_key(provider)
     url = provider["url"]
@@ -553,31 +638,27 @@ def _call_provider(provider: dict, system: str, prompt: str, max_tokens: int, te
             "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{prompt}"}]}],
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
-    else:
-        url_with_key = url
-        body = {
-            "model": provider.get("model", "llama-3.3-70b-versatile"),
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-
-    data = json.dumps(body).encode()
-    headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
-    if provider["fmt"] != "gemini":
-        headers["Authorization"] = f"Bearer {key}"
-
-    req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        result = json.loads(resp.read())
-
-    if provider["fmt"] == "gemini":
+        data = json.dumps(body).encode()
+        headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
+        req = urllib.request.Request(url_with_key, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
         return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    else:
-        return _extract_openai_content(result)
+
+    # OpenAI-style — with self-healing model rotation on a retired-model 404.
+    model = _provider_model(provider)
+    try:
+        result = _post_openai(url, key, model, system, prompt, max_tokens, temperature)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            healed = _autoheal_model(provider)
+            if healed and healed != model:
+                result = _post_openai(url, key, healed, system, prompt, max_tokens, temperature)
+            else:
+                raise
+        else:
+            raise
+    return _extract_openai_content(result)
 
 
 def _call_provider_messages(
