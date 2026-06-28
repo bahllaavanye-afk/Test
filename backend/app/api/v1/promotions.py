@@ -1,8 +1,9 @@
 """Strategy promotion pipeline API."""
 from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,17 +19,25 @@ router = APIRouter(prefix="/promotions", tags=["promotions"])
 async def list_promotions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    result = await db.execute(select(StrategyPromotion).order_by(StrategyPromotion.created_at.desc()))
-    return [_serialize(p) for p in result.scalars().all()]
+) -> List[Dict[str, Any]]:
+    result = await db.execute(
+        select(StrategyPromotion).order_by(StrategyPromotion.created_at.desc())
+    )
+    promotions = result.scalars().all()
+    if not promotions:
+        return []
+    return [_serialize(p) for p in promotions]
 
 
 @router.get("/criteria/all")
 async def get_all_criteria(
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, Dict[str, Any]]:
     """Return promotion criteria thresholds for all transitions."""
     from app.tasks.promotion_criteria import CRITERIA
+
+    if not CRITERIA:
+        return {}
     return {
         name: {
             "min_days": c.min_days,
@@ -44,10 +53,12 @@ async def get_all_criteria(
 
 @router.get("/{promotion_id}")
 async def get_promotion(
-    promotion_id: str,
+    promotion_id: Optional[str],
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if not promotion_id:
+        raise HTTPException(status_code=400, detail="Promotion ID must be provided")
     p = await db.get(StrategyPromotion, promotion_id)
     if not p:
         raise HTTPException(status_code=404, detail="Promotion not found")
@@ -57,7 +68,13 @@ async def get_promotion(
 class CreatePromotionRequest(BaseModel):
     strategy_id: str
     strategy_name: str
-    notes: str | None = None
+    notes: Optional[str] = None
+
+    @validator("strategy_id", "strategy_name")
+    def non_empty(cls, v: str, field):
+        if not v or not v.strip():
+            raise ValueError(f"{field.name} cannot be empty")
+        return v.strip()
 
 
 @router.post("/")
@@ -87,24 +104,29 @@ class UpdateMetricsRequest(BaseModel):
     max_drawdown: float
     num_trades: int
     days_in_stage: int
-    sortino: float | None = None
-    p_value: float | None = None
-    extra: dict | None = None
+    sortino: Optional[float] = None
+    p_value: Optional[float] = None
+    extra: Optional[Dict[str, Any]] = None
 
 
 @router.post("/{promotion_id}/metrics")
 async def update_metrics(
-    promotion_id: str,
+    promotion_id: Optional[str],
     req: UpdateMetricsRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Update metrics for the current stage."""
+    if not promotion_id:
+        raise HTTPException(status_code=400, detail="Promotion ID must be provided")
     p = await db.get(StrategyPromotion, promotion_id)
     if not p:
         raise HTTPException(status_code=404, detail="Promotion not found")
 
     metrics = req.model_dump(exclude_none=True)
+    if not metrics:
+        raise HTTPException(status_code=400, detail="No metrics provided")
+
     if p.current_stage == "paper":
         p.paper_metrics = metrics
     elif p.current_stage == "shadow":
@@ -113,6 +135,11 @@ async def update_metrics(
         p.staging_metrics = metrics
     elif p.current_stage == "live":
         p.live_metrics = metrics
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot update metrics for unknown stage '{p.current_stage}'",
+        )
 
     db.add(p)
     await db.commit()
@@ -121,21 +148,28 @@ async def update_metrics(
 
 @router.post("/{promotion_id}/approve")
 async def approve_promotion(
-    promotion_id: str,
+    promotion_id: Optional[str],
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
     """Approve strategy for promotion to next stage."""
+    if not promotion_id:
+        raise HTTPException(status_code=400, detail="Promotion ID must be provided")
     p = await db.get(StrategyPromotion, promotion_id)
     if not p:
         raise HTTPException(status_code=404, detail="Promotion not found")
     if not p.promotion_ready:
-        raise HTTPException(status_code=400, detail="Strategy has not yet passed promotion criteria")
+        raise HTTPException(
+            status_code=400, detail="Strategy has not yet passed promotion criteria"
+        )
 
     old_stage = p.current_stage
     stage_order = ["paper", "shadow", "staging", "live"]
     if old_stage not in stage_order:
-        raise HTTPException(status_code=400, detail=f"Cannot approve: strategy is in stage '{old_stage}'")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve: strategy is in stage '{old_stage}'",
+        )
     idx = stage_order.index(old_stage)
     if idx >= len(stage_order) - 1:
         raise HTTPException(status_code=400, detail="Strategy is already at final stage")
@@ -155,10 +189,11 @@ async def approve_promotion(
     # Notify after commit so a Slack outage doesn't roll back the promotion
     try:
         from app.notifications.slack import slack
+
         await slack.notify_system(
             f":white_check_mark: Strategy `{p.strategy_name}` promoted from *{old_stage}* → *{new_stage}* "
             f"by {current_user.email}",
-            level="info"
+            level="info",
         )
     except Exception:
         pass
@@ -169,15 +204,23 @@ async def approve_promotion(
 class RejectRequest(BaseModel):
     reason: str
 
+    @validator("reason")
+    def non_empty(cls, v: str):
+        if not v or not v.strip():
+            raise ValueError("Rejection reason cannot be empty")
+        return v.strip()
+
 
 @router.post("/{promotion_id}/reject")
 async def reject_promotion(
-    promotion_id: str,
+    promotion_id: Optional[str],
     req: RejectRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
     """Reject strategy promotion — marks it as rejected."""
+    if not promotion_id:
+        raise HTTPException(status_code=400, detail="Promotion ID must be provided")
     p = await db.get(StrategyPromotion, promotion_id)
     if not p:
         raise HTTPException(status_code=404, detail="Promotion not found")
@@ -190,7 +233,9 @@ async def reject_promotion(
     p.rejection_reason = req.reason
 
     history = list(p.review_history or [])
-    history.append({"ts": ts, "event": "rejected", "stage": old_stage, "reason": req.reason})
+    history.append(
+        {"ts": ts, "event": "rejected", "stage": old_stage, "reason": req.reason}
+    )
     p.review_history = history
 
     db.add(p)
@@ -198,9 +243,10 @@ async def reject_promotion(
 
     try:
         from app.notifications.slack import slack
+
         await slack.notify_system(
             f":x: Strategy `{p.strategy_name}` rejected at stage *{old_stage}*. Reason: {req.reason}",
-            level="warning"
+            level="warning",
         )
     except Exception:
         pass
@@ -210,11 +256,13 @@ async def reject_promotion(
 
 @router.post("/{promotion_id}/review")
 async def trigger_review(
-    promotion_id: str,
+    promotion_id: Optional[str],
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Manually trigger a holistic review for this promotion."""
+    if not promotion_id:
+        raise HTTPException(status_code=400, detail="Promotion ID must be provided")
     p = await db.get(StrategyPromotion, promotion_id)
     if not p:
         raise HTTPException(status_code=404, detail="Promotion not found")
@@ -229,7 +277,14 @@ async def trigger_review(
     passed, failures = check_criteria(metrics, transition)
 
     ts = datetime.now(UTC).isoformat()
-    entry = {"ts": ts, "stage": p.current_stage, "transition": transition, "passed": passed, "metrics": metrics, "failures": failures}
+    entry = {
+        "ts": ts,
+        "stage": p.current_stage,
+        "transition": transition,
+        "passed": passed,
+        "metrics": metrics,
+        "failures": failures,
+    }
     history = list(p.review_history or [])
     history.append(entry)
     p.review_history = history
@@ -237,6 +292,7 @@ async def trigger_review(
 
     if passed and not p.awaiting_approval:
         p.promotion_ready = True
+        # transition strings are like "paper_to_shadow"
         p.promotion_ready_stage = transition.split("_to_")[1]
         p.awaiting_approval = True
         await _notify_promotion_ready(p, metrics, transition)
@@ -244,32 +300,36 @@ async def trigger_review(
     db.add(p)
     await db.commit()
 
-    return {"passed": passed, "failures": failures, "transition": transition, "metrics": metrics}
-
-
-def _serialize(p: StrategyPromotion) -> dict:
     return {
-        "id": p.id,
-        "strategy_id": p.strategy_id,
-        "strategy_name": p.strategy_name,
-        "current_stage": p.current_stage,
-        "paper_metrics": p.paper_metrics,
-        "shadow_metrics": p.shadow_metrics,
-        "staging_metrics": p.staging_metrics,
-        "live_metrics": p.live_metrics,
-        "paper_started_at": p.paper_started_at,
-        "shadow_started_at": p.shadow_started_at,
-        "staging_started_at": p.staging_started_at,
-        "live_started_at": p.live_started_at,
-        "promotion_ready": p.promotion_ready,
-        "promotion_ready_stage": p.promotion_ready_stage,
-        "awaiting_approval": p.awaiting_approval,
-        "approved_by": p.approved_by,
-        "approved_at": p.approved_at,
-        "rejection_reason": p.rejection_reason,
-        "last_review_at": p.last_review_at,
-        "review_history": p.review_history,
-        "notes": p.notes,
-        "created_at": p.created_at.isoformat() if p.created_at else None,
-        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        "passed": passed,
+        "failures": failures,
+        "transition": transition,
+        "metrics": metrics,
+    }
+
+
+def _serialize(p: StrategyPromotion) -> Dict[str, Any]:
+    """Safely serialize a StrategyPromotion instance to a plain dict."""
+    return {
+        "id": getattr(p, "id", None),
+        "strategy_id": getattr(p, "strategy_id", None),
+        "strategy_name": getattr(p, "strategy_name", None),
+        "current_stage": getattr(p, "current_stage", None),
+        "paper_metrics": getattr(p, "paper_metrics", None),
+        "shadow_metrics": getattr(p, "shadow_metrics", None),
+        "staging_metrics": getattr(p, "staging_metrics", None),
+        "live_metrics": getattr(p, "live_metrics", None),
+        "notes": getattr(p, "notes", None),
+        "created_at": getattr(p, "created_at", None),
+        "paper_started_at": getattr(p, "paper_started_at", None),
+        "shadow_started_at": getattr(p, "shadow_started_at", None),
+        "staging_started_at": getattr(p, "staging_started_at", None),
+        "live_started_at": getattr(p, "live_started_at", None),
+        "promotion_ready": getattr(p, "promotion_ready", False),
+        "awaiting_approval": getattr(p, "awaiting_approval", False),
+        "approved_by": getattr(p, "approved_by", None),
+        "approved_at": getattr(p, "approved_at", None),
+        "rejection_reason": getattr(p, "rejection_reason", None),
+        "review_history": getattr(p, "review_history", []),
+        "last_review_at": getattr(p, "last_review_at", None),
     }
