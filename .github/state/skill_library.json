@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Optimize broker APIs.",
-    "Optimize strategy variants.",
-    "Add data validation",
-    "Here are 3 concise bullet points of the most important, actionable knowledge:",
-    "* **No actionable insights generated**: The lack of LLM provider availability has prevented the generation of actionable insights, hindering the platform's ability to improve.",
     "* Potential solutions may involve troubleshooting LLM providers or switching to alternative models, as suggested by [continuous_improver] and [peer_reviewer].",
     "Based on the recent agent learnings, here are 3 concise bullet points:",
     "cleanup on strategies/manual/vwap_reversion.py: success \u2014 tests green",
@@ -206,6 +201,6 @@
     "optimization on tasks/research_scientist.py: success \u2014 tests green",
     "optimization on strategies/manual/mean_reversion.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T17:08:48.269469+00:00",
+  "last_updated": "2026-06-28T18:42:51.799767+00:00",
   "total": 200
 }
