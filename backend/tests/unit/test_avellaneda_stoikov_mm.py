@@ -7,6 +7,7 @@ Covers:
   3. backtest_signals() returns BacktestSignals with correct dtype
   4. No-lookahead: first row is always False
   5. Insufficient data returns None / empty signals
+  6. Edge cases: None inputs, empty DataFrames, and minimal‑size inputs
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ from app.strategies.manual.avellaneda_stoikov_mm import AvellanedaStoikovMM
 
 @pytest.fixture
 def price_df():
-    """200 bars of synthetic 1-minute OHLCV."""
+    """200 bars of synthetic 1‑minute OHLCV."""
     rng = np.random.default_rng(42)
     n = 200
     prices = 100 * np.cumprod(1 + rng.normal(0.0005, 0.015, n))
@@ -51,6 +52,17 @@ def short_df():
     return pd.DataFrame(
         {"close": prices},
         index=pd.date_range("2023-01-01", periods=n, freq="1min"),
+    )
+
+
+@pytest.fixture
+def minimal_df():
+    """Exactly two rows – the smallest non‑trivial size."""
+    rng = np.random.default_rng(1)
+    prices = 100 * np.cumprod(1 + rng.normal(0.001, 0.005, 2))
+    return pd.DataFrame(
+        {"close": prices},
+        index=pd.date_range("2023-01-01", periods=2, freq="1min"),
     )
 
 
@@ -170,5 +182,43 @@ class TestAvellanedaStoikovMMBacktest:
 
     def test_no_nan_in_signals(self, price_df):
         result = AvellanedaStoikovMM().backtest_signals(price_df)
+        assert not result.entries.isna().any()
+        assert not result.exits.isna().any()
+
+
+# ---------------------------------------------------------------------------
+# Test 4: Edge‑case handling for backtest_signals()
+# ---------------------------------------------------------------------------
+
+class TestAvellanedaStoikovMMBacktestEdgeCases:
+    def test_backtest_returns_backtest_signals_type_on_none(self):
+        result = AvellanedaStoikovMM().backtest_signals(None)
+        assert isinstance(result, BacktestSignals)
+
+    def test_backtest_returns_empty_series_on_none(self):
+        result = AvellanedaStoikovMM().backtest_signals(None)
+        assert len(result.entries) == 0
+        assert len(result.exits) == 0
+
+    def test_backtest_returns_backtest_signals_type_on_empty_df(self):
+        empty_df = pd.DataFrame({"close": []})
+        result = AvellanedaStoikovMM().backtest_signals(empty_df)
+        assert isinstance(result, BacktestSignals)
+
+    def test_backtest_returns_all_false_on_empty_df(self):
+        empty_df = pd.DataFrame({"close": []})
+        result = AvellanedaStoikovMM().backtest_signals(empty_df)
+        assert not result.entries.any()
+        assert not result.exits.any()
+
+    def test_backtest_handles_minimal_input_without_error(self, minimal_df):
+        # Ensures off‑by‑one errors (e.g., accessing index -1) are avoided.
+        result = AvellanedaStoikovMM().backtest_signals(minimal_df)
+        assert isinstance(result, BacktestSignals)
+        assert len(result.entries) == len(minimal_df)
+        assert len(result.exits) == len(minimal_df)
+        # The first row must still be False (no look‑ahead)
+        assert not bool(result.entries.iloc[0])
+        # No NaNs should be present
         assert not result.entries.isna().any()
         assert not result.exits.isna().any()
