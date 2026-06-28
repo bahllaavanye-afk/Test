@@ -26,6 +26,7 @@ except ImportError:
     F = None      # type: ignore[assignment]
 
 import numpy as np
+from typing import Sequence
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
@@ -144,6 +145,77 @@ class SSMPredictor(AbstractModel, nn.Module):
         x = x.mean(dim=1)               # (B, d_model) — mean pool over time
         return self.head(x)              # (B, 1)
 
+    # ── Signal generation utilities ────────────────────────────────────────
+    @staticmethod
+    def _rolling_mean(tensor: torch.Tensor, window: int) -> torch.Tensor:
+        """
+        Compute a simple rolling mean along the last dimension.
+        For windows larger than the sequence length, the mean of the available
+        elements is returned.
+        """
+        if window <= 1:
+            return tensor
+        # Pad on the left to keep the output size unchanged
+        pad = (window - 1, 0)
+        padded = F.pad(tensor, pad, mode='constant', value=0.0)
+        cumsum = torch.cumsum(padded, dim=-1)
+        sum_window = cumsum[..., window:] - cumsum[..., :-window]
+        return sum_window / window
+
+    def generate_signals(
+        self,
+        preds: torch.Tensor,
+        entry_thr: float = 0.6,
+        exit_thr: float = 0.4,
+        confirm_window: int = 3,
+    ) -> torch.Tensor:
+        """
+        Convert raw probability predictions into trading signals with tighter
+        entry conditions and confirmation filters.
+
+        Args:
+            preds: Tensor of shape (..., T) containing probability predictions.
+            entry_thr: Minimum probability to consider an entry.
+            exit_thr: Probability below which a position is closed.
+            confirm_window: Number of recent predictions that must all exceed
+                ``entry_thr`` before an entry is signalled.
+
+        Returns:
+            Tensor of the same shape as ``preds`` containing:
+                1  – long entry (or hold)
+                0  – flat / exit
+        """
+        if not _TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch is required for signal generation.")
+
+        # Ensure 2‑D shape (batch, time)
+        if preds.dim() == 1:
+            preds = preds.unsqueeze(0)
+
+        # Confirmation filter: rolling mean over the window must be above entry_thr
+        confirm_mask = self._rolling_mean(preds, confirm_window) > entry_thr
+
+        # Entry signal: both current prediction and confirmation mask must be true
+        entry_signal = (preds > entry_thr) & confirm_mask
+
+        # Exit signal: prediction falls below exit_thr
+        exit_signal = preds < exit_thr
+
+        # Combine logic: once in a position, stay long until exit condition met
+        signals = torch.zeros_like(preds, dtype=torch.int8)
+
+        # Iterate over time dimension to enforce persistence
+        for b in range(preds.size(0)):
+            in_position = False
+            for t in range(preds.size(1)):
+                if not in_position and entry_signal[b, t]:
+                    in_position = True
+                elif in_position and exit_signal[b, t]:
+                    in_position = False
+                signals[b, t] = 1 if in_position else 0
+
+        return signals
+
     # ── AbstractModel interface ───────────────────────────────────────────────
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
@@ -198,7 +270,7 @@ class SSMPredictor(AbstractModel, nn.Module):
         }, path)
 
     @classmethod
-    def load(cls, path: str) -> SSMPredictor:
+    def load(cls, path: str) -> "SSMPredictor":
         if not _TORCH_AVAILABLE:
             return cls()
         checkpoint = torch.load(path, map_location="cpu", weights_only=False)
