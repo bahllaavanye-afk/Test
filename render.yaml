@@ -43,6 +43,6 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: "https://quantedge-api-9jz0.onrender.com/api/v1/auth/google/callback"
+        value: "https://quantedge-api-agb8.onrender.com/api/v1/auth/google/callback"
     healthCheckPath: /health
     autoDeploy: false
