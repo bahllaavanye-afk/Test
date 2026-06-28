@@ -58,11 +58,16 @@ def test_agent_memory_conversations_schema():
 def test_real_employee_conversations_in_ci():
     if not any(os.environ.get(k, "").strip() for k in _LLM_KEY_VARS):
         pytest.skip("No LLM API keys set — skipping live runner test")
+    # Cap to a few employees so the live LLM run is bounded and reliable — the full
+    # roster makes dozens of sequential calls and blows any fixed CI timeout. This
+    # still exercises the real runner + real providers end-to-end.
+    env = {**os.environ, "EMPLOYEE_RUNNER_LIMIT": "3"}
     result = subprocess.run(
         [sys.executable, str(RUNNER_PATH)],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=240,
+        env=env,
     )
     assert result.returncode == 0, (
         f"employee_conversation_runner.py exited {result.returncode}\n"

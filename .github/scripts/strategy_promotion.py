@@ -20,9 +20,11 @@ from __future__ import annotations
 import json, os, sys, time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from statistics import pvariance
 
 sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, slack_post, memory_write, core_update, core_get
+from strategy_gate import passes_promotion_gate
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 RESULTS_DIR = REPO_ROOT / "backend" / "experiments" / "results"
@@ -105,30 +107,43 @@ def scan_backtest_results() -> list[dict]:
             print(f"[WARN] Could not parse {path.name}: {exc}", file=sys.stderr)
             continue
 
-        # Only promote completed experiments with an out-of-sample Sharpe
-        if data.get("status") != "done":
+        # Two result shapes are supported:
+        #   (a) trainer output: top-level test_sharpe/val_sharpe/max_drawdown
+        #   (b) run_experiments output: metrics nested under "results" (sharpe, n_trades…)
+        res = data.get("results") if isinstance(data.get("results"), dict) else {}
+        status_done = data.get("status", "done") == "done"  # run_experiments has no status
+        if not status_done:
             continue
+
         test_sharpe = data.get("test_sharpe")
+        if test_sharpe is None:
+            test_sharpe = res.get("sharpe")  # shape (b)
         if test_sharpe is None:
             continue
 
-        # max_drawdown in source files is stored as a negative fraction (e.g. -0.112)
-        # convert to a positive percentage
-        raw_dd = data.get("max_drawdown", 0.0)
+        # max_drawdown stored as a negative fraction (e.g. -0.112) → positive percent
+        raw_dd = data.get("max_drawdown", res.get("max_drawdown", 0.0))
         max_dd_pct = abs(float(raw_dd)) * 100.0
 
-        # Derive strategy name: prefer experiment.name → file stem
-        name = (
-            data.get("experiment", {}).get("name")
-            or path.stem
-        )
+        # Carry advanced metrics through to the gate from whichever shape has them.
+        merged = {
+            "num_trades": data.get("num_trades", res.get("n_trades")),
+            "sortino": data.get("sortino", res.get("sortino")),
+            "calmar": data.get("calmar", res.get("calmar")),
+            "win_rate": data.get("win_rate", res.get("win_rate")),
+            "profit_factor": data.get("profit_factor", res.get("profit_factor")),
+            "skew": data.get("skew", res.get("skew", 0.0)),
+            "kurtosis": data.get("kurtosis", res.get("kurtosis", 3.0)),
+        }
+
+        name = data.get("experiment", {}).get("name") or path.stem
 
         results.append({
             "name": name,
             "test_sharpe": float(test_sharpe),
-            "val_sharpe": float(data.get("val_sharpe") or 0.0),
+            "val_sharpe": float(data.get("val_sharpe") or res.get("val_sharpe") or 0.0),
             "max_dd": max_dd_pct,
-            "config": data,
+            "config": {**data, **merged},
         })
 
     return results
@@ -183,6 +198,12 @@ def run_promotion_check() -> list[dict]:
     events: list[dict] = []
     now = time.time()
 
+    # Multiple-testing context: deflate each Sharpe by how many strategies were
+    # screened and how widely their Sharpes vary (selection-bias correction).
+    n_trials = max(len(backtest_results), 1)
+    _sharpes = [r["test_sharpe"] for r in backtest_results]
+    sharpe_var = pvariance(_sharpes) if len(_sharpes) > 1 else 0.25
+
     # ── Gate 1: backtest → paper_candidate ────────────────────────────────────
     for result in backtest_results:
         name = result["name"]
@@ -194,15 +215,41 @@ def run_promotion_check() -> list[dict]:
         sharpe = result["test_sharpe"]
         max_dd = result["max_dd"]
 
-        if sharpe >= BACKTEST_SHARPE_MIN and max_dd < BACKTEST_MAXDD_MAX:
+        # Multi-criteria gate: Sharpe + Sortino + Calmar + max-DD + win-rate +
+        # profit-factor + min-trades + OOS consistency + Deflated Sharpe.
+        cfg = result.get("config", {})
+        metrics = {
+            "test_sharpe": sharpe,
+            "val_sharpe": result["val_sharpe"],
+            "max_dd": max_dd,
+            # None (not 0) when unrecorded so the gate skips rather than rejects.
+            "num_trades": cfg.get("num_trades") if cfg.get("num_trades") is not None else cfg.get("n_trades"),
+            "sortino": cfg.get("sortino"),
+            "calmar": cfg.get("calmar"),
+            "win_rate": cfg.get("win_rate"),
+            "profit_factor": cfg.get("profit_factor"),
+            "skew": cfg.get("skew", 0.0),
+            "kurtosis": cfg.get("kurtosis", 3.0),
+        }
+        passed, scorecard = passes_promotion_gate(metrics, n_trials, sharpe_var)
+        if not passed:
+            failed = [k for k, c in scorecard.items() if not c["ok"]]
+            print(f"[GATE] {name}: REJECTED — failed {failed}")
+            continue
+
+        if passed:
+            dsr = scorecard["deflated_sharpe"]["value"]
             promotions[name] = {
                 "stage": "paper_candidate",
                 "promoted_at": now,
                 "sharpe": sharpe,
                 "max_dd": max_dd,
+                "deflated_sharpe": dsr,
+                "scorecard": scorecard,
                 "notes": (
                     f"Auto-promoted from backtest. "
-                    f"test_sharpe={sharpe:.2f}, val_sharpe={result['val_sharpe']:.2f}, max_dd={max_dd:.1f}%"
+                    f"test_sharpe={sharpe:.2f}, val_sharpe={result['val_sharpe']:.2f}, "
+                    f"max_dd={max_dd:.1f}%, DSR={dsr}, trials={n_trials}"
                 ),
             }
             events.append({
@@ -363,9 +410,29 @@ def _format_slack_message(events: list[dict]) -> str:
             lines.append(f"  → Strategy confirmed as consistently profitable in paper trading")
 
         elif to_stage == "live_candidate":
-            lines.append(f":white_check_mark: *PAPER → LIVE CANDIDATE:* `{name}`")
-            lines.append(f"  Paper Sharpe ({days}d): {sharpe:.2f} | Max DD: {max_dd:.1f}% | {days} days active")
-            lines.append(f"  → Flagged for manual live review")
+            extra = ev.get("extra", {}) or {}
+            sc = extra.get("scorecard", {}) or {}
+            def _m(key):  # pull a metric value from the scorecard if present
+                v = (sc.get(key) or {}).get("value")
+                return v
+            lines.append(f":rotating_light: *GO-LIVE APPROVAL REQUESTED:* `{name}`")
+            lines.append(
+                f"  Proven on paper *{days} days* — Sharpe *{sharpe:.2f}*, Max DD {max_dd:.1f}%"
+            )
+            # Surface the richer SOTA metrics when the gate recorded them.
+            extras = []
+            for label, key in (("Sortino", "sortino"), ("Calmar", "calmar"),
+                               ("DSR", "deflated_sharpe"), ("Omega", "omega"),
+                               ("WinRate", "win_rate"), ("ProfitFactor", "profit_factor"),
+                               ("Recovery", "recovery_factor")):
+                val = _m(key)
+                if val is not None:
+                    extras.append(f"{label} {val}")
+            if extras:
+                lines.append("  " + " | ".join(extras))
+            lines.append("  *Ready to trade live* — but it stays on PAPER until a human approves.")
+            lines.append("  → React :white_check_mark: to *approve going live*, or :x: to keep on paper. "
+                         "(cc <!subteam^deskleads> )")
 
         lines.append("")  # blank line between entries
 

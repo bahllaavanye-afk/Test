@@ -1,0 +1,68 @@
+name: System Status (auto-diagnose)
+
+# Probes brain + Slack + Alpaca + backend and commits a fresh SYSTEM_STATUS.md so
+# the repo always shows live truth — nobody has to ask "what's working / what to
+# fix", and the moment a missing key is added the next run flips it green.
+#
+# Secrets: this workflow uses the SINGLE-SECRET pattern — set DOPPLER_TOKEN once in
+# GitHub Actions secrets and every key comes from Doppler. No per-key GitHub secrets.
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"   # every 3h, off-minute
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/auto_status.py"
+      - ".github/workflows/system-status.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Doppler CLI
+        run: |
+          (curl -Ls https://cli.doppler.com/install.sh || wget -qO- https://cli.doppler.com/install.sh) | sudo sh
+
+      - name: Run diagnostic (Doppler-injected secrets)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -n "$DOPPLER_TOKEN" ]; then
+            doppler run -- python .github/scripts/auto_status.py
+          else
+            echo "::warning::DOPPLER_TOKEN not set — the runner has no credentials, so"
+            echo "::warning::the status would falsely read all-dead. Skipping commit."
+            python .github/scripts/auto_status.py || true
+          fi
+
+      # Only commit when credentials were actually available — otherwise a
+      # credential-less runner would publish a misleading "everything is down".
+      - name: Commit refreshed status if changed
+        if: ${{ env.DOPPLER_TOKEN != '' }}
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          git config user.name  "quantedge-status-bot"
+          git config user.email "status-bot@quantedge.local"
+          if ! git diff --quiet -- SYSTEM_STATUS.md; then
+            git add SYSTEM_STATUS.md
+            git commit -m "chore(status): refresh SYSTEM_STATUS.md [skip ci]"
+            for i in 1 2 3 4; do git push origin HEAD:main && break || sleep $((2**i)); done
+          else
+            echo "No status change."
+          fi
