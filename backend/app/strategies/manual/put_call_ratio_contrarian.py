@@ -57,7 +57,7 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
         if len(pcr_series) < self.smoothing + 1:
             return None
 
-        pcr_smooth = pcr_series.rolling(self.smoothing).mean()
+        pcr_smooth = pcr_series.ewm(span=self.smoothing, adjust=False).mean()  # MUTATION: use EMA for quicker response to regime shifts
         current_pcr = float(pcr_smooth.iloc[-1])
 
         if np.isnan(current_pcr):
@@ -100,14 +100,4 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
 
         pcr_smooth = pcr.rolling(self.smoothing).mean().shift(1)  # shift to avoid lookahead
 
-        entries = pcr_smooth > self.fear_threshold         # extreme fear → long
-        exits = pcr_smooth < (self.fear_threshold * 0.9)
-        short_entries = pcr_smooth < self.greed_threshold  # extreme greed → short
-        short_exits = pcr_smooth > (self.greed_threshold * 1.1)
-
-        return BacktestSignals(
-            entries=entries.fillna(False),
-            exits=exits.fillna(False),
-            short_entries=short_entries.fillna(False),
-            short_exits=short_exits.fillna(False),
-        )
+        en
