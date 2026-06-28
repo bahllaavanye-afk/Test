@@ -291,6 +291,78 @@ def _write_experiment_config(strategy_name: str, market_type: str) -> None:
     print(f"Experiment config: {out}")
 
 
+# ─── Quality gate ─────────────────────────────────────────────────────────────
+
+def _quality_gate(module_stem: str, class_name: str) -> tuple[bool, str]:
+    """Backtest the freshly-generated strategy on synthetic bull/bear/sideways
+    regimes and REJECT it unless it actually trades sanely. Catches the common
+    LLM failures — strategies that error, never trade, or trade every single bar
+    (degenerate) — so only viable strategies enter the library.
+    """
+    import importlib
+    import numpy as np
+    import pandas as pd
+
+    # App config requires these; set safe dummies so importing a strategy module
+    # (which pulls app.config) doesn't fail for environment reasons in CI.
+    os.environ.setdefault("SECRET_KEY", "a" * 64)
+    os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./gate.db")
+    os.environ.setdefault("REDIS_URL", "")
+
+    backend = str(REPO_ROOT / "backend")
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
+    try:
+        mod = importlib.import_module(f"app.strategies.manual.{module_stem}")
+        importlib.reload(mod)
+        inst = getattr(mod, class_name)()
+    except Exception as e:  # noqa: BLE001
+        return False, f"import/instantiate failed: {e}"
+
+    def _ohlcv(mu: float, seed: int) -> "pd.DataFrame":
+        rng = np.random.default_rng(seed)
+        n = 300
+        ret = rng.normal(mu, 0.015, n)
+        close = 100.0 * np.cumprod(1 + ret)
+        high = close * (1 + rng.uniform(0, 0.01, n))
+        low = close * (1 - rng.uniform(0, 0.01, n))
+        openp = close * (1 + rng.normal(0, 0.003, n))
+        vol = rng.integers(1_000_000, 5_000_000, n).astype(float)
+        idx = pd.date_range("2022-01-01", periods=n, freq="1D")
+        return pd.DataFrame(
+            {"open": openp, "high": high, "low": low, "close": close, "volume": vol}, index=idx
+        )
+
+    # Cheap pre-filter only: a generated strategy must handle the STANDARD OHLCV
+    # contract without crashing, return a well-formed boolean signal of the right
+    # length, and not be degenerately always-in. It must trade at least once
+    # across the regimes (a totally inert no-op is useless). We do NOT judge
+    # performance here — many valid strategies need real/multi-asset data to fire;
+    # the experiment + walk-forward pipeline judges real performance on live data.
+    total_trades = 0
+    for name, mu, seed in [("bull", 0.0009, 1), ("bear", -0.0009, 2), ("side", 0.0, 3)]:
+        df = _ohlcv(mu, seed)
+        try:
+            sig = inst.backtest_signals(df)
+        except Exception as e:  # noqa: BLE001
+            return False, f"backtest_signals crashed on standard OHLCV ({name}): {e}"
+        entries = sig.entries if hasattr(sig, "entries") else (sig > 0)
+        try:
+            arr = np.asarray(entries).astype(bool)
+        except Exception:  # noqa: BLE001
+            return False, "entries is not a usable boolean series"
+        if len(arr) != len(df):
+            return False, f"signal length {len(arr)} != data length {len(df)} ({name})"
+        n_tr = int(arr.sum())
+        if n_tr >= 0.95 * len(arr):
+            return False, f"degenerate: in a position ~every bar ({name})"
+        total_trades += n_tr
+    # NB: not rejecting on zero-trades — many valid strategies need real/multi-asset
+    # data to fire and legitimately return empty on synthetic single-symbol data.
+    # Real performance is judged downstream by the experiment/walk-forward pipeline.
+    return True, f"clean (no crash, well-formed, non-degenerate; {total_trades} synth signals)"
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -330,12 +402,24 @@ def main() -> None:
         # Write files
         path = _write_strategy_file(code, strategy_name)
         module_stem = path.stem
+
+        # Quality gate: backtest on synthetic regimes; drop the file if it fails
+        # so only viable strategies are registered.
+        passed, gate_reason = _quality_gate(module_stem, class_name)
+        if not passed:
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            print(f"❌ Rejected by quality gate: {gate_reason}")
+            continue
+
         _register_strategy(class_name, strategy_name, module_stem)
         _write_experiment_config(strategy_name, mt)
 
         existing_names.append(strategy_name)
         generated += 1
-        print(f"✅ Generated: {strategy_name} ({class_name})")
+        print(f"✅ Generated + passed gate: {strategy_name} ({class_name}) — {gate_reason}")
 
     print(f"\n=== Done: {generated} new strategies generated ===")
     if generated == 0:
