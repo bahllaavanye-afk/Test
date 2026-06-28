@@ -107,10 +107,25 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         Returns
         -------
         Signal | None
-            A enriched :class:`Signal` instance when both models agree,
+            An enriched :class:`Signal` instance when both models agree,
             otherwise ``None``.
         """
         start_time = time.perf_counter()
+
+        # Edge‑case guard: ensure inputs are valid
+        if not symbol:
+            _logger.warning(
+                "MLPCAStatArbStrategy - received empty symbol",
+                extra={"execution_time_ms": (time.perf_counter() - start_time) * 1000},
+            )
+            return None
+
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            _logger.warning(
+                "MLPCAStatArbStrategy - received invalid or empty data",
+                extra={"symbol": symbol, "execution_time_ms": (time.perf_counter() - start_time) * 1000},
+            )
+            return None
 
         # Step 1: get base PCA signal
         base_signal: Optional[Signal] = await self._base.analyze(data, symbol)
@@ -118,6 +133,15 @@ class MLPCAStatArbStrategy(AbstractStrategy):
             exec_ms = (time.perf_counter() - start_time) * 1000
             _logger.info(
                 "MLPCAStatArbStrategy - no base PCA signal",
+                extra={"symbol": symbol, "execution_time_ms": exec_ms},
+            )
+            return None
+
+        # Defensive check: ensure the base signal has the required attributes
+        if not hasattr(base_signal, "side") or not hasattr(base_signal, "confidence"):
+            exec_ms = (time.perf_counter() - start_time) * 1000
+            _logger.error(
+                "MLPCAStatArbStrategy - base signal missing required attributes",
                 extra={"symbol": symbol, "execution_time_ms": exec_ms},
             )
             return None
@@ -134,16 +158,24 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         try:
             inference = _get_inference_service()
             ml_result: Optional[Dict[str, Any]] = await inference.predict(data, symbol)
-            if ml_result is None:
+
+            if not ml_result:
                 exec_ms = (time.perf_counter() - start_time) * 1000
                 _logger.info(
-                    "MLPCAStatArbStrategy - ML prediction returned None",
+                    "MLPCAStatArbStrategy - ML prediction returned None or empty",
                     extra={"symbol": symbol, "execution_time_ms": exec_ms},
                 )
                 return None
 
-            ml_confidence: float = float(ml_result.get("confidence", 0.0))
-            ml_prediction: str = ml_result.get("prediction", "neutral")
+            # Extract and validate confidence
+            raw_confidence = ml_result.get("confidence")
+            try:
+                ml_confidence: float = float(raw_confidence) if raw_confidence is not None else 0.0
+            except (TypeError, ValueError):
+                ml_confidence = 0.0
+
+            # Extract prediction safely
+            ml_prediction: str = str(ml_result.get("prediction", "neutral")).lower()
 
             if ml_confidence < self._ml_threshold:
                 exec_ms = (time.perf_counter() - start_time) * 1000
@@ -157,6 +189,7 @@ class MLPCAStatArbStrategy(AbstractStrategy):
                     },
                 )
                 return None
+
             if ml_prediction == "neutral":
                 exec_ms = (time.perf_counter() - start_time) * 1000
                 _logger.info(
@@ -183,11 +216,14 @@ class MLPCAStatArbStrategy(AbstractStrategy):
                 )
                 return None
 
-            # Blend confidences (capped at 0.95)
-            blended: float = min(0.95, (base_signal.confidence + ml_confidence) / 2)
+            # Blend confidences (capped at 0.95) – guard against off‑by‑one rounding
+            blended: float = min(0.95, (base_signal.confidence + ml_confidence) / 2.0)
             base_signal.confidence = blended
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
+            # Ensure metadata dict exists
+            if not isinstance(base_signal.metadata, dict):
+                base_signal.metadata = {}
             base_signal.metadata["ml_confidence"] = ml_confidence
 
             # Monitoring: update counters and log key metrics
@@ -210,29 +246,37 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         except Exception as exc:
             exec_ms = (time.perf_counter() - start_time) * 1000
             _logger.exception(
-                "MLPCAStatArbStrategy - error during ML filtering",
-                extra={"symbol": symbol, "execution_time_ms": exec_ms},
+                "MLPCAStatArbStrategy - unexpected error during ML filtering",
+                extra={"symbol": symbol, "execution_time_ms": exec_ms, "error": str(exc)},
             )
-            # ML service raised an error — degrade gracefully
             return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    async def backtest_signals(self, data: pd.DataFrame, symbol: str) -> BacktestSignals:
         """
-        Generate back‑test signals.
+        Generate backtest signals.
 
-        The back‑test implementation simply forwards the request to the base
-        PCA strategy.  When an LSTM model is available, a production back‑test
-        would gate signals per bar, but that logic is outside the scope of this
-        fallback implementation.
+        Delegates directly to the underlying PCA strategy, ensuring that
+        backtesting does not depend on the ML service (which may be unavailable
+        or non‑deterministic in a historical context).
 
         Parameters
         ----------
-        df : pandas.DataFrame
-            Historical price data for back‑testing.
+        data : pandas.DataFrame
+            Historical market data.
+        symbol : str
+            Ticker symbol.
 
         Returns
         -------
         BacktestSignals
-            The signal set produced by the underlying PCA strategy.
+            Signals produced by the base PCA strategy.
         """
-        return self._base.backtest_signals(df)
+        # Edge‑case guard: identical to ``analyze`` – early exit for invalid inputs
+        if not symbol or data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            _logger.warning(
+                "MLPCAStatArbStrategy - backtest called with invalid inputs, returning empty signals",
+                extra={"symbol": symbol},
+            )
+            return BacktestSignals(signals=[])
+
+        return await self._base.backtest_signals(data, symbol)
