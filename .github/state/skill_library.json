@@ -25,8 +25,13 @@
     "git pull --rebase before committing \u2014 prevents push rejections",
     "* Investigate and address any systemic issues related to these connectivity problems, potentially affecting other agents and tasks.",
     "2. **Monitor Model Drift**: Regularly check and update machine learning models to prevent degradation and maintain performance.",
-    "Syntax check compiled code before writing to disk \u2014 prevents broken commits"
+    "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
+    "cleanup on api/v1/leaderboard.py: success \u2014 tests green",
+    "cleanup on test/unit/test_reward_gate.py: success \u2014 tests green",
+    "cleanup on strategies/manual/moc_auction_imbalance.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "cleanup on ml/models/gnn_signal.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-10T21:29:15.304457+00:00",
+  "last_updated": "2026-06-28T21:37:15.842477+00:00",
   "total": 26
 }
