@@ -26,7 +26,6 @@ SOCIAL_SENTIMENT_FEATURE_COLS = [
     "sentiment_composite",
 ]
 
-
 _BASE_FEATURE_COLS = [
     # Price-based
     "returns_1", "returns_5", "returns_10", "returns_21",
@@ -62,7 +61,6 @@ FEATURE_COLS = (
     + ["vpin"]                     # VPIN rolling (VPINFeatures)
     + ALTERNATIVE_FEATURE_COLS     # funding_rate, funding_rate_ma7, oi_change_pct, oi_momentum
 )
-
 
 def engineer_features(
     df: pd.DataFrame,
@@ -202,14 +200,96 @@ def create_sequences(df: pd.DataFrame, seq_len: int = 60, target_col: str = "tar
     return X_out, y_out
 
 
-def add_labels(df: pd.DataFrame, horizon: int = 1, threshold: float = 0.002) -> pd.DataFrame:
+def add_labels(
+    df: pd.DataFrame,
+    horizon: int = 5,
+    entry_threshold: float = 0.005,
+    exit_threshold: float = -0.005,
+    confirmation_window: int = 3,
+) -> pd.DataFrame:
     """
-    Add binary direction label.
-    1 = price goes up by > threshold over horizon bars
-    0 = price goes down or stays flat
+    Generate target labels for supervised learning.
+
+    Labels are based on forward‑looking returns while respecting
+    a no‑lookahead policy (future returns are shifted).
+
+    * Long entry (label 1) – forward return > ``entry_threshold`` **and**
+      confirmation filters:
+        - recent short‑term returns are positive,
+        - RSI is in a moderate range (40‑60),
+        - MACD histogram is positive,
+        - ATR% is below 2 % (low volatility).
+
+    * Short entry (label -1) – forward return < ``exit_threshold``.
+
+    * Otherwise label 0 (no clear signal).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing at least ``close`` and the technical columns used
+        for confirmation filters.
+    horizon : int, default 5
+        Number of periods ahead to compute the forward return.
+    entry_threshold : float, default 0.005
+        Minimum forward return (5 bps) to consider a long signal.
+    exit_threshold : float, default -0.005
+        Maximum forward return (‑5 bps) to consider a short signal.
+    confirmation_window : int, default 3
+        Number of recent return columns to average for additional confirmation.
+
+    Returns
+    -------
+    pd.DataFrame
+        Input DataFrame with an added ``target`` column.
     """
     df = df.copy()
-    future_return = df["close"].pct_change(horizon).shift(-horizon)
-    df["label"] = (future_return > threshold).astype(int)
-    df["target"] = df["label"]  # alias for create_sequences compatibility
-    return df.dropna(subset=["label"])
+
+    # ------------------------------------------------------------------
+    # 1) Compute forward return without lookahead bias.
+    # ------------------------------------------------------------------
+    df["future_ret"] = df["close"].shift(-horizon) / df["close"] - 1.0
+
+    # ------------------------------------------------------------------
+    # 2) Base entry/exit conditions.
+    # ------------------------------------------------------------------
+    long_cond = df["future_ret"] > entry_threshold
+    short_cond = df["future_ret"] < exit_threshold
+
+    # ------------------------------------------------------------------
+    # 3) Confirmation filters for long entries.
+    # ------------------------------------------------------------------
+    # Recent returns (e.g., returns_1, returns_5, returns_10) – at least one
+    # must be positive to avoid entering on a single‑period spike.
+    return_cols = [col for col in df.columns if col.startswith("returns_")]
+    if return_cols:
+        recent_positive = df[return_cols].iloc[:, -confirmation_window:].gt(0).any(axis=1)
+        long_cond &= recent_positive
+
+    # RSI moderation
+    if "rsi_14" in df.columns:
+        long_cond &= df["rsi_14"].between(40, 60)
+
+    # MACD histogram positivity
+    if "macd_hist" in df.columns:
+        long_cond &= df["macd_hist"] > 0
+
+    # Low volatility filter (ATR% < 2%)
+    if "atr_pct" in df.columns:
+        long_cond &= df["atr_pct"] < 0.02
+
+    # ------------------------------------------------------------------
+    # 4) Assemble final label column.
+    # ------------------------------------------------------------------
+    df["target"] = 0
+    df.loc[long_cond, "target"] = 1
+    df.loc[short_cond, "target"] = -1
+
+    # ------------------------------------------------------------------
+    # 5) Clean‑up: drop helper column and any rows that cannot be labeled
+    #    because the forward horizon extends beyond the data.
+    # ------------------------------------------------------------------
+    df.drop(columns=["future_ret"], inplace=True)
+    df = df.dropna(subset=["target"]).reset_index(drop=True)
+
+    return df
