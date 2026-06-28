@@ -158,12 +158,24 @@ async def _fetch_ticker_bars(
     return series
 
 
+def _validate_date_range(start: date, end: date) -> None:
+    """Validate that start and end are proper dates and that start <= end."""
+    if not isinstance(start, date):
+        raise ValueError(f"start must be a datetime.date instance, got {type(start).__name__}")
+    if not isinstance(end, date):
+        raise ValueError(f"end must be a datetime.date instance, got {type(end).__name__}")
+    if start > end:
+        raise ValueError(f"start date {start} must not be after end date {end}")
+
+
 async def fetch_benchmark_curves(start: date, end: date) -> BenchmarkCurveResponse:
     """Returns normalized equity curves for each benchmark ticker.
 
     The curves are expressed as a list of ``BenchmarkPoint`` objects and are
     normalized to a value of 100 at the start date.
     """
+    _validate_date_range(start, end)
+
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
     async with httpx.AsyncClient(timeout=20.0) as client:
