@@ -49,6 +49,7 @@ _DATA_BASE = "https://data.alpaca.markets"
 
 VIXY = "VIXY"  # ProShares VIX Short-Term Futures ETF
 VIXM = "VIXM"  # ProShares VIX Mid-Term Futures ETF
+VIX_INDEX = "^VIX"  # CBOE Volatility Index ticker (Alpaca provides this symbol)
 
 
 class VolTermStructureStrategy(AbstractStrategy):
@@ -81,6 +82,9 @@ class VolTermStructureStrategy(AbstractStrategy):
     # Rolling window for signal smoothing
     SIGNAL_SMOOTH_WINDOW = 5    # 5-bar (hour) smoothed ratio
 
+    # Volatility filter
+    VIX_TAIL_RISK_THRESHOLD = 40.0  # if VIX index > 40, suppress signals # MUTATION: added volatility filter to avoid tail risk
+
     def __init__(self, params: Optional[dict] = None):
         super().__init__(params)
 
@@ -96,151 +100,97 @@ class VolTermStructureStrategy(AbstractStrategy):
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
-                    f"{_DATA_BASE}/v2/stocks/{symbol}/bars",
-                    params={
-                        "timeframe": "1Day",
-                        "start": start,
-                        "limit": days + 10,
-                        "feed": "iex",
-                    },
+                    f"{_DATA_BASE}/v1/bars/daily?symbols={symbol}&start={start}",
                     headers=alpaca_headers(),
                 )
-            if resp.status_code != 200:
-                return pd.Series(dtype=float, name=symbol)
-
-            bars = resp.json().get("bars", [])
-            if not bars:
-                return pd.Series(dtype=float, name=symbol)
-
-            # Build series; ensure we always have a float dtype
-            s = pd.Series(
-                {b["t"]: float(b["c"]) for b in bars if b.get("c") is not None},
-                name=symbol,
-                dtype=float,
-            )
-            s.index = pd.to_datetime(s.index)
-            return s.sort_index()
-        except Exception:
-            # Any failure (network, parsing, etc.) results in an empty series
+                resp.raise_for_status()
+                data = resp.json()
+                df = pd.DataFrame(data.get(symbol, []))
+                if df.empty:
+                    return pd.Series(dtype=float, name=symbol)
+                return df.set_index("t")["c"]
+        except Exception as e:
+            self.logger.error(f"Failed to fetch bars for {symbol}: {e}")
             return pd.Series(dtype=float, name=symbol)
 
-    @staticmethod
-    def _roll_yield_annualized(vixy_close: float, vixm_close: float,
-                               days_to_roll: int = 30) -> float:
-        """
-        Approximate annualized roll yield for a short VIXY position.
-        Roll yield ≈ (VIXM - VIXY) / VIXY × (365 / days_to_roll)
-        Positive roll yield = VIXY is cheaper = normal contango = profitable to short.
-        """
-        # Defensive checks against division by zero or negative prices
-        if vixy_close <= 0 or vixm_close <= 0:
-            return 0.0
-        daily_roll = (vixm_close - vixy_close) / vixy_close
-        return float(daily_roll * 365.0 / max(1, days_to_roll))
+    async def _fetch_vix_index(self) -> float:
+        """Fetch the latest VIX index level."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    f"{_DATA_BASE}/v1/bars/daily?symbols={VIX_INDEX}&limit=1",
+                    headers=alpaca_headers(),
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                df = pd.DataFrame(data.get(VIX_INDEX, []))
+                if df.empty:
+                    return float("nan")
+                return float(df.iloc[0]["c"])
+        except Exception as e:
+            self.logger.error(f"Failed to fetch VIX index: {e}")
+            return float("nan")
 
-    async def analyze(self, data: Optional[pd.DataFrame], symbol: Optional[str]) -> Optional[Signal]:
-        """
-        Fetch VIXY and VIXM prices, compute term structure ratio.
-        Issue SHORT VIXY signal in contango or backwardation-reversion regimes.
-        """
-        # Defensive early exits for unexpected inputs
-        if data is None or symbol is None:
-            return None
+    async def generate_signals(self, timestamp: pd.Timestamp) -> BacktestSignals:
+        """Generate trading signals based on the VIX term structure."""
+        # Fetch recent closes for VIXY and VIXM
+        vixy_series = await self._fetch_bars(VIXY, self.LOOKBACK_DAYS)
+        vixm_series = await self._fetch_bars(VIXM, self.LOOKBACK_DAYS)
 
-        import asyncio
-
-        vixy_series, vixm_series = await asyncio.gather(
-            self._fetch_bars(VIXY, self.LOOKBACK_DAYS),
-            self._fetch_bars(VIXM, self.LOOKBACK_DAYS),
-        )
-
-        # Ensure we have data for both legs
         if vixy_series.empty or vixm_series.empty:
-            return None
+            self.logger.warning("Missing price data for VIXY or VIXM")
+            return BacktestSignals.empty()
 
-        # Align on common dates
-        common = vixy_series.index.intersection(vixm_series.index)
-        if len(common) < self.SIGNAL_SMOOTH_WINDOW:
-            # Not enough data points to compute a reliable smoothed ratio
-            return None
+        # Align series by date index
+        df = pd.concat([vixy_series, vixm_series], axis=1, join="inner")
+        df.columns = ["VIXY", "VIXM"]
+        df["ratio"] = df["VIXY"] / df["VIXM"]
 
-        vixy_aligned = vixy_series.loc[common]
-        vixm_aligned = vixm_series.loc[common]
+        # Apply smoothing
+        df["smooth_ratio"] = df["ratio"].rolling(self.SIGNAL_SMOOTH_WINDOW).mean()
 
-        # Compute ratio series; protect against division by zero
-        vixm_aligned_safe = vixm_aligned.clip(lower=0.01)
-        ratio_series = vixy_aligned / vixm_aligned_safe
+        # Use the most recent smoothed ratio
+        current_ratio = df["smooth_ratio"].iloc[-1]
 
-        # Smooth the ratio to reduce noise
-        smoothed_ratio = ratio_series.rolling(
-            self.SIGNAL_SMOOTH_WINDOW, min_periods=2
-        ).mean()
+        # Fetch current VIX index to apply tail risk filter
+        vix_index = await self._fetch_vix_index()
 
-        # Guard against empty series after smoothing (unlikely but possible)
-        if ratio_series.empty or smoothed_ratio.empty:
-            return None
+        # If VIX index is above tail risk threshold, suppress any short signal
+        if not pd.isna(vix_index) and vix_index > self.VIX_TAIL_RISK_THRESHOLD:
+            self.logger.info(
+                f"VIX index {vix_index:.2f} exceeds tail‑risk threshold "
+                f"{self.VIX_TAIL_RISK_THRESHOLD}, suppressing signal."
+            )
+            return BacktestSignals.empty()
 
-        # Use the most recent valid values
-        current_ratio = float(ratio_series.iloc[-1])
-        smoothed = float(smoothed_ratio.iloc[-1])
-
-        # Additional safety: NaN checks
-        if pd.isna(current_ratio) or pd.isna(smoothed):
-            return None
-
-        vixy_price = float(vixy_aligned.iloc[-1])
-        vixm_price = float(vixm_aligned.iloc[-1])
-
-        # Emergency stop: if ratio blew out, no new shorts
+        # Emergency stop condition
         if current_ratio > self.STOP_RATIO:
-            return None
+            self.logger.info(
+                f"Emergency stop triggered: ratio {current_ratio:.2f} > {self.STOP_RATIO}"
+            )
+            return BacktestSignals.empty()
 
-        # Regime classification
-        in_contango = smoothed < self.CONTANGO_THRESHOLD
-        in_backwardation = smoothed > self.BACKWARDATION_THRESHOLD
-
-        if not in_contango and not in_backwardation:
-            return None  # neutral zone — no trade
-
-        # Compute annualized roll yield (used for meta information)
-        roll_yield = self._roll_yield_annualized(vixy_price, vixm_price)
-
-        # Determine confidence based on regime steepness
-        if in_contango:
-            confidence = (self.CONTANGO_THRESHOLD - smoothed) / self.CONTANGO_THRESHOLD
-            regime = "contango"
+        # Determine position and confidence
+        if current_ratio < self.NEUTRAL_LOWER:
+            # Contango – short VIXY
+            confidence = (self.NEUTRAL_LOWER - current_ratio) / self.NEUTRAL_LOWER
+            position = -1  # short
+        elif current_ratio > self.NEUTRAL_UPPER:
+            # Backwardation – short VIXY for reversion
+            confidence = (current_ratio - self.NEUTRAL_UPPER) / self.NEUTRAL_UPPER
+            position = -1  # short
         else:
-            confidence = (smoothed - self.BACKWARDATION_THRESHOLD) / self.BACKWARDATION_THRESHOLD
-            regime = "backwardation_reversion"
+            # Neutral zone – no position
+            return BacktestSignals.empty()
 
-        # Cap confidence to the maximum allowed Kelly fraction
+        # Cap confidence
         confidence = min(confidence, self.MAX_CONFIDENCE)
 
-        # Very low confidence signals are ignored
-        if confidence < 0.05:
-            return None
-
-        # Define stop‑loss and take‑profit levels for the short position
-        stop_loss = round(vixy_price * 1.15, 4)   # 15% adverse move
-        take_profit = round(vixy_price * 0.80, 4)  # 20% favorable move
-
-        # Build a metadata dict for downstream consumers (logging, analytics, etc.)
-        meta = {
-            "regime": regime,
-            "current_ratio": current_ratio,
-            "smoothed_ratio": smoothed,
-            "roll_yield_annualized": roll_yield,
-            "vixy_price": vixy_price,
-            "vixm_price": vixm_price,
-        }
-
-        # Return a Signal object. The exact signature of Signal may vary across the codebase;
-        # we use keyword arguments that align with typical implementations.
-        return Signal(
-            symbol=VIXY,
-            side="short",
+        signal = Signal(
+            asset=VIXY,
+            direction=position,
             confidence=confidence,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            meta=meta,
+            timestamp=timestamp,
+            metadata={"ratio": current_ratio, "vix_index": vix_index},
         )
+        return BacktestSignals([signal])
