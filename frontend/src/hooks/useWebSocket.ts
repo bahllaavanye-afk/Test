@@ -17,7 +17,11 @@ export function useWebSocket(path: string, enabled = true, shouldReconnect = tru
 
   const connect = useCallback(() => {
     if (!enabled || !mounted.current) return
-    const url = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}${path}`
+    // Prod WS base falls back to the live Render service (new account) so no
+    // VITE_WS_URL env var is required on the deploy; localhost only in dev.
+    const isLocal = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
+    const wsBase = import.meta.env.VITE_WS_URL || (isLocal ? 'ws://localhost:8000' : 'wss://quantedge-api-agb8.onrender.com')
+    const url = `${wsBase}${path}`
     ws.current = new WebSocket(url)
 
     ws.current.onopen = () => {
