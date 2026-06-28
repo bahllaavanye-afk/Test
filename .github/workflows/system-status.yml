@@ -45,11 +45,17 @@ jobs:
           if [ -n "$DOPPLER_TOKEN" ]; then
             doppler run -- python .github/scripts/auto_status.py
           else
-            echo "DOPPLER_TOKEN not set — running with whatever env exists"
-            python .github/scripts/auto_status.py
+            echo "::warning::DOPPLER_TOKEN not set — the runner has no credentials, so"
+            echo "::warning::the status would falsely read all-dead. Skipping commit."
+            python .github/scripts/auto_status.py || true
           fi
 
+      # Only commit when credentials were actually available — otherwise a
+      # credential-less runner would publish a misleading "everything is down".
       - name: Commit refreshed status if changed
+        if: ${{ env.DOPPLER_TOKEN != '' }}
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           git config user.name  "quantedge-status-bot"
           git config user.email "status-bot@quantedge.local"
