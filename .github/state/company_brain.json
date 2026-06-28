@@ -629,7 +629,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782638612.0342858,
+    "last_updated": 1782645901.3437474,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -732,7 +732,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782627292.0927563
+    "last_brain_update": 1782645901.3428805
   },
   "episodic": [
     {
@@ -2418,6 +2418,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1782627292.080685
+    },
+    {
+      "summary": "The issue was assigned to `codex-task` for processing, but the GPT-4o agent and a free-agent engineer both failed to handle it due to all LLM providers being unavailable.",
+      "item_count": 20,
+      "ts": 1782645901.3325076
     }
   ]
 }
