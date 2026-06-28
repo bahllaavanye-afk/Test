@@ -2,10 +2,14 @@
 Lorentzian KNN strategy — Python port of TradingView's most popular ML indicator.
 Uses Lorentzian distance (robust to outliers) for k-nearest-neighbors classification.
 """
+import logging
+import time
 import pandas as pd
 import numpy as np
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.models.lorentzian_knn import LorentzianKNN, compute_lorentzian_features, LORENTZIAN_FEATURES
+
+logger = logging.getLogger(__name__)
 
 
 class LorentzianStrategy(AbstractStrategy):
@@ -23,6 +27,7 @@ class LorentzianStrategy(AbstractStrategy):
         self.lookback = params.get("lookback", 2000) if params else 2000
         self.subsample = params.get("subsample", 4) if params else 4
         self._model: LorentzianKNN | None = None
+        self._signal_counter = 0
 
     def _get_or_build_model(self, df: pd.DataFrame) -> LorentzianKNN:
         """Build KNN library from historical data (lazy, in-memory)."""
@@ -36,29 +41,61 @@ class LorentzianStrategy(AbstractStrategy):
         return self._model
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        start_time = time.perf_counter()
         if len(data) < 50:
+            logger.info(
+                "analyze_skipped",
+                extra={"symbol": symbol, "reason": "insufficient_data", "execution_time_ms": (time.perf_counter() - start_time) * 1000},
+            )
             return None
         model = self._get_or_build_model(data)
         feat_df = compute_lorentzian_features(data)
         latest_features = feat_df[LORENTZIAN_FEATURES].fillna(0).values[-1:]
 
         import torch
+
         x = torch.tensor(latest_features, dtype=torch.float32)
         prob = float(model.forward(x).item())
         confidence = abs(prob - 0.5) * 2
 
         if confidence < self.confidence_threshold:
+            logger.info(
+                "analyze_no_signal",
+                extra={
+                    "symbol": symbol,
+                    "confidence": confidence,
+                    "threshold": self.confidence_threshold,
+                    "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                },
+            )
             return None
 
         side = "buy" if prob > 0.5 else "sell"
-        return Signal(
-            symbol=symbol, side=side, confidence=confidence,
-            strategy_name=self.name, strategy_type=self.strategy_type,
+        signal = Signal(
+            symbol=symbol,
+            side=side,
+            confidence=confidence,
+            strategy_name=self.name,
+            strategy_type=self.strategy_type,
             risk_bucket=self.risk_bucket,
             metadata={"lorentzian_prob": round(prob, 4), "k": self.k},
         )
+        self._signal_counter += 1
+        logger.info(
+            "signal_generated",
+            extra={
+                "symbol": symbol,
+                "side": side,
+                "confidence": confidence,
+                "lorentzian_prob": round(prob, 4),
+                "signal_count": self._signal_counter,
+                "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.perf_counter()
         model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
         feat_df = compute_lorentzian_features(df)
         features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
@@ -69,21 +106,47 @@ class LorentzianStrategy(AbstractStrategy):
         model.fit_library(features[:split], labels[:split])
 
         import torch
+
         probs = np.zeros(len(df))
         for i in range(split, len(features)):
-            x = torch.tensor(features[i:i+1], dtype=torch.float32)
+            x = torch.tensor(features[i : i + 1], dtype=torch.float32)
             probs[i] = float(model.forward(x).item())
             # Update library incrementally
             if i % self.subsample == 0 and i + 1 < len(features):
-                model._library_X = torch.cat([model._library_X, torch.tensor(features[i:i+1], dtype=torch.float32)])
-                model._library_y = torch.cat([model._library_y, torch.tensor([labels[i]], dtype=torch.float32)])
+                model._library_X = torch.cat(
+                    [model._library_X, torch.tensor(features[i : i + 1], dtype=torch.float32)]
+                )
+                model._library_y = torch.cat(
+                    [model._library_y, torch.tensor([labels[i]], dtype=torch.float32)]
+                )
 
         prob_series = pd.Series(probs, index=df.index).shift(1)
         entries = prob_series > 0.5 + self.confidence_threshold / 2
         exits = prob_series < 0.5
         short_entries = prob_series < 0.5 - self.confidence_threshold / 2
         short_exits = prob_series > 0.5
+
+        # Simple P&L approximation: assume full exposure on entry until next exit
+        returns = df["close"].pct_change().fillna(0)
+        position = pd.Series(0, index=df.index)
+        position[entries] = 1
+        position[short_entries] = -1
+        position = position.ffill().fillna(0)
+        pnl = (position.shift(1) * returns).sum()
+
+        signal_count = int(entries.sum() + exits.sum() + short_entries.sum() + short_exits.sum())
+        logger.info(
+            "backtest_completed",
+            extra={
+                "signal_count": signal_count,
+                "pnl": pnl,
+                "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+            },
+        )
+
         return BacktestSignals(
-            entries=entries.fillna(False), exits=exits.fillna(False),
-            short_entries=short_entries.fillna(False), short_exits=short_exits.fillna(False),
+            entries=entries.fillna(False),
+            exits=exits.fillna(False),
+            short_entries=short_entries.fillna(False),
+            short_exits=short_exits.fillna(False),
         )
