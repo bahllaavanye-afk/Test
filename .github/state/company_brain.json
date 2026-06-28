@@ -654,7 +654,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1782675639.0892408,
+    "last_updated": 1782677459.636506,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -757,7 +757,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1782672596.366717
+    "last_brain_update": 1782677459.6356225
   },
   "episodic": [
     {
@@ -2501,6 +2501,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1782672596.3583202
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1782677459.6273823
     }
   ]
 }
