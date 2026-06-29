@@ -12,9 +12,50 @@ Low RSI(5) on VXX ≈ suppressed VIX ≈ complacency → SELL/HEDGE SPY.
 
 Sharpe target: 0.9–1.4
 """
+
 import pandas as pd
 import numpy as np
+from pydantic import BaseModel, Field, validator
+
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+
+class VIXMeanReversionParams(BaseModel):
+    """Configuration parameters for the VIX Mean Reversion strategy."""
+
+    fear_rsi_threshold: float = Field(
+        default=70,
+        ge=0,
+        le=100,
+        description="RSI threshold above which a fear spike is detected, triggering a BUY signal.",
+        example=70,
+    )
+    complacency_rsi_threshold: float = Field(
+        default=30,
+        ge=0,
+        le=100,
+        description="RSI threshold below which market complacency is detected, triggering a SELL signal.",
+        example=30,
+    )
+    rsi_period: int = Field(
+        default=5,
+        ge=1,
+        description="Look‑back period for the RSI calculation (must be >= 1).",
+        example=5,
+    )
+    target_symbol: str = Field(
+        default="SPY",
+        description="Ticker symbol to trade when a signal is generated.",
+        example="SPY",
+    )
+
+    @validator("fear_rsi_threshold")
+    def fear_above_complacency(cls, v, values):
+        """Ensure fear threshold is higher than complacency threshold."""
+        comp = values.get("complacency_rsi_threshold")
+        if comp is not None and v <= comp:
+            raise ValueError("fear_rsi_threshold must be greater than complacency_rsi_threshold")
+        return v
 
 
 class VIXMeanReversionStrategy(AbstractStrategy):
@@ -31,13 +72,18 @@ class VIXMeanReversionStrategy(AbstractStrategy):
     RSI_PERIOD = 5
     TARGET_SYMBOL = "SPY"         # Trade SPY on VIX signals
 
-    def __init__(self, params: dict | None = None):
+    def __init__(self, params: dict | VIXMeanReversionParams | None = None):
         super().__init__(params)
-        p = params or {}
-        self.fear_rsi = float(p.get("fear_rsi_threshold", self.FEAR_RSI_THRESHOLD))
-        self.complacency_rsi = float(p.get("complacency_rsi_threshold", self.COMPLACENCY_RSI_THRESHOLD))
-        self.rsi_period = int(p.get("rsi_period", self.RSI_PERIOD))
-        self.target_symbol = p.get("target_symbol", self.TARGET_SYMBOL)
+        # Validate and normalize parameters using the Pydantic schema
+        if isinstance(params, VIXMeanReversionParams):
+            validated = params
+        else:
+            validated = VIXMeanReversionParams.parse_obj(params or {})
+
+        self.fear_rsi = float(validated.fear_rsi_threshold)
+        self.complacency_rsi = float(validated.complacency_rsi_threshold)
+        self.rsi_period = int(validated.rsi_period)
+        self.target_symbol = validated.target_symbol
 
     def _compute_rsi(self, close: pd.Series, period: int) -> pd.Series:
         """Wilder RSI (same as TradingView default)."""
