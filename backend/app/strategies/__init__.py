@@ -72,6 +72,9 @@ from app.strategies.manual.analyst_revision_momentum import AnalystRevisionMomen
 from app.strategies.manual.on_chain_exchange_netflow import OnChainExchangeNetflowStrategy
 from app.strategies.manual.vol_of_vol_timing import VolOfVolTimingStrategy
 from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrategy
+from app.strategies.manual.rsi2_pullback import RSI2PullbackStrategy
+from app.strategies.manual.donchian_breakout import DonchianBreakoutStrategy
+from app.strategies.manual.cci_reversion import CCIReversionStrategy
 from app.strategies.manual.options_strategies import (
     CoveredCallStrategy,
     CashSecuredPutStrategy,
@@ -261,6 +264,10 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "analyst_revision_momentum":  AnalystRevisionMomentumStrategy,
     "on_chain_exchange_netflow":  OnChainExchangeNetflowStrategy,
     "vol_of_vol_timing":          VolOfVolTimingStrategy,
+    # ── Classic technical reversion / breakout ────────────────────────────────
+    "rsi2_pullback":              RSI2PullbackStrategy,
+    "donchian_breakout":          DonchianBreakoutStrategy,
+    "cci_reversion":              CCIReversionStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,
