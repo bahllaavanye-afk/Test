@@ -35,8 +35,13 @@
     "monitoring on execution/limit_first.py: success \u2014 tests green",
     "monitoring on risk/var.py: success \u2014 tests green",
     "monitoring on brokers/alpaca_orders.py: success \u2014 tests green",
-    "monitoring on backtest/cpcv.py: success \u2014 tests green"
+    "monitoring on backtest/cpcv.py: success \u2014 tests green",
+    "docstrings on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "docstrings on ml/models/base_model.py: success \u2014 tests green",
+    "docstrings on ml/features/engineer.py: success \u2014 tests green",
+    "docstrings on execution/vwap.py: success \u2014 tests green",
+    "docstrings on risk/factor_exposure.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-28T23:03:29.416737+00:00",
+  "last_updated": "2026-06-29T00:17:14.636169+00:00",
   "total": 26
 }
