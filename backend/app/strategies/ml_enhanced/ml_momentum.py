@@ -27,23 +27,6 @@ class MLMomentumStrategy(AbstractStrategy):
 
     The strategy wraps the classic momentum logic and applies an ML filter.
     It inherits from :class:`app.strategies.base.AbstractStrategy`.
-
-    Attributes
-    ----------
-    name : str
-        Internal identifier for the strategy.
-    display_name : str
-        Human‑readable name.
-    market_type : str
-        Market classification (e.g., ``"equity"``).
-    strategy_type : str
-        Type classification (e.g., ``"ml_enhanced"``).
-    risk_bucket : str
-        Risk categorisation.
-    tick_interval_seconds : float
-        Expected tick interval for the underlying data.
-    confidence_threshold : float
-        Minimum confidence required from the ML model to consider a signal.
     """
 
     name = "ml_momentum"
@@ -90,34 +73,51 @@ class MLMomentumStrategy(AbstractStrategy):
         if base_signal is None:
             return None
 
-        # Apply ML filter
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
             if ml_result is None or ml_result["prediction"] == "neutral":
                 return None
 
-            # Only pass if ML agrees with indicator direction
-            if ml_result["prediction"] == "up" and base_signal.side == "buy":
-                base_signal.confidence = min(
-                    0.95, (base_signal.confidence + ml_result["confidence"]) / 2
-                )
-                base_signal.strategy_name = self.name
-                base_signal.strategy_type = self.strategy_type
-                base_signal.metadata["ml_confidence"] = ml_result["confidence"]
-                return base_signal
-            elif ml_result["prediction"] == "down" and base_signal.side == "sell":
-                base_signal.confidence = min(
-                    0.95, (base_signal.confidence + ml_result["confidence"]) / 2
-                )
-                base_signal.strategy_name = self.name
-                base_signal.strategy_type = self.strategy_type
-                base_signal.metadata["ml_confidence"] = ml_result["confidence"]
-                return base_signal
-        except Exception as e:
+            return self._apply_ml_filter(base_signal, ml_result)
+        except Exception as e:  # pragma: no cover
             logger.exception("ML inference failed for %s: %s", symbol, e)
+            return None
 
-        return None
+    def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
+        """Adjust the base signal if the ML prediction agrees.
+
+        Parameters
+        ----------
+        base_signal : Signal
+            Signal produced by the underlying momentum strategy.
+        ml_result : dict
+            Result from the ML inference service containing ``prediction`` and
+            ``confidence`` keys.
+
+        Returns
+        -------
+        Signal | None
+            Updated signal if directions match and confidence meets the threshold,
+            otherwise ``None``.
+        """
+        prediction = ml_result["prediction"]
+        ml_conf = ml_result["confidence"]
+
+        side_match = (
+            (prediction == "up" and base_signal.side == "buy")
+            or (prediction == "down" and base_signal.side == "sell")
+        )
+        if not side_match:
+            return None
+
+        # Combine confidences, respecting the configured maximum.
+        combined_confidence = min(0.95, (base_signal.confidence + ml_conf) / 2)
+        base_signal.confidence = combined_confidence
+        base_signal.strategy_name = self.name
+        base_signal.strategy_type = self.strategy_type
+        base_signal.metadata["ml_confidence"] = ml_conf
+        return base_signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """Generate back‑test signals for a dataframe.
@@ -135,5 +135,4 @@ class MLMomentumStrategy(AbstractStrategy):
         BacktestSignals
             Signals suitable for back‑testing consumption.
         """
-        # For backtesting without live ML: use base signals as proxy
         return self._base.backtest_signals(df)
