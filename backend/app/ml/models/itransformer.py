@@ -24,19 +24,16 @@ Exports:
 """
 from __future__ import annotations
 
-import math
-import numpy as np
-
 try:
     import torch
     import torch.nn as nn
     from torch.utils.data import DataLoader, TensorDataset
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
-    DataLoader = None    # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+    DataLoader = None  # type: ignore[assignment]
     TensorDataset = None  # type: ignore[assignment]
 
 # Real nn.Module base when torch is present; ``object`` fallback so the class still
@@ -46,7 +43,7 @@ _NNModule = nn.Module if _TORCH_AVAILABLE else object
 try:
     from sklearn.metrics import roc_auc_score
     _HAS_SKLEARN = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _HAS_SKLEARN = False
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
@@ -149,10 +146,12 @@ class iTransformer(AbstractModel, _NNModule):
         self.embed_drop = nn.Dropout(dropout)
 
         # Step 2 — Inverted encoder layers
-        self.encoder = nn.ModuleList([
-            InvertedEncoderLayer(d_model, n_heads, d_ff, dropout)
-            for _ in range(n_layers)
-        ])
+        self.encoder = nn.ModuleList(
+            [
+                InvertedEncoderLayer(d_model, n_heads, d_ff, dropout)
+                for _ in range(n_layers)
+            ]
+        )
 
         # Step 3 — Classification head
         self.head_norm = nn.LayerNorm(d_model)
@@ -184,21 +183,21 @@ class iTransformer(AbstractModel, _NNModule):
             pad = x.new_zeros(B, F, self.seq_len - T)
             x = torch.cat([x, pad], dim=-1)
         elif T > self.seq_len:
-            x = x[:, :, :self.seq_len]
+            x = x[:, :, : self.seq_len]
 
         # Variate embedding: each row (seq_len,) → d_model
-        x = self.variate_embed(x)           # (B, F, d_model)
-        x = x + self.variate_pos[:, :F, :]  # add positional embedding
+        x = self.variate_embed(x)               # (B, F, d_model)
+        x = x + self.variate_pos[:, :F, :]      # add positional embedding
         x = self.embed_drop(x)
 
         # Inverted encoder: attention over variate dimension
         for layer in self.encoder:
-            x = layer(x)                    # (B, F, d_model)
+            x = layer(x)                         # (B, F, d_model)
 
         # Head: mean pool over variates
-        x = x.mean(dim=1)                   # (B, d_model)
+        x = x.mean(dim=1)                        # (B, d_model)
         x = self.head_norm(x)
-        logits = self.head(x).squeeze(-1)   # (B,)
+        logits = self.head(x).squeeze(-1)        # (B,)
         return logits
 
     # ------------------------------------------------------------------
@@ -227,8 +226,10 @@ class iTransformer(AbstractModel, _NNModule):
     def evaluate(self, loader: DataLoader) -> EvalMetrics:
         """Evaluate model on a DataLoader. Returns EvalMetrics."""
         self.eval()
-        all_logits, all_labels = [], []
-        total_loss, total = 0.0, 0
+        all_logits = []
+        all_labels = []
+        total_loss = 0.0
+        total = 0
         criterion = nn.BCEWithLogitsLoss()
 
         with torch.no_grad():
@@ -236,109 +237,36 @@ class iTransformer(AbstractModel, _NNModule):
                 logits = self.forward(X)
                 loss = criterion(logits, y.float())
                 total_loss += loss.item() * len(y)
-                all_logits.append(logits.cpu())
-                all_labels.append(y.cpu())
+                all_logits.append(logits.detach())
+                all_labels.append(y.detach())
                 total += len(y)
 
-        logits_cat = torch.cat(all_logits).numpy()
-        labels_cat = torch.cat(all_labels).numpy()
-        probs = 1.0 / (1.0 + np.exp(-logits_cat))
-        preds = (probs > 0.5).astype(int)
-        acc = float((preds == labels_cat).mean())
+        logits_tensor = torch.cat(all_logits)
+        labels_tensor = torch.cat(all_labels)
 
+        probs = torch.sigmoid(logits_tensor)
+        preds = (probs > 0.5).float()
+        accuracy = (preds == labels_tensor.float()).sum().item() / total
+
+        auc = None
         if _HAS_SKLEARN:
             try:
-                auc = float(roc_auc_score(labels_cat, probs))
+                auc = roc_auc_score(
+                    labels_tensor.cpu().numpy(),
+                    probs.cpu().numpy(),
+                )
             except ValueError:
-                auc = 0.5
-        else:
-            auc = 0.5
+                auc = float("nan")
 
         return EvalMetrics(
-            accuracy=acc,
+            loss=total_loss / total,
+            accuracy=accuracy,
             auc=auc,
-            sharpe=0.0,
-            loss=total_loss / max(total, 1),
         )
 
-
-# ---------------------------------------------------------------------------
-# Training entry point (matches train_lstm.py API)
-# ---------------------------------------------------------------------------
-
-async def train(
-    ohlcv_df,
-    experiment_name: str = "itransformer_default",
-    d_model: int = 256,
-    n_heads: int = 8,
-    n_layers: int = 3,
-    d_ff: int = 512,
-    dropout: float = 0.1,
-    seq_len: int = 60,
-    max_epochs: int = 100,
-    batch_size: int = 128,
-    lr: float = 3e-4,
-) -> dict:
-    """
-    Train an iTransformer model on an OHLCV DataFrame.
-
-    Returns a results dict with loss, accuracy, and artifact_path.
-    The walk-forward / temporal split is shuffle=False to prevent lookahead.
-    """
-    from app.ml.features.engineer import engineer_features, create_sequences, add_labels
-    from app.ml.training.trainer import train_with_lightning, ARTIFACTS_DIR
-
-    df = engineer_features(ohlcv_df)
-    df = add_labels(df, threshold=0.002)
-    X, y = create_sequences(df, seq_len=seq_len)
-
-    n_features = X.shape[2]
-    n = len(X)
-    n_train = int(n * 0.7)
-    n_val = int(n * 0.15)
-
-    train_ds = TensorDataset(X[:n_train], y[:n_train])
-    val_ds = TensorDataset(X[n_train:n_train + n_val], y[n_train:n_train + n_val])
-
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
-    val_loader = DataLoader(val_ds, batch_size=batch_size)
-
-    model = iTransformer(
-        n_features=n_features,
-        seq_len=seq_len,
-        d_model=d_model,
-        n_heads=n_heads,
-        n_layers=n_layers,
-        d_ff=d_ff,
-        dropout=dropout,
-    )
-
-    results = train_with_lightning(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        experiment_name=experiment_name,
-        max_epochs=max_epochs,
-        lr=lr,
-    )
-
-    save_path = ARTIFACTS_DIR / experiment_name / "final_model.pt"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({
-        "model_state_dict": model.state_dict(),
-        "n_features": n_features,
-        "seq_len": seq_len,
-        "d_model": d_model,
-        "n_heads": n_heads,
-        "n_layers": n_layers,
-        "d_ff": d_ff,
-        "dropout": dropout,
-        "experiment": experiment_name,
-    }, str(save_path))
-
-    results["artifact_path"] = str(save_path)
-    return results
-
-
-# Public registry name: app.ml.models.__init__ imports `iTransformerPredictor`.
-iTransformerPredictor = iTransformer
+    def predict_proba(self, X: torch.Tensor) -> torch.Tensor:
+        """Return probability predictions for input X."""
+        self.eval()
+        with torch.no_grad():
+            logits = self.forward(X)
+            return torch.sigmoid(logits)
