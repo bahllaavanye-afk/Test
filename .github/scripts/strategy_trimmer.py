@@ -22,7 +22,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]  # .github/scripts/x.py → repo root
 PERF_FILE = REPO_ROOT / "backend" / "performance_log" / "strategy_performance.json"
 STATE_DIR = REPO_ROOT / ".github" / "state"
 TRIMS_FILE = STATE_DIR / "strategy_trims.json"
