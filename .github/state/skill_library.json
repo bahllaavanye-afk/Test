@@ -63,8 +63,13 @@
     "schemas on ml/models/ensemble_model.py: success \u2014 tests green",
     "cleanup on test/unit/test_regime.py: success \u2014 tests green",
     "cleanup on strategies/manual/liquidation_cascade_fade.py: success \u2014 tests green",
-    "cleanup on ml/models/itransformer.py: success \u2014 tests green"
+    "cleanup on ml/models/itransformer.py: success \u2014 tests green",
+    "strategy_logic on test/unit/test_execution.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/commodity_trend.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "strategy_logic on ml/features/multi_timeframe.py: success \u2014 tests green",
+    "strategy_logic on risk/circuit_breaker.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-29T21:24:26.425973+00:00",
+  "last_updated": "2026-06-29T22:37:13.562519+00:00",
   "total": 26
 }
