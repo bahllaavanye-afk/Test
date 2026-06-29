@@ -5,6 +5,7 @@ Saves 5-15 bps on average vs immediate market orders.
 import asyncio
 import logging
 import time
+from dataclasses import asdict
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ class LimitFirstExecution:
                 limit_price = quote.bid + offset  # post above bid to improve fill
 
             limit_req = OrderRequest(
-                **{**request.__dict__, "order_type": "limit", "limit_price": round(limit_price, 4)}
+                **{**asdict(request), "order_type": "limit", "limit_price": round(limit_price, 4)}
             )
             result = await self.broker.place_order(limit_req)
 
@@ -80,7 +81,7 @@ class LimitFirstExecution:
 
             # Cancel limit and submit market
             await self.broker.cancel_order(result.broker_order_id)
-            market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
+            market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
             market_result = await self.broker.place_order(market_req)
             return self._log_and_return(market_result, signal_id, start_ts, request, ref_price)
 
@@ -90,7 +91,7 @@ class LimitFirstExecution:
                 extra={"signal_id": signal_id, "error": str(exc)},
             )
             # If anything fails, fall back to direct market order
-            market_req = OrderRequest(**{**request.__dict__, "order_type": "market"})
+            market_req = OrderRequest(**{**asdict(request), "order_type": "market"})
             market_result = await self.broker.place_order(market_req)
             return self._log_and_return(market_result, signal_id, start_ts, request, None)
 

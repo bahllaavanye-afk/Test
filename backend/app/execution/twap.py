@@ -4,6 +4,7 @@ Splits large orders into N equal slices over duration minutes.
 Minimizes market impact for large positions.
 """
 import asyncio
+from dataclasses import asdict
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
@@ -23,7 +24,7 @@ class TWAPExecution:
 
         for i in range(self.slices):
             slice_req = OrderRequest(
-                **{**request.__dict__, "quantity": slice_qty, "order_type": "market"}
+                **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
             )
             try:
                 result = await self.broker.place_order(slice_req)

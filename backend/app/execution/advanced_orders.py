@@ -7,7 +7,7 @@ Advanced order types:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Optional
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
@@ -219,7 +219,7 @@ class TrailingStop:
             while True:
                 if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
                     logger.warning(f"TrailingStop for {request.symbol} timed out")
-                    market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
+                    market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
                     return await self.broker.place_order(market_req)
 
                 await asyncio.sleep(self.poll_seconds)
@@ -240,7 +240,7 @@ class TrailingStop:
 
                 if quote.last <= stop_price:
                     market_req = OrderRequest(
-                        **{**request.__dict__, "order_type": "market", "limit_price": None}
+                        **{**asdict(request), "order_type": "market", "limit_price": None}
                     )
                     logger.info(
                         "Trailing stop triggered (sell)",
@@ -265,7 +265,7 @@ class TrailingStop:
             while True:
                 if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
                     logger.warning(f"TrailingStop for {request.symbol} timed out")
-                    market_req = OrderRequest(**{**request.__dict__, "order_type": "market", "limit_price": None})
+                    market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
                     return await self.broker.place_order(market_req)
 
                 await asyncio.sleep(self.poll_seconds)
@@ -286,7 +286,7 @@ class TrailingStop:
 
                 if quote.last >= stop_price:
                     market_req = OrderRequest(
-                        **{**request.__dict__, "order_type": "market", "limit_price": None}
+                        **{**asdict(request), "order_type": "market", "limit_price": None}
                     )
                     logger.info(
                         "Trailing stop triggered (buy short)",

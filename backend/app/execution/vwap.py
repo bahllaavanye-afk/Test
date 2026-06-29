@@ -9,6 +9,7 @@ distribution.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
@@ -143,7 +144,7 @@ class VWAPExecution:
             slice_qty = request.quantity * slice_weight
 
             slice_req = OrderRequest(
-                **{**request.__dict__, "quantity": slice_qty, "order_type": "market"}
+                **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
             )
             try:
                 result = await self.broker.place_order(slice_req)
