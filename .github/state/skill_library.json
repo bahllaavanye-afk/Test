@@ -40,8 +40,13 @@
     "docstrings on ml/models/base_model.py: success \u2014 tests green",
     "docstrings on ml/features/engineer.py: success \u2014 tests green",
     "docstrings on execution/vwap.py: success \u2014 tests green",
-    "docstrings on risk/factor_exposure.py: success \u2014 tests green"
+    "docstrings on risk/factor_exposure.py: success \u2014 tests green",
+    "optimization on brokers/binance.py: success \u2014 tests green",
+    "optimization on backtest/metrics.py: success \u2014 tests green",
+    "optimization on comparison/report_builder.py: success \u2014 tests green",
+    "optimization on tasks/modeling_engineer.py: success \u2014 tests green",
+    "optimization on api/v1/strategies.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-29T00:17:14.636169+00:00",
+  "last_updated": "2026-06-29T05:11:24.839549+00:00",
   "total": 26
 }
