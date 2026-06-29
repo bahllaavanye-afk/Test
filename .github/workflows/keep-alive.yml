@@ -21,17 +21,19 @@ concurrency:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 9
     steps:
       - name: Ping health (loop to bridge cron jitter)
         run: |
           URL="${{ vars.RENDER_API_URL || 'https://quantedge-api-agb8.onrender.com' }}/health"
           ok=0
+          # max-time MUST exceed the free-tier cold start (~75-90s), or the ping
+          # times out before the box wakes and never actually keeps it warm.
           for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 45 "$URL" || echo "000")
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 "$URL" || echo "000")
             echo "ping $i -> $URL : HTTP $code"
-            [ "$code" = "200" ] && ok=1
-            [ "$i" -lt 3 ] && sleep 150
+            [ "$code" = "200" ] && { ok=1; break; }
+            [ "$i" -lt 3 ] && sleep 30
           done
           if [ "$ok" = "1" ]; then echo "✅ backend awake"; else
             echo "::warning::backend did not return 200 — it may be down or still waking"; fi
