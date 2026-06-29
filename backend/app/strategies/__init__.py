@@ -75,6 +75,10 @@ from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrateg
 from app.strategies.manual.rsi2_pullback import RSI2PullbackStrategy
 from app.strategies.manual.donchian_breakout import DonchianBreakoutStrategy
 from app.strategies.manual.cci_reversion import CCIReversionStrategy
+from app.strategies.manual.fx_trend import FXTrendStrategy
+from app.strategies.manual.fx_reversion import FXReversionStrategy
+from app.strategies.manual.commodity_momentum import CommodityMomentumStrategy
+from app.strategies.manual.commodity_trend import CommodityTrendStrategy
 from app.strategies.manual.options_strategies import (
     CoveredCallStrategy,
     CashSecuredPutStrategy,
@@ -268,6 +272,12 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "rsi2_pullback":              RSI2PullbackStrategy,
     "donchian_breakout":          DonchianBreakoutStrategy,
     "cci_reversion":              CCIReversionStrategy,
+    # ── Forex desk ────────────────────────────────────────────────────────────
+    "fx_trend":                   FXTrendStrategy,
+    "fx_reversion":               FXReversionStrategy,
+    # ── Commodities desk ──────────────────────────────────────────────────────
+    "commodity_momentum":         CommodityMomentumStrategy,
+    "commodity_trend":            CommodityTrendStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,
@@ -303,6 +313,8 @@ _MARKET_TYPE_DESK = {
     "equity": "Equities",
     "crypto": "Crypto",
     "polymarket": "Prediction Markets",
+    "forex": "Forex",
+    "commodity": "Commodities",
 }
 
 
