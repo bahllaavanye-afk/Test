@@ -33,7 +33,7 @@ if echo "${DATABASE_URL}" | grep -qE 'db\.[a-z]+\.supabase\.co'; then
   echo "╚══════════════════════════════════════════════════════════════════╝"
   echo ""
   echo "Skipping migrations (IPv6 unreachable). Starting server anyway..."
-  exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1
+  exec uvicorn app.static_server:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1
 fi
 
 # ── Ensure Alembic uses the correct (sync) database URL ──────────────────────
@@ -67,7 +67,7 @@ python -m app.bots.seed || echo "bot seed skipped (non-fatal)"
 
 # ── Start API server ──────────────────────────────────────────────────────────
 echo "Starting uvicorn on port ${PORT:-8000}..."
-exec uvicorn app.main:app \
+exec uvicorn app.static_server:app \
   --host 0.0.0.0 \
   --port "${PORT:-8000}" \
   --workers 1 \
