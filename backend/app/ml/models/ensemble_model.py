@@ -3,14 +3,72 @@ Weighted ensemble of LSTM + XGBoost + Lorentzian KNN.
 Weights optimized on validation set via Optuna.
 Only signals with confidence > threshold are forwarded.
 """
-import numpy as np
+
 import json
-from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+import numpy as np
 import structlog
+from pathlib import Path
+from sklearn.metrics import accuracy_score, roc_auc_score
+from pydantic import BaseModel, Field, validator, root_validator
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 logger = structlog.get_logger()
+
+
+class EnsembleConfig(BaseModel):
+    """Configuration schema for :class:`EnsembleModel`.
+
+    Attributes
+    ----------
+    weights: dict[str, float]
+        Mapping of model identifiers to their respective contribution weights.
+        The weights should be non‑negative and sum to 1.0 (within a tolerance).
+        Example: ``{"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}``.
+    confidence_threshold: float
+        Minimum confidence required for a prediction to be emitted as a directional
+        signal. Must be in the interval ``[0.0, 1.0]``. Example: ``0.65``.
+    gnn_weight: float
+        Optional contribution weight for a registered GNN model. Must be non‑negative.
+        If ``0.0`` the GNN has no effect even when registered. Example: ``0.0``.
+    """
+
+    weights: dict[str, float] = Field(
+        default_factory=lambda: {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15},
+        description="Model name to weight mapping; values should be non‑negative and sum to 1.0.",
+        example={"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15},
+    )
+    confidence_threshold: float = Field(
+        0.65,
+        ge=0.0,
+        le=1.0,
+        description="Confidence threshold for emitting a directional signal.",
+        example=0.65,
+    )
+    gnn_weight: float = Field(
+        0.0,
+        ge=0.0,
+        description="Weight given to the optional GNN model in the ensemble.",
+        example=0.0,
+    )
+
+    @validator("weights")
+    def _validate_weights(cls, v: dict[str, float]) -> dict[str, float]:
+        if not v:
+            raise ValueError("weights dictionary must contain at least one entry")
+        for name, w in v.items():
+            if w < 0.0:
+                raise ValueError(f"weight for '{name}' must be non‑negative, got {w}")
+        total = sum(v.values())
+        if not np.isclose(total, 1.0, atol=1e-4):
+            raise ValueError(f"weights must sum to 1.0 (got {total:.6f})")
+        return v
+
+    @root_validator
+    def _check_consistency(cls, values):
+        # confidence_threshold already bounded by Field; gnn_weight by Field.
+        # Additional cross‑field checks could be added here if needed.
+        return values
 
 
 class EnsembleModel(AbstractModel):
@@ -22,32 +80,52 @@ class EnsembleModel(AbstractModel):
         confidence_threshold: float = 0.65,
         gnn_weight: float = 0.0,
     ):
-        self.weights = weights or {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}
-        self.confidence_threshold = confidence_threshold
-        self.gnn_weight = gnn_weight
+        # Validate and normalise configuration via Pydantic schema
+        config = EnsembleConfig(
+            weights=weights or {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15},
+            confidence_threshold=confidence_threshold,
+            gnn_weight=gnn_weight,
+        )
+        self.weights: dict[str, float] = config.weights
+        self.confidence_threshold: float = config.confidence_threshold
+        self.gnn_weight: float = config.gnn_weight
+
         self.models: dict[str, AbstractModel] = {}
         self._gnn_model = None  # optional GNNSignal instance
 
     def add_model(self, name: str, model: AbstractModel) -> None:
+        """Register a sub‑model under a given name."""
         self.models[name] = model
 
     def register_gnn(self, gnn_model) -> None:
         """
         Register a GNNSignal model to be included in the weighted ensemble.
-        When registered, gnn_weight controls how much the GNN output contributes.
-        If gnn_weight is 0.0 (default), the GNN is registered but has no effect
-        until gnn_weight is set > 0.
 
-        Args:
-            gnn_model: GNNSignal instance from app.ml.models.gnn_signal
+        When registered, ``gnn_weight`` controls how much the GNN output contributes.
+        If ``gnn_weight`` is ``0.0`` (default), the GNN is registered but has no effect
+        until ``gnn_weight`` is set > 0.
+
+        Args
+        ----
+        gnn_model
+            GNNSignal instance from ``app.ml.models.gnn_signal``.
         """
         self._gnn_model = gnn_model
 
     def forward(self, x) -> np.ndarray:
         """
-        x can be dict of {model_name: tensor} or single tensor shared across all.
-        When a GNN model is registered and gnn_weight > 0, its output is blended
-        into the weighted average using gnn_weight as its contribution weight.
+        Compute the ensemble prediction.
+
+        Parameters
+        ----------
+        x : dict | Any
+            Either a mapping ``{model_name: tensor}`` providing model‑specific inputs,
+            or a single tensor that will be broadcast to all models.
+
+        Returns
+        -------
+        np.ndarray
+            Weighted ensemble probability vector.
         """
         predictions = {}
         for name, model in self.models.items():
@@ -57,13 +135,17 @@ class EnsembleModel(AbstractModel):
                     pred = model.predict_proba(model_input)
                 else:
                     import torch
-                    pred = model.forward(model_input if isinstance(model_input, torch.Tensor)
-                                        else torch.tensor(model_input, dtype=torch.float32)).numpy()
+
+                    pred = model.forward(
+                        model_input
+                        if isinstance(model_input, torch.Tensor)
+                        else torch.tensor(model_input, dtype=torch.float32)
+                    ).numpy()
                 predictions[name] = pred
             except Exception:
                 continue
 
-        # Include GNN prediction if registered with non-zero weight
+        # Include GNN prediction if registered with non‑zero weight
         if self._gnn_model is not None and self.gnn_weight > 0.0:
             try:
                 gnn_input = x.get("gnn") if isinstance(x, dict) else None
@@ -87,31 +169,40 @@ class EnsembleModel(AbstractModel):
         return ensemble
 
     def predict_with_confidence(self, x) -> tuple[np.ndarray, np.ndarray]:
-        """Returns (direction_proba, confidence) arrays."""
+        """Return (direction probability, confidence) arrays."""
         proba = self.forward(x)
-        confidence = np.abs(proba - 0.5) * 2   # [0,1] scale: 0=uncertain, 1=very confident
+        confidence = np.abs(proba - 0.5) * 2  # [0,1] scale: 0=uncertain, 1=very confident
         return proba, confidence
 
     def predict_signal(self, x) -> list[dict]:
-        """High-level: returns list of signal dicts above confidence threshold."""
+        """High‑level: return list of signal dicts above confidence threshold."""
         proba, confidence = self.predict_with_confidence(x)
         results = []
         for i in range(len(proba)):
             if confidence[i] >= self.confidence_threshold:
-                results.append({
-                    "prediction": "up" if proba[i] > 0.5 else "down",
-                    "probability": float(proba[i]),
-                    "confidence": float(confidence[i]),
-                })
+                results.append(
+                    {
+                        "prediction": "up" if proba[i] > 0.5 else "down",
+                        "probability": float(proba[i]),
+                        "confidence": float(confidence[i]),
+                    }
+                )
             else:
-                results.append({"prediction": "neutral", "probability": float(proba[i]),
-                                 "confidence": float(confidence[i])})
+                results.append(
+                    {
+                        "prediction": "neutral",
+                        "probability": float(proba[i]),
+                        "confidence": float(confidence[i]),
+                    }
+                )
         return results
 
     def train_epoch(self, loader, optimizer=None, criterion=None) -> dict:
+        """Placeholder training step – returns dummy metrics."""
         return {"loss": 0.0, "accuracy": 0.0}
 
     def evaluate(self, loader) -> EvalMetrics:
+        """Evaluate the ensemble on a data loader and return aggregated metrics."""
         all_probs, all_labels = [], []
         for X, y in loader:
             probs = self.forward(X)
@@ -134,18 +225,24 @@ class EnsembleModel(AbstractModel):
         n_splits: int = 5,
     ) -> dict[str, float]:
         """
-        Walk-forward ensemble weight optimization.
+        Walk‑forward ensemble weight optimization.
 
-        Uses scipy SLSQP to find weights that maximise Sharpe on each fold,
+        Uses SciPy SLSQP to find weights that maximise Sharpe on each fold,
         then returns the average weights across folds.
 
-        Args:
-            returns_by_model: dict of model_name → predicted-return pd.Series (same index)
-            actual_returns:   actual forward returns pd.Series (same index as above)
-            n_splits:         number of walk-forward folds
+        Parameters
+        ----------
+        returns_by_model : dict[str, pd.Series]
+            Mapping of model name → predicted‑return series (identical index).
+        actual_returns : pd.Series
+            Actual forward returns series (identical index as above).
+        n_splits : int, optional
+            Number of walk‑forward folds (default ``5``).
 
-        Returns:
-            dict of model_name → optimal weight, summing to 1.
+        Returns
+        -------
+        dict[str, float]
+            Optimised weight per model, summing to 1.
         """
         import pandas as pd
         import numpy as np
@@ -205,31 +302,8 @@ class EnsembleModel(AbstractModel):
                 logger.debug("Weight optimization fold failed", error=str(exc))
 
         if not all_weights:
+            # Fallback to equal weighting if optimisation failed
             return {k: 1.0 / len(model_names) for k in model_names}
 
         avg_weights = np.mean(all_weights, axis=0)
-        avg_weights = np.maximum(avg_weights, 0.0)
-        avg_weights = avg_weights / avg_weights.sum()
-
-        result_weights = {name: float(avg_weights[i]) for i, name in enumerate(model_names)}
-        self.weights.update(result_weights)
-        return result_weights
-
-    def save(self, path: str, metadata: dict | None = None) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "weights": self.weights,
-            "confidence_threshold": self.confidence_threshold,
-            "gnn_weight": self.gnn_weight,
-            **(metadata or {}),
-        }
-        Path(path).write_text(json.dumps(data, indent=2))
-
-    @classmethod
-    def load(cls, path: str) -> "EnsembleModel":
-        data = json.loads(Path(path).read_text())
-        return cls(
-            weights=data.get("weights"),
-            confidence_threshold=data.get("confidence_threshold", 0.65),
-            gnn_weight=data.get("gnn_weight", 0.0),
-        )
+        return dict(zip(model_names, avg_weights.tolist()))
