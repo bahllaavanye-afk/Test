@@ -60,8 +60,11 @@
     "schemas on api/v1/trades.py: success \u2014 tests green",
     "schemas on test/unit/test_btc_eth_stat_arb.py: success \u2014 tests green",
     "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
-    "schemas on ml/models/ensemble_model.py: success \u2014 tests green"
+    "schemas on ml/models/ensemble_model.py: success \u2014 tests green",
+    "cleanup on test/unit/test_regime.py: success \u2014 tests green",
+    "cleanup on strategies/manual/liquidation_cascade_fade.py: success \u2014 tests green",
+    "cleanup on ml/models/itransformer.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-29T19:54:50.497817+00:00",
+  "last_updated": "2026-06-29T21:24:26.425973+00:00",
   "total": 26
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-29T19:54:50.498055+00:00",
+  "last_updated": "2026-06-29T21:24:26.426211+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -271,7 +271,12 @@
     "[continuous_improver @ 2026-06-29T19:53] schemas on api/v1/trades.py: tests=pass",
     "[continuous_improver @ 2026-06-29T19:53] schemas on test/unit/test_btc_eth_stat_arb.py: tests=pass",
     "[continuous_improver @ 2026-06-29T19:53] schemas on strategies/manual/vix_mean_reversion.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T19:54] schemas on ml/models/ensemble_model.py: tests=pass"
+    "[continuous_improver @ 2026-06-29T19:54] schemas on ml/models/ensemble_model.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T21:24] cleanup on api/v1/leaderboard.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T21:24] cleanup on test/unit/test_regime.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T21:24] cleanup on strategies/manual/liquidation_cascade_fade.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T21:24] cleanup on strategies/ml_enhanced/ml_momentum.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T21:24] cleanup on ml/models/itransformer.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -499,9 +504,9 @@
       "test_pass": 1
     },
     "cleanup": {
-      "successes": 5,
+      "successes": 10,
       "failures": 0,
-      "test_pass": 5
+      "test_pass": 10
     },
     "monitoring": {
       "successes": 5,
