@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
 from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
@@ -82,25 +82,28 @@ async def list_active(
     if active is not None:
         return active
 
-    # Fallback: query DB directly
+    # Fallback: query DB directly with a lightweight column selection
     try:
-        from app.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(Strategy).where(Strategy.is_enabled == True)  # noqa: E712
-            )
-            rows = result.scalars().all()
+            stmt = select(
+                Strategy.name,
+                Strategy.symbols,
+                Strategy.tick_interval_seconds,
+                Strategy.confidence_threshold,
+            ).where(Strategy.is_enabled == True)  # noqa: E712
+            result = await db.execute(stmt)
+            rows = result.mappings().all()
             return [
                 {
-                    "name": s.name,
-                    "symbols": s.symbols if isinstance(s.symbols, list) else [],
-                    "tick_interval_seconds": int(getattr(s, "tick_interval_seconds", 3600)),
-                    "confidence_threshold": float(getattr(s, "confidence_threshold", 0.6)),
+                    "name": row["name"],
+                    "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
+                    "tick_interval_seconds": int(row.get("tick_interval_seconds", 3600)),
+                    "confidence_threshold": float(row.get("confidence_threshold", 0.6)),
                     "is_running": True,
                 }
-                for s in rows
+                for row in rows
             ]
-    except Exception as exc:
+    except Exception:
         # Return empty list rather than crashing — frontend must handle this gracefully
         return []
 
