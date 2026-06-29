@@ -5,6 +5,7 @@ no broker keys required. yfinance pulls from Yahoo Finance for free.
 """
 from __future__ import annotations
 import asyncio
+import os
 import pandas as pd
 from datetime import date, timedelta
 from app.utils.logging import logger
@@ -28,6 +29,108 @@ def _symbol_to_yf(symbol: str, market_type: str = "equity") -> str:
         base = symbol.replace("/USDT", "").replace("/USD", "").replace("/BTC", "")
         return f"{base}-USD"
     return symbol.upper()
+
+
+# ── Alpaca crypto market data (free, keyless public endpoint) ──────────────────
+# Binance is geo-blocked (HTTP 451) in our deploy region, so crypto OHLCV came
+# from rate-limited yfinance (→ synthetic). Alpaca's crypto bars API is public
+# (no key required), not geo-blocked, and returns real exchange data — so it's the
+# primary crypto source, with yfinance → synthetic kept as fallback.
+_ALPACA_CRYPTO_BARS_URL = "https://data.alpaca.markets/v1beta3/crypto/us/bars"
+
+_INTERVAL_TO_ALPACA = {
+    "1m": "1Min", "5m": "5Min", "15m": "15Min", "30m": "30Min",
+    "1h": "1Hour", "2h": "2Hour", "4h": "4Hour",
+    "1d": "1Day", "1wk": "1Week", "1mo": "1Month",
+    "daily": "1Day", "hourly": "1Hour", "weekly": "1Week",
+}
+
+
+def _interval_to_alpaca(interval: str) -> str:
+    return _INTERVAL_TO_ALPACA.get(interval.lower(), "1Day")
+
+
+def _symbol_to_alpaca_crypto(symbol: str) -> str:
+    """Normalize an internal crypto symbol to Alpaca's `BASE/USD` pair format.
+
+    Handles BTC/USDT, BTC-USD, BTCUSDT, BTC → all become BTC/USD.
+    """
+    s = symbol.upper().replace("-", "/").strip()
+    if "/" in s:
+        base = s.split("/")[0]
+    else:
+        base = s
+        for quote in ("USDT", "USDC", "USD"):
+            if s.endswith(quote) and len(s) > len(quote):
+                base = s[: -len(quote)]
+                break
+    return f"{base}/USD"
+
+
+def _http_get_json(url: str, headers: dict, timeout: float = 20.0) -> dict:
+    """Minimal stdlib JSON GET (kept tiny + patchable for tests)."""
+    import json
+    import urllib.request
+
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (fixed host)
+        return json.loads(resp.read().decode())
+
+
+def _fetch_alpaca_crypto(
+    symbol: str, start: date, end: date, interval: str, max_pages: int = 25
+) -> pd.DataFrame:
+    """Fetch crypto OHLCV from Alpaca's public crypto bars API.
+
+    Returns a tz-naive DataFrame [open, high, low, close, volume] sorted ascending,
+    or an empty DataFrame if no bars are returned. Follows next_page_token.
+    """
+    import urllib.parse
+
+    pair = _symbol_to_alpaca_crypto(symbol)
+    timeframe = _interval_to_alpaca(interval)
+    headers = {"User-Agent": "QuantEdge/1.0", "Accept": "application/json"}
+    # Crypto bars are public, but sending keys (when present) raises rate limits.
+    key = os.environ.get("ALPACA_API_KEY", "")
+    sec = os.environ.get("ALPACA_SECRET_KEY", "")
+    if key and sec and key != "test-key":
+        headers["APCA-API-KEY-ID"] = key
+        headers["APCA-API-SECRET-KEY"] = sec
+
+    rows: list[dict] = []
+    page_token: str | None = None
+    for _ in range(max_pages):
+        params = {
+            "symbols": pair,
+            "timeframe": timeframe,
+            "start": start.isoformat(),
+            "end": (end + timedelta(days=1)).isoformat(),  # inclusive end
+            "limit": 10000,
+            "sort": "asc",
+        }
+        if page_token:
+            params["page_token"] = page_token
+        url = f"{_ALPACA_CRYPTO_BARS_URL}?{urllib.parse.urlencode(params)}"
+        payload = _http_get_json(url, headers)
+        rows.extend((payload.get("bars") or {}).get(pair, []))
+        page_token = payload.get("next_page_token")
+        if not page_token:
+            break
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows).rename(
+        columns={"o": "open", "h": "high", "l": "low", "c": "close", "v": "volume", "t": "ts"}
+    )
+    df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_localize(None)
+    df = (
+        df.set_index("ts")[["open", "high", "low", "close", "volume"]]
+        .astype(float)
+        .sort_index()
+    )
+    df = df[~df.index.duplicated(keep="last")]
+    return df
 
 
 def _synthetic_ohlcv(symbol: str, start: date, end: date, interval: str) -> pd.DataFrame:
@@ -75,8 +178,19 @@ def fetch_ohlcv_sync(
     """
     Fetch OHLCV data synchronously via yfinance (free, no API key needed).
     Returns DataFrame with columns: open, high, low, close, volume (lowercase).
-    Falls back to synthetic GBM data when network is unavailable.
+    Crypto routes to Alpaca's free public bars API first; everything falls back to
+    yfinance, then to synthetic GBM data when the network is unavailable.
     """
+    if market_type == "crypto":
+        try:
+            df = _fetch_alpaca_crypto(symbol, start, end, interval)
+            if not df.empty:
+                logger.info(f"Alpaca crypto: loaded {len(df)} bars for {symbol} ({interval})")
+                return df
+            logger.warning(f"Alpaca crypto returned no bars for {symbol} — trying yfinance")
+        except Exception as exc:
+            logger.warning(f"Alpaca crypto fetch failed for {symbol}: {exc} — trying yfinance")
+
     try:
         import yfinance as yf
     except ImportError:
