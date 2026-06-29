@@ -11,7 +11,12 @@ services:
     env: python
     region: oregon
     plan: free
-    buildCommand: cd backend && pip install --upgrade pip && pip install -e "."
+    # Build the Vite SPA (served by the backend via app.static_server — single
+    # deployment, no Vercel). Frontend build failure must NOT kill the API deploy,
+    # so it's guarded; static_server no-ops when frontend/dist is absent.
+    buildCommand: >-
+      (cd frontend && npm ci --no-audit --no-fund && npm run build) || echo "frontend build skipped/failed — serving API only" ;
+      cd backend && pip install --upgrade pip && pip install -e "."
     startCommand: bash backend/start.sh
     envVars:
       - key: PYTHON_VERSION
