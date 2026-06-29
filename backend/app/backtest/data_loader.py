@@ -67,14 +67,23 @@ def _symbol_to_alpaca_crypto(symbol: str) -> str:
     return f"{base}/USD"
 
 
-def _http_get_json(url: str, headers: dict, timeout: float = 20.0) -> dict:
-    """Minimal stdlib JSON GET (kept tiny + patchable for tests)."""
+def _http_get_json(url: str, headers: dict, timeout: float = 20.0, retries: int = 1) -> dict:
+    """Minimal stdlib JSON GET with a light retry (kept tiny + patchable for tests)."""
     import json
+    import time
     import urllib.request
 
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (fixed host)
-        return json.loads(resp.read().decode())
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (fixed host)
+                return json.loads(resp.read().decode())
+        except Exception as exc:  # transient network/5xx — back off briefly, then retry
+            last_exc = exc
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+    raise last_exc  # type: ignore[misc]
 
 
 def _fetch_alpaca_crypto(
@@ -104,18 +113,29 @@ def _fetch_alpaca_crypto(
             "symbols": pair,
             "timeframe": timeframe,
             "start": start.isoformat(),
-            "end": (end + timedelta(days=1)).isoformat(),  # inclusive end
+            # Alpaca's `end` is INCLUSIVE of bar timestamps. Use end-of-day so we
+            # capture every bar on `end` (the 00:00 daily bar *and* all intraday
+            # bars) without pulling the next day's bar. (yfinance needs +1 day;
+            # Alpaca does not — copying that idiom here pulled one extra bar.)
+            "end": f"{end.isoformat()}T23:59:59Z",
             "limit": 10000,
             "sort": "asc",
         }
         if page_token:
             params["page_token"] = page_token
         url = f"{_ALPACA_CRYPTO_BARS_URL}?{urllib.parse.urlencode(params)}"
-        payload = _http_get_json(url, headers)
+        payload = _http_get_json(url, headers, timeout=20.0)
         rows.extend((payload.get("bars") or {}).get(pair, []))
         page_token = payload.get("next_page_token")
         if not page_token:
             break
+    else:
+        # max_pages exhausted without consuming the last page → bars were truncated
+        if page_token:
+            logger.warning(
+                f"Alpaca crypto: hit max_pages={max_pages} for {pair} ({interval}); "
+                "older bars may be truncated — widen max_pages or narrow the range"
+            )
 
     if not rows:
         return pd.DataFrame()

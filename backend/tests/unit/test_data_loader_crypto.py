@@ -86,6 +86,35 @@ def test_crypto_falls_back_when_alpaca_fails(monkeypatch):
     assert list(df.columns) == ["open", "high", "low", "close", "volume"]
 
 
+def test_end_bound_is_end_of_day_not_next_day(monkeypatch):
+    # Alpaca's `end` is inclusive, so we must bound at end-of-day of `end`,
+    # never request the day after `end` (that pulled an extra bar).
+    import urllib.parse as up
+
+    captured: dict[str, str] = {}
+
+    def fake_get(url, headers, timeout=20.0):
+        captured["url"] = url
+        return _page([{"t": "2024-01-02T00:00:00Z", "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 10}])
+
+    monkeypatch.setattr(dl, "_http_get_json", fake_get)
+    dl._fetch_alpaca_crypto("BTC/USDT", date(2024, 1, 1), date(2024, 1, 2), "1d")
+
+    q = up.parse_qs(up.urlparse(captured["url"]).query)
+    assert q["start"][0] == "2024-01-01"
+    assert q["end"][0] == "2024-01-02T23:59:59Z"
+    assert "2024-01-03" not in captured["url"]  # never request the day after `end`
+
+
+def test_empty_response_returns_empty_df(monkeypatch):
+    monkeypatch.setattr(
+        dl, "_http_get_json",
+        lambda url, headers, timeout=20.0: {"bars": {}, "next_page_token": None},
+    )
+    df = dl._fetch_alpaca_crypto("BTC/USDT", date(2024, 1, 1), date(2024, 1, 2), "1d")
+    assert df.empty
+
+
 def test_equity_path_unaffected(monkeypatch):
     # Non-crypto must never hit the Alpaca crypto endpoint.
     monkeypatch.setattr(dl, "_http_get_json", _raise)
