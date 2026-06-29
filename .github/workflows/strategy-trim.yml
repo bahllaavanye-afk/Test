@@ -1,0 +1,58 @@
+name: Strategy Trimmer (continuous)
+
+# Option-Alpha-style "always trimming": retire persistent paper losers so the desk
+# stops bleeding on dead strategies. Demotion counterpart to strategy-promotion.
+# Reads backend/performance_log/strategy_performance.json, records retired
+# strategies in .github/state/strategy_trims.json, posts to Slack #alpha-research.
+
+on:
+  schedule:
+    - cron: "41 */6 * * *"   # every 6h, off-minute
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/strategy_trimmer.py"
+      - ".github/workflows/strategy-trim.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  trim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Doppler CLI
+        run: (curl -Ls https://cli.doppler.com/install.sh || wget -qO- https://cli.doppler.com/install.sh) | sudo sh
+
+      - name: Run trimmer (Doppler-injected SLACK token)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -n "$DOPPLER_TOKEN" ]; then
+            doppler run -- python .github/scripts/strategy_trimmer.py
+          else
+            python .github/scripts/strategy_trimmer.py   # still records trims; just no Slack
+          fi
+
+      - name: Commit trim state if changed
+        run: |
+          git config user.name  "quantedge-trimmer-bot"
+          git config user.email "trimmer-bot@quantedge.local"
+          if ! git diff --quiet -- .github/state/strategy_trims.json; then
+            git add .github/state/strategy_trims.json
+            git commit -m "chore(trim): update retired strategies [skip ci]"
+            for i in 1 2 3 4; do git push origin HEAD:main && break || sleep $((2**i)); done
+          else
+            echo "No trim changes."
+          fi
