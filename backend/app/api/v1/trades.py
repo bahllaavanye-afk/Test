@@ -1,35 +1,90 @@
 """Trade history endpoints."""
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict, Field, validator
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.account import Account
 from app.models.trade import Trade
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 
 router = APIRouter(prefix="/trades", tags=["trades"])
 
 
 class TradeOut(BaseModel):
-    id: str
-    symbol: str
-    side: str
-    realized_pnl: float | None
-    entry_price: float | None
-    exit_price: float | None
-    # avg_fill_price: best-effort fill price for chart markers.
-    # Uses entry_price for buys and exit_price for sells as a proxy when
-    # a dedicated fill-price column is not yet present on the model.
-    avg_fill_price: float | None
-    quantity: float
-    opened_at: datetime | None
-    closed_at: datetime | None
-    strategy_name: str | None
+    """Schema representing a trade record returned by the API."""
+
+    id: str = Field(..., description="Unique identifier for the trade.", example="trd_12345")
+    symbol: str = Field(..., description="Ticker symbol of the traded instrument.", example="AAPL")
+    side: str = Field(
+        ...,
+        description="Trade direction; either 'buy' or 'sell'.",
+        example="buy",
+    )
+    realized_pnl: float | None = Field(
+        None,
+        description="Realized profit and loss in the account's base currency.",
+        example=152.35,
+    )
+    entry_price: float | None = Field(
+        None,
+        description="Price at which the position was entered.",
+        example=145.30,
+    )
+    exit_price: float | None = Field(
+        None,
+        description="Price at which the position was exited.",
+        example=150.00,
+    )
+    avg_fill_price: float | None = Field(
+        None,
+        description=(
+            "Average fill price used for chart markers. "
+            "When a dedicated fill-price column is unavailable, "
+            "the entry price is used for buys and the exit price for sells."
+        ),
+        example=145.30,
+    )
+    quantity: float = Field(
+        ...,
+        description="Number of shares/contracts traded.",
+        example=100,
+    )
+    opened_at: datetime | None = Field(
+        None,
+        description="Timestamp when the trade was opened.",
+        example="2023-01-01T09:30:00Z",
+    )
+    closed_at: datetime | None = Field(
+        None,
+        description="Timestamp when the trade was closed.",
+        example="2023-01-01T15:45:00Z",
+    )
+    strategy_name: str | None = Field(
+        None,
+        description="Name of the strategy that generated the trade.",
+        example="mean_rev_20_2",
+    )
 
     model_config = ConfigDict(from_attributes=True)
+
+    @validator("side")
+    def validate_side(cls, v: str) -> str:
+        """Ensure side is either 'buy' or 'sell'."""
+        if v not in {"buy", "sell"}:
+            raise ValueError("side must be either 'buy' or 'sell'")
+        return v
+
+    @validator("quantity")
+    def validate_quantity(cls, v: float) -> float:
+        """Quantity must be a positive number."""
+        if v <= 0:
+            raise ValueError("quantity must be greater than 0")
+        return v
 
 
 @router.get("/", response_model=list[TradeOut])
