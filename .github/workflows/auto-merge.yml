@@ -1,0 +1,104 @@
+name: Auto-merge — land green PRs without a human
+
+# Durable replacement for hand-merging the autonomous bots' PRs. Strictly opt-in:
+# a PR is only auto-merged when it carries the `automerge` label AND every check has
+# passed AND it isn't a draft AND there is no requested-changes review. The label gate
+# means nothing merges by accident — the loops/employees add `automerge` to their own
+# tested PRs; anything needing human eyes simply omits the label.
+
+on:
+  pull_request_target:
+    types: [labeled, ready_for_review, synchronize, reopened]
+  check_suite:
+    types: [completed]
+  workflow_run:
+    workflows: ["test"]
+    types: [completed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Merge eligible PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const REQUIRED_LABEL = 'automerge';
+
+            // ── Collect candidate PR numbers from whatever triggered us ──────────
+            const candidates = new Set();
+            if (context.payload.pull_request) {
+              candidates.add(context.payload.pull_request.number);
+            }
+            for (const pr of (context.payload.check_suite?.pull_requests || [])) {
+              candidates.add(pr.number);
+            }
+            const headSha = context.payload.workflow_run?.head_sha
+              || context.payload.check_suite?.head_sha;
+            if (headSha) {
+              const {data: prs} = await github.rest.pulls.list({
+                owner, repo, state: 'open', per_page: 100,
+              });
+              for (const pr of prs) if (pr.head.sha === headSha) candidates.add(pr.number);
+            }
+            // Manual dispatch / fallback: scan all open PRs.
+            if (candidates.size === 0) {
+              const {data: prs} = await github.rest.pulls.list({owner, repo, state: 'open', per_page: 100});
+              for (const pr of prs) candidates.add(pr.number);
+            }
+
+            for (const number of candidates) {
+              const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: number});
+
+              if (pr.state !== 'open') { core.info(`#${number}: not open`); continue; }
+              if (pr.draft) { core.info(`#${number}: still draft`); continue; }
+              if (pr.base.ref !== 'main') { core.info(`#${number}: base ${pr.base.ref} != main`); continue; }
+              const labels = pr.labels.map(l => l.name);
+              if (!labels.includes(REQUIRED_LABEL)) { core.info(`#${number}: no '${REQUIRED_LABEL}' label`); continue; }
+              if (pr.mergeable === false) { core.info(`#${number}: not mergeable (conflicts)`); continue; }
+
+              // No requested-changes review may be outstanding.
+              const {data: reviews} = await github.rest.pulls.listReviews({owner, repo, pull_number: number, per_page: 100});
+              const latestByUser = {};
+              for (const r of reviews) if (r.state !== 'COMMENTED') latestByUser[r.user.login] = r.state;
+              if (Object.values(latestByUser).includes('CHANGES_REQUESTED')) {
+                core.info(`#${number}: changes requested — skipping`); continue;
+              }
+
+              // Every check run on the head sha must have concluded success/neutral/skipped.
+              const {data: checks} = await github.rest.checks.listForRef({owner, repo, ref: pr.head.sha, per_page: 100});
+              const runs = checks.check_runs.filter(c => c.name !== 'automerge');
+              const unfinished = runs.filter(c => c.status !== 'completed');
+              if (unfinished.length) { core.info(`#${number}: ${unfinished.length} check(s) still running`); continue; }
+              const failed = runs.filter(c => !['success', 'neutral', 'skipped'].includes(c.conclusion));
+              if (failed.length) { core.info(`#${number}: failing checks: ${failed.map(c => c.name).join(', ')}`); continue; }
+
+              // Legacy commit statuses (e.g. Vercel) must not be failing either.
+              const {data: combined} = await github.rest.repos.getCombinedStatusForRef({owner, repo, ref: pr.head.sha});
+              if (combined.state === 'failure' || combined.state === 'error') {
+                core.info(`#${number}: combined status ${combined.state}`); continue;
+              }
+
+              try {
+                await github.rest.pulls.merge({
+                  owner, repo, pull_number: number, merge_method: 'squash',
+                  commit_title: `${pr.title} (#${number})`,
+                });
+                core.notice(`✅ auto-merged #${number}: ${pr.title}`);
+              } catch (e) {
+                core.warning(`#${number}: merge failed — ${e.message}`);
+              }
+            }
