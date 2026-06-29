@@ -1,26 +1,57 @@
 """
 Factor exposure analysis — measures how much of portfolio returns
-are explained by common risk factors (market beta, momentum, low-vol).
+are explained by common risk factors (market beta, momentum, low‑vol).
 
-Standard at all hedge funds. Uniquely missing from open-source bots.
+Standard at all hedge funds. Uniquely missing from open‑source bots.
 """
+
 from __future__ import annotations
+
 import numpy as np
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 
 @dataclass
 class FactorExposure:
-    market_beta: float          # sensitivity to SPY (1.0 = market, 0.0 = market-neutral)
-    momentum_loading: float     # factor loading on 12-1 month momentum
-    low_vol_loading: float      # loading on low-volatility factor
-    size_loading: float         # small vs large cap bias (SMB-like)
-    r_squared: float            # variance explained by factors
-    alpha_annualized: float     # Jensen's alpha (excess return vs model)
-    tracking_error: float       # std of residuals vs factor model
+    """Container for the results of a factor‑exposure regression.
 
-    def to_dict(self) -> dict:
+    Attributes
+    ----------
+    market_beta : float
+        Sensitivity to the market (SPY). 1.0 corresponds to full market exposure,
+        0.0 to a market‑neutral portfolio.
+    momentum_loading : float
+        Loading on the 12‑1 month momentum factor.
+    low_vol_loading : float
+        Loading on the low‑volatility factor.
+    size_loading : float
+        Loading on a size factor (SMB‑like). Not currently computed.
+    r_squared : float
+        Proportion of variance explained by the regression model.
+    alpha_annualized : float
+        Annualized Jensen's alpha (excess return versus the factor model).
+    tracking_error : float
+        Standard deviation of the residuals (daily) from the factor model.
+    """
+
+    market_beta: float
+    momentum_loading: float
+    low_vol_loading: float
+    size_loading: float
+    r_squared: float
+    alpha_annualized: float
+    tracking_error: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialise the dataclass to a dictionary with rounded values.
+
+        Returns
+        -------
+        dict
+            Mapping of field names to human‑readable numbers and an interpretation
+            string.
+        """
         return {
             "market_beta": round(self.market_beta, 3),
             "momentum_loading": round(self.momentum_loading, 3),
@@ -34,6 +65,18 @@ class FactorExposure:
 
 
 def _interpret(fe: FactorExposure) -> str:
+    """Generate a short textual interpretation of a factor‑exposure result.
+
+    Parameters
+    ----------
+    fe : FactorExposure
+        The factor exposure object to interpret.
+
+    Returns
+    -------
+    str
+        Human‑readable description summarising the dominant exposures.
+    """
     parts = []
     if abs(fe.market_beta) < 0.2:
         parts.append("Market-neutral")
@@ -49,25 +92,46 @@ def _interpret(fe: FactorExposure) -> str:
 
 
 def compute_factor_exposure(
-    portfolio_returns: list[float],
-    spy_returns: list[float],
-    momentum_factor: Optional[list[float]] = None,
-    low_vol_factor: Optional[list[float]] = None,
+    portfolio_returns: List[float],
+    spy_returns: List[float],
+    momentum_factor: Optional[List[float]] = None,
+    low_vol_factor: Optional[List[float]] = None,
 ) -> FactorExposure:
-    """
-    OLS regression of portfolio returns on factor returns.
+    """Estimate factor exposures using ordinary least‑squares regression.
 
-    Args:
-        portfolio_returns: Daily portfolio returns
-        spy_returns: SPY daily returns (market factor)
-        momentum_factor: Optional momentum factor returns
-        low_vol_factor: Optional low-volatility factor returns
+    The regression model is:
+
+        portfolio = α + β_market * SPY + β_momentum * momentum + β_low_vol * low_vol + ε
+
+    Only the market factor is mandatory; the momentum and low‑vol factors are
+    included when sufficient data are supplied.
+
+    Parameters
+    ----------
+    portfolio_returns : list[float]
+        Daily portfolio returns.
+    spy_returns : list[float]
+        Daily SPY returns representing the market factor.
+    momentum_factor : list[float] | None, optional
+        Daily returns of a momentum factor. Ignored if ``None`` or too short.
+    low_vol_factor : list[float] | None, optional
+        Daily returns of a low‑volatility factor. Ignored if ``None`` or too short.
+
+    Returns
+    -------
+    FactorExposure
+        The regression coefficients and diagnostics wrapped in a ``FactorExposure`` instance.
     """
     n = min(len(portfolio_returns), len(spy_returns))
     if n < 20:
         return FactorExposure(
-            market_beta=1.0, momentum_loading=0.0, low_vol_loading=0.0,
-            size_loading=0.0, r_squared=0.0, alpha_annualized=0.0, tracking_error=0.02
+            market_beta=1.0,
+            momentum_loading=0.0,
+            low_vol_loading=0.0,
+            size_loading=0.0,
+            r_squared=0.0,
+            alpha_annualized=0.0,
+            tracking_error=0.02,
         )
 
     y = np.array(portfolio_returns[-n:])
@@ -85,8 +149,15 @@ def compute_factor_exposure(
     try:
         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
     except Exception:
-        return FactorExposure(market_beta=1.0, momentum_loading=0.0, low_vol_loading=0.0,
-                              size_loading=0.0, r_squared=0.0, alpha_annualized=0.0, tracking_error=0.02)
+        return FactorExposure(
+            market_beta=1.0,
+            momentum_loading=0.0,
+            low_vol_loading=0.0,
+            size_loading=0.0,
+            r_squared=0.0,
+            alpha_annualized=0.0,
+            tracking_error=0.02,
+        )
 
     alpha_daily = float(coeffs[0])
     market_beta = float(coeffs[1])
