@@ -376,6 +376,19 @@ def _load_strategy(strategy_name: str):
     return cls()
 
 
+def _trimmed_strategies() -> set:
+    """Names retired by strategy_trimmer.py — they must NOT trade until recovered."""
+    import json
+    from pathlib import Path
+    f = Path(__file__).resolve().parent.parent / "state" / "strategy_trims.json"
+    if not f.exists():
+        return set()
+    try:
+        return set(json.loads(f.read_text()).keys())
+    except Exception:
+        return set()
+
+
 # ── Desk runner ───────────────────────────────────────────────────────────────
 
 async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
@@ -390,8 +403,12 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
 
     orders_placed: list[dict] = []
 
+    trimmed = _trimmed_strategies()
     strategies = []
     for sname in desk.strategy_names:
+        if sname in trimmed:
+            print(f"  ✂ strategy '{sname}' retired by trimmer — skipping", flush=True)
+            continue
         s = _load_strategy(sname)
         if s is None:
             print(f"  ⚠ strategy '{sname}' not in registry — skipping", flush=True)
