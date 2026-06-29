@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-29T17:34:43.697197+00:00",
+  "last_updated": "2026-06-29T19:54:50.498055+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -266,7 +266,12 @@
     "[continuous_improver @ 2026-06-29T17:34] optimization on backtest/stress_test.py: tests=pass",
     "[continuous_improver @ 2026-06-29T17:34] optimization on comparison/benchmarks.py: tests=pass",
     "[continuous_improver @ 2026-06-29T17:34] optimization on api/v1/options.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T17:34] optimization on test/unit/test_bot_market_types.py: tests=pass"
+    "[continuous_improver @ 2026-06-29T17:34] optimization on test/unit/test_bot_market_types.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T19:53] schemas on tasks/scheduler.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T19:53] schemas on api/v1/trades.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T19:53] schemas on test/unit/test_btc_eth_stat_arb.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T19:53] schemas on strategies/manual/vix_mean_reversion.py: tests=pass",
+    "[continuous_improver @ 2026-06-29T19:54] schemas on ml/models/ensemble_model.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -473,6 +478,18 @@
       "reason": "syntax check failed",
       "improvement_type": "optimization",
       "timestamp": "2026-06-29T17:34:41.459829+00:00"
+    },
+    {
+      "file": "backend/app/comparison/report_builder.py",
+      "reason": "syntax check failed",
+      "improvement_type": "schemas",
+      "timestamp": "2026-06-29T19:53:37.223407+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/ml_mean_reversion.py",
+      "reason": "syntax check failed",
+      "improvement_type": "schemas",
+      "timestamp": "2026-06-29T19:54:47.948412+00:00"
     }
   ],
   "improvement_stats": {
@@ -502,6 +519,11 @@
       "test_pass": 10
     },
     "strategy_logic": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "schemas": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5

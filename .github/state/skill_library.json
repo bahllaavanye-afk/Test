@@ -55,8 +55,13 @@
     "optimization on backtest/stress_test.py: success \u2014 tests green",
     "optimization on comparison/benchmarks.py: success \u2014 tests green",
     "optimization on api/v1/options.py: success \u2014 tests green",
-    "optimization on test/unit/test_bot_market_types.py: success \u2014 tests green"
+    "optimization on test/unit/test_bot_market_types.py: success \u2014 tests green",
+    "schemas on tasks/scheduler.py: success \u2014 tests green",
+    "schemas on api/v1/trades.py: success \u2014 tests green",
+    "schemas on test/unit/test_btc_eth_stat_arb.py: success \u2014 tests green",
+    "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
+    "schemas on ml/models/ensemble_model.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-29T17:34:43.697010+00:00",
+  "last_updated": "2026-06-29T19:54:50.497817+00:00",
   "total": 26
 }
