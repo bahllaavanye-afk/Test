@@ -6,10 +6,12 @@ revealing tail-risk exposure that standard backtests can understate when they
 average across calm and turbulent regimes.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date
-import numpy as np
+
 import pandas as pd
+
 from app.backtest.engine import BacktestMetrics, run_backtest
 
 
@@ -85,6 +87,18 @@ class StressResult:
     data_points: int
 
 
+def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
+    """Vectorized slice of a Series using .loc; returns None if input is None."""
+    if series is None:
+        return None
+    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
+    try:
+        return series.loc[start:end]
+    except Exception:
+        mask = (series.index >= start) & (series.index <= end)
+        return series.loc[mask]
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -106,25 +120,39 @@ def run_stress_tests(
 
     results: list[StressResult] = []
 
+    # Convert once to pandas Timestamp for efficient comparison
+    price_index = prices.index
+
     for scenario in scenarios:
-        mask = (
-            pd.Series(prices.index).apply(
-                lambda d: scenario.start <= (d.date() if hasattr(d, "date") else d) <= scenario.end
-            ).values
-        )
+        start_ts = pd.Timestamp(scenario.start)
+        end_ts = pd.Timestamp(scenario.end)
 
-        s_signals = signals.iloc[mask]
-        s_prices  = prices.iloc[mask]
-        s_opens   = opens.iloc[mask]   if opens   is not None else None
-        s_volume  = volume.iloc[mask]  if volume  is not None else None
+        # Fast check: if the scenario window does not intersect the price index, skip early
+        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+            results.append(
+                StressResult(
+                    scenario=scenario,
+                    metrics=None,
+                    period_covered=False,
+                    data_points=0,
+                )
+            )
+            continue
 
-        if len(s_prices) < 5:
-            results.append(StressResult(
-                scenario=scenario,
-                metrics=None,
-                period_covered=False,
-                data_points=len(s_prices),
-            ))
+        s_signals = _slice_series(signals, start_ts, end_ts)
+        s_prices = _slice_series(prices, start_ts, end_ts)
+        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
+        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+
+        if s_prices is None or len(s_prices) < 5:
+            results.append(
+                StressResult(
+                    scenario=scenario,
+                    metrics=None,
+                    period_covered=False,
+                    data_points=len(s_prices) if s_prices is not None else 0,
+                )
+            )
             continue
 
         metrics = run_backtest(
@@ -137,12 +165,14 @@ def run_stress_tests(
             slippage_pct=slippage_pct,
         )
 
-        results.append(StressResult(
-            scenario=scenario,
-            metrics=metrics,
-            period_covered=True,
-            data_points=len(s_prices),
-        ))
+        results.append(
+            StressResult(
+                scenario=scenario,
+                metrics=metrics,
+                period_covered=True,
+                data_points=len(s_prices),
+            )
+        )
 
     return results
 
@@ -154,7 +184,7 @@ def stress_summary(results: list[StressResult]) -> dict:
     Returns per-scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
-    out = {}
+    out: dict = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
             out[r.scenario.name] = {
