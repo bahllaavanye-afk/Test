@@ -15,9 +15,66 @@ import asyncio
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import BacktestSignals, Signal
 from app.strategies.manual.btc_eth_stat_arb import BTCETHStatArb
+
+
+# ---------------------------------------------------------------------------
+# Pydantic Schemas
+# ---------------------------------------------------------------------------
+
+class BTCETHStatArbParams(BaseModel):
+    """
+    Parameter schema for the BTCETHStatArb strategy.
+
+    Attributes
+    ----------
+    window : int
+        Rolling window size (in bars) used for statistical calculations.
+    entry_z : float
+        Z‑score threshold to trigger an entry signal.
+    exit_z : float
+        Z‑score threshold to trigger an exit signal.
+    hedge_window : int
+        Rolling window size (in bars) used for the hedge ratio calculation.
+    """
+
+    window: int = Field(
+        ...,
+        description="Rolling window size (in bars) for the primary statistic.",
+        ge=1,
+        example=60,
+    )
+    entry_z: float = Field(
+        ...,
+        description="Z‑score magnitude required to open a position.",
+        gt=0,
+        example=2.0,
+    )
+    exit_z: float = Field(
+        ...,
+        description="Z‑score magnitude required to close a position.",
+        gt=0,
+        example=0.5,
+    )
+    hedge_window: int = Field(
+        60,
+        description="Rolling window size (in bars) for hedge ratio estimation.",
+        ge=1,
+        example=60,
+    )
+
+    @validator("entry_z")
+    def entry_z_must_exceed_exit_z(cls, v, values):
+        """
+        Ensure that the entry Z‑score is larger than the exit Z‑score.
+        """
+        exit_z = values.get("exit_z")
+        if exit_z is not None and v <= exit_z:
+            raise ValueError("entry_z must be greater than exit_z")
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +144,8 @@ class TestBTCETHStatArbAttributes:
         assert s.hedge_window == 60
 
     def test_custom_params(self):
-        s = BTCETHStatArb(params={"window": 30, "entry_z": 1.5, "exit_z": 0.3})
+        params = BTCETHStatArbParams(window=30, entry_z=1.5, exit_z=0.3).dict()
+        s = BTCETHStatArb(params=params)
         assert s.window == 30
         assert s.entry_z == pytest.approx(1.5)
         assert s.exit_z == pytest.approx(0.3)
