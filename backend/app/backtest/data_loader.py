@@ -22,12 +22,34 @@ def _interval_to_yf(interval: str) -> str:
     return _MAP.get(interval.lower(), "1d")
 
 
+# Friendly commodity names → yfinance continuous-future tickers.
+_COMMODITY_YF = {
+    "GOLD": "GC=F", "XAU": "GC=F", "GC": "GC=F",
+    "SILVER": "SI=F", "XAG": "SI=F", "SI": "SI=F",
+    "OIL": "CL=F", "WTI": "CL=F", "CRUDE": "CL=F", "CL": "CL=F",
+    "BRENT": "BZ=F", "BZ": "BZ=F",
+    "NATGAS": "NG=F", "GAS": "NG=F", "NG": "NG=F",
+    "COPPER": "HG=F", "HG": "HG=F",
+    "CORN": "ZC=F", "WHEAT": "ZW=F", "SOYBEAN": "ZS=F", "SOY": "ZS=F",
+    "PLATINUM": "PL=F", "PALLADIUM": "PA=F",
+}
+
+
 def _symbol_to_yf(symbol: str, market_type: str = "equity") -> str:
     """Convert internal symbol format to yfinance ticker."""
     if market_type == "crypto":
         # BTC/USDT → BTC-USD; ETH/USDT → ETH-USD
         base = symbol.replace("/USDT", "").replace("/USD", "").replace("/BTC", "")
         return f"{base}-USD"
+    if market_type == "forex":
+        # EUR/USD, EURUSD, EUR-USD → EURUSD=X
+        s = symbol.upper().replace("/", "").replace("-", "").replace("=X", "")
+        return f"{s}=X"
+    if market_type in ("commodity", "commodities", "future", "futures"):
+        key = symbol.upper().replace("=F", "").replace("/", "")
+        if key in _COMMODITY_YF:
+            return _COMMODITY_YF[key]
+        return symbol.upper() if symbol.upper().endswith("=F") else f"{key}=F"
     return symbol.upper()
 
 

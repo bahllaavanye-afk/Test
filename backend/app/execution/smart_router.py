@@ -10,6 +10,8 @@ Decision logic:
 
 All orders pass through RiskManager.check_order() before execution.
 """
+from dataclasses import asdict
+
 from app.brokers.base import OrderRequest, OrderResult, AbstractBroker
 from app.execution.limit_first import LimitFirstExecution
 from app.execution.twap import TWAPExecution
@@ -96,7 +98,7 @@ class SmartOrderRouter:
         ref_price = (
             request.limit_price
             or request.stop_price
-            or (request.__dict__.get("metadata") or {}).get("signal_price")
+            or (asdict(request).get("metadata") or {}).get("signal_price")
             or 50.0
         )
         estimated_usd = request.quantity * ref_price
@@ -122,7 +124,7 @@ class SmartOrderRouter:
         import asyncio
 
         # Estimate sigma from metadata if available, default 2%
-        sigma = float(request.__dict__.get("metadata", {}).get("sigma", 0.02)) if hasattr(request, "__dict__") else 0.02
+        sigma = float(asdict(request).get("metadata", {}).get("sigma", 0.02)) if hasattr(request, "__dict__") else 0.02
         ac = AlmgrenChriss(sigma=sigma)
         n_slices = 10
         duration_minutes = 20
@@ -140,7 +142,7 @@ class SmartOrderRouter:
             # Use market slices — adding "limit" without a price causes broker rejection.
             # AC's alpha comes from the optimal schedule, not from limit orders.
             slice_req = OrderRequest(
-                **{**request.__dict__, "quantity": float(slice_qty), "order_type": "market", "limit_price": None}
+                **{**asdict(request), "quantity": float(slice_qty), "order_type": "market", "limit_price": None}
             )
             try:
                 result = await self.broker.place_order(slice_req)

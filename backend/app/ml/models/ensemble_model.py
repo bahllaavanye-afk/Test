@@ -64,7 +64,7 @@ class EnsembleConfig(BaseModel):
             raise ValueError(f"weights must sum to 1.0 (got {total:.6f})")
         return v
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _check_consistency(cls, values):
         # confidence_threshold already bounded by Field; gnn_weight by Field.
         # Additional cross‑field checks could be added here if needed.

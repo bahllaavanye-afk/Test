@@ -355,4 +355,10 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    # main.py calls start_scheduler() and stores the result without calling .start()
+    # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
+    # call, which registered jobs but never ran them (snapshot/retrain/order_sync/
+    # slack_report were silently dead). Guard against double-start.
+    if not scheduler.running:
+        scheduler.start()
     return scheduler

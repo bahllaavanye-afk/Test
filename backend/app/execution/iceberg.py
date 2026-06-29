@@ -4,6 +4,7 @@ Prevents large orders from moving the market by hiding true size.
 """
 from __future__ import annotations
 import asyncio
+from dataclasses import asdict
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
@@ -24,7 +25,7 @@ class IcebergExecution:
         while remaining > 0.01:
             slice_qty = min(visible_qty, remaining)
             slice_req = OrderRequest(
-                **{**request.__dict__, "quantity": slice_qty, "order_type": "market"}
+                **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
             )
             try:
                 result = await self.broker.place_order(slice_req)

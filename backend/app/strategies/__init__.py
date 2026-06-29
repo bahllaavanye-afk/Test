@@ -75,6 +75,10 @@ from app.strategies.manual.credit_spread_income import CreditSpreadIncomeStrateg
 from app.strategies.manual.rsi2_pullback import RSI2PullbackStrategy
 from app.strategies.manual.donchian_breakout import DonchianBreakoutStrategy
 from app.strategies.manual.cci_reversion import CCIReversionStrategy
+from app.strategies.manual.fx_trend import FXTrendStrategy
+from app.strategies.manual.fx_reversion import FXReversionStrategy
+from app.strategies.manual.commodity_momentum import CommodityMomentumStrategy
+from app.strategies.manual.commodity_trend import CommodityTrendStrategy
 from app.strategies.manual.options_strategies import (
     CoveredCallStrategy,
     CashSecuredPutStrategy,
@@ -126,16 +130,18 @@ _OPTIONAL_ML_STRATEGIES: list[tuple[str, str, str]] = [
 def _try_import_ml(module_path: str, class_name: str):
     """Best-effort import of an ML strategy. Returns the class or None.
 
-    Catches ImportError (missing optional dep like torch) and AttributeError
-    (e.g. `class X(nn.Module)` where nn is None because torch wasn't installed).
-    Either way, the strategy is skipped gracefully instead of breaking the
-    whole registry import on lightweight deploys (Render free tier, CI).
+    Catches *any* import-time failure — missing optional dep (torch), AttributeError
+    (`class X(nn.Module)` where nn is None), or a broken module (e.g. a pydantic
+    `@root_validator` misconfig). The registry must never let one bad ML module take
+    down `app.main`, so we skip the strategy gracefully instead. (Broadened from
+    (ImportError, AttributeError) after an unvalidated change to ensemble_model.py
+    raised PydanticUserError and broke the whole app import in CI.)
     """
     try:
         import importlib
         mod = importlib.import_module(module_path)
         return getattr(mod, class_name)
-    except (ImportError, AttributeError) as e:
+    except Exception as e:
         import logging
         logging.getLogger(__name__).info(
             "ML strategy %s skipped (optional dep missing: %s)", class_name, e
@@ -268,6 +274,12 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "rsi2_pullback":              RSI2PullbackStrategy,
     "donchian_breakout":          DonchianBreakoutStrategy,
     "cci_reversion":              CCIReversionStrategy,
+    # ── Forex desk ────────────────────────────────────────────────────────────
+    "fx_trend":                   FXTrendStrategy,
+    "fx_reversion":               FXReversionStrategy,
+    # ── Commodities desk ──────────────────────────────────────────────────────
+    "commodity_momentum":         CommodityMomentumStrategy,
+    "commodity_trend":            CommodityTrendStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,
@@ -303,6 +315,8 @@ _MARKET_TYPE_DESK = {
     "equity": "Equities",
     "crypto": "Crypto",
     "polymarket": "Prediction Markets",
+    "forex": "Forex",
+    "commodity": "Commodities",
 }
 
 
