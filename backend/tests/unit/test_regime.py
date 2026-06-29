@@ -1,20 +1,19 @@
 """Tests for regime detector and correlation monitor."""
 import numpy as np
-import pytest
 from app.ml.regime.detector import detect_regime, Regime, _hurst_exponent
 from app.risk.correlation_monitor import CrossStrategyCorrelationMonitor
 
 
-def _make_trending(n=80) -> list[float]:
-    """Strongly trending price series."""
+def _make_trending(n: int = 80) -> list[float]:
+    """Generate a strongly trending price series."""
     prices = [100.0]
     for _ in range(n - 1):
         prices.append(prices[-1] * (1 + np.random.normal(0.002, 0.005)))
     return prices
 
 
-def _make_mean_reverting(n=80) -> list[float]:
-    """Mean-reverting (OU process) price series."""
+def _make_mean_reverting(n: int = 80) -> list[float]:
+    """Generate a mean‑reverting (OU process) price series."""
     prices = [100.0]
     mu, theta, sigma = 100.0, 0.3, 0.5
     for _ in range(n - 1):
@@ -23,8 +22,8 @@ def _make_mean_reverting(n=80) -> list[float]:
     return prices
 
 
-def _make_high_vol(n=60) -> list[float]:
-    """High-volatility price series."""
+def _make_high_vol(n: int = 60) -> list[float]:
+    """Generate a high‑volatility price series."""
     prices = [100.0]
     for _ in range(n - 1):
         prices.append(max(1.0, prices[-1] * (1 + np.random.normal(0, 0.035))))
