@@ -9,7 +9,28 @@
 >   (chat sessions are ephemeral — only what's committed survives).
 > - **Slack:** notifications/visibility only — never the source of truth.
 
-_Last updated: 2026-06-24_
+_Last updated: 2026-06-29_
+
+---
+
+## Session 2026-06-29 — review backlog (see `docs/REVIEW_2026-06-29.md`)
+Queued for the autonomous loop / employees. Priority order top-to-bottom.
+- [ ] **[P0] Forex desk** — add `market_type="forex"` strategies (carry, trend/momentum), register,
+      add "Forex" to `_MARKET_TYPE_DESK`, route data_loader to `EURUSD=X` etc., + scheduled desk.
+- [ ] **[P0] Commodities desk** — add `market_type="commodity"` strategies (term-structure roll,
+      momentum, gold/oil mean-reversion), register, add "Commodities" desk, route `GC=F`/`CL=F`.
+- [ ] **[P0] Render sleep** — external uptime pinger (UptimeRobot) or paid tier so in-app employees
+      don't halt (`/health` returned 000 — backend asleep).
+- [ ] **[P1] Audit & consolidate 86 workflows** — dedupe near-duplicate `slack-*`/`agent-*`/`render-fix-*`;
+      add an employee manifest (employee → workflow → cadence → last success).
+- [ ] **[P1] Employee-health hard gate** — make the agent smoke test page on failure; verify
+      `agent-health-*`/`system-status` actually alert when an employee is stale.
+- [ ] **[P1] Reward-gate self-improvement** — route `continuous_improver` through `reward-gate.yml` +
+      draft PR + tests instead of committing straight to `main`.
+- [ ] **[P1] Wire Alpaca crypto into `price_feed`** for live quotes (Binance still geo-blocked for live).
+- [ ] **[P1] Narrow 435 broad `except Exception`** — start with `tasks/`, `brokers/`, `llm`; add logging.
+- [ ] **[P1] Audit stale provider model IDs** in `llm_common` (Cerebras/NVIDIA).
+- [ ] **[P2] ML employees inert on prod** — run with `[ml]` extra on a worker, or mark degraded.
 
 ---
 
