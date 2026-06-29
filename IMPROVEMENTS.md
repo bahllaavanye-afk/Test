@@ -21,8 +21,11 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
       momentum, gold/oil mean-reversion), register, add "Commodities" desk, route `GC=F`/`CL=F`.
 - [ ] **[P0] Render sleep** — external uptime pinger (UptimeRobot) or paid tier so in-app employees
       don't halt (`/health` returned 000 — backend asleep).
-- [ ] **[P1] Audit & consolidate 86 workflows** — dedupe near-duplicate `slack-*`/`agent-*`/`render-fix-*`;
-      add an employee manifest (employee → workflow → cadence → last success).
+- [~] **[P1] Audit & consolidate 86 workflows** — employee manifest shipped (`docs/WORKFLOWS.md`,
+      via `scripts/gen_workflow_manifest.py`): 87 workflows / 70 scheduled, dup-families flagged
+      (`slack-*`×10, `agent-*`×6, `render-*`×5, `strategy-*`×5). Next: actually dedupe the families.
+- [x] **[P1] Durable auto-merge** — `auto-merge.yml` lands `automerge`-labeled PRs once all checks
+      pass (no human merge). Removes the last manual step for the autonomous loops/employees.
 - [ ] **[P1] Employee-health hard gate** — make the agent smoke test page on failure; verify
       `agent-health-*`/`system-status` actually alert when an employee is stale.
 - [ ] **[P1] Reward-gate self-improvement** — route `continuous_improver` through `reward-gate.yml` +
