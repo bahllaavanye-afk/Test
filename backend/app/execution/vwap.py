@@ -1,23 +1,63 @@
 """
 VWAP (Volume-Weighted Average Price) execution.
-Participates at 10% of market volume across trading session.
-Minimizes market impact by timing with volume distribution.
+
+Participates at 10 % of market volume across the trading session.
+Minimizes market impact by timing orders with the expected intraday volume
+distribution.
 """
+
 from __future__ import annotations
+
 import asyncio
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
-# Empirical U-shaped intraday volume profile (30-min buckets, 13 buckets = 6.5h day)
+# Empirical U‑shaped intraday volume profile (30‑min buckets, 13 buckets = 6.5 h day)
 # Heavy open/close, lighter midday — matches NYSE observed volume patterns
-_EMPIRICAL_PROFILE = [0.12, 0.08, 0.07, 0.06, 0.05, 0.05, 0.05, 0.05, 0.05, 0.06, 0.06, 0.08, 0.12]
+_EMPIRICAL_PROFILE = [
+    0.12,
+    0.08,
+    0.07,
+    0.06,
+    0.05,
+    0.05,
+    0.05,
+    0.05,
+    0.05,
+    0.06,
+    0.06,
+    0.08,
+    0.12,
+]
 
 
-async def get_intraday_volume_profile(symbol: str, broker: AbstractBroker | None = None) -> list[float]:
-    """Return normalized intraday volume distribution for symbol.
+async def get_intraday_volume_profile(
+    symbol: str, broker: AbstractBroker | None = None
+) -> list[float]:
+    """Return a normalized intraday volume distribution for *symbol*.
 
-    Fetches yesterday's 30-min bar volumes from the broker if available.
-    Falls back to the empirical U-shaped profile when broker data is missing.
+    The function attempts to fetch the previous trading day's 30‑minute bar
+    volumes from the supplied *broker*.  If the broker returns sufficient data
+    (at least eight non‑zero volume entries), the raw volumes are normalised to
+    create a dynamic profile that reflects the instrument's recent trading
+    pattern.
+
+    If the broker is ``None`` or the fetch fails, the function falls back to the
+    static empirical U‑shaped profile defined by ``_EMPIRICAL_PROFILE``.
+
+    Parameters
+    ----------
+    symbol:
+        Ticker symbol for which to retrieve the volume distribution.
+    broker:
+        Optional :class:`~app.brokers.base.AbstractBroker` instance used to query
+        historical bars.  When ``None`` the empirical profile is returned.
+
+    Returns
+    -------
+    list[float]
+        Normalised volume weights that sum to 1.0 (or the empirical profile if
+        dynamic data could not be obtained).
     """
     if broker is not None:
         try:
@@ -27,21 +67,67 @@ async def get_intraday_volume_profile(symbol: str, broker: AbstractBroker | None
             if len(volumes) >= 8:
                 total = sum(volumes)
                 profile = [v / total for v in volumes]
-                logger.debug("VWAP dynamic profile loaded", symbol=symbol, buckets=len(profile))
+                logger.debug(
+                    "VWAP dynamic profile loaded", symbol=symbol, buckets=len(profile)
+                )
                 return profile
         except Exception as e:
-            logger.debug("VWAP broker profile fetch failed, using empirical fallback", symbol=symbol, error=str(e))
+            logger.debug(
+                "VWAP broker profile fetch failed, using empirical fallback",
+                symbol=symbol,
+                error=str(e),
+            )
     return list(_EMPIRICAL_PROFILE)
 
 
 class VWAPExecution:
-    def __init__(self, broker: AbstractBroker, participation_rate: float = 0.10, slices: int = 12):
+    """Execute orders using a VWAP strategy.
+
+    The algorithm slices the total order quantity according to an intraday
+    volume profile and sends market orders at a fixed participation rate.
+    """
+
+    def __init__(
+        self,
+        broker: AbstractBroker,
+        participation_rate: float = 0.10,
+        slices: int = 12,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        broker:
+            The broker implementation used to place orders and fetch market data.
+        participation_rate:
+            Desired fraction of market volume to participate in (default 10 %).
+        slices:
+            Number of time slices (or intervals) the order will be divided into.
+        """
         self.broker = broker
         self.participation_rate = participation_rate
         self.slices = slices
         self.sleep_seconds = (6.5 * 3600) / self.slices
 
     async def execute(self, request: OrderRequest) -> OrderResult:
+        """Execute a VWAP order.
+
+        The method retrieves a volume profile, splits the order into slices, and
+        sends each slice as a market order.  Between slices it sleeps for the
+        calculated interval to spread execution across the session.
+
+        Parameters
+        ----------
+        request:
+            An :class:`~app.brokers.base.OrderRequest` describing the order to be
+            executed (symbol, quantity, etc.).
+
+        Returns
+        -------
+        OrderResult
+            Aggregated result containing the total filled quantity, average fill
+            price, and an overall status (``filled`` if at least 95 % of the
+            target quantity was executed, otherwise ``partial``).
+        """
         # Fetch dynamic profile; cap slices to profile length
         profile = await get_intraday_volume_profile(request.symbol, self.broker)
         active_slices = min(self.slices, len(profile))
@@ -65,7 +151,9 @@ class VWAPExecution:
                 if result.avg_fill_price:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
-                logger.debug("VWAP slice filled", slice=i, qty=slice_qty, filled=result.filled_qty)
+                logger.debug(
+                    "VWAP slice filled", slice=i, qty=slice_qty, filled=result.filled_qty
+                )
             except Exception as e:
                 logger.warning("VWAP slice failed", slice=i, error=str(e))
 
