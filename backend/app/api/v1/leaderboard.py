@@ -261,3 +261,128 @@ async def _aggregate_trade_metrics(
         avg_trade_pnl=_float(row.avg_pnl),
         last_updated=last_updated,
     )
+
+
+# ─── Builders ────────────────────────────────────────────────────────────────
+
+
+async def _build_entry(
+    db: AsyncSession,
+    strategy: Strategy,
+    user_id: str,
+    paper_ids: list[str],
+    live_ids: list[str],
+) -> LeaderboardEntry:
+    """Assemble a single leaderboard entry for one strategy."""
+    backtest_block: MetricsBlock | None = None
+    bt = await _best_backtest_result(db, strategy.name, user_id)
+    if bt is not None:
+        backtest_block = _backtest_result_to_block(bt)
+
+    forward_block: MetricsBlock | None = None
+    fwd = await _best_forward_result(db, strategy.name, user_id)
+    if fwd is not None:
+        forward_block = _backtest_result_to_block(fwd)
+
+    paper_block = await _aggregate_trade_metrics(db, strategy.name, paper_ids)
+    live_block = await _aggregate_trade_metrics(db, strategy.name, live_ids)
+
+    return LeaderboardEntry(
+        id=strategy.id,
+        name=strategy.name,
+        display_name=strategy.display_name,
+        market_type=strategy.market_type,
+        strategy_type=strategy.strategy_type,
+        risk_bucket=strategy.risk_bucket,
+        is_enabled=strategy.is_enabled,
+        symbols=strategy.symbols if isinstance(strategy.symbols, list) else [],
+        backtest=backtest_block,
+        paper=paper_block,
+        live=live_block,
+        forward_test=forward_block,
+    )
+
+
+def _entry_sort_key(entry: LeaderboardEntry) -> float:
+    """Rank by best available Sharpe (live > paper > backtest); unranked last."""
+    for block in (entry.live, entry.paper, entry.backtest):
+        if block is not None and block.sharpe_ratio is not None:
+            return block.sharpe_ratio
+    return -float("inf")
+
+
+# ─── Routes ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/entries", response_model=list[LeaderboardEntry])
+async def list_leaderboard_entries(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[LeaderboardEntry]:
+    """Per-strategy leaderboard: backtest + forward + paper + live metrics, ranked by Sharpe."""
+    account_ids = await _user_account_ids(db, user.id)
+    mode_map = await _account_mode_map(db, account_ids)
+    live_ids = [aid for aid, mode in mode_map.items() if mode == "live"]
+    paper_ids = [aid for aid in account_ids if aid not in live_ids]
+
+    result = await db.execute(select(Strategy))
+    strategies = result.scalars().all()
+
+    entries = [
+        await _build_entry(db, s, user.id, paper_ids, live_ids) for s in strategies
+    ]
+    entries.sort(key=_entry_sort_key, reverse=True)
+    for rank, entry in enumerate(entries, start=1):
+        entry.rank = rank
+    return entries
+
+
+@router.get("/summary", response_model=LeaderboardSummary)
+async def leaderboard_summary(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> LeaderboardSummary:
+    """Aggregate roll-up across all strategies for the leaderboard header."""
+    account_ids = await _user_account_ids(db, user.id)
+    mode_map = await _account_mode_map(db, account_ids)
+    live_ids = [aid for aid, mode in mode_map.items() if mode == "live"]
+    paper_ids = [aid for aid in account_ids if aid not in live_ids]
+
+    result = await db.execute(select(Strategy))
+    strategies = result.scalars().all()
+
+    running_count = 0
+    sharpes: list[float] = []
+    best_strategy: str | None = None
+    best_sharpe = -float("inf")
+    total_paper_pnl = 0.0
+    total_live_pnl = 0.0
+
+    for s in strategies:
+        if s.is_enabled:
+            running_count += 1
+        bt = await _best_backtest_result(db, s.name, user.id)
+        if bt is not None:
+            sr = _float(bt.sharpe_ratio)
+            if sr is not None:
+                sharpes.append(sr)
+                if sr > best_sharpe:
+                    best_sharpe = sr
+                    best_strategy = s.name
+        paper_block = await _aggregate_trade_metrics(db, s.name, paper_ids)
+        if paper_block is not None and paper_block.total_return is not None:
+            total_paper_pnl += paper_block.total_return
+        live_block = await _aggregate_trade_metrics(db, s.name, live_ids)
+        if live_block is not None and live_block.total_return is not None:
+            total_live_pnl += live_block.total_return
+
+    avg_sharpe = sum(sharpes) / len(sharpes) if sharpes else None
+
+    return LeaderboardSummary(
+        total_strategies=len(strategies),
+        running_count=running_count,
+        avg_sharpe=avg_sharpe,
+        best_strategy=best_strategy,
+        total_paper_pnl=total_paper_pnl,
+        total_live_pnl=total_live_pnl,
+    )
