@@ -345,3 +345,30 @@ class ModelingEngineer:
                 f.write(line + "\n")
         except Exception as e:  # pragma: no cover
             logger.error("Failed to write modeling decision", error=str(e))
+
+    # ------------------------------------------------------------------
+    # Introspection
+    # ------------------------------------------------------------------
+
+    def get_engineering_summary(self) -> dict:
+        """Read-only snapshot of the engineer's state for dashboards / health
+        checks. Safe to call at any time, including before any cycle has run.
+        """
+        latest_performance = {
+            model_id: asdict(records[-1])
+            for model_id, records in self._perf_cache.items()
+            if records
+        }
+        promote_count = sum(1 for d in self._decisions if d.decision_type == "promote")
+        retrain_count = sum(1 for d in self._decisions if d.decision_type == "retrain")
+        return {
+            "cycles_completed": self._cycle,
+            "models_monitored": list(MODEL_TYPES),
+            "drift_threshold": self.drift_threshold,
+            "latest_performance": latest_performance,
+            "recent_decisions": [asdict(d) for d in self._decisions[-10:]],
+            "promote_count": promote_count,
+            "retrain_count": retrain_count,
+            "best_sharpe": dict(self._best_sharpe),
+            "best_params": dict(self._best_params),
+        }
