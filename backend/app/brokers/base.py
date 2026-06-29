@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderRequest:
     symbol: str
     side: str               # buy|sell
@@ -20,7 +20,7 @@ class OrderRequest:
     execution_algo: str = "limit_first"  # market|limit_first|twap|vwap
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderResult:
     broker_order_id: str
     status: str
@@ -29,7 +29,7 @@ class OrderResult:
     raw_payload: dict | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class QuoteResult:
     symbol: str
     bid: float
