@@ -20,7 +20,7 @@ Backtest proxy (daily OHLCV, no real-time liquidation WebSocket):
   Liquidation-day proxy = (high - low) / close > 2 × ATR_20
                           AND volume > 2 × rolling_20_vol
                           AND close < open  (bearish candle = long liquidation)
-  → Long entry: fade the down day
+                          → Long entry: fade the down day
   Exit after 1 bar (single-day holding period)
 
 Academic references:
@@ -29,7 +29,6 @@ Academic references:
 
 Documented Sharpe (proxy backtest): ~1.0–1.6 on BTC/ETH daily
 """
-import numpy as np
 import pandas as pd
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
