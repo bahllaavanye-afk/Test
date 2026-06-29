@@ -50,8 +50,13 @@
     "strategy_logic on strategies/manual/order_flow_imbalance.py: success \u2014 tests green",
     "strategy_logic on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
     "strategy_logic on ml/models/gnn_signal.py: success \u2014 tests green",
-    "strategy_logic on execution/advanced_orders.py: success \u2014 tests green"
+    "strategy_logic on execution/advanced_orders.py: success \u2014 tests green",
+    "optimization on brokers/base.py: success \u2014 tests green",
+    "optimization on backtest/stress_test.py: success \u2014 tests green",
+    "optimization on comparison/benchmarks.py: success \u2014 tests green",
+    "optimization on api/v1/options.py: success \u2014 tests green",
+    "optimization on test/unit/test_bot_market_types.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-29T10:07:56.168662+00:00",
+  "last_updated": "2026-06-29T17:34:43.697010+00:00",
   "total": 26
 }
