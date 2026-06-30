@@ -7,6 +7,7 @@ Covers:
   3. backtest_signals() returns BacktestSignals with correct dtype
   4. No-lookahead: first row is always False
   5. Insufficient data returns None / empty signals
+  6. Handles None and empty inputs gracefully
 """
 from __future__ import annotations
 
@@ -172,3 +173,16 @@ class TestAvellanedaStoikovMMBacktest:
         result = AvellanedaStoikovMM().backtest_signals(price_df)
         assert not result.entries.isna().any()
         assert not result.exits.isna().any()
+
+    def test_backtest_returns_all_false_on_none_input(self):
+        result = AvellanedaStoikovMM().backtest_signals(None)
+        assert not result.entries.any()
+        assert not result.exits.any()
+
+    def test_backtest_returns_all_false_on_empty_df(self):
+        df = pd.DataFrame()
+        result = AvellanedaStoikovMM().backtest_signals(df)
+        assert not result.entries.any()
+        assert not result.exits.any()
+        assert len(result.entries) == 0
+        assert len(result.exits) == 0
