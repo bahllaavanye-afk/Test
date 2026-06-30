@@ -4,6 +4,9 @@ State-of-the-art for multi-horizon time series forecasting.
 Attention mechanism provides interpretable feature importance per timestep.
 """
 from __future__ import annotations
+import logging
+import time
+
 try:
     import torch
     import torch.nn as nn
@@ -20,6 +23,8 @@ _NNModule = nn.Module if _TORCH_AVAILABLE else object
 import numpy as np
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
+_logger = logging.getLogger(__name__)
+
 
 class GatedLinearUnit(_NNModule):
     def __init__(self, d: int):
@@ -28,7 +33,7 @@ class GatedLinearUnit(_NNModule):
 
     def forward(self, x):
         h = self.fc(x)
-        return h[..., :h.shape[-1]//2] * torch.sigmoid(h[..., h.shape[-1]//2:])
+        return h[..., :h.shape[-1] // 2] * torch.sigmoid(h[..., h.shape[-1] // 2:])
 
 
 class GatedResidualNetwork(_NNModule):
@@ -58,7 +63,12 @@ class VariableSelectionNetwork(_NNModule):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # x: (batch, seq, n_vars * d_model) — pre-embedded features
-        processed = [self.grns[i](x[..., i*x.shape[-1]//len(self.grns):(i+1)*x.shape[-1]//len(self.grns)]) for i in range(len(self.grns))]
+        processed = [
+            self.grns[i](
+                x[..., i * x.shape[-1] // len(self.grns) : (i + 1) * x.shape[-1] // len(self.grns)]
+            )
+            for i in range(len(self.grns))
+        ]
         stacked = torch.stack(processed, dim=-1)   # (batch, seq, d, n_vars)
         flat = x.reshape(x.shape[0], x.shape[1], -1)
         weights = torch.softmax(self.softmax_grn(flat), dim=-1).unsqueeze(-2)  # (batch, seq, 1, n_vars)
@@ -105,7 +115,15 @@ class TFTModel(AbstractModel, _NNModule):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (batch, seq, features)
+        """
+        Forward pass with structured logging.
+
+        Logs:
+            - signal_count: number of samples in the batch
+            - execution_time_ms: time taken for the forward pass
+            - pnl: placeholder (None) as P&L is not computed here
+        """
+        start_time = time.time()
         h = self.input_proj(x)                      # → (batch, seq, d_model)
         h, _ = self.lstm(h)                          # temporal encoding
         h = self.grn_enrich(h)                       # gated enrichment
@@ -115,8 +133,18 @@ class TFTModel(AbstractModel, _NNModule):
         h = self.ln1(h + self.dropout(attn_out))
         h = self.ln2(h + self.attn_grn(h))
 
-        # Use last timestep for classification
-        return self.head(h[:, -1, :])
+        out = self.head(h[:, -1, :])
+        elapsed_ms = (time.time() - start_time) * 1000
+
+        _logger.info(
+            "TFTModel forward",
+            extra={
+                "signal_count": x.shape[0],
+                "execution_time_ms": elapsed_ms,
+                "pnl": None,
+            },
+        )
+        return out
 
     def get_attention_weights(self) -> np.ndarray | None:
         """Returns attention weights for interpretability (last forward pass)."""
@@ -127,6 +155,7 @@ class TFTModel(AbstractModel, _NNModule):
     def train_epoch(self, loader, optimizer, criterion) -> dict:
         self.train()
         total_loss, total_acc, n = 0.0, 0.0, 0
+        signal_count = 0
         for x, y in loader:
             optimizer.zero_grad()
             pred = self(x).squeeze(-1)
@@ -137,15 +166,30 @@ class TFTModel(AbstractModel, _NNModule):
             total_loss += loss.item()
             total_acc += ((pred > 0.5) == y.bool()).float().mean().item()
             n += 1
-        return {"loss": total_loss / max(n, 1), "acc": total_acc / max(n, 1)}
+            signal_count += x.shape[0]
+
+        metrics = {"loss": total_loss / max(n, 1), "acc": total_acc / max(n, 1)}
+        _logger.info(
+            "TFTModel train_epoch completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_ms": None,
+                "pnl": None,
+                "metrics": metrics,
+            },
+        )
+        return metrics
 
     def evaluate(self, loader) -> EvalMetrics:
         self.eval()
         preds, labels = [], []
+        signal_count = 0
+        start_time = time.time()
         with torch.no_grad():
             for x, y in loader:
                 preds.extend(self(x).squeeze(-1).numpy())
                 labels.extend(y.numpy())
+                signal_count += x.shape[0]
         preds = np.array(preds)
         labels = np.array(labels)
         acc = float(((preds > 0.5) == (labels > 0.5)).mean())
@@ -154,7 +198,19 @@ class TFTModel(AbstractModel, _NNModule):
             auc = float(roc_auc_score(labels, preds))
         except Exception:
             auc = 0.5
-        return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0, loss=None)
+        eval_metrics = EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0, loss=None)
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        _logger.info(
+            "TFTModel evaluation completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_ms": elapsed_ms,
+                "pnl": None,
+                "metrics": {"accuracy": acc, "auc": auc},
+            },
+        )
+        return eval_metrics
 
 
 # Public registry name: app.ml.models.__init__ imports `TransformerPredictor`.
