@@ -15,7 +15,7 @@ import asyncio
 import numpy as np
 import pandas as pd
 import pytest
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.strategies.base import BacktestSignals, Signal
 from app.strategies.manual.btc_eth_stat_arb import BTCETHStatArb
@@ -45,33 +45,34 @@ class BTCETHStatArbParams(BaseModel):
         ...,
         description="Rolling window size (in bars) for the primary statistic.",
         ge=1,
-        example=60,
+        json_schema_extra={"example": 60},
     )
     entry_z: float = Field(
         ...,
         description="Z‑score magnitude required to open a position.",
         gt=0,
-        example=2.0,
+        json_schema_extra={"example": 2.0},
     )
     exit_z: float = Field(
         ...,
         description="Z‑score magnitude required to close a position.",
         gt=0,
-        example=0.5,
+        json_schema_extra={"example": 0.5},
     )
     hedge_window: int = Field(
         60,
         description="Rolling window size (in bars) for hedge ratio estimation.",
         ge=1,
-        example=60,
+        json_schema_extra={"example": 60},
     )
 
-    @validator("entry_z")
+    @field_validator("entry_z")
+    @classmethod
     def entry_z_must_exceed_exit_z(cls, v, values):
         """
         Ensure that the entry Z‑score is larger than the exit Z‑score.
         """
-        exit_z = values.get("exit_z")
+        exit_z = values.data.get("exit_z")
         if exit_z is not None and v <= exit_z:
             raise ValueError("entry_z must be greater than exit_z")
         return v
@@ -144,7 +145,7 @@ class TestBTCETHStatArbAttributes:
         assert s.hedge_window == 60
 
     def test_custom_params(self):
-        params = BTCETHStatArbParams(window=30, entry_z=1.5, exit_z=0.3).dict()
+        params = BTCETHStatArbParams(window=30, entry_z=1.5, exit_z=0.3).model_dump()
         s = BTCETHStatArb(params=params)
         assert s.window == 30
         assert s.entry_z == pytest.approx(1.5)
