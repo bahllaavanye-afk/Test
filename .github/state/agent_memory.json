@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-30T00:02:07.380204+00:00",
+  "last_updated": "2026-06-30T13:25:52.486055+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -286,7 +286,12 @@
     "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/models/lstm.py: tests=pass",
     "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/features/technical.py: tests=pass",
     "[continuous_improver @ 2026-06-30T00:02] docstrings on execution/limit_first.py: tests=pass",
-    "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass"
+    "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T13:24] error_handling on execution/vwap.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T13:24] error_handling on risk/correlation.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T13:24] error_handling on brokers/tradestation.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T13:25] error_handling on comparison/benchmarks.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T13:25] error_handling on tasks/bot_runner.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -517,6 +522,24 @@
       "reason": "syntax check failed",
       "improvement_type": "strategy_logic",
       "timestamp": "2026-06-29T22:37:12.332723+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/ssm_model.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-30T13:24:36.707941+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/advanced_indicators.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-30T13:24:39.125198+00:00"
+    },
+    {
+      "file": "backend/app/backtest/monte_carlo.py",
+      "reason": "syntax check failed",
+      "improvement_type": "error_handling",
+      "timestamp": "2026-06-30T13:25:49.557776+00:00"
     }
   ],
   "improvement_stats": {
@@ -551,6 +574,11 @@
       "test_pass": 10
     },
     "schemas": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "error_handling": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5
