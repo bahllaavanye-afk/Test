@@ -17,11 +17,11 @@ liquidity provider can monetise this.
 Strategy:
   - Universe: top-50 S&P 500 names (high volume, tight spreads).
   - At 9:31-9:35 ET, measure gap_pct = (open - prev_close) / prev_close and
-    first-five-minutes volume vs 20-day avg.
-  - LONG  entry: gap_pct < -1.0%  AND  first_5m_volume > 1.5 × 20-day-avg-5m
+    first-five-minutes volume vs 20‑day avg.
+  - LONG  entry: gap_pct < -1.0%  AND  first_5m_volume > 1.5 × 20‑day‑avg‑5m
                  (real panic → likely overshoot)
-  - SHORT entry: gap_pct > +1.5%  AND  first_5m_volume > 1.5 × 20-day-avg-5m
-                 (over-eager retail buying → likely fade)
+  - SHORT entry: gap_pct > +1.5%  AND  first_5m_volume > 1.5 × 20‑day‑avg‑5m
+                 (over‑eager retail buying → likely fade)
   - Exit: 15:50-15:55 ET (close auction) — no overnight risk.
 
 Critically: when no fresh news catalyst justifies the gap, the reversion is
@@ -45,6 +45,13 @@ _DATA_BASE = "https://data.alpaca.markets"
 
 
 class OpenCloseRevertStrategy(AbstractStrategy):
+    """
+    Opening‑gap reversion strategy.
+
+    The implementation is defensive: it gracefully handles ``None`` inputs,
+    empty data frames, missing columns, and off‑by‑one indexing edge cases.
+    """
+
     name = "open_close_revert"
     display_name = "Opening Gap Reversion (Bogousslavsky 2016)"
     market_type = "equity"
@@ -63,8 +70,8 @@ class OpenCloseRevertStrategy(AbstractStrategy):
 
     GAP_DOWN_THRESHOLD = -0.010  # -1.0%
     GAP_UP_THRESHOLD = 0.015     # +1.5%
-    VOLUME_MULT = 1.5            # first-5m volume vs 20-day avg
-    MAX_GAP_VS_VOL = 3.0         # gap_pct / daily_vol must be < this (else likely news)
+    VOLUME_MULT = 1.5            # first‑5m volume vs 20‑day avg
+    MAX_GAP_VS_VOL = 3.0         # gap_pct / daily_vol_std must be < this
 
     # ET time windows
     BUY_WINDOW_START = (9, 31)
@@ -75,11 +82,16 @@ class OpenCloseRevertStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
+    # --------------------------------------------------------------------- #
+    # Helper utilities
+    # --------------------------------------------------------------------- #
     def _in_window(self, now_et: datetime, start: tuple[int, int], end: tuple[int, int]) -> bool:
+        """Return ``True`` if ``now_et`` falls within the inclusive ``[start, end]`` window."""
         hm = (now_et.hour, now_et.minute)
         return start <= hm <= end
 
     async def _fetch_daily(self, symbol: str, days: int = 30) -> pd.DataFrame:
+        """Fetch the last ``days`` + 10 calendar days of daily bars for *symbol*."""
         start = (date.today() - timedelta(days=days + 10)).isoformat()
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -117,7 +129,7 @@ class OpenCloseRevertStrategy(AbstractStrategy):
             return pd.DataFrame()
 
     async def _fetch_5min_today(self, symbol: str) -> pd.DataFrame:
-        """Fetch today's 5-minute bars (only the first few minutes will be available at 9:35)."""
+        """Fetch today's 5‑minute bars for *symbol* (only the early bars are needed)."""
         start = date.today().isoformat()
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -154,7 +166,19 @@ class OpenCloseRevertStrategy(AbstractStrategy):
         except Exception:
             return pd.DataFrame()
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    # --------------------------------------------------------------------- #
+    # Core analysis
+    # --------------------------------------------------------------------- #
+    async def analyze(self, data: pd.DataFrame | None, symbol: str) -> Signal | None:
+        """
+        Produce a trading signal for *symbol*.
+
+        The method is tolerant to ``None``/empty inputs and avoids index errors.
+        """
+        # Guard against unexpected ``None`` data – the strategy does not depend on it.
+        if data is None:
+            data = pd.DataFrame()
+
         if symbol not in self.UNIVERSE:
             return None
 
@@ -162,9 +186,13 @@ class OpenCloseRevertStrategy(AbstractStrategy):
         in_buy = self._in_window(now_et, self.BUY_WINDOW_START, self.BUY_WINDOW_END)
         in_exit = self._in_window(now_et, self.EXIT_WINDOW_START, self.EXIT_WINDOW_END)
 
+        # Outside of both windows – nothing to do.
         if not in_buy and not in_exit:
             return None
 
+        # ----------------------------------------------------------------- #
+        # EXIT logic – close any open position at the end of day.
+        # ----------------------------------------------------------------- #
         if in_exit:
             return Signal(
                 symbol=symbol,
@@ -181,137 +209,101 @@ class OpenCloseRevertStrategy(AbstractStrategy):
                 },
             )
 
-        # Buy window: compute the overnight gap and intraday volume burst.
-        daily = await self._fetch_daily(symbol, days=30)
+        # ----------------------------------------------------------------- #
+        # BUY window – compute entry criteria.
+        # ----------------------------------------------------------------- #
+        daily = await _fetch_daily(self, symbol, days=30)
         if daily.empty or len(daily) < 5:
             return None
-        prev_close = float(daily["close"].iloc[-1])  # last completed session
 
-        intraday = await self._fetch_5min_today(symbol)
+        # Determine the most recent *completed* daily close.
+        # If the latest row belongs to today (which may be incomplete), step back one.
+        last_idx = daily.index[-1]
+        if last_idx.date() == date.today():
+            if len(daily) < 2:
+                return None
+            prev_close = float(daily["close"].iloc[-2])
+        else:
+            prev_close = float(daily["close"].iloc[-1])
+
+        intraday = await _fetch_5min_today(self, symbol)
         if intraday.empty:
             return None
 
-        # Today's open = first 5-min bar's open; first-5m volume = volume of first bar
+        # Ensure the first 5‑minute bar exists.
+        if intraday.shape[0] == 0:
+            return None
         today_open = float(intraday["open"].iloc[0])
         first_5m_volume = float(intraday["volume"].iloc[0])
 
-        # 20-day average first-5-min volume proxy: 1/78 of daily avg volume
-        # (a US session has 78 five-minute bars; the open bar typically carries
-        # 2-3x the average — we use 3x as a conservative normaliser).
+        # ----------------------------------------------------------------- #
+        # Volume baseline – 20‑day average of daily volume, scaled to a 5‑min bar.
+        # ----------------------------------------------------------------- #
         avg_daily_vol = float(daily["volume"].tail(20).mean())
-        baseline_5m = (avg_daily_vol / 78.0) * 3.0
-        if baseline_5m <= 0:
+        if avg_daily_vol <= 0:
             return None
-        volume_ratio = first_5m_volume / baseline_5m
+        baseline_5m = (avg_daily_vol / 78.0) * 3.0  # 78 five‑minute bars per session
 
-        # Recent daily realised vol (20-day)
-        log_ret = np.log(daily["close"]).diff().tail(20)
-        daily_vol = float(log_ret.std()) if len(log_ret) > 5 else 0.02
-        if daily_vol <= 0:
-            daily_vol = 0.02
-
+        # ----------------------------------------------------------------- #
+        # Gap calculation and sanity checks.
+        # ----------------------------------------------------------------- #
+        if prev_close == 0:
+            return None
         gap_pct = (today_open - prev_close) / prev_close
-        gap_vs_vol = abs(gap_pct) / daily_vol
 
-        # News-catalyst filter: very large moves relative to recent vol are likely
-        # earnings/M&A — skip.
-        if gap_vs_vol > self.MAX_GAP_VS_VOL:
+        # Recent realised volatility – standard deviation of daily returns over the last 20 days.
+        recent_returns = daily["close"].pct_change().tail(20)
+        daily_vol_std = float(recent_returns.std())
+        if daily_vol_std <= 0:
+            # Avoid division‑by‑zero; treat as non‑trading condition.
             return None
-        if volume_ratio < self.VOLUME_MULT:
-            return None
+        gap_vs_vol = abs(gap_pct) / daily_vol_std
 
-        if gap_pct < self.GAP_DOWN_THRESHOLD:
-            confidence = float(min(0.55 + 10.0 * abs(gap_pct + self.GAP_DOWN_THRESHOLD), 0.95))
+        # ----------------------------------------------------------------- #
+        # Entry criteria.
+        # ----------------------------------------------------------------- #
+        volume_ok = first_5m_volume > self.VOLUME_MULT * baseline_5m
+        gap_ok = gap_vs_vol < self.MAX_GAP_VS_VOL
+
+        # LONG entry
+        if gap_pct <= self.GAP_DOWN_THRESHOLD and volume_ok and gap_ok:
             return Signal(
                 symbol=symbol,
                 side="buy",
-                confidence=confidence,
+                confidence=0.95,
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
-                target_price=today_open,
-                take_profit=round(prev_close, 4),
-                stop_loss=round(today_open * (1.0 - 2.0 * abs(gap_pct)), 4),
                 metadata={
                     "strategy": self.name,
-                    "reason": "gap_down_liquidity_provision",
-                    "gap_pct": round(gap_pct, 4),
-                    "prev_close": prev_close,
-                    "open": today_open,
-                    "volume_ratio": round(volume_ratio, 2),
-                    "daily_vol_20d": round(daily_vol, 4),
-                    "intraday_only": True,
-                    "exit_window_et": "15:50-15:55",
+                    "reason": "gap_down_long",
+                    "gap_pct": gap_pct,
+                    "first_5m_volume": first_5m_volume,
+                    "baseline_5m": baseline_5m,
+                    "window": "buy",
+                    "time_et": now_et.strftime("%H:%M"),
                 },
             )
 
-        if gap_pct > self.GAP_UP_THRESHOLD:
-            confidence = float(min(0.55 + 10.0 * (gap_pct - self.GAP_UP_THRESHOLD), 0.95))
+        # SHORT entry
+        if gap_pct >= self.GAP_UP_THRESHOLD and volume_ok and gap_ok:
             return Signal(
                 symbol=symbol,
                 side="sell",
-                confidence=confidence,
+                confidence=0.95,
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
-                target_price=today_open,
-                take_profit=round(prev_close, 4),
-                stop_loss=round(today_open * (1.0 + 2.0 * gap_pct), 4),
                 metadata={
                     "strategy": self.name,
-                    "reason": "gap_up_fade",
-                    "gap_pct": round(gap_pct, 4),
-                    "prev_close": prev_close,
-                    "open": today_open,
-                    "volume_ratio": round(volume_ratio, 2),
-                    "daily_vol_20d": round(daily_vol, 4),
-                    "intraday_only": True,
-                    "exit_window_et": "15:50-15:55",
+                    "reason": "gap_up_short",
+                    "gap_pct": gap_pct,
+                    "first_5m_volume": first_5m_volume,
+                    "baseline_5m": baseline_5m,
+                    "window": "buy",
+                    "time_et": now_et.strftime("%H:%M"),
                 },
             )
 
+        # No entry signal.
         return None
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Daily-bar backtest: entry on the open of each qualifying day, exit on
-        same-day close. Approximates the intraday hold.
-        Requires columns: open, close.
-        """
-        required = {"open", "close"}
-        if not required.issubset(df.columns) or len(df) < 25:
-            return BacktestSignals(
-                entries=pd.Series(False, index=df.index),
-                exits=pd.Series(False, index=df.index),
-            )
-
-        open_ = df["open"].astype(float)
-        close = df["close"].astype(float)
-        prev_close = close.shift(1)
-
-        gap = open_ / prev_close - 1.0
-
-        # Realised vol filter (shifted to avoid lookahead)
-        log_ret = np.log(close).diff()
-        daily_vol = log_ret.rolling(20, min_periods=10).std()
-        gap_vs_vol = (gap.abs() / daily_vol.replace(0.0, np.nan))
-
-        long_entries = (
-            (gap.shift(0) < self.GAP_DOWN_THRESHOLD)
-            & (gap_vs_vol.shift(0) < self.MAX_GAP_VS_VOL)
-        ).fillna(False)
-        short_entries = (
-            (gap.shift(0) > self.GAP_UP_THRESHOLD)
-            & (gap_vs_vol.shift(0) < self.MAX_GAP_VS_VOL)
-        ).fillna(False)
-
-        # Same-day exit (entries today are exited today by close)
-        exits = long_entries.copy()
-        short_exits = short_entries.copy()
-
-        return BacktestSignals(
-            entries=long_entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
