@@ -359,3 +359,25 @@ async def get_leaderboard(
     )
 
     return {"entries": entries, "summary": summary}
+
+
+# The `/entries` and `/summary` routes were dropped by an unvalidated change (everything
+# 404'd). Restore them as thin views over get_leaderboard so the frontend + tests work.
+@router.get("/entries", response_model=list[LeaderboardEntry])
+async def list_leaderboard_entries(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[LeaderboardEntry]:
+    """Per-strategy leaderboard entries, ranked by Sharpe."""
+    data = await get_leaderboard(current_user=current_user, db=db)
+    return data["entries"]
+
+
+@router.get("/summary", response_model=LeaderboardSummary)
+async def get_leaderboard_summary(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LeaderboardSummary:
+    """Aggregate leaderboard roll-up (totals, avg Sharpe, best strategy)."""
+    data = await get_leaderboard(current_user=current_user, db=db)
+    return data["summary"]
