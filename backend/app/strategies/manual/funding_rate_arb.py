@@ -1,36 +1,10 @@
-"""
-Funding Rate Arbitrage
-======================
-Perpetual futures funding rate mean reversion strategy.
-
-When funding rates are extremely positive (longs crowded), long holders pay
-shorts — mean reversion predicts a flush of longs. When funding rates are
-extremely negative (shorts crowded), shorts pay longs — mean reversion predicts
-a squeeze of shorts.
-
-Funding rate z-score:
-  z = (funding_rate - rolling_90_mean) / rolling_90_std
-
-Entry long:  z < -2.0  (shorts crowded → collect funding as long)
-Entry short: z > +2.0  (longs crowded → will be flushed)
-Exit:        |z| < 0.5
-
-Backtest proxy (daily OHLCV, no real funding data):
-  3-bar return = close / close.shift(3) - 1  (≈ 24h momentum on daily bars)
-  Treat as proxy for funding rate imbalance: over-bought → short, over-sold → long.
-  Rolling z-score computed with 90-bar lookback.
-
-Academic references:
-  Liu, Tsyvinski & Wu (2022) "Crypto Carry"
-  Baur & Dimpfl (2021) "The volatility of Bitcoin and its role as a medium of
-  exchange and a store of value"
-
-Documented Sharpe (proxy backtest): ~1.2–1.8 on BTC/ETH daily
-"""
+import logging
+import time
 import numpy as np
 import pandas as pd
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
+logger = logging.getLogger(__name__)
 
 class FundingRateArbStrategy(AbstractStrategy):
     """
@@ -101,10 +75,27 @@ class FundingRateArbStrategy(AbstractStrategy):
           5. Exit long:  proxy_z > -EXIT_Z
              Exit short: proxy_z < +EXIT_Z
         """
+        start_time = time.time()
+
         min_bars = self.LOOKBACK + 5
         false_series = pd.Series(False, index=df.index, dtype=bool)
 
         if "close" not in df.columns or len(df) < min_bars:
+            elapsed = time.time() - start_time
+            logger.info(
+                "FundingRateArb backtest skipped due to insufficient data",
+                extra={
+                    "strategy": self.name,
+                    "signal_counts": {
+                        "entries": 0,
+                        "exits": 0,
+                        "short_entries": 0,
+                        "short_exits": 0,
+                    },
+                    "execution_time_seconds": elapsed,
+                    "pnl": None,
+                },
+            )
             return BacktestSignals(
                 entries=false_series,
                 exits=false_series,
@@ -119,19 +110,40 @@ class FundingRateArbStrategy(AbstractStrategy):
 
         # Rolling z-score of the 3-bar return
         roll_mean = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).mean()
-        roll_std  = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).std()
-        proxy_z   = (mom3 - roll_mean) / roll_std.clip(lower=1e-8)
+        roll_std = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).std()
+        proxy_z = (mom3 - roll_mean) / roll_std.clip(lower=1e-8)
 
         # Shift(1) — no lookahead
         proxy_z_lag = proxy_z.shift(1)
 
         # Long: shorts crowded (z very negative → expect squeeze → collect funding)
-        entries       = (proxy_z_lag < -self.ENTRY_Z).fillna(False)
-        exits         = (proxy_z_lag > -self.EXIT_Z).fillna(False)
+        entries = (proxy_z_lag < -self.ENTRY_Z).fillna(False)
+        exits = (proxy_z_lag > -self.EXIT_Z).fillna(False)
 
         # Short: longs crowded (z very positive → expect flush)
-        short_entries = (proxy_z_lag >  self.ENTRY_Z).fillna(False)
-        short_exits   = (proxy_z_lag <  self.EXIT_Z).fillna(False)
+        short_entries = (proxy_z_lag > self.ENTRY_Z).fillna(False)
+        short_exits = (proxy_z_lag < self.EXIT_Z).fillna(False)
+
+        # Compute signal counts for logging
+        signal_counts = {
+            "entries": int(entries.sum()),
+            "exits": int(exits.sum()),
+            "short_entries": int(short_entries.sum()),
+            "short_exits": int(short_exits.sum()),
+        }
+
+        elapsed = time.time() - start_time
+
+        # P&L is not computed within this method; set to None for structured logging
+        logger.info(
+            "FundingRateArb backtest signals generated",
+            extra={
+                "strategy": self.name,
+                "signal_counts": signal_counts,
+                "execution_time_seconds": elapsed,
+                "pnl": None,
+            },
+        )
 
         return BacktestSignals(
             entries=entries.astype(bool),
