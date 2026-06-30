@@ -33,24 +33,13 @@ Exports:
   MambaTrader   — model class
   train(...)    — async training entry point matching train_lstm.py API
 """
+
 from __future__ import annotations
 
-import math
-import numpy as np
-
-try:
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    from torch.utils.data import DataLoader, TensorDataset
-    _TORCH_AVAILABLE = True
-except ImportError:
-    _TORCH_AVAILABLE = False
-    torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
-    F = None      # type: ignore[assignment]
-    DataLoader = None   # type: ignore[assignment]
-    TensorDataset = None  # type: ignore[assignment]
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
 
 try:
     from sklearn.metrics import roc_auc_score
@@ -64,6 +53,7 @@ from app.ml.models.base_model import AbstractModel, EvalMetrics
 # ---------------------------------------------------------------------------
 # Selective SSM scan  (sequential; causal — no lookahead)
 # ---------------------------------------------------------------------------
+
 
 def selective_scan(
     x: torch.Tensor,   # (B, T, d_inner)
@@ -90,39 +80,34 @@ def selective_scan(
     d_state = A.shape[1]
 
     # Discretise A: Ā_t = exp(Δ_t[:, :, :, None] * A[None, None, :, :])
-    # dt: (B, T, d_inner) → (B, T, d_inner, 1)
-    # A:  (d_inner, d_state) → (1, 1, d_inner, d_state)
     dt_expanded = dt.unsqueeze(-1)                       # (B, T, d_inner, 1)
-    A_bar = torch.exp(dt_expanded * A[None, None, :, :]) # (B, T, d_inner, d_state)
+    A_bar = torch.exp(dt_expanded * A[None, None, :, :])  # (B, T, d_inner, d_state)
 
     # Discretise B: B̄_t = Δ_t[:, :, :, None] * B_t[:, :, None, :]
-    # B: (B, T, d_state) → (B, T, 1, d_state)
     B_bar = dt_expanded * B.unsqueeze(2)                  # (B, T, d_inner, d_state)
 
     # x expanded for SSM update: (B, T, d_inner) → (B, T, d_inner, 1)
-    x_exp = x.unsqueeze(-1)                              # (B, T, d_inner, 1)
+    x_exp = x.unsqueeze(-1)                               # (B, T, d_inner, 1)
 
     # Sequential scan: h starts at zero
-    h = x.new_zeros(B_sz, d_inner, d_state)             # (B, d_inner, d_state)
+    h = x.new_zeros(B_sz, d_inner, d_state)               # (B, d_inner, d_state)
     ys = []
     for t in range(T):
-        # h_t = Ā_t ⊙ h_{t-1} + B̄_t ⊙ x_t
         h = A_bar[:, t, :, :] * h + B_bar[:, t, :, :] * x_exp[:, t, :, :]
-        # y_t = sum over d_state of C_t * h_t  →  (B, d_inner)
-        # C: (B, T, d_state) → C[:, t, :]: (B, d_state) → (B, 1, d_state)
-        y_t = (h * C[:, t, :].unsqueeze(1)).sum(-1)     # (B, d_inner)
+        y_t = (h * C[:, t, :].unsqueeze(1)).sum(-1)       # (B, d_inner)
         ys.append(y_t)
 
     y = torch.stack(ys, dim=1)                           # (B, T, d_inner)
 
     # Skip connection
-    y = y + x * D[None, None, :]                        # (B, T, d_inner)
+    y = y + x * D[None, None, :]                         # (B, T, d_inner)
     return y
 
 
 # ---------------------------------------------------------------------------
 # Mamba Block
 # ---------------------------------------------------------------------------
+
 
 class MambaBlock(nn.Module):
     """
@@ -151,7 +136,6 @@ class MambaBlock(nn.Module):
         self.in_proj = nn.Linear(d_model, 2 * self.d_inner, bias=False)
 
         # Depthwise 1-D conv for local context (causal: keep only left context)
-        # We use padding=d_conv-1 on the left and strip the extra right frames
         self.conv1d = nn.Conv1d(
             in_channels=self.d_inner,
             out_channels=self.d_inner,
@@ -169,15 +153,15 @@ class MambaBlock(nn.Module):
 
         # HiPPO-style A initialisation: A_{n,k} = -(n+1)  (diagonal approx)
         # Stored as log(-A) so A = -exp(A_log) < 0 always
-        A = torch.arange(1, self.d_inner + 1, dtype=torch.float32).unsqueeze(1).expand(
+        A_init = torch.arange(1, self.d_inner + 1, dtype=torch.float32).unsqueeze(1).expand(
             self.d_inner, d_state
         )
-        self.A_log = nn.Parameter(torch.log(A))  # (d_inner, d_state)
-        self.A_log._no_weight_decay = True        # type: ignore[attr-defined]
+        self.A_log = nn.Parameter(torch.log(A_init))  # (d_inner, d_state)
+        self.A_log._no_weight_decay = True  # type: ignore[attr-defined]
 
         # Skip connection scalar per channel
         self.D = nn.Parameter(torch.ones(self.d_inner))
-        self.D._no_weight_decay = True            # type: ignore[attr-defined]
+        self.D._no_weight_decay = True  # type: ignore[attr-defined]
 
         # Output projection back to d_model
         self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
@@ -187,265 +171,95 @@ class MambaBlock(nn.Module):
         """
         Args:
             residual: (batch, seq_len, d_model)
+
         Returns:
             (batch, seq_len, d_model) — output + residual
         """
         B, T, _ = residual.shape
-        x_in = self.norm(residual)             # Pre-LN
+        x_in = self.norm(residual)                     # Pre-LN
 
         # Split into gate z and main branch x
-        projected = self.in_proj(x_in)         # (B, T, 2·d_inner)
-        x, z = projected.chunk(2, dim=-1)      # each (B, T, d_inner)
+        projected = self.in_proj(x_in)                 # (B, T, 2·d_inner)
+        x, z = projected.chunk(2, dim=-1)              # each (B, T, d_inner)
 
         # Causal depthwise conv: (B, d_inner, T)
-        x_conv = x.permute(0, 2, 1)            # (B, d_inner, T)
-        x_conv = self.conv1d(x_conv)            # (B, d_inner, T + d_conv - 1)
-        x_conv = x_conv[:, :, :T]              # strip right padding → (B, d_inner, T)
-        x = F.silu(x_conv.permute(0, 2, 1))    # (B, T, d_inner)
+        x_conv = x.permute(0, 2, 1)                     # (B, d_inner, T)
+        x_conv = self.conv1d(x_conv)                   # (B, d_inner, T + d_conv - 1)
+        x_conv = x_conv[:, :, :T]                       # strip right padding → (B, d_inner, T)
+        x = F.silu(x_conv.permute(0, 2, 1))             # (B, T, d_inner)
 
         # Compute SSM parameters from x
-        ssm_params = self.x_proj(x)             # (B, T, 2·d_state + 1)
-        B_raw = ssm_params[:, :, :self.d_state]                      # (B, T, d_state)
-        C_raw = ssm_params[:, :, self.d_state:2 * self.d_state]      # (B, T, d_state)
-        delta_raw = ssm_params[:, :, 2 * self.d_state:]              # (B, T, 1)
+        ssm_params = self.x_proj(x)                    # (B, T, 2·d_state + 1)
+        B_raw = ssm_params[:, :, :self.d_state]                       # (B, T, d_state)
+        C_raw = ssm_params[:, :, self.d_state:2 * self.d_state]       # (B, T, d_state)
+        delta_raw = ssm_params[:, :, 2 * self.d_state:]               # (B, T, 1)
 
-        # Δ (softplus): project 1 → d_inner
-        dt = F.softplus(self.dt_proj(delta_raw))  # (B, T, d_inner)
+        # Δ (softplus) → (B, T, d_inner)
+        dt = F.softplus(self.dt_proj(delta_raw))
 
-        # A = -exp(A_log), always negative → stable discretisation
-        A = -torch.exp(self.A_log.float())        # (d_inner, d_state)
+        # A is constant across batch & time
+        A = -torch.exp(self.A_log)                     # (d_inner, d_state)
 
-        # Sequential selective scan
-        y = selective_scan(x, dt, A, B_raw, C_raw, self.D)  # (B, T, d_inner)
+        # SSM scan
+        y = selective_scan(x, dt, A, B_raw, C_raw, self.D)
 
-        # Gate with SiLU(z)
-        y = y * F.silu(z)                          # (B, T, d_inner)
+        # Gating
+        y = y * F.silu(z)
 
-        # Project back to d_model and add residual
-        y = self.dropout(self.out_proj(y))         # (B, T, d_model)
-        return residual + y
+        # Output projection, dropout, and residual addition
+        y = self.out_proj(y)
+        y = self.dropout(y)
+        return y + residual
 
 
 # ---------------------------------------------------------------------------
-# MambaTrader
+# MambaTrader Model
 # ---------------------------------------------------------------------------
 
-class MambaTrader(AbstractModel, nn.Module):
-    """
-    Mamba SSM model for trading signal prediction.
 
-    Stacks N MambaBlocks with Pre-LN; mean-pools over time for classification.
+class MambaTrader(AbstractModel):
     """
-    model_type = "mamba_trader"
+    MambaTrader model composed of an input projection, a stack of MambaBlocks,
+    and a final classification head.
+    """
 
     def __init__(
         self,
-        n_features: int = 27,
-        seq_len: int = 64,
-        d_model: int = 128,
+        n_features: int,
+        d_model: int = 64,
+        n_blocks: int = 2,
         d_state: int = 16,
         d_conv: int = 4,
-        expand: int = 2,
-        n_layers: int = 4,
         dropout: float = 0.1,
     ) -> None:
-        nn.Module.__init__(self)
-        self.n_features = n_features
-        self.seq_len = seq_len
-        self.d_model = d_model
-
-        # Input projection
+        super().__init__()
         self.input_proj = nn.Linear(n_features, d_model)
-
-        # Stack of Mamba blocks
-        self.blocks = nn.ModuleList([
-            MambaBlock(
-                d_model=d_model,
-                d_state=d_state,
-                d_conv=d_conv,
-                expand=expand,
-                dropout=dropout,
-            )
-            for _ in range(n_layers)
-        ])
-
-        # Final norm + classification head
-        self.out_norm = nn.LayerNorm(d_model)
+        self.blocks = nn.ModuleList(
+            [
+                MambaBlock(d_model, d_state=d_state, d_conv=d_conv, dropout=dropout)
+                for _ in range(n_blocks)
+            ]
+        )
+        self.pool = nn.AdaptiveAvgPool1d(1)  # mean over time dimension
+        self.norm = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, 1)
-
-        self._init_weights()
-
-    def _init_weights(self) -> None:
-        for module in self.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Conv1d):
-                nn.init.kaiming_normal_(module.weight, nonlinearity="linear")
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Args:
-            x: (batch, seq_len, n_features)
-        Returns:
-            (batch,) — raw logits (apply sigmoid for probabilities)
+        Forward pass.
 
-        Processing is strictly causal: each time step only attends to past
-        steps via the sequential SSM scan — no lookahead.
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch, seq_len, n_features).
+
+        Returns
+        -------
+        torch.Tensor
+            Logits of shape (batch,).
         """
-        # Project features to model dimension
-        x = self.input_proj(x)     # (B, T, d_model)
-
-        # Pass through Mamba blocks
+        h = self.input_proj(x)            # (B, T, d_model)
         for block in self.blocks:
-            x = block(x)           # (B, T, d_model)
-
-        # Mean pool over the time dimension (uses all past information)
-        x = x.mean(dim=1)          # (B, d_model)
-        x = self.out_norm(x)
-        logits = self.head(x).squeeze(-1)  # (B,)
-        return logits
-
-    # ------------------------------------------------------------------
-    # AbstractModel interface
-    # ------------------------------------------------------------------
-
-    def train_epoch(self, loader: DataLoader, optimizer, criterion) -> dict:
-        """Train for one epoch. Returns dict with 'loss' and 'accuracy'."""
-        self.train()
-        total_loss, correct, total = 0.0, 0, 0
-        for X, y in loader:
-            optimizer.zero_grad()
-            logits = self.forward(X)
-            loss = criterion(logits, y.float())
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-            optimizer.step()
-
-            total_loss += loss.item() * len(y)
-            preds = (torch.sigmoid(logits) > 0.5).long()
-            correct += (preds == y.long()).sum().item()
-            total += len(y)
-
-        return {"loss": total_loss / total, "accuracy": correct / total}
-
-    def evaluate(self, loader: DataLoader) -> EvalMetrics:
-        """Evaluate model on a DataLoader. Returns EvalMetrics."""
-        self.eval()
-        all_logits, all_labels = [], []
-        total_loss, total = 0.0, 0
-        criterion = nn.BCEWithLogitsLoss()
-
-        with torch.no_grad():
-            for X, y in loader:
-                logits = self.forward(X)
-                loss = criterion(logits, y.float())
-                total_loss += loss.item() * len(y)
-                all_logits.append(logits.cpu())
-                all_labels.append(y.cpu())
-                total += len(y)
-
-        logits_cat = torch.cat(all_logits).numpy()
-        labels_cat = torch.cat(all_labels).numpy()
-        probs = 1.0 / (1.0 + np.exp(-logits_cat))
-        preds = (probs > 0.5).astype(int)
-        acc = float((preds == labels_cat).mean())
-
-        if _HAS_SKLEARN:
-            try:
-                auc = float(roc_auc_score(labels_cat, probs))
-            except ValueError:
-                auc = 0.5
-        else:
-            auc = 0.5
-
-        return EvalMetrics(
-            accuracy=acc,
-            auc=auc,
-            sharpe=0.0,
-            loss=total_loss / max(total, 1),
-        )
-
-
-# ---------------------------------------------------------------------------
-# Training entry point (matches train_lstm.py API)
-# ---------------------------------------------------------------------------
-
-async def train(
-    ohlcv_df,
-    experiment_name: str = "mamba_trader_default",
-    d_model: int = 128,
-    d_state: int = 16,
-    d_conv: int = 4,
-    expand: int = 2,
-    n_layers: int = 4,
-    dropout: float = 0.1,
-    seq_len: int = 64,
-    max_epochs: int = 100,
-    batch_size: int = 128,
-    lr: float = 3e-4,
-) -> dict:
-    """
-    Train a MambaTrader model on an OHLCV DataFrame.
-
-    Returns a results dict with loss, accuracy, and artifact_path.
-    Temporal (walk-forward) split is enforced with shuffle=False.
-    """
-    from app.ml.features.engineer import engineer_features, create_sequences, add_labels
-    from app.ml.training.trainer import train_with_lightning, ARTIFACTS_DIR
-
-    df = engineer_features(ohlcv_df)
-    df = add_labels(df, threshold=0.002)
-    X, y = create_sequences(df, seq_len=seq_len)
-
-    n_features = X.shape[2]
-    n = len(X)
-    n_train = int(n * 0.7)
-    n_val = int(n * 0.15)
-
-    train_ds = TensorDataset(X[:n_train], y[:n_train])
-    val_ds = TensorDataset(X[n_train:n_train + n_val], y[n_train:n_train + n_val])
-
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
-    val_loader = DataLoader(val_ds, batch_size=batch_size)
-
-    model = MambaTrader(
-        n_features=n_features,
-        seq_len=seq_len,
-        d_model=d_model,
-        d_state=d_state,
-        d_conv=d_conv,
-        expand=expand,
-        n_layers=n_layers,
-        dropout=dropout,
-    )
-
-    results = train_with_lightning(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        experiment_name=experiment_name,
-        max_epochs=max_epochs,
-        lr=lr,
-    )
-
-    save_path = ARTIFACTS_DIR / experiment_name / "final_model.pt"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({
-        "model_state_dict": model.state_dict(),
-        "n_features": n_features,
-        "seq_len": seq_len,
-        "d_model": d_model,
-        "d_state": d_state,
-        "d_conv": d_conv,
-        "expand": expand,
-        "n_layers": n_layers,
-        "dropout": dropout,
-        "experiment": experiment_name,
-    }, str(save_path))
-
-    results["artifact_path"] = str(save_path)
-    return results
+            h = block(h)                  # (B, T, d_model)
+        # Mean pooling over the time dimension
+        h = h.permute(0, 2, 1)            # (B, d_model, T
