@@ -111,7 +111,6 @@ class MLMomentumStrategy(AbstractStrategy):
         if not side_match:
             return None
 
-        # Combine confidences, respecting the configured maximum.
         combined_confidence = min(0.95, (base_signal.confidence + ml_conf) / 2)
         base_signal.confidence = combined_confidence
         base_signal.strategy_name = self.name
