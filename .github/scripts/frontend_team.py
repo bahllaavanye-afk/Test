@@ -15,7 +15,6 @@ import httpx
 
 REPO_ROOT    = Path(__file__).parent.parent
 FRONTEND_SRC = REPO_ROOT / "frontend" / "src"
-BRANCH       = "main"
 SLACK_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
 API_KEY      = os.environ.get("ANTHROPIC_API_KEY", "")
 FOCUS        = os.environ.get("FOCUS", "overall UI quality, animations, and UX polish")
@@ -55,7 +54,28 @@ def read_files() -> str:
     return "\n\n".join(parts)
 
 
-def apply_and_push(files: list[dict]) -> bool:
+def _open_reward_gated_pr(branch: str, summary: str) -> None:
+    """Reward gate: open an `automerge` PR so the full CI suite must pass before
+    frontend changes land on main. Mirrors continuous_improver._open_reward_gated_pr."""
+    title = "style(auto): frontend team UI improvements"
+    body = (
+        f"Automated frontend team improvement run.\n\n{summary}\n\n"
+        "**Reward-gated:** this PR only lands if the full CI suite passes — it is "
+        "auto-merged via the `automerge` label (`auto-merge.yml`) once every check is "
+        "green. This replaces direct-to-main commits.\n"
+    )
+    res = subprocess.run(
+        ["gh", "pr", "create", "--base", "main", "--head", branch,
+         "--title", title, "--body", body, "--label", "automerge"],
+        capture_output=True, text=True, cwd=REPO_ROOT, env={**os.environ},
+    )
+    if res.returncode == 0:
+        print(f"[frontend-team] Opened reward-gated PR for {branch}: {res.stdout.strip()}")
+    else:
+        print(f"[frontend-team] PR creation failed (rc={res.returncode}): {res.stderr.strip()}")
+
+
+def apply_and_push(files: list[dict], summary: str = "") -> bool:
     patched = []
     for item in files:
         rel = item.get("path", "")
@@ -74,7 +94,14 @@ def apply_and_push(files: list[dict]) -> bool:
 
     commit_msg = "style(auto): frontend team UI improvements"
     subprocess.run(["git", "commit", "-m", commit_msg], cwd=REPO_ROOT, check=True)
-    subprocess.run(["git", "push", "origin", BRANCH], cwd=REPO_ROOT, check=True)
+
+    # Reward gate: push a throwaway branch and open an automerge PR instead of
+    # pushing directly to main — the full CI suite must pass before anything lands.
+    run_id = os.environ.get("GITHUB_RUN_ID") or __import__("datetime").datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    run_branch = f"frontend-team/run-{run_id}"
+    subprocess.run(["git", "checkout", "-B", run_branch], cwd=REPO_ROOT, capture_output=True)
+    subprocess.run(["git", "push", "-u", "origin", run_branch], cwd=REPO_ROOT, check=True)
+    _open_reward_gated_pr(run_branch, summary)
     return True
 
 
@@ -171,8 +198,8 @@ def main() -> None:
         else:
             print("No JSON found"); return
 
-    pushed = apply_and_push(data.get("files", []))
     summary = data.get("summary", "UI improvements")
+    pushed = apply_and_push(data.get("files", []), summary)
 
     if pushed:
         slack(f"🎨 *Frontend AI Team:* {summary}")

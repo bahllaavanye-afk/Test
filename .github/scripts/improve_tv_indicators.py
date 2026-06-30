@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, slack_post, memory_write
 
 REPO_ROOT = Path(__file__).parent.parent
-BRANCH    = "main"
 TV_FILE   = REPO_ROOT / "backend/app/strategies/manual/tv_indicators.py"
 SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 
@@ -122,7 +121,29 @@ def git_config() -> None:
                    cwd=REPO_ROOT, check=True)
 
 
-def commit_and_push(message: str) -> None:
+def _open_reward_gated_pr(branch: str, improvements: list[str]) -> None:
+    """Reward gate: open an `automerge` PR so the full CI suite must pass before
+    the TV indicator changes land on main. Mirrors continuous_improver._open_reward_gated_pr."""
+    improvements_str = ", ".join(improvements) if improvements else "signal logic"
+    title = f"feat(tv-indicators): SOTA upgrade — {improvements_str}"
+    body = (
+        "Automated TV indicator improvement run.\n\n"
+        "**Reward-gated:** this PR only lands if the full CI suite passes — it is "
+        "auto-merged via the `automerge` label (`auto-merge.yml`) once every check is "
+        "green. This replaces direct-to-main commits.\n"
+    )
+    res = subprocess.run(
+        ["gh", "pr", "create", "--base", "main", "--head", branch,
+         "--title", title, "--body", body, "--label", "automerge"],
+        capture_output=True, text=True, cwd=REPO_ROOT, env={**os.environ},
+    )
+    if res.returncode == 0:
+        print(f"[tv-improve] Opened reward-gated PR for {branch}: {res.stdout.strip()}")
+    else:
+        print(f"[tv-improve] PR creation failed (rc={res.returncode}): {res.stderr.strip()}")
+
+
+def commit_and_push(message: str, improvements: list[str]) -> None:
     subprocess.run(["git", "add", str(TV_FILE.relative_to(REPO_ROOT))],
                    cwd=REPO_ROOT, check=True)
     r = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=REPO_ROOT)
@@ -130,14 +151,22 @@ def commit_and_push(message: str) -> None:
         print("[tv-improve] No changes to commit")
         return
     subprocess.run(["git", "commit", "-m", message], cwd=REPO_ROOT, check=True)
+
+    # Reward gate: push a throwaway branch and open an automerge PR instead of
+    # pushing directly to main — the full CI suite must pass before anything lands.
+    run_id = os.environ.get("GITHUB_RUN_ID") or __import__("datetime").datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    run_branch = f"tv-improver/run-{run_id}"
+    # Rename the current local branch — the commit already lives here
+    subprocess.run(["git", "checkout", "-B", run_branch], cwd=REPO_ROOT, capture_output=True)
     for delay in [2, 4, 8, 16]:
         result = subprocess.run(
-            ["git", "push", "-u", "origin", BRANCH],
+            ["git", "push", "-u", "origin", run_branch],
             cwd=REPO_ROOT,
         )
         if result.returncode == 0:
             break
         import time; time.sleep(delay)
+    _open_reward_gated_pr(run_branch, improvements)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -190,12 +219,12 @@ def main() -> None:
     git_config()
     improvements_str = ", ".join(improvements) if improvements else "signal logic"
     commit_msg = f"feat(tv-indicators): SOTA upgrade — {improvements_str}"
-    commit_and_push(commit_msg)
+    commit_and_push(commit_msg, improvements)
 
     summary = f"✅ *TV Indicator Agent:* Upgraded 12 strategies\n"
     if improvements:
         summary += "Improvements: " + " | ".join(f"`{i}`" for i in improvements) + "\n"
-    summary += f"_{len(improved_code)} chars_ → committed to `{BRANCH}`"
+    summary += f"_{len(improved_code)} chars_ → reward-gated PR opened (automerge label)"
     print(summary)
     slack("#desk-tv-indicators", summary)
 

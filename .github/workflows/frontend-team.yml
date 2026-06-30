@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +54,8 @@ jobs:
           GIT_AUTHOR_EMAIL: "frontend-ai@quantedge.io"
           GIT_COMMITTER_NAME: "QuantEdge-Frontend-AI[bot]"
           GIT_COMMITTER_EMAIL: "frontend-ai@quantedge.io"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: python .github/scripts/frontend_team.py
 
       - name: TypeScript check
