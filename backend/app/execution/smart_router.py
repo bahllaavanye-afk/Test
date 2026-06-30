@@ -10,6 +10,7 @@ Decision logic:
 
 All orders pass through RiskManager.check_order() before execution.
 """
+import time
 from dataclasses import asdict
 
 from app.brokers.base import OrderRequest, OrderResult, AbstractBroker
@@ -36,12 +37,16 @@ class SmartOrderRouter:
         self.broker = broker
         self.slippage_tracker = slippage_tracker
         self.risk_manager = risk_manager
+        self._signal_count = 0  # tracks number of execute calls (signals)
 
     async def execute(self, request: OrderRequest, signal_price: float | None = None) -> OrderResult | None:
         """Route order to the optimal execution algorithm.
 
         Returns None (and logs a warning) if the risk manager blocks the order.
         """
+        start_time = time.monotonic()
+        self._signal_count += 1
+
         # ── Risk gate ────────────────────────────────────────────────────────
         if self.risk_manager is not None:
             decision = await self.risk_manager.check_order(request)
@@ -89,6 +94,24 @@ class SmartOrderRouter:
 
         if self.slippage_tracker:
             await self.slippage_tracker.record_fill(request, result)
+
+        # ── Monitoring ────────────────────────────────────────────────────────
+        exec_time = time.monotonic() - start_time
+        pnl = None
+        if result and signal_price is not None and result.filled_qty and result.avg_fill_price:
+            pnl = (result.avg_fill_price - signal_price) * result.filled_qty
+
+        logger.info(
+            "Order execution completed",
+            symbol=request.symbol,
+            algorithm=algo,
+            execution_time_seconds=round(exec_time, 4),
+            filled_qty=result.filled_qty if result else 0,
+            avg_fill_price=result.avg_fill_price if result else None,
+            signal_price=signal_price,
+            pnl=pnl,
+            total_signals=self._signal_count,
+        )
 
         return result
 
