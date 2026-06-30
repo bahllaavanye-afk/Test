@@ -13,13 +13,14 @@ on:
 
 jobs:
   improve:
-    name: Gemini improves 5 files and commits
+    name: Gemini improves files and opens a reward-gated PR
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -61,13 +62,9 @@ jobs:
           PYTHONPATH:         ${{ github.workspace }}/backend
         run: python .github/scripts/continuous_improver.py
 
-      - name: Push commits
-        continue-on-error: true
-        run: |
-          for i in 1 2 3 4; do
-            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
-          done
-          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true
+      # NOTE: the script now pushes a throwaway `improver/run-*` branch and opens an
+      # `automerge` PR (reward gate) instead of pushing to main. The full CI suite must
+      # pass before anything lands — no more unvalidated direct-to-main commits.
       - name: Post to step summary
         if: always()
         run: |
