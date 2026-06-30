@@ -73,8 +73,12 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "cleanup on api/v1/market_data.py: success \u2014 tests green",
+    "cleanup on test/unit/test_breakout.py: success \u2014 tests green",
+    "cleanup on strategies/manual/fifty_two_week_high.py: success \u2014 tests green",
+    "cleanup on ml/models/mamba_trader.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-06-30T21:58:15.768892+00:00",
   "total": 26
 }
