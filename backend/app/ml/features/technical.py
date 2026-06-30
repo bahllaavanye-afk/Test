@@ -1,13 +1,73 @@
 """
 Technical indicator feature computation using pandas-ta.
-All indicators use only past data (no lookahead).
+
+All indicators are computed using only past data (no lookahead) to ensure
+that the resulting features are suitable for training predictive models
+or for live trading. The function operates on a pandas DataFrame that
+contains at least a ``close`` price series and optionally ``high``, ``low``
+and ``volume`` series. Missing columns default to the ``close`` series (for
+``high``/``low``) or a constant series of ones (for ``volume``).
+
+The implementation mirrors the original code base and adds no new
+behaviour; it merely enriches the DataFrame with a collection of common
+technical features such as returns, volatility, EMA distance, RSI, MACD,
+Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 """
-import pandas as pd
-import app.ml.features.pandas_ta_compat as ta
+
+from __future__ import annotations
+
 import numpy as np
+import pandas as pd
+
+import app.ml.features.pandas_ta_compat as ta
 
 
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute a suite of technical indicators and append them as new columns
+    to a copy of the input DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input price DataFrame. Must contain a ``close`` column. Optional
+        columns are ``high``, ``low`` and ``volume``. Missing optional columns
+        are filled with sensible defaults (e.g., ``high`` and ``low`` default
+        to ``close``; ``volume`` defaults to a series of ones).
+
+    Returns
+    -------
+    pd.DataFrame
+        A new DataFrame containing the original columns plus the following
+        technical feature columns:
+
+        - ``returns_{n}`` : Percentage change over *n* periods for n in
+          ``[1, 5, 10, 21]``.
+        - ``vol_{n}`` : Annualised volatility (rolling std of log returns)
+          for n in ``[5, 21, 63]``.
+        - ``ema_{span}_diff`` : Normalised distance between price and its EMA
+          for spans 9, 21, 50.
+        - ``rsi_14``, ``rsi_21`` : Normalised RSI values.
+        - ``macd``, ``macd_signal``, ``macd_hist`` : Normalised MACD components.
+        - ``bb_upper_dist``, ``bb_lower_dist``, ``bb_width`` : Bollinger
+          Band distances and width.
+        - ``obv_change`` : 5‑period percentage change of On‑Balance Volume.
+        - ``volume_ratio`` : Current volume divided by its 20‑period moving
+          average.
+        - ``atr_14``, ``atr_pct`` : Average True Range and its percentage of
+          price.
+        - ``stoch_k``, ``stoch_d`` : Normalised Stochastic %K and %D.
+        - ``adx`` : Normalised Average Directional Index.
+
+    Notes
+    -----
+    * All calculations are performed on a copy of ``df`` to avoid mutating
+      the original input.
+    * Small epsilon values (``1e-9``) are added to denominators to avoid
+      division‑by‑zero errors.
+    * The function relies on the ``pandas_ta_compat`` wrapper which provides
+      a stable API for the underlying ``pandas‑ta`` library.
+    """
     df = df.copy()
     close = df["close"]
     high = df.get("high", close)
