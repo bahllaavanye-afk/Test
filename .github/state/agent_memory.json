@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-30T00:02:07.380204+00:00",
+  "last_updated": "2026-06-30T20:29:53.896301+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -286,7 +286,12 @@
     "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/models/lstm.py: tests=pass",
     "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/features/technical.py: tests=pass",
     "[continuous_improver @ 2026-06-30T00:02] docstrings on execution/limit_first.py: tests=pass",
-    "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass"
+    "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T20:28] edge_cases on api/v1/orders.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T20:28] edge_cases on strategies/manual/open_close_revert.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T20:28] edge_cases on strategies/ml_enhanced/ml_mean_reversion.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T20:29] edge_cases on ml/features/sentiment.py: tests=pass",
+    "[continuous_improver @ 2026-06-30T20:29] edge_cases on execution/position_exit.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -517,6 +522,24 @@
       "reason": "syntax check failed",
       "improvement_type": "strategy_logic",
       "timestamp": "2026-06-29T22:37:12.332723+00:00"
+    },
+    {
+      "file": "backend/app/tasks/research_scientist.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-30T20:28:37.586536+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_bug_fixes.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-30T20:28:41.212326+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/hmm_regime.py",
+      "reason": "syntax check failed",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-06-30T20:29:49.564222+00:00"
     }
   ],
   "improvement_stats": {
@@ -551,6 +574,11 @@
       "test_pass": 10
     },
     "schemas": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "edge_cases": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5
