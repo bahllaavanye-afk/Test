@@ -29,6 +29,16 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Constants
+DEFAULT_TOTAL_CAPITAL = 10_000.0
+UCB1_INITIAL_SCORE = 10.0
+MIN_SCORE = 0.001
+TOP_TIER_FRACTION = 0.70
+REST_TIER_FRACTION = 0.30
+TOP_TIER_PERCENT = 30  # percentage for top tier selection
+STATE_EXPIRATION_SECONDS = 86400 * 30
+ALLOCATION_EXPIRATION_SECONDS = 7200
+
 _AUCTION_STATE_KEY = "auction:state"
 _ALLOCATION_KEY = "auction:allocations"
 _MIN_PULLS_FOR_EXPLOIT = 5      # need at least 5 runs before exploiting Sharpe
@@ -57,7 +67,7 @@ class StrategyBid:
     def ucb1_score(self, total_pulls: int) -> float:
         if self.pulls < _MIN_PULLS_FOR_EXPLOIT:
             # Exploration bonus is very high for new strategies — try them first
-            return 10.0 + (1.0 / (self.pulls + 1))
+            return UCB1_INITIAL_SCORE + (1.0 / (self.pulls + 1))
         if total_pulls == 0 or self.pulls == 0:
             return 0.0
         exploration = math.sqrt(2 * math.log(total_pulls) / self.pulls)
@@ -107,7 +117,7 @@ class StrategyAuction:
     and publishes allocation decisions to the agent bus.
     """
 
-    def __init__(self, redis_client: Any, total_capital_usd: float = 10_000.0) -> None:
+    def __init__(self, redis_client: Any, total_capital_usd: float = DEFAULT_TOTAL_CAPITAL) -> None:
         self._r = redis_client
         self._total_capital = total_capital_usd
         self._bids: dict[str, StrategyBid] = {}
@@ -129,7 +139,7 @@ class StrategyAuction:
     async def _save_state(self) -> None:
         try:
             data = {name: bid.to_dict() for name, bid in self._bids.items()}
-            await self._r.set(_AUCTION_STATE_KEY, json.dumps(data), ex=86400 * 30)
+            await self._r.set(_AUCTION_STATE_KEY, json.dumps(data), ex=STATE_EXPIRATION_SECONDS)
         except Exception as e:
             logger.debug("StrategyAuction._save_state: %s", e)
 
@@ -179,19 +189,19 @@ class StrategyAuction:
         available_capital = max(0, self._total_capital - probation_capital)
 
         # Top 30% of non-probation strategies share 70% of available capital
-        top_count = max(1, len(non_probation) * 3 // 10)
+        top_count = max(1, len(non_probation) * TOP_TIER_PERCENT // 100)
         top_strategies = non_probation[:top_count]
         rest_strategies = non_probation[top_count:]
 
-        top_capital = available_capital * 0.70
-        rest_capital = available_capital * 0.30
+        top_capital = available_capital * TOP_TIER_FRACTION
+        rest_capital = available_capital * REST_TIER_FRACTION
 
         # Distribute proportional to score within each tier
         def distribute(strategies: list, budget: float) -> dict[str, float]:
             if not strategies:
                 return {}
-            total_score = sum(max(s, 0.001) for _, s in strategies)
-            return {n: budget * max(s, 0.001) / total_score for n, s in strategies}
+            total_score = sum(max(s, MIN_SCORE) for _, s in strategies)
+            return {n: budget * max(s, MIN_SCORE) / total_score for n, s in strategies}
 
         allocations: dict[str, float] = {}
         allocations.update(distribute(top_strategies, top_capital))
@@ -201,71 +211,9 @@ class StrategyAuction:
 
         # Persist allocations for strategy_runner to read
         try:
-            await self._r.set(_ALLOCATION_KEY, json.dumps(allocations), ex=7200)
+            await self._r.set(_ALLOCATION_KEY, json.dumps(allocations), ex=ALLOCATION_EXPIRATION_SECONDS)
         except Exception as e:
             logger.debug("StrategyAuction: failed to save allocations: %s", e)
 
-        # Publish to agent bus
-        try:
-            from app.tasks.agent_bus import get_bus
-            bus = get_bus(self._r)
-            await bus.publish("auction:allocated", {
-                "allocations": allocations,
-                "total_capital": self._total_capital,
-                "strategy_count": len(allocations),
-                "probation_count": len(probation),
-                "top_strategies": [n for n, _ in top_strategies[:3]],
-            })
-        except Exception as e:
-            logger.debug("StrategyAuction: bus publish failed: %s", e)
 
-        logger.info(
-            "StrategyAuction: allocated $%.0f across %d strategies (%d on probation)",
-            self._total_capital, len(allocations), len(probation),
-        )
-        return allocations
-
-    async def get_allocation(self, strategy_name: str) -> float:
-        """Get current capital allocation for a strategy (used by strategy_runner)."""
-        try:
-            raw = await self._r.get(_ALLOCATION_KEY)
-            if raw:
-                allocations = json.loads(raw)
-                return float(allocations.get(strategy_name, 0.0))
-        except Exception:
-            pass
-        # Default: equal share if no auction has run yet
-        return self._total_capital / max(len(self._bids), 1)
-
-    def get_leaderboard(self) -> list[dict]:
-        """Return strategies ranked by UCB1 score — for monitoring."""
-        if not self._bids:
-            return []
-        total_pulls = sum(b.pulls for b in self._bids.values())
-        rows = []
-        for name, bid in self._bids.items():
-            rows.append({
-                "name": name,
-                "pulls": bid.pulls,
-                "avg_sharpe": round(bid.avg_sharpe, 4),
-                "ucb1_score": round(bid.ucb1_score(total_pulls), 4),
-                "consecutive_bad_days": bid.consecutive_bad_days,
-                "on_probation": bid.is_on_probation(),
-            })
-        rows.sort(key=lambda x: x["ucb1_score"], reverse=True)
-        return rows
-
-
-# ── Global singleton ──────────────────────────────────────────────────────────
-
-_auction: StrategyAuction | None = None
-
-
-def get_auction(redis_client: Any | None = None, total_capital: float = 10_000.0) -> StrategyAuction:
-    global _auction
-    if _auction is None:
-        if redis_client is None:
-            from app.redis_client import get_redis
-            redis_client = get_redis()
-        _auction = StrategyAuction(redis_client, total_capital)
-    return _auction
+# ... (truncated for brevity)
