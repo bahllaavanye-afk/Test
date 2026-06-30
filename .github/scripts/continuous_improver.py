@@ -212,6 +212,28 @@ def git_revert_file(file_path: str, original_content: str):
         f.write(original_content)
     print(f"  ↩ Reverted {file_path} (tests failed)")
 
+def _open_reward_gated_pr(branch: str, n_files: int, improvement_type: str) -> None:
+    """Reward gate: open an `automerge` PR so the FULL CI suite must pass before the
+    improver's changes land on main. Replaces the old direct-to-main push that kept
+    breaking the app (slots=True, @root_validator, dead scheduler, ...)."""
+    title = f"improve({improvement_type}): autonomous run — {n_files} file(s)"
+    body = (
+        "Automated continuous-improvement run.\n\n"
+        "**Reward-gated:** this PR only lands if the full CI suite passes — it is "
+        "auto-merged via the `automerge` label (`auto-merge.yml`) once every check is "
+        "green. This replaces direct-to-main commits, which repeatedly broke the app.\n"
+    )
+    res = subprocess.run(
+        ["gh", "pr", "create", "--base", "main", "--head", branch,
+         "--title", title, "--body", body, "--label", "automerge"],
+        capture_output=True, text=True, env={**os.environ},
+    )
+    if res.returncode == 0:
+        print(f"✓ Opened reward-gated PR for {branch}: {res.stdout.strip()}")
+    else:
+        print(f"PR creation failed (rc={res.returncode}): {res.stderr.strip()}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -228,6 +250,11 @@ def main():
 
     # Pull latest state first
     subprocess.run(["git", "pull", "--rebase", "--quiet"], capture_output=True)
+
+    # Reward gate: do ALL work on a throwaway branch — never commit to main directly.
+    run_id = os.environ.get("GITHUB_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    run_branch = f"improver/run-{run_id}"
+    subprocess.run(["git", "checkout", "-B", run_branch], capture_output=True)
 
     while improved_count < n_files and attempts < 10:
         attempts += 1
@@ -296,7 +323,7 @@ def main():
 
     save_memory(mem)
 
-    # Commit updated memory
+    # Commit updated memory onto the run branch (not main)
     try:
         subprocess.run(["git", "add", str(STATE_FILE), str(SKILLS_FILE)], capture_output=True)
         subprocess.run(["git", "commit", "-m", f"state: continuous_improver memory update — {improved_count} improvements",
@@ -306,9 +333,17 @@ def main():
                             "GIT_AUTHOR_EMAIL": "ai@quantedge.ai",
                             "GIT_COMMITTER_NAME": "QuantEdge AI",
                             "GIT_COMMITTER_EMAIL": "ai@quantedge.ai"})
-        subprocess.run(["git", "push"], capture_output=True)
     except Exception as e:
-        print(f"Memory push error: {e}")
+        print(f"Memory commit error: {e}")
+
+    # ── Reward gate ────────────────────────────────────────────────────────────
+    # Push the run branch and open an automerge PR — the full CI suite must pass
+    # before anything lands on main. No more unvalidated direct-to-main pushes.
+    if improved_count > 0:
+        subprocess.run(["git", "push", "-u", "origin", run_branch], capture_output=True)
+        _open_reward_gated_pr(run_branch, improved_count, improvement_type)
+    else:
+        print("No improvements this run — nothing to gate.")
 
     print(f"\n✓ Committed {improved_count} improvements (type: {improvement_type})")
 

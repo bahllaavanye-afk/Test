@@ -28,8 +28,10 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
       pass (no human merge). Removes the last manual step for the autonomous loops/employees.
 - [ ] **[P1] Employee-health hard gate** — make the agent smoke test page on failure; verify
       `agent-health-*`/`system-status` actually alert when an employee is stale.
-- [ ] **[P1] Reward-gate self-improvement** — route `continuous_improver` through `reward-gate.yml` +
-      draft PR + tests instead of committing straight to `main`.
+- [x] **[P1] Reward-gate self-improvement** — `continuous_improver.py` now pushes a throwaway
+      `improver/run-*` branch and opens an `automerge` PR instead of pushing to `main`. The full CI
+      suite must pass before changes land (auto-merge.yml). Stops the unvalidated direct-to-main
+      commits that broke the app 3× (slots=True, @root_validator, dead scheduler) in one session.
 - [ ] **[P1] Wire Alpaca crypto into `price_feed`** for live quotes (Binance still geo-blocked for live).
 - [ ] **[P1] Narrow 435 broad `except Exception`** — start with `tasks/`, `brokers/`, `llm`; add logging.
 - [ ] **[P1] Audit stale provider model IDs** in `llm_common` (Cerebras/NVIDIA).
