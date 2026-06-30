@@ -73,8 +73,13 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "edge_cases on tasks/self_improving_loop.py: success \u2014 tests green",
+    "edge_cases on api/v1/comparison.py: success \u2014 tests green",
+    "edge_cases on test/unit/test_avellaneda_stoikov_mm.py: success \u2014 tests green",
+    "edge_cases on strategies/manual/mean_reversion.py: success \u2014 tests green",
+    "edge_cases on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-06-30T08:28:35.901470+00:00",
   "total": 26
 }
