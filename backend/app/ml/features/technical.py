@@ -12,14 +12,25 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+
+Structured logging is added at INFO level to capture key metrics:
+- ``signal_count``: number of technical feature columns added.
+- ``execution_time_secs``: time taken to compute all features.
+- ``pnl``: simple price return proxy (close[-1] / close[0] - 1).
 """
 
 from __future__ import annotations
+
+import logging
+import time
+from typing import Set
 
 import numpy as np
 import pandas as pd
 
 import app.ml.features.pandas_ta_compat as ta
+
+_logger = logging.getLogger(__name__)
 
 
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -38,26 +49,8 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        A new DataFrame containing the original columns plus the following
-        technical feature columns:
-
-        - ``returns_{n}`` : Percentage change over *n* periods for n in
-          ``[1, 5, 10, 21]``.
-        - ``vol_{n}`` : Annualised volatility (rolling std of log returns)
-          for n in ``[5, 21, 63]``.
-        - ``ema_{span}_diff`` : Normalised distance between price and its EMA
-          for spans 9, 21, 50.
-        - ``rsi_14``, ``rsi_21`` : Normalised RSI values.
-        - ``macd``, ``macd_signal``, ``macd_hist`` : Normalised MACD components.
-        - ``bb_upper_dist``, ``bb_lower_dist``, ``bb_width`` : Bollinger
-          Band distances and width.
-        - ``obv_change`` : 5‑period percentage change of On‑Balance Volume.
-        - ``volume_ratio`` : Current volume divided by its 20‑period moving
-          average.
-        - ``atr_14``, ``atr_pct`` : Average True Range and its percentage of
-          price.
-        - ``stoch_k``, ``stoch_d`` : Normalised Stochastic %K and %D.
-        - ``adx`` : Normalised Average Directional Index.
+        A new DataFrame containing the original columns plus the technical
+        feature columns described in the module docstring.
 
     Notes
     -----
@@ -68,6 +61,9 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     * The function relies on the ``pandas_ta_compat`` wrapper which provides
       a stable API for the underlying ``pandas‑ta`` library.
     """
+    start_time = time.perf_counter()
+    original_columns: Set[str] = set(df.columns)
+
     df = df.copy()
     close = df["close"]
     high = df.get("high", close)
@@ -138,5 +134,24 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     adx_df = ta.adx(high, low, close, length=14)
     if adx_df is not None:
         df["adx"] = adx_df["ADX_14"] / 100.0
+
+    # Metrics for logging
+    new_columns = set(df.columns) - original_columns
+    signal_count = len(new_columns)
+    execution_time_secs = time.perf_counter() - start_time
+    # Simple P&L proxy: total return of the close series
+    if len(close) > 1 and close.iloc[0] != 0:
+        pnl = float(close.iloc[-1] / close.iloc[0] - 1)
+    else:
+        pnl = 0.0
+
+    _logger.info(
+        "Technical features added",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_secs": execution_time_secs,
+            "pnl": pnl,
+        },
+    )
 
     return df
