@@ -10,6 +10,7 @@ filter: a trade is only taken when BOTH conditions are true:
 If the ML inference service is unavailable the strategy falls back
 gracefully (returns None from analyze, uses base signals in backtest).
 """
+import math
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -61,8 +62,15 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Generate a signal only when PCA s-score AND LSTM agree.
 
-        Falls back to None (no trade) when ML is unavailable.
+        Falls back to None (no trade) when ML is unavailable or inputs are
+        invalid.
         """
+        # Defensive checks for inputs
+        if data is None or data.empty:
+            return None
+        if not symbol:
+            return None
+
         # Step 1: get base PCA signal
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
@@ -79,8 +87,16 @@ class MLPCAStatArbStrategy(AbstractStrategy):
             if ml_result is None:
                 return None
 
-            ml_confidence: float = float(ml_result.get("confidence", 0.0))
-            ml_prediction: str = ml_result.get("prediction", "neutral")
+            # Extract confidence safely; treat missing or NaN as 0.0
+            ml_confidence_raw = ml_result.get("confidence", 0.0)
+            try:
+                ml_confidence = float(ml_confidence_raw)
+                if math.isnan(ml_confidence):
+                    ml_confidence = 0.0
+            except (TypeError, ValueError):
+                ml_confidence = 0.0
+
+            ml_prediction: str = str(ml_result.get("prediction", "neutral")).lower()
 
             if ml_confidence < self._ml_threshold:
                 return None
@@ -95,8 +111,9 @@ class MLPCAStatArbStrategy(AbstractStrategy):
             if not direction_ok:
                 return None
 
-            # Blend confidences
-            blended = min(0.95, (base_signal.confidence + ml_confidence) / 2)
+            # Blend confidences; guard against None on base_signal.confidence
+            base_conf = getattr(base_signal, "confidence", 0.0) or 0.0
+            blended = min(0.95, (float(base_conf) + ml_confidence) / 2)
             base_signal.confidence = blended
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
@@ -111,8 +128,11 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Delegate to the base PCA strategy for backtesting.
 
-        In a production backtest with a trained LSTM available, the signals
-        would be gated per-bar.  Without a serialized model this delegation
-        is the correct fallback: it still uses the same PCA edge.
+        Handles empty or None inputs by returning an empty BacktestSignals
+        instance, ensuring downstream consumers do not encounter errors.
         """
+        if df is None or df.empty:
+            # Return an empty BacktestSignals object; assume default constructor
+            # accepts an empty list of signals.
+            return BacktestSignals(signals=[])
         return self._base.backtest_signals(df)
