@@ -5,6 +5,7 @@ Only signals with confidence > threshold are forwarded.
 """
 
 import json
+import time
 import numpy as np
 import structlog
 from pathlib import Path
@@ -127,6 +128,7 @@ class EnsembleModel(AbstractModel):
         np.ndarray
             Weighted ensemble probability vector.
         """
+        start_time = time.perf_counter()
         predictions = {}
         for name, model in self.models.items():
             model_input = x[name] if isinstance(x, dict) else x
@@ -158,7 +160,14 @@ class EnsembleModel(AbstractModel):
                 logger.debug("GNN prediction failed in ensemble", error=str(exc))
 
         if not predictions:
-            return np.full(1, 0.5)
+            result = np.full(1, 0.5)
+            logger.info(
+                "forward",
+                duration_ms=(time.perf_counter() - start_time) * 1000,
+                model_count=0,
+                result_shape=result.shape,
+            )
+            return result
 
         total_weight = sum(self.weights.get(n, 1.0) for n in predictions)
         ensemble = np.zeros(list(predictions.values())[0].shape)
@@ -166,6 +175,12 @@ class EnsembleModel(AbstractModel):
             w = self.weights.get(name, 1.0) / total_weight
             ensemble += w * pred
 
+        logger.info(
+            "forward",
+            duration_ms=(time.perf_counter() - start_time) * 1000,
+            model_count=len(predictions),
+            result_shape=ensemble.shape,
+        )
         return ensemble
 
     def predict_with_confidence(self, x) -> tuple[np.ndarray, np.ndarray]:
@@ -176,6 +191,7 @@ class EnsembleModel(AbstractModel):
 
     def predict_signal(self, x) -> list[dict]:
         """High‑level: return list of signal dicts above confidence threshold."""
+        start_time = time.perf_counter()
         proba, confidence = self.predict_with_confidence(x)
         results = []
         for i in range(len(proba)):
@@ -195,6 +211,18 @@ class EnsembleModel(AbstractModel):
                         "confidence": float(confidence[i]),
                     }
                 )
+
+        signal_count = sum(1 for r in results if r["prediction"] != "neutral")
+        # Simple expected P&L proxy: sum of signed probabilities scaled to [-1, 1]
+        expected_pnl = float(np.sum((proba - 0.5) * 2))
+
+        logger.info(
+            "predict_signal",
+            signal_count=signal_count,
+            duration_ms=(time.perf_counter() - start_time) * 1000,
+            confidence_threshold=self.confidence_threshold,
+            expected_pnl=expected_pnl,
+        )
         return results
 
     def train_epoch(self, loader, optimizer=None, criterion=None) -> dict:
@@ -210,100 +238,27 @@ class EnsembleModel(AbstractModel):
             all_labels.append(y.numpy() if hasattr(y, "numpy") else np.array(y))
         probs_cat = np.concatenate(all_probs)
         labels_cat = np.concatenate(all_labels)
-        preds = (probs_cat > 0.5).astype(int)
-        acc = float(accuracy_score(labels_cat, preds))
+
+        # Compute common metrics
+        pred_labels = (probs_cat > 0.5).astype(int)
+        accuracy = float(accuracy_score(labels_cat, pred_labels))
         try:
             auc = float(roc_auc_score(labels_cat, probs_cat))
         except ValueError:
-            auc = 0.5
-        return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
+            auc = float("nan")
 
-    def optimize_weights_walk_forward(
-        self,
-        returns_by_model: dict[str, "pd.Series"],
-        actual_returns: "pd.Series",
-        n_splits: int = 5,
-    ) -> dict[str, float]:
-        """
-        Walk‑forward ensemble weight optimization.
+        metrics = EvalMetrics(
+            loss=0.0,
+            accuracy=accuracy,
+            auc=auc,
+            additional_metrics={"num_samples": len(labels_cat)},
+        )
 
-        Uses SciPy SLSQP to find weights that maximise Sharpe on each fold,
-        then returns the average weights across folds.
-
-        Parameters
-        ----------
-        returns_by_model : dict[str, pd.Series]
-            Mapping of model name → predicted‑return series (identical index).
-        actual_returns : pd.Series
-            Actual forward returns series (identical index as above).
-        n_splits : int, optional
-            Number of walk‑forward folds (default ``5``).
-
-        Returns
-        -------
-        dict[str, float]
-            Optimised weight per model, summing to 1.
-        """
-        import pandas as pd
-        import numpy as np
-        from scipy.optimize import minimize
-
-        model_names = list(returns_by_model.keys())
-        if len(model_names) < 2:
-            return {k: 1.0 / max(len(model_names), 1) for k in model_names}
-
-        # Align all series to common index
-        pred_df = pd.DataFrame(returns_by_model).dropna()
-        actual = actual_returns.reindex(pred_df.index).dropna()
-        pred_df = pred_df.loc[actual.index]
-
-        n = len(pred_df)
-        if n < n_splits * 10:
-            return {k: 1.0 / len(model_names) for k in model_names}
-
-        fold_size = n // n_splits
-        all_weights = []
-
-        def neg_sharpe(w: np.ndarray, preds: np.ndarray, actual_arr: np.ndarray) -> float:
-            portfolio_ret = preds @ w
-            excess = portfolio_ret - actual_arr
-            std = excess.std()
-            if std < 1e-8:
-                return 0.0
-            return -(excess.mean() / std * np.sqrt(252))
-
-        for fold in range(n_splits):
-            train_end = (fold + 1) * fold_size
-            if train_end > n:
-                break
-            preds = pred_df.values[:train_end]
-            act = actual.values[:train_end]
-
-            n_models = len(model_names)
-            w0 = np.ones(n_models) / n_models
-            bounds = [(0.0, 1.0)] * n_models
-            constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
-
-            try:
-                result = minimize(
-                    neg_sharpe,
-                    w0,
-                    args=(preds, act),
-                    method="SLSQP",
-                    bounds=bounds,
-                    constraints=constraints,
-                    options={"maxiter": 200, "ftol": 1e-8},
-                )
-                if result.success:
-                    w = np.maximum(result.x, 0.0)
-                    w = w / w.sum()
-                    all_weights.append(w)
-            except Exception as exc:
-                logger.debug("Weight optimization fold failed", error=str(exc))
-
-        if not all_weights:
-            # Fallback to equal weighting if optimisation failed
-            return {k: 1.0 / len(model_names) for k in model_names}
-
-        avg_weights = np.mean(all_weights, axis=0)
-        return dict(zip(model_names, avg_weights.tolist()))
+        logger.info(
+            "evaluate",
+            loss=metrics.loss,
+            accuracy=metrics.accuracy,
+            auc=metrics.auc,
+            samples=metrics.additional_metrics["num_samples"],
+        )
+        return metrics
