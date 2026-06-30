@@ -33,7 +33,13 @@ class MeanReversionStrategy(AbstractStrategy):
         self.rsi_overbought = effective["rsi_overbought"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        if "close" not in data.columns or len(data) < self.bb_period + 5:
+        # Guard against None or empty input
+        if data is None or data.empty:
+            return None
+        if "close" not in data.columns:
+            return None
+        # Ensure enough data points for indicators
+        if len(data) < self.bb_period + 5:
             return None
 
         close = data["close"]
@@ -43,41 +49,81 @@ class MeanReversionStrategy(AbstractStrategy):
         if bb is None or rsi is None:
             return None
 
-        lower = bb[f"BBL_{self.bb_period}_{self.bb_std}"].iloc[-1]
-        upper = bb[f"BBU_{self.bb_period}_{self.bb_std}"].iloc[-1]
-        mid = bb[f"BBM_{self.bb_period}_{self.bb_std}"].iloc[-1]
-        price = close.iloc[-1]
-        rsi_val = rsi.iloc[-1]
+        # Verify required Bollinger columns exist
+        lower_col = f"BBL_{self.bb_period}_{self.bb_std}"
+        upper_col = f"BBU_{self.bb_period}_{self.bb_std}"
+        mid_col = f"BBM_{self.bb_period}_{self.bb_std}"
+        for col in (lower_col, upper_col, mid_col):
+            if col not in bb.columns:
+                return None
+
+        try:
+            lower = bb[lower_col].iloc[-1]
+            upper = bb[upper_col].iloc[-1]
+            mid = bb[mid_col].iloc[-1]
+            price = close.iloc[-1]
+            rsi_val = rsi.iloc[-1]
+        except (IndexError, KeyError, TypeError):
+            return None
+
+        if pd.isna(lower) or pd.isna(upper) or pd.isna(mid) or pd.isna(price) or pd.isna(rsi_val):
+            return None
 
         if price <= lower and rsi_val < self.rsi_oversold:
-            pct_below = (lower - price) / lower
+            pct_below = (lower - price) / lower if lower != 0 else 0
             confidence = min(0.88, 0.55 + pct_below * 5)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket, target_price=mid,
-                          metadata={"rsi": round(rsi_val, 2), "bb_position": "lower"})
+            return Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                target_price=mid,
+                metadata={"rsi": round(rsi_val, 2), "bb_position": "lower"},
+            )
 
         if price >= upper and rsi_val > self.rsi_overbought:
-            pct_above = (price - upper) / upper
+            pct_above = (price - upper) / upper if upper != 0 else 0
             confidence = min(0.88, 0.55 + pct_above * 5)
-            return Signal(symbol=symbol, side="sell", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket, target_price=mid,
-                          metadata={"rsi": round(rsi_val, 2), "bb_position": "upper"})
+            return Signal(
+                symbol=symbol,
+                side="sell",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                target_price=mid,
+                metadata={"rsi": round(rsi_val, 2), "bb_position": "upper"},
+            )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        # Guard against None or empty DataFrame
+        if df is None or df.empty or "close" not in df.columns:
+            empty_series = pd.Series(False, index=df.index if df is not None else [])
+            return BacktestSignals(entries=empty_series, exits=empty_series)
+
         close = df["close"]
         bb = ta.bbands(close, length=self.bb_period, std=self.bb_std)
         rsi = ta.rsi(close, length=self.rsi_period)
 
+        # If indicators could not be computed, return empty signals
         if bb is None or rsi is None:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
+            empty_series = pd.Series(False, index=df.index)
+            return BacktestSignals(entries=empty_series, exits=empty_series)
 
-        lower = bb[f"BBL_{self.bb_period}_{self.bb_std}"].shift(1)
-        upper = bb[f"BBU_{self.bb_period}_{self.bb_std}"].shift(1)
-        mid = bb[f"BBM_{self.bb_period}_{self.bb_std}"].shift(1)
+        lower_col = f"BBL_{self.bb_period}_{self.bb_std}"
+        upper_col = f"BBU_{self.bb_period}_{self.bb_std}"
+        mid_col = f"BBM_{self.bb_period}_{self.bb_std}"
+        required_cols = {lower_col, upper_col, mid_col}
+        if not required_cols.issubset(bb.columns):
+            empty_series = pd.Series(False, index=df.index)
+            return BacktestSignals(entries=empty_series, exits=empty_series)
+
+        lower = bb[lower_col].shift(1)
+        upper = bb[upper_col].shift(1)
+        mid = bb[mid_col].shift(1)
         rsi_s = rsi.shift(1)
         close_s = close.shift(1)
 
