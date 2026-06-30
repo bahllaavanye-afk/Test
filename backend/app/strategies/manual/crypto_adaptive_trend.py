@@ -21,10 +21,16 @@ within the crypto universe. Position sizing inversely proportional to realized v
 """
 from __future__ import annotations
 
+import logging
+import time
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+logger = logging.getLogger(__name__)
 
 
 class CryptoAdaptiveTrendStrategy(AbstractStrategy):
@@ -36,12 +42,22 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
     tick_interval_seconds = 86_400.0  # daily rebalance
 
     # Alpaca crypto symbols for the tracked universe (spot, no perps needed)
-    UNIVERSE = ["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "LINK/USD",
-                "DOT/USD", "MATIC/USD", "ALGO/USD", "UNI/USD", "AAVE/USD"]
+    UNIVERSE = [
+        "BTC/USD",
+        "ETH/USD",
+        "SOL/USD",
+        "AVAX/USD",
+        "LINK/USD",
+        "DOT/USD",
+        "MATIC/USD",
+        "ALGO/USD",
+        "UNI/USD",
+        "AAVE/USD",
+    ]
 
-    TARGET_VOL = 0.40     # 40% annualized vol target
-    MIN_SIGNAL = 0.30     # minimum composite signal to enter (0–1 scale)
-    STOP_MULT  = 3.0      # stop loss as multiple of daily ATR
+    TARGET_VOL = 0.40  # 40% annualized vol target
+    MIN_SIGNAL = 0.30  # minimum composite signal to enter (0–1 scale)
+    STOP_MULT = 3.0  # stop loss as multiple of daily ATR
 
     DEFAULT_PARAMS = {
         "fast_ema": 21,
@@ -69,9 +85,14 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.perf_counter()
         false_series = pd.Series(False, index=df.index)
 
         if "close" not in df.columns or len(df) < 260:
+            logger.info(
+                "backtest_signals skipped: insufficient data",
+                extra={"symbol_count": len(df), "duration_sec": time.perf_counter() - start_time},
+            )
             return BacktestSignals(
                 entries=false_series,
                 exits=false_series,
@@ -83,8 +104,8 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         log_ret = np.log(close / close.shift(1))
 
         # ── Multi-horizon TSMOM signals ──────────────────────────────────────
-        mom_21  = (close / close.shift(21)  - 1).rank(pct=True)  # 1M
-        mom_63  = (close / close.shift(63)  - 1).rank(pct=True)  # 3M
+        mom_21 = (close / close.shift(21) - 1).rank(pct=True)  # 1M
+        mom_63 = (close / close.shift(63) - 1).rank(pct=True)  # 3M
         mom_252 = (close / close.shift(252) - 1).rank(pct=True)  # 12M
 
         # Equal-weight composite → maps to [-1, 1]
@@ -97,13 +118,24 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         sized_signal = raw_signal * vol_scalar
 
         # ── Entry / exit logic ───────────────────────────────────────────────
-        # shift(1): yesterday's signal determines today's position
         sig_prev = sized_signal.shift(1)
 
-        entries       = (sig_prev > self.min_signal).fillna(False).astype(bool)
-        exits         = (sig_prev <= 0.0).fillna(True).astype(bool)
+        entries = (sig_prev > self.min_signal).fillna(False).astype(bool)
+        exits = (sig_prev <= 0.0).fillna(True).astype(bool)
         short_entries = (sig_prev < -self.min_signal).fillna(False).astype(bool)
-        short_exits   = (sig_prev >= 0.0).fillna(True).astype(bool)
+        short_exits = (sig_prev >= 0.0).fillna(True).astype(bool)
+
+        # Logging key metrics
+        duration = time.perf_counter() - start_time
+        metrics: dict[str, Any] = {
+            "total_signals": int(len(df)),
+            "entry_count": int(entries.sum()),
+            "short_entry_count": int(short_entries.sum()),
+            "exit_count": int(exits.sum()),
+            "short_exit_count": int(short_exits.sum()),
+            "duration_sec": duration,
+        }
+        logger.info("backtest_signals generated", extra=metrics)
 
         return BacktestSignals(
             entries=entries,
@@ -114,14 +146,19 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
 
     async def analyze(self, df: pd.DataFrame, symbol: str) -> Signal | None:
         """Live signal — uses same logic as backtest_signals on recent bars."""
+        start_time = time.perf_counter()
         if "close" not in df.columns or len(df) < 260:
+            logger.info(
+                "analyze skipped: insufficient data",
+                extra={"symbol": symbol, "duration_sec": time.perf_counter() - start_time},
+            )
             return None
 
         close = df["close"].astype(float)
         log_ret = np.log(close / close.shift(1))
 
-        mom_21  = (close.iloc[-1] / close.iloc[-22]  - 1) if len(close) > 22  else 0.0
-        mom_63  = (close.iloc[-1] / close.iloc[-64]  - 1) if len(close) > 64  else 0.0
+        mom_21 = (close.iloc[-1] / close.iloc[-22] - 1) if len(close) > 22 else 0.0
+        mom_63 = (close.iloc[-1] / close.iloc[-64] - 1) if len(close) > 64 else 0.0
         mom_252 = (close.iloc[-1] / close.iloc[-253] - 1) if len(close) > 253 else 0.0
 
         # Rank using last 252-bar cross-section
@@ -135,13 +172,17 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         sized_signal = raw_signal * vol_scalar
 
         if abs(sized_signal) < self.min_signal:
+            logger.info(
+                "analyze produced no signal",
+                extra={"symbol": symbol, "sized_signal": sized_signal, "duration_sec": time.perf_counter() - start_time},
+            )
             return None
 
         side = "buy" if sized_signal > 0 else "sell"
         confidence = min(abs(sized_signal) / 2.0, 0.95)
         current_price = float(close.iloc[-1])
 
-        return Signal(
+        signal = Signal(
             strategy_name=self.name,
             strategy_type=self.strategy_type,
             risk_bucket=self.risk_bucket,
@@ -151,5 +192,21 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
             target_price=current_price,
             stop_loss=current_price * (0.85 if side == "buy" else 1.15),
             take_profit=None,
-            metadata={"composite_signal": round(sized_signal, 4), "rv_21d": round(rv_21, 4), "order_type": "market"},
+            metadata={
+                "composite_signal": round(sized_signal, 4),
+                "rv_21d": round(rv_21, 4),
+                "order_type": "market",
+            },
         )
+
+        logger.info(
+            "analyze generated signal",
+            extra={
+                "symbol": symbol,
+                "side": side,
+                "confidence": confidence,
+                "sized_signal": sized_signal,
+                "duration_sec": time.perf_counter() - start_time,
+            },
+        )
+        return signal
