@@ -153,6 +153,15 @@ def _compute_tf_features(tf: pd.DataFrame, tf_label: str) -> pd.DataFrame:
     return out
 
 
+# Canonical per-timeframe feature columns produced by _compute_tf_features (prefix
+# `tf_{label}`). Imported by app.ml.features.engineer; kept in sync with the function
+# above. (Restored after an unvalidated change dropped this export and broke imports.)
+_MTF_FEATURE_SUFFIXES = ("rsi", "adx", "trend", "bb_pos", "vol_ratio", "momentum", "gk_vol")
+MTF_FEATURE_COLS: list[str] = [
+    f"tf_{_tf}_{_suf}" for _tf in _TF_RULES for _suf in _MTF_FEATURE_SUFFIXES
+]
+
+
 def add_multi_timeframe_features(
     df_base: pd.DataFrame,
     timeframes: Optional[List[str]] = None,

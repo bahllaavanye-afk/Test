@@ -270,3 +270,8 @@ class iTransformer(AbstractModel, _NNModule):
         with torch.no_grad():
             logits = self.forward(X)
             return torch.sigmoid(logits)
+
+
+# Registry/import alias — the strategy registry and tests expect `iTransformerPredictor`.
+# (Restored after an unvalidated rename to `iTransformer` broke the registry name.)
+iTransformerPredictor = iTransformer
