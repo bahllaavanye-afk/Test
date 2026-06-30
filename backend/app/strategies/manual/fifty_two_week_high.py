@@ -26,14 +26,12 @@ Strategy:
   - Rebalance monthly, equal-weight, ~6-month holding period.
 """
 
-import asyncio
 from datetime import date, timedelta
 
 import httpx
 import numpy as np
 import pandas as pd
 
-from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -123,13 +121,8 @@ class FiftyTwoWeekHighStrategy(AbstractStrategy):
         if avg_dollar_vol < self.MIN_DOLLAR_VOLUME:
             return None
 
-        if ratio < self.NEAR_HIGH_THRESHOLD:
+        if ratio < self.NEAR_HIGH_THRESHOLD or ratio >= self.NEAR_HIGH_CEILING:
             return None
-        if ratio >= self.NEAR_HIGH_CEILING:
-            # at or above prior 52w high — avoid blow-off-top buys
-            return None
-        if ratio < self.BROKEN_THRESHOLD:
-            return None  # redundant given >= 0.95, but explicit
 
         # Confidence: tighter to the high → higher confidence, scaled in [0.95, 1.0)
         confidence = float(min(0.60 + 4.0 * (ratio - self.NEAR_HIGH_THRESHOLD), 0.95))
