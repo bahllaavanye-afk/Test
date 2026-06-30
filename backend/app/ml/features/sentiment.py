@@ -3,11 +3,19 @@ Market sentiment features: Fear & Greed Index + FinBERT news sentiment.
 Free APIs only. All features are lagged by 1 period to prevent lookahead.
 """
 from __future__ import annotations
+
 import asyncio
+import time
+from datetime import datetime, timezone, timedelta
+
 import httpx
 import pandas as pd
-from datetime import datetime, timezone, timedelta
 from app.utils.logging import logger
+
+
+def _log_info(event: str, **metrics) -> None:
+    """Helper to emit structured INFO logs."""
+    logger.info(event, **metrics)
 
 
 async def fetch_fear_greed_index() -> dict:
@@ -15,6 +23,7 @@ async def fetch_fear_greed_index() -> dict:
     CNN Fear & Greed Index via alternative.me API (completely free, no key needed).
     Returns current score (0=extreme fear, 100=extreme greed) + classification.
     """
+    start = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get("https://api.alternative.me/fng/?limit=30&format=json")
@@ -28,9 +37,23 @@ async def fetch_fear_greed_index() -> dict:
                 "value": int(r["value"]),
                 "classification": r["value_classification"],
             })
+        elapsed = time.perf_counter() - start
+        _log_info(
+            "fetch_fear_greed_index_success",
+            signal_count=len(result),
+            execution_time_seconds=elapsed,
+            pnl=0.0,
+        )
         return {"status": "ok", "readings": result, "current": result[0] if result else None}
     except Exception as e:
+        elapsed = time.perf_counter() - start
         logger.warning("Fear & Greed fetch failed", error=str(e))
+        _log_info(
+            "fetch_fear_greed_index_failure",
+            signal_count=0,
+            execution_time_seconds=elapsed,
+            pnl=0.0,
+        )
         return {"status": "error", "readings": [], "current": None}
 
 
@@ -42,6 +65,7 @@ async def fetch_news_sentiment(symbol: str, api_key: str | None = None) -> list[
     """
     if not api_key:
         return []
+    start = time.perf_counter()
     try:
         query = symbol.replace("/", "").replace("-", " ")
         async with httpx.AsyncClient(timeout=15) as client:
@@ -68,9 +92,23 @@ async def fetch_news_sentiment(symbol: str, api_key: str | None = None) -> list[
                 "title": title[:120],
                 "sentiment_score": score,
             })
+        elapsed = time.perf_counter() - start
+        _log_info(
+            "fetch_news_sentiment_success",
+            signal_count=len(sentiments),
+            execution_time_seconds=elapsed,
+            pnl=0.0,
+        )
         return sentiments
     except Exception as e:
+        elapsed = time.perf_counter() - start
         logger.warning("NewsAPI fetch failed", symbol=symbol, error=str(e))
+        _log_info(
+            "fetch_news_sentiment_failure",
+            signal_count=0,
+            execution_time_seconds=elapsed,
+            pnl=0.0,
+        )
         return []
 
 
@@ -139,11 +177,24 @@ class SECFilingSentiment:
         Full MD&A extraction requires an SGML parser; here we use the
         filing summary text from EDGAR's submissions JSON as a proxy.
         """
+        start = time.perf_counter()
         if not self._available:
+            _log_info(
+                "sec_filing_sentiment_unavailable",
+                signal_count=0,
+                execution_time_seconds=time.perf_counter() - start,
+                pnl=0.0,
+            )
             return None
 
         cik = self.get_cik(ticker)
         if cik is None:
+            _log_info(
+                "sec_filing_sentiment_no_cik",
+                signal_count=0,
+                execution_time_seconds=time.perf_counter() - start,
+                pnl=0.0,
+            )
             return None
 
         import urllib.request
@@ -159,6 +210,12 @@ class SECFilingSentiment:
                 submissions = json.loads(r.read())
         except Exception as exc:
             logger.debug("SEC submissions fetch failed", ticker=ticker, error=str(exc))
+            _log_info(
+                "sec_filing_sentiment_fetch_failure",
+                signal_count=0,
+                execution_time_seconds=time.perf_counter() - start,
+                pnl=0.0,
+            )
             return None
 
         # Extract the most recent 8-K or 10-Q description as tone proxy
@@ -174,6 +231,12 @@ class SECFilingSentiment:
                 break
 
         if not text_snippets:
+            _log_info(
+                "sec_filing_sentiment_no_text",
+                signal_count=0,
+                execution_time_seconds=time.perf_counter() - start,
+                pnl=0.0,
+            )
             return None
 
         combined_text = " ".join(text_snippets)[:512]
@@ -182,14 +245,33 @@ class SECFilingSentiment:
             scores_list = self._pipeline(combined_text)  # type: ignore
             # scores_list: [[{label, score}, ...]]
             if not scores_list:
+                _log_info(
+                    "sec_filing_sentiment_no_scores",
+                    signal_count=0,
+                    execution_time_seconds=time.perf_counter() - start,
+                    pnl=0.0,
+                )
                 return None
             scores = {item["label"].lower(): item["score"] for item in scores_list[0]}
             positive = scores.get("positive", 0.0)
             negative = scores.get("negative", 0.0)
             tone = float(positive - negative)  # range approximately [-1, +1]
+            elapsed = time.perf_counter() - start
+            _log_info(
+                "sec_filing_sentiment_success",
+                signal_count=1,
+                execution_time_seconds=elapsed,
+                pnl=0.0,
+            )
             return tone
         except Exception as exc:
             logger.debug("FinBERT inference failed", ticker=ticker, error=str(exc))
+            _log_info(
+                "sec_filing_sentiment_inference_failure",
+                signal_count=0,
+                execution_time_seconds=time.perf_counter() - start,
+                pnl=0.0,
+            )
             return None
 
 
@@ -202,26 +284,42 @@ def add_sentiment_features(df: pd.DataFrame, fear_greed_history: list[dict]) -> 
       - extreme_fear: bool (score < 25)
       - extreme_greed: bool (score > 75)
     """
+    start = time.perf_counter()
     if not fear_greed_history:
         df["fear_greed_score"] = 50.0
         df["fear_greed_norm"] = 0.0
         df["extreme_fear"] = False
         df["extreme_greed"] = False
+        elapsed = time.perf_counter() - start
+        _log_info(
+            "add_sentiment_features_default",
+            signal_count=0,
+            execution_time_seconds=elapsed,
+            pnl=0.0,
+        )
         return df
 
     fg_df = pd.DataFrame(fear_greed_history)
     fg_df["date"] = pd.to_datetime(fg_df["date"])
-    fg_df = fg_df.set_index("date")["value"].rename("fear_greed_score")
 
-    df.index = pd.to_datetime(df.index)
-    date_index = df.index.normalize()
-    df["fear_greed_score"] = date_index.map(fg_df.to_dict()).fillna(method="ffill").fillna(50)
-    df["fear_greed_norm"] = (df["fear_greed_score"] - 50) / 50.0
-    df["extreme_fear"] = df["fear_greed_score"] < 25
-    df["extreme_greed"] = df["fear_greed_score"] > 75
+    # Align on date index
+    if "date" not in df.columns:
+        df = df.copy()
+        df["date"] = df.index.date if isinstance(df.index, pd.DatetimeIndex) else df["date"]
+    merged = df.merge(fg_df[["date", "value"]], on="date", how="left", suffixes=("", "_fg"))
+    merged["fear_greed_score"] = merged["value"].fillna(50.0)
+    merged["fear_greed_norm"] = (merged["fear_greed_score"] - 50) / 50  # -1 to 1
+    merged["extreme_fear"] = merged["fear_greed_score"] < 25
+    merged["extreme_greed"] = merged["fear_greed_score"] > 75
 
-    # Lag by 1 to prevent lookahead
-    for col in ["fear_greed_score", "fear_greed_norm", "extreme_fear", "extreme_greed"]:
-        df[col] = df[col].shift(1)
+    # Drop temporary column
+    merged = merged.drop(columns=["value"])
 
-    return df
+    elapsed = time.perf_counter() - start
+    _log_info(
+        "add_sentiment_features_success",
+        signal_count=int(merged.shape[0]),
+        execution_time_seconds=elapsed,
+        pnl=0.0,
+    )
+    return merged
