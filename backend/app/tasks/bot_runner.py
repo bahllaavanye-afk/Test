@@ -14,13 +14,13 @@ if TYPE_CHECKING:
 
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -53,6 +53,13 @@ class BotRunner:
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        if not isinstance(bot_id, str) or not bot_id:
+            raise ValueError("bot_id must be a non‑empty string")
+        try:
+            uuid.UUID(bot_id)
+        except Exception as exc:
+            raise ValueError(f"bot_id '{bot_id}' is not a valid UUID") from exc
+
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -78,6 +85,22 @@ class BotRunner:
 
     async def reschedule(self, bot: "Bot") -> None:
         """Add or update a bot job in the scheduler."""
+        if bot is None:
+            raise ValueError("bot cannot be None")
+        try:
+            from app.models.bot import Bot as BotModel
+        except Exception as exc:
+            raise ValueError("Unable to import Bot model for validation") from exc
+
+        if not isinstance(bot, BotModel):
+            raise ValueError("bot must be an instance of Bot")
+        if not getattr(bot, "id", None):
+            raise ValueError("bot must have a valid 'id' attribute")
+        try:
+            uuid.UUID(str(bot.id))
+        except Exception as exc:
+            raise ValueError(f"bot.id '{bot.id}' is not a valid UUID") from exc
+
         try:
             trigger_cfg: dict = bot.trigger or {}
             trigger_type = trigger_cfg.get("type", "schedule")
@@ -99,7 +122,7 @@ class BotRunner:
                 logger.debug("Bot scheduled", bot_id=bot.id, interval=interval_str)
 
             elif trigger_type in ("price_cross", "indicator"):
-                # For non-schedule triggers, poll every 5 minutes and let the engine decide
+                # For non‑schedule triggers, poll every 5 minutes and let the engine decide
                 self._scheduler.add_job(
                     self._run_bot,
                     "interval",
@@ -116,6 +139,13 @@ class BotRunner:
 
     async def unschedule(self, bot_id: str) -> None:
         """Remove a bot job from the scheduler."""
+        if not isinstance(bot_id, str) or not bot_id:
+            raise ValueError("bot_id must be a non‑empty string")
+        try:
+            uuid.UUID(bot_id)
+        except Exception as exc:
+            raise ValueError(f"bot_id '{bot_id}' is not a valid UUID") from exc
+
         job_id = f"bot_{bot_id}"
         try:
             self._scheduler.remove_job(job_id)
