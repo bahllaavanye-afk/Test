@@ -21,7 +21,13 @@ BENCHMARKS = {
     "GLD": {"name": "Gold", "color": "#FFC107"},
 }
 
-ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP": 0.075}
+ALL_WEATHER_WEIGHTS = {
+    "TLT": 0.40,
+    "IEF": 0.15,
+    "VTI": 0.30,
+    "GLD": 0.075,
+    "DJP": 0.075,
+}
 
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
@@ -43,7 +49,9 @@ async def _fetch_ticker_bars(
 ) -> pd.Series:
     """
     Fetch daily close prices for a single ticker from Alpaca.
-    Returns a pd.Series indexed by date, or empty Series on failure.
+
+    Returns a ``pd.Series`` indexed by date.  On any failure an empty
+    ``Series`` is returned and the error is logged with structured context.
     """
     sym = ticker.upper()
     start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -52,33 +60,69 @@ async def _fetch_ticker_bars(
     try:
         resp = await client.get(
             f"{ALPACA_DATA_URL}/v2/stocks/{sym}/bars",
-            params={"timeframe": "1Day", "start": start_str, "end": end_str, "limit": 1500},
+            params={
+                "timeframe": "1Day",
+                "start": start_str,
+                "end": end_str,
+                "limit": 1500,
+            },
             headers=_alpaca_headers(),
             timeout=15.0,
         )
-        if resp.status_code != 200:
-            logger.warning("Alpaca bars fetch failed", ticker=ticker, status=resp.status_code)
-            return pd.Series(dtype=float)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "Alpaca bars HTTP error",
+            ticker=ticker,
+            status_code=exc.response.status_code,
+            url=str(exc.request.url),
+            error=str(exc),
+        )
+        return pd.Series(dtype=float)
+    except httpx.RequestError as exc:
+        logger.error(
+            "Alpaca request failed",
+            ticker=ticker,
+            url=str(exc.request.url) if exc.request else None,
+            error=str(exc),
+        )
+        return pd.Series(dtype=float)
 
+    try:
         raw_bars = resp.json().get("bars", [])
-        if not raw_bars:
-            return pd.Series(dtype=float)
+    except ValueError as exc:
+        logger.error(
+            "Failed to decode Alpaca JSON response",
+            ticker=ticker,
+            error=str(exc),
+        )
+        return pd.Series(dtype=float)
 
+    if not raw_bars:
+        logger.warning("Alpaca returned empty bar list", ticker=ticker)
+        return pd.Series(dtype=float)
+
+    try:
         dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True).normalize()
         closes = [float(b["c"]) for b in raw_bars]
-        series = pd.Series(closes, index=dates, name=ticker)
-        # De‑duplicate any same‑day entries (take last)
-        series = series[~series.index.duplicated(keep="last")]
-        return series
-
-    except Exception as exc:  # pragma: no cover
-        logger.warning("Alpaca bars exception", ticker=ticker, error=str(exc))
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.error(
+            "Unexpected bar format from Alpaca",
+            ticker=ticker,
+            error=str(exc),
+        )
         return pd.Series(dtype=float)
+
+    series = pd.Series(closes, index=dates, name=ticker)
+    # De‑duplicate any same‑day entries (take last)
+    series = series[~series.index.duplicated(keep="last")]
+    return series
 
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
     if start >= end:
+        logger.warning("Invalid date range for benchmark fetch", start=start.isoformat(), end=end.isoformat())
         return {}
 
     cache_key = (start, end)
@@ -89,9 +133,23 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
     async with httpx.AsyncClient(timeout=20.0) as client:
-        series_list = await asyncio.gather(
-            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers]
+        # Gather with return_exceptions to isolate failures per ticker
+        raw_series = await asyncio.gather(
+            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers],
+            return_exceptions=True,
         )
+
+    series_list: List[pd.Series] = []
+    for ticker, result in zip(all_tickers, raw_series):
+        if isinstance(result, Exception):
+            logger.error(
+                "Failed to fetch bars for ticker",
+                ticker=ticker,
+                error=str(result),
+            )
+            series_list.append(pd.Series(dtype=float))
+        else:
+            series_list.append(result)
 
     closes_dict: dict[str, pd.Series] = {
         ticker: series
