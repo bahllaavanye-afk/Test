@@ -3,30 +3,36 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
+
 import json
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import torch
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
 try:
     import lightgbm as lgb
+
     HAS_LGB = True
 except ImportError:
     HAS_LGB = False
 
 try:
     import shap
+
     HAS_SHAP = True
 except ImportError:
     HAS_SHAP = False
 
-import torch
-
 
 @dataclass
 class LightGBMConfig:
+    """Configuration parameters for LightGBM training."""
+
     n_estimators: int = 500
     learning_rate: float = 0.05
     num_leaves: int = 31
@@ -44,6 +50,7 @@ class LightGBMClassifier(AbstractModel):
     LightGBM binary classifier for direction prediction.
     Use LightGBMClassifier.from_config(LightGBMConfig()) to create.
     """
+
     model_type = "lightgbm"
 
     def __init__(self, config: LightGBMConfig | None = None):
@@ -53,6 +60,7 @@ class LightGBMClassifier(AbstractModel):
         self._shap_explainer = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run inference on a tensor and return predictions."""
         if self._model is None:
             raise RuntimeError("Model not trained yet")
         arr = x.numpy() if isinstance(x, torch.Tensor) else x
@@ -60,9 +68,15 @@ class LightGBMClassifier(AbstractModel):
             arr = arr[:, -1, :]  # use last timestep for flat features
         return torch.tensor(self._model.predict(arr), dtype=torch.float32)
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray,
-            X_val: np.ndarray | None = None, y_val: np.ndarray | None = None,
-            feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,
+        y_val: np.ndarray | None = None,
+        feature_names: list[str] | None = None,
+    ) -> dict:
+        """Train LightGBM on the provided data."""
         if not HAS_LGB:
             logger.warning("lightgbm not installed. Install: pip install lightgbm")
             return {"error": "lightgbm not installed"}
@@ -70,6 +84,7 @@ class LightGBMClassifier(AbstractModel):
         self._feature_names = feature_names or [f"f{i}" for i in range(X_train.shape[1])]
         train_set = lgb.Dataset(X_train, label=y_train, feature_name=self._feature_names)
         valid_sets = [train_set]
+
         if X_val is not None and y_val is not None:
             val_set = lgb.Dataset(X_val, label=y_val, reference=train_set)
             valid_sets.append(val_set)
@@ -87,9 +102,15 @@ class LightGBMClassifier(AbstractModel):
             "max_depth": self.config.max_depth,
             "verbose": -1,
         }
-        callbacks = [lgb.early_stopping(self.config.early_stopping_rounds), lgb.log_evaluation(50)]
+
+        callbacks = [
+            lgb.early_stopping(self.config.early_stopping_rounds),
+            lgb.log_evaluation(50),
+        ]
+
         self._model = lgb.train(
-            params, train_set,
+            params,
+            train_set,
             num_boost_round=self.config.n_estimators,
             valid_sets=valid_sets,
             callbacks=callbacks,
@@ -99,7 +120,7 @@ class LightGBMClassifier(AbstractModel):
         return {"best_iteration": best_iter, "best_score": self._model.best_score}
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
-        # Collect all data and do a full LightGBM fit
+        """Collect all data from a loader and perform a full LightGBM fit."""
         X, Y = [], []
         for x, y in loader:
             arr = x.numpy()
@@ -112,8 +133,10 @@ class LightGBMClassifier(AbstractModel):
         return self.fit(X, Y)
 
     def evaluate(self, loader) -> EvalMetrics:
+        """Evaluate model on a data loader, returning accuracy and AUC."""
         if self._model is None:
             return EvalMetrics(accuracy=0.5, auc=0.5, sharpe=0.0)
+
         X, Y = [], []
         for x, y in loader:
             arr = x.numpy()
@@ -123,16 +146,21 @@ class LightGBMClassifier(AbstractModel):
             Y.append(y.numpy())
         X = np.vstack(X)
         Y = np.concatenate(Y)
+
         preds = self._model.predict(X)
         acc = float(((preds > 0.5) == (Y > 0.5)).mean())
+
         try:
             from sklearn.metrics import roc_auc_score
+
             auc = float(roc_auc_score(Y, preds))
         except Exception:
             auc = 0.5
+
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def feature_importance(self) -> dict[str, float]:
+        """Return normalized feature importance based on gain."""
         if self._model is None:
             return {}
         imp = self._model.feature_importance(importance_type="gain")
@@ -141,6 +169,7 @@ class LightGBMClassifier(AbstractModel):
         return {n: round(float(v) / total, 4) for n, v in zip(names, imp)}
 
     def shap_values(self, X: np.ndarray) -> np.ndarray | None:
+        """Compute SHAP values for the given input if SHAP is available."""
         if not HAS_SHAP or self._model is None:
             return None
         if self._shap_explainer is None:
@@ -148,14 +177,20 @@ class LightGBMClassifier(AbstractModel):
         return self._shap_explainer.shap_values(X)
 
     def save(self, path: str, metadata: dict | None = None) -> None:
+        """Persist model and metadata to disk."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         if self._model:
             self._model.save_model(path + ".lgb")
-        meta = {"model_type": self.model_type, "feature_names": self._feature_names, **(metadata or {})}
+        meta = {
+            "model_type": self.model_type,
+            "feature_names": self._feature_names,
+            **(metadata or {}),
+        }
         Path(path + ".json").write_text(json.dumps(meta, indent=2))
 
     @classmethod
     def load(cls, path: str) -> "LightGBMClassifier":
+        """Load a persisted LightGBM model and its metadata."""
         obj = cls()
         if not HAS_LGB:
             return obj
