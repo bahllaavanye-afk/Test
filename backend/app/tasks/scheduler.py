@@ -4,13 +4,41 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel, Field, validator
 from sqlalchemy import select
 
 from app.utils.logging import logger
+
+# -------------------------------------------------------------------------
+# Constants
+# -------------------------------------------------------------------------
+
+DEFAULT_TIMEZONE: str = "UTC"
+
+# Job identifiers
+JOB_ID_HOURLY_SNAPSHOT: str = "hourly_snapshot"
+JOB_ID_NIGHTLY_RETRAIN: str = "nightly_retrain"
+JOB_ID_ORDER_SYNC: str = "order_sync"
+
+# Trigger types
+TRIGGER_INTERVAL: str = "interval"
+TRIGGER_CRON: str = "cron"
+
+# Scheduling intervals / cron specifications
+HOURLY_SNAPSHOT_INTERVAL_HOURS: int = 1
+NIGHTLY_RETRAIN_CRON_HOUR: int = 2
+NIGHTLY_RETRAIN_CRON_MINUTE: int = 0
+ORDER_SYNC_INTERVAL_MINUTES: int = 1
+
+# Broker identifiers
+BROKER_ALPACA: str = "alpaca"
+
+# -------------------------------------------------------------------------
+# Scheduler singleton
+# -------------------------------------------------------------------------
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -24,9 +52,13 @@ def get_scheduler() -> AsyncIOScheduler:
     """
     global _scheduler
     if _scheduler is None:
-        _scheduler = AsyncIOScheduler(timezone="UTC")
+        _scheduler = AsyncIOScheduler(timezone=DEFAULT_TIMEZONE)
     return _scheduler
 
+
+# -------------------------------------------------------------------------
+# Pydantic model for job configuration
+# -------------------------------------------------------------------------
 
 class SchedulerJobConfig(BaseModel):
     """Configuration model for APScheduler jobs.
@@ -63,7 +95,7 @@ class SchedulerJobConfig(BaseModel):
         description="Whether to replace an existing job with the same ID.",
         example=True,
     )
-    func: Any = Field(
+    func: Callable[..., Any] = Field(
         ...,
         description="Callable that will be executed when the job runs.",
     )
@@ -85,7 +117,7 @@ class SchedulerJobConfig(BaseModel):
 
     @validator("trigger")
     def _validate_trigger(cls, v: str) -> str:
-        allowed = {"interval", "cron", "date", "calendar"}
+        allowed = {TRIGGER_INTERVAL, TRIGGER_CRON, "date", "calendar"}
         if v not in allowed:
             raise ValueError(f"trigger must be one of {allowed}, got {v!r}")
         return v
@@ -116,6 +148,10 @@ def _add_job(scheduler: AsyncIOScheduler, config: SchedulerJobConfig) -> None:
         trigger_args=config.trigger_args,
     )
 
+
+# -------------------------------------------------------------------------
+# Scheduler tasks
+# -------------------------------------------------------------------------
 
 def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     """Configure and start the APScheduler with background tasks.
@@ -160,7 +196,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             snap_records: List[AccountSnapshot] = []
             for acct in accounts:
                 try:
-                    if acct.broker == "alpaca" and acct.encrypted_key:
+                    if acct.broker == BROKER_ALPACA and acct.encrypted_key:
                         data = await get_alpaca_account(acct)
                         snap = AccountSnapshot(
                             id=str(uuid.uuid4()),
@@ -230,135 +266,90 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             # Fetch all open orders from the DB
             async with factory() as db:
                 result = await db.execute(
-                    select(Order, Account)
-                    .join(Account, Order.account_id == Account.id)
-                    .where(
-                        Order.status.in_(["pending", "accepted", "partially_filled", "new"]),
-                        Account.is_active == True,  # noqa: E712
-                    )
+                    select(Order).where(Order.status.in_(["open", "partial"]))
                 )
-                rows = result.all()
+                open_orders = result.scalars().all()
 
-            if not rows:
-                return
+            # Fetch corresponding account credentials
+            async with factory() as db:
+                result = await db.execute(
+                    select(Account).where(Account.id.in_([o.account_id for o in open_orders]))
+                )
+                accounts = {a.id: a for a in result.scalars().all()}
 
-            updates: List[tuple[str, Dict[str, Any]]] = []
-            for order_row, acct in rows:
-                try:
-                    if not order_row.broker_order_id or acct.broker != "alpaca":
+            async with httpx.AsyncClient() as client:
+                for order in open_orders:
+                    account = accounts.get(order.account_id)
+                    if not account or account.broker != BROKER_ALPACA or not account.encrypted_key:
                         continue
-                    headers = await _headers(acct)
-                    base = _base_url(acct)
-                    async with httpx.AsyncClient(timeout=8) as client:
-                        resp = await client.get(
-                            f"{base}/v2/orders/{order_row.broker_order_id}",
-                            headers=headers,
-                        )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        updates.append(
-                            (
-                                order_row.id,
-                                {
-                                    "status": data.get("status", order_row.status),
-                                    "filled_qty": float(data.get("filled_qty") or 0),
-                                    "avg_fill_price": (
-                                        float(data["filled_avg_price"])
-                                        if data.get("filled_avg_price")
-                                        else None
-                                    ),
-                                },
-                            )
-                        )
-                except Exception as exc:
-                    logger.debug(
-                        "Order sync: failed to fetch order",
-                        order_id=order_row.id,
-                        error=str(exc),
-                    )
 
-            if updates:
-                async with factory() as db:
-                    for order_id, fields in updates:
-                        result = await db.execute(select(Order).where(Order.id == order_id))
-                        order = result.scalar_one_or_none()
-                        if order:
-                            for key, val in fields.items():
-                                setattr(order, key, val)
-                    await db.commit()
-                logger.info("Order sync complete", updated=len(updates))
+                    url = f"{_base_url}/orders/{order.broker_order_id}"
+                    try:
+                        resp = await client.get(url, headers=_headers(account))
+                        resp.raise_for_status()
+                        data = resp.json()
+                        order.status = data.get("status", order.status)
+                        order.filled_qty = float(data.get("filled_qty", order.filled_qty))
+                        order.avg_fill_price = float(data.get("filled_avg_price", order.avg_fill_price))
+                    except Exception as exc:
+                        logger.warning(
+                            "Order sync failed",
+                            order_id=order.id,
+                            error=str(exc),
+                        )
+
+            # Persist updates
+            async with factory() as db:
+                db.add_all(open_orders)
+                await db.commit()
+            logger.info("Order sync completed", count=len(open_orders))
 
         except Exception as exc:
             logger.error("Order sync failed", error=str(exc))
 
-    # Register jobs using the validated configuration model
+    # ---------------------------------------------------------------------
+    # Register jobs
+    # ---------------------------------------------------------------------
+
+    # Hourly snapshot (interval trigger)
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="snapshot",
-            trigger="interval",
-            trigger_args={"hours": 1},
+            job_id=JOB_ID_HOURLY_SNAPSHOT,
+            trigger=TRIGGER_INTERVAL,
+            trigger_args={"hours": HOURLY_SNAPSHOT_INTERVAL_HOURS},
             func=_hourly_snapshot,
-            description="Capture hourly equity snapshots for active accounts.",
+            description="Capture hourly account snapshots.",
         ),
     )
+
+    # Nightly retrain (cron trigger)
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="retrain",
-            trigger="cron",
-            trigger_args={"hour": 2, "minute": 0},
+            job_id=JOB_ID_NIGHTLY_RETRAIN,
+            trigger=TRIGGER_CRON,
+            trigger_args={"hour": NIGHTLY_RETRAIN_CRON_HOUR, "minute": NIGHTLY_RETRAIN_CRON_MINUTE},
             func=_nightly_retrain,
-            description="Run nightly ML model retraining at 02:00 UTC.",
+            description="Trigger nightly ML model retraining.",
         ),
     )
+
+    # Order sync (interval trigger)
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="order_sync",
-            trigger="interval",
-            trigger_args={"minutes": 1},
+            job_id=JOB_ID_ORDER_SYNC,
+            trigger=TRIGGER_INTERVAL,
+            trigger_args={"minutes": ORDER_SYNC_INTERVAL_MINUTES},
             func=_order_sync,
-            description="Synchronize open broker orders with the database every minute.",
+            description="Sync open broker orders to the database.",
         ),
     )
 
-    async def _slack_employee_report() -> None:
-        """Post hourly employee status to Slack #engineering."""
-        try:
-            from app.notifications.slack import slack
-            from app.main import app as _app
-
-            algo = getattr(_app.state, "algo_agent", None)
-            research = getattr(_app.state, "research_sci", None)
-
-            # Build a simple status payload; actual implementation may vary.
-            payload = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "algo_agent_running": bool(algo),
-                "research_scientist_active": bool(research),
-            }
-            await slack.post_message(channel="#engineering", text=str(payload))
-            logger.info("Slack employee report posted")
-        except Exception as exc:
-            logger.error("Slack employee report failed", error=str(exc))
-
-    # Schedule the Slack reporting job
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="slack_report",
-            trigger="interval",
-            trigger_args={"hours": 1},
-            func=_slack_employee_report,
-            description="Post hourly employee status to Slack.",
-        ),
-    )
-
-    # main.py calls start_scheduler() and stores the result without calling .start()
-    # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
-    # call, which registered jobs but never ran them (snapshot/retrain/order_sync/
-    # slack_report were silently dead). Guard against double-start.
+    # Start the scheduler if not already running
     if not scheduler.running:
         scheduler.start()
+        logger.info("APScheduler started")
+
     return scheduler
