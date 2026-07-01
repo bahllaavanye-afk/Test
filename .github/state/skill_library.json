@@ -73,8 +73,13 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "constants on backtest/cpcv.py: success \u2014 tests green",
+    "constants on comparison/benchmarks.py: success \u2014 tests green",
+    "constants on tasks/self_improving_loop.py: success \u2014 tests green",
+    "constants on api/v1/agents.py: success \u2014 tests green",
+    "constants on test/unit/test_classic_reversion_strategies.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-01T06:24:34.624490+00:00",
   "total": 26
 }
