@@ -10,6 +10,8 @@ filter: a trade is only taken when BOTH conditions are true:
 If the ML inference service is unavailable the strategy falls back
 gracefully (returns None from analyze, uses base signals in backtest).
 """
+import logging
+import time
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -24,6 +26,8 @@ except Exception:
 
 
 _ML_CONFIDENCE_THRESHOLD = 0.60
+
+_logger = logging.getLogger(__name__)
 
 
 class MLPCAStatArbStrategy(AbstractStrategy):
@@ -52,6 +56,9 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         self._ml_threshold: float = float(
             p.get("ml_confidence_threshold", _ML_CONFIDENCE_THRESHOLD)
         )
+        # Monitoring metrics
+        self._signal_count: int = 0
+        self._cumulative_pnl: float = 0.0
 
     # ------------------------------------------------------------------
     # AbstractStrategy interface
@@ -63,17 +70,20 @@ class MLPCAStatArbStrategy(AbstractStrategy):
 
         Falls back to None (no trade) when ML is unavailable.
         """
-        # Step 1: get base PCA signal
-        base_signal = await self._base.analyze(data, symbol)
-        if base_signal is None:
-            return None
-
-        # Step 2: apply ML filter
-        if not _INFERENCE_AVAILABLE:
-            # ML service not installed — skip silently
-            return None
+        start_time = time.perf_counter()
+        signal: Signal | None = None
 
         try:
+            # Step 1: get base PCA signal
+            base_signal = await self._base.analyze(data, symbol)
+            if base_signal is None:
+                return None
+
+            # Step 2: apply ML filter
+            if not _INFERENCE_AVAILABLE:
+                # ML service not installed — skip silently
+                return None
+
             inference = _get_inference_service()
             ml_result = await inference.predict(data, symbol)
             if ml_result is None:
@@ -101,11 +111,33 @@ class MLPCAStatArbStrategy(AbstractStrategy):
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
             base_signal.metadata["ml_confidence"] = ml_confidence
-            return base_signal
+
+            signal = base_signal
+            # Update monitoring counters
+            self._signal_count += 1
+            # If the signal carries an expected P&L, accumulate it; otherwise ignore
+            pnl = getattr(signal, "expected_pnl", None)
+            if isinstance(pnl, (int, float)):
+                self._cumulative_pnl += pnl
+
+            return signal
 
         except Exception:
             # ML service raised an error — degrade gracefully
             return None
+
+        finally:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            _logger.info(
+                "MLPCAStatArb analyze completed",
+                extra={
+                    "symbol": symbol,
+                    "execution_time_ms": round(elapsed_ms, 2),
+                    "signal_generated": signal is not None,
+                    "signal_count": self._signal_count,
+                    "cumulative_pnl": round(self._cumulative_pnl, 4),
+                },
+            )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -115,4 +147,17 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         would be gated per-bar.  Without a serialized model this delegation
         is the correct fallback: it still uses the same PCA edge.
         """
-        return self._base.backtest_signals(df)
+        start_time = time.perf_counter()
+        try:
+            result = self._base.backtest_signals(df)
+            return result
+        finally:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            _logger.info(
+                "MLPCAStatArb backtest_signals executed",
+                extra={
+                    "execution_time_ms": round(elapsed_ms, 2),
+                    "signal_count": self._signal_count,
+                    "cumulative_pnl": round(self._cumulative_pnl, 4),
+                },
+            )
