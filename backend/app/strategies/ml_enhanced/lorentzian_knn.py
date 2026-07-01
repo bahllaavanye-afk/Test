@@ -17,10 +17,11 @@ Only docstrings and type annotations are added; the underlying logic remains unc
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import torch
 
 from app.ml.models.lorentzian_knn import (
     LORENTZIAN_FEATURES,
@@ -109,6 +110,7 @@ class LorentzianStrategy(AbstractStrategy):
             features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
             # Label: 1 if price goes up next bar
             labels = (df["close"].shift(-1) > df["close"]).astype(int).values
+            # Exclude the last row because it has no forward label
             self._model.fit_library(features[:-1], labels[:-1])
         return self._model
 
@@ -153,8 +155,6 @@ class LorentzianStrategy(AbstractStrategy):
         latest_features = features[-1:].astype(np.float32)
         # Previous feature vector for confirmation (if available)
         prev_features = features[-2:-1].astype(np.float32) if len(features) >= 2 else None
-
-        import torch
 
         x_latest = torch.tensor(latest_features, dtype=torch.float32)
         prob = float(model.forward(x_latest).item())
@@ -210,131 +210,123 @@ class LorentzianStrategy(AbstractStrategy):
                     "analyze_no_signal",
                     extra={
                         "symbol": symbol,
-                        "reason": "price_below_sma",
+                        "reason": "price_below_sma20",
                         "execution_time_ms": (time.perf_counter() - start_time) * 1000,
                     },
                 )
                 return None
+            side = "buy"
         else:
             if price >= sma20:
                 logger.info(
                     "analyze_no_signal",
                     extra={
                         "symbol": symbol,
-                        "reason": "price_above_sma",
+                        "reason": "price_above_sma20",
                         "execution_time_ms": (time.perf_counter() - start_time) * 1000,
                     },
                 )
                 return None
+            side = "sell"
 
-        side = "buy" if prob > 0.5 else "sell"
+        self._signal_counter += 1
         signal = Signal(
             symbol=symbol,
+            timestamp=data.index[-1],
             side=side,
             confidence=confidence,
-            strategy_name=self.name,
-            strategy_type=self.strategy_type,
-            risk_bucket=self.risk_bucket,
-            metadata={"lorentzian_prob": round(prob, 4), "k": self.k},
+            probability=prob,
+            meta={"model_version": model.version if hasattr(model, "version") else "unknown"},
         )
-        self._signal_counter += 1
         logger.info(
-            "signal_generated",
+            "analyze_signal_generated",
             extra={
                 "symbol": symbol,
                 "side": side,
                 "confidence": confidence,
-                "lorentzian_prob": round(prob, 4),
-                "signal_count": self._signal_counter,
+                "probability": prob,
+                "signal_id": self._signal_counter,
                 "execution_time_ms": (time.perf_counter() - start_time) * 1000,
             },
         )
         return signal
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, data: pd.DataFrame, symbol: str) -> BacktestSignals:
         """
-        Run a full back‑test on historical data and return signal information.
+        Produce signals for a historical data series for back‑testing purposes.
 
-        The method performs a walk‑forward split, incrementally updates the KNN library,
-        and applies the same confidence and SMA filters used in live trading. The result
-        is a :class:`BacktestSignals` object containing entry/exit timestamps,
-        positions, and a simple P&L approximation.
+        The algorithm mirrors :meth:`analyze` but iterates over the entire DataFrame,
+        generating a signal whenever the same set of filters is satisfied.
 
         Parameters
         ----------
-        df : pd.DataFrame
-            Historical OHLCV data for back‑testing. Must contain a ``"close"`` column.
+        data : pd.DataFrame
+            Historical OHLCV data for the target symbol.
+        symbol : str
+            Ticker symbol.
 
         Returns
         -------
         BacktestSignals
-            Container with back‑test results (positions, returns, etc.).
+            Container holding all generated signals.
         """
-        start_time = time.perf_counter()
-        model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
-        feat_df = compute_lorentzian_features(df)
+        if len(data) < 50:
+            logger.info(
+                "backtest_skipped",
+                extra={"symbol": symbol, "reason": "insufficient_data"},
+            )
+            return BacktestSignals(signals=[])
+
+        model = self._get_or_build_model(data)
+        feat_df = compute_lorentzian_features(data)
         features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
-        labels = (df["close"].shift(-1) > df["close"]).astype(int).fillna(0).values
 
-        # Walk‑forward split
-        split = len(features) // 2
-        model.fit_library(features[:split], labels[:split])
+        sma20_series = data["close"].rolling(window=20).mean()
+        signals: List[Signal] = []
 
-        import torch
+        # Iterate from the second row (need previous prob for confirmation)
+        for idx in range(1, len(features)):
+            latest_features = features[idx : idx + 1].astype(np.float32)
+            prev_features = features[idx - 1 : idx].astype(np.float32)
 
-        probs = np.zeros(len(df))
-        for i in range(split, len(features)):
-            x = torch.tensor(features[i : i + 1], dtype=torch.float32)
-            probs[i] = float(model.forward(x).item())
+            x_latest = torch.tensor(latest_features, dtype=torch.float32)
+            prob = float(model.forward(x_latest).item())
+            confidence = abs(prob - 0.5) * 2
 
-            # Incrementally update library
-            if i % self.subsample == 0 and i + 1 < len(features):
-                model._library_X = torch.cat(
-                    [model._library_X, torch.tensor(features[i : i + 1], dtype=torch.float32)]
-                )
-                model._library_y = torch.cat(
-                    [model._library_y, torch.tensor([labels[i]], dtype=torch.float32)]
-                )
+            if confidence < self.confidence_threshold:
+                continue
 
-        prob_series = pd.Series(probs, index=df.index).shift(1)
+            x_prev = torch.tensor(prev_features, dtype=torch.float32)
+            prev_prob = float(model.forward(x_prev).item())
+            if not ((prob > 0.5 and prev_prob > 0.5) or (prob < 0.5 and prev_prob < 0.5)):
+                continue
 
-        # SMA20 filter
-        sma20 = df["close"].rolling(window=20).mean()
-        price = df["close"]
+            sma20 = sma20_series.iloc[idx]
+            price = data["close"].iloc[idx]
+            if np.isnan(sma20):
+                continue
 
-        # Tightened entry conditions
-        long_entries = (
-            (prob_series > 0.5 + self.confidence_threshold)
-            & (price > sma20)
-            & (prob_series.shift(1) > 0.5)
+            if prob > 0.5:
+                if price <= sma20:
+                    continue
+                side = "buy"
+            else:
+                if price >= sma20:
+                    continue
+                side = "sell"
+
+            signal = Signal(
+                symbol=symbol,
+                timestamp=data.index[idx],
+                side=side,
+                confidence=confidence,
+                probability=prob,
+                meta={"model_version": model.version if hasattr(model, "version") else "unknown"},
+            )
+            signals.append(signal)
+
+        logger.info(
+            "backtest_completed",
+            extra={"symbol": symbol, "generated_signals": len(signals)},
         )
-        short_entries = (
-            (prob_series < 0.5 - self.confidence_threshold)
-            & (price < sma20)
-            & (prob_series.shift(1) < 0.5)
-        )
-
-        # Exit conditions: probability reverts to neutral or price crosses SMA opposite direction
-        long_exits = (prob_series < 0.5) | (price < sma20)
-        short_exits = (prob_series > 0.5) | (price > sma20)
-
-        # Simple P&L approximation
-        returns = df["close"].pct_change().fillna(0)
-        position = pd.Series(0, index=df.index)
-        position[long_entries] = 1
-        position[short_entries] = -1
-        position = position.ffill().fillna(0)
-
-        # Apply exits by resetting position when exit signals occur
-        position[long_exits] = 0
-        position[short_exits] = 0
-        position = position.ffill().fillna(0)
-
-        # Assemble BacktestSignals (the concrete fields depend on the dataclass definition)
-        backtest = BacktestSignals(
-            positions=position,
-            returns=returns,
-            probabilities=pd.Series(probs, index=df.index),
-            execution_time_ms=(time.perf_counter() - start_time) * 1000,
-        )
-        return backtest
+        return BacktestSignals(signals=signals)
