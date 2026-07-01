@@ -14,6 +14,22 @@ import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
 
+# Constants
+DEFAULT_INITIAL_EQUITY: float = 100_000.0
+DEFAULT_COMMISSION_PCT: float = 0.001
+DEFAULT_SLIPPAGE_PCT: float = 0.0005
+MIN_DATA_POINTS: int = 5
+
+SUMMARY_KEY_COVERED: str = "covered"
+SUMMARY_KEY_LABEL: str = "label"
+SUMMARY_KEY_DESCRIPTION: str = "description"
+SUMMARY_KEY_DATA_POINTS: str = "data_points"
+SUMMARY_KEY_TOTAL_RETURN_PCT: str = "total_return_pct"
+SUMMARY_KEY_MAX_DRAWDOWN_PCT: str = "max_drawdown_pct"
+SUMMARY_KEY_SHARPE: str = "sharpe"
+SUMMARY_KEY_WIN_RATE: str = "win_rate"
+SUMMARY_KEY_NUM_TRADES: str = "num_trades"
+
 
 @dataclass
 class StressScenario:
@@ -104,15 +120,15 @@ def run_stress_tests(
     prices: pd.Series,
     opens: pd.Series | None = None,
     volume: pd.Series | None = None,
-    initial_equity: float = 100_000.0,
-    commission_pct: float = 0.001,
-    slippage_pct: float = 0.0005,
+    initial_equity: float = DEFAULT_INITIAL_EQUITY,
+    commission_pct: float = DEFAULT_COMMISSION_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
     scenarios: list[StressScenario] | None = None,
 ) -> list[StressResult]:
     """
     Run the strategy through each stress scenario window.
 
-    Only scenarios where the price series has ≥ 5 data points are evaluated;
+    Only scenarios where the price series has ≥ MIN_DATA_POINTS data points are evaluated;
     others return period_covered=False with metrics=None.
     """
     if scenarios is None:
@@ -144,7 +160,7 @@ def run_stress_tests(
         s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
         s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
 
-        if s_prices is None or len(s_prices) < 5:
+        if s_prices is None or len(s_prices) < MIN_DATA_POINTS:
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -188,20 +204,20 @@ def stress_summary(results: list[StressResult]) -> dict:
     for r in results:
         if not r.period_covered or r.metrics is None:
             out[r.scenario.name] = {
-                "covered": False,
-                "label": r.scenario.label,
-                "description": r.scenario.description,
+                SUMMARY_KEY_COVERED: False,
+                SUMMARY_KEY_LABEL: r.scenario.label,
+                SUMMARY_KEY_DESCRIPTION: r.scenario.description,
             }
         else:
             out[r.scenario.name] = {
-                "covered": True,
-                "label": r.scenario.label,
-                "description": r.scenario.description,
-                "data_points": r.data_points,
-                "total_return_pct": round(r.metrics.total_return * 100, 2),
-                "max_drawdown_pct": round(r.metrics.max_drawdown * 100, 2),
-                "sharpe": r.metrics.sharpe,
-                "win_rate": r.metrics.win_rate,
-                "num_trades": r.metrics.num_trades,
+                SUMMARY_KEY_COVERED: True,
+                SUMMARY_KEY_LABEL: r.scenario.label,
+                SUMMARY_KEY_DESCRIPTION: r.scenario.description,
+                SUMMARY_KEY_DATA_POINTS: r.data_points,
+                SUMMARY_KEY_TOTAL_RETURN_PCT: round(r.metrics.total_return * 100, 2),
+                SUMMARY_KEY_MAX_DRAWDOWN_PCT: round(r.metrics.max_drawdown * 100, 2),
+                SUMMARY_KEY_SHARPE: r.metrics.sharpe,
+                SUMMARY_KEY_WIN_RATE: r.metrics.win_rate,
+                SUMMARY_KEY_NUM_TRADES: r.metrics.num_trades,
             }
     return out
