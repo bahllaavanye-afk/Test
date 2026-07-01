@@ -7,6 +7,7 @@ The resulting feature set is used both for model training and live inference.
 
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -18,6 +19,8 @@ from app.ml.features.multi_timeframe import MTF_FEATURE_COLS, add_multi_timefram
 from app.ml.features.normalization import FeatureScaler
 from app.ml.features.technical import add_technical_features
 from app.ml.features.wavelet_features import WAVELET_FEATURE_COLS, add_wavelet_features
+
+logger = logging.getLogger(__name__)
 
 # Social sentiment feature columns added for crypto market_type
 SOCIAL_SENTIMENT_FEATURE_COLS: List[str] = [
@@ -116,6 +119,16 @@ def engineer_features(
         NaNs from base or advanced indicator calculations are dropped, and any
         remaining NaNs in multi‑timeframe columns are filled with neutral values.
     """
+    if not isinstance(df, pd.DataFrame):
+        logger.error("engineer_features called with non‑DataFrame input: %s", type(df))
+        raise TypeError("df must be a pandas DataFrame")
+    if not isinstance(normalize, bool):
+        logger.error("normalize flag must be bool, got %s", type(normalize))
+        raise TypeError("normalize must be a boolean")
+    if market_type not in {"equity", "crypto"}:
+        logger.error("Invalid market_type: %s", market_type)
+        raise ValueError("market_type must be either 'equity' or 'crypto'")
+
     df = df.copy()
     df = add_technical_features(df)
     df = add_advanced_features(df)
@@ -123,13 +136,17 @@ def engineer_features(
     try:
         df = add_wavelet_features(df)
     except Exception as _wv_err:
-        print(f"[engineer] wavelet features skipped: {_wv_err}", flush=True)
+        logger.error("Wavelet feature generation failed: %s", _wv_err, exc_info=True)
 
     df = add_multi_timeframe_features(df)
 
     # ── Social sentiment features (crypto only) ────────────────────────────────
     if market_type == "crypto":
-        from app.ml.features.social_sentiment import SocialSentimentFeatures
+        try:
+            from app.ml.features.social_sentiment import SocialSentimentFeatures
+        except ImportError as imp_err:
+            logger.error("SocialSentimentFeatures module missing: %s", imp_err, exc_info=True)
+            raise
 
         _ssf = SocialSentimentFeatures()
         if social_sentiment is None:
@@ -162,8 +179,13 @@ def engineer_features(
             df[col] = df[col].fillna(0.0)
 
     if normalize and scaler is not None:
-        df[active_cols] = scaler.transform(df[active_cols])
+        try:
+            df[active_cols] = scaler.transform(df[active_cols])
+        except Exception as norm_err:
+            logger.error("Feature scaling failed: %s", norm_err, exc_info=True)
+            raise
     elif normalize and scaler is None:
+        logger.error("Normalization requested but no scaler provided")
         raise ValueError("Pass a fitted FeatureScaler when normalize=True")
 
     return df
@@ -195,7 +217,21 @@ def create_sequences(
         Corresponding targets of shape ``(n_samples,)`` if ``target_col`` exists,
         otherwise ``None``.
     """
+    if not isinstance(df, pd.DataFrame):
+        logger.error("create_sequences received non‑DataFrame input: %s", type(df))
+        raise TypeError("df must be a pandas DataFrame")
+    if not isinstance(seq_len, int) or seq_len <= 0:
+        logger.error("Invalid seq_len: %s", seq_len)
+        raise ValueError("seq_len must be a positive integer")
+    if not isinstance(target_col, str):
+        logger.error("target_col must be a string, got %s", type(target_col))
+        raise TypeError("target_col must be a string")
+
     active_cols = [c for c in FEATURE_COLS if c in df.columns]
+    if not active_cols:
+        logger.error("No engineered feature columns found in DataFrame")
+        raise ValueError("DataFrame does not contain any engineered feature columns")
+
     features = df[active_cols].values
     targets = df[target_col].values if target_col in df.columns else None
 
@@ -211,8 +247,8 @@ def create_sequences(
 
         X_out = torch.tensor(np.array(X), dtype=torch.float32)
         y_out = torch.tensor(np.array(y), dtype=torch.float32) if targets is not None else None
-    except ImportError:
-        # torch not installed — fall back to NumPy arrays.
+    except ImportError as imp_err:
+        logger.warning("PyTorch not installed; falling back to NumPy arrays: %s", imp_err)
         X_out = np.array(X, dtype=np.float32)
         y_out = np.array(y, dtype=np.float32) if targets is not None else None
 
@@ -238,15 +274,24 @@ def add_labels(
         Number of bars ahead to compute the forward return.
     threshold : float, default ``0.002``
         Minimum absolute return required to label a move as ``1``.
-
-    Returns
-    -------
-    pd.DataFrame
-        Copy of ``df`` with ``label`` and ``target`` columns added, and rows with
-        undefined labels removed.
     """
+    if not isinstance(df, pd.DataFrame):
+        logger.error("add_labels called with non‑DataFrame input: %s", type(df))
+        raise TypeError("df must be a pandas DataFrame")
+    if not isinstance(horizon, int) or horizon <= 0:
+        logger.error("Invalid horizon: %s", horizon)
+        raise ValueError("horizon must be a positive integer")
+    if not isinstance(threshold, (float, int)):
+        logger.error("Invalid threshold type: %s", type(threshold))
+        raise TypeError("threshold must be a numeric type")
+
+    if "close" not in df.columns:
+        logger.error("DataFrame missing required 'close' column for label generation")
+        raise KeyError("DataFrame must contain a 'close' column")
+
     df = df.copy()
-    future_return = df["close"].pct_change(horizon).shift(-horizon)
-    df["label"] = (future_return > threshold).astype(int)
-    df["target"] = df["label"]  # alias for create_sequences compatibility
-    return df.dropna(subset=["label"])
+    df["future_return"] = df["close"].pct_change(periods=horizon).shift(-horizon)
+    df["label"] = (df["future_return"].abs() > threshold).astype(int)
+    df["target"] = df["label"]
+    df = df.drop(columns=["future_return"])
+    return df
