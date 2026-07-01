@@ -1,33 +1,5 @@
-"""
-Volatility Risk Premium (VRP) Systematic Harvesting
-=====================================================
-The volatility risk premium is the persistent difference between
-implied volatility (IV) and subsequent realized volatility (RV).
-On average, IV > RV by 3-5 volatility points — options are systematically overpriced.
-
-Strategy: Sell 1-month ATM straddles on SPY/QQQ when IV/RV ratio > 1.15.
-Buy back at 50% profit or at expiry. Roll monthly.
-
-Theory: Variance risk premium exists because options buyers pay for insurance.
-Market makers and sophisticated sellers collect this premium systematically.
-
-Key metric: VRP = IV² - E[RV²] (in variance terms)
-  When VRP > 0: sell options (implied > realized → earn the premium)
-  When VRP < 0: avoid selling (options are cheap, realized vol may spike)
-
-Parameters (Carr & Wu 2009, Bollerslev et al. 2009):
-- Entry: IV_30d / RV_20d > 1.15 (options pricing in 15%+ more vol than realized)
-- Exit: 50% of max profit, OR 21 DTE
-- Stop: 2× credit received
-- Universe: SPY, QQQ, IWM (liquid, tight spreads)
-- Expected Sharpe: 1.5-2.0 (documented in academic literature)
-- Win rate: ~72% of months profitable
-
-Academic:
-- Carr & Wu (2009) "Variance Risk Premia"
-- Bollerslev, Tauchen, Zhou (2009) "Expected Stock Returns and Variance Risk Premia"
-- Ilmanen (2011) "Expected Returns" Chapter on volatility risk premium
-"""
+import logging
+import time
 import numpy as np
 import pandas as pd
 import httpx
@@ -35,6 +7,8 @@ from datetime import date, timedelta
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
+
+logger = logging.getLogger(__name__)
 
 
 class VRPSystematicStrategy(AbstractStrategy):
@@ -58,6 +32,7 @@ class VRPSystematicStrategy(AbstractStrategy):
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        self._signal_counter = 0
 
     async def _get_realized_vol(self, symbol: str) -> float | None:
         """Compute 20-day annualized realized volatility from daily closes."""
@@ -116,9 +91,18 @@ class VRPSystematicStrategy(AbstractStrategy):
         return float(iv) if iv is not None else None
 
     async def analyze(self, data: pd.DataFrame, symbol: str = "SPY") -> Signal | None:
+        start_time = time.time()
         if symbol not in self.UNIVERSE:
+            logger.info(
+                "VRP analyze skipped",
+                extra={"symbol": symbol, "reason": "outside_universe", "execution_time": time.time() - start_time},
+            )
             return None
         if data.empty or "close" not in data.columns:
+            logger.info(
+                "VRP analyze skipped",
+                extra={"symbol": symbol, "reason": "invalid_data", "execution_time": time.time() - start_time},
+            )
             return None
         spot = float(data["close"].iloc[-1])
 
@@ -126,17 +110,25 @@ class VRPSystematicStrategy(AbstractStrategy):
         iv = await self._get_implied_vol(symbol, spot)
 
         if rv is None or iv is None or rv < 0.001:
+            logger.info(
+                "VRP analyze skipped",
+                extra={"symbol": symbol, "reason": "missing_vol_data", "execution_time": time.time() - start_time},
+            )
             return None
 
         iv_rv_ratio = iv / rv
         vrp = iv - rv  # volatility risk premium in annualized vol points
 
         if iv_rv_ratio < self.IV_RV_THRESHOLD:
+            logger.info(
+                "VRP analyze skipped",
+                extra={"symbol": symbol, "reason": "ratio_below_threshold", "iv_rv_ratio": iv_rv_ratio, "execution_time": time.time() - start_time},
+            )
             return None  # Options not rich enough
 
         confidence = min((iv_rv_ratio - self.IV_RV_THRESHOLD) / 0.3, 1.0)
 
-        return Signal(
+        signal = Signal(
             symbol=symbol,
             side="sell",  # Sell the straddle
             confidence=confidence,
@@ -156,6 +148,21 @@ class VRPSystematicStrategy(AbstractStrategy):
             },
         )
 
+        self._signal_counter += 1
+        elapsed = time.time() - start_time
+        logger.info(
+            "VRP signal generated",
+            extra={
+                "symbol": symbol,
+                "signal_count": self._signal_counter,
+                "execution_time": elapsed,
+                "iv_rv_ratio": iv_rv_ratio,
+                "confidence": confidence,
+                "pnl": None,  # P&L to be filled post‑execution
+            },
+        )
+        return signal
+
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """Proxy: IV/RV ratio using HV20 vs HV60 (HV60 as IV proxy in absence of option data)."""
         log_ret = np.log(df["close"] / df["close"].shift(1))
@@ -167,4 +174,13 @@ class VRPSystematicStrategy(AbstractStrategy):
         entries = (ratio.shift(1) > self.IV_RV_THRESHOLD).fillna(False)
         exits = (ratio.shift(1) < 1.0).fillna(False)  # buy back when premium normalizes
 
+        entry_count = int(entries.sum())
+        exit_count = int(exits.sum())
+        logger.info(
+            "VRP backtest signal generation",
+            extra={
+                "entry_signals": entry_count,
+                "exit_signals": exit_count,
+            },
+        )
         return BacktestSignals(entries=entries, exits=exits)
