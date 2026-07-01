@@ -8,6 +8,7 @@ Exports:
   add_multi_timeframe_features(df_base, timeframes=None) -> pd.DataFrame
   MTF_FEATURE_COLS: list[str]
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -69,7 +70,7 @@ def _detect_base_tf_minutes(df: pd.DataFrame) -> float:
 
 def _compute_tf_features(tf: pd.DataFrame, tf_label: str) -> pd.DataFrame:
     """
-    Compute per-TF indicator columns on a resampled OHLCV dataframe.
+    Compute per‑TF indicator columns on a resampled OHLCV dataframe.
     Returns a DataFrame with columns named tf_{tf_label}_{indicator}.
     """
     out = pd.DataFrame(index=tf.index)
@@ -153,13 +154,73 @@ def _compute_tf_features(tf: pd.DataFrame, tf_label: str) -> pd.DataFrame:
     return out
 
 
-# Canonical per-timeframe feature columns produced by _compute_tf_features (prefix
+# Canonical per‑timeframe feature columns produced by _compute_tf_features (prefix
 # `tf_{label}`). Imported by app.ml.features.engineer; kept in sync with the function
-# above. (Restored after an unvalidated change dropped this export and broke imports.)
+# above.
 _MTF_FEATURE_SUFFIXES = ("rsi", "adx", "trend", "bb_pos", "vol_ratio", "momentum", "gk_vol")
 MTF_FEATURE_COLS: list[str] = [
     f"tf_{_tf}_{_suf}" for _tf in _TF_RULES for _suf in _MTF_FEATURE_SUFFIXES
 ]
+
+
+def _aggregate_features(df: pd.DataFrame, active_tfs: List[str]) -> pd.DataFrame:
+    """
+    Compute cross‑timeframe aggregates (mean of each suffix) and a simple
+    consensus signal. The aggregates are added to ``df`` in‑place and the
+    modified frame is returned.
+    """
+    if not active_tfs:
+        return df
+
+    # Compute mean for each suffix across the active timeframes
+    for suffix in _MTF_FEATURE_SUFFIXES:
+        cols = [f"tf_{tf}_{suffix}" for tf in active_tfs if f"tf_{tf}_{suffix}" in df.columns]
+        if not cols:
+            continue
+        df[f"mtf_{suffix}_mean"] = df[cols].mean(axis=1)
+
+    # Consensus signal: 1 (long) / -1 (short) / 0 (neutral)
+    # Long when:
+    #   - RSI mean < 30
+    #   - Trend mean > 0
+    #   - BB position mean < 0.3 (price near lower band)
+    #   - Momentum mean > 0
+    #   - ADX mean < 25 (low directional volatility)
+    #   - Volume ratio mean > 1.2 (unusual volume)
+    long_cond = (
+        (df["mtf_rsi_mean"] < 30)
+        & (df["mtf_trend_mean"] > 0)
+        & (df["mtf_bb_pos_mean"] < 0.3)
+        & (df["mtf_momentum_mean"] > 0)
+        & (df["mtf_adx_mean"] < 25)
+        & (df["mtf_vol_ratio_mean"] > 1.2)
+    )
+
+    # Short when the opposite holds
+    short_cond = (
+        (df["mtf_rsi_mean"] > 70)
+        & (df["mtf_trend_mean"] < 0)
+        & (df["mtf_bb_pos_mean"] > 0.7)
+        & (df["mtf_momentum_mean"] < 0)
+        & (df["mtf_adx_mean"] < 25)
+        & (df["mtf_vol_ratio_mean"] > 1.2)
+    )
+
+    df["mtf_signal"] = 0
+    df.loc[long_cond, "mtf_signal"] = 1
+    df.loc[short_cond, "mtf_signal"] = -1
+
+    # Exit signal: trigger when any of the long/short conditions reverse
+    # (e.g., RSI crosses back toward 50 or trend flips)
+    exit_cond = (
+        ((df["mtf_signal"] == 1) & (df["mtf_rsi_mean"] >= 45))
+        | ((df["mtf_signal"] == -1) & (df["mtf_rsi_mean"] <= 55))
+        | (df["mtf_adx_mean"] > 40)  # high ADX suggests strong trend; exit prior position
+    )
+    df["mtf_exit"] = 0
+    df.loc[exit_cond, "mtf_exit"] = 1
+
+    return df
 
 
 def add_multi_timeframe_features(
@@ -168,14 +229,16 @@ def add_multi_timeframe_features(
 ) -> pd.DataFrame:
     """
     Given a base OHLCV dataframe (index=DatetimeIndex), compute features on
-    up to 6 timeframes, merge back (forward fill + shift(1)) to prevent lookahead.
+    up to 6 timeframes, merge back (forward fill + shift(1)) to prevent lookahead,
+    and derive cross‑timeframe aggregate signals.
 
     Args:
         df_base: OHLCV DataFrame with DatetimeIndex.
         timeframes: List of TF labels from ALL_TIMEFRAMES; default=all 6.
 
     Returns:
-        DataFrame with per‑TF feature columns and cross‑TF aggregate columns appended.
+        DataFrame with per‑TF feature columns, aggregated statistics and
+        consensus signal columns appended.
     """
     if timeframes is None:
         timeframes = ALL_TIMEFRAMES
@@ -232,68 +295,7 @@ def add_multi_timeframe_features(
 
         active_tfs.append(tf_label)
 
-    # -----------------------------------------------------------------------
-    # Cross‑TF aggregate features
-    # -----------------------------------------------------------------------
-    # Trend aggregates
-    trend_cols = [
-        f"tf_{tf}_trend" for tf in active_tfs if f"tf_{tf}_trend" in df.columns
-    ]
-    if trend_cols:
-        trend_mat = df[trend_cols]
-        df["tf_trend_score"] = trend_mat.sum(axis=1)
-        df["tf_bull_count"] = (trend_mat > 0).sum(axis=1).astype(float)
-        df["tf_bear_count"] = (trend_mat < 0).sum(axis=1).astype(float)
-
-        # Divergence: 1 if any TF disagrees with the majority trend, else 0
-        majority = np.sign(df["tf_trend_score"])
-        df["tf_trend_divergence"] = (
-            trend_mat.apply(
-                lambda row: float(any(row * majority[row.name] < 0)), axis=1
-            )
-        )
-    else:
-        df["tf_trend_score"] = 0.0
-        df["tf_bull_count"] = 0.0
-        df["tf_bear_count"] = 0.0
-        df["tf_trend_divergence"] = 0.0
-
-    # Momentum aggregate (average across TFs)
-    momentum_cols = [
-        f"tf_{tf}_momentum" for tf in active_tfs if f"tf_{tf}_momentum" in df.columns
-    ]
-    if momentum_cols:
-        mom_mat = df[momentum_cols]
-        df["tf_momentum_score"] = mom_mat.mean(axis=1)
-    else:
-        df["tf_momentum_score"] = 0.0
-
-    # Volume‑ratio agreement (standard deviation across TFs)
-    vol_cols = [
-        f"tf_{tf}_vol_ratio" for tf in active_tfs if f"tf_{tf}_vol_ratio" in df.columns
-    ]
-    if vol_cols:
-        vol_mat = df[vol_cols]
-        df["tf_vol_agreement"] = vol_mat.std(axis=1)
-    else:
-        df["tf_vol_agreement"] = 0.0
-
-    # ADX aggregate (mean)
-    adx_cols = [
-        f"tf_{tf}_adx" for tf in active_tfs if f"tf_{tf}_adx" in df.columns
-    ]
-    if adx_cols:
-        df["tf_adx_mean"] = df[adx_cols].mean(axis=1)
-    else:
-        df["tf_adx_mean"] = 20.0
-
-    # Bollinger Band position aggregate (mean)
-    bb_pos_cols = [
-        f"tf_{tf}_bb_pos" for tf in active_tfs if f"tf_{tf}_bb_pos" in df.columns
-    ]
-    if bb_pos_cols:
-        df["tf_bb_pos_mean"] = df[bb_pos_cols].mean(axis=1)
-    else:
-        df["tf_bb_pos_mean"] = 0.5
+    # Add cross‑timeframe aggregates and consensus signals
+    df = _aggregate_features(df, active_tfs)
 
     return df
