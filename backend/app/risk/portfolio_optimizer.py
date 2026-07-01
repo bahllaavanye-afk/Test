@@ -27,10 +27,10 @@ class CVaROptimizer:
     """
     Optimiser that minimises Conditional Value‑at‑Risk (CVaR, also known as Expected Shortfall).
 
-    The implementation follows the linear‑programming reformulation of Rockafellar & Uryasev
-    (2000).  The optimisation variables consist of the portfolio weights, a VaR (Value‑at‑Risk)
-    scalar, and auxiliary slack variables for each observation.  The optimiser can optionally
-    enforce a minimum expected return constraint.
+    The implementation follows the linear‑programming reformulation of Rockafellar &
+    Uryasev (2000).  The optimisation variables consist of the portfolio weights, a VaR
+    (Value‑at‑Risk) scalar, and auxiliary slack variables for each observation.  The optimiser
+    can optionally enforce a minimum expected return constraint.
 
     Example
     -------
@@ -48,6 +48,28 @@ class CVaROptimizer:
         if not (0.5 < confidence < 1.0):
             raise ValueError("confidence must be in (0.5, 1.0)")
         self.confidence = confidence
+
+    def _prepare_data(self, returns: pd.DataFrame) -> tuple[pd.DataFrame, list[str], int]:
+        """
+        Clean the input DataFrame and return a tuple with the cleaned data,
+        the list of symbols and the original asset count.
+
+        Returns
+        -------
+        returns_clean : pd.DataFrame
+            DataFrame with NaNs filled with 0 and completely empty columns removed.
+        symbols : list[str]
+            Original symbol order.
+        n_original : int
+            Number of assets before cleaning.
+        """
+        symbols = list(returns.columns)
+        n_original = len(symbols)
+
+        # Drop columns that are entirely NaN; fill remaining NaNs with zero.
+        returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
+
+        return returns_clean, symbols, n_original
 
     def compute_weights(
         self,
@@ -73,52 +95,57 @@ class CVaROptimizer:
             one.  If the optimisation fails or the input data are insufficient, equal
             weighting is returned as a safe fallback.
         """
-        symbols = list(returns.columns)
-        n = len(symbols)
+        returns_clean, symbols, n_original = self._prepare_data(returns)
+        symbols_clean = list(returns_clean.columns)
+        n = len(symbols_clean)
+        T = len(returns_clean)
 
         # Basic sanity checks – fall back to equal weighting if data are too sparse.
-        if n < 2 or len(returns) < 20:
-            return pd.Series(1.0 / max(n, 1), index=symbols)
+        if n < 2 or T < 20:
+            logger.info(
+                "Insufficient data for CVaR optimisation; falling back to equal weighting",
+                assets=n,
+                observations=T,
+            )
+            return pd.Series(1.0 / max(n_original, 1), index=symbols)
 
-        # Clean data: drop completely empty columns and replace remaining NaNs with zero.
-        returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
-        symbols_clean = list(returns_clean.columns)
-        n_clean = len(symbols_clean)
-        T = len(returns_clean)
-        R = returns_clean.values  # shape (T, n_clean)
+        R = returns_clean.values  # shape (T, n)
 
         alpha = self.confidence
 
         # Decision variables layout:
         #   [w_1 … w_n, VaR, z_1 … z_T]
-        n_vars = n_clean + 1 + T
+        n_vars = n + 1 + T
 
         # Objective: minimise VaR + (1/((1‑α)·T))·Σ z_t
         c = np.zeros(n_vars)
-        c[n_clean] = 1.0                                 # VaR coefficient
-        c[n_clean + 1 :] = 1.0 / ((1.0 - alpha) * T)      # z_t coefficients
+        c[n] = 1.0                                 # VaR coefficient
+        c[n + 1 :] = 1.0 / ((1.0 - alpha) * T)      # z_t coefficients
 
         # Inequality constraints: -R_t·w - VaR - z_t ≤ 0   (i.e. z_t ≥ –loss – VaR)
-        A_ub = np.zeros((T, n_vars))
+        # Vectorised construction for speed and clarity.
+        A_ub = np.hstack(
+            [
+                -R,                                 # -R_t·w
+                -np.ones((T, 1)),                  # -VaR
+                -np.eye(T),                         # -z_t (each row only touches its own slack)
+            ]
+        )
         b_ub = np.zeros(T)
-        for t in range(T):
-            A_ub[t, :n_clean] = -R[t]        # -R_t·w
-            A_ub[t, n_clean] = -1.0          # -VaR
-            A_ub[t, n_clean + 1 + t] = -1.0  # -z_t
 
         # Equality constraint: Σ w_i = 1
         A_eq = np.zeros((1, n_vars))
-        A_eq[0, :n_clean] = 1.0
+        A_eq[0, :n] = 1.0
         b_eq = np.array([1.0])
 
         # Bounds: w_i ∈ [0, 1], VaR unrestricted, z_t ≥ 0
-        bounds = [(0.0, 1.0)] * n_clean + [(None, None)] + [(0.0, None)] * T
+        bounds = [(0.0, 1.0)] * n + [(None, None)] + [(0.0, None)] * T
 
         # Optional expected‑return constraint.
         if target_return is not None:
             mu = returns_clean.mean().values
             ret_row = np.zeros((1, n_vars))
-            ret_row[0, :n_clean] = mu
+            ret_row[0, :n] = mu
             A_eq = np.vstack([A_eq, ret_row])
             b_eq = np.append(b_eq, target_return)
 
@@ -132,25 +159,32 @@ class CVaROptimizer:
                 bounds=bounds,
                 method="highs",
             )
-            if result.success:
-                w = result.x[:n_clean]
-                w = np.maximum(w, 0.0)
-                total = w.sum()
-                w = w / total if total > 0 else np.ones(n_clean) / n_clean
+            if not result.success:
+                raise RuntimeError(f"Linprog failed: {result.message}")
 
-                # Map the cleaned weights back onto the original symbol list.
-                out = pd.Series(0.0, index=symbols)
-                for i, sym in enumerate(symbols_clean):
-                    out[sym] = float(w[i])
-                return out
+            # Extract and normalise weights.
+            w_raw = result.x[:n]
+            w_raw = np.clip(w_raw, 0.0, None)  # enforce non‑negativity
+            total = w_raw.sum()
+            if total <= 0:
+                logger.warning("Optimiser returned non‑positive total weight; using equal weights")
+                w = np.full(n, 1.0 / n)
+            else:
+                w = w_raw / total
+
+            # Map the cleaned weights back onto the original symbol list.
+            out = pd.Series(0.0, index=symbols)
+            for i, sym in enumerate(symbols_clean):
+                out[sym] = float(w[i])
+            return out
+
         except Exception as exc:  # pragma: no cover
             logger.warning(
-                "CVaROptimizer.optimize failed, falling back to equal weight",
+                "CVaROptimizer.compute_weights failed, falling back to equal weight",
                 error=str(exc),
             )
-
-        # Fallback: equal weighting across the original symbols.
-        return pd.Series(1.0 / n, index=symbols)
+            # Fallback: equal weighting across the original symbols.
+            return pd.Series(1.0 / max(n_original, 1), index=symbols)
 
 
 def optimize_portfolio(
@@ -175,10 +209,13 @@ def optimize_portfolio(
     pd.Series
         Portfolio weights indexed by symbol and summing to one.
     """
+    method = method.lower()
     if method == "cvar":
         return CVaROptimizer(confidence=confidence).compute_weights(returns)
     if method == "equal":
         n = len(returns.columns)
+        if n == 0:
+            raise ValueError("Cannot compute equal weights for an empty returns DataFrame")
         return pd.Series(1.0 / n, index=returns.columns)
     if method != "hrp":
         raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
