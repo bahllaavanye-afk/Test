@@ -10,6 +10,7 @@ Decision logic:
 
 All orders pass through RiskManager.check_order() before execution.
 """
+import time
 from dataclasses import asdict
 
 from app.brokers.base import OrderRequest, OrderResult, AbstractBroker
@@ -36,12 +37,16 @@ class SmartOrderRouter:
         self.broker = broker
         self.slippage_tracker = slippage_tracker
         self.risk_manager = risk_manager
+        self._signal_counter = 0  # tracks number of executed signals
 
     async def execute(self, request: OrderRequest, signal_price: float | None = None) -> OrderResult | None:
         """Route order to the optimal execution algorithm.
 
         Returns None (and logs a warning) if the risk manager blocks the order.
         """
+        start_ts = time.monotonic()
+        self._signal_counter += 1
+
         # ── Risk gate ────────────────────────────────────────────────────────
         if self.risk_manager is not None:
             decision = await self.risk_manager.check_order(request)
@@ -89,6 +94,28 @@ class SmartOrderRouter:
 
         if self.slippage_tracker:
             await self.slippage_tracker.record_fill(request, result)
+
+        # ── Monitoring ────────────────────────────────────────────────────────
+        exec_time_ms = (time.monotonic() - start_ts) * 1000
+        pnl = None
+        if result and signal_price is not None:
+            side = getattr(request, "side", "buy").lower()
+            filled_qty = getattr(result, "filled_qty", 0.0)
+            avg_price = getattr(result, "avg_fill_price", None)
+            if avg_price is not None:
+                if side == "buy":
+                    pnl = (signal_price - avg_price) * filled_qty
+                elif side == "sell":
+                    pnl = (avg_price - signal_price) * filled_qty
+
+        logger.info(
+            "Order execution completed",
+            signal_count=self._signal_counter,
+            execution_time_ms=round(exec_time_ms, 2),
+            pnl=round(pnl, 4) if pnl is not None else None,
+            symbol=request.symbol,
+            order_id=getattr(result, "order_id", None),
+        )
 
         return result
 
