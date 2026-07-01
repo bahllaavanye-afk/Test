@@ -73,8 +73,13 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "monitoring on strategies/manual/vrp_systematic.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "monitoring on ml/models/multiscale_transformer.py: success \u2014 tests green",
+    "monitoring on ml/features/alpha_decay.py: success \u2014 tests green",
+    "monitoring on execution/smart_router.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-01T23:23:38.727278+00:00",
   "total": 26
 }
