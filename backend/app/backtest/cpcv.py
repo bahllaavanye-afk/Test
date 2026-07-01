@@ -16,6 +16,7 @@ Key insight:
   embargo gaps (to prevent backward leakage) around each test fold.
   The Deflated Sharpe Ratio corrects for multiple-testing inflation.
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,6 +29,20 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+DEFAULT_N_SPLITS: int = 6
+DEFAULT_PURGE_DAYS: int = 5
+DEFAULT_EMBARGO_DAYS: int = 2
+
+ANNUALIZATION_FACTOR: int = 252
+EPSILON: float = 1e-10
+OVERFIT_THRESHOLD_FACTOR: float = 0.8
+
+EULER_MASCHERONI: float = 0.5772156649
+FALLBACK_DSR_FACTOR: float = 0.5
+
 
 class CPCV:
     """
@@ -39,7 +54,9 @@ class CPCV:
         embargo_days: bars to drop after the test fold (prevents test→train leakage)
 
     Usage:
-        cpcv = CPCV(n_splits=6, purge_days=5, embargo_days=2)
+        cpcv = CPCV(n_splits=DEFAULT_N_SPLITS,
+                    purge_days=DEFAULT_PURGE_DAYS,
+                    embargo_days=DEFAULT_EMBARGO_DAYS)
         results = cpcv.validate(signals, returns)
         print(f"Deflated Sharpe: {results['deflated_sharpe']:.3f}")
         print(f"Overfit: {results['is_overfit']}")
@@ -47,9 +64,9 @@ class CPCV:
 
     def __init__(
         self,
-        n_splits: int = 6,
-        purge_days: int = 5,
-        embargo_days: int = 2,
+        n_splits: int = DEFAULT_N_SPLITS,
+        purge_days: int = DEFAULT_PURGE_DAYS,
+        embargo_days: int = DEFAULT_EMBARGO_DAYS,
     ):
         if n_splits < 2:
             raise ValueError(f"n_splits must be >= 2, got {n_splits}")
@@ -132,7 +149,7 @@ class CPCV:
             return float(sr[0])
 
         mean_sr = float(np.mean(sr))
-        std_sr = float(np.std(sr, ddof=1)) + 1e-10
+        std_sr = float(np.std(sr, ddof=1)) + EPSILON
 
         # Expected maximum SR under n_trials independent tests
         # Approximation: E[max_SR] ≈ (1 - γ)*Φ⁻¹(1 - 1/n) + γ*Φ⁻¹(1 - 1/(n·e))
@@ -140,20 +157,19 @@ class CPCV:
         # Uses scipy.special.erfinv for the normal quantile
         try:
             from scipy.special import erfinv  # type: ignore
-            gamma = 0.5772156649  # Euler-Mascheroni constant
 
             def norm_ppf(p: float) -> float:
-                p = float(np.clip(p, 1e-10, 1 - 1e-10))
+                p = float(np.clip(p, EPSILON, 1 - EPSILON))
                 return float(np.sqrt(2) * erfinv(2 * p - 1))
 
             p1 = 1.0 - 1.0 / max(n_trials, 1)
             p2 = 1.0 - 1.0 / max(n_trials * np.e, 1)
-            sr_star = (1 - gamma) * norm_ppf(p1) + gamma * norm_ppf(p2)
+            sr_star = (1 - EULER_MASCHERONI) * norm_ppf(p1) + EULER_MASCHERONI * norm_ppf(p2)
             # Scale by empirical std of SR distribution
             sr_star = sr_star * float(np.sqrt(np.var(sr) + 1))
         except ImportError:
             # Fallback: simple approximation
-            sr_star = float(np.log(n_trials + 1) * 0.5)
+            sr_star = float(np.log(n_trials + 1) * FALLBACK_DSR_FACTOR)
 
         dsr = (mean_sr - sr_star) / std_sr
         return float(dsr)
@@ -178,7 +194,7 @@ class CPCV:
               fold_sharpes: list of per-fold Sharpe Ratios (annualized)
               mean_sharpe: mean across folds
               deflated_sharpe: DSR (adjusted for multiple testing)
-              is_overfit: True if DSR < 0.8 × mean_sharpe
+              is_overfit: True if DSR < OVERFIT_THRESHOLD_FACTOR × mean_sharpe
         """
         start_time = time.time()
 
@@ -190,8 +206,6 @@ class CPCV:
         signals = signals.loc[common_idx]
         returns = returns.loc[common_idx]
 
-        signal_count = int(len(signals))
-
         sharpes: list[float] = []
         total_pnl = 0.0
 
@@ -201,7 +215,7 @@ class CPCV:
             # Shift signals by 1 to prevent lookahead
             pnl = test_signals.shift(1).fillna(0) * test_returns
             total_pnl += float(pnl.sum())
-            sr = pnl.mean() / (pnl.std() + 1e-10) * np.sqrt(252)
+            sr = pnl.mean() / (pnl.std() + EPSILON) * np.sqrt(ANNUALIZATION_FACTOR)
             sharpes.append(float(sr))
 
         if not sharpes:
@@ -214,23 +228,17 @@ class CPCV:
         else:
             mean_sr = float(np.mean(sharpes))
             dsr = self.deflated_sharpe(sharpes, n_trials=len(sharpes))
-
             result = {
                 "fold_sharpes": sharpes,
                 "mean_sharpe": mean_sr,
                 "deflated_sharpe": dsr,
-                "is_overfit": dsr < 0.8 * mean_sr,
+                "is_overfit": dsr < OVERFIT_THRESHOLD_FACTOR * mean_sr,
             }
 
-        exec_time = time.time() - start_time
-
-        logger.info(
-            "CPCV validation completed",
-            extra={
-                "signal_count": signal_count,
-                "execution_time_sec": exec_time,
-                "total_pnl": total_pnl,
-            },
+        elapsed = time.time() - start_time
+        logger.debug(
+            "CPCV validation completed in %.3f seconds. Result: %s",
+            elapsed,
+            result,
         )
-
         return result
