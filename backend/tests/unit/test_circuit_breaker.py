@@ -1,5 +1,5 @@
-"""Circuit breaker drawdown tests."""
-import pytest
+"""Unit tests for the CircuitBreaker risk management component."""
+
 from app.risk.circuit_breaker import CircuitBreaker, BreakerState
 
 
