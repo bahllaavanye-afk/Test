@@ -10,19 +10,24 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass, field
+from typing import Dict, List
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
-from scipy.stats import spearmanr
 from scipy.optimize import curve_fit
+from scipy.stats import spearmanr
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class DecayProfile:
     strategy_name: str
-    ic_0: float           # IC at t=0
+    ic_0: float  # IC at t=0
     half_life_hours: float  # hours until IC halves
-    horizons: dict = field(default_factory=dict)  # {horizon_hours: ic_value}
+    horizons: Dict[int, float] = field(default_factory=dict)  # {horizon_hours: ic_value}
 
 
 class AlphaDecayTracker:
@@ -34,7 +39,7 @@ class AlphaDecayTracker:
     """
 
     # Horizons to measure IC at: 1h, 4h, 1d, 5d, 20d
-    HORIZONS: list[int] = [1, 4, 24, 120, 480]
+    HORIZONS: List[int] = [1, 4, 24, 120, 480]
 
     def compute_ic_profile(
         self,
@@ -52,17 +57,43 @@ class AlphaDecayTracker:
 
         Returns:
             DecayProfile with IC at each horizon and fitted half-life in hours.
-            Raises ValueError if prices has no 'close' column.
+
+        Raises:
+            ValueError: If ``prices`` does not contain a ``close`` column.
+            TypeError: If inputs are not of expected pandas types.
         """
+        if not isinstance(signals, pd.Series):
+            logger.error("Invalid type for signals: expected pd.Series, got %s", type(signals))
+            raise TypeError("signals must be a pandas Series")
+        if not isinstance(prices, pd.DataFrame):
+            logger.error("Invalid type for prices: expected pd.DataFrame, got %s", type(prices))
+            raise TypeError("prices must be a pandas DataFrame")
+
         if "close" not in prices.columns:
+            logger.error("prices DataFrame missing required 'close' column")
             raise ValueError("prices DataFrame must contain a 'close' column")
 
-        ics: dict[int, float] = {}
+        ics: Dict[int, float] = {}
 
         for h in self.HORIZONS:
-            fwd_ret = prices["close"].pct_change(h).shift(-h)
+            try:
+                fwd_ret = prices["close"].pct_change(h).shift(-h)
+            except Exception as exc:
+                logger.error(
+                    "Failed to compute forward returns for horizon %d: %s",
+                    h,
+                    exc,
+                    exc_info=True,
+                )
+                continue
+
             common = signals.index.intersection(fwd_ret.index)
             if len(common) < 30:
+                logger.debug(
+                    "Insufficient overlapping data for horizon %d (found %d points)",
+                    h,
+                    len(common),
+                )
                 continue
 
             s = signals.loc[common].dropna()
@@ -70,13 +101,32 @@ class AlphaDecayTracker:
             s = s.loc[r.index]
 
             if len(s) < 20:
+                logger.debug(
+                    "After alignment, insufficient points for horizon %d (found %d points)",
+                    h,
+                    len(s),
+                )
                 continue
 
-            ic_val, _ = spearmanr(s, r)
+            try:
+                ic_val, _ = spearmanr(s, r)
+            except Exception as exc:
+                logger.error(
+                    "Spearman correlation failed for horizon %d: %s",
+                    h,
+                    exc,
+                    exc_info=True,
+                )
+                continue
+
             if not np.isnan(ic_val):
                 ics[h] = float(ic_val)
 
         if len(ics) < 2:
+            logger.info(
+                "Not enough IC points to fit decay model for strategy %s; returning default profile",
+                strategy_name,
+            )
             return DecayProfile(
                 strategy_name=strategy_name,
                 ic_0=0.0,
@@ -87,10 +137,10 @@ class AlphaDecayTracker:
         horizons_arr = np.array(list(ics.keys()), dtype=float)
         ic_arr = np.array(list(ics.values()), dtype=float)
 
-        try:
-            def exp_decay(t: np.ndarray, ic0: float, lam: float) -> np.ndarray:
-                return ic0 * np.exp(-lam * t)
+        def exp_decay(t: np.ndarray, ic0: float, lam: float) -> np.ndarray:
+            return ic0 * np.exp(-lam * t)
 
+        try:
             popt, _ = curve_fit(
                 exp_decay,
                 horizons_arr,
@@ -100,8 +150,23 @@ class AlphaDecayTracker:
             )
             ic_0, lam = float(popt[0]), float(popt[1])
             half_life = np.log(2) / lam if lam > 0 else float("inf")
-        except Exception:
-            ic_0 = float(ic_arr[0]) if len(ic_arr) > 0 else 0.0
+        except (RuntimeError, ValueError) as exc:
+            logger.error(
+                "Curve fitting failed for strategy %s: %s",
+                strategy_name,
+                exc,
+                exc_info=True,
+            )
+            ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
+            half_life = float("inf")
+        except Exception as exc:
+            logger.error(
+                "Unexpected error during curve fitting for strategy %s: %s",
+                strategy_name,
+                exc,
+                exc_info=True,
+            )
+            ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
             half_life = float("inf")
 
         return DecayProfile(
@@ -126,13 +191,38 @@ class AlphaDecayTracker:
             staleness_hours: hours since the signal was generated
 
         Returns:
-            Adjusted confidence in [0, 1].  Returns base_confidence unchanged
+            Adjusted confidence in [0, 1]. Returns ``base_confidence`` unchanged
             when half-life is infinite (signal does not decay).
+
+        Raises:
+            ValueError: If ``base_confidence`` is outside the [0, 1] range.
+            TypeError: If ``profile`` is not a DecayProfile instance.
         """
+        if not isinstance(profile, DecayProfile):
+            logger.error(
+                "Invalid profile type: expected DecayProfile, got %s",
+                type(profile),
+            )
+            raise TypeError("profile must be a DecayProfile instance")
+        if not (0.0 <= base_confidence <= 1.0):
+            logger.error(
+                "Base confidence out of bounds: %s (must be within [0, 1])",
+                base_confidence,
+            )
+            raise ValueError("base_confidence must be between 0 and 1")
+
         if profile.half_life_hours == float("inf") or profile.half_life_hours <= 0:
             return float(base_confidence)
 
-        decay = np.exp(
-            -staleness_hours * np.log(2) / profile.half_life_hours
-        )
+        try:
+            decay = np.exp(-staleness_hours * np.log(2) / profile.half_life_hours)
+        except Exception as exc:
+            logger.error(
+                "Failed to compute decay factor for staleness %s hours: %s",
+                staleness_hours,
+                exc,
+                exc_info=True,
+            )
+            return float(base_confidence)
+
         return float(base_confidence * max(float(decay), 0.0))
