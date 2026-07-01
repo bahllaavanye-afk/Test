@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-06-30T00:02:07.380204+00:00",
+  "last_updated": "2026-07-01T13:18:46.937023+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -286,7 +286,12 @@
     "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/models/lstm.py: tests=pass",
     "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/features/technical.py: tests=pass",
     "[continuous_improver @ 2026-06-30T00:02] docstrings on execution/limit_first.py: tests=pass",
-    "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass"
+    "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass",
+    "[continuous_improver @ 2026-07-01T13:18] error_handling on ml/models/xgboost_model.py: tests=pass",
+    "[continuous_improver @ 2026-07-01T13:18] error_handling on ml/features/alpha_decay.py: tests=pass",
+    "[continuous_improver @ 2026-07-01T13:18] error_handling on execution/almgren_chriss.py: tests=pass",
+    "[continuous_improver @ 2026-07-01T13:18] error_handling on risk/portfolio_optimizer.py: tests=pass",
+    "[continuous_improver @ 2026-07-01T13:18] error_handling on brokers/alpaca_headers.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -551,6 +556,11 @@
       "test_pass": 10
     },
     "schemas": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "error_handling": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5

@@ -73,8 +73,13 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "error_handling on ml/models/xgboost_model.py: success \u2014 tests green",
+    "error_handling on ml/features/alpha_decay.py: success \u2014 tests green",
+    "error_handling on execution/almgren_chriss.py: success \u2014 tests green",
+    "error_handling on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "error_handling on brokers/alpaca_headers.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-01T13:18:46.936819+00:00",
   "total": 26
 }
