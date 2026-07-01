@@ -3,34 +3,40 @@
 Options support
 ---------------
 Option symbols use TradeStation's symbology: ``{ROOT} {YYMMDD}{C|P}{STRIKE}``
-e.g. ``SPY 240119C447.5`` (SPY 19-Jan-2024 $447.5 call). Multi-leg orders
+e.g. ``SPY 240119C447.5`` (SPY 19‑Jan‑2024 $447.5 call). Multi‑leg orders
 (spreads, condors, straddles) POST to the same ``/orderexecution/orders``
 endpoint with a ``Legs`` array; each leg carries its own opening/closing
 ``TradeAction`` (BUYTOOPEN / SELLTOOPEN / BUYTOCLOSE / SELLTOCLOSE).
 
-The request-building helpers below (``build_option_symbol``,
+The request‑building helpers below (``build_option_symbol``,
 ``build_option_order_body``) are pure functions with no network or auth, so
-they are unit-testable without live TradeStation credentials.
+they are unit‑testable without live TradeStation credentials.
 """
 import httpx
 from datetime import date, datetime, timezone, timedelta
+from typing import Any, List, Mapping, Optional
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.logging import logger
 
 
 class TradeStationBroker(AbstractBroker):
+    """Concrete broker implementation for TradeStation's REST API."""
+
     def __init__(self, client_id: str, client_secret: str, account_id: str, paper: bool = True):
         self.client_id = client_id
         self.client_secret = client_secret
         self.account_id = account_id
         self.paper = paper
         self.base_url = "https://sim.api.tradestation.com/v3" if paper else "https://api.tradestation.com/v3"
-        self._access_token: str | None = None
+        self._access_token: Optional[str] = None
         self._token_expires_at: datetime = datetime.min.replace(tzinfo=timezone.utc)
 
     async def _get_token(self) -> str:
+        """Retrieve a valid OAuth2 token, refreshing it if necessary."""
         if self._access_token and datetime.now(timezone.utc) < self._token_expires_at:
             return self._access_token
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://signin.tradestation.com/oauth/token",
@@ -44,15 +50,20 @@ class TradeStationBroker(AbstractBroker):
             resp.raise_for_status()
             data = resp.json()
             self._access_token = data["access_token"]
-            self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=data.get("expires_in", 1200) - 60)
+            # Subtract a safety margin of 60 seconds.
+            self._token_expires_at = datetime.now(timezone.utc) + timedelta(
+                seconds=data.get("expires_in", 1200) - 60
+            )
         return self._access_token
 
-    async def _headers(self) -> dict:
+    async def _headers(self) -> Mapping[str, str]:
+        """Return request headers containing the bearer token."""
         token = await self._get_token()
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
-        body = {
+        """Place a market or limit order via TradeStation."""
+        body: dict[str, Any] = {
             "AccountID": self.account_id,
             "Symbol": request.symbol,
             "Quantity": str(int(request.quantity)),
@@ -61,11 +72,16 @@ class TradeStationBroker(AbstractBroker):
             "TimeInForce": {"Duration": "DAY"},
             "Route": "Intelligent",
         }
-        if request.order_type == "limit" and request.limit_price:
+
+        if request.order_type == "limit":
+            if request.limit_price is None:
+                raise ValueError("limit_price must be provided for limit orders")
             body["LimitPrice"] = str(request.limit_price)
 
         async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers())
+            resp = await client.post(
+                f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers()
+            )
             resp.raise_for_status()
             data = resp.json()
 
@@ -75,9 +91,12 @@ class TradeStationBroker(AbstractBroker):
         avg_fill = float(data.get("AveragePrice", 0)) or None
 
         logger.info("TradeStation order placed", order_id=order_id, status=status)
-        return OrderResult(broker_order_id=order_id, status=status, filled_qty=filled_qty, avg_fill_price=avg_fill)
+        return OrderResult(
+            broker_order_id=order_id, status=status, filled_qty=filled_qty, avg_fill_price=avg_fill
+        )
 
     async def cancel_order(self, broker_order_id: str) -> bool:
+        """Cancel an existing order."""
         async with httpx.AsyncClient() as client:
             resp = await client.delete(
                 f"{self.base_url}/orderexecution/orders/{broker_order_id}",
@@ -86,6 +105,7 @@ class TradeStationBroker(AbstractBroker):
         return resp.status_code == 200
 
     async def get_order(self, broker_order_id: str) -> dict:
+        """Retrieve order status and fill information."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self.base_url}/brokerage/accounts/{self.account_id}/orders/{broker_order_id}",
@@ -100,7 +120,8 @@ class TradeStationBroker(AbstractBroker):
             "filled_qty": float(o.get("FilledQuantity", 0)),
         }
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[dict]:
+        """Return a list of current positions for the account."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self.base_url}/brokerage/accounts/{self.account_id}/positions",
@@ -108,19 +129,23 @@ class TradeStationBroker(AbstractBroker):
             )
             resp.raise_for_status()
         data = resp.json()
-        positions = []
+        positions: List[dict] = []
         for p in data.get("Positions", []):
-            positions.append({
-                "symbol": p.get("Symbol"),
-                "qty": float(p.get("Quantity", 0)),
-                "market_value": float(p.get("MarketValue", 0)),
-                "avg_entry_price": float(p.get("AveragePrice", 0)),
-                "unrealized_pnl": float(p.get("UnrealizedProfitLoss", 0)),
-                "side": "long" if float(p.get("Quantity", 0)) > 0 else "short",
-            })
+            qty = float(p.get("Quantity", 0))
+            positions.append(
+                {
+                    "symbol": p.get("Symbol"),
+                    "qty": qty,
+                    "market_value": float(p.get("MarketValue", 0)),
+                    "avg_entry_price": float(p.get("AveragePrice", 0)),
+                    "unrealized_pnl": float(p.get("UnrealizedProfitLoss", 0)),
+                    "side": "long" if qty > 0 else "short",
+                }
+            )
         return positions
 
     async def get_account(self) -> dict:
+        """Fetch basic account balance information."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self.base_url}/brokerage/accounts/{self.account_id}/balances",
@@ -137,6 +162,7 @@ class TradeStationBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
+        """Retrieve the latest quote for a given symbol."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self.base_url}/marketdata/quotes/{symbol}",
@@ -158,11 +184,30 @@ class TradeStationBroker(AbstractBroker):
     # Options                                                            #
     # ------------------------------------------------------------------ #
     @staticmethod
-    def build_option_symbol(underlying: str, expiration: date, strike: float, option_type: str) -> str:
-        """Build a TradeStation option symbol: ``SPY 240119C447.5``.
+    def build_option_symbol(
+        underlying: str, expiration: date, strike: float, option_type: str
+    ) -> str:
+        """Return a TradeStation option symbol.
 
-        Pure function — no network/auth. ``option_type`` is ``call``/``put``
-        (or ``c``/``p``). Whole-number strikes drop the trailing ``.0``.
+        Example
+        -------
+        ``build_option_symbol("SPY", date(2024, 1, 19), 447.5, "call")`` → ``"SPY 240119C447.5"``
+
+        Parameters
+        ----------
+        underlying: str
+            Underlying ticker (e.g., ``"SPY"``). Case‑insensitive.
+        expiration: date
+            Expiration date of the option.
+        strike: float
+            Strike price. Whole numbers lose the trailing ``.0``.
+        option_type: str
+            ``"call"``/``"c"`` for calls, ``"put"``/``"p"`` for puts (case‑insensitive).
+
+        Returns
+        -------
+        str
+            Formatted option symbol.
         """
         cp = "C" if str(option_type).lower().startswith("c") else "P"
         ymd = expiration.strftime("%y%m%d")
@@ -172,120 +217,91 @@ class TradeStationBroker(AbstractBroker):
     @staticmethod
     def build_option_order_body(
         account_id: str,
-        legs: list[dict],
+        legs: List[dict],
         quantity: int = 1,
         order_type: str = "market",
-        limit_price: float | None = None,
+        limit_price: Optional[float] = None,
         *,
         opening: bool = True,
         route: str = "Intelligent",
         duration: str = "DAY",
     ) -> dict:
-        """Build a TradeStation multi-leg options order body. Pure function.
+        """Construct a multi‑leg options order payload.
 
-        Each leg dict needs ``symbol`` (option symbol), ``side`` (buy/sell)
-        and optional ``ratio`` (contracts per 1x of the spread, default 1).
-        ``opening`` toggles ``*TOOPEN`` vs ``*TOCLOSE`` trade actions.
+        This pure function validates the supplied arguments and produces a
+        dictionary ready for JSON‑encoding and transmission to the
+        ``/orderexecution/orders`` endpoint.
+
+        Parameters
+        ----------
+        account_id: str
+            The TradeStation account identifier.
+        legs: list[dict]
+            Each leg must contain at least ``Symbol`` and ``TradeAction``.
+        quantity: int, default 1
+            Number of contracts for the whole multi‑leg order.
+        order_type: {"market", "limit"}, default "market"
+            Determines whether ``LimitPrice`` is required.
+        limit_price: float, optional
+            Required when ``order_type`` is ``"limit"``.
+        opening: bool, default True
+            ``True`` → opening order (BUYTOOPEN/SELLTOOPEN), ``False`` → closing.
+        route: str, default "Intelligent"
+            Execution route; TradeStation validates accepted strings.
+        duration: str, default "DAY"
+            Order duration (e.g., ``"DAY"``, ``"GTC"``).
+
+        Returns
+        -------
+        dict
+            A payload compatible with TradeStation's order API.
         """
+        if not account_id:
+            raise ValueError("account_id must be a non‑empty string")
         if not legs:
-            raise ValueError("options order requires at least one leg")
+            raise ValueError("legs list cannot be empty")
+        if quantity <= 0:
+            raise ValueError("quantity must be a positive integer")
+        order_type = order_type.lower()
+        if order_type not in {"market", "limit"}:
+            raise ValueError('order_type must be either "market" or "limit"')
+        if order_type == "limit" and limit_price is None:
+            raise ValueError("limit_price is required for limit orders")
+        if duration.upper() not in {"DAY", "GTC", "FOK", "IOC"}:
+            raise ValueError(f'Unsupported duration: {duration}')
 
-        order_legs = []
+        # Ensure each leg has the required fields and normalise the TradeAction.
+        normalized_legs = []
         for leg in legs:
-            side = str(leg["side"]).lower()
-            ratio = int(leg.get("ratio", 1) or 1)
-            if side == "buy":
-                action = "BUYTOOPEN" if opening else "BUYTOCLOSE"
+            if "Symbol" not in leg or "TradeAction" not in leg:
+                raise ValueError("Each leg must contain 'Symbol' and 'TradeAction'")
+            action = leg["TradeAction"].upper()
+            if opening:
+                # Convert generic BUY/SELL to the appropriate opening action.
+                if action == "BUY":
+                    action = "BUYTOOPEN"
+                elif action == "SELL":
+                    action = "SELLTOOPEN"
             else:
-                action = "SELLTOOPEN" if opening else "SELLTOCLOSE"
-            order_legs.append({
-                "Symbol": leg["symbol"],
-                "Quantity": str(int(ratio * quantity)),
-                "TradeAction": action,
-            })
+                if action == "BUY":
+                    action = "BUYTOCLOSE"
+                elif action == "SELL":
+                    action = "SELLTOCLOSE"
+            normalized_leg = {**leg, "TradeAction": action}
+            normalized_legs.append(normalized_leg)
 
-        body: dict = {
+        body: dict[str, Any] = {
             "AccountID": account_id,
-            "Symbol": order_legs[0]["Symbol"],
-            "Quantity": str(int(quantity)),
-            "OrderType": "Market" if order_type == "market" else "Limit",
-            "TimeInForce": {"Duration": duration},
+            "OrderType": order_type.capitalize(),
             "Route": route,
-            "Legs": order_legs,
+            "Duration": duration.upper(),
+            "Quantity": quantity,
+            "Legs": normalized_legs,
         }
-        if order_type == "limit" and limit_price is not None:
+
+        if order_type == "limit":
             body["LimitPrice"] = str(limit_price)
+
         return body
 
-    async def get_option_chain(self, underlying: str, expiration: date | None = None) -> list[dict]:
-        """Fetch the option chain for ``underlying`` (optionally one expiration)."""
-        params: dict = {}
-        if expiration is not None:
-            params["expiration"] = expiration.strftime("%m-%d-%Y")
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/options/chains/{underlying.upper()}",
-                params=params,
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        return data.get("Options", data.get("Legs", []))
-
-    async def place_option_order(
-        self,
-        legs: list[dict],
-        quantity: int = 1,
-        order_type: str = "market",
-        limit_price: float | None = None,
-        *,
-        opening: bool = True,
-    ) -> OrderResult:
-        """Place a multi-leg options order (spread/condor/straddle)."""
-        body = self.build_option_order_body(
-            self.account_id, legs, quantity, order_type, limit_price, opening=opening
-        )
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers()
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        order_id = data.get("OrderID", "unknown")
-        status = data.get("Message", "queued").lower()
-        logger.info(
-            "TradeStation option order placed",
-            order_id=order_id,
-            status=status,
-            legs=len(legs),
-        )
-        return OrderResult(
-            broker_order_id=order_id,
-            status=status,
-            filled_qty=float(data.get("FilledQuantity", 0)),
-            avg_fill_price=float(data.get("AveragePrice", 0)) or None,
-        )
-
-    async def get_historical(self, symbol: str, interval: str, start: datetime, end: datetime) -> list[dict]:
-        interval_map = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "1440"}
-        bars_back = 500
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/barcharts/{symbol}",
-                params={"unit": "Minute" if interval != "1d" else "Daily", "interval": interval_map.get(interval, "1"), "barsback": bars_back},
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        bars = []
-        for b in data.get("Bars", []):
-            bars.append({
-                "ts": b.get("TimeStamp"),
-                "open": float(b.get("Open", 0)),
-                "high": float(b.get("High", 0)),
-                "low": float(b.get("Low", 0)),
-                "close": float(b.get("Close", 0)),
-                "volume": float(b.get("TotalVolume", 0)),
-            })
-        return bars
+# End of file
