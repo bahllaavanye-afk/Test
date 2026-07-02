@@ -11,6 +11,7 @@ Decision logic:
 All orders pass through RiskManager.check_order() before execution.
 """
 from dataclasses import asdict
+from typing import Optional
 
 from app.brokers.base import OrderRequest, OrderResult, AbstractBroker
 from app.execution.limit_first import LimitFirstExecution
@@ -19,32 +20,55 @@ from app.execution.slippage_tracker import SlippageTracker
 from app.execution.almgren_chriss import AlmgrenChriss
 from app.utils.logging import logger
 
+# Optional RL execution support
 try:
     from app.execution.rl_exec import RLExecution, get_rl_agent
     _RL_EXEC_AVAILABLE = True
 except Exception:
     _RL_EXEC_AVAILABLE = False
 
+# Broker related exception (fallback to generic Exception if not defined)
+try:
+    from app.brokers.base import BrokerError
+except Exception:  # pragma: no cover
+    class BrokerError(Exception):
+        """Fallback broker exception when the specific class is unavailable."""
+        pass
+
 
 class SmartOrderRouter:
     def __init__(
         self,
         broker: AbstractBroker,
-        slippage_tracker: SlippageTracker | None = None,
+        slippage_tracker: Optional[SlippageTracker] = None,
         risk_manager=None,
     ):
         self.broker = broker
         self.slippage_tracker = slippage_tracker
         self.risk_manager = risk_manager
 
-    async def execute(self, request: OrderRequest, signal_price: float | None = None) -> OrderResult | None:
+    async def execute(
+        self,
+        request: OrderRequest,
+        signal_price: float | None = None,
+    ) -> Optional[OrderResult]:
         """Route order to the optimal execution algorithm.
 
-        Returns None (and logs a warning) if the risk manager blocks the order.
+        Returns ``None`` (and logs a warning) if the risk manager blocks the order
+        or if an unrecoverable error occurs during execution.
         """
         # ── Risk gate ────────────────────────────────────────────────────────
         if self.risk_manager is not None:
-            decision = await self.risk_manager.check_order(request)
+            try:
+                decision = await self.risk_manager.check_order(request)
+            except Exception as e:  # pragma: no cover
+                logger.exception(
+                    "Risk manager raised an unexpected exception",
+                    symbol=request.symbol,
+                    error=str(e),
+                )
+                return None
+
             if not decision.allowed:
                 logger.warning(
                     "Order blocked by risk manager",
@@ -60,37 +84,84 @@ class SmartOrderRouter:
 
         # Record signal price for slippage tracking
         if signal_price and self.slippage_tracker:
-            await self.slippage_tracker.record_signal_price(request, signal_price)
-
-        if algo == "almgren_chriss":
-            result = await self._execute_almgren_chriss(request)
-        elif algo == "twap":
-            result = await TWAPExecution(self.broker, slices=10, duration_minutes=30).execute(request)
-        elif algo == "limit_first":
-            result = await LimitFirstExecution(self.broker, offset_bps=5, fallback_seconds=30).execute(request)
-        elif algo == "rl_exec" and _RL_EXEC_AVAILABLE:
-            fills = await RLExecution(self.broker, agent=get_rl_agent()).execute(request, signal_price)
-            # Aggregate fills into a single OrderResult for compatibility
-            if fills:
-                total_qty = sum(f["qty"] for f in fills)
-                avg_price = sum(f["qty"] * f["price"] for f in fills) / max(total_qty, 1e-9)
-                from app.brokers.base import OrderResult
-                result = OrderResult(
-                    order_id=f"rl_{request.symbol}",
+            try:
+                await self.slippage_tracker.record_signal_price(request, signal_price)
+            except Exception as e:  # pragma: no cover
+                logger.exception(
+                    "Failed to record signal price for slippage tracking",
                     symbol=request.symbol,
-                    status="filled",
-                    filled_qty=total_qty,
-                    avg_fill_price=avg_price,
+                    error=str(e),
                 )
+                # Continue execution; slippage tracking is auxiliary.
+
+        try:
+            if algo == "almgren_chriss":
+                result = await self._execute_almgren_chriss(request)
+            elif algo == "twap":
+                result = await TWAPExecution(self.broker, slices=10, duration_minutes=30).execute(request)
+            elif algo == "limit_first":
+                result = await LimitFirstExecution(self.broker, offset_bps=5, fallback_seconds=30).execute(request)
+            elif algo == "rl_exec" and _RL_EXEC_AVAILABLE:
+                result = await self._execute_rl(request, signal_price)
             else:
-                result = None
-        else:
-            result = await self.broker.place_order(request)
+                result = await self.broker.place_order(request)
+        except BrokerError as be:  # pragma: no cover
+            logger.exception(
+                "Broker error during order execution",
+                symbol=request.symbol,
+                algorithm=algo,
+                error=str(be),
+            )
+            result = None
+        except Exception as e:  # pragma: no cover
+            logger.exception(
+                "Unexpected error during order execution",
+                symbol=request.symbol,
+                algorithm=algo,
+                error=str(e),
+            )
+            result = None
 
         if self.slippage_tracker:
-            await self.slippage_tracker.record_fill(request, result)
-
+            try:
+                await self.slippage_tracker.record_fill(request, result)
+            except Exception as e:  # pragma: no cover
+                logger.exception(
+                    "Failed to record fill for slippage tracking",
+                    symbol=request.symbol,
+                    error=str(e),
+                )
         return result
+
+    async def _execute_rl(self, request: OrderRequest, signal_price: float | None) -> Optional[OrderResult]:
+        """Execute using the Reinforcement Learning algorithm."""
+        try:
+            fills = await RLExecution(self.broker, agent=get_rl_agent()).execute(request, signal_price)
+        except Exception as e:  # pragma: no cover
+            logger.exception(
+                "RL execution raised an exception",
+                symbol=request.symbol,
+                error=str(e),
+            )
+            return None
+
+        if not fills:
+            logger.warning(
+                "RL execution returned no fills",
+                symbol=request.symbol,
+            )
+            return None
+
+        total_qty = sum(f["qty"] for f in fills)
+        avg_price = sum(f["qty"] * f["price"] for f in fills) / max(total_qty, 1e-9)
+
+        return OrderResult(
+            order_id=f"rl_{request.symbol}",
+            symbol=request.symbol,
+            status="filled",
+            filled_qty=total_qty,
+            avg_fill_price=avg_price,
+        )
 
     def _select_algorithm(self, request: OrderRequest) -> str:
         # Use signal_price if available (set on OrderRequest.metadata), then limit_price,
@@ -104,13 +175,13 @@ class SmartOrderRouter:
         estimated_usd = request.quantity * ref_price
 
         if request.execution_algo and request.execution_algo not in ("auto", ""):
-            return request.execution_algo   # explicit user/strategy override
+            return request.execution_algo  # explicit user/strategy override
         elif estimated_usd >= 100_000 and _RL_EXEC_AVAILABLE:
-            return "rl_exec"   # RL agent for very large orders (better than TWAP)
+            return "rl_exec"  # RL agent for very large orders (better than TWAP)
         elif estimated_usd >= 100_000:
             return "twap"
         elif 5_000 <= estimated_usd < 100_000:
-            return "almgren_chriss"   # optimal IS minimisation for mid-size orders
+            return "almgren_chriss"  # optimal IS minimisation for mid-size orders
         elif request.order_type == "limit" and request.limit_price:
             return "limit_first"
         else:
@@ -124,7 +195,11 @@ class SmartOrderRouter:
         import asyncio
 
         # Estimate sigma from metadata if available, default 2%
-        sigma = float(asdict(request).get("metadata", {}).get("sigma", 0.02)) if hasattr(request, "__dict__") else 0.02
+        sigma = (
+            float(asdict(request).get("metadata", {}).get("sigma", 0.02))
+            if hasattr(request, "__dict__")
+            else 0.02
+        )
         ac = AlmgrenChriss(sigma=sigma)
         n_slices = 10
         duration_minutes = 20
@@ -133,16 +208,20 @@ class SmartOrderRouter:
 
         total_filled = 0.0
         total_cost = 0.0
-        last_result: OrderResult | None = None
+        last_result: Optional[OrderResult] = None
         consecutive_failures = 0
 
         for i, slice_qty in enumerate(trades):
             if slice_qty < 1e-6:
                 continue
             # Use market slices — adding "limit" without a price causes broker rejection.
-            # AC's alpha comes from the optimal schedule, not from limit orders.
             slice_req = OrderRequest(
-                **{**asdict(request), "quantity": float(slice_qty), "order_type": "market", "limit_price": None}
+                **{
+                    **asdict(request),
+                    "quantity": float(slice_qty),
+                    "order_type": "market",
+                    "limit_price": None,
+                }
             )
             try:
                 result = await self.broker.place_order(slice_req)
@@ -158,17 +237,30 @@ class SmartOrderRouter:
                     n_slices=n_slices,
                     qty=round(slice_qty, 4),
                 )
-            except Exception as e:
+            except BrokerError as be:  # pragma: no cover
                 consecutive_failures += 1
                 logger.warning(
-                    "AC slice failed",
+                    "AC slice failed due to broker error",
                     symbol=request.symbol,
                     slice=i + 1,
-                    error=str(e),
+                    error=str(be),
                 )
                 if consecutive_failures >= 3:
                     logger.error(
-                        "AC execution aborting after consecutive failures",
+                        "AC execution aborting after consecutive broker failures",
+                        symbol=request.symbol,
+                    )
+                    break
+            except Exception as e:  # pragma: no cover
+                consecutive_failures += 1
+                logger.exception(
+                    "AC slice failed with unexpected exception",
+                    symbol=request.symbol,
+                    slice=i + 1,
+                )
+                if consecutive_failures >= 3:
+                    logger.error(
+                        "AC execution aborting after consecutive unexpected failures",
                         symbol=request.symbol,
                     )
                     break
@@ -187,7 +279,9 @@ class SmartOrderRouter:
         )
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "ac_exec",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
+            status="filled"
+            if total_filled >= request.quantity * 0.95
+            else "partial",
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
