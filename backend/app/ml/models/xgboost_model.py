@@ -2,15 +2,18 @@
 XGBoost binary classifier with Optuna hyperparameter optimization.
 SHAP-based explainability built in.
 """
-import numpy as np
 import json
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+
+import numpy as np
+import shap
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 try:
     import xgboost as xgb
-    import shap
+
     XGB_AVAILABLE = True
 except ImportError:
     XGB_AVAILABLE = False
@@ -48,7 +51,8 @@ class XGBoostClassifier(AbstractModel):
         if feature_names:
             self.feature_names = feature_names
         self.model.fit(
-            X_train, y_train,
+            X_train,
+            y_train,
             eval_set=[(X_val, y_val)],
             verbose=False,
         )
@@ -60,7 +64,7 @@ class XGBoostClassifier(AbstractModel):
         }
 
     def train_epoch(self, loader, optimizer=None, criterion=None) -> dict:
-        # XGBoost uses fit() directly, not epoch-based training
+        # XGBoost uses fit() directly; epoch training is not applicable.
         return {"loss": 0.0, "accuracy": 0.0}
 
     def evaluate(self, loader) -> EvalMetrics:
@@ -83,10 +87,13 @@ class XGBoostClassifier(AbstractModel):
         """Return SHAP-based feature importance."""
         if self._explainer is None:
             self._explainer = shap.TreeExplainer(self.model)
-        importance = dict(zip(
-            self.feature_names or [f"f{i}" for i in range(len(self.model.feature_importances_))],
-            self.model.feature_importances_.tolist()
-        ))
+        importance = dict(
+            zip(
+                self.feature_names
+                or [f"f{i}" for i in range(len(self.model.feature_importances_))],
+                self.model.feature_importances_.tolist(),
+            )
+        )
         return dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
 
     def predict_proba(self, X) -> np.ndarray:
