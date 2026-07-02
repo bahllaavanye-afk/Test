@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+import re
 from datetime import date, datetime, timezone
 from typing import Literal, Optional, Dict, Tuple
 
@@ -100,6 +101,31 @@ def _cache_set(symbol: str, data: dict) -> None:
     _snapshot_cache[symbol] = (time.time(), data)
 
 
+def _validate_symbol(symbol: str) -> None:
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non‑empty string")
+    if not re.fullmatch(r"[A-Za-z0-9\.\-]{1,20}", symbol):
+        raise ValueError(f"symbol '{symbol}' contains invalid characters")
+
+
+def _validate_expiration(expiration: str | None) -> None:
+    if expiration is None:
+        return
+    try:
+        datetime.strptime(expiration, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError("expiration must be in YYYY‑MM‑DD format") from exc
+
+
+def _validate_strike_range(strike_min: float | None, strike_max: float | None) -> None:
+    if strike_min is not None and strike_min < 0:
+        raise ValueError("strike_min must be non‑negative")
+    if strike_max is not None and strike_max < 0:
+        raise ValueError("strike_max must be non‑negative")
+    if strike_min is not None and strike_max is not None and strike_min > strike_max:
+        raise ValueError("strike_min cannot be greater than strike_max")
+
+
 async def _fetch_snapshots(symbols: list[str]) -> dict[str, dict]:
     """Fetch snapshots for up to ~100 symbols at once, using a simple cache."""
     if not symbols:
@@ -155,6 +181,11 @@ async def get_options_chain(
     current_user: User = Depends(get_current_user),
 ):
     """Fetch and enrich an options chain for a given underlying symbol."""
+    # Input validation
+    _validate_symbol(symbol)
+    _validate_expiration(expiration)
+    _validate_strike_range(strike_min, strike_max)
+
     # Return empty data with a helpful message when broker credentials are not configured
     if not settings.alpaca_api_key or not settings.alpaca_secret_key:
         return {
@@ -229,6 +260,14 @@ async def get_options_snapshot(
     current_user: User = Depends(get_current_user),
 ):
     """Fetch latest Greeks snapshot for a single options contract symbol."""
+    # Input validation
+    _validate_symbol(symbol)
+
+    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
+        raise HTTPException(
+            400, "Alpaca API credentials are not configured; cannot fetch snapshot."
+        )
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             resp = await client.get(
@@ -239,59 +278,9 @@ async def get_options_snapshot(
         except httpx.RequestError as exc:
             raise HTTPException(502, f"Alpaca connection error: {exc}") from exc
 
-    if resp.status_code == 403:
-        raise HTTPException(403, "Alpaca options data requires an approved options account level.")
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, f"Alpaca API error: {resp.text[:200]}")
 
     data = resp.json()
-    snapshots: dict = data.get("snapshots") or {}
-    snap = snapshots.get(symbol.upper())
-    if snap is None:
-        raise HTTPException(404, f"No snapshot found for {symbol}")
-    return snap
-
-
-@router.get("/expirations/{underlying}")
-async def get_options_expirations(
-    underlying: str,
-    current_user: User = Depends(get_current_user),
-):
-    """Return sorted list of distinct upcoming expiration dates for an underlying."""
-    # Return empty data with a helpful message when broker credentials are not configured
-    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
-        return {
-            "expirations": [],
-            "message": "Configure TradeStation API credentials to enable options data",
-        }
-
-    today = date.today().isoformat()
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        try:
-            resp = await client.get(
-                f"{_ALPACA_BASE}/v2/options/contracts",
-                params={
-                    "underlying_symbols": underlying.upper(),
-                    "limit": 200,
-                    "expiration_date_gte": today,
-                },
-                headers=_alpaca_headers(),
-            )
-        except httpx.RequestError as exc:
-            raise HTTPException(502, f"Alpaca connection error: {exc}") from exc
-
-    if resp.status_code == 403:
-        return {
-            "expirations": [],
-            "message": "Configure TradeStation API credentials to enable options data",
-        }
-    if resp.status_code != 200:
-        raise HTTPException(resp.status_code, f"Alpaca API error: {resp.text[:200]}")
-
-    data = resp.json()
-    contracts: list[dict] = data.get("option_contracts") or []
-
-    expirations = sorted(
-        {c["expiration_date"] for c in contracts if c.get("expiration_date")}
-    )
-    return {"expirations": expirations}
+    snapshots = data.get("snapshots") or {}
+    return snapshots.get(symbol.upper(), {})
