@@ -41,6 +41,17 @@ class TestHistoricalVaR:
         assert result.method == "parametric"
         assert result.var_95 > 0
 
+    def test_none_input_returns_default(self):
+        result = historical_var(None, 100_000)
+        assert isinstance(result, VaRResult)
+        # Expect default behavior for insufficient data
+        assert result.var_95 == 0.0 or result.var_95 == 0.02
+
+    def test_empty_input_returns_default(self):
+        result = historical_var([], 100_000)
+        assert isinstance(result, VaRResult)
+        assert result.var_95 == 0.0 or result.var_95 == 0.02
+
 
 class TestFactorExposure:
     def test_basic_computation(self):
@@ -58,11 +69,33 @@ class TestFactorExposure:
 
     def test_to_dict_keys(self):
         np.random.seed(0)
-        r = compute_factor_exposure(list(np.random.normal(0, 0.01, 60)), list(np.random.normal(0, 0.01, 60)))
+        r = compute_factor_exposure(
+            list(np.random.normal(0, 0.01, 60)),
+            list(np.random.normal(0, 0.01, 60)),
+        )
         d = r.to_dict()
         assert "market_beta" in d
         assert "alpha_annualized_pct" in d
         assert "interpretation" in d
+
+    def test_none_inputs_return_default(self):
+        result = compute_factor_exposure(None, None)
+        assert isinstance(result, FactorExposure)
+        assert result.market_beta == 1.0
+
+    def test_empty_inputs_return_default(self):
+        result = compute_factor_exposure([], [])
+        assert isinstance(result, FactorExposure)
+        assert result.market_beta == 1.0
+
+    def test_mismatched_lengths_use_minimum(self):
+        # Provide series of different lengths; function should handle gracefully
+        portfolio = [0.01, 0.02, 0.03]
+        market = [0.01, 0.02]
+        result = compute_factor_exposure(portfolio, market)
+        assert isinstance(result, FactorExposure)
+        # Expect a sensible beta value; not raising an error
+        assert isinstance(result.market_beta, float)
 
 
 class TestDrawdownRecovery:
@@ -88,3 +121,21 @@ class TestDrawdownRecovery:
         d = estimate_recovery(returns, 0.03).to_dict()
         assert "expected_recovery_days" in d
         assert "probability_recover_30d" in d
+
+    def test_none_returns_input(self):
+        result = estimate_recovery(None, 0.0)
+        assert result.current_drawdown_pct == 0
+        assert result.expected_recovery_days is None
+
+    def test_empty_returns_input(self):
+        result = estimate_recovery([], 0.0)
+        assert result.current_drawdown_pct == 0
+        assert result.expected_recovery_days is None
+
+    def test_single_return_off_by_one(self):
+        # Edge case with a single return value
+        result = estimate_recovery([0.01], 0.0)
+        # Should not raise and should report zero drawdown
+        assert result.current_drawdown_pct == 0
+        # Recovery metrics may be None due to insufficient data
+        assert result.expected_recovery_days is None or isinstance(result.expected_recovery_days, int)
