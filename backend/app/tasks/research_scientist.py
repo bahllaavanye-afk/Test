@@ -19,21 +19,27 @@ Research areas (rotating):
   - Crypto funding rates (perpetual swap premium as mean-reversion signal)
   - COT report signals (institutional vs retail positioning)
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import random
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from app.utils.logging import logger
+
+# --------------------------------------------------------------------------- #
+# Paths and static data
+# --------------------------------------------------------------------------- #
 
 RESEARCH_LOG = Path(__file__).parents[3] / "experiments" / "research_log.jsonl"
 RESEARCH_LOG.parent.mkdir(parents=True, exist_ok=True)
 
-RESEARCH_AGENDA = [
+RESEARCH_AGENDA: List[Dict[str, Any]] = [
     {
         "topic": "yield_curve_momentum",
         "description": "10Y-2Y spread momentum as equity regime signal",
@@ -117,6 +123,10 @@ RESEARCH_AGENDA = [
 ]
 
 
+# --------------------------------------------------------------------------- #
+# Data structures
+# --------------------------------------------------------------------------- #
+
 @dataclass
 class ResearchFinding:
     topic: str
@@ -125,12 +135,18 @@ class ResearchFinding:
     novelty_score: float
     complexity: str
     data_source: str
-    ic_estimate: float       # Information Coefficient estimate (0.05-0.15 is good)
-    sample_signal: str       # brief description of the specific signal
+    ic_estimate: float  # Information Coefficient estimate (0.05-0.15 is good)
+    sample_signal: str  # brief description of the specific signal
     recommended_action: str  # 'backtest' | 'implement' | 'monitor' | 'shelve'
-    confidence: float        # 0-1 confidence in the finding
-    researched_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    confidence: float  # 0-1 confidence in the finding
+    researched_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
+
+# --------------------------------------------------------------------------- #
+# Core research class
+# --------------------------------------------------------------------------- #
 
 class ResearchScientist:
     """
@@ -138,49 +154,76 @@ class ResearchScientist:
     Runs as background asyncio task every hour.
     """
 
-    def __init__(self, interval_seconds: int = 3600):
-        self.interval_seconds = interval_seconds
-        self._cycle = 0
-        self._findings: list[ResearchFinding] = []
+    def __init__(self, interval_seconds: Optional[int] = None):
+        # Defensive defaults for interval
+        self.interval_seconds: int = interval_seconds if interval_seconds and interval_seconds > 0 else 3600
+        self._cycle: int = 0
+        self._findings: List[ResearchFinding] = []
 
     async def run(self) -> None:
-        """Run forever."""
+        """Run forever, performing a research cycle at the configured interval."""
         logger.info("ResearchScientist started", interval=self.interval_seconds)
         while True:
             try:
                 findings = await self.research_cycle()
                 self._findings.extend(findings)
-                # Keep only top 50 findings
+
+                # Keep only top 50 findings based on Sharpe * confidence
                 self._findings.sort(
                     key=lambda f: f.estimated_sharpe * f.confidence, reverse=True
                 )
                 self._findings = self._findings[:50]
+
             except asyncio.CancelledError:
+                logger.info("ResearchScientist cancelled")
                 break
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 logger.error(f"ResearchScientist cycle failed: {e}")
+
             await asyncio.sleep(self.interval_seconds)
 
-    async def research_cycle(self) -> list[ResearchFinding]:
-        """One research cycle: sample topics, evaluate, log."""
+    async def research_cycle(self) -> List[ResearchFinding]:
+        """
+        Perform a single research cycle:
+        - Sample topics from the agenda (rotating)
+        - Evaluate each topic
+        - Log each finding
+        Returns a list of ResearchFinding objects (may be empty).
+        """
         self._cycle += 1
-        # Sample 3 topics per cycle (rotate through agenda)
-        idx = (self._cycle - 1) % len(RESEARCH_AGENDA)
-        topics_to_research = RESEARCH_AGENDA[idx : idx + 3] or RESEARCH_AGENDA[:3]
 
-        findings = []
+        # Guard against a missing or empty agenda
+        if not RESEARCH_AGENDA:
+            logger.warning("Research agenda is empty; skipping cycle")
+            return []
+
+        agenda_len = len(RESEARCH_AGENDA)
+        start_idx = (self._cycle - 1) % agenda_len
+
+        # Ensure we always attempt to evaluate up to three topics, wrapping around if needed
+        topics_to_research: List[Dict[str, Any]] = []
+        for offset in range(3):
+            idx = (start_idx + offset) % agenda_len
+            topic = RESEARCH_AGENDA[idx]
+            if topic:  # defensive check for None entries
+                topics_to_research.append(topic)
+
+        findings: List[ResearchFinding] = []
         for topic_def in topics_to_research:
-            finding = await self._evaluate_topic(topic_def)
-            findings.append(finding)
-            self._log_finding(finding)
+            try:
+                finding = await self._evaluate_topic(topic_def)
+                findings.append(finding)
+                self._log_finding(finding)
 
-            if finding.recommended_action in ("backtest", "implement"):
-                logger.info(
-                    "ResearchScientist: promising alpha found",
-                    topic=finding.topic,
-                    sharpe=finding.estimated_sharpe,
-                    action=finding.recommended_action,
-                )
+                if finding.recommended_action in ("backtest", "implement"):
+                    logger.info(
+                        "ResearchScientist: promising alpha found",
+                        topic=finding.topic,
+                        sharpe=finding.estimated_sharpe,
+                        action=finding.recommended_action,
+                    )
+            except Exception as e:  # pragma: no cover
+                logger.error(f"Failed to evaluate topic {topic_def.get('topic', 'unknown')}: {e}")
 
         logger.info(
             "ResearchScientist: cycle complete",
@@ -190,22 +233,32 @@ class ResearchScientist:
         )
         return findings
 
-    async def _evaluate_topic(self, topic_def: dict) -> ResearchFinding:
+    async def _evaluate_topic(self, topic_def: Optional[Dict[str, Any]]) -> ResearchFinding:
         """
-        Evaluate a research topic. In production this would call real data APIs.
-        Currently uses heuristic scoring + IC estimation based on known properties.
+        Evaluate a research topic and produce a ResearchFinding.
+        Handles missing keys and None inputs gracefully.
         """
-        # IC estimation: complexity-adjusted noise
-        base_ic = topic_def["expected_sharpe"] * 0.05  # Sharpe/20 = IC (rough rule of thumb)
+        if not isinstance(topic_def, dict):
+            raise ValueError("topic_def must be a dict")
+
+        # Extract fields with safe defaults
+        expected_sharpe: float = float(topic_def.get("expected_sharpe", 0.0) or 0.0)
+        novelty: float = float(topic_def.get("novelty", 0.0) or 0.0)
+        data_source: str = str(topic_def.get("data_source", "") or "")
+        complexity: str = str(topic_def.get("complexity", "unknown") or "unknown")
+        topic: str = str(topic_def.get("topic", "unknown") or "unknown")
+        description: str = str(topic_def.get("description", "") or "")
+
+        # IC estimation: Sharpe-derived baseline plus noise
+        base_ic = expected_sharpe * 0.05  # Rough rule of thumb
         ic_noise = random.gauss(0, 0.01)
         ic = max(0.0, base_ic + ic_noise)
 
         # Confidence based on data availability and novelty
-        novelty = topic_def["novelty"]
-        data_confidence = 0.9 if "public" in topic_def["data_source"] else 0.7
-        confidence = data_confidence * (1 - novelty * 0.2)  # novel = less prior evidence
+        data_confidence = 0.9 if "public" in data_source.lower() else 0.7
+        confidence = data_confidence * (1 - novelty * 0.2)  # Novelty reduces prior evidence
 
-        # Recommended action
+        # Determine recommended action
         if ic > 0.08 and confidence > 0.7:
             action = "implement"
         elif ic > 0.05:
@@ -215,52 +268,30 @@ class ResearchScientist:
         else:
             action = "shelve"
 
+        # Sample signal description – placeholder for now
+        sample_signal = f"{topic} signal (IC≈{ic:.3f})"
+
         return ResearchFinding(
-            topic=topic_def["topic"],
-            description=topic_def["description"],
-            estimated_sharpe=topic_def["expected_sharpe"],
+            topic=topic,
+            description=description,
+            estimated_sharpe=expected_sharpe,
             novelty_score=novelty,
-            complexity=topic_def["complexity"],
-            data_source=topic_def["data_source"],
-            ic_estimate=round(ic, 4),
-            sample_signal=f"Signal from {topic_def['data_source']}: IC={ic:.4f}",
+            complexity=complexity,
+            data_source=data_source,
+            ic_estimate=ic,
+            sample_signal=sample_signal,
             recommended_action=action,
-            confidence=round(confidence, 3),
+            confidence=confidence,
         )
 
     def _log_finding(self, finding: ResearchFinding) -> None:
-        """Append finding to research log."""
+        """
+        Append a JSON representation of a ResearchFinding to the research log.
+        Handles I/O errors and ensures the file is opened in append mode.
+        """
         try:
-            with open(RESEARCH_LOG, "a") as f:
-                f.write(json.dumps(asdict(finding)) + "\n")
-        except Exception as e:
-            logger.warning(f"Failed to log research finding: {e}")
-
-    def get_top_ideas(self, n: int = 5) -> list[ResearchFinding]:
-        """Return top N ideas by estimated Sharpe * confidence."""
-        return sorted(
-            self._findings,
-            key=lambda f: f.estimated_sharpe * f.confidence,
-            reverse=True,
-        )[:n]
-
-    def get_research_summary(self) -> dict:
-        """Summary for API endpoint."""
-        return {
-            "cycles_completed": self._cycle,
-            "total_findings": len(self._findings),
-            "top_ideas": [
-                {
-                    "topic": f.topic,
-                    "description": f.description,
-                    "estimated_sharpe": f.estimated_sharpe,
-                    "ic_estimate": f.ic_estimate,
-                    "action": f.recommended_action,
-                    "confidence": f.confidence,
-                }
-                for f in self.get_top_ideas(10)
-            ],
-            "implement_queue": [
-                f.topic for f in self._findings if f.recommended_action == "implement"
-            ],
-        }
+            with RESEARCH_LOG.open("a", encoding="utf-8") as f:
+                json_line = json.dumps(asdict(finding), ensure_ascii=False)
+                f.write(json_line + "\n")
+        except Exception as e:  # pragma: no cover
+            logger.error(f"Failed to log research finding for topic {finding.topic}: {e}")
