@@ -77,9 +77,22 @@ async def _fetch_ticker_bars(
 
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
-    """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
+    """Returns {ticker: [{date, value}, ...]} normalized to 100 at start.
+
+    Args:
+        start: The start date (inclusive) for the benchmark data.
+        end: The end date (exclusive) for the benchmark data.
+
+    Raises:
+        ValueError: If start or end are not ``datetime.date`` objects, or if start >= end.
+    """
+    # Input validation
+    if not isinstance(start, date):
+        raise ValueError(f"`start` must be a datetime.date instance, got {type(start)}")
+    if not isinstance(end, date):
+        raise ValueError(f"`end` must be a datetime.date instance, got {type(end)}")
     if start >= end:
-        return {}
+        raise ValueError("`start` date must be earlier than `end` date")
 
     cache_key = (start, end)
     if cached := _benchmark_cache.get(cache_key):
