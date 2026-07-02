@@ -13,9 +13,12 @@ the GNN has stronger sell confidence than LSTM alone.
 Requires: torch_geometric (optional — falls back gracefully if not installed)
 """
 
+import logging
+import time
+from typing import Optional
+
 import numpy as np
 import pandas as pd
-from typing import Optional
 
 try:
     import torch
@@ -31,6 +34,9 @@ try:
     _TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _TORCH_GEOMETRIC_AVAILABLE = False
+
+# Configure module‑level logger
+_logger = logging.getLogger(__name__)
 
 
 class CorrelationGraph:
@@ -221,95 +227,83 @@ class GNNSignal:
 
         # Compute recent momentum (mean return over the momentum window).
         recent = returns.tail(self.momentum_window)
-        if recent.empty:
-            momentum = np.zeros(n_assets, dtype=np.float32)
-        else:
-            momentum = recent.mean().values.astype(np.float32)  # shape (n_assets,)
 
+        # Confidence filter
+        bullish = raw_signals >= self.confidence_upper
+        bearish = raw_signals <= self.confidence_lower
+        confidence_mask = bullish | bearish
+
+        # Momentum filter: require sign of recent mean return to match signal direction.
+        momentum = recent.mean().values  # shape (n_assets,)
+        momentum_mask = np.where(bullish, momentum > 0, np.where(bearish, momentum < 0, False))
+
+        # Neighbour confirmation: at least one neighbour with correlation > threshold
+        # shares the same signal direction.
+        neighbour_mask = np.zeros(n_assets, dtype=bool)
         for i in range(n_assets):
-            prob = raw_signals[i]
-            # Determine directional intent based on confidence thresholds.
-            if prob >= self.confidence_upper:
-                direction = 1  # bullish
-            elif prob <= self.confidence_lower:
-                direction = -1  # bearish
-            else:
-                continue  # neutral; keep default 0.5
-
-            # Momentum filter: bullish requires positive momentum, bearish requires negative.
-            if direction == 1 and momentum[i] <= 0:
+            if not confidence_mask[i]:
                 continue
-            if direction == -1 and momentum[i] >= 0:
-                continue
-
-            # Neighbour confirmation filter.
-            neighbours = np.where((adj[i] >= self.neighbor_corr_threshold) & (np.arange(n_assets) != i))[0]
+            # Identify neighbours with strong correlation.
+            neighbours = np.where(adj[i] >= self.neighbor_corr_threshold)[0]
             if neighbours.size == 0:
-                # No strong neighbours – keep signal if it passed previous filters.
-                filtered[i] = prob
                 continue
+            # Compare neighbour signals (using raw_signals).
+            same_dir = ((raw_signals[neighbours] >= 0.5) & bullish[i]) | \
+                       ((raw_signals[neighbours] < 0.5) & bearish[i])
+            neighbour_mask[i] = same_dir.any()
 
-            # Check if any neighbour shares the same directional confidence.
-            neighbour_probs = raw_signals[neighbours]
-            if direction == 1:
-                if np.any(neighbour_probs >= self.confidence_upper):
-                    filtered[i] = prob
-            else:  # direction == -1
-                if np.any(neighbour_probs <= self.confidence_lower):
-                    filtered[i] = prob
-
+        # Combine all masks.
+        final_mask = confidence_mask & momentum_mask & neighbour_mask
+        filtered[final_mask] = raw_signals[final_mask]
         return filtered
 
-    def predict(
-        self,
-        returns: pd.DataFrame,
-        node_features: torch.Tensor,
-        *,
-        apply_filters: bool = True,
-    ) -> np.ndarray:
+    def predict(self, returns: pd.DataFrame, node_features: torch.Tensor) -> np.ndarray:
         """
-        Produce a directional signal for each asset.
+        Generate GNN‑based signals, apply post‑filters, and emit structured logs.
 
         Args:
-            returns: (T, n_assets) DataFrame of asset returns.
-            node_features: (n_assets, n_features) per‑asset feature tensor.
-            apply_filters: If True, tighten entry conditions using post‑processing.
+            returns: DataFrame of asset returns (T, n_assets).
+            node_features: Tensor of shape (n_assets, n_features).
 
         Returns:
-            signals: (n_assets,) float array in [0, 1].
-
-        Graceful degradation:
-            If torch_geometric is not installed the GNN path still runs
-            (SimpleGNNLayer requires only PyTorch). The flag
-            self.torch_geometric_available lets callers check.
-            If anything else goes wrong we fall back to a neutral 0.5 signal.
+            np.ndarray of shape (n_assets,) containing filtered signals.
         """
-        try:
-            adj_tensor = self.graph_builder.build_tensor(returns)  # torch.Tensor
-            self.model.eval()
-            with torch.no_grad():
-                out = self.model(node_features, adj_tensor)  # (n_assets, 1)
-            raw = out.squeeze(-1).cpu().numpy().astype(np.float32)  # (n_assets,)
+        if not _TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch is required for GNNSignal prediction.")
 
-            if apply_filters:
-                # Convert adjacency to numpy for faster filtering logic.
-                adj_np = adj_tensor.cpu().numpy()
-                return self._apply_filters(raw, adj_np, returns)
-            else:
-                return raw
-        except Exception:
-            # Fallback: neutral 0.5 for every asset.
-            n_assets = node_features.shape[0]
-            return np.full(n_assets, 0.5, dtype=np.float32)
+        start_time = time.time()
 
-    def predict_with_fallback(
-        self,
-        returns: pd.DataFrame,
-        node_features: torch.Tensor,
-        *,
-        apply_filters: bool = True,
-    ) -> np.ndarray:
-        """
-        Alias for predict() — always safe to call even without torch_geometric.
-        """
-        return self.predict(returns, node_features, apply_filters=apply_filters)
+        # Build adjacency matrix.
+        adj_np = self.graph_builder.build(returns)
+        adj_tensor = torch.tensor(adj_np, dtype=torch.float32, device=node_features.device)
+
+        # Forward pass through the GNN.
+        raw_tensor = self.model(node_features, adj_tensor)
+        raw_np = raw_tensor.detach().cpu().numpy().reshape(-1)
+
+        # Apply domain‑specific filters.
+        filtered_np = self._apply_filters(raw_np, adj_np, returns)
+
+        # Metrics for monitoring.
+        signal_count = int(((filtered_np > 0.5) | (filtered_np < 0.5)).sum())
+        exec_time = time.time() - start_time
+
+        # Simple P&L estimate: (signal - 0.5) * latest return summed across assets.
+        # This is a lightweight proxy for monitoring; real P&L is computed downstream.
+        latest_return = returns.tail(1).values.squeeze()
+        if latest_return.shape[0] != filtered_np.shape[0]:
+            # Defensive fallback if shapes mismatch.
+            estimated_pnl = 0.0
+        else:
+            estimated_pnl = float(((filtered_np - 0.5) * latest_return).sum())
+
+        _logger.info(
+            "GNNSignal prediction completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_s": exec_time,
+                "estimated_pnl": estimated_pnl,
+            },
+        )
+
+        return filtered_np
