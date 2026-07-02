@@ -6,6 +6,17 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 import app.redis_client as rc
 
+# Constants
+OP_GET = "get"
+OP_SET = "set"
+OP_GET_PRICE = "get_price"
+EXC_CONN_REFUSED = "Connection refused"
+EXC_NETWORK_DOWN = "network down"
+EXC_BAD_PAYLOAD = "bad payload"
+EXCHANGE = "binance"
+SYMBOL = "AAPL"
+PRICE_DATA = {"last": 1.0}
+
 
 @pytest.fixture(autouse=True)
 def _reset_breaker():
@@ -15,19 +26,19 @@ def _reset_breaker():
 
 
 def test_connection_error_trips_breaker():
-    rc._note_redis_error("get", RedisConnectionError("Connection refused"))
+    rc._note_redis_error(OP_GET, RedisConnectionError(EXC_CONN_REFUSED))
     assert rc._redis_tripped is True
     assert rc._redis_enabled() is False  # enabled() honours the breaker
 
 
 def test_os_error_trips_breaker():
-    rc._note_redis_error("set", OSError("network down"))
+    rc._note_redis_error(OP_SET, OSError(EXC_NETWORK_DOWN))
     assert rc._redis_tripped is True
 
 
 def test_op_error_does_not_trip_breaker():
     # A one-off operational error (e.g. bad JSON) must NOT disable Redis.
-    rc._note_redis_error("get_price", ValueError("bad payload"))
+    rc._note_redis_error(OP_GET_PRICE, ValueError(EXC_BAD_PAYLOAD))
     assert rc._redis_tripped is False
 
 
@@ -37,17 +48,17 @@ async def test_pricecache_noops_after_trip():
 
     class _Boom:
         async def setex(self, *a, **k):
-            raise RedisConnectionError("Connection refused")
+            raise RedisConnectionError(EXC_CONN_REFUSED)
 
         async def get(self, *a, **k):
-            raise RedisConnectionError("Connection refused")
+            raise RedisConnectionError(EXC_CONN_REFUSED)
 
     pc._r = _Boom()
 
     # First op hits Redis, fails, trips the breaker — but never raises.
-    await pc.set_price("binance", "AAPL", {"last": 1.0})
+    await pc.set_price(EXCHANGE, SYMBOL, PRICE_DATA)
     assert rc._redis_tripped is True
 
     # After tripping, the client is gone and ops short-circuit to no-op.
     assert pc._client() is None
-    assert await pc.get_price("binance", "AAPL") is None
+    assert await pc.get_price(EXCHANGE, SYMBOL) is None
