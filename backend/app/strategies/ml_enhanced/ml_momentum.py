@@ -22,6 +22,13 @@ from app.ml.inference import get_inference_service
 logger = logging.getLogger(__name__)
 
 
+def _clamp(value: float, min_val: float = 0.0, max_val: float = 1.0) -> float:
+    """Clamp a numeric value between ``min_val`` and ``max_val``."""
+    if value is None:
+        return min_val
+    return max(min_val, min(max_val, value))
+
+
 class MLMomentumStrategy(AbstractStrategy):
     """ML‑enhanced momentum strategy.
 
@@ -69,6 +76,11 @@ class MLMomentumStrategy(AbstractStrategy):
             A populated :class:`app.strategies.base.Signal` if both the base and
             ML models agree, otherwise ``None``.
         """
+        # Guard against None or empty input data.
+        if data is None or data.empty:
+            logger.debug("No data provided for %s; returning None.", symbol)
+            return None
+
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
             return None
@@ -76,7 +88,13 @@ class MLMomentumStrategy(AbstractStrategy):
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result is None or ml_result["prediction"] == "neutral":
+
+            # Defensive checks on the ML result.
+            if (
+                ml_result is None
+                or not isinstance(ml_result, dict)
+                or ml_result.get("prediction") == "neutral"
+            ):
                 return None
 
             return self._apply_ml_filter(base_signal, ml_result)
@@ -101,8 +119,13 @@ class MLMomentumStrategy(AbstractStrategy):
             Updated signal if directions match and confidence meets the threshold,
             otherwise ``None``.
         """
-        prediction = ml_result["prediction"]
-        ml_conf = ml_result["confidence"]
+        prediction = ml_result.get("prediction")
+        ml_conf = ml_result.get("confidence")
+
+        # Ensure required fields are present and valid.
+        if prediction not in {"up", "down"} or ml_conf is None:
+            logger.debug("Invalid ML result structure: %s", ml_result)
+            return None
 
         side_match = (
             (prediction == "up" and base_signal.side == "buy")
@@ -111,8 +134,12 @@ class MLMomentumStrategy(AbstractStrategy):
         if not side_match:
             return None
 
-        # Combine confidences, respecting the configured maximum.
-        combined_confidence = min(0.95, (base_signal.confidence + ml_conf) / 2)
+        # Safely combine confidences, respecting the configured maximum.
+        base_conf = base_signal.confidence if base_signal.confidence is not None else 0.0
+        combined_confidence = min(
+            0.95,
+            (base_conf + _clamp(float(ml_conf))) / 2,
+        )
         base_signal.confidence = combined_confidence
         base_signal.strategy_name = self.name
         base_signal.strategy_type = self.strategy_type
@@ -135,4 +162,8 @@ class MLMomentumStrategy(AbstractStrategy):
         BacktestSignals
             Signals suitable for back‑testing consumption.
         """
+        if df is None or df.empty:
+            logger.debug("Empty backtest dataframe; returning empty BacktestSignals.")
+            return BacktestSignals([])  # type: ignore[arg-type]
+
         return self._base.backtest_signals(df)
