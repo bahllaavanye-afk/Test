@@ -23,13 +23,12 @@ Academic reference:
   Demirer et al. (2021) "On-chain metrics as predictors of BTC returns"
     Finance Research Letters.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
+import aiohttp
 import numpy as np
 import pandas as pd
-import aiohttp
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -139,7 +138,6 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
             return None
 
         if current_z < self.buy_threshold:
-            # Accumulation zone — strong buy
             confidence = min(0.95, 0.80 + (self.buy_threshold - current_z) / 5.0)
             return Signal(
                 strategy_name=self.name,
@@ -157,7 +155,6 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
             )
 
         if current_z >= self.sell_threshold:
-            # Extreme overvaluation — sell / short
             confidence = min(0.92, 0.75 + (current_z - self.sell_threshold) / 10.0)
             return Signal(
                 strategy_name=self.name,
@@ -175,7 +172,6 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
             )
 
         if current_z >= self.reduce_threshold:
-            # Overvalued — reduce position
             confidence = 0.65
             return Signal(
                 strategy_name=self.name,
@@ -196,9 +192,12 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
-        Compute MVRV proxy from daily OHLCV.
-        Entry: Z-score < buy_threshold (lagged by 1 bar).
-        Short entry: Z-score >= sell_threshold.
+        Compute MVRV proxy Z-Score from historical OHLCV data.
+
+        Long entry: Z-score < buy_threshold (lagged by 1 bar to avoid lookahead).
+        Long exit: Z-score >= reduce_threshold.
+        Short entry: Z-score >= sell_threshold (lagged by 1 bar).
+        Short exit: Z-score < reduce_threshold.
         """
         false_series = pd.Series(False, index=df.index)
         default = BacktestSignals(
@@ -213,14 +212,12 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
 
         close = df["close"].astype(float)
         z_score = self._compute_mvrv_proxy_z(close)
-
-        # shift(1) — no lookahead bias
         z_lag = z_score.shift(1)
 
-        entries = (z_lag < self.buy_threshold).fillna(False).astype(bool)
-        exits = (z_lag >= self.reduce_threshold).fillna(False).astype(bool)
-        short_entries = (z_lag >= self.sell_threshold).fillna(False).astype(bool)
-        short_exits = (z_lag < self.reduce_threshold).fillna(False).astype(bool)
+        entries = (z_lag < self.buy_threshold) & (~z_lag.isna())
+        exits = (z_lag >= self.reduce_threshold) & (~z_lag.isna())
+        short_entries = (z_lag >= self.sell_threshold) & (~z_lag.isna())
+        short_exits = (z_lag < self.reduce_threshold) & (~z_lag.isna())
 
         return BacktestSignals(
             entries=entries,
