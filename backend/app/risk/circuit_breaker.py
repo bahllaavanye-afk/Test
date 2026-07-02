@@ -38,6 +38,27 @@ class CircuitBreaker:
     # Internal tracking (not part of the public dataclass fields)
     _breach_count: int = field(init=False, default=0)
 
+    def __post_init__(self) -> None:
+        """Validate initialization parameters."""
+        if not isinstance(self.name, str) or not self.name:
+            raise ValueError("CircuitBreaker name must be a non‑empty string.")
+        if not isinstance(self.max_drawdown_pct, (int, float)):
+            raise ValueError("max_drawdown_pct must be a numeric type.")
+        if not (0.0 < self.max_drawdown_pct <= 1.0):
+            raise ValueError("max_drawdown_pct must be > 0 and ≤ 1 (e.g., 0.10 for 10%).")
+        if not isinstance(self.confirmation_period, int) or self.confirmation_period < 1:
+            raise ValueError("confirmation_period must be an integer ≥ 1.")
+        if not isinstance(self.recovery_drawdown_pct, (int, float)):
+            raise ValueError("recovery_drawdown_pct must be a numeric type.")
+        if not (0.0 <= self.recovery_drawdown_pct <= self.max_drawdown_pct):
+            raise ValueError(
+                "recovery_drawdown_pct must be ≥ 0 and ≤ max_drawdown_pct."
+            )
+        if not isinstance(self.peak_equity, (int, float)) or self.peak_equity < 0:
+            raise ValueError("peak_equity must be a non‑negative number.")
+        if not isinstance(self.current_equity, (int, float)) or self.current_equity < 0:
+            raise ValueError("current_equity must be a non‑negative number.")
+
     def update(self, equity: float) -> bool:
         """
         Update the breaker with the latest equity snapshot.
@@ -46,8 +67,11 @@ class CircuitBreaker:
             bool: True if the breaker remains in NORMAL state, False if HALTED.
         """
         if equity is None or not isinstance(equity, (int, float)):
-            logger.warning("Circuit breaker received invalid equity value", name=self.name, equity=equity)
-            return not self.is_halted
+            raise ValueError(
+                f"Invalid equity value supplied to update: {equity!r}. Must be a numeric type."
+            )
+        if equity < 0:
+            raise ValueError("Equity value cannot be negative.")
 
         # Update peak and current equity
         if equity > self.peak_equity:
@@ -76,9 +100,17 @@ class CircuitBreaker:
             if self._breach_count >= self.confirmation_period:
                 self.state = BreakerState.HALTED
                 self.halted_at = datetime.now(timezone.utc)
-                reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} (confirmed {self._breach_count}×)"
+                reason = (
+                    f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} "
+                    f"(confirmed {self._breach_count}×)"
+                )
                 self.halt_reasons.append(reason)
-                logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)
+                logger.error(
+                    "Circuit breaker TRIPPED",
+                    name=self.name,
+                    drawdown=drawdown,
+                    threshold=self.max_drawdown_pct,
+                )
                 return False
         else:
             # Reset breach counter when drawdown falls back below threshold
@@ -109,6 +141,13 @@ class CircuitBreaker:
         Args:
             equity: The equity level to set as the new peak.
         """
+        if equity is None or not isinstance(equity, (int, float)):
+            raise ValueError(
+                f"Invalid equity value supplied to reset: {equity!r}. Must be a numeric type."
+            )
+        if equity < 0:
+            raise ValueError("Equity value cannot be negative.")
+
         self.state = BreakerState.NORMAL
         self.peak_equity = equity
         self.current_equity = equity
