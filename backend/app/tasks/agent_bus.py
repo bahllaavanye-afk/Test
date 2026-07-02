@@ -60,6 +60,8 @@ class AgentBus:
     """
 
     def __init__(self, redis_client: Any) -> None:
+        if redis_client is None:
+            raise ValueError("AgentBus initialization requires a non‑None redis_client")
         self._r = redis_client
         self._handlers: dict[str, list[Handler]] = {}
         self._consumer_offsets: dict[str, str] = {}  # topic → last-read stream ID
@@ -69,10 +71,22 @@ class AgentBus:
 
     async def publish(self, topic: str, data: dict) -> None:
         """Publish an event to a topic. Fire-and-forget; never blocks callers."""
+        if not isinstance(topic, str):
+            raise ValueError(f"publish: topic must be a string, got {type(topic).__name__}")
+        if not isinstance(data, dict):
+            raise ValueError(f"publish: data must be a dict, got {type(data).__name__}")
+
         if topic not in TOPICS:
             logger.warning("AgentBus: unknown topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
         key = f"{_BUS_KEY_PREFIX}{topic}"
         try:
             await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
@@ -84,6 +98,10 @@ class AgentBus:
 
     def subscribe(self, topic: str, handler: Handler) -> None:
         """Register an async handler for a topic. Called at startup, not at runtime."""
+        if not isinstance(topic, str):
+            raise ValueError(f"subscribe: topic must be a string, got {type(topic).__name__}")
+        if not callable(handler):
+            raise ValueError("subscribe: handler must be callable")
         if topic not in TOPICS:
             raise ValueError(f"AgentBus: unknown topic {topic!r}")
         self._handlers.setdefault(topic, []).append(handler)
@@ -139,7 +157,7 @@ class AgentBus:
                             except Exception as exc:
                                 logger.error(
                                     "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
+                                    topic, getattr(handler, "__name__", repr(handler)), exc,
                                 )
             except Exception as exc:
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
@@ -149,6 +167,10 @@ class AgentBus:
 
     async def queue_depth(self, topic: str) -> int:
         """How many events are buffered for a topic (monitoring)."""
+        if not isinstance(topic, str):
+            raise ValueError(f"queue_depth: topic must be a string, got {type(topic).__name__}")
+        if topic not in TOPICS:
+            raise ValueError(f"AgentBus: unknown topic {topic!r}")
         try:
             return await self._r.xlen(f"{_BUS_KEY_PREFIX}{topic}")
         except Exception:
@@ -161,10 +183,13 @@ _bus: AgentBus | None = None
 
 
 def get_bus(redis_client: Any | None = None) -> AgentBus:
+    """Return a singleton AgentBus instance, creating it if necessary."""
     global _bus
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
             redis_client = get_redis()
+        if redis_client is None:
+            raise ValueError("get_bus: redis_client could not be resolved")
         _bus = AgentBus(redis_client)
     return _bus
