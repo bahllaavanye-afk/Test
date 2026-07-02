@@ -4,13 +4,20 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel, Field, validator
-from sqlalchemy import select
+from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.logging import logger
+
+# Lazy‑loaded imports to avoid circular dependencies
+from app.models.account import Account, AccountSnapshot
+from app.models.order import Order
+from app.brokers.alpaca_orders import get_alpaca_account, _headers, _base_url
+import httpx
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -63,7 +70,7 @@ class SchedulerJobConfig(BaseModel):
         description="Whether to replace an existing job with the same ID.",
         example=True,
     )
-    func: Any = Field(
+    func: Callable[..., Any] = Field(
         ...,
         description="Callable that will be executed when the job runs.",
     )
@@ -117,7 +124,10 @@ def _add_job(scheduler: AsyncIOScheduler, config: SchedulerJobConfig) -> None:
     )
 
 
-def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
+def start_scheduler(
+    db_session_factory: Callable[[], AsyncSession],
+    broker: Optional[Any] = None,
+) -> AsyncIOScheduler:
     """Configure and start the APScheduler with background tasks.
 
     Args:
@@ -130,72 +140,63 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     scheduler = get_scheduler()
 
     async def _hourly_snapshot() -> None:
-        """
-        Capture an equity snapshot for every active account.
-        Fetches live account data from the broker and persists an AccountSnapshot row.
-        """
+        """Capture an equity snapshot for every active account."""
         logger.info("Running hourly account snapshot")
-        if db_session_factory is None:
-            # Fallback: create a fresh session from the global engine
-            try:
-                from app.database import AsyncSessionLocal as _factory
-
-                factory = _factory
-            except Exception as exc:
-                logger.warning("Snapshot: no DB session factory", error=str(exc))
-                return
-        else:
-            factory = db_session_factory
+        factory = db_session_factory or (
+            __import__("app.database", fromlist=["AsyncSessionLocal"]).AsyncSessionLocal
+        )
 
         try:
-            from app.models.account import Account, AccountSnapshot
-            from app.brokers.alpaca_orders import get_alpaca_account
-
             async with factory() as db:
                 result = await db.execute(
-                    select(Account).where(Account.is_active == True)  # noqa: E712
+                    select(Account).where(Account.is_active.is_(True))
                 )
                 accounts = result.scalars().all()
+        except Exception as exc:
+            logger.error("Failed to fetch active accounts", error=str(exc))
+            return
 
-            snap_records: List[AccountSnapshot] = []
-            for acct in accounts:
-                try:
-                    if acct.broker == "alpaca" and acct.encrypted_key:
-                        data = await get_alpaca_account(acct)
-                        snap = AccountSnapshot(
-                            id=str(uuid.uuid4()),
-                            account_id=acct.id,
-                            ts=datetime.now(timezone.utc),
-                            total_equity=float(data.get("equity", 0)),
-                            cash=float(data.get("cash", 0)),
-                            unrealized_pnl=float(data.get("unrealized_pl", 0)),
-                            raw_payload=data,
-                        )
-                        snap_records.append(snap)
-                except Exception as exc:
-                    logger.warning(
-                        "Snapshot fetch failed",
-                        account_id=acct.id,
-                        broker=acct.broker,
-                        error=str(exc),
-                    )
+        if not accounts:
+            logger.info("Hourly snapshot: no active accounts")
+            return
 
-            if snap_records:
+        snap_records: List[AccountSnapshot] = []
+        for acct in accounts:
+            if acct.broker != "alpaca" or not acct.encrypted_key:
+                continue
+            try:
+                data = await get_alpaca_account(acct)
+                snap = AccountSnapshot(
+                    id=str(uuid.uuid4()),
+                    account_id=acct.id,
+                    ts=datetime.now(timezone.utc),
+                    total_equity=float(data.get("equity", 0)),
+                    cash=float(data.get("cash", 0)),
+                    unrealized_pnl=float(data.get("unrealized_pl", 0)),
+                    raw_payload=data,
+                )
+                snap_records.append(snap)
+            except Exception as exc:
+                logger.warning(
+                    "Snapshot fetch failed",
+                    account_id=acct.id,
+                    broker=acct.broker,
+                    error=str(exc),
+                )
+
+        if snap_records:
+            try:
                 async with factory() as db:
                     db.add_all(snap_records)
                     await db.commit()
                 logger.info("Hourly snapshot saved", count=len(snap_records))
-            else:
-                logger.info("Hourly snapshot: no active broker accounts with credentials")
-
-        except Exception as exc:
-            logger.error("Hourly snapshot failed", error=str(exc))
+            except Exception as exc:
+                logger.error("Failed to persist snapshots", error=str(exc))
+        else:
+            logger.info("Hourly snapshot: no broker accounts with credentials")
 
     async def _nightly_retrain() -> None:
-        """
-        Trigger nightly ML model retraining at 02:00 UTC.
-        Delegates to ml_retrain.nightly_retrain() which downloads data and trains.
-        """
+        """Trigger nightly ML model retraining at 02:00 UTC."""
         logger.info("Nightly ML retrain triggered")
         try:
             from app.tasks.ml_retrain import nightly_retrain
@@ -205,111 +206,86 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             logger.error("Nightly retrain failed", error=str(exc))
 
     async def _order_sync() -> None:
-        """
-        Sync open broker orders back to the DB every minute.
-        Updates status, filled_qty, and avg_fill_price for pending/partial fills.
-        """
+        """Sync open broker orders back to the DB every minute."""
         logger.info("Order sync tick")
-        if db_session_factory is None:
-            try:
-                from app.database import AsyncSessionLocal as _factory
-
-                factory = _factory
-            except Exception as exc:
-                logger.debug("Order sync: no DB session factory", error=str(exc))
-                return
-        else:
-            factory = db_session_factory
+        factory = db_session_factory or (
+            __import__("app.database", fromlist=["AsyncSessionLocal"]).AsyncSessionLocal
+        )
 
         try:
-            from app.models.order import Order
-            from app.models.account import Account
-            from app.brokers.alpaca_orders import _headers, _base_url
-            import httpx
-
-            # Fetch all open orders from the DB
             async with factory() as db:
                 result = await db.execute(
-                    select(Order, Account)
-                    .join(Account, Order.account_id == Account.id)
-                    .where(
-                        Order.status.in_(["pending", "accepted", "partially_filled", "new"]),
-                        Account.is_active == True,  # noqa: E712
+                    select(Order).where(
+                        and_(
+                            Order.status.in_(["open", "partial"]),
+                            Order.is_active.is_(True),
+                        )
                     )
                 )
-                rows = result.all()
+                open_orders = result.scalars().all()
+        except Exception as exc:
+            logger.error("Failed to fetch open orders", error=str(exc))
+            return
 
-            if not rows:
-                return
+        if not open_orders:
+            logger.debug("Order sync: no open orders")
+            return
 
-            updates: List[tuple[str, Dict[str, Any]]] = []
-            for order_row, acct in rows:
+        # Reuse a single HTTP client for all broker calls
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            updated_orders: List[Order] = []
+            for order in open_orders:
+                if order.broker != "alpaca" or not order.account_id:
+                    continue
                 try:
-                    if not order_row.broker_order_id or acct.broker != "alpaca":
-                        continue
-                    headers = await _headers(acct)
-                    base = _base_url(acct)
-                    async with httpx.AsyncClient(timeout=8) as client:
-                        resp = await client.get(
-                            f"{base}/v2/orders/{order_row.broker_order_id}",
-                            headers=headers,
-                        )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        updates.append(
-                            (
-                                order_row.id,
-                                {
-                                    "status": data.get("status", order_row.status),
-                                    "filled_qty": float(data.get("filled_qty") or 0),
-                                    "avg_fill_price": (
-                                        float(data["filled_avg_price"])
-                                        if data.get("filled_avg_price")
-                                        else None
-                                    ),
-                                },
-                            )
-                        )
+                    url = f"{_base_url}/orders/{order.broker_order_id}"
+                    resp = await client.get(url, headers=_headers)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    # Update only fields that may have changed
+                    order.status = data.get("status", order.status)
+                    order.filled_qty = float(data.get("filled_qty", order.filled_qty))
+                    order.avg_fill_price = float(
+                        data.get("filled_avg_price", order.avg_fill_price)
+                    )
+                    updated_orders.append(order)
                 except Exception as exc:
-                    logger.debug(
-                        "Order sync: failed to fetch order",
-                        order_id=order_row.id,
+                    logger.warning(
+                        "Order sync failed for order",
+                        order_id=order.id,
+                        broker=order.broker,
                         error=str(exc),
                     )
 
-            if updates:
+        if updated_orders:
+            try:
                 async with factory() as db:
-                    for order_id, fields in updates:
-                        result = await db.execute(select(Order).where(Order.id == order_id))
-                        order = result.scalar_one_or_none()
-                        if order:
-                            for key, val in fields.items():
-                                setattr(order, key, val)
                     await db.commit()
-                logger.info("Order sync complete", updated=len(updates))
+                logger.info("Order sync completed", updated=len(updated_orders))
+            except Exception as exc:
+                logger.error("Failed to commit order sync updates", error=str(exc))
+        else:
+            logger.debug("Order sync: no updates applied")
 
-        except Exception as exc:
-            logger.error("Order sync failed", error=str(exc))
-
-    # Register jobs using the validated configuration model
+    # Register jobs with appropriate triggers
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="snapshot",
+            job_id="hourly_snapshot",
             trigger="interval",
             trigger_args={"hours": 1},
             func=_hourly_snapshot,
-            description="Capture hourly equity snapshots for active accounts.",
+            description="Capture hourly account snapshots.",
         ),
     )
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="retrain",
+            job_id="nightly_retrain",
             trigger="cron",
             trigger_args={"hour": 2, "minute": 0},
             func=_nightly_retrain,
-            description="Run nightly ML model retraining at 02:00 UTC.",
+            description="Trigger nightly ML model retraining.",
         ),
     )
     _add_job(
@@ -319,46 +295,14 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             trigger="interval",
             trigger_args={"minutes": 1},
             func=_order_sync,
-            description="Synchronize open broker orders with the database every minute.",
+            description="Sync open broker orders to the DB.",
         ),
     )
 
-    async def _slack_employee_report() -> None:
-        """Post hourly employee status to Slack #engineering."""
-        try:
-            from app.notifications.slack import slack
-            from app.main import app as _app
-
-            algo = getattr(_app.state, "algo_agent", None)
-            research = getattr(_app.state, "research_sci", None)
-
-            # Build a simple status payload; actual implementation may vary.
-            payload = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "algo_agent_running": bool(algo),
-                "research_scientist_active": bool(research),
-            }
-            await slack.post_message(channel="#engineering", text=str(payload))
-            logger.info("Slack employee report posted")
-        except Exception as exc:
-            logger.error("Slack employee report failed", error=str(exc))
-
-    # Schedule the Slack reporting job
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="slack_report",
-            trigger="interval",
-            trigger_args={"hours": 1},
-            func=_slack_employee_report,
-            description="Post hourly employee status to Slack.",
-        ),
-    )
-
-    # main.py calls start_scheduler() and stores the result without calling .start()
-    # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
-    # call, which registered jobs but never ran them (snapshot/retrain/order_sync/
-    # slack_report were silently dead). Guard against double-start.
     if not scheduler.running:
         scheduler.start()
+        logger.info("Scheduler started")
+    else:
+        logger.debug("Scheduler already running")
+
     return scheduler
