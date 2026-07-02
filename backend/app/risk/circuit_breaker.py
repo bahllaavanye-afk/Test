@@ -9,6 +9,18 @@ from typing import List, Optional
 from app.utils.logging import logger
 
 
+class CircuitBreakerError(Exception):
+    """Base exception for circuit breaker errors."""
+
+
+class InvalidEquityError(CircuitBreakerError, TypeError):
+    """Raised when an invalid equity value is provided."""
+
+
+class RecoveryError(CircuitBreakerError, RuntimeError):
+    """Raised when an unexpected error occurs during recovery evaluation."""
+
+
 class BreakerState(str, Enum):
     NORMAL = "normal"
     HALTED = "halted"
@@ -45,8 +57,16 @@ class CircuitBreaker:
         Returns:
             bool: True if the breaker remains in NORMAL state, False if HALTED.
         """
-        if equity is None or not isinstance(equity, (int, float)):
-            logger.warning("Circuit breaker received invalid equity value", name=self.name, equity=equity)
+        try:
+            self._validate_equity(equity)
+        except InvalidEquityError as exc:
+            logger.error(
+                "Circuit breaker received invalid equity value",
+                name=self.name,
+                equity=equity,
+                error=str(exc),
+                exc_info=True,
+            )
             return not self.is_halted
 
         # Update peak and current equity
@@ -56,10 +76,20 @@ class CircuitBreaker:
 
         # If already halted, check for possible auto‑recovery
         if self.state == BreakerState.HALTED:
-            if self._should_recover():
-                self.reset(equity)
-                logger.info("Circuit breaker auto‑recovered", name=self.name)
-            else:
+            try:
+                if self._should_recover():
+                    self.reset(equity)
+                    logger.info("Circuit breaker auto‑recovered", name=self.name)
+                else:
+                    return False
+            except RecoveryError as exc:
+                logger.error(
+                    "Error during circuit breaker recovery evaluation",
+                    name=self.name,
+                    equity=equity,
+                    error=str(exc),
+                    exc_info=True,
+                )
                 return False
 
         # Compute drawdown only when peak_equity is positive
@@ -76,9 +106,17 @@ class CircuitBreaker:
             if self._breach_count >= self.confirmation_period:
                 self.state = BreakerState.HALTED
                 self.halted_at = datetime.now(timezone.utc)
-                reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} (confirmed {self._breach_count}×)"
+                reason = (
+                    f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} "
+                    f"(confirmed {self._breach_count}×)"
+                )
                 self.halt_reasons.append(reason)
-                logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)
+                logger.error(
+                    "Circuit breaker TRIPPED",
+                    name=self.name,
+                    drawdown=drawdown,
+                    threshold=self.max_drawdown_pct,
+                )
                 return False
         else:
             # Reset breach counter when drawdown falls back below threshold
@@ -100,7 +138,10 @@ class CircuitBreaker:
         """
         if self.recovery_drawdown_pct <= 0.0:
             return False
-        return self.current_drawdown <= self.recovery_drawdown_pct
+        try:
+            return self.current_drawdown <= self.recovery_drawdown_pct
+        except Exception as exc:
+            raise RecoveryError("Failed to evaluate recovery condition") from exc
 
     def reset(self, equity: float) -> None:
         """
@@ -109,6 +150,18 @@ class CircuitBreaker:
         Args:
             equity: The equity level to set as the new peak.
         """
+        try:
+            self._validate_equity(equity)
+        except InvalidEquityError as exc:
+            logger.error(
+                "Circuit breaker reset with invalid equity value",
+                name=self.name,
+                equity=equity,
+                error=str(exc),
+                exc_info=True,
+            )
+            raise
+
         self.state = BreakerState.NORMAL
         self.peak_equity = equity
         self.current_equity = equity
@@ -128,3 +181,11 @@ class CircuitBreaker:
         if self.peak_equity == 0:
             return 0.0
         return max(0.0, (self.peak_equity - self.current_equity) / self.peak_equity)
+
+    @staticmethod
+    def _validate_equity(equity: float) -> None:
+        """Validate equity input; raise InvalidEquityError if invalid."""
+        if equity is None or not isinstance(equity, (int, float)):
+            raise InvalidEquityError(f"Equity must be a numeric value, got {type(equity).__name__}")
+        if equity < 0:
+            raise InvalidEquityError("Equity cannot be negative")
