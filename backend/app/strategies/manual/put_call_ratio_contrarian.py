@@ -8,9 +8,13 @@ When ratio drops to extreme greed levels (< 0.5), go short.
 Data source: CBOE daily equity put/call ratio (free, public).
 Falls back to a synthetic proxy using VIX level when P/C data unavailable.
 """
+import logging
+import time
 import numpy as np
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+logger = logging.getLogger(__name__)
 
 
 class PutCallRatioContrarianStrategy(AbstractStrategy):
@@ -37,7 +41,14 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
         Expects 'put_call_ratio' column (or 'vix_close' as fallback).
         For backtesting / live: data must include daily PCR.
         """
+        start_time = time.time()
+        signal: Signal | None = None
+
         if "close" not in data.columns or len(data) < self.smoothing + 2:
+            logger.info(
+                "analyze aborted: insufficient data",
+                extra={"symbol": symbol, "execution_time_ms": (time.time() - start_time) * 1000, "signal_count": 0},
+            )
             return None
 
         if "put_call_ratio" in data.columns:
@@ -54,17 +65,25 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
             pcr_series = 0.4 + (rv.clip(10, 40) - 10) / 30.0
 
         if len(pcr_series) < self.smoothing + 1:
+            logger.info(
+                "analyze aborted: insufficient PCR data after smoothing",
+                extra={"symbol": symbol, "execution_time_ms": (time.time() - start_time) * 1000, "signal_count": 0},
+            )
             return None
 
         pcr_smooth = pcr_series.rolling(self.smoothing).mean()
         current_pcr = float(pcr_smooth.iloc[-1])
 
         if np.isnan(current_pcr):
+            logger.info(
+                "analyze aborted: current PCR is NaN",
+                extra={"symbol": symbol, "execution_time_ms": (time.time() - start_time) * 1000, "signal_count": 0},
+            )
             return None
 
         if current_pcr > self.fear_threshold:
             confidence = min(0.85, 0.60 + (current_pcr - self.fear_threshold) * 0.5)
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="buy",
                 confidence=confidence,
@@ -75,7 +94,7 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
             )
         elif current_pcr < self.greed_threshold:
             confidence = min(0.85, 0.60 + (self.greed_threshold - current_pcr) * 0.8)
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="sell",
                 confidence=confidence,
@@ -84,9 +103,22 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata={"pcr": round(current_pcr, 3), "signal": "extreme_greed"},
             )
-        return None
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "analyze completed",
+            extra={
+                "symbol": symbol,
+                "execution_time_ms": elapsed_ms,
+                "signal_count": 1 if signal else 0,
+                "pcr": round(current_pcr, 3),
+                "generated_signal": signal.side if signal else None,
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.time()
         if "put_call_ratio" in df.columns:
             pcr = df["put_call_ratio"]
         elif "vix_close" in df.columns:
@@ -104,9 +136,22 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
         short_entries = pcr_smooth < self.greed_threshold  # extreme greed → short
         short_exits = pcr_smooth > (self.greed_threshold * 1.1)
 
-        return BacktestSignals(
+        backtest_signals = BacktestSignals(
             entries=entries.fillna(False),
             exits=exits.fillna(False),
             short_entries=short_entries.fillna(False),
             short_exits=short_exits.fillna(False),
         )
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "backtest_signals computed",
+            extra={
+                "execution_time_ms": elapsed_ms,
+                "entries_count": int(entries.sum()),
+                "exits_count": int(exits.sum()),
+                "short_entries_count": int(short_entries.sum()),
+                "short_exits_count": int(short_exits.sum()),
+            },
+        )
+        return backtest_signals
