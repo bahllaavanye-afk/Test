@@ -19,12 +19,9 @@ try:
     import torch
     import torch.nn as nn
     import torch.optim as optim
-    _TORCH_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    _TORCH_AVAILABLE = False
-    torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
-    optim = None  # type: ignore[assignment]
+    # PyTorch is a hard requirement for this model; raise a clear error if missing.
+    raise ImportError("PyTorch is required to use the LSTM model.")
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
@@ -212,6 +209,7 @@ class LSTMPredictor(AbstractModel, nn.Module):
                 all_logits.append(logits)
                 all_labels.append(y)
                 total += len(y)
+
         logits_cat = torch.cat(all_logits).numpy()
         labels_cat = torch.cat(all_labels).numpy()
         probs = 1 / (1 + np.exp(-logits_cat))
