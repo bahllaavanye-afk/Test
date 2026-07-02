@@ -24,10 +24,16 @@ order submission at 15:55 ET via Alpaca's "moc" time_in_force parameter.
 """
 from __future__ import annotations
 
+import logging
+import time
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+logger = logging.getLogger(__name__)
 
 
 class MOCAuctionImbalanceStrategy(AbstractStrategy):
@@ -57,10 +63,21 @@ class MOCAuctionImbalanceStrategy(AbstractStrategy):
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.time()
+
         false_series = pd.Series(False, index=df.index)
 
         required = {"open", "high", "low", "close", "volume"}
         if not required.issubset(df.columns) or len(df) < self.vol_lookback + 5:
+            logger.info(
+                "Backtest aborted: insufficient data",
+                extra={
+                    "strategy": self.name,
+                    "signal_count": 0,
+                    "execution_time_sec": time.time() - start_time,
+                    "pnl": None,
+                },
+            )
             return BacktestSignals(
                 entries=false_series,
                 exits=false_series,
@@ -105,16 +122,43 @@ class MOCAuctionImbalanceStrategy(AbstractStrategy):
         exits = entries.shift(self.HOLD_BARS).fillna(False)
         short_exits = short_entries.shift(self.HOLD_BARS).fillna(False)
 
+        entries_filled = entries.fillna(False).astype(bool)
+        short_entries_filled = short_entries.fillna(False).astype(bool)
+
+        signal_count = int(entries_filled.sum() + short_entries_filled.sum())
+        duration = time.time() - start_time
+
+        logger.info(
+            "Backtest signals generated",
+            extra={
+                "strategy": self.name,
+                "signal_count": signal_count,
+                "execution_time_sec": duration,
+                "pnl": None,
+            },
+        )
+
         return BacktestSignals(
-            entries=entries.fillna(False).astype(bool),
+            entries=entries_filled,
             exits=exits.fillna(False).astype(bool),
-            short_entries=short_entries.fillna(False).astype(bool),
+            short_entries=short_entries_filled,
             short_exits=short_exits.fillna(False).astype(bool),
         )
 
-    async def analyze(self, df: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
+        start_time = time.time()
+
         required = {"open", "high", "low", "close", "volume"}
         if not required.issubset(df.columns) or len(df) < self.vol_lookback + 5:
+            logger.info(
+                "Analysis aborted: insufficient data",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "signal_generated": False,
+                    "execution_time_sec": time.time() - start_time,
+                },
+            )
             return None
 
         close = df["close"].astype(float)
@@ -143,16 +187,34 @@ class MOCAuctionImbalanceStrategy(AbstractStrategy):
 
         # ATR filter
         if current_tr < self.atr_mult * current_atr:
+            logger.info(
+                "Analysis filtered out by ATR",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "signal_generated": False,
+                    "execution_time_sec": time.time() - start_time,
+                },
+            )
             return None
 
         if abs(current_z) < self.z_thresh:
+            logger.info(
+                "Analysis filtered out by Z-score",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "signal_generated": False,
+                    "execution_time_sec": time.time() - start_time,
+                },
+            )
             return None
 
         side = "buy" if current_z > 0 else "sell"
         confidence = min(abs(current_z) / (self.z_thresh * 3), 0.85)
         stop_pct = 0.003  # 30 bps stop (tight — intraday, 15-min hold)
 
-        return Signal(
+        signal = Signal(
             strategy_name=self.name,
             strategy_type=self.strategy_type,
             risk_bucket=self.risk_bucket,
@@ -168,3 +230,19 @@ class MOCAuctionImbalanceStrategy(AbstractStrategy):
                 "order_type": "moc",
             },
         )
+
+        duration = time.time() - start_time
+        logger.info(
+            "Signal generated",
+            extra={
+                "strategy": self.name,
+                "symbol": symbol,
+                "side": side,
+                "confidence": confidence,
+                "execution_time_sec": duration,
+                "signal_generated": True,
+                "pnl": None,
+            },
+        )
+
+        return signal
