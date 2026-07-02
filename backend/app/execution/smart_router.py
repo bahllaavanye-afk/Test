@@ -10,6 +10,7 @@ Decision logic:
 
 All orders pass through RiskManager.check_order() before execution.
 """
+import time
 from dataclasses import asdict
 
 from app.brokers.base import OrderRequest, OrderResult, AbstractBroker
@@ -27,6 +28,8 @@ except Exception:
 
 
 class SmartOrderRouter:
+    _signal_counter: int = 0
+
     def __init__(
         self,
         broker: AbstractBroker,
@@ -42,6 +45,10 @@ class SmartOrderRouter:
 
         Returns None (and logs a warning) if the risk manager blocks the order.
         """
+        start_time = time.perf_counter()
+        SmartOrderRouter._signal_counter += 1
+        signal_id = SmartOrderRouter._signal_counter
+
         # ── Risk gate ────────────────────────────────────────────────────────
         if self.risk_manager is not None:
             decision = await self.risk_manager.check_order(request)
@@ -50,6 +57,17 @@ class SmartOrderRouter:
                     "Order blocked by risk manager",
                     symbol=request.symbol,
                     reason=decision.reason,
+                )
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                logger.info(
+                    "SmartOrderRouter execution completed",
+                    signal_id=signal_id,
+                    symbol=request.symbol,
+                    signal_price=signal_price,
+                    filled_qty=None,
+                    avg_fill_price=None,
+                    pnl=None,
+                    execution_time_ms=round(elapsed_ms, 3),
                 )
                 return None
             if decision.adjusted_quantity is not None:
@@ -74,7 +92,6 @@ class SmartOrderRouter:
             if fills:
                 total_qty = sum(f["qty"] for f in fills)
                 avg_price = sum(f["qty"] * f["price"] for f in fills) / max(total_qty, 1e-9)
-                from app.brokers.base import OrderResult
                 result = OrderResult(
                     order_id=f"rl_{request.symbol}",
                     symbol=request.symbol,
@@ -89,6 +106,30 @@ class SmartOrderRouter:
 
         if self.slippage_tracker:
             await self.slippage_tracker.record_fill(request, result)
+
+        # ── Monitoring ────────────────────────────────────────────────────────
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        filled_qty = getattr(result, "filled_qty", None)
+        avg_price = getattr(result, "avg_fill_price", None)
+
+        pnl = None
+        if (
+            signal_price is not None
+            and filled_qty is not None
+            and avg_price is not None
+        ):
+            pnl = (avg_price - signal_price) * filled_qty
+
+        logger.info(
+            "SmartOrderRouter execution completed",
+            signal_id=signal_id,
+            symbol=request.symbol,
+            signal_price=signal_price,
+            filled_qty=filled_qty,
+            avg_fill_price=avg_price,
+            pnl=round(pnl, 6) if pnl is not None else None,
+            execution_time_ms=round(elapsed_ms, 3),
+        )
 
         return result
 
