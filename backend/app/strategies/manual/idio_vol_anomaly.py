@@ -30,12 +30,12 @@ these into a long/short book.
 
 import asyncio
 from datetime import date, timedelta
+from typing import List
 
 import httpx
 import numpy as np
 import pandas as pd
 
-from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -52,15 +52,64 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
 
     UNIVERSE = [
         # Large-cap quality
-        "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA",
-        "JPM", "V", "MA", "UNH", "JNJ", "XOM", "HD", "LLY",
-        "AVGO", "CRM", "ORCL", "AMD", "COST", "TMO",
-        "PG", "KO", "PEP", "WMT", "DIS", "BAC", "MRK", "CVX",
-        "ABBV", "MCD", "ABT", "ACN", "ADBE", "T", "VZ", "NFLX",
-        "NKE", "CSCO", "INTC", "AMGN", "GE", "HON", "UPS", "CAT",
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "META",
+        "GOOGL",
+        "TSLA",
+        "JPM",
+        "V",
+        "MA",
+        "UNH",
+        "JNJ",
+        "XOM",
+        "HD",
+        "LLY",
+        "AVGO",
+        "CRM",
+        "ORCL",
+        "AMD",
+        "COST",
+        "TMO",
+        "PG",
+        "KO",
+        "PEP",
+        "WMT",
+        "DIS",
+        "BAC",
+        "MRK",
+        "CVX",
+        "ABBV",
+        "MCD",
+        "ABT",
+        "ACN",
+        "ADBE",
+        "T",
+        "VZ",
+        "NFLX",
+        "NKE",
+        "CSCO",
+        "INTC",
+        "AMGN",
+        "GE",
+        "HON",
+        "UPS",
+        "CAT",
         # Higher-vol / meme-prone
-        "GME", "AMC", "PLTR", "RIVN", "LCID", "COIN", "MARA", "RIOT",
-        "SOFI", "HOOD", "DKNG", "NIO",
+        "GME",
+        "AMC",
+        "PLTR",
+        "RIVN",
+        "LCID",
+        "COIN",
+        "MARA",
+        "RIOT",
+        "SOFI",
+        "HOOD",
+        "DKNG",
+        "NIO",
     ]
 
     MARKET_PROXY = "SPY"
@@ -71,6 +120,7 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
         super().__init__(params)
 
     async def _fetch_closes(self, symbol: str, days: int = 40) -> pd.Series:
+        """Fetch daily close prices for *symbol* from Alpaca market data."""
         start = (date.today() - timedelta(days=days + 10)).isoformat()
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -86,9 +136,11 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
                 )
             if resp.status_code != 200:
                 return pd.Series(dtype=float, name=symbol)
+
             bars = resp.json().get("bars", [])
             if not bars:
                 return pd.Series(dtype=float, name=symbol)
+
             s = pd.Series(
                 {b["t"]: float(b["c"]) for b in bars},
                 name=symbol,
@@ -109,6 +161,7 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
         return float(np.std(resid, ddof=1) * np.sqrt(252))
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Live analysis for a single *symbol* using the most recent market data."""
         if symbol not in self.UNIVERSE:
             return None
 
@@ -118,7 +171,8 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
             return_exceptions=True,
         )
         closes: dict[str, pd.Series] = {
-            s: r for s, r in zip(symbols, series)
+            s: r
+            for s, r in zip(symbols, series)
             if isinstance(r, pd.Series) and not r.empty
         }
         if self.MARKET_PROXY not in closes or symbol not in closes:
@@ -132,7 +186,9 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
             if s == self.MARKET_PROXY:
                 continue
             r = np.log(ser).diff().dropna()
-            aligned = pd.concat([r, mkt_ret_full], axis=1, join="inner").dropna().tail(self.IDIO_WINDOW)
+            aligned = pd.concat([r, mkt_ret_full], axis=1, join="inner").dropna().tail(
+                self.IDIO_WINDOW
+            )
             if len(aligned) < max(15, self.IDIO_WINDOW - 3):
                 continue
             iv = self._idio_vol(
@@ -145,7 +201,7 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
         if symbol not in idio_vols or len(idio_vols) < 10:
             return None
 
-        # Cross-sectional rank (0 = lowest idio-vol, 1 = highest)
+        # Cross‑sectional rank (0 = lowest idio‑vol, 1 = highest)
         sorted_pairs = sorted(idio_vols.items(), key=lambda kv: kv[1])
         rank_idx = next(i for i, (s, _) in enumerate(sorted_pairs) if s == symbol)
         rank_pct = rank_idx / max(len(sorted_pairs) - 1, 1)
@@ -157,7 +213,6 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
         spot = float(closes[symbol].iloc[-1])
 
         if rank_idx < bottom_cut:
-            # Low idio-vol → LONG
             confidence = float(min(0.60 + 0.30 * (1.0 - rank_pct), 0.95))
             return Signal(
                 symbol=symbol,
@@ -203,37 +258,96 @@ class IdiosyncraticVolAnomalyStrategy(AbstractStrategy):
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
-        Single-asset backtest fallback: use rolling 21-bar return std as idio-vol
-        proxy (full residualisation against SPY requires a panel; computed live
-        in analyze()). Self-history percentile decides the leg.
+        Generate back‑test signals from historical *df*.
+
+        The dataframe is expected to contain close price columns for every symbol
+        in ``UNIVERSE`` as well as the market proxy (``SPY``).  Columns can be
+        either a flat ``symbol`` naming scheme or a MultiIndex where the first
+        level is ``'close'`` and the second level is the symbol name.
+
+        The method mirrors the live ``analyze`` logic but operates on the most
+        recent snapshot of *df*.  Signals are emitted for symbols that fall into
+        the bottom or top decile of idiosyncratic volatility.
         """
-        if "close" not in df.columns or len(df) < self.IDIO_WINDOW + 60:
-            return BacktestSignals(
-                entries=pd.Series(False, index=df.index),
-                exits=pd.Series(False, index=df.index),
+        # Extract close price series for each symbol
+        closes: dict[str, pd.Series] = {}
+        for sym in self.UNIVERSE + [self.MARKET_PROXY]:
+            if sym in df.columns:
+                series = df[sym]
+            elif isinstance(df.columns, pd.MultiIndex) and ("close", sym) in df.columns:
+                series = df[("close", sym)]
+            else:
+                continue
+            series = pd.to_numeric(series, errors="coerce").dropna()
+            if not series.empty:
+                closes[sym] = series
+
+        if self.MARKET_PROXY not in closes:
+            return BacktestSignals(signals=[])
+
+        mkt_close = closes[self.MARKET_PROXY]
+        mkt_ret_full = np.log(mkt_close).diff().dropna()
+
+        idio_vols: dict[str, float] = {}
+        for sym, price_series in closes.items():
+            if sym == self.MARKET_PROXY:
+                continue
+            ret = np.log(price_series).diff().dropna()
+            aligned = pd.concat([ret, mkt_ret_full], axis=1, join="inner").dropna().tail(
+                self.IDIO_WINDOW
+            )
+            if len(aligned) < max(15, self.IDIO_WINDOW - 3):
+                continue
+            iv = self._idio_vol(
+                aligned.iloc[:, 0].values.astype(float),
+                aligned.iloc[:, 1].values.astype(float),
+            )
+            if np.isfinite(iv):
+                idio_vols[sym] = iv
+
+        if len(idio_vols) < 10:
+            return BacktestSignals(signals=[])
+
+        sorted_pairs = sorted(idio_vols.items(), key=lambda kv: kv[1])
+        n = len(sorted_pairs)
+        bottom_cut = max(1, int(round(n * self.DECILE)))
+        top_cut = n - bottom_cut
+
+        signals: List[Signal] = []
+        for idx, (sym, vol) in enumerate(sorted_pairs):
+            rank_pct = idx / max(n - 1, 1)
+            spot = float(closes[sym].iloc[-1])
+
+            if idx < bottom_cut:
+                confidence = float(min(0.60 + 0.30 * (1.0 - rank_pct), 0.95))
+                side = "buy"
+                leg = "long_low_vol"
+            elif idx >= top_cut:
+                confidence = float(min(0.60 + 0.30 * rank_pct, 0.95))
+                side = "sell"
+                leg = "short_high_vol"
+            else:
+                continue
+
+            signals.append(
+                Signal(
+                    symbol=sym,
+                    side=side,
+                    confidence=confidence,
+                    strategy_name=self.name,
+                    strategy_type=self.strategy_type,
+                    risk_bucket=self.risk_bucket,
+                    target_price=spot,
+                    metadata={
+                        "strategy": self.name,
+                        "leg": leg,
+                        "idio_vol": round(vol, 4),
+                        "rank": idx + 1,
+                        "rank_pct": round(rank_pct, 3),
+                        "universe_size": n,
+                        "window_days": self.IDIO_WINDOW,
+                    },
+                )
             )
 
-        close = df["close"].astype(float)
-        log_ret = np.log(close).diff()
-        # Use a market detrend: subtract rolling mean (a 1-factor stand-in for SPY beta on a single series)
-        market_proxy = log_ret.rolling(63, min_periods=20).mean()
-        resid = log_ret - market_proxy
-        idio_vol = resid.rolling(self.IDIO_WINDOW, min_periods=15).std() * np.sqrt(252)
-
-        # Percentile rank of current idio_vol vs trailing 252 bars (proxy for cross-sectional rank)
-        rank = idio_vol.rolling(252, min_periods=60).apply(
-            lambda w: (w < w.iloc[-1]).mean(),
-            raw=False,
-        )
-
-        long_entries = (rank.shift(1) < self.DECILE).fillna(False)
-        long_exits = (rank.shift(1) > 0.50).fillna(False)
-        short_entries = (rank.shift(1) > (1.0 - self.DECILE)).fillna(False)
-        short_exits = (rank.shift(1) < 0.50).fillna(False)
-
-        return BacktestSignals(
-            entries=long_entries,
-            exits=long_exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
+        return BacktestSignals(signals=signals)
