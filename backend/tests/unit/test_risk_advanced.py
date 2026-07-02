@@ -1,6 +1,5 @@
 """Tests for VaR, factor exposure, and drawdown recovery."""
 import numpy as np
-import pytest
 from app.risk.var import historical_var, VaRResult
 from app.risk.factor_exposure import compute_factor_exposure, FactorExposure
 from app.risk.drawdown_recovery import estimate_recovery
@@ -58,7 +57,10 @@ class TestFactorExposure:
 
     def test_to_dict_keys(self):
         np.random.seed(0)
-        r = compute_factor_exposure(list(np.random.normal(0, 0.01, 60)), list(np.random.normal(0, 0.01, 60)))
+        r = compute_factor_exposure(
+            list(np.random.normal(0, 0.01, 60)),
+            list(np.random.normal(0, 0.01, 60)),
+        )
         d = r.to_dict()
         assert "market_beta" in d
         assert "alpha_annualized_pct" in d
