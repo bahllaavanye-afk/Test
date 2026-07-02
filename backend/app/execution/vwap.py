@@ -9,7 +9,9 @@ distribution.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import asdict
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
@@ -129,6 +131,8 @@ class VWAPExecution:
             price, and an overall status (``filled`` if at least 95 % of the
             target quantity was executed, otherwise ``partial``).
         """
+        start_time = time.monotonic()
+
         # Fetch dynamic profile; cap slices to profile length
         profile = await get_intraday_volume_profile(request.symbol, self.broker)
         active_slices = min(self.slices, len(profile))
@@ -163,9 +167,34 @@ class VWAPExecution:
 
         avg_price = total_cost / total_filled if total_filled > 0 else None
         fill_rate = total_filled / request.quantity if request.quantity > 0 else 0
-        return OrderResult(
+
+        # Estimate P&L if reference price is available
+        pnl = None
+        try:
+            reference_price = getattr(request, "price", None)
+            side = getattr(request, "side", "").lower()
+            if reference_price is not None and avg_price is not None and side in {"buy", "sell"}:
+                direction = 1 if side == "buy" else -1
+                pnl = direction * (reference_price - avg_price) * total_filled
+        except Exception:
+            pnl = None
+
+        result = OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "vwap",
             status="filled" if fill_rate >= 0.95 else "partial",
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
+
+        execution_time = time.monotonic() - start_time
+        logger.info(
+            "VWAP execution completed",
+            signal_count=active_slices,
+            execution_time=execution_time,
+            total_filled=total_filled,
+            avg_price=avg_price,
+            fill_rate=fill_rate,
+            pnl=pnl,
+        )
+
+        return result
