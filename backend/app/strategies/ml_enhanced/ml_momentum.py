@@ -10,6 +10,7 @@ agree on direction, and it adjusts the confidence accordingly.
 """
 
 import logging
+import time
 from typing import Any, Dict, Optional
 
 import pandas as pd
@@ -47,6 +48,7 @@ class MLMomentumStrategy(AbstractStrategy):
         """
         super().__init__(params)
         self._base = MomentumStrategy(params)
+        self._signal_count = 0  # Tracks number of emitted signals
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """Generate a trading signal for a given symbol.
@@ -69,19 +71,53 @@ class MLMomentumStrategy(AbstractStrategy):
             A populated :class:`app.strategies.base.Signal` if both the base and
             ML models agree, otherwise ``None``.
         """
+        start_time = time.perf_counter()
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "MLMomentumStrategy analyze completed for %s: signal_count=%d, duration_ms=%.2f, pnl=None",
+                symbol,
+                self._signal_count,
+                duration_ms,
+            )
             return None
 
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
             if ml_result is None or ml_result["prediction"] == "neutral":
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                logger.info(
+                    "MLMomentumStrategy analyze completed for %s: signal_count=%d, duration_ms=%.2f, pnl=None",
+                    symbol,
+                    self._signal_count,
+                    duration_ms,
+                )
                 return None
 
-            return self._apply_ml_filter(base_signal, ml_result)
+            signal = self._apply_ml_filter(base_signal, ml_result)
+            if signal is not None:
+                self._signal_count += 1
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            pnl = signal.metadata.get("pnl") if signal and "pnl" in signal.metadata else None
+            logger.info(
+                "MLMomentumStrategy analyze completed for %s: signal_count=%d, duration_ms=%.2f, pnl=%s",
+                symbol,
+                self._signal_count,
+                duration_ms,
+                pnl,
+            )
+            return signal
         except Exception as e:  # pragma: no cover
             logger.exception("ML inference failed for %s: %s", symbol, e)
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "MLMomentumStrategy analyze completed for %s: signal_count=%d, duration_ms=%.2f, pnl=None",
+                symbol,
+                self._signal_count,
+                duration_ms,
+            )
             return None
 
     def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
