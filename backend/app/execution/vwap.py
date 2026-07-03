@@ -9,7 +9,9 @@ distribution.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import asdict
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
@@ -129,6 +131,8 @@ class VWAPExecution:
             price, and an overall status (``filled`` if at least 95 % of the
             target quantity was executed, otherwise ``partial``).
         """
+        start_time = time.perf_counter()
+
         # Fetch dynamic profile; cap slices to profile length
         profile = await get_intraday_volume_profile(request.symbol, self.broker)
         active_slices = min(self.slices, len(profile))
@@ -163,6 +167,17 @@ class VWAPExecution:
 
         avg_price = total_cost / total_filled if total_filled > 0 else None
         fill_rate = total_filled / request.quantity if request.quantity > 0 else 0
+
+        execution_time = time.perf_counter() - start_time
+        logger.info(
+            "VWAP execution completed",
+            signal_count=active_slices,
+            total_filled=total_filled,
+            avg_fill_price=avg_price,
+            fill_rate=fill_rate,
+            execution_time_seconds=execution_time,
+        )
+
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "vwap",
             status="filled" if fill_rate >= 0.95 else "partial",
