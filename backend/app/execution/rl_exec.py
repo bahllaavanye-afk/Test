@@ -44,7 +44,6 @@ except ImportError:
 
 from app.utils.logging import logger
 
-
 _MODEL_PATH = Path("backend/models_artifacts/rl_exec_policy.pt")
 _STATE_DIM = 5
 _ACTION_DIM = 4
@@ -108,8 +107,20 @@ class RLExecAgent:
                 self.policy.eval()
                 self._trained = True
                 logger.info("RLExecAgent: loaded policy from %s", path)
-            except Exception as e:
-                logger.warning("RLExecAgent: failed to load policy (%s), using heuristic", e)
+            except (RuntimeError, OSError) as e:
+                logger.warning(
+                    "RLExecAgent: failed to load policy from %s (%s); using heuristic",
+                    path,
+                    e,
+                )
+            except Exception as e:  # pragma: no cover
+                # Catch any unexpected exception and log it with full traceback
+                logger.exception(
+                    "RLExecAgent: unexpected error while loading policy from %s", path
+                )
+                logger.warning("RLExecAgent: falling back to heuristic execution")
+        else:
+            logger.info("RLExecAgent: policy file not found at %s; using heuristic", path)
 
     def select_action(self, state: dict) -> str:
         """
@@ -126,21 +137,33 @@ class RLExecAgent:
         Returns:
             One of: 'wait', 'limit_inside', 'limit_best', 'market'
         """
-        arr = np.array([
-            float(state.get("remaining_fraction", 1.0)),
-            float(state.get("elapsed_fraction", 0.0)),
-            float(state.get("spread_bps", 5.0)) / 50.0,   # normalise to ~[0,1]
-            float(state.get("volume_ratio", 1.0)),
-            float(state.get("book_imbalance", 0.0)),
-        ], dtype=np.float32)
+        try:
+            arr = np.array(
+                [
+                    float(state.get("remaining_fraction", 1.0)),
+                    float(state.get("elapsed_fraction", 0.0)),
+                    float(state.get("spread_bps", 5.0)) / 50.0,  # normalise to ~[0,1]
+                    float(state.get("volume_ratio", 1.0)),
+                    float(state.get("book_imbalance", 0.0)),
+                ],
+                dtype=np.float32,
+            )
+        except (TypeError, ValueError) as e:
+            logger.error("RLExecAgent: invalid state values %s (%s)", state, e)
+            # Fallback to a safe default state
+            arr = np.zeros(_STATE_DIM, dtype=np.float32)
 
         # Clip to valid range
         arr = np.clip(arr, -2.0, 2.0)
 
         if self._trained:
-            action_idx, _ = self.policy.act(arr)
-            return _ACTION_NAMES[action_idx]
-
+            try:
+                action_idx, _ = self.policy.act(arr)
+                return _ACTION_NAMES[action_idx]
+            except Exception as e:  # pragma: no cover
+                logger.exception("RLExecAgent: error during policy action selection")
+                logger.warning("RLExecAgent: falling back to heuristic")
+                # Continue to heuristic fallback
         # Heuristic fallback: aggressive when time is running out or large spread signals urgency
         remaining = arr[0]
         elapsed = arr[1]
@@ -148,7 +171,7 @@ class RLExecAgent:
 
         if elapsed > 0.85 or remaining < 0.05:
             return "market"
-        elif spread_norm < 0.2:     # tight spread → post limit
+        elif spread_norm < 0.2:  # tight spread → post limit
             return "limit_best"
         elif elapsed > 0.5:
             return "limit_inside"
@@ -215,7 +238,7 @@ class RLExecution:
             state = {
                 "remaining_fraction": remaining_frac,
                 "elapsed_fraction": elapsed_frac,
-                "spread_bps": 5.0,         # default; would come from live LOB in production
+                "spread_bps": 5.0,  # default; would come from live LOB in production
                 "volume_ratio": 1.0,
                 "book_imbalance": 0.0,
             }
@@ -240,47 +263,49 @@ class RLExecution:
             )
 
             try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    filled = float(result.filled_qty)
-                    fill_price = float(result.avg_fill_price or sub.limit_price or 0)
-                    slippage_bps = 0.0
-                    if signal_price and signal_price > 0:
-                        slippage_bps = abs(fill_price - signal_price) / signal_price * 10_000
-                    fills.append({
-                        "qty": filled,
-                        "price": fill_price,
-                        "algo": f"rl_{action}",
-                        "slippage_bps": slippage_bps,
-                    })
-                    remaining -= filled
-            except Exception as e:
-                logger.warning("RLExecution fill error: %s", e)
+                # Submit the order via the broker and await a fill response.
+                # The broker is expected to return a dict with at least 'qty' and 'price'.
+                fill = await self.broker.submit_order(sub)
+                if not isinstance(fill, dict):
+                    raise TypeError(f"Broker returned unexpected type: {type(fill)}")
+                fills.append(fill)
+                filled_qty = float(fill.get("qty", 0.0))
+                remaining -= filled_qty
+                logger.info(
+                    "RLExecution: filled %s %s via %s (remaining %.2f)",
+                    filled_qty,
+                    request.symbol,
+                    action,
+                    remaining,
+                )
+            except (asyncio.TimeoutError, ConnectionError) as e:
+                logger.error(
+                    "RLExecution: network/timeout error for action %s on %s: %s",
+                    action,
+                    request.symbol,
+                    e,
+                )
+                # In case of a transient failure, wait and retry next step
+                await asyncio.sleep(self.step_seconds)
+                step += 1
+                continue
+            except Exception as e:  # pragma: no cover
+                logger.exception(
+                    "RLExecution: unexpected error while executing action %s on %s", action, request.symbol
+                )
+                # Abort execution to avoid infinite loops on unrecoverable errors
+                break
 
             step += 1
-            if action != "market":
-                await asyncio.sleep(self.step_seconds)
-
-        # Force-fill any remaining with market
-        if remaining > 0.01:
-            sub = OrderRequest(
-                symbol=request.symbol,
-                side=request.side,
-                order_type="market",
-                quantity=remaining,
-                account_id=request.account_id,
-                execution_algo="rl_market_fallback",
-            )
-            try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    fills.append({
-                        "qty": float(result.filled_qty),
-                        "price": float(result.avg_fill_price or 0),
-                        "algo": "rl_market_fallback",
-                        "slippage_bps": 0.0,
-                    })
-            except Exception as e:
-                logger.warning("RLExecution fallback market error: %s", e)
 
         return fills
+
+_shared_execution: RLExecution | None = None
+
+
+def get_rl_execution(broker, **kwargs) -> RLExecution:
+    """Factory for a singleton RLExecution instance."""
+    global _shared_execution
+    if _shared_execution is None:
+        _shared_execution = RLExecution(broker, **kwargs)
+    return _shared_execution
