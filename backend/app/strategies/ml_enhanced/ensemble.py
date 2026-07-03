@@ -30,12 +30,18 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        # Defensive checks for None / empty inputs
+        if data is None or data.empty or symbol is None:
+            return None
+
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
 
             # Basic ML validation
-            if not ml_result or ml_result.get("prediction") == "neutral":
+            if not isinstance(ml_result, dict):
+                return None
+            if ml_result.get("prediction") == "neutral":
                 return None
             if ml_result.get("confidence", 0) < self.confidence_threshold:
                 return None
@@ -50,6 +56,10 @@ class EnsembleStrategy(AbstractStrategy):
                 return None
             sma = recent["close"].mean()
             median_vol = recent["volume"].median()
+            # Guard against off‑by‑one when data has fewer rows than expected
+            if pd.isna(sma) or pd.isna(median_vol):
+                return None
+
             latest_close = data["close"].iloc[-1]
             latest_vol = data["volume"].iloc[-1]
 
@@ -90,11 +100,16 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
+        # Defensive handling for None / empty DataFrames
+        if df is None or df.empty:
+            empty_series = pd.Series(False, index=pd.RangeIndex(0))
+            return BacktestSignals(entries=empty_series, exits=empty_series)
+
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
+            empty_series = pd.Series(False, index=df.index)
+            return BacktestSignals(entries=empty_series, exits=empty_series)
 
         # Compute rolling SMA and median volume
         sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
