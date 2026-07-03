@@ -24,13 +24,30 @@ def _base_url(account: Account) -> str:
     return ALPACA_LIVE if account.mode == "live" else ALPACA_PAPER
 
 
-async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Submit an order to Alpaca. Returns Alpaca order response."""
-    start_ts = time.time()
-    headers = await _headers(account)
-    base = _base_url(account)
+def _remove_none_values(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of *data* without keys whose values are ``None``."""
+    return {k: v for k, v in data.items() if v is not None}
 
-    payload = {
+
+def _build_bracket_payload(order_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Construct bracket‑specific fields for an order payload."""
+    payload: Dict[str, Any] = {"order_class": "bracket"}
+
+    if tp := order_data.get("take_profit_price"):
+        payload["take_profit"] = {"limit_price": str(tp)}
+
+    if sl := order_data.get("stop_loss_price"):
+        if trailing := order_data.get("trailing_stop_pct"):
+            payload["stop_loss"] = {"trail_percent": str(trailing)}
+        else:
+            payload["stop_loss"] = {"stop_price": str(sl)}
+
+    return payload
+
+
+def _build_order_payload(order_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Create the JSON payload for an Alpaca order based on *order_data*."""
+    payload: Dict[str, Any] = {
         "symbol": order_data["symbol"],
         "qty": str(order_data.get("quantity")) if order_data.get("quantity") else None,
         "notional": str(order_data.get("notional")) if order_data.get("notional") else None,
@@ -41,22 +58,23 @@ async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> D
         "stop_price": str(order_data["stop_price"]) if order_data.get("stop_price") else None,
     }
 
-    # Add bracket legs if present
+    # Bracket order handling
     if order_data.get("take_profit_price") or order_data.get("stop_loss_price"):
-        payload["order_class"] = "bracket"
-        if order_data.get("take_profit_price"):
-            payload["take_profit"] = {"limit_price": str(order_data["take_profit_price"])}
-        if order_data.get("stop_loss_price"):
-            if order_data.get("trailing_stop_pct"):
-                payload["stop_loss"] = {"trail_percent": str(order_data["trailing_stop_pct"])}
-            else:
-                payload["stop_loss"] = {"stop_price": str(order_data["stop_loss_price"])}
-    elif order_data.get("trailing_stop_pct"):
+        payload.update(_build_bracket_payload(order_data))
+    elif trailing := order_data.get("trailing_stop_pct"):
         payload["type"] = "trailing_stop"
-        payload["trail_percent"] = str(order_data["trailing_stop_pct"])
+        payload["trail_percent"] = str(trailing)
 
-    # Remove None values
-    payload = {k: v for k, v in payload.items() if v is not None}
+    return _remove_none_values(payload)
+
+
+async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Submit an order to Alpaca. Returns Alpaca order response."""
+    start_ts = time.time()
+    headers = await _headers(account)
+    base = _base_url(account)
+
+    payload = _build_order_payload(order_data)
 
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(f"{base}/v2/orders", json=payload, headers=headers)
