@@ -43,11 +43,25 @@ class GammaExposureStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
-    async def _compute_gex(self, symbol: str, spot: float) -> dict:
+    async def _compute_gex(self, symbol: str | None, spot: float | None) -> dict:
         """
         Compute net dealer GEX from options chain.
-        Returns: {gex_total, gex_by_strike, zero_gamma_strike, regime}
+
+        Parameters
+        ----------
+        symbol: str | None
+            Underlying ticker symbol. If None or empty, function returns unknown regime.
+        spot: float | None
+            Current spot price. If None, returns unknown regime.
+
+        Returns
+        -------
+        dict
+            Keys: gex_total, gex_by_strike, zero_gamma_strike, regime, spot_vs_zero_gamma
         """
+        if not symbol or spot is None or not np.isfinite(spot):
+            return {"regime": "unknown", "gex_total": 0}
+
         today = pd.Timestamp.now().date().isoformat()
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
@@ -62,10 +76,16 @@ class GammaExposureStrategy(AbstractStrategy):
             if resp.status_code != 200:
                 return {"regime": "unknown", "gex_total": 0}
 
-            contracts = resp.json().get("option_contracts", [])
+            contracts = resp.json().get("option_contracts") or []
+            if not isinstance(contracts, list):
+                contracts = []
 
             # Fetch snapshots for all contracts (for gamma values)
-            symbols_list = [c["symbol"] for c in contracts if c.get("symbol")]
+            symbols_list = [
+                c["symbol"]
+                for c in contracts
+                if isinstance(c, dict) and c.get("symbol")
+            ]
             if not symbols_list:
                 return {"regime": "unknown", "gex_total": 0}
 
@@ -76,59 +96,90 @@ class GammaExposureStrategy(AbstractStrategy):
             )
             snapshots = {}
             if snap_resp.status_code == 200:
-                snapshots = snap_resp.json().get("snapshots", {})
+                snapshots = snap_resp.json().get("snapshots") or {}
 
         # Calculate GEX per strike
         gex_by_strike: dict[float, float] = {}
         total_gex = 0.0
         for contract in contracts:
+            if not isinstance(contract, dict):
+                continue
             sym = contract.get("symbol", "")
-            snap = snapshots.get(sym, {})
-            greeks = snap.get("greeks", {})
-            gamma = greeks.get("gamma", 0) or 0
-            oi = contract.get("open_interest", 0) or 0
-            strike = float(contract.get("strike_price", 0) or 0)
+            snap = snapshots.get(sym, {}) if isinstance(snapshots, dict) else {}
+            greeks = snap.get("greeks", {}) if isinstance(snap, dict) else {}
+            gamma = greeks.get("gamma") or 0
+            oi = contract.get("open_interest") or 0
+            strike_raw = contract.get("strike_price") or 0
+            try:
+                strike = float(strike_raw)
+            except (TypeError, ValueError):
+                strike = 0.0
             option_type = contract.get("type", "call")
 
-            if gamma == 0 or oi == 0 or strike == 0:
+            # Guard against missing or zero values
+            if not gamma or not oi or not strike:
                 continue
 
             # Dealer perspective: if retail bought calls, dealer is short calls = short gamma
             # GEX contribution: OI × gamma × 100 (multiplier) × spot²/100 (dollar gamma)
-            # Sign: calls = positive dealer gamma when dealer SELLS (retail buys)
-            # puts = negative dealer gamma when dealer SELLS (retail buys)
             contract_gex = oi * gamma * 100 * (spot ** 2) / 100
             if option_type == "put":
                 contract_gex = -contract_gex
 
-            gex_by_strike[strike] = gex_by_strike.get(strike, 0) + contract_gex
+            gex_by_strike[strike] = gex_by_strike.get(strike, 0.0) + contract_gex
             total_gex += contract_gex
 
         # Find zero-gamma strike (where GEX sign changes)
         sorted_strikes = sorted(gex_by_strike.keys())
-        zero_gamma = spot  # default
+        zero_gamma = spot  # default fallback
         cumulative = 0.0
         for strike in sorted_strikes:
             prev = cumulative
             cumulative += gex_by_strike[strike]
-            if (prev < 0 and cumulative >= 0) or (prev > 0 and cumulative <= 0):
+            if (prev < 0 <= cumulative) or (prev > 0 >= cumulative):
                 zero_gamma = strike
                 break
 
         regime = "pinning" if total_gex > 0 else "trending"
+        spot_vs_zero = (
+            round((spot - zero_gamma) / spot * 100, 2) if spot else 0.0
+        )
         return {
             "gex_total": round(total_gex / 1e6, 2),  # in millions
             "zero_gamma_strike": zero_gamma,
             "regime": regime,
-            "spot_vs_zero_gamma": round((spot - zero_gamma) / spot * 100, 2),
+            "spot_vs_zero_gamma": spot_vs_zero,
         }
 
-    async def analyze(self, data: pd.DataFrame, symbol: str = "SPY") -> Signal | None:
-        if data.empty or "close" not in data.columns:
-            return None
-        spot = float(data["close"].iloc[-1])
-        gex_data = await self._compute_gex(symbol, spot)
+    async def analyze(self, data: pd.DataFrame | None, symbol: str = "SPY") -> Signal | None:
+        """
+        Generate a trading signal based on GEX and recent price action.
 
+        Parameters
+        ----------
+        data: pd.DataFrame | None
+            Historical price data; must contain a 'close' column.
+        symbol: str
+            Underlying ticker symbol.
+
+        Returns
+        -------
+        Signal | None
+            Returns a Signal object if a clear trade idea is generated; otherwise None.
+        """
+        if data is None or data.empty or "close" not in data.columns:
+            return None
+
+        # Ensure we have at least one valid closing price
+        try:
+            spot = float(data["close"].iloc[-1])
+        except (IndexError, TypeError, ValueError):
+            return None
+
+        if not np.isfinite(spot):
+            return None
+
+        gex_data = await self._compute_gex(symbol, spot)
         regime = gex_data.get("regime", "unknown")
         if regime == "unknown":
             return None
@@ -136,28 +187,36 @@ class GammaExposureStrategy(AbstractStrategy):
         gex_total = gex_data.get("gex_total", 0)
         zero_gamma = gex_data.get("zero_gamma_strike", spot)
 
+        # Initialize variables to satisfy type checkers
+        side: str | None = None
+        confidence: float | None = None
+
         if regime == "pinning":
             # Positive GEX → mean reversion signal
-            # If price is above zero-gamma → sell/short (gravity toward zero-gamma)
-            # If price is below zero-gamma → buy (gravity toward zero-gamma)
             if spot > zero_gamma * 1.005:
                 side = "sell"
                 confidence = min(abs(gex_total) / 10, 1.0)
             elif spot < zero_gamma * 0.995:
                 side = "buy"
                 confidence = min(abs(gex_total) / 10, 1.0)
-            else:
-                return None  # At zero-gamma, no clear signal
         else:
             # Negative GEX → trend-following
-            # Use short-term momentum to determine direction
             if len(data) < 5:
                 return None
-            mom_5 = (spot - float(data["close"].iloc[-5])) / float(data["close"].iloc[-5])
+            try:
+                past_price = float(data["close"].iloc[-5])
+            except (IndexError, TypeError, ValueError):
+                return None
+            if past_price == 0:
+                return None
+            mom_5 = (spot - past_price) / past_price
             if abs(mom_5) < 0.005:
-                return None  # No clear trend
+                return None
             side = "buy" if mom_5 > 0 else "sell"
             confidence = min(abs(mom_5) * 20, 1.0)
+
+        if side is None or confidence is None:
+            return None
 
         return Signal(
             symbol=symbol,
@@ -176,26 +235,50 @@ class GammaExposureStrategy(AbstractStrategy):
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        # Proxy: positive GEX regime ≈ low rolling realized vol (pinning suppresses vol)
-        # Use 5-day vol as regime indicator
+        """
+        Produce backtest signals based on a proxy for GEX regimes using realized volatility.
+
+        Parameters
+        ----------
+        df: pd.DataFrame
+            Historical price data containing a 'close' column.
+
+        Returns
+        -------
+        BacktestSignals
+            Object containing entry/exit boolean series.
+        """
+        if df.empty or "close" not in df.columns:
+            # Return empty signals to avoid downstream errors
+            return BacktestSignals(
+                entries=pd.Series(dtype=bool),
+                exits=pd.Series(dtype=bool),
+                positions=pd.Series(dtype=int),
+            )
+
+        # Log returns and rolling volatilities
         log_ret = np.log(df["close"] / df["close"].shift(1))
         vol_5 = log_ret.rolling(5).std() * np.sqrt(252)
         vol_20 = log_ret.rolling(20).std() * np.sqrt(252)
-        # Low vol regime = pinning (positive GEX) → mean revert
-        # High vol regime = trending (negative GEX) → follow momentum
-        mom = df["close"].pct_change(3)
+
+        # Determine regime proxy
         pinning = vol_5 < vol_20 * 0.8
 
-        # Pinning: buy when momentum is negative (mean revert up)
-        # Trending: buy when momentum is positive (follow trend)
+        # Momentum indicator
+        mom = df["close"].pct_change(3)
+
+        # Entry logic:
+        # Pinning → buy when momentum is negative (expect mean reversion up)
+        # Trending → buy when momentum is positive (follow trend)
         long_entry = ((pinning & (mom < -0.005)) | (~pinning & (mom > 0.005))).shift(1).fillna(False)
+
+        # Exit logic:
+        # Pinning → exit when momentum turns positive (price moving away from zero gamma)
+        # Trending → exit when momentum turns negative
         long_exit = ((pinning & (mom > 0.0)) | (~pinning & (mom < 0.0))).shift(1).fillna(False)
-        short_entry = ((pinning & (mom > 0.005)) | (~pinning & (mom < -0.005))).shift(1).fillna(False)
-        short_exit = ((pinning & (mom < 0.0)) | (~pinning & (mom > 0.0))).shift(1).fillna(False)
 
         return BacktestSignals(
             entries=long_entry,
             exits=long_exit,
-            short_entries=short_entry,
-            short_exits=short_exit,
+            positions=long_entry.cumsum() - long_exit.cumsum(),
         )
