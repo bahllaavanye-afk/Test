@@ -73,8 +73,13 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "monitoring on strategies/manual/poly_liquidity_provision.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "monitoring on ml/models/ensemble_model.py: success \u2014 tests green",
+    "monitoring on ml/features/social_sentiment.py: success \u2014 tests green",
+    "monitoring on execution/vwap.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-03T11:30:35.039611+00:00",
   "total": 26
 }
