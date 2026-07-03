@@ -9,10 +9,15 @@ Key features over a naive engine:
   • overnight gap returns modeled separately
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 from datetime import date
+
+# --------------------------------------------------------------------------- #
+# Data structures
+# --------------------------------------------------------------------------- #
 
 
 @dataclass
@@ -43,6 +48,11 @@ class BacktestMetrics:
 
     # Equity curve (for charting)
     equity_curve: list[dict] = field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- #
+# Helper functions
+# --------------------------------------------------------------------------- #
 
 
 def _omega_ratio(returns: np.ndarray, threshold: float = 0.0) -> float:
@@ -82,6 +92,11 @@ def _adaptive_slippage(
     return scaled.clip(upper=base_slippage_pct * 5)
 
 
+# --------------------------------------------------------------------------- #
+# Main backtest routine
+# --------------------------------------------------------------------------- #
+
+
 def run_backtest(
     signals: pd.Series,
     prices: pd.Series,
@@ -98,8 +113,8 @@ def run_backtest(
 
     Parameters
     ----------
-    signals     : +1 buy, -1 sell, 0 hold. Must be pre-shifted to avoid lookahead.
-    prices      : OHLCV close prices (used for mark-to-market).
+    signals     : +1 buy, -1 sell, 0 hold. Must be pre‑shifted to avoid lookahead.
+    prices      : OHLCV close prices (used for mark‑to‑market).
     opens       : Open prices. When fill_at_open=True, trades execute at next open.
                   Falls back to close if not provided.
     volume      : Daily volume (shares or contracts). Used for adaptive slippage.
@@ -107,38 +122,56 @@ def run_backtest(
     fill_at_open: If True, position changes fill at the bar's OPEN price, not
                   the previous bar's close. This is more realistic for EOD signals.
     """
+    # ------------------------------------------------------------------- #
+    # Prepare price series for fill execution
+    # ------------------------------------------------------------------- #
     fill_prices = opens if (fill_at_open and opens is not None) else prices
 
-    df = pd.DataFrame({
-        "signal":      signals,
-        "price":       prices,
-        "fill_price":  fill_prices,
-    }).dropna(subset=["signal", "price"])
+    df = pd.DataFrame(
+        {
+            "signal": signals,
+            "price": prices,
+            "fill_price": fill_prices,
+        }
+    ).dropna(subset=["signal", "price"])
 
-    # Build optional volume column outside the main DataFrame to avoid dtype confusion
-    _volume_usd: pd.Series | None = None
+    # ------------------------------------------------------------------- #
+    # Volume handling (USD value)
+    # ------------------------------------------------------------------- #
+    volume_usd: pd.Series | None = None
     if volume is not None:
-        _volume_usd = volume.reindex(df.index).fillna(0) * df["price"]
+        volume_usd = volume.reindex(df.index).fillna(0) * df["price"]
 
-    # Carry forward last signal to maintain position
-    df["position"] = df["signal"].replace(0, np.nan).ffill().fillna(0)
-    # Shift so position change takes effect at *next* bar's open
-    df["position"] = df["position"].shift(1).fillna(0)
+    # ------------------------------------------------------------------- #
+    # Position logic (carry‑forward, shifted for next‑bar execution)
+    # ------------------------------------------------------------------- #
+    df["position"] = (
+        df["signal"]
+        .replace(0, np.nan)
+        .ffill()
+        .fillna(0)
+        .shift(1)
+        .fillna(0)
+    )
 
-    # Detect transitions (direction changes or new entries)
+    # ------------------------------------------------------------------- #
+    # Trade detection
+    # ------------------------------------------------------------------- #
     df["trade"] = df["position"].diff().fillna(0)
     trade_mask = df["trade"] != 0
 
-    # Volume-adaptive slippage on transition bars only
+    # ------------------------------------------------------------------- #
+    # Slippage & commission costs (applied only on bars where a trade occurs)
+    # ------------------------------------------------------------------- #
     trade_size_usd = df["trade"].abs() * df["fill_price"] * initial_equity / df["fill_price"].iloc[0]
-    slip = _adaptive_slippage(trade_size_usd, _volume_usd, slippage_pct)
-
+    slip = _adaptive_slippage(trade_size_usd, volume_usd, slippage_pct)
     total_cost_pct = (commission_pct + slip) * trade_mask.astype(float)
 
-    # Daily P&L: mark-to-market returns on the held position
+    # ------------------------------------------------------------------- #
+    # Daily P&L and equity curve
+    # ------------------------------------------------------------------- #
     df["bar_return"] = df["price"].pct_change().fillna(0)
     df["pnl"] = df["position"] * df["bar_return"] - total_cost_pct
-
     df["equity"] = initial_equity * (1 + df["pnl"]).cumprod()
     df["equity"] = df["equity"].ffill().fillna(initial_equity)
 
@@ -146,70 +179,88 @@ def run_backtest(
     returns = df["pnl"].values
     rf_daily = risk_free_annual / 252.0
 
-    # ── Sharpe ────────────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------- #
+    # Sharpe
+    # ------------------------------------------------------------------- #
     excess = returns - rf_daily
-    _excess_std = float(np.std(excess))
-    sharpe = float(excess.mean() / _excess_std * np.sqrt(252)) if _excess_std > 1e-10 else 0.0
-
-    # ── Sortino ───────────────────────────────────────────────────────────────
-    downside = returns[returns < rf_daily]
-    _down_std = float(np.std(downside)) if len(downside) > 1 else 0.0
-    sortino = (
-        float(excess.mean() / _down_std * np.sqrt(252))
-        if _down_std > 1e-10 else 0.0
+    excess_std = float(np.std(excess))
+    sharpe = (
+        float(excess.mean() / excess_std * np.sqrt(252))
+        if excess_std > 1e-10
+        else 0.0
     )
 
-    # ── Drawdown ──────────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------- #
+    # Sortino
+    # ------------------------------------------------------------------- #
+    downside = returns[returns < rf_daily]
+    downside_std = float(np.std(downside)) if len(downside) > 1 else 0.0
+    sortino = (
+        float(excess.mean() / downside_std * np.sqrt(252))
+        if downside_std > 1e-10
+        else 0.0
+    )
+
+    # ------------------------------------------------------------------- #
+    # Drawdown metrics
+    # ------------------------------------------------------------------- #
     peak = np.maximum.accumulate(equity)
     dd = (equity - peak) / peak
     max_dd = float(dd.min())
     avg_dd = float(dd[dd < 0].mean()) if (dd < 0).any() else 0.0
 
-    # Max drawdown duration (consecutive days underwater)
+    # Max drawdown duration (vectorised)
     in_dd = dd < 0
-    max_dur = 0
-    cur_dur = 0
-    for v in in_dd:
-        cur_dur = cur_dur + 1 if v else 0
-        max_dur = max(max_dur, cur_dur)
+    # Identify runs of consecutive True values
+    runs = (in_dd != in_dd.shift()).cumsum()
+    run_lengths = in_dd.groupby(runs).cumcount() + 1
+    max_dd_duration = int(run_lengths[in_dd].max()) if in_dd.any() else 0
 
-    # ── Calmar ────────────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------- #
+    # Calmar ratio
+    # ------------------------------------------------------------------- #
     years = len(df) / 252.0
     ann_return = float((equity[-1] / initial_equity) ** (1.0 / max(years, 1e-6)) - 1.0)
     calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
 
-    # ── Omega / Ulcer ─────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------- #
+    # Omega & Ulcer Index
+    # ------------------------------------------------------------------- #
     omega = _omega_ratio(returns, threshold=rf_daily)
     ulcer = _ulcer_index(equity)
 
-    # ── Trade-level stats (vectorised) ────────────────────────────────────────
-    pos_series = df["position"]
-    fill_series = df["fill_price"]
+    # ------------------------------------------------------------------- #
+    # Trade‑level statistics (fully vectorised)
+    # ------------------------------------------------------------------- #
+    trade_indices = df.index[trade_mask].to_numpy()
+    # Exclude the last trade index because we need a subsequent exit point
+    if len(trade_indices) >= 2:
+        entry_idx = trade_indices[:-1]
+        exit_idx = trade_indices[1:]
 
-    entries = df.index[df["trade"] != 0].tolist()
-    trade_pnls: list[float] = []
+        side = df.loc[entry_idx, "position"].to_numpy()
+        entry_price = df.loc[entry_idx, "fill_price"].to_numpy()
+        exit_price = df.loc[exit_idx, "fill_price"].to_numpy()
 
-    for i in range(len(entries) - 1):
-        t0, t1 = entries[i], entries[i + 1]
-        side = float(pos_series.loc[t0])
-        if side == 0:
-            continue
-        entry_p = float(fill_series.loc[t0])
-        exit_p  = float(fill_series.loc[t1])
-        trade_pnls.append((exit_p - entry_p) * side / entry_p)
+        trade_pnls = (exit_price - entry_price) * side / entry_price
+    else:
+        trade_pnls = np.array([])
 
-    wins   = [r for r in trade_pnls if r > 0]
-    losses = [r for r in trade_pnls if r <= 0]
+    wins = trade_pnls[trade_pnls > 0]
+    losses = trade_pnls[trade_pnls <= 0]
 
-    win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
-    avg_win  = float(np.mean(wins))  if wins   else 0.0
-    avg_loss = float(np.mean(losses)) if losses else 0.0
+    num_trades = int(trade_pnls.size)
+    win_rate = float(len(wins) / num_trades) if num_trades > 0 else 0.0
+    avg_win = float(wins.mean()) if wins.size > 0 else 0.0
+    avg_loss = float(losses.mean()) if losses.size > 0 else 0.0
     profit_factor = (
-        abs(sum(wins) / sum(losses)) if losses and sum(losses) != 0 else float("inf")
+        abs(wins.sum() / losses.sum()) if losses.size > 0 and losses.sum() != 0 else float("inf")
     )
     expectancy = avg_win * win_rate + avg_loss * (1 - win_rate)
 
-    # ── Equity curve ──────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------- #
+    # Equity curve for downstream visualisation
+    # ------------------------------------------------------------------- #
     equity_curve = [
         {
             "date": str(idx.date() if hasattr(idx, "date") else idx),
@@ -221,21 +272,21 @@ def run_backtest(
     total_return = float(equity[-1] / initial_equity - 1.0)
 
     return BacktestMetrics(
-        total_return=round(total_return, 4),
-        annualized_return=round(ann_return, 4),
-        sharpe=round(sharpe, 4),
-        sortino=round(sortino, 4),
-        calmar=round(calmar, 4),
-        omega_ratio=round(min(omega, 99.99), 4),
-        ulcer_index=round(ulcer, 4),
-        max_drawdown=round(max_dd, 4),
-        avg_drawdown=round(avg_dd, 4),
-        max_drawdown_duration_days=max_dur,
-        num_trades=len(trade_pnls),
-        win_rate=round(win_rate, 4),
-        avg_win_pct=round(avg_win * 100, 4),
-        avg_loss_pct=round(avg_loss * 100, 4),
-        profit_factor=round(profit_factor, 4),
-        expectancy=round(expectancy * 100, 4),
+        total_return=total_return,
+        annualized_return=ann_return,
+        sharpe=sharpe,
+        sortino=sortino,
+        calmar=calmar,
+        omega_ratio=omega,
+        ulcer_index=ulcer,
+        max_drawdown=max_dd,
+        avg_drawdown=avg_dd,
+        max_drawdown_duration_days=max_dd_duration,
+        num_trades=num_trades,
+        win_rate=win_rate,
+        avg_win_pct=avg_win,
+        avg_loss_pct=avg_loss,
+        profit_factor=profit_factor,
+        expectancy=expectancy,
         equity_curve=equity_curve,
     )
