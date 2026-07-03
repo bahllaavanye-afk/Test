@@ -7,12 +7,14 @@ Self-improvement autoloop. Runs forever, looking for ways to improve the platfor
   5. Sleep, then repeat
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import random
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 from app.utils.logging import logger
 
@@ -20,7 +22,7 @@ RESULTS_FILE = Path(__file__).parents[3] / "experiments" / "results" / "self_imp
 RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # Parameter search spaces per strategy
-PARAM_SPACES = {
+PARAM_SPACES: Dict[str, Dict[str, List[Any]]] = {
     "momentum": {
         "lookback_months": [3, 6, 9, 12],
         "min_score": [0.1, 0.2, 0.3, 0.5],
@@ -49,18 +51,28 @@ class SelfImprover:
     def __init__(self, algo_agent=None, interval_seconds: int = 900):
         self.algo_agent = algo_agent
         self.interval_seconds = interval_seconds
-        self._best_params: dict[str, dict] = {}    # strategy → best params dict
-        self._best_sharpe: dict[str, float] = {}   # strategy → best Sharpe
+        self._best_params: Dict[str, Dict] = {}    # strategy → best params dict
+        self._best_sharpe: Dict[str, float] = {}   # strategy → best Sharpe
         self._running = False
         self._iteration = 0
 
-    def _sample_params(self, strategy: str) -> dict:
-        """Random sample from PARAM_SPACES."""
+    def _sample_params(self, strategy: str | None) -> Dict[str, Any]:
+        """Random sample from PARAM_SPACES, safely handling empty or missing entries."""
+        if not strategy:
+            return {}
         space = PARAM_SPACES.get(strategy, {})
-        return {k: random.choice(v) for k, v in space.items()}
+        sampled: Dict[str, Any] = {}
+        for k, v in space.items():
+            # Guard against empty candidate lists
+            if not v:
+                continue
+            sampled[k] = random.choice(v)
+        return sampled
 
-    async def _evaluate(self, strategy: str, symbol: str, params: dict) -> float:
+    async def _evaluate(self, strategy: str | None, symbol: str | None, params: Dict[str, Any]) -> float:
         """Run a quick backtest with the given params. Returns Sharpe."""
+        if not strategy or not symbol:
+            return 0.0
         try:
             import pandas as pd
             import yfinance as yf
@@ -72,13 +84,23 @@ class SelfImprover:
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False,
+                ),
             )
             if hist is None or len(hist) < 60:
                 return 0.0
 
-            close = hist["Close"].squeeze() if hasattr(hist["Close"], "squeeze") else hist["Close"]
+            # Ensure Close column exists
+            if "Close" not in hist.columns:
+                return 0.0
+            close_series = hist["Close"]
+            close = close_series.squeeze() if hasattr(close_series, "squeeze") else close_series
 
             cls = STRATEGY_REGISTRY.get(strategy)
             if not cls:
@@ -87,28 +109,40 @@ class SelfImprover:
             try:
                 strat = cls(**params)
             except TypeError:
-                strat = cls()  # ignore params if constructor doesn't accept them
+                # Fallback to default constructor if params are incompatible
+                strat = cls()
 
             signals = strat.backtest_signals(hist)
-            if signals is None or (hasattr(signals, "__len__") and len(signals) < 30):
+            if signals is None:
+                return 0.0
+            # Guard against very short signal arrays
+            if hasattr(signals, "__len__") and len(signals) < 30:
                 return 0.0
 
-            sig_series = signals if hasattr(signals, "values") else pd.Series(signals, index=hist.index)
+            sig_series = (
+                signals
+                if hasattr(signals, "values")
+                else pd.Series(signals, index=hist.index)
+            )
             metrics = run_backtest(sig_series, close)
             return float(metrics.sharpe)
         except Exception as e:
             logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
             return 0.0
 
-    async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
+    async def _improve_strategy(self, strategy: str | None, symbol: str | None) -> Dict[str, Any] | None:
         """Sweep params for one strategy. Returns promoted result or None."""
+        if not strategy or not symbol:
+            return None
+
         space = PARAM_SPACES.get(strategy)
         if not space:
             return None
 
-        current_best = self._best_sharpe.get(f"{strategy}:{symbol}", 0.0)
+        key = f"{strategy}:{symbol}"
+        current_best = self._best_sharpe.get(key, 0.0)
         best_iter_sharpe = current_best
-        best_iter_params = None
+        best_iter_params: Dict[str, Any] | None = None
 
         # 5 random configs per iteration
         for _ in range(5):
@@ -118,11 +152,17 @@ class SelfImprover:
                 best_iter_sharpe = sharpe
                 best_iter_params = params
 
-        # Promote if improvement > 10%
-        if best_iter_params and best_iter_sharpe > current_best * 1.10 and best_iter_sharpe > 0.5:
-            key = f"{strategy}:{symbol}"
+        # Promote if improvement > 10% and Sharpe is sensible
+        if (
+            best_iter_params
+            and best_iter_sharpe > current_best * 1.10
+            and best_iter_sharpe > 0.5
+        ):
             self._best_params[key] = best_iter_params
             self._best_sharpe[key] = best_iter_sharpe
+            improvement_pct = round(
+                (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
+            )
             promotion = {
                 "id": str(uuid.uuid4()),
                 "strategy": strategy,
@@ -130,7 +170,7 @@ class SelfImprover:
                 "params": best_iter_params,
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
+                "improvement_pct": improvement_pct,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
@@ -138,19 +178,22 @@ class SelfImprover:
             return promotion
         return None
 
-    def _persist(self, entry: dict) -> None:
+    def _persist(self, entry: Dict[str, Any]) -> None:
         try:
-            history = json.loads(RESULTS_FILE.read_text()) if RESULTS_FILE.exists() else []
+            history: List[Dict[str, Any]] = (
+                json.loads(RESULTS_FILE.read_text()) if RESULTS_FILE.exists() else []
+            )
             history.append(entry)
+            # Keep only the most recent 300 entries
             history = history[-300:]
             RESULTS_FILE.write_text(json.dumps(history, indent=2))
         except Exception as exc:
             logger.debug("self_improver persist failed", error=str(exc))
 
-    def get_best_params(self, strategy: str, symbol: str) -> dict | None:
+    def get_best_params(self, strategy: str, symbol: str) -> Dict[str, Any] | None:
         return self._best_params.get(f"{strategy}:{symbol}")
 
-    def get_history(self) -> list[dict]:
+    def get_history(self) -> List[Dict[str, Any]]:
         if not RESULTS_FILE.exists():
             return []
         try:
@@ -163,8 +206,14 @@ class SelfImprover:
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
         # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        TARGETS: List[Tuple[str, str]] = [
+            ("momentum", "SPY"),
+            ("momentum", "QQQ"),
+            ("mean_reversion", "AAPL"),
+            ("rsi_macd", "MSFT"),
+            ("breakout", "NVDA"),
+            ("supertrend", "SPY"),
+        ]
 
         while self._running:
             self._iteration += 1
@@ -175,7 +224,12 @@ class SelfImprover:
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                    )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
