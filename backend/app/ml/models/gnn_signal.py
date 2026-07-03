@@ -15,7 +15,7 @@ Requires: torch_geometric (optional — falls back gracefully if not installed)
 
 import numpy as np
 import pandas as pd
-from typing import Optional
+from typing import Any
 
 try:
     import torch
@@ -24,7 +24,7 @@ try:
 except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
 
 try:
     import torch_geometric  # noqa: F401
@@ -35,8 +35,8 @@ except ImportError:  # pragma: no cover
 
 class CorrelationGraph:
     """
-    Builds a dynamic adjacency matrix from rolling 30‑day correlation
-    of multiple asset returns. Edges exist where |corr| > threshold.
+    Builds a dynamic adjacency matrix from rolling correlation of multiple asset returns.
+    Edges exist where |corr| > threshold.
     """
 
     def __init__(self, window: int = 30, threshold: float = 0.5):
@@ -57,7 +57,6 @@ class CorrelationGraph:
             return np.eye(n, dtype=np.float32)
 
         corr = tail.corr().fillna(0.0).values.astype(np.float32)
-        # Keep absolute correlation where it exceeds the threshold; otherwise zero.
         adj = np.where(np.abs(corr) >= self.threshold, np.abs(corr), 0.0).astype(np.float32)
         np.fill_diagonal(adj, 1.0)  # ensure self‑loops
         return adj
@@ -95,13 +94,10 @@ class SimpleGNNLayer(nn.Module):
         Returns:
             h:   (n_assets, out_features)
         """
-        # Degree‑normalise adjacency so messages are averaged, not summed.
         deg = adj.sum(dim=1, keepdim=True).clamp(min=1.0)
-        adj_norm = adj / deg  # (n_assets, n_assets)
-
-        # Message passing: aggregate neighbour features.
-        agg = torch.mm(adj_norm, x)  # (n_assets, in_features)
-        h = self.linear(agg)        # (n_assets, out_features)
+        adj_norm = adj / deg
+        agg = torch.mm(adj_norm, x)
+        h = self.linear(agg)
         h = self.norm(h)
         return torch.relu(h)
 
@@ -121,9 +117,6 @@ class GNNSignalModel(nn.Module):
 
     def __init__(self, n_features: int, hidden_size: int = 64):
         super().__init__()
-        self.n_features = n_features
-        self.hidden_size = hidden_size
-
         self.layer1 = SimpleGNNLayer(n_features, hidden_size)
         self.layer2 = SimpleGNNLayer(hidden_size, hidden_size // 2)
         self.head = nn.Linear(hidden_size // 2, 1)
@@ -137,9 +130,9 @@ class GNNSignalModel(nn.Module):
         Returns:
             signals: (n_assets, 1) in [0, 1]
         """
-        h = self.layer1(node_features, adj)     # (n_assets, hidden)
-        h = self.layer2(h, adj)                 # (n_assets, hidden//2)
-        return torch.sigmoid(self.head(h))      # (n_assets, 1)
+        h = self.layer1(node_features, adj)
+        h = self.layer2(h, adj)
+        return torch.sigmoid(self.head(h))
 
 
 class GNNSignal:
@@ -184,6 +177,8 @@ class GNNSignal:
             momentum_window: Look‑back period (in rows) to compute price momentum.
             neighbor_corr_threshold: Correlation strength required for neighbour confirmation.
         """
+        if not _TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch is required for GNNSignal but is not installed.")
         self.n_features = n_features
         self.hidden_size = hidden_size
         self.torch_geometric_available = _TORCH_GEOMETRIC_AVAILABLE
@@ -191,7 +186,6 @@ class GNNSignal:
         self.graph_builder = CorrelationGraph(window=corr_window, threshold=corr_threshold)
         self.model = GNNSignalModel(n_features=n_features, hidden_size=hidden_size)
 
-        # Filtering parameters
         self.confidence_upper = confidence_upper
         self.confidence_lower = confidence_lower
         self.momentum_window = momentum_window
@@ -219,44 +213,51 @@ class GNNSignal:
         n_assets = raw_signals.shape[0]
         filtered = np.full(n_assets, 0.5, dtype=np.float32)
 
-        # Compute recent momentum (mean return over the momentum window).
+        # Momentum: mean return over the momentum window for each asset.
         recent = returns.tail(self.momentum_window)
         if recent.empty:
             momentum = np.zeros(n_assets, dtype=np.float32)
         else:
-            momentum = recent.mean().values.astype(np.float32)  # shape (n_assets,)
+            # Align columns with assets; if returns contain fewer columns, pad with zeros.
+            momentum = recent.mean().values.astype(np.float32)
+            if momentum.shape[0] != n_assets:
+                # Fallback to zeros for missing assets.
+                momentum = np.zeros(n_assets, dtype=np.float32)
 
         for i in range(n_assets):
             prob = raw_signals[i]
-            # Determine directional intent based on confidence thresholds.
+
+            # Confidence filter.
             if prob >= self.confidence_upper:
-                direction = 1  # bullish
+                confidence_pass = True
             elif prob <= self.confidence_lower:
-                direction = -1  # bearish
+                confidence_pass = True
             else:
-                continue  # neutral; keep default 0.5
+                confidence_pass = False
 
-            # Momentum filter: bullish requires positive momentum, bearish requires negative.
-            if direction == 1 and momentum[i] <= 0:
-                continue
-            if direction == -1 and momentum[i] >= 0:
-                continue
+            # Momentum filter: bullish signal expects positive recent return,
+            # bearish expects negative.
+            if prob > 0.5:
+                momentum_pass = momentum[i] > 0
+            else:
+                momentum_pass = momentum[i] < 0
 
-            # Neighbour confirmation filter.
-            neighbours = np.where((adj[i] >= self.neighbor_corr_threshold) & (np.arange(n_assets) != i))[0]
-            if neighbours.size == 0:
-                # No strong neighbours – keep signal if it passed previous filters.
+            # Neighbour confirmation: at least one neighbour with strong correlation
+            # and a similar directional signal.
+            neighbours = np.where(adj[i] >= self.neighbor_corr_threshold)[0]
+            neighbour_pass = False
+            if neighbours.size > 0:
+                # Compare raw signals of neighbours.
+                neighbour_signals = raw_signals[neighbours]
+                # Majority rule: if most neighbours share the same direction as the asset.
+                direction = prob > 0.5
+                same_dir = (neighbour_signals > 0.5) if direction else (neighbour_signals < 0.5)
+                neighbour_pass = same_dir.mean() >= 0.5
+
+            if confidence_pass and momentum_pass and neighbour_pass:
                 filtered[i] = prob
-                continue
-
-            # Check if any neighbour shares the same directional confidence.
-            neighbour_probs = raw_signals[neighbours]
-            if direction == 1:
-                if np.any(neighbour_probs >= self.confidence_upper):
-                    filtered[i] = prob
-            else:  # direction == -1
-                if np.any(neighbour_probs <= self.confidence_lower):
-                    filtered[i] = prob
+            else:
+                filtered[i] = 0.5  # neutral
 
         return filtered
 
@@ -264,52 +265,29 @@ class GNNSignal:
         self,
         returns: pd.DataFrame,
         node_features: torch.Tensor,
-        *,
-        apply_filters: bool = True,
     ) -> np.ndarray:
         """
-        Produce a directional signal for each asset.
+        Generate filtered GNN signals.
 
         Args:
-            returns: (T, n_assets) DataFrame of asset returns.
-            node_features: (n_assets, n_features) per‑asset feature tensor.
-            apply_filters: If True, tighten entry conditions using post‑processing.
+            returns: DataFrame (T, n_assets) of asset returns.
+            node_features: torch.Tensor (n_assets, n_features) feature matrix.
 
         Returns:
-            signals: (n_assets,) float array in [0, 1].
-
-        Graceful degradation:
-            If torch_geometric is not installed the GNN path still runs
-            (SimpleGNNLayer requires only PyTorch). The flag
-            self.torch_geometric_available lets callers check.
-            If anything else goes wrong we fall back to a neutral 0.5 signal.
+            signals: np.ndarray (n_assets,) filtered probabilities in [0, 1].
         """
-        try:
-            adj_tensor = self.graph_builder.build_tensor(returns)  # torch.Tensor
-            self.model.eval()
-            with torch.no_grad():
-                out = self.model(node_features, adj_tensor)  # (n_assets, 1)
-            raw = out.squeeze(-1).cpu().numpy().astype(np.float32)  # (n_assets,)
+        # Build adjacency matrix (numpy) and convert to torch tensor.
+        adj_np = self.graph_builder.build(returns)
+        adj_tensor = torch.tensor(adj_np, dtype=torch.float32, device=node_features.device)
 
-            if apply_filters:
-                # Convert adjacency to numpy for faster filtering logic.
-                adj_np = adj_tensor.cpu().numpy()
-                return self._apply_filters(raw, adj_np, returns)
-            else:
-                return raw
-        except Exception:
-            # Fallback: neutral 0.5 for every asset.
-            n_assets = node_features.shape[0]
-            return np.full(n_assets, 0.5, dtype=np.float32)
+        # Forward pass through the GNN.
+        raw_tensor = self.model(node_features, adj_tensor).squeeze(-1)  # (n_assets,)
+        raw_signals = raw_tensor.detach().cpu().numpy().astype(np.float32)
 
-    def predict_with_fallback(
-        self,
-        returns: pd.DataFrame,
-        node_features: torch.Tensor,
-        *,
-        apply_filters: bool = True,
-    ) -> np.ndarray:
-        """
-        Alias for predict() — always safe to call even without torch_geometric.
-        """
-        return self.predict(returns, node_features, apply_filters=apply_filters)
+        # Apply post‑processing filters.
+        filtered = self._apply_filters(raw_signals, adj_np, returns)
+        return filtered
+
+    def __call__(self, returns: pd.DataFrame, node_features: torch.Tensor) -> np.ndarray:
+        """Alias for predict to allow callable usage."""
+        return self.predict(returns, node_features)
