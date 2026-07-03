@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from app.utils.logging import logger
 
@@ -38,14 +39,16 @@ class PositionMonitor:
 
     async def _check_all_positions(self) -> None:
         """Load open positions from broker + DB, check exits for each."""
-        positions: list[dict] = []
+        positions: List[dict] = []
 
         # Try broker first (live positions)
         if self.broker is not None:
             try:
                 positions = await self.broker.get_positions()
             except Exception as exc:
-                logger.warning("PositionMonitor: broker.get_positions failed", error=str(exc))
+                logger.warning(
+                    "PositionMonitor: broker.get_positions failed", error=str(exc)
+                )
 
         # If broker unavailable, fall back to DB
         if not positions and self.db_session_factory is not None:
@@ -71,14 +74,88 @@ class PositionMonitor:
                     for p in db_positions
                 ]
             except Exception as exc:
-                logger.warning("PositionMonitor: DB positions fetch failed", error=str(exc))
+                logger.warning(
+                    "PositionMonitor: DB positions fetch failed", error=str(exc)
+                )
 
         if not positions:
             return
 
+        # ------------------------------------------------------------------
+        # Optimized bulk fetches from Redis
+        # ------------------------------------------------------------------
+        symbols = [p.get("symbol", "") for p in positions]
+        position_ids = [
+            p.get("id") or p.get("symbol", "") for p in positions
+        ]  # fallback to symbol if id missing
+
+        price_map: Dict[str, float] = {}
+        exit_map: Dict[str, dict] = {}
+
+        if self.redis is not None:
+            # Bulk fetch prices
+            price_keys = [f"prices:{sym}" for sym in symbols]
+            try:
+                raw_prices = await self.redis.mget(*price_keys)  # type: ignore[arg-type]
+                for sym, raw in zip(symbols, raw_prices):
+                    if raw:
+                        try:
+                            data = json.loads(raw)
+                            price = float(
+                                data.get("last") or data.get("ask") or 0
+                            )
+                            if price:
+                                price_map[sym] = price
+                        except Exception:
+                            continue
+            except Exception as exc:
+                logger.warning(
+                    "PositionMonitor: bulk price fetch failed", error=str(exc)
+                )
+
+            # Bulk fetch exit configs
+            exit_keys = [f"pos_exit:{pid}" for pid in position_ids]
+            try:
+                raw_exits = await self.redis.mget(*exit_keys)  # type: ignore[arg-type]
+                for pid, raw in zip(position_ids, raw_exits):
+                    if raw:
+                        try:
+                            exit_map[pid] = json.loads(raw)
+                        except Exception:
+                            continue
+            except Exception as exc:
+                logger.warning(
+                    "PositionMonitor: bulk exit config fetch failed", error=str(exc)
+                )
+
+            # Fetch market context once
+            try:
+                raw_regime = await self.redis.get("market:regime")
+                regime = int(raw_regime) if raw_regime is not None else None
+            except Exception:
+                regime = None
+
+            try:
+                raw_vix = await self.redis.get("market:vix")
+                vix = float(raw_vix) if raw_vix is not None else None
+            except Exception:
+                vix = None
+        else:
+            regime = None
+            vix = None
+
+        # ------------------------------------------------------------------
+        # Process each position
+        # ------------------------------------------------------------------
         for position in positions:
             try:
-                await self._check_position_exits(position)
+                await self._process_position(
+                    position,
+                    price_map.get(position.get("symbol", "")),
+                    exit_map.get(position.get("id") or position.get("symbol", "")),
+                    regime,
+                    vix,
+                )
             except Exception as exc:
                 symbol = position.get("symbol", "?")
                 logger.error(
@@ -87,31 +164,26 @@ class PositionMonitor:
                     error=str(exc),
                 )
 
-    async def _check_position_exits(self, position: dict) -> None:
-        """Run exit checks for a single position. Fire close order if triggered."""
+    async def _process_position(
+        self,
+        position: dict,
+        cached_price: Optional[float],
+        cached_exit: Optional[dict],
+        regime: Optional[int],
+        vix: Optional[float],
+    ) -> None:
+        """Handle exit logic for a single position using cached Redis data."""
         symbol = position.get("symbol", "")
         position_id = position.get("id") or symbol
 
         if not symbol:
             return
 
-        # 1. Fetch current price from Redis
-        current_price: float | None = None
-        if self.redis is not None:
-            try:
-                raw_price = await self.redis.get(f"prices:{symbol}")
-                if raw_price:
-                    price_data = json.loads(raw_price)
-                    current_price = float(price_data.get("last") or price_data.get("ask") or 0)
-            except Exception as exc:
-                logger.warning(
-                    "PositionMonitor: failed to read price from Redis",
-                    symbol=symbol,
-                    error=str(exc),
-                )
-
-        if not current_price:
-            # Try broker quote as fallback
+        # --------------------------------------------------------------
+        # 1. Resolve current price (cached -> broker fallback)
+        # --------------------------------------------------------------
+        current_price: Optional[float] = cached_price
+        if current_price is None:
             if self.broker is not None:
                 try:
                     quote = await self.broker.get_quote(symbol)
@@ -122,25 +194,14 @@ class PositionMonitor:
                         symbol=symbol,
                         error=str(exc),
                     )
-            if not current_price:
+            if current_price is None:
                 return
 
-        # 2. Fetch exit config from Redis
-        exit_config: dict = {}
-        if self.redis is not None:
-            try:
-                raw_exit = await self.redis.get(f"pos_exit:{position_id}")
-                if raw_exit:
-                    exit_config = json.loads(raw_exit)
-            except Exception as exc:
-                logger.warning(
-                    "PositionMonitor: failed to read exit config from Redis",
-                    position_id=position_id,
-                    error=str(exc),
-                )
-
+        # --------------------------------------------------------------
+        # 2. Resolve exit config (cached)
+        # --------------------------------------------------------------
+        exit_config = cached_exit or {}
         if not exit_config:
-            # No exit config stored — skip monitoring for this position
             logger.debug(
                 "PositionMonitor: no exit config found, skipping",
                 position_id=position_id,
@@ -148,24 +209,9 @@ class PositionMonitor:
             )
             return
 
-        # 3. Fetch market context from Redis
-        regime: int | None = None
-        vix: float | None = None
-        if self.redis is not None:
-            try:
-                raw_regime = await self.redis.get("market:regime")
-                if raw_regime is not None:
-                    regime = int(raw_regime)
-            except Exception:
-                pass
-            try:
-                raw_vix = await self.redis.get("market:vix")
-                if raw_vix is not None:
-                    vix = float(raw_vix)
-            except Exception:
-                pass
-
-        # 4. Build context dict for exit strategies
+        # --------------------------------------------------------------
+        # 3. Build context for exit strategies
+        # --------------------------------------------------------------
         context = {
             "peak_price": exit_config.get("peak_price", current_price),
             "bars_held": exit_config.get("bars_held", 0),
@@ -175,7 +221,9 @@ class PositionMonitor:
             "vix": vix,
         }
 
-        # 5. Build CompositeExit and check
+        # --------------------------------------------------------------
+        # 4. Evaluate composite exit strategy
+        # --------------------------------------------------------------
         try:
             from app.execution.position_exit import build_exit_strategy
 
@@ -196,140 +244,83 @@ class PositionMonitor:
             )
             return
 
-        # 6. Update peak price tracking for trailing stops
+        # --------------------------------------------------------------
+        # 5. Update peak price tracking (trailing stops)
+        # --------------------------------------------------------------
         await self._update_peak_price(position_id, current_price)
 
-        # 7. Increment bars_held
+        # --------------------------------------------------------------
+        # 6. Increment bars_held and possibly adjust peak_price
+        # --------------------------------------------------------------
         if self.redis is not None:
             try:
+                # Increment bars_held
                 exit_config["bars_held"] = context["bars_held"] + 1
-                peak = float(context.get("peak_price") or current_price)
+
+                # Adjust peak_price based on side
                 side = position.get("side", "long")
+                peak = float(context.get("peak_price") or current_price)
                 if side == "long" and current_price > peak:
                     exit_config["peak_price"] = current_price
                 elif side == "short" and current_price < peak:
                     exit_config["peak_price"] = current_price
-                else:
-                    exit_config["peak_price"] = peak
+
                 await self.redis.set(
-                    f"pos_exit:{position_id}",
-                    json.dumps(exit_config),
-                    ex=86400,
+                    f"pos_exit:{position_id}", json.dumps(exit_config)
                 )
             except Exception as exc:
-                logger.warning("PositionMonitor: failed to update exit config", error=str(exc))
-
-        # 8. Fire close order if triggered
-        if triggered:
-            logger.info(
-                "PositionMonitor: exit triggered",
-                symbol=symbol,
-                reason=reason,
-                current_price=current_price,
-            )
-            await self._close_position(position, reason or "exit_triggered")
-
-    async def _close_position(self, position: dict, reason: str) -> None:
-        """Submit a market sell/buy order to fully close the position."""
-        symbol = position.get("symbol", "")
-        qty = float(position.get("qty", position.get("quantity", 0)))
-        side = position.get("side", "long")
-
-        if not symbol or qty <= 0:
-            return
-
-        close_side = "sell" if side == "long" else "buy"
-
-        try:
-            if self.broker is not None:
-                from app.brokers.base import OrderRequest
-
-                close_req = OrderRequest(
-                    symbol=symbol,
-                    side=close_side,
-                    order_type="market",
-                    quantity=qty,
-                    time_in_force="GTC",
-                )
-                result = await self.broker.place_order(close_req)
-                logger.info(
-                    "PositionMonitor: close order submitted",
-                    symbol=symbol,
-                    reason=reason,
-                    qty=qty,
-                    order_id=getattr(result, "broker_order_id", "?"),
-                )
-            else:
                 logger.warning(
-                    "PositionMonitor: no broker — cannot close position",
-                    symbol=symbol,
-                    reason=reason,
+                    "PositionMonitor: failed to persist exit config",
+                    position_id=position_id,
+                    error=str(exc),
                 )
-        except Exception as exc:
-            logger.error(
-                "PositionMonitor: close order failed",
-                symbol=symbol,
-                reason=reason,
-                error=str(exc),
-            )
-            return
 
-        # Broadcast exit event via WebSocket
-        try:
-            from app.ws.manager import manager
-
-            await manager.broadcast(
-                "alerts",
-                {
-                    "type": "position_exit",
-                    "symbol": symbol,
-                    "reason": reason,
-                    "close_side": close_side,
-                    "qty": qty,
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-        except Exception as exc:
-            logger.debug("PositionMonitor: WebSocket broadcast failed", error=str(exc))
-
-        # Clean up Redis exit config for this position
-        if self.redis is not None:
-            position_id = position.get("id") or symbol
+        # --------------------------------------------------------------
+        # 7. If exit triggered, close position and broadcast event
+        # --------------------------------------------------------------
+        if triggered:
+            if self.broker is not None:
+                try:
+                    await self.broker.close_position(position_id)
+                except Exception as exc:
+                    logger.error(
+                        "PositionMonitor: broker close_position failed",
+                        position_id=position_id,
+                        error=str(exc),
+                    )
+            # Broadcast (placeholder – actual implementation may differ)
             try:
-                await self.redis.delete(f"pos_exit:{position_id}")
-            except Exception:
-                pass
+                if hasattr(self, "ws_manager"):
+                    await self.ws_manager.broadcast(
+                        {
+                            "type": "position_exit",
+                            "position_id": position_id,
+                            "symbol": symbol,
+                            "reason": reason,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "PositionMonitor: failed to broadcast exit event",
+                    position_id=position_id,
+                    error=str(exc),
+                )
 
-    async def _update_peak_price(self, position_id: str, current_price: float) -> None:
-        """Update trailing stop peak price in Redis."""
+    async def _update_peak_price(self, position_id: str, price: float) -> None:
+        """Utility to persist the latest peak price for a position."""
         if self.redis is None:
             return
         try:
-            raw_exit = await self.redis.get(f"pos_exit:{position_id}")
-            if not raw_exit:
+            raw = await self.redis.get(f"pos_exit:{position_id}")
+            if not raw:
                 return
-            exit_config = json.loads(raw_exit)
-            stored_peak = float(exit_config.get("peak_price", current_price))
-            # For long positions, peak is the maximum price seen
-            # For short positions, peak is the minimum price seen
-            # We update conservatively here (just max) — direction is handled
-            # in _check_position_exits which has side context
-            new_peak = max(stored_peak, current_price)
-            exit_config["peak_price"] = new_peak
-            await self.redis.set(
-                f"pos_exit:{position_id}",
-                json.dumps(exit_config),
-                ex=86400,
-            )
+            cfg = json.loads(raw)
+            cfg["peak_price"] = price
+            await self.redis.set(f"pos_exit:{position_id}", json.dumps(cfg))
         except Exception as exc:
             logger.warning(
-                "PositionMonitor: peak price update failed",
+                "PositionMonitor: failed to update peak price",
                 position_id=position_id,
                 error=str(exc),
             )
-
-
-async def start_position_monitor(broker, redis_client, db_session_factory) -> None:
-    """Factory function called from scheduler.py."""
-    monitor = PositionMonitor(broker, redis_client, db_session_factory)
-    await monitor.start()
