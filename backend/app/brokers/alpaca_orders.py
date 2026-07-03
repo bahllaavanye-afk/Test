@@ -1,6 +1,7 @@
 """Submit, cancel and modify orders via Alpaca REST API."""
 import logging
 import time
+from functools import lru_cache
 from typing import Any, Dict, List
 
 import httpx
@@ -14,13 +15,21 @@ ALPACA_LIVE = "https://api.alpaca.markets"
 logger = logging.getLogger(__name__)
 
 
-async def _headers(account: Account) -> Dict[str, str]:
-    key = decrypt_secret(account.encrypted_key)
-    secret = decrypt_secret(account.encrypted_secret)
+@lru_cache(maxsize=128)
+def _cached_headers(encrypted_key: str, encrypted_secret: str) -> Dict[str, str]:
+    """Return cached Alpaca authentication headers."""
+    key = decrypt_secret(encrypted_key)
+    secret = decrypt_secret(encrypted_secret)
     return {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
 
 
+async def _headers(account: Account) -> Dict[str, str]:
+    """Asynchronously retrieve headers for the given account, using a cache."""
+    return _cached_headers(account.encrypted_key, account.encrypted_secret)
+
+
 def _base_url(account: Account) -> str:
+    """Select the appropriate Alpaca base URL based on account mode."""
     return ALPACA_LIVE if account.mode == "live" else ALPACA_PAPER
 
 
@@ -105,13 +114,27 @@ async def modify_alpaca_order(account: Account, broker_order_id: str, changes: D
     headers = await _headers(account)
     base = _base_url(account)
 
-    payload = {}
+    payload: Dict[str, str] = {}
     if changes.get("quantity"):
         payload["qty"] = str(changes["quantity"])
     if changes.get("limit_price"):
         payload["limit_price"] = str(changes["limit_price"])
     if changes.get("stop_price"):
         payload["stop_price"] = str(changes["stop_price"])
+
+    if not payload:
+        # Nothing to change; avoid unnecessary network call
+        logger.info(
+            "modify_alpaca_order",
+            extra={
+                "order_id": broker_order_id,
+                "duration_ms": 0,
+                "changes_applied": 0,
+                "pnl": None,
+                "note": "no changes provided",
+            },
+        )
+        return {}
 
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.patch(f"{base}/v2/orders/{broker_order_id}", json=payload, headers=headers)
