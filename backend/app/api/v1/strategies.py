@@ -35,6 +35,8 @@ class StrategyToggle(BaseModel):
 async def get_params_schema(current_user: User = Depends(get_current_user)):
     """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
     schema = {}
+    if not STRATEGY_REGISTRY:
+        return schema
     for name, cls in STRATEGY_REGISTRY.items():
         if hasattr(cls, "DEFAULT_PARAMS"):
             schema[name] = {
@@ -47,6 +49,8 @@ async def get_params_schema(current_user: User = Depends(get_current_user)):
 @router.get("/available")
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
+    if not STRATEGY_REGISTRY:
+        return []
     return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
 
 
@@ -58,9 +62,10 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     so the equities/crypto/options/prediction-market/TradingView desks all share one
     format and a new strategy is placed automatically.
     """
-    grouped = strategies_by_desk()
+    grouped = strategies_by_desk() or {}
+    desks = list_desks() or []
     return {
-        "desks": list_desks(),
+        "desks": desks,
         "by_desk": grouped,
         "counts": {desk: len(members) for desk, members in grouped.items()},
         "total": sum(len(m) for m in grouped.values()),
@@ -92,11 +97,11 @@ async def list_active(
                 Strategy.confidence_threshold,
             ).where(Strategy.is_enabled == True)  # noqa: E712
             result = await db.execute(stmt)
-            rows = result.mappings().all()
+            rows = result.mappings().all() or []
             return [
                 {
-                    "name": row["name"],
-                    "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
+                    "name": row.get("name"),
+                    "symbols": row.get("symbols") if isinstance(row.get("symbols"), list) else [],
                     "tick_interval_seconds": int(row.get("tick_interval_seconds", 3600)),
                     "confidence_threshold": float(row.get("confidence_threshold", 0.6)),
                     "is_running": True,
@@ -114,6 +119,8 @@ async def list_strategies(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Strategy))
+    if not result:
+        return []
     return result.scalars().all()
 
 
@@ -124,10 +131,14 @@ async def toggle_strategy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
+    if not strategy_id:
+        raise HTTPException(400, "Invalid strategy identifier")
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
         raise HTTPException(404, "Strategy not found")
+    if not isinstance(body.is_enabled, bool):
+        raise HTTPException(422, "is_enabled must be a boolean")
     strategy.is_enabled = body.is_enabled
     await db.commit()
     return {"id": strategy_id, "is_enabled": body.is_enabled}
