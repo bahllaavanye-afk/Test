@@ -13,15 +13,35 @@ ALPACA_LIVE = "https://api.alpaca.markets"
 
 logger = logging.getLogger(__name__)
 
+# Simple in‑memory caches
+_headers_cache: Dict[int, Dict[str, str]] = {}
+_client_cache: Dict[str, httpx.AsyncClient] = {}
+
 
 async def _headers(account: Account) -> Dict[str, str]:
+    """Return authentication headers, cached per account."""
+    cached = _headers_cache.get(account.id)
+    if cached:
+        return cached
     key = decrypt_secret(account.encrypted_key)
     secret = decrypt_secret(account.encrypted_secret)
-    return {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+    hdr = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+    _headers_cache[account.id] = hdr
+    return hdr
 
 
 def _base_url(account: Account) -> str:
+    """Base URL depending on live or paper mode."""
     return ALPACA_LIVE if account.mode == "live" else ALPACA_PAPER
+
+
+def _get_client(base: str, timeout: int = 15) -> httpx.AsyncClient:
+    """Retrieve a reusable AsyncClient for the given base URL."""
+    client = _client_cache.get(base)
+    if client is None or client.is_closed:
+        client = httpx.AsyncClient(timeout=timeout)
+        _client_cache[base] = client
+    return client
 
 
 async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -58,10 +78,10 @@ async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> D
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(f"{base}/v2/orders", json=payload, headers=headers)
-        resp.raise_for_status()
-        result = resp.json()
+    client = _get_client(base, timeout=15)
+    resp = await client.post(f"{base}/v2/orders", json=payload, headers=headers)
+    resp.raise_for_status()
+    result = resp.json()
 
     duration_ms = int((time.time() - start_ts) * 1000)
     logger.info(
@@ -70,7 +90,7 @@ async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> D
             "signal_count": len(order_data),
             "duration_ms": duration_ms,
             "order_id": result.get("id"),
-            "pnl": None,  # P&L not available at order submission time
+            "pnl": None,
         },
     )
     return result
@@ -82,9 +102,9 @@ async def cancel_alpaca_order(account: Account, broker_order_id: str) -> bool:
     headers = await _headers(account)
     base = _base_url(account)
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.delete(f"{base}/v2/orders/{broker_order_id}", headers=headers)
-        success = resp.status_code in (200, 204)
+    client = _get_client(base, timeout=10)
+    resp = await client.delete(f"{base}/v2/orders/{broker_order_id}", headers=headers)
+    success = resp.status_code in (200, 204)
 
     duration_ms = int((time.time() - start_ts) * 1000)
     logger.info(
@@ -113,10 +133,10 @@ async def modify_alpaca_order(account: Account, broker_order_id: str, changes: D
     if changes.get("stop_price"):
         payload["stop_price"] = str(changes["stop_price"])
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.patch(f"{base}/v2/orders/{broker_order_id}", json=payload, headers=headers)
-        resp.raise_for_status()
-        result = resp.json()
+    client = _get_client(base, timeout=10)
+    resp = await client.patch(f"{base}/v2/orders/{broker_order_id}", json=payload, headers=headers)
+    resp.raise_for_status()
+    result = resp.json()
 
     duration_ms = int((time.time() - start_ts) * 1000)
     logger.info(
@@ -137,10 +157,10 @@ async def get_alpaca_positions(account: Account) -> List[Dict[str, Any]]:
     headers = await _headers(account)
     base = _base_url(account)
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{base}/v2/positions", headers=headers)
-        resp.raise_for_status()
-        positions = resp.json()
+    client = _get_client(base, timeout=10)
+    resp = await client.get(f"{base}/v2/positions", headers=headers)
+    resp.raise_for_status()
+    positions = resp.json()
 
     duration_ms = int((time.time() - start_ts) * 1000)
     logger.info(
@@ -160,10 +180,10 @@ async def get_alpaca_account(account: Account) -> Dict[str, Any]:
     headers = await _headers(account)
     base = _base_url(account)
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{base}/v2/account", headers=headers)
-        resp.raise_for_status()
-        account_info = resp.json()
+    client = _get_client(base, timeout=10)
+    resp = await client.get(f"{base}/v2/account", headers=headers)
+    resp.raise_for_status()
+    account_info = resp.json()
 
     duration_ms = int((time.time() - start_ts) * 1000)
     logger.info(
