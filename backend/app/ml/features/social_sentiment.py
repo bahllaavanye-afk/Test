@@ -13,9 +13,15 @@ Sources:
 """
 from __future__ import annotations
 
+import os
+import time
+import logging
+from datetime import datetime, timezone
+
 import httpx
 import pandas as pd
-from datetime import datetime, timezone
+
+logger = logging.getLogger("QuantEdge.SocialSentimentFeatures")
 
 
 class SocialSentimentFeatures:
@@ -38,6 +44,7 @@ class SocialSentimentFeatures:
 
     async def get_fear_greed(self) -> dict:
         """Returns {value: int, classification: str, timestamp: str} for today and 6 prior days."""
+        start = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(self.FEAR_GREED_URL)
@@ -46,13 +53,20 @@ class SocialSentimentFeatures:
             readings = data.get("data", [])
             result = []
             for r in readings:
-                result.append({
-                    "value": int(r["value"]),
-                    "classification": r["value_classification"],
-                    "timestamp": r.get("timestamp", ""),
-                })
+                result.append(
+                    {
+                        "value": int(r["value"]),
+                        "classification": r["value_classification"],
+                        "timestamp": r.get("timestamp", ""),
+                    }
+                )
+            logger.info(
+                "Fetched Fear & Greed data",
+                extra={"signal": "fear_greed", "count": len(result), "duration_s": time.perf_counter() - start},
+            )
             return {"readings": result, "current": result[0] if result else None}
-        except Exception:
+        except Exception as exc:
+            logger.exception("Error fetching Fear & Greed data", extra={"signal": "fear_greed", "duration_s": time.perf_counter() - start})
             return {"readings": [], "current": None}
 
     async def get_reddit_sentiment(self, symbol: str, limit: int = 25) -> dict:
@@ -63,6 +77,7 @@ class SocialSentimentFeatures:
         negative: crash, dump, bear, sell, FUD, scam).
         No auth needed — uses reddit public JSON API with User-Agent header.
         """
+        start = time.perf_counter()
         url = f"{self.REDDIT_BASE}/r/CryptoCurrency/search.json"
         params = {
             "q": symbol,
@@ -81,6 +96,10 @@ class SocialSentimentFeatures:
 
             posts = data.get("data", {}).get("children", [])
             if not posts:
+                logger.info(
+                    "Reddit sentiment fetched with no posts",
+                    extra={"symbol": symbol, "mention_count": 0, "duration_s": time.perf_counter() - start},
+                )
                 return {
                     "mention_count": 0,
                     "avg_score": 0.0,
@@ -113,13 +132,27 @@ class SocialSentimentFeatures:
             avg_score = sum(scores) / mention_count if mention_count > 0 else 0.0
             positive_ratio = positive_count / mention_count if mention_count > 0 else 0.5
 
+            logger.info(
+                "Fetched Reddit sentiment",
+                extra={
+                    "symbol": symbol,
+                    "mention_count": mention_count,
+                    "avg_score": avg_score,
+                    "positive_ratio": positive_ratio,
+                    "duration_s": time.perf_counter() - start,
+                },
+            )
             return {
                 "mention_count": mention_count,
                 "avg_score": avg_score,
                 "positive_ratio": positive_ratio,
                 "top_title": top_title[:200],
             }
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "Error fetching Reddit sentiment",
+                extra={"symbol": symbol, "duration_s": time.perf_counter() - start},
+            )
             return {
                 "mention_count": 0,
                 "avg_score": 0.0,
@@ -129,6 +162,7 @@ class SocialSentimentFeatures:
 
     async def get_trending_coins(self) -> list[str]:
         """Return list of trending coin symbols from CoinGecko /search/trending."""
+        start = time.perf_counter()
         url = f"{self.COINGECKO_BASE}/search/trending"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -143,8 +177,16 @@ class SocialSentimentFeatures:
                 symbol = item.get("symbol", "")
                 if symbol:
                     symbols.append(symbol.upper())
+            logger.info(
+                "Fetched trending coins",
+                extra={"count": len(symbols), "duration_s": time.perf_counter() - start},
+            )
             return symbols
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "Error fetching trending coins",
+                extra={"duration_s": time.perf_counter() - start},
+            )
             return []
 
     async def compute_features(self, symbol: str) -> dict:
@@ -160,6 +202,7 @@ class SocialSentimentFeatures:
         - sentiment_composite: float (weighted combination, 0-1)
         Returns {} on any error — callers must handle empty dict.
         """
+        start_time = time.perf_counter()
         try:
             import asyncio
 
@@ -175,8 +218,7 @@ class SocialSentimentFeatures:
             readings = fg_data.get("readings", [])
             current_fg = readings[0]["value"] if readings else 50
             fear_greed_7d_avg = (
-                sum(r["value"] for r in readings) / len(readings)
-                if readings else 50.0
+                sum(r["value"] for r in readings) / len(readings) if readings else 50.0
             )
             fear_greed_change = float(current_fg) - fear_greed_7d_avg
 
@@ -202,7 +244,7 @@ class SocialSentimentFeatures:
                 4,
             )
 
-            return {
+            result = {
                 "fear_greed_value": int(current_fg),
                 "fear_greed_7d_avg": round(fear_greed_7d_avg, 2),
                 "fear_greed_change": round(fear_greed_change, 2),
@@ -212,20 +254,30 @@ class SocialSentimentFeatures:
                 "is_trending": is_trending,
                 "sentiment_composite": sentiment_composite,
             }
-        except Exception:
-            return {}
 
-    def to_dataframe_row(self, features: dict) -> pd.Series:
-        """Convert features dict to a pandas Series for ML feature matrix."""
-        defaults = {
-            "fear_greed_value": 50,
-            "fear_greed_7d_avg": 50.0,
-            "fear_greed_change": 0.0,
-            "reddit_mentions": 0,
-            "reddit_positive_ratio": 0.5,
-            "reddit_avg_score": 0.0,
-            "is_trending": False,
-            "sentiment_composite": 0.5,
-        }
-        merged = {**defaults, **features}
-        return pd.Series(merged)
+            # Structured logging
+            duration = time.perf_counter() - start_time
+            signal_count = len(result)
+            pnl = None
+            try:
+                pnl_env = os.getenv("CURRENT_PNL")
+                pnl = float(pnl_env) if pnl_env is not None else None
+            except Exception:
+                pnl = None
+
+            logger.info(
+                "Computed social sentiment features",
+                extra={
+                    "symbol": symbol_upper,
+                    "signal_count": signal_count,
+                    "duration_s": round(duration, 4),
+                    "pnl": pnl,
+                },
+            )
+            return result
+        except Exception as exc:
+            logger.exception(
+                "Error computing social sentiment features",
+                extra={"symbol": symbol, "duration_s": time.perf_counter() - start_time},
+            )
+            return {}
