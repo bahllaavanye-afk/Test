@@ -1,4 +1,4 @@
-"""Tests for HRP and CVaR portfolio optimizers."""
+"""Tests for HRP and CVaR portfolio optimizers with added edge case handling."""
 from __future__ import annotations
 
 import numpy as np
@@ -104,6 +104,17 @@ class TestHRPOptimizer:
             f"HRP gave {combined_corr:.2f} to two highly correlated assets (expected < 0.75)"
         )
 
+    def test_none_input_raises(self):
+        opt = HRPOptimizer()
+        with pytest.raises((TypeError, ValueError)):
+            opt.compute_weights(None)  # type: ignore
+
+    def test_empty_dataframe_raises(self):
+        opt = HRPOptimizer()
+        empty_df = pd.DataFrame()
+        with pytest.raises((ValueError, AssertionError)):
+            opt.compute_weights(empty_df)
+
 
 # ── HRP helper functions ──────────────────────────────────────────────────────
 
@@ -136,6 +147,20 @@ class TestHRPHelpers:
         corr = pd.DataFrame([[1.0, -1.0], [-1.0, 1.0]])
         dist = _corr_to_distance(corr)
         assert abs(dist[0, 1] - 1.0) < 1e-9
+
+    def test_corr_to_distance_none_input(self):
+        with pytest.raises((TypeError, ValueError)):
+            _corr_to_distance(None)  # type: ignore
+
+    def test_corr_to_distance_empty_input(self):
+        empty_corr = pd.DataFrame()
+        with pytest.raises((ValueError, AssertionError)):
+            _corr_to_distance(empty_corr)
+
+    def test_get_quasi_diag_empty_input(self):
+        # _get_quasi_diag expects a linked list structure; an empty list should be handled gracefully.
+        with pytest.raises((ValueError, AssertionError, IndexError)):
+            _get_quasi_diag([])
 
 
 # ── CVaROptimizer ─────────────────────────────────────────────────────────────
@@ -183,6 +208,26 @@ class TestCVaROptimizer:
             f"CVaR optimizer ({cvar_opt:.4f}) worse than equal weight ({cvar_eq:.4f})"
         )
 
+    def test_none_input_raises(self):
+        opt = CVaROptimizer(confidence=0.95)
+        with pytest.raises((TypeError, ValueError)):
+            opt.compute_weights(None)  # type: ignore
+
+    def test_empty_dataframe_raises(self):
+        opt = CVaROptimizer(confidence=0.95)
+        empty_df = pd.DataFrame()
+        with pytest.raises((ValueError, AssertionError)):
+            opt.compute_weights(empty_df)
+
+    def test_small_sample_off_by_one_handling(self):
+        # With very few observations the cutoff may be zero; optimizer should still return a valid portfolio.
+        rng = np.random.default_rng(123)
+        df = pd.DataFrame(rng.normal(0, 0.01, (3, 4)), columns=[f"A{i}" for i in range(4)])
+        opt = CVaROptimizer(confidence=0.99)  # 1% tail => cutoff = 0
+        w = opt.compute_weights(df)
+        assert abs(w.sum() - 1.0) < 1e-6
+        assert (w >= 0).all()
+
 
 # ── optimize_portfolio convenience function ───────────────────────────────────
 
@@ -204,3 +249,12 @@ class TestOptimizePortfolio:
     def test_unknown_method_raises(self, returns_df):
         with pytest.raises((ValueError, KeyError, NotImplementedError)):
             optimize_portfolio(returns_df, method="bogus_method_xyz")
+
+    def test_none_input_raises(self, returns_df):
+        with pytest.raises((TypeError, ValueError)):
+            optimize_portfolio(None, method="hrp")  # type: ignore
+
+    def test_empty_dataframe_raises(self):
+        empty_df = pd.DataFrame()
+        with pytest.raises((ValueError, AssertionError)):
+            optimize_portfolio(empty_df, method="cvar")
