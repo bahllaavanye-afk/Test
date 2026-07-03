@@ -9,6 +9,10 @@ otherwise uses Gamma API average of similar resolved markets.
 """
 from __future__ import annotations
 
+import logging
+import time
+from typing import Any
+
 import pandas as pd
 
 try:
@@ -18,6 +22,8 @@ except ImportError:
     _HTTPX = False
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+logger = logging.getLogger(__name__)
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
 MIN_SPREAD_CENTS = 0.05     # 5 cents minimum spread to be worth quoting
@@ -105,65 +111,91 @@ class PolyLiquidityProvisionStrategy(AbstractStrategy):
         Find illiquid Polymarket markets with wide spreads suitable for
         passive liquidity provision.
         """
+        start_time = time.perf_counter()
+        signal: Signal | None = None
+
         markets = await self._fetch_markets()
-        if not markets:
-            return None
+        if markets:
+            for market in markets:
+                best_bid = float(market.get("bestBid") or 0)
+                best_ask = float(market.get("bestAsk") or 1)
+                spread = best_ask - best_bid
 
-        for market in markets:
-            best_bid = float(market.get("bestBid") or 0)
-            best_ask = float(market.get("bestAsk") or 1)
-            spread = best_ask - best_bid
+                if spread < self.min_spread:
+                    continue
 
-            if spread < self.min_spread:
-                continue
+                # Use volumeNum as a proxy for book depth (Gamma doesn't expose L2 book)
+                volume = float(market.get("volumeNum", market.get("volume", 0)) or 0)
+                if volume > self.max_book_depth_usd:
+                    continue
 
-            # Use volumeNum as a proxy for book depth (Gamma doesn't expose L2 book)
-            volume = float(market.get("volumeNum", market.get("volume", 0)) or 0)
-            if volume > self.max_book_depth_usd:
-                continue
+                fair_value = self._estimate_fair_value(market)
 
-            fair_value = self._estimate_fair_value(market)
+                # Our quotes: bid slightly below fair, ask slightly above fair
+                half_capture = spread * self.spread_capture_pct / 2.0
+                our_bid = max(0.01, fair_value - half_capture)
+                our_ask = min(0.99, fair_value + half_capture)
+                captured_spread = our_ask - our_bid
 
-            # Our quotes: bid slightly below fair, ask slightly above fair
-            half_capture = spread * self.spread_capture_pct / 2.0
-            our_bid = max(0.01, fair_value - half_capture)
-            our_ask = min(0.99, fair_value + half_capture)
-            captured_spread = our_ask - our_bid
+                confidence = min(0.80, 0.55 + captured_spread * 2.0)
 
-            confidence = min(0.80, 0.55 + captured_spread * 2.0)
+                signal = Signal(
+                    symbol=market.get("question", market.get("slug", "POLY_LP_MARKET")),
+                    side="buy",   # two-sided: execution layer will post both bid + ask
+                    confidence=confidence,
+                    strategy_name=self.name,
+                    strategy_type=self.strategy_type,
+                    risk_bucket=self.risk_bucket,
+                    metadata={
+                        "market_id": market.get("id", market.get("conditionId", "")),
+                        "best_bid": round(best_bid, 4),
+                        "best_ask": round(best_ask, 4),
+                        "observed_spread": round(spread, 4),
+                        "fair_value": round(fair_value, 4),
+                        "our_bid": round(our_bid, 4),
+                        "our_ask": round(our_ask, 4),
+                        "captured_spread": round(captured_spread, 4),
+                        "volume_usd": round(volume, 2),
+                        "quote_size_usd": self.quote_size_usd,
+                        "arb_type": "liquidity_provision",
+                        "order_type": "limit_two_sided",
+                    },
+                )
+                # Only the first qualifying market is used per tick
+                break
 
-            return Signal(
-                symbol=market.get("question", market.get("slug", "POLY_LP_MARKET")),
-                side="buy",   # two-sided: execution layer will post both bid + ask
-                confidence=confidence,
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                metadata={
-                    "market_id": market.get("id", market.get("conditionId", "")),
-                    "best_bid": round(best_bid, 4),
-                    "best_ask": round(best_ask, 4),
-                    "observed_spread": round(spread, 4),
-                    "fair_value": round(fair_value, 4),
-                    "our_bid": round(our_bid, 4),
-                    "our_ask": round(our_ask, 4),
-                    "captured_spread": round(captured_spread, 4),
-                    "volume_usd": round(volume, 2),
-                    "quote_size_usd": self.quote_size_usd,
-                    "arb_type": "liquidity_provision",
-                    "order_type": "limit_two_sided",
-                },
-            )
-
-        return None
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        signal_count = 1 if signal else 0
+        # P&L is not calculated at analysis time; placeholder None
+        logger.info(
+            "poly_liquidity_provision.analyze_complete",
+            extra={
+                "strategy": self.name,
+                "signal_count": signal_count,
+                "execution_time_ms": round(elapsed_ms, 2),
+                "pnl": None,
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
         Proxy backtest: enter when yes_price and no_price imply a spread
         wide enough for liquidity provision. Uses shift(1) — no lookahead.
         """
+        start_time = time.perf_counter()
         false_series = pd.Series(False, index=df.index)
         if "yes_price" not in df.columns or "no_price" not in df.columns:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "poly_liquidity_provision.backtest_no_prices",
+                extra={
+                    "strategy": self.name,
+                    "signal_count": 0,
+                    "execution_time_ms": round(elapsed_ms, 2),
+                    "pnl": None,
+                },
+            )
             return BacktestSignals(entries=false_series, exits=false_series)
 
         yes = df["yes_price"].shift(1)
@@ -175,4 +207,18 @@ class PolyLiquidityProvisionStrategy(AbstractStrategy):
         # Exit when spread compresses (market becomes liquid)
         exits = (spread_proxy < self.min_spread / 2.0).fillna(False)
 
-        return BacktestSignals(entries=entries.astype(bool), exits=exits.astype(bool))
+        entries_bool = entries.astype(bool)
+        exits_bool = exits.astype(bool)
+
+        signal_count = int(entries_bool.sum())
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "poly_liquidity_provision.backtest_complete",
+            extra={
+                "strategy": self.name,
+                "signal_count": signal_count,
+                "execution_time_ms": round(elapsed_ms, 2),
+                "pnl": None,
+            },
+        )
+        return BacktestSignals(entries=entries_bool, exits=exits_bool)
