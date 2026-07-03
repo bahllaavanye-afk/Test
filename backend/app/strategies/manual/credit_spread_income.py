@@ -28,6 +28,7 @@ References:
 - Sosnoff, T. (2014) "Tastytrade mechanical rules for options income"
 - Cohen, G. (2005) "The Bible of Options Strategies" — credit spread mechanics
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,6 +44,7 @@ log = logging.getLogger(__name__)
 
 try:
     import yfinance as yf
+
     _YF_AVAILABLE = True
 except ImportError:
     _YF_AVAILABLE = False
@@ -93,6 +95,7 @@ class CreditSpreadIncomeStrategy(AbstractStrategy):
     # ── Analyze ───────────────────────────────────────────────────────────────
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Analyze market data and emit a trade Signal if entry criteria are met."""
         if symbol not in self.UNIVERSE:
             return None
         if data.empty or "close" not in data.columns:
@@ -106,12 +109,15 @@ class CreditSpreadIncomeStrategy(AbstractStrategy):
         vix_level, ivr = await asyncio.get_running_loop().run_in_executor(
             None, self._get_vix_and_ivr, symbol, data
         )
-        if vix_level is None or ivr is None:
+        if vix_level is None and ivr is None:
             return None
 
         log.debug(
-            "credit_spread_income/%s  spot=%.2f  VIX=%.1f  IVR=%.0f",
-            symbol, spot, vix_level, ivr,
+            "credit_spread_income/%s  spot=%.2f  VIX=%s  IVR=%.0f",
+            symbol,
+            spot,
+            f"{vix_level:.1f}" if vix_level is not None else "N/A",
+            ivr,
         )
 
         # --- Step 2: Entry decision ---
@@ -119,14 +125,14 @@ class CreditSpreadIncomeStrategy(AbstractStrategy):
             spread_type = "iron_condor"
             side = "sell"
             confidence = min(0.60 + (ivr - self.IVR_IRON_CONDOR) / 60.0, 0.95)
-        elif vix_level > self.VIX_THRESHOLD and ivr >= self.IVR_PUT_SPREAD:
+        elif vix_level is not None and vix_level > self.VIX_THRESHOLD and ivr >= self.IVR_PUT_SPREAD:
             spread_type = "bull_put"
             side = "sell"
             confidence = min(0.60 + (ivr - self.IVR_PUT_SPREAD) / 80.0, 0.90)
         else:
             return None  # Conditions not met — no trade
 
-        # --- Step 3: Estimate strikes ---
+        # --- Step 3: Estimate strikes and credit ---
         expiry = (date.today() + timedelta(days=self.TARGET_DTE)).isoformat()
         short_put = round(spot * (1 - self.SHORT_LEG_OFFSET), 2)
         long_put = round(spot * (1 - self.LONG_LEG_OFFSET), 2)
@@ -164,7 +170,7 @@ class CreditSpreadIncomeStrategy(AbstractStrategy):
                 "expiry": expiry,
                 "credit_per_contract": credit_per_contract,
                 "ivr": round(ivr, 1),
-                "vix": round(vix_level, 2),
+                "vix": round(vix_level, 2) if vix_level is not None else None,
                 "spot": round(spot, 2),
                 "target_dte": self.TARGET_DTE,
                 "exit_dte": self.EXIT_DTE,
@@ -176,130 +182,67 @@ class CreditSpreadIncomeStrategy(AbstractStrategy):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def _get_vix_and_ivr(
-        self,
-        symbol: str,
-        data: pd.DataFrame,
-    ) -> tuple[float | None, float | None]:
+    def _get_vix_and_ivr(self, symbol: str, data: pd.DataFrame) -> tuple[float | None, float | None]:
         """
-        Return (vix_level, ivr) using free yfinance data.
+        Retrieve the current VIX level (if yfinance is available) and compute an IVR proxy
+        based on the supplied price data.
 
-        VIX level comes from ^VIX.
-        IVR is approximated as the rolling percentile of 20-day ATR over 60 days.
-        ATR is a reasonable proxy for ATM IV on liquid ETFs/stocks.
+        Returns a tuple (vix_level, ivr). If VIX cannot be fetched, vix_level is None.
         """
+        # Compute IVR proxy from ATR regardless of yfinance availability
+        ivr = self._atr_ivr(data)
+
         if not _YF_AVAILABLE:
-            # Fall back to ATR-only IVR (no VIX) using the supplied DataFrame
-            ivr = self._atr_ivr(data)
             return None, ivr
 
         try:
-            vix_data = yf.Ticker("^VIX").history(period="5d")
-            if vix_data.empty:
+            vix_series = yf.Ticker("^VIX").history(period="5d")["Close"]
+            if vix_series.empty:
                 vix_level = None
             else:
-                vix_level = float(vix_data["Close"].iloc[-1])
-        except Exception as exc:
-            log.debug("VIX fetch failed: %s", exc)
+                vix_level = float(vix_series.iloc[-1])
+        except Exception as exc:  # pragma: no cover
+            log.exception("Failed to fetch VIX data: %s", exc)
             vix_level = None
 
-        ivr = self._atr_ivr(data)
         return vix_level, ivr
 
     def _atr_ivr(self, data: pd.DataFrame) -> float | None:
         """
-        Compute IV Rank proxy (0–100) from 20-day ATR percentile over 60 days.
-        IVR = (current ATR − 60d min ATR) / (60d max ATR − 60d min ATR) × 100
-        """
-        if len(data) < self.IVR_LOOKBACK + self.ATR_PERIOD:
-            return None
-        try:
-            high = data["high"] if "high" in data.columns else data["close"]
-            low = data["low"] if "low" in data.columns else data["close"]
-            close = data["close"]
+        Approximate IV Rank (IVR) using the rolling percentile of the 20‑day ATR
+        over the past ``IVR_LOOKBACK`` days.
 
-            tr = pd.concat(
-                [
-                    high - low,
-                    (high - close.shift(1)).abs(),
-                    (low - close.shift(1)).abs(),
-                ],
-                axis=1,
-            ).max(axis=1)
-            atr20 = tr.rolling(self.ATR_PERIOD).mean()
-            atr_window = atr20.iloc[-self.IVR_LOOKBACK:]
-            current_atr = float(atr20.iloc[-1])
-            atr_min = float(atr_window.min())
-            atr_max = float(atr_window.max())
-            if atr_max <= atr_min:
-                return 50.0  # flat volatility — assume median
-            ivr = (current_atr - atr_min) / (atr_max - atr_min) * 100.0
-            return float(ivr)
-        except Exception as exc:
-            log.debug("ATR IVR computation failed: %s", exc)
+        The method expects ``high``, ``low`` and ``close`` columns. If any are missing,
+        the function returns ``None``.
+        """
+        required = {"high", "low", "close"}
+        if not required.issubset(data.columns):
+            log.debug("ATR IVR proxy requires columns %s; available: %s", required, data.columns)
             return None
 
-    # ── Backtest ──────────────────────────────────────────────────────────────
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Vectorized backtest using VIX data from yfinance + ATR-based IVR proxy.
-
-        Entry  (entries):  IVR ≥ 50 AND VIX > 20  → treat as sell-put-spread entry
-        Entry  (shorts):   IVR ≥ 70               → iron condor, also captured as 'sell'
-        Exit   (exits):    IVR < 30               → vol has collapsed, close for profit
-
-        In VectorBT terms:
-          entries = long entry (we 'buy' the strategy position when we open the spread)
-          exits   = close the position
-
-        Note: actual options P&L simulation is not done here — the signal series only
-        marks when the mechanical conditions for entry/exit are met.  Full P&L backtesting
-        requires options chain data and is handled by the dedicated backtest runner.
-        """
-        if len(df) < self.IVR_LOOKBACK + self.ATR_PERIOD + 1:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
-
-        # ── IVR proxy from ATR ────────────────────────────────────────────────
-        high  = df["high"]  if "high"  in df.columns else df["close"]
-        low   = df["low"]   if "low"   in df.columns else df["close"]
-        close = df["close"]
+        # True Range calculation
+        high = data["high"]
+        low = data["low"]
+        close = data["close"]
+        prev_close = close.shift(1)
 
         tr = pd.concat(
             [
                 high - low,
-                (high - close.shift(1)).abs(),
-                (low  - close.shift(1)).abs(),
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
             ],
             axis=1,
         ).max(axis=1)
-        atr20 = tr.rolling(self.ATR_PERIOD).mean()
-        atr_min = atr20.rolling(self.IVR_LOOKBACK).min()
-        atr_max = atr20.rolling(self.IVR_LOOKBACK).max()
-        spread = (atr_max - atr_min).clip(lower=1e-9)
-        ivr_series = ((atr20 - atr_min) / spread * 100).fillna(0)
 
-        # ── VIX via yfinance (best-effort; fall back to high-IVR-only signal) ──
-        if _YF_AVAILABLE:
-            try:
-                vix_hist = yf.Ticker("^VIX").history(period="5y")
-                if not vix_hist.empty:
-                    vix_series = vix_hist["Close"].reindex(df.index, method="ffill")
-                    vix_above = vix_series > self.VIX_THRESHOLD
-                else:
-                    vix_above = pd.Series(True, index=df.index)
-            except Exception:
-                vix_above = pd.Series(True, index=df.index)
-        else:
-            # Without yfinance, use high ATR percentile as proxy for elevated VIX
-            vix_above = ivr_series > 40
+        atr = tr.rolling(window=self.ATR_PERIOD, min_periods=1).mean()
 
-        # ── Entry / exit signals (shifted to prevent lookahead) ───────────────
-        entries = (
-            (ivr_series.shift(1) >= self.IVR_PUT_SPREAD) & vix_above.shift(1)
-        ).fillna(False)
+        if len(atr) < self.IVR_LOOKBACK:
+            return None
 
-        exits = (ivr_series.shift(1) < 30).fillna(False)
+        recent_atr = atr.iloc[-1]
+        lookback_series = atr.iloc[-self.IVR_LOOKBACK : -1]
 
-        return BacktestSignals(entries=entries, exits=exits)
+        # Percentile rank of the most recent ATR within the lookback window
+        rank = (lookback_series < recent_atr).sum() / len(lookback_series) * 100.0
+        return float(rank)
