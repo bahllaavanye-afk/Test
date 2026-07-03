@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import functools
 from datetime import date, datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import httpx
 import pandas as pd
@@ -25,8 +25,9 @@ ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP
 
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
-# simple in‑memory cache for benchmark results keyed by (start, end)
-_benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
+# simple in‑memory caches
+_benchmark_cache: dict[Tuple[date, date], dict[str, List[dict]]] = {}
+_ticker_cache: dict[Tuple[str, date, date], pd.Series] = {}
 
 
 @functools.lru_cache(maxsize=1)
@@ -88,22 +89,32 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        series_list = await asyncio.gather(
-            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers]
-        )
+    # Determine which tickers need fetching
+    to_fetch: List[str] = []
+    fetched_series: dict[str, pd.Series] = {}
+    for ticker in all_tickers:
+        ticker_key = (ticker, start, end)
+        if series := _ticker_cache.get(ticker_key):
+            fetched_series[ticker] = series
+        else:
+            to_fetch.append(ticker)
 
-    closes_dict: dict[str, pd.Series] = {
-        ticker: series
-        for ticker, series in zip(all_tickers, series_list)
-        if not series.empty
-    }
+    # Fetch missing tickers concurrently
+    if to_fetch:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            series_list = await asyncio.gather(
+                *[_fetch_ticker_bars(client, t, start, end) for t in to_fetch]
+            )
+        for ticker, series in zip(to_fetch, series_list):
+            if not series.empty:
+                _ticker_cache[(ticker, start, end)] = series
+                fetched_series[ticker] = series
 
     result: dict[str, List[dict]] = {}
 
     # Process individual benchmarks
     for ticker in BENCHMARKS:
-        series = closes_dict.get(ticker)
+        series = fetched_series.get(ticker)
         if series is None or series.empty:
             continue
         normalized = (series.dropna() / series.iloc[0] * 100).round(2)
@@ -112,9 +123,9 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         ]
 
     # All Weather: monthly rebalanced weighted portfolio
-    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
+    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in fetched_series]
     if len(aw_tickers) >= 3:
-        aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
+        aw_frames = {t: fetched_series[t].rename(t) for t in aw_tickers}
         aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
         weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
         weights = weights / weights.sum()  # renormalize if any tickers missing
