@@ -13,8 +13,13 @@ from __future__ import annotations
 
 import os
 import pickle
-import numpy as np
+import logging
+import time
 from typing import Optional
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 # ── Baum-Welch fallback (pure NumPy) ─────────────────────────────────────────
@@ -137,6 +142,7 @@ class RegimeDetector:
         return np.column_stack([r, np.abs(r)])
 
     def fit(self, returns: np.ndarray) -> "RegimeDetector":
+        start = time.perf_counter()
         X = self._build_features(returns)
         try:
             from hmmlearn.hmm import GaussianHMM  # type: ignore[import]
@@ -157,31 +163,83 @@ class RegimeDetector:
 
         # Establish state → regime label by drift ordering
         states = self.predict(returns)
-        means = [float(returns[states == k].mean()) if (states == k).any() else 0.0
-                 for k in range(self.N_STATES)]
+        means = [
+            float(returns[states == k].mean()) if (states == k).any() else 0.0
+            for k in range(self.N_STATES)
+        ]
         # Sort states by mean drift: lowest→bear(0), middle→sideways(1), highest→bull(2)
         order = sorted(range(self.N_STATES), key=lambda k: means[k])
         self._state_map = {raw: label for label, raw in enumerate(order)}
         self._fitted = True
+
+        exec_time = time.perf_counter() - start
+        signal_count = len(returns)
+        pnl = float(np.sum(returns))
+        logger.info(
+            "RegimeDetector fit completed",
+            extra={
+                "operation": "fit",
+                "signal_count": signal_count,
+                "execution_time": exec_time,
+                "pnl": pnl,
+            },
+        )
         return self
 
     def predict(self, returns: np.ndarray) -> np.ndarray:
         """Raw Viterbi state sequence (0/1/2, unordered)."""
+        start = time.perf_counter()
         X = self._build_features(returns)
         if self._use_hmmlearn and self._hmmlearn_model is not None:
-            return self._hmmlearn_model.predict(X)
-        if self._model is not None:
-            return self._model.predict(X)
-        raise RuntimeError("Model not fitted — call fit() first")
+            result = self._hmmlearn_model.predict(X)
+        elif self._model is not None:
+            result = self._model.predict(X)
+        else:
+            raise RuntimeError("Model not fitted — call fit() first")
+        exec_time = time.perf_counter() - start
+        logger.info(
+            "RegimeDetector predict completed",
+            extra={
+                "operation": "predict",
+                "signal_count": len(returns),
+                "execution_time": exec_time,
+                "pnl": float(np.sum(returns)),
+            },
+        )
+        return result
 
     def predict_regimes(self, returns: np.ndarray) -> np.ndarray:
         """Labelled regime sequence: 0=bear, 1=sideways, 2=bull."""
+        start = time.perf_counter()
         raw = self.predict(returns)
-        return np.array([self._state_map.get(int(s), s) for s in raw])
+        labelled = np.array([self._state_map.get(int(s), s) for s in raw])
+        exec_time = time.perf_counter() - start
+        logger.info(
+            "RegimeDetector predict_regimes completed",
+            extra={
+                "operation": "predict_regimes",
+                "signal_count": len(returns),
+                "execution_time": exec_time,
+                "pnl": float(np.sum(returns)),
+            },
+        )
+        return labelled
 
     def current_regime(self, returns: np.ndarray) -> int:
         """Returns the current regime label for the most recent bar."""
-        return int(self.predict_regimes(returns)[-1])
+        start = time.perf_counter()
+        regime = int(self.predict_regimes(returns)[-1])
+        exec_time = time.perf_counter() - start
+        logger.info(
+            "RegimeDetector current_regime completed",
+            extra={
+                "operation": "current_regime",
+                "signal_count": len(returns),
+                "execution_time": exec_time,
+                "pnl": float(np.sum(returns)),
+            },
+        )
+        return regime
 
     def regime_name(self, regime: int) -> str:
         return {0: "bear", 1: "sideways", 2: "bull"}.get(regime, "unknown")
@@ -189,13 +247,16 @@ class RegimeDetector:
     def save(self, path: str) -> None:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "wb") as f:
-            pickle.dump({
-                "model": self._model,
-                "hmmlearn_model": self._hmmlearn_model,
-                "use_hmmlearn": self._use_hmmlearn,
-                "state_map": self._state_map,
-                "fitted": self._fitted,
-            }, f)
+            pickle.dump(
+                {
+                    "model": self._model,
+                    "hmmlearn_model": self._hmmlearn_model,
+                    "use_hmmlearn": self._use_hmmlearn,
+                    "state_map": self._state_map,
+                    "fitted": self._fitted,
+                },
+                f,
+            )
 
     @classmethod
     def load(cls, path: str) -> "RegimeDetector":
@@ -208,8 +269,3 @@ class RegimeDetector:
         det._state_map = data.get("state_map", {0: 0, 1: 1, 2: 2})
         det._fitted = data.get("fitted", False)
         return det
-
-
-# Public alias — the model registry (app/ml/models/__init__.py) imports the HMM
-# regime model as ``HMMRegimeModel``; the implementation class is ``RegimeDetector``.
-HMMRegimeModel = RegimeDetector
