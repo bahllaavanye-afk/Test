@@ -87,16 +87,11 @@ class StressResult:
     data_points: int
 
 
-def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
-    """Vectorized slice of a Series using .loc; returns None if input is None."""
+def _slice_series(series: pd.Series | None, start_loc: int, end_loc: int) -> pd.Series | None:
+    """Slice a Series by integer location; returns None if the input series is None."""
     if series is None:
         return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
-    try:
-        return series.loc[start:end]
-    except Exception:
-        mask = (series.index >= start) & (series.index <= end)
-        return series.loc[mask]
+    return series.iloc[start_loc:end_loc]
 
 
 def run_stress_tests(
@@ -120,15 +115,17 @@ def run_stress_tests(
 
     results: list[StressResult] = []
 
-    # Convert once to pandas Timestamp for efficient comparison
     price_index = prices.index
 
     for scenario in scenarios:
         start_ts = pd.Timestamp(scenario.start)
         end_ts = pd.Timestamp(scenario.end)
 
-        # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+        # Determine slice bounds once using the price index; this avoids repeated boolean masking.
+        start_loc, end_loc = price_index.slice_indexer(start_ts, end_ts)
+
+        # Fast check: if the slice is empty, skip early.
+        if start_loc == end_loc:
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -139,11 +136,7 @@ def run_stress_tests(
             )
             continue
 
-        s_signals = _slice_series(signals, start_ts, end_ts)
-        s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
-
+        s_prices = _slice_series(prices, start_loc, end_loc)
         if s_prices is None or len(s_prices) < 5:
             results.append(
                 StressResult(
@@ -154,6 +147,10 @@ def run_stress_tests(
                 )
             )
             continue
+
+        s_signals = _slice_series(signals, start_loc, end_loc)
+        s_opens = _slice_series(opens, start_loc, end_loc) if opens is not None else None
+        s_volume = _slice_series(volume, start_loc, end_loc) if volume is not None else None
 
         metrics = run_backtest(
             signals=s_signals,
