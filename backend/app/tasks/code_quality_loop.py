@@ -4,15 +4,31 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.utils.logging import logger
 
-QUALITY_FILE = Path(__file__).parents[3] / "experiments" / "results" / "code_quality.json"
+# Constants
+DEFAULT_INTERVAL_SECONDS: int = 3600
+HISTORY_MAX_LENGTH: int = 200
+QUALITY_FILE_NAME: str = "code_quality.json"
+QUALITY_SUBDIRS: tuple[str, ...] = ("experiments", "results")
+SKIP_PATH_SUBSTRINGS: tuple[str, ...] = ("__pycache__", ".pytest_cache", "test.db")
+MANUAL_STRATEGY_DIR: Path = Path("app") / "strategies" / "manual"
+ML_STRATEGY_DIR: Path = Path("app") / "strategies" / "ml_enhanced"
+UNIT_TEST_DIR: Path = Path("tests") / "unit"
+INTEGRATION_TEST_DIR: Path = Path("tests") / "integration"
+
+QUALITY_FILE = (
+    Path(__file__).parents[3]
+    / QUALITY_SUBDIRS[0]
+    / QUALITY_SUBDIRS[1]
+    / QUALITY_FILE_NAME
+)
 QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 BACKEND_ROOT = Path(__file__).parents[2]
@@ -26,7 +42,7 @@ def _count_loc(root: Path) -> dict:
     comment_lines = 0
 
     for py_file in root.rglob("*.py"):
-        if any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db")):
+        if any(skip in str(py_file) for skip in SKIP_PATH_SUBSTRINGS):
             continue
         total_files += 1
         try:
@@ -54,8 +70,8 @@ def _count_loc(root: Path) -> dict:
 
 
 def _count_strategies(root: Path) -> dict:
-    manual = list((root / "app" / "strategies" / "manual").glob("*.py"))
-    ml = list((root / "app" / "strategies" / "ml_enhanced").glob("*.py"))
+    manual = list((root / MANUAL_STRATEGY_DIR).glob("*.py"))
+    ml = list((root / ML_STRATEGY_DIR).glob("*.py"))
     return {
         "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
         "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
@@ -63,8 +79,8 @@ def _count_strategies(root: Path) -> dict:
 
 
 def _count_tests(root: Path) -> dict:
-    unit = list((root / "tests" / "unit").glob("test_*.py"))
-    integration = list((root / "tests" / "integration").glob("test_*.py"))
+    unit = list((root / UNIT_TEST_DIR).glob("test_*.py"))
+    integration = list((root / INTEGRATION_TEST_DIR).glob("test_*.py"))
     return {
         "unit_test_files": len(unit),
         "integration_test_files": len(integration),
@@ -72,7 +88,7 @@ def _count_tests(root: Path) -> dict:
 
 
 class CodeQualityLoop:
-    def __init__(self, interval_seconds: int = 3600):
+    def __init__(self, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
         self.interval_seconds = interval_seconds
         self._running = False
 
@@ -92,7 +108,7 @@ class CodeQualityLoop:
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
-            history = history[-200:]
+            history = history[-HISTORY_MAX_LENGTH:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
