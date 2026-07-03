@@ -28,21 +28,23 @@ from typing import Any, Awaitable, Callable
 logger = logging.getLogger(__name__)
 
 # All valid bus topics — unknown topics are rejected to prevent typos cascading silently
-TOPICS = frozenset({
-    "market:regime",
-    "trade:signal",
-    "trade:executed",
-    "trade:closed",
-    "research:finding",
-    "strategy:updated",
-    "experiment:done",
-    "risk:alert",
-    "knowledge:learned",
-    "auction:allocated",
-})
+TOPICS = frozenset(
+    {
+        "market:regime",
+        "trade:signal",
+        "trade:executed",
+        "trade:closed",
+        "research:finding",
+        "strategy:updated",
+        "experiment:done",
+        "risk:alert",
+        "knowledge:learned",
+        "auction:allocated",
+    }
+)
 
 _BUS_KEY_PREFIX = "bus:events:"
-_BUS_STREAM_MAX = 2000   # max events per topic (ring buffer)
+_BUS_STREAM_MAX = 2000  # max events per topic (ring buffer)
 
 Handler = Callable[[str, dict], Awaitable[None]]
 
@@ -67,25 +69,46 @@ class AgentBus:
 
     # ── Publishing ────────────────────────────────────────────────────────────
 
-    async def publish(self, topic: str, data: dict) -> None:
+    async def publish(self, topic: str | None, data: dict | None) -> None:
         """Publish an event to a topic. Fire-and-forget; never blocks callers."""
-        if topic not in TOPICS:
-            logger.warning("AgentBus: unknown topic %r — event dropped", topic)
+        if not topic or topic not in TOPICS:
+            logger.warning("AgentBus: unknown or missing topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
+
+        # Guard against None data
+        if data is None:
+            data = {}
+
+        if not isinstance(data, dict):
+            logger.warning(
+                "AgentBus.publish expected dict for data but got %s — event dropped",
+                type(data).__name__,
+            )
+            return
+
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
         key = f"{_BUS_KEY_PREFIX}{topic}"
         try:
             await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover – defensive
             # Redis unavailable — log but don't crash the caller
             logger.debug("AgentBus.publish failed topic=%s: %s", topic, e)
 
-    # ── Subscribing ───────────────────────────────────────────────────────────
+    # ── Subscribing ─────────────────────────────────────────────────────────
 
     def subscribe(self, topic: str, handler: Handler) -> None:
         """Register an async handler for a topic. Called at startup, not at runtime."""
-        if topic not in TOPICS:
+        if not topic or topic not in TOPICS:
             raise ValueError(f"AgentBus: unknown topic {topic!r}")
+        if not callable(handler):
+            raise ValueError("AgentBus: handler must be callable")
         self._handlers.setdefault(topic, []).append(handler)
         # Start reading from "now" — don't replay old events on (re)subscription
         self._consumer_offsets.setdefault(topic, "$")
@@ -94,11 +117,18 @@ class AgentBus:
 
     async def start(self) -> None:
         """Start the event dispatch loop as a background coroutine."""
+        if self._running:
+            logger.debug("AgentBus.start called but bus is already running")
+            return
         self._running = True
         logger.info("AgentBus: starting event loop on %d topics", len(self._handlers))
         asyncio.create_task(self._dispatch_loop())
 
     async def stop(self) -> None:
+        """Signal the dispatch loop to stop."""
+        if not self._running:
+            logger.debug("AgentBus.stop called but bus is already stopped")
+            return
         self._running = False
 
     async def _dispatch_loop(self) -> None:
@@ -119,8 +149,10 @@ class AgentBus:
                 if not results:
                     continue
 
-                for stream_key, messages in (results or []):
+                for stream_key, messages in results or []:
                     topic = stream_key.removeprefix(_BUS_KEY_PREFIX)
+                    if not messages:
+                        continue
                     for msg_id, fields in messages:
                         # Advance consumer offset so we don't re-read this message
                         self._consumer_offsets[topic] = msg_id
@@ -136,19 +168,24 @@ class AgentBus:
                         for handler in self._handlers.get(topic, []):
                             try:
                                 await handler(topic, data)
-                            except Exception as exc:
+                            except Exception as exc:  # pragma: no cover – defensive
                                 logger.error(
                                     "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
+                                    topic,
+                                    getattr(handler, "__name__", repr(handler)),
+                                    exc,
                                 )
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover – defensive
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
                 await asyncio.sleep(1.0)
 
     # ── Introspection ─────────────────────────────────────────────────────────
 
-    async def queue_depth(self, topic: str) -> int:
+    async def queue_depth(self, topic: str | None) -> int:
         """How many events are buffered for a topic (monitoring)."""
+        if not topic or topic not in TOPICS:
+            logger.warning("AgentBus.queue_depth called with unknown or missing topic %r", topic)
+            return -1
         try:
             return await self._r.xlen(f"{_BUS_KEY_PREFIX}{topic}")
         except Exception:
@@ -165,6 +202,7 @@ def get_bus(redis_client: Any | None = None) -> AgentBus:
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _bus = AgentBus(redis_client)
     return _bus
