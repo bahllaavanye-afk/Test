@@ -1,7 +1,76 @@
 """Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
 import pandas as pd
+from pydantic import BaseModel, Field, ValidationError, validator
+
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
+
+
+class MLResult(BaseModel):
+    """
+    Schema representing the output from the ML inference service.
+
+    Attributes
+    ----------
+    prediction : str
+        Predicted market direction. Must be one of ``'up'``, ``'down'``, or ``'neutral'``.
+        Example: ``'up'``.
+    confidence : float
+        Confidence score of the prediction, ranging from 0.0 to 1.0.
+        Example: ``0.87``.
+    """
+
+    prediction: str = Field(
+        ...,
+        description="Predicted market direction. Must be 'up', 'down', or 'neutral'.",
+        example="up",
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence level of the prediction, between 0 and 1.",
+        example=0.87,
+    )
+
+    class Config:
+        extra = "allow"
+
+    @validator("prediction")
+    def validate_prediction(cls, v: str) -> str:
+        allowed = {"up", "down", "neutral"}
+        if v not in allowed:
+            raise ValueError(f"prediction must be one of {allowed}")
+        return v
+
+
+class EnsembleConfig(BaseModel):
+    """
+    Configuration parameters for the Ensemble strategy.
+
+    Attributes
+    ----------
+    confidence_threshold : float
+        Minimum confidence required from the ML model to consider a signal.
+        Must be between 0 and 1. Example: ``0.70``.
+    sma_window : int
+        Window size (in periods) for the simple moving average used in confirmation.
+        Must be a positive integer. Example: ``20``.
+    """
+
+    confidence_threshold: float = Field(
+        0.70,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence required from the ML model to emit a signal.",
+        example=0.70,
+    )
+    sma_window: int = Field(
+        20,
+        ge=1,
+        description="Window size for the simple moving average confirmation filter.",
+        example=20,
+    )
 
 
 class EnsembleStrategy(AbstractStrategy):
@@ -32,12 +101,18 @@ class EnsembleStrategy(AbstractStrategy):
         """
         try:
             inference = get_inference_service()
-            ml_result = await inference.predict(data, symbol)
+            raw_result = await inference.predict(data, symbol)
+
+            # Validate ML output against schema
+            try:
+                ml_result = MLResult.parse_obj(raw_result)
+            except ValidationError:
+                return None
 
             # Basic ML validation
-            if not ml_result or ml_result.get("prediction") == "neutral":
+            if ml_result.prediction == "neutral":
                 return None
-            if ml_result.get("confidence", 0) < self.confidence_threshold:
+            if ml_result.confidence < self.confidence_threshold:
                 return None
 
             # Ensure we have price and volume data for confirmation
@@ -54,7 +129,7 @@ class EnsembleStrategy(AbstractStrategy):
             latest_vol = data["volume"].iloc[-1]
 
             # Directional confirmation
-            if ml_result["prediction"] == "up":
+            if ml_result.prediction == "up":
                 if latest_close <= sma:
                     return None
             else:  # prediction == "down"
@@ -67,12 +142,12 @@ class EnsembleStrategy(AbstractStrategy):
 
             return Signal(
                 symbol=symbol,
-                side="buy" if ml_result["prediction"] == "up" else "sell",
-                confidence=ml_result["confidence"],
+                side="buy" if ml_result.prediction == "up" else "sell",
+                confidence=ml_result.confidence,
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
-                metadata=ml_result,
+                metadata=raw_result,
             )
         except Exception:
             # In production we would log the exception; for now we silently ignore.
