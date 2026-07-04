@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 from dataclasses import asdict
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 
@@ -102,8 +102,8 @@ class LimitFirstExecution:
         try:
             # Get current quote
             quote = await self.broker.get_quote(request.symbol)
-            ref_price = quote.ask if request.side == "buy" else quote.bid
-            offset = ref_price * self.offset_bps / 10_000
+            ref_price: float = quote.ask if request.side == "buy" else quote.bid
+            offset: float = ref_price * self.offset_bps / 10_000
 
             if request.side == "buy":
                 limit_price = quote.ask - offset  # post below ask to improve fill
@@ -113,7 +113,7 @@ class LimitFirstExecution:
             limit_req = OrderRequest(
                 **{**asdict(request), "order_type": "limit", "limit_price": round(limit_price, 4)}
             )
-            result = await self.broker.place_order(limit_req)
+            result: OrderResult = await self.broker.place_order(limit_req)
 
             if result.status in ("filled", "partially_filled"):
                 # Successful limit fill
@@ -122,7 +122,7 @@ class LimitFirstExecution:
             # Wait for fill, then fallback to market
             for _ in range(self.fallback_seconds):
                 await asyncio.sleep(1)
-                order_status = await self.broker.get_order(result.broker_order_id)
+                order_status: Dict[str, Any] = await self.broker.get_order(result.broker_order_id)
                 if order_status.get("status") in ("filled", "closed"):
                     result.status = "filled"
                     result.filled_qty = float(
@@ -133,7 +133,7 @@ class LimitFirstExecution:
             # Cancel limit and submit market
             await self.broker.cancel_order(result.broker_order_id)
             market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
-            market_result = await self.broker.place_order(market_req)
+            market_result: OrderResult = await self.broker.place_order(market_req)
             return self._log_and_return(market_result, signal_id, start_ts, request, ref_price)
 
         except Exception as exc:
@@ -143,7 +143,7 @@ class LimitFirstExecution:
             )
             # If anything fails, fall back to direct market order
             market_req = OrderRequest(**{**asdict(request), "order_type": "market"})
-            market_result = await self.broker.place_order(market_req)
+            market_result: OrderResult = await self.broker.place_order(market_req)
             return self._log_and_return(market_result, signal_id, start_ts, request, None)
 
     def _log_and_return(
