@@ -1,5 +1,6 @@
 """Monitoring and health check endpoints for the QA subsystem."""
 from __future__ import annotations
+
 import asyncio
 import json
 from pathlib import Path
@@ -60,5 +61,6 @@ async def trigger_qa_cycle(
     The cycle runs asynchronously; poll GET /monitoring/health to see the result.
     """
     from app.tasks.qa_monitor import run_one_cycle
+
     asyncio.create_task(run_one_cycle())
     return {"message": "QA cycle started — poll /monitoring/health for results"}
