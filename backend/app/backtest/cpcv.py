@@ -51,12 +51,12 @@ class CPCV:
         purge_days: int = 5,
         embargo_days: int = 2,
     ):
-        if n_splits < 2:
-            raise ValueError(f"n_splits must be >= 2, got {n_splits}")
-        if purge_days < 0:
-            raise ValueError(f"purge_days must be >= 0, got {purge_days}")
-        if embargo_days < 0:
-            raise ValueError(f"embargo_days must be >= 0, got {embargo_days}")
+        if not isinstance(n_splits, int) or n_splits < 2:
+            raise ValueError(f"n_splits must be an integer >= 2, got {n_splits}")
+        if not isinstance(purge_days, int) or purge_days < 0:
+            raise ValueError(f"purge_days must be a non‑negative integer, got {purge_days}")
+        if not isinstance(embargo_days, int) or embargo_days < 0:
+            raise ValueError(f"embargo_days must be a non‑negative integer, got {embargo_days}")
         self.n_splits = n_splits
         self.purge_days = purge_days
         self.embargo_days = embargo_days
@@ -69,6 +69,8 @@ class CPCV:
         Bars within purge_days of test_start or embargo_days of test_end
         are excluded from the training set.
         """
+        if not isinstance(index, pd.DatetimeIndex):
+            raise ValueError("index must be a pandas.DatetimeIndex")
         n = len(index)
         fold_size = n // self.n_splits
         if fold_size == 0:
@@ -124,6 +126,13 @@ class CPCV:
         Returns:
             DSR as float. Positive = strategy is robust. Negative = likely overfit.
         """
+        if not isinstance(sharpe_ratios, (list, tuple, np.ndarray)):
+            raise ValueError("sharpe_ratios must be a list, tuple or numpy array of numbers")
+        if any(not isinstance(x, (int, float, np.floating, np.integer)) for x in sharpe_ratios):
+            raise ValueError("sharpe_ratios must contain only numeric values")
+        if not isinstance(n_trials, int) or n_trials <= 0:
+            raise ValueError(f"n_trials must be a positive integer, got {n_trials}")
+
         if not sharpe_ratios:
             return 0.0
 
@@ -182,15 +191,29 @@ class CPCV:
         """
         start_time = time.time()
 
+        if not isinstance(signals, pd.Series):
+            raise ValueError("signals must be a pandas Series")
+        if not isinstance(returns, pd.Series):
+            raise ValueError("returns must be a pandas Series")
+        if signals.empty:
+            raise ValueError("signals Series is empty")
+        if returns.empty:
+            raise ValueError("returns Series is empty")
+
+        # Ensure datetime index for both series
         if not isinstance(signals.index, pd.DatetimeIndex):
             signals = signals.copy()
             signals.index = pd.to_datetime(signals.index)
+        if not isinstance(returns.index, pd.DatetimeIndex):
+            returns = returns.copy()
+            returns.index = pd.to_datetime(returns.index)
 
         common_idx = signals.index.intersection(returns.index)
+        if common_idx.empty:
+            raise ValueError("signals and returns have no overlapping timestamps")
+
         signals = signals.loc[common_idx]
         returns = returns.loc[common_idx]
-
-        signal_count = int(len(signals))
 
         sharpes: list[float] = []
         total_pnl = 0.0
@@ -214,7 +237,6 @@ class CPCV:
         else:
             mean_sr = float(np.mean(sharpes))
             dsr = self.deflated_sharpe(sharpes, n_trials=len(sharpes))
-
             result = {
                 "fold_sharpes": sharpes,
                 "mean_sharpe": mean_sr,
@@ -222,15 +244,7 @@ class CPCV:
                 "is_overfit": dsr < 0.8 * mean_sr,
             }
 
-        exec_time = time.time() - start_time
-
         logger.info(
-            "CPCV validation completed",
-            extra={
-                "signal_count": signal_count,
-                "execution_time_sec": exec_time,
-                "total_pnl": total_pnl,
-            },
+            "CPCV validation completed in %.2f seconds", time.time() - start_time
         )
-
         return result
