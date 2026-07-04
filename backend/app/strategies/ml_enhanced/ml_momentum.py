@@ -18,6 +18,28 @@ from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.strategies.manual.momentum import MomentumStrategy
 from app.ml.inference import get_inference_service
 
+# Constants
+STRATEGY_NAME = "ml_momentum"
+DISPLAY_NAME = "ML Momentum (LSTM + XGBoost Filter)"
+MARKET_TYPE = "equity"
+STRATEGY_TYPE = "ml_enhanced"
+RISK_BUCKET = "directional"
+TICK_INTERVAL_SECONDS = 3600.0
+CONFIDENCE_THRESHOLD = 0.65
+
+MAX_COMBINED_CONFIDENCE = 0.95
+CONFIDENCE_AVG_DIVISOR = 2
+
+PREDICTION_KEY = "prediction"
+CONFIDENCE_KEY = "confidence"
+NEUTRAL_PREDICTION = "neutral"
+UP_PREDICTION = "up"
+DOWN_PREDICTION = "down"
+BUY_SIDE = "buy"
+SELL_SIDE = "sell"
+ML_CONFIDENCE_META_KEY = "ml_confidence"
+
+LOG_MSG_INFERENCE_FAILURE = "ML inference failed for %s: %s"
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +51,13 @@ class MLMomentumStrategy(AbstractStrategy):
     It inherits from :class:`app.strategies.base.AbstractStrategy`.
     """
 
-    name = "ml_momentum"
-    display_name = "ML Momentum (LSTM + XGBoost Filter)"
-    market_type = "equity"
-    strategy_type = "ml_enhanced"
-    risk_bucket = "directional"
-    tick_interval_seconds = 3600.0
-    confidence_threshold = 0.65
+    name = STRATEGY_NAME
+    display_name = DISPLAY_NAME
+    market_type = MARKET_TYPE
+    strategy_type = STRATEGY_TYPE
+    risk_bucket = RISK_BUCKET
+    tick_interval_seconds = TICK_INTERVAL_SECONDS
+    confidence_threshold = CONFIDENCE_THRESHOLD
 
     def __init__(self, params: Optional[Dict[str, Any]] = None):
         """Create a new ``MLMomentumStrategy`` instance.
@@ -76,12 +98,12 @@ class MLMomentumStrategy(AbstractStrategy):
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result is None or ml_result["prediction"] == "neutral":
+            if ml_result is None or ml_result[PREDICTION_KEY] == NEUTRAL_PREDICTION:
                 return None
 
             return self._apply_ml_filter(base_signal, ml_result)
         except Exception as e:  # pragma: no cover
-            logger.exception("ML inference failed for %s: %s", symbol, e)
+            logger.exception(LOG_MSG_INFERENCE_FAILURE, symbol, e)
             return None
 
     def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
@@ -101,22 +123,25 @@ class MLMomentumStrategy(AbstractStrategy):
             Updated signal if directions match and confidence meets the threshold,
             otherwise ``None``.
         """
-        prediction = ml_result["prediction"]
-        ml_conf = ml_result["confidence"]
+        prediction = ml_result[PREDICTION_KEY]
+        ml_conf = ml_result[CONFIDENCE_KEY]
 
         side_match = (
-            (prediction == "up" and base_signal.side == "buy")
-            or (prediction == "down" and base_signal.side == "sell")
+            (prediction == UP_PREDICTION and base_signal.side == BUY_SIDE)
+            or (prediction == DOWN_PREDICTION and base_signal.side == SELL_SIDE)
         )
         if not side_match:
             return None
 
         # Combine confidences, respecting the configured maximum.
-        combined_confidence = min(0.95, (base_signal.confidence + ml_conf) / 2)
+        combined_confidence = min(
+            MAX_COMBINED_CONFIDENCE,
+            (base_signal.confidence + ml_conf) / CONFIDENCE_AVG_DIVISOR,
+        )
         base_signal.confidence = combined_confidence
         base_signal.strategy_name = self.name
         base_signal.strategy_type = self.strategy_type
-        base_signal.metadata["ml_confidence"] = ml_conf
+        base_signal.metadata[ML_CONFIDENCE_META_KEY] = ml_conf
         return base_signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
