@@ -26,8 +26,12 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Lives in the repo checkout and is persisted across CI runs by actions/cache
 # (see third-party-monitor.yml). /tmp was wiped every run, so transition-based
-# alerting re-paged the same outage every 30 minutes forever.
-STATE_FILE  = Path(os.environ.get("THIRD_PARTY_STATE_FILE", ".github/state/third_party_state.json"))
+# alerting re-paged the same outage every 30 minutes forever. Anchored to
+# GITHUB_WORKSPACE so a different invocation cwd can't silently lose the state.
+STATE_FILE  = Path(
+    os.environ.get("THIRD_PARTY_STATE_FILE")
+    or Path(os.environ.get("GITHUB_WORKSPACE", ".")) / ".github" / "state" / "third_party_state.json"
+)
 CHANNEL     = "#infra-alerts"
 TIMEOUT     = 12  # seconds per check
 
@@ -141,7 +145,9 @@ def discord_post(channel: str, text: str) -> None:
     if not DISCORD_WEBHOOK:
         return
     try:
-        httpx.post(DISCORD_WEBHOOK, json={"content": f"**[{channel}]** {text}"[:2000]}, timeout=10)
+        r = httpx.post(DISCORD_WEBHOOK, json={"content": f"**[{channel}]** {text}"[:2000]}, timeout=10)
+        if r.status_code not in (200, 204):
+            print(f"  Discord error: HTTP {r.status_code}")
     except Exception as e:
         print(f"  Discord error: {e}")
 
