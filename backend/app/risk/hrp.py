@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
+from scipy.cluster.hierarchy import linkage, leaves_list, to_tree
 from scipy.spatial.distance import squareform
+from typing import List, Tuple
 
 
 def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
@@ -26,13 +27,13 @@ def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
     return dist
 
 
-def _get_quasi_diag(link: np.ndarray) -> list[int]:
+def _get_quasi_diag(link: np.ndarray) -> List[int]:
     """Sort clustered items by the dendrogram leaf order (quasi-diagonalisation)."""
-    root, _ = to_tree(link, rd=True)
+    # `leaves_list` already returns the leaf order for the given linkage matrix.
     return leaves_list(link).tolist()
 
 
-def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
+def _get_cluster_var(cov: pd.DataFrame, items: List[int]) -> float:
     """Minimum-variance portfolio variance for a sub-cluster."""
     sub_cov = cov.iloc[items, items].values
     n = len(items)
@@ -43,18 +44,21 @@ def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
     return float(w @ sub_cov @ w)
 
 
-def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
+def _recursive_bisect(cov: pd.DataFrame, sorted_items: List[int]) -> pd.Series:
     """Recursive bisection: split into two halves and allocate by inverse cluster variance."""
     weights = pd.Series(1.0, index=sorted_items)
     items_to_bisect = [sorted_items]
 
     while items_to_bisect:
+        # Split each cluster into left/right halves
         items_to_bisect = [
-            i[j:k]
-            for i in items_to_bisect
-            for j, k in ((0, len(i) // 2), (len(i) // 2, len(i)))
-            if len(i) > 1
+            segment[start:end]
+            for segment in items_to_bisect
+            for start, end in ((0, len(segment) // 2), (len(segment) // 2, len(segment)))
+            if len(segment) > 1
         ]
+
+        # Process pairs of adjacent clusters
         for i in range(0, len(items_to_bisect), 2):
             if i + 1 >= len(items_to_bisect):
                 break
@@ -91,46 +95,71 @@ class HRPOptimizer:
             Falls back to equal weights if data is insufficient or degenerate.
         """
         symbols = list(returns.columns)
-        n = len(symbols)
+        n_assets = len(symbols)
 
-        if n < 2 or len(returns) < 10:
-            return pd.Series(1.0 / max(n, 1), index=symbols)
+        # Quick sanity checks – fallback to equal weighting if unmet
+        if n_assets < 2 or len(returns) < 10:
+            return pd.Series(1.0 / max(n_assets, 1), index=symbols)
 
-        # Drop columns with all-NaN and fill remaining NaN with 0
-        returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
-        if returns_clean.shape[1] < 2:
-            return pd.Series(1.0 / max(n, 1), index=symbols)
-
-        symbols_clean = list(returns_clean.columns)
-        n_clean = len(symbols_clean)
+        clean_returns = self._clean_returns(returns)
+        if clean_returns.shape[1] < 2:
+            return pd.Series(1.0 / max(n_assets, 1), index=symbols)
 
         try:
-            corr = returns_clean.corr().clip(-0.9999, 0.9999)
-            cov = returns_clean.cov()
-
-            dist = _corr_to_distance(corr)
-            condensed = squareform(dist, checks=False)
-
-            link = linkage(condensed, method="ward")
-            sorted_items = _get_quasi_diag(link)
-
-            # sorted_items contains indices into symbols_clean
-            weights_raw = _recursive_bisect(cov, sorted_items)
-
-            # Re-index back to original symbols
-            result = pd.Series(0.0, index=symbols)
-            for idx, sym in enumerate(symbols_clean):
-                if idx in weights_raw.index:
-                    result[sym] = float(weights_raw[idx])
-
-            # Normalise
-            total = result.sum()
-            if total > 0:
-                result = result / total
-            else:
-                result = pd.Series(1.0 / n, index=symbols)
-
+            corr, cov = self._calc_corr_cov(clean_returns)
+            sorted_items = self._cluster_and_sort(corr, cov)
+            raw_weights = _recursive_bisect(cov, sorted_items)
+            result = self._reindex_and_normalise(raw_weights, clean_returns.columns, symbols, n_assets)
             return result
-
         except Exception:
-            return pd.Series(1.0 / n, index=symbols)
+            # Defensive fallback – any unexpected error yields equal weights
+            return pd.Series(1.0 / n_assets, index=symbols)
+
+    def _clean_returns(self, returns: pd.DataFrame) -> pd.DataFrame:
+        """
+        Drop entirely NaN columns and fill remaining NaNs with zeros.
+        """
+        cleaned = returns.dropna(axis=1, how="all").fillna(0.0)
+        return cleaned
+
+    def _calc_corr_cov(self, returns: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Compute correlation and covariance matrices, clipping correlation extremes.
+        """
+        corr = returns.corr().clip(-0.9999, 0.9999)
+        cov = returns.cov()
+        return corr, cov
+
+    def _cluster_and_sort(self, corr: pd.DataFrame, cov: pd.DataFrame) -> List[int]:
+        """
+        Perform hierarchical clustering on the correlation matrix and return a
+        quasi-diagonal ordering of asset indices.
+        """
+        dist = _corr_to_distance(corr)
+        condensed = squareform(dist, checks=False)
+        link = linkage(condensed, method="ward")
+        return _get_quasi_diag(link)
+
+    def _reindex_and_normalise(
+        self,
+        raw_weights: pd.Series,
+        clean_symbols: pd.Index,
+        original_symbols: List[str],
+        n_original: int,
+    ) -> pd.Series:
+        """
+        Map weights back to the original symbol list and ensure they sum to one.
+        """
+        # Map from clean index positions to original symbols
+        result = pd.Series(0.0, index=original_symbols)
+        for idx, sym in enumerate(clean_symbols):
+            if idx in raw_weights.index:
+                result[sym] = float(raw_weights[idx])
+
+        total = result.sum()
+        if total > 0:
+            result = result / total
+        else:
+            # Degenerate case – revert to equal weighting across original universe
+            result = pd.Series(1.0 / n_original, index=original_symbols)
+        return result
