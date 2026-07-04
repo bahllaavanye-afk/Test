@@ -79,6 +79,7 @@ from app.strategies.manual.fx_trend import FXTrendStrategy
 from app.strategies.manual.fx_reversion import FXReversionStrategy
 from app.strategies.manual.commodity_momentum import CommodityMomentumStrategy
 from app.strategies.manual.commodity_trend import CommodityTrendStrategy
+from app.strategies.manual.commodity_reversion import CommodityReversionStrategy
 from app.strategies.manual.options_strategies import (
     CoveredCallStrategy,
     CashSecuredPutStrategy,
@@ -280,6 +281,7 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     # ── Commodities desk ──────────────────────────────────────────────────────
     "commodity_momentum":         CommodityMomentumStrategy,
     "commodity_trend":            CommodityTrendStrategy,
+    "commodity_reversion":        CommodityReversionStrategy,
     # ── TradingView Indicator Desk ────────────────────────────────────────────
     "ema_stack_tv": EMAStackStrategy,
     "squeeze_pro_tv": SqueezeProStrategy,
