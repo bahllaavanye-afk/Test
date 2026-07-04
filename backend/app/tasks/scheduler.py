@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from app.utils.logging import logger
@@ -39,29 +39,29 @@ class SchedulerJobConfig(BaseModel):
     job_id: str = Field(
         ...,
         description="Unique identifier for the job within the scheduler.",
-        example="snapshot",
         min_length=1,
+        json_schema_extra={"example": "snapshot"},
     )
     trigger: str = Field(
         ...,
         description="APScheduler trigger type (e.g., ``interval`` or ``cron``).",
-        example="interval",
+        json_schema_extra={"example": "interval"},
     )
     trigger_args: Dict[str, Any] = Field(
         default_factory=dict,
         description="Keyword arguments passed to the trigger (e.g., ``hours=1``).",
-        example={"hours": 1},
+        json_schema_extra={"example": {"hours": 1}},
     )
     max_instances: int = Field(
         1,
         description="Maximum number of concurrent instances of this job.",
         ge=1,
-        example=1,
+        json_schema_extra={"example": 1},
     )
     replace_existing: bool = Field(
         True,
         description="Whether to replace an existing job with the same ID.",
-        example=True,
+        json_schema_extra={"example": True},
     )
     func: Any = Field(
         ...,
@@ -70,27 +70,29 @@ class SchedulerJobConfig(BaseModel):
     func_args: List[Any] = Field(
         default_factory=list,
         description="Positional arguments passed to ``func``.",
-        example=[],
+        json_schema_extra={"example": []},
     )
     func_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Keyword arguments passed to ``func``.",
-        example={},
+        json_schema_extra={"example": {}},
     )
     description: Optional[str] = Field(
         None,
         description="Human‑readable description of the job's purpose.",
-        example="Capture hourly account snapshots.",
+        json_schema_extra={"example": "Capture hourly account snapshots."},
     )
 
-    @validator("trigger")
+    @field_validator("trigger")
+    @classmethod
     def _validate_trigger(cls, v: str) -> str:
         allowed = {"interval", "cron", "date", "calendar"}
         if v not in allowed:
             raise ValueError(f"trigger must be one of {allowed}, got {v!r}")
         return v
 
-    @validator("max_instances")
+    @field_validator("max_instances")
+    @classmethod
     def _validate_max_instances(cls, v: int) -> int:
         if v < 1:
             raise ValueError("max_instances must be at least 1")

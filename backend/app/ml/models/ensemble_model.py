@@ -9,7 +9,7 @@ import numpy as np
 import structlog
 from pathlib import Path
 from sklearn.metrics import accuracy_score, roc_auc_score
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
@@ -36,23 +36,24 @@ class EnsembleConfig(BaseModel):
     weights: dict[str, float] = Field(
         default_factory=lambda: {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15},
         description="Model name to weight mapping; values should be non‑negative and sum to 1.0.",
-        example={"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15},
+        json_schema_extra={"example": {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}},
     )
     confidence_threshold: float = Field(
         0.65,
         ge=0.0,
         le=1.0,
         description="Confidence threshold for emitting a directional signal.",
-        example=0.65,
+        json_schema_extra={"example": 0.65},
     )
     gnn_weight: float = Field(
         0.0,
         ge=0.0,
         description="Weight given to the optional GNN model in the ensemble.",
-        example=0.0,
+        json_schema_extra={"example": 0.0},
     )
 
-    @validator("weights")
+    @field_validator("weights")
+    @classmethod
     def _validate_weights(cls, v: dict[str, float]) -> dict[str, float]:
         if not v:
             raise ValueError("weights dictionary must contain at least one entry")
@@ -64,11 +65,11 @@ class EnsembleConfig(BaseModel):
             raise ValueError(f"weights must sum to 1.0 (got {total:.6f})")
         return v
 
-    @root_validator(skip_on_failure=True)
-    def _check_consistency(cls, values):
+    @model_validator(mode="after")
+    def _check_consistency(self):
         # confidence_threshold already bounded by Field; gnn_weight by Field.
         # Additional cross‑field checks could be added here if needed.
-        return values
+        return self
 
 
 class EnsembleModel(AbstractModel):
