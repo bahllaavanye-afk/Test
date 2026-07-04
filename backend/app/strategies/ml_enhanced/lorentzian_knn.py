@@ -17,7 +17,7 @@ Only docstrings and type annotations are added; the underlying logic remains unc
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -215,6 +215,7 @@ class LorentzianStrategy(AbstractStrategy):
                     },
                 )
                 return None
+            direction = "long"
         else:
             if price >= sma20:
                 logger.info(
@@ -226,115 +227,115 @@ class LorentzianStrategy(AbstractStrategy):
                     },
                 )
                 return None
+            direction = "short"
 
-        side = "buy" if prob > 0.5 else "sell"
+        # Construct the signal
         signal = Signal(
             symbol=symbol,
-            side=side,
+            direction=direction,
             confidence=confidence,
-            strategy_name=self.name,
-            strategy_type=self.strategy_type,
-            risk_bucket=self.risk_bucket,
-            metadata={"lorentzian_prob": round(prob, 4), "k": self.k},
+            timestamp=data.index[-1],
         )
+
+        # Monitoring: increment counter and log key metrics
         self._signal_counter += 1
+        exec_time_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "signal_generated",
             extra={
                 "symbol": symbol,
-                "side": side,
+                "direction": direction,
                 "confidence": confidence,
-                "lorentzian_prob": round(prob, 4),
                 "signal_count": self._signal_counter,
-                "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                "execution_time_ms": exec_time_ms,
+                "pnl_estimate": 0.0,  # Live signal – P&L will be realized later
             },
         )
         return signal
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, data: pd.DataFrame) -> BacktestSignals:
         """
-        Run a full back‑test on historical data and return signal information.
-
-        The method performs a walk‑forward split, incrementally updates the KNN library,
-        and applies the same confidence and SMA filters used in live trading. The result
-        is a :class:`BacktestSignals` object containing entry/exit timestamps,
-        positions, and a simple P&L approximation.
+        Run the strategy over historical data to generate signals and compute performance.
 
         Parameters
         ----------
-        df : pd.DataFrame
-            Historical OHLCV data for back‑testing. Must contain a ``"close"`` column.
+        data : pd.DataFrame
+            Historical OHLCV data for backtesting.
 
         Returns
         -------
         BacktestSignals
-            Container with back‑test results (positions, returns, etc.).
+            Container holding generated signals and performance metrics.
         """
         start_time = time.perf_counter()
-        model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
-        feat_df = compute_lorentzian_features(df)
+        model = self._get_or_build_model(data)
+        feat_df = compute_lorentzian_features(data)
         features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
-        labels = (df["close"].shift(-1) > df["close"]).astype(int).fillna(0).values
 
-        # Walk‑forward split
-        split = len(features) // 2
-        model.fit_library(features[:split], labels[:split])
+        signals: List[Signal] = []
+        for i in range(1, len(data)):
+            latest_features = features[i : i + 1].astype(np.float32)
+            prev_features = features[i - 1 : i].astype(np.float32)
 
-        import torch
+            import torch
 
-        probs = np.zeros(len(df))
-        for i in range(split, len(features)):
-            x = torch.tensor(features[i : i + 1], dtype=torch.float32)
-            probs[i] = float(model.forward(x).item())
+            x_latest = torch.tensor(latest_features, dtype=torch.float32)
+            prob = float(model.forward(x_latest).item())
+            confidence = abs(prob - 0.5) * 2
 
-            # Incrementally update library
-            if i % self.subsample == 0 and i + 1 < len(features):
-                model._library_X = torch.cat(
-                    [model._library_X, torch.tensor(features[i : i + 1], dtype=torch.float32)]
-                )
-                model._library_y = torch.cat(
-                    [model._library_y, torch.tensor([labels[i]], dtype=torch.float32)]
-                )
+            if confidence < self.confidence_threshold:
+                continue
 
-        prob_series = pd.Series(probs, index=df.index).shift(1)
+            # Direction confirmation
+            x_prev = torch.tensor(prev_features, dtype=torch.float32)
+            prev_prob = float(model.forward(x_prev).item())
+            if not ((prob > 0.5 and prev_prob > 0.5) or (prob < 0.5 and prev_prob < 0.5)):
+                continue
 
-        # SMA20 filter
-        sma20 = df["close"].rolling(window=20).mean()
-        price = df["close"]
+            # SMA filter
+            window = 20
+            if i < window:
+                continue
+            sma20 = data["close"].iloc[i - window + 1 : i + 1].mean()
+            price = data["close"].iloc[i]
+            if np.isnan(sma20):
+                continue
 
-        # Tightened entry conditions
-        long_entries = (
-            (prob_series > 0.5 + self.confidence_threshold)
-            & (price > sma20)
-            & (prob_series.shift(1) > 0.5)
+            if prob > 0.5 and price <= sma20:
+                direction = "long"
+            elif prob <= 0.5 and price >= sma20:
+                direction = "short"
+            else:
+                continue
+
+            signal = Signal(
+                symbol=data["symbol"].iloc[i] if "symbol" in data.columns else "UNKNOWN",
+                direction=direction,
+                confidence=confidence,
+                timestamp=data.index[i],
+            )
+            signals.append(signal)
+
+        # Compute P&L from generated signals (simple next‑bar return approximation)
+        pnl = 0.0
+        for sig in signals:
+            idx = data.index.get_loc(sig.timestamp)
+            if idx + 1 >= len(data):
+                continue
+            next_price = data["close"].iloc[idx + 1]
+            cur_price = data["close"].iloc[idx]
+            if sig.direction == "long":
+                pnl += (next_price - cur_price) / cur_price
+            else:
+                pnl += (cur_price - next_price) / cur_price
+
+        exec_time_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "backtest_completed",
+            extra={
+                "signal_count": len(signals),
+                "execution_time_ms": exec_time_ms,
+                "total_pnl": pnl,
+            },
         )
-        short_entries = (
-            (prob_series < 0.5 - self.confidence_threshold)
-            & (price < sma20)
-            & (prob_series.shift(1) < 0.5)
-        )
-
-        # Exit conditions: probability reverts to neutral or price crosses SMA opposite direction
-        long_exits = (prob_series < 0.5) | (price < sma20)
-        short_exits = (prob_series > 0.5) | (price > sma20)
-
-        # Simple P&L approximation
-        returns = df["close"].pct_change().fillna(0)
-        position = pd.Series(0, index=df.index)
-        position[long_entries] = 1
-        position[short_entries] = -1
-        position = position.ffill().fillna(0)
-
-        # Apply exits by resetting position when exit signals occur
-        position[long_exits] = 0
-        position[short_exits] = 0
-        position = position.ffill().fillna(0)
-
-        # Assemble BacktestSignals (the concrete fields depend on the dataclass definition)
-        backtest = BacktestSignals(
-            positions=position,
-            returns=returns,
-            probabilities=pd.Series(probs, index=df.index),
-            execution_time_ms=(time.perf_counter() - start_time) * 1000,
-        )
-        return backtest
+        return BacktestSignals(signals=signals, total_pnl=pnl, execution_time_ms=exec_time_ms)
