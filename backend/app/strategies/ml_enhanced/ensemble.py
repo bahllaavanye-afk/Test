@@ -30,6 +30,10 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        # Guard against None or empty inputs
+        if data is None or data.empty or symbol is None:
+            return None
+
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -50,16 +54,24 @@ class EnsembleStrategy(AbstractStrategy):
                 return None
             sma = recent["close"].mean()
             median_vol = recent["volume"].median()
+
+            # Safely fetch the latest close and volume values
+            if data["close"].empty or data["volume"].empty:
+                return None
             latest_close = data["close"].iloc[-1]
             latest_vol = data["volume"].iloc[-1]
 
             # Directional confirmation
-            if ml_result["prediction"] == "up":
+            prediction = ml_result.get("prediction")
+            if prediction == "up":
                 if latest_close <= sma:
                     return None
-            else:  # prediction == "down"
+            elif prediction == "down":
                 if latest_close >= sma:
                     return None
+            else:
+                # Unexpected prediction value
+                return None
 
             # Volume confirmation
             if latest_vol < median_vol:
@@ -67,7 +79,7 @@ class EnsembleStrategy(AbstractStrategy):
 
             return Signal(
                 symbol=symbol,
-                side="buy" if ml_result["prediction"] == "up" else "sell",
+                side="buy" if prediction == "up" else "sell",
                 confidence=ml_result["confidence"],
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
@@ -90,6 +102,11 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
+        # Guard against None or empty DataFrames
+        if df is None or df.empty:
+            empty_series = pd.Series(False, index=pd.Index([]))
+            return BacktestSignals(entries=empty_series, exits=empty_series)
+
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
