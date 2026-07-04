@@ -4,11 +4,12 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict, Tuple
 
 from app.utils.logging import logger
 
@@ -16,6 +17,9 @@ QUALITY_FILE = Path(__file__).parents[3] / "experiments" / "results" / "code_qua
 QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 BACKEND_ROOT = Path(__file__).parents[2]
+
+# Cache format: {file_path: (mtime, (total_lines, code_lines, comment_lines, blank_lines))}
+_LOC_CACHE: Dict[Path, Tuple[float, Tuple[int, int, int, int]]] = {}
 
 
 def _count_loc(root: Path) -> dict:
@@ -25,20 +29,40 @@ def _count_loc(root: Path) -> dict:
     blank_lines = 0
     comment_lines = 0
 
-    for py_file in root.rglob("*.py"):
-        if any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db")):
-            continue
+    # Gather current files
+    current_files = [p for p in root.rglob("*.py") if not any(skip in str(p) for skip in ("__pycache__", ".pytest_cache", "test.db"))]
+
+    # Prune cache entries for deleted files
+    cached_paths = set(_LOC_CACHE.keys())
+    for stale in cached_paths - {p.resolve() for p in current_files}:
+        _LOC_CACHE.pop(stale, None)
+
+    for py_file in current_files:
         total_files += 1
         try:
-            for line in py_file.read_text(errors="ignore").splitlines():
-                total_lines += 1
-                stripped = line.strip()
-                if not stripped:
-                    blank_lines += 1
-                elif stripped.startswith("#"):
-                    comment_lines += 1
-                else:
-                    code_lines += 1
+            stat = py_file.stat()
+            mtime = stat.st_mtime
+            cached = _LOC_CACHE.get(py_file)
+            if cached and cached[0] == mtime:
+                # Reuse cached line counts
+                t_lines, c_lines, com_lines, b_lines = cached[1]
+            else:
+                # Compute line counts
+                t_lines = c_lines = com_lines = b_lines = 0
+                for line in py_file.read_text(errors="ignore").splitlines():
+                    t_lines += 1
+                    stripped = line.strip()
+                    if not stripped:
+                        b_lines += 1
+                    elif stripped.startswith("#"):
+                        com_lines += 1
+                    else:
+                        c_lines += 1
+                _LOC_CACHE[py_file] = (mtime, (t_lines, c_lines, com_lines, b_lines))
+            total_lines += t_lines
+            code_lines += c_lines
+            comment_lines += com_lines
+            blank_lines += b_lines
         except Exception as e:
             logger.debug("code_quality: skip unreadable file", error=str(e))
             continue
@@ -92,6 +116,7 @@ class CodeQualityLoop:
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
+            # Keep only the most recent 200 entries
             history = history[-200:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
