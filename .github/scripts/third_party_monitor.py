@@ -132,8 +132,23 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M UTC")
 
 
+DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
+
+
+def discord_post(channel: str, text: str) -> None:
+    """Failover alert delivery — Slack's free-tier quota can die entirely
+    (message_limit_exceeded), and a monitor whose alerts go nowhere is useless."""
+    if not DISCORD_WEBHOOK:
+        return
+    try:
+        httpx.post(DISCORD_WEBHOOK, json={"content": f"**[{channel}]** {text}"[:2000]}, timeout=10)
+    except Exception as e:
+        print(f"  Discord error: {e}")
+
+
 def slack_post(channel: str, text: str) -> None:
     if not SLACK_TOKEN:
+        discord_post(channel, text)
         return
     try:
         r = httpx.post(
@@ -145,8 +160,10 @@ def slack_post(channel: str, text: str) -> None:
         data = r.json()
         if not data.get("ok"):
             print(f"  Slack error ({channel}): {data.get('error')}")
+            discord_post(channel, text)
     except Exception as e:
         print(f"  Slack error: {e}")
+        discord_post(channel, text)
 
 
 def load_state() -> dict:

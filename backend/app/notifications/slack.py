@@ -1,5 +1,5 @@
 """
-Slack notification client.
+Slack notification client (with Discord failover).
 
 Supports two modes (auto-detected, bot token takes priority):
   1. Bot token (SLACK_BOT_TOKEN=xoxb-...): uses chat.postMessage API.
@@ -7,9 +7,15 @@ Supports two modes (auto-detected, bot token takes priority):
   2. Incoming webhooks (SLACK_WEBHOOK_*): legacy, one URL per channel.
 
 Required bot token scopes: chat:write, chat:write.public
+
+Discord failover: Slack's free-plan message quota can exhaust entirely
+(message_limit_exceeded — it did on 2026-06-29 and stayed dead for days).
+When DISCORD_WEBHOOK_URL is set, any notification Slack can't deliver is
+posted to Discord instead, so alerts are never silently lost.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -55,7 +61,33 @@ class SlackClient:
             "system":      getattr(settings, "slack_webhook_system", ""),
         }
         self._default_webhook = getattr(settings, "slack_webhook_default", "")
-        self._enabled = self._use_bot or bool(self._default_webhook or any(self._webhooks.values()))
+        self._discord_webhook = (
+            getattr(settings, "discord_webhook_url", "") or os.environ.get("DISCORD_WEBHOOK_URL", "")
+        )
+        self._enabled = (
+            self._use_bot
+            or bool(self._default_webhook or any(self._webhooks.values()))
+            or bool(self._discord_webhook)
+        )
+
+    async def _post_discord(self, channel: str, title: str, text: str,
+                            fields: dict[str, Any] | None = None) -> bool:
+        """Failover delivery to a Discord webhook (free, generous rate limits)."""
+        if not self._discord_webhook:
+            return False
+        lines = [f"**[#{channel}] {title}**"]
+        if text:
+            lines.append(text)
+        for k, v in (fields or {}).items():
+            lines.append(f"• {k}: {v}")
+        content = "\n".join(lines)[:2000]  # Discord hard message limit
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(self._discord_webhook, json={"content": content})
+                return resp.status_code in (200, 204)
+        except Exception as e:
+            logger.warning("Discord post failed", error=str(e))
+            return False
 
     async def _post_bot(self, channel: str, payload: dict) -> bool:
         try:
@@ -101,14 +133,22 @@ class SlackClient:
             "ts": int(datetime.now(timezone.utc).timestamp()),
         }
 
+        slack_channel = CHANNEL_MAP.get(channel, "engineering")
         if self._use_bot:
-            slack_channel = CHANNEL_MAP.get(channel, "engineering")
-            return await self._post_bot(slack_channel, {"attachments": [attachment]})
+            ok = await self._post_bot(slack_channel, {"attachments": [attachment]})
+            if ok:
+                return True
+            # Slack rejected it (quota, revoked token, ...) — don't lose the alert
+            return await self._post_discord(slack_channel, title, text or "", fields)
 
         webhook = self._webhooks.get(channel, "") or self._default_webhook
-        if not webhook:
-            return False
-        return await self._post_webhook(webhook, {"attachments": [attachment]})
+        if webhook:
+            ok = await self._post_webhook(webhook, {"attachments": [attachment]})
+            if ok:
+                return True
+            return await self._post_discord(slack_channel, title, text or "", fields)
+        # No Slack path configured at all — Discord is the primary channel
+        return await self._post_discord(slack_channel, title, text or "", fields)
 
     # ── Typed helpers ────────────────────────────────────────────────────────
 

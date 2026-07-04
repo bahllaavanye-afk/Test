@@ -28,6 +28,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 5
     permissions:
+      models: read   # free GitHub Models inference for the employee brains
       contents: write
     steps:
       - uses: actions/checkout@v4

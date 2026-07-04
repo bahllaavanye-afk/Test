@@ -29,6 +29,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 20
     permissions:
+      models: read   # free GitHub Models inference for the employee brains
       contents: write
       issues: write          # QA agent auto-creates tracking issues for untested strategies
       pull-requests: read

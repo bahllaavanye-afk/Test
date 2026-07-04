@@ -1,0 +1,74 @@
+name: Claude Queue Worker — one agent-fix-needed issue per week
+
+# The durable "real engineer" loop: once a week, pick the OLDEST open issue
+# labeled `agent-fix-needed` and let Claude Code fix it end-to-end (investigate,
+# edit on a branch, open a PR into the existing automerge gate).
+#
+# COST CONTROL (small prepaid credit balance):
+#   - Weekly + one issue per run (~10-40¢ on the intro-priced Sonnet tier) —
+#     roughly $1-2/month worst case. Manual dispatch for extra runs.
+#   - Skips cleanly when there is no key or no queued issue.
+#   - The prepaid balance is the hard ceiling.
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"   # Mondays 06:23 UTC (off the :00 stampede)
+  workflow_dispatch: {}
+
+concurrency:
+  group: claude-queue-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  work-one-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Pick the oldest agent-fix-needed issue
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "ANTHROPIC_API_KEY not set — skipping (add the secret to enable the worker)"
+            echo "issue=" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          n=$(gh issue list --label agent-fix-needed --state open \
+                --json number --jq 'sort_by(.number) | .[0].number // empty' 2>/dev/null || echo "")
+          if [ -z "$n" ]; then
+            echo "No open agent-fix-needed issues — nothing to do"
+          else
+            echo "Working issue #$n"
+          fi
+          echo "issue=$n" >> "$GITHUB_OUTPUT"
+
+      - name: Claude Code works the issue
+        if: steps.pick.outputs.issue != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--model claude-sonnet-5"
+          prompt: >
+            Work GitHub issue #${{ steps.pick.outputs.issue }} in this repository.
+            Read the issue with `gh issue view ${{ steps.pick.outputs.issue }}`,
+            investigate the codebase, implement a focused fix on a new branch named
+            queue-worker/issue-${{ steps.pick.outputs.issue }}, verify it (run the
+            relevant backend tests with pytest where applicable), push the branch,
+            and open a DRAFT pull request labeled `automerge` that references the
+            issue with "Fixes #${{ steps.pick.outputs.issue }}". Keep the change
+            minimal and respect the repo conventions in CLAUDE.md. Do not push to
+            main directly. TRADING_MODE stays paper. Never print secret values.
