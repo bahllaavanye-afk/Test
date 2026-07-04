@@ -13,9 +13,15 @@ name: Sync ANTHROPIC_API_KEY → Doppler + Render
 #
 # Requires secrets: ANTHROPIC_API_KEY (required), DOPPLER_TOKEN + RENDER_API_KEY +
 # RENDER_SERVICE_ID (each target skipped with a note if absent).
+#
+# Also self-triggers when this file lands on main, so merging the PR that adds
+# (or amends) it runs the export immediately — no manual dispatch needed.
 
 on:
   workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: [".github/workflows/sync-anthropic-key.yml"]
 
 permissions:
   contents: read
