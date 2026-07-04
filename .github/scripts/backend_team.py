@@ -136,29 +136,25 @@ def apply_and_push(files: list[dict]) -> list[str]:
         ["git", "push", "origin", f"HEAD:{fix_branch}"],
         cwd=REPO_ROOT, capture_output=True,
     )
-    # Open a PR if GH_TOKEN is available
-    gh_token = os.environ.get("GH_TOKEN", "")
-    gh_repo = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
-    if push_result.returncode == 0 and gh_token:
-        try:
-            import urllib.request
-            body = json.dumps({
-                "title": f"fix(auto): backend team auto-fix [{', '.join(patched[:3])}]",
-                "body": "Automated backend audit fix.\n\nPlease review before merging.",
-                "head": fix_branch,
-                "base": "main",
-            }).encode()
-            req = urllib.request.Request(
-                f"https://api.github.com/repos/{gh_repo}/pulls",
-                data=body, method="POST",
-                headers={"Authorization": f"Bearer {gh_token}", "Content-Type": "application/json",
-                         "Accept": "application/vnd.github+json"},
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                pr = json.loads(resp.read())
-                print(f"  [backend-team] Opened PR: {pr.get('html_url', '')}")
-        except Exception as e:
-            print(f"  [backend-team] PR creation failed: {e}")
+    # Reward gate: open an automerge PR — the full CI suite must pass before
+    # anything lands on main. Mirrors continuous_improver._open_reward_gated_pr.
+    if push_result.returncode == 0:
+        title = f"fix(auto): backend team auto-fix [{', '.join(patched[:3])}]"
+        body = (
+            "Automated backend audit fix.\n\n"
+            "**Reward-gated:** this PR only lands if the full CI suite passes — it is "
+            "auto-merged via the `automerge` label (`auto-merge.yml`) once every check is "
+            "green. This replaces direct-to-main commits.\n"
+        )
+        res = subprocess.run(
+            ["gh", "pr", "create", "--base", "main", "--head", fix_branch,
+             "--title", title, "--body", body, "--label", "automerge"],
+            capture_output=True, text=True, env={**os.environ},
+        )
+        if res.returncode == 0:
+            print(f"  [backend-team] Opened reward-gated PR: {res.stdout.strip()}")
+        else:
+            print(f"  [backend-team] PR creation failed (rc={res.returncode}): {res.stderr.strip()}")
     return patched
 
 
