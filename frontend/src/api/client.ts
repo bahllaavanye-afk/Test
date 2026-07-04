@@ -32,10 +32,22 @@ api.interceptors.response.use(
     return res
   },
   async (err) => {
+    const original = err.config
     // No response object = network error / timeout / DNS = backend unreachable
     // (distinct from an HTTP error, which means the backend answered).
-    if (!err.response) window.dispatchEvent(new Event('backendDown'))
-    const original = err.config
+    if (!err.response) {
+      // Render's free tier cold-starts in ~30-90s after sleeping, longer than the
+      // 30s default timeout — so the first visit after a sleep failed everywhere.
+      // Retry idempotent GETs once with a budget that outlasts the cold start.
+      const method = (original?.method || '').toLowerCase()
+      if (original && method === 'get' && !original._coldStartRetry) {
+        original._coldStartRetry = true
+        original.timeout = 95000
+        window.dispatchEvent(new Event('backendDown'))
+        return api(original)
+      }
+      window.dispatchEvent(new Event('backendDown'))
+    }
     if (err.response?.status === 401 && original && !original._retry) {
       original._retry = true
       const refreshToken = getStoredRefreshToken()
