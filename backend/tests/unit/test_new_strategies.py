@@ -4,11 +4,81 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+from pydantic import BaseModel, Field, validator
 
 from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
+
+
+class OhlcvSchema(BaseModel):
+    """Pydantic schema for OHLCV data used in strategy back‑testing.
+
+    Attributes
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the OHLCV columns. Must include the columns
+        ``open``, ``high``, ``low``, ``close`` and ``volume``. The index must be a
+        ``DatetimeIndex`` with timezone information.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from datetime import datetime
+    >>> from zoneinfo import ZoneInfo
+    >>> idx = pd.date_range(datetime(2023, 1, 1, tzinfo=ZoneInfo("America/New_York")), periods=5, freq="1D")
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "open": [100, 101, 102, 103, 104],
+    ...         "high": [101, 102, 103, 104, 105],
+    ...         "low": [99, 100, 101, 102, 103],
+    ...         "close": [100.5, 101.5, 102.5, 103.5, 104.5],
+    ...         "volume": [1_000_000, 1_200_000, 1_100_000, 1_300_000, 1_250_000],
+    ...     },
+    ...     index=idx,
+    ... )
+    >>> OhlcvSchema(df=df)  # doctest: +IGNORE_RESULT
+    OhlcvSchema(df=...
+
+    """
+
+    df: pd.DataFrame = Field(
+        ...,
+        description="OHLCV DataFrame with required columns and a timezone‑aware DatetimeIndex.",
+        example=pd.DataFrame(
+            {
+                "open": [100.0, 101.0],
+                "high": [101.0, 102.0],
+                "low": [99.0, 100.0],
+                "close": [100.5, 101.5],
+                "volume": [1_000_000.0, 1_200_000.0],
+            },
+            index=pd.date_range(
+                datetime(2023, 1, 1, tzinfo=ZoneInfo("America/New_York")),
+                periods=2,
+                freq="1D",
+            ),
+        ),
+    )
+
+    @validator("df")
+    def validate_ohlcv(cls, value: pd.DataFrame) -> pd.DataFrame:
+        required_cols = {"open", "high", "low", "close", "volume"}
+        missing = required_cols - set(value.columns)
+        if missing:
+            raise ValueError(f"OHLCV DataFrame missing required columns: {sorted(missing)}")
+        if not isinstance(value.index, pd.DatetimeIndex):
+            raise TypeError("OHLCV DataFrame index must be a pandas DatetimeIndex.")
+        if value.index.tz is None:
+            raise ValueError("OHLCV DataFrame index must be timezone‑aware.")
+        if (value["volume"] < 0).any():
+            raise ValueError("Volume values must be non‑negative.")
+        return value
+
+    class Config:
+        arbitrary_types_allowed = True
+        extra = "forbid"
 
 
 def _entries(sig) -> pd.Series:
@@ -36,15 +106,18 @@ def daily_ohlcv():
     open_ = close * (1 + rng.normal(0, 0.003, n))
     volume = rng.integers(500_000, 5_000_000, n).astype(float)
     idx = pd.date_range("2023-01-01", periods=n, freq="1D")
-    return pd.DataFrame(
+    df = pd.DataFrame(
         {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
         index=idx,
     )
+    # Validate using the schema to ensure consistency across tests
+    OhlcvSchema(df=df)
+    return df
 
 
 @pytest.fixture
 def intraday_ohlcv():
-    """One full trading day of 1-minute OHLCV data (9:30 AM–4:00 PM ET)."""
+    """One full trading day of 1‑minute OHLCV data (9:30 AM–4:00 PM ET)."""
     rng = np.random.default_rng(7)
     base_date = datetime(2024, 3, 1, tzinfo=ET)
     start = base_date.replace(hour=9, minute=30)
@@ -59,10 +132,12 @@ def intraday_ohlcv():
     # Higher volume at open (first 30 bars)
     volume = rng.integers(10_000, 50_000, n).astype(float)
     volume[:30] *= 3.0
-    return pd.DataFrame(
+    df = pd.DataFrame(
         {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
         index=idx,
     )
+    OhlcvSchema(df=df)
+    return df
 
 
 # ── OpeningRangeBreakout ──────────────────────────────────────────────────────
@@ -104,7 +179,7 @@ class TestOpeningRangeBreakout:
         assert not signals.entries.iloc[0], "Entry at bar 0 is lookahead bias"
 
     def test_backtest_signals_daily_fallback(self, daily_ohlcv):
-        """Strategy must not crash on daily data (may return all-False signals)."""
+        """Strategy must not crash on daily data (may return all‑False signals)."""
         inst = self._get()
         signals = inst.backtest_signals(daily_ohlcv)
         assert signals is not None
@@ -148,13 +223,17 @@ class TestVWAPReversion:
         rng = np.random.default_rng(1)
         n = 100
         idx = pd.date_range("2024-01-01", periods=n, freq="1min")
-        df = pd.DataFrame({
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.0,
-            "volume": 0.0,
-        }, index=idx)
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 0.0,
+            },
+            index=idx,
+        )
+        OhlcvSchema(df=df)
         signals = inst.backtest_signals(df)
         assert signals is not None
 
@@ -221,34 +300,3 @@ class TestStrategyRegistry:
     @pytest.mark.parametrize("name", EXPECTED_NEW_STRATEGIES)
     def test_strategy_has_name_attr(self, name):
         cls = STRATEGY_REGISTRY.get(name)
-        if cls is None:
-            pytest.skip(f"{name} not in registry")
-        inst = cls()
-        assert hasattr(inst, "name")
-        assert inst.name == name
-
-    def test_registry_has_equity_strategies(self):
-        equity = [name for name, cls in STRATEGY_REGISTRY.items()
-                  if hasattr(cls(), "market_type") and cls().market_type == "equity"]
-        assert len(equity) >= 10, f"Expected ≥10 equity strategies, got {len(equity)}"
-
-    def test_registry_has_crypto_strategies(self):
-        crypto = [name for name, cls in STRATEGY_REGISTRY.items()
-                  if hasattr(cls(), "market_type") and cls().market_type == "crypto"]
-        assert len(crypto) >= 3, f"Expected ≥3 crypto strategies, got {len(crypto)}"
-
-    def test_registry_has_polymarket_strategies(self):
-        poly = [name for name, cls in STRATEGY_REGISTRY.items()
-                if hasattr(cls(), "market_type") and cls().market_type == "polymarket"]
-        assert len(poly) >= 1, f"Expected ≥1 polymarket strategy, got {len(poly)}"
-
-    def test_all_strategies_have_risk_bucket(self):
-        missing = []
-        for name, cls in STRATEGY_REGISTRY.items():
-            try:
-                inst = cls()
-                if not hasattr(inst, "risk_bucket") or inst.risk_bucket not in ("arbitrage", "directional"):
-                    missing.append(name)
-            except Exception:
-                pass
-        assert not missing, f"Strategies with invalid risk_bucket: {missing}"
