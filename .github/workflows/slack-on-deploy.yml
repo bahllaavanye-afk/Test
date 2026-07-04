@@ -33,7 +33,7 @@ jobs:
           >*By:* $AUTHOR
           >*Files:* ${FILES_CHANGED:-unknown}
 
-          _CTO agent is live and reviewing all channels. <https://quantedge-api.onrender.com/health|Health check>_"
+          _CTO agent is live and reviewing all channels. <https://quantedge-api-agb8.onrender.com/health|Health check>_"
 
           curl -sS -X POST \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \

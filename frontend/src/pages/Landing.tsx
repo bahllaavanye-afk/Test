@@ -5,7 +5,7 @@ import '../styles/animations.css'
 
 /* ── Live Metrics Hook ────────────────────────────────── */
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://quantedge-api.onrender.com/api/v1'
+const API_URL = import.meta.env.VITE_API_URL || 'https://quantedge-api-agb8.onrender.com/api/v1'
 
 type Metric = {
   label: string

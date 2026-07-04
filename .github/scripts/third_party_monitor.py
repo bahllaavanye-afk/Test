@@ -86,7 +86,7 @@ SERVICES = [
     },
     {
         "name": "Render (Backend API)",
-        "url": "https://quantedge-api.onrender.com/health",
+        "url": "https://quantedge-api-agb8.onrender.com/health",
         "method": "GET",
         "expected_status": [200],
         "headers": {},

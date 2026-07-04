@@ -270,7 +270,7 @@ async def slack_events(request: Request):
     App mentions:   Treated as a direct question to the CTO.
 
     Configure in Slack App → Event Subscriptions → Request URL:
-      https://quantedge-api.onrender.com/api/v1/notifications/slack/events
+      https://quantedge-api-agb8.onrender.com/api/v1/notifications/slack/events
     Subscribe to bot events: message.channels, message.groups, app_mention
     """
     raw_body = await request.body()
