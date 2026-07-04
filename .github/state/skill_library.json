@@ -73,8 +73,13 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "refactor on execution/vwap.py: success \u2014 tests green",
+    "refactor on risk/hrp.py: success \u2014 tests green",
+    "refactor on brokers/tradestation.py: success \u2014 tests green",
+    "refactor on backtest/data_loader.py: success \u2014 tests green",
+    "refactor on comparison/benchmarks.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-04T15:42:37.618327+00:00",
   "total": 26
 }
