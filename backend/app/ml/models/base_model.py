@@ -1,3 +1,11 @@
+"""Base model definitions for QuantEdge machine learning components.
+
+This module defines a simple abstract interface that all model implementations
+must follow. It includes utilities for saving and loading model checkpoints,
+as well as a helper for generating probability predictions. The design is
+compatible with both PyTorch‑based models and pure‑Python/Numpy alternatives.
+"""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
