@@ -6,6 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
+
+  models: read   # free GitHub Models inference for the employee brains
   contents: write
 
 jobs:

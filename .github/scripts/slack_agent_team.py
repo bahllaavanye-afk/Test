@@ -3733,13 +3733,55 @@ _FATAL_POST_ERRORS = {
 }
 _post_stats = {"attempted": 0, "ok": 0, "failed": 0, "skipped": 0, "fatal_error": ""}
 
+# ── Discord failover ─────────────────────────────────────────────────────────
+# Slack's free-plan quota exhausted on 2026-06-29 (message_limit_exceeded) and
+# stayed dead for days. When DISCORD_WEBHOOK_URL is set, posts that Slack
+# fatally rejects are delivered to Discord instead — "[#channel] username: text"
+# — so the employees' output isn't lost while Slack is down. Discord webhooks
+# are free with generous limits; still capped per run and paced for the
+# webhook's rate bucket (~5 req/2s). Deliberate volume-cap skips do NOT go to
+# Discord (the cap exists to limit volume, not to reroute it).
+_DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
+_DISCORD_CAP = int(os.environ.get("DISCORD_MAX_POSTS_PER_RUN", "20"))
+_discord_stats = {"sent": 0, "failed": 0, "skipped": 0}
+
+
+def _discord_post(channel: str, username: str, text: str) -> bool:
+    """Deliver one message to the Discord failover webhook. Never raises."""
+    if not _DISCORD_WEBHOOK or not text:
+        return False
+    if _discord_stats["sent"] >= _DISCORD_CAP:
+        _discord_stats["skipped"] += 1
+        return False
+    content = f"**[#{str(channel).lstrip('#')}] {username}:** {text}"[:2000]
+    data = json.dumps({"content": content}).encode()
+    req = urllib.request.Request(
+        _DISCORD_WEBHOOK, data=data,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+        _discord_stats["sent"] += 1
+        time.sleep(0.5)  # stay under the per-webhook rate bucket
+        return True
+    except Exception as e:  # noqa: BLE001
+        _discord_stats["failed"] += 1
+        print(f"  [discord] post failed: {str(e)[:80]}")
+        return False
+
 
 def _posting_health_exit_code() -> int:
-    """Non-zero when posting is provably broken (attempts made, zero landed)."""
-    if _post_stats["attempted"] > 0 and _post_stats["ok"] == 0:
+    """Non-zero when posting is provably broken (attempts made, zero landed).
+
+    Discord delivery counts: if Slack is dead but the failover carried the
+    messages, the run did its job and should not page.
+    """
+    if _post_stats["attempted"] > 0 and _post_stats["ok"] == 0 and _discord_stats["sent"] == 0:
         print(
             f"[slack] POSTING BROKEN: 0/{_post_stats['attempted']} posts landed "
-            f"(fatal={_post_stats['fatal_error'] or 'n/a'}, skipped={_post_stats['skipped']})"
+            f"(fatal={_post_stats['fatal_error'] or 'n/a'}, skipped={_post_stats['skipped']}, "
+            f"discord_sent={_discord_stats['sent']})"
         )
         return 2
     return 0
@@ -3749,6 +3791,9 @@ def slack_call(token: str, method: str, payload: dict) -> dict:
     if method == "chat.postMessage":
         if _post_stats["fatal_error"]:
             _post_stats["skipped"] += 1
+            # Slack is dead this run — keep the message flowing via Discord
+            _discord_post(payload.get("channel", "?"), payload.get("username", "bot"),
+                          payload.get("text", ""))
             return {"ok": False, "error": f"skipped_after_{_post_stats['fatal_error']}"}
         if _post_stats["attempted"] >= _POST_CAP:
             _post_stats["skipped"] += 1
@@ -3785,6 +3830,9 @@ def slack_call(token: str, method: str, payload: dict) -> dict:
             if err in _FATAL_POST_ERRORS:
                 _post_stats["fatal_error"] = err
                 print(f"[slack] FATAL post error '{err}' — halting all further posts this run")
+                # Don't lose the message that hit the wall — deliver it via Discord
+                _discord_post(payload.get("channel", "?"), payload.get("username", "bot"),
+                              payload.get("text", ""))
     return result
 
 
