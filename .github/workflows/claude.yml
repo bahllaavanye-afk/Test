@@ -1,0 +1,50 @@
+name: Claude — @claude mention agent
+
+# Full Claude Code agent on demand: mention `@claude <ask>` in any issue or PR
+# comment and it investigates, edits on a branch, and opens/updates a PR.
+#
+# COST CONTROL (the org runs on a small prepaid credit balance):
+#   - Mention-triggered ONLY — no cron, so spend is always a deliberate human act.
+#   - Pinned to Sonnet (the intro-priced tier): a typical small task costs ~$0.10-0.40.
+#   - The prepaid balance itself is the hard ceiling; when it's gone, runs fail
+#     cleanly and nothing else in the pipeline breaks (advisory layer only).
+#
+# Requires secret: ANTHROPIC_API_KEY
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened]
+
+concurrency:
+  group: claude-mention-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # Only react to an explicit @claude mention, and never to bot comments
+    # (prevents loops with the AI-review / CI-debug bots).
+    if: >
+      github.event.sender.type != 'Bot' &&
+      contains(github.event.comment.body || github.event.issue.body, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--model claude-sonnet-5"
