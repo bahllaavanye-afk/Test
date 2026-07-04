@@ -67,7 +67,7 @@ class HawkesProcess:
         if len(timestamps) < 10:
             return HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
 
-        # Sort just in case
+        # Ensure chronological order
         timestamps = np.sort(timestamps)
         T = float(timestamps[-1] - timestamps[0])
         if T < 1e-9:
@@ -76,7 +76,6 @@ class HawkesProcess:
         n = len(timestamps)
         mu = n / T * 0.5
         alpha = 0.3
-        beta = self.beta
 
         for _ in range(50):  # EM-like iterations
             # E-step: compute conditional intensities at each event time
@@ -84,7 +83,11 @@ class HawkesProcess:
             for i in range(n):
                 ti = timestamps[i]
                 prev_diffs = ti - timestamps[:i]
-                excitation = alpha * beta * np.sum(np.exp(-beta * prev_diffs)) if i > 0 else 0.0
+                excitation = (
+                    alpha * self.beta * np.sum(np.exp(-self.beta * prev_diffs))
+                    if i > 0
+                    else 0.0
+                )
                 intensities[i] = max(mu + excitation, 1e-10)
 
             # M-step: update mu and alpha
@@ -96,20 +99,20 @@ class HawkesProcess:
 
             # alpha update: excitation contribution
             if n > 1:
-                excitation_sums = np.array([
-                    beta * np.sum(np.exp(-beta * (timestamps[i] - timestamps[:i])))
-                    if i > 0 else 0.0
-                    for i in range(1, n)
-                ])
-                alpha_new = float(
-                    np.sum(inv_int[1:] * excitation_sums) / max(n, 1)
+                excitation_sums = np.array(
+                    [
+                        self.beta * np.sum(np.exp(-self.beta * (timestamps[i] - timestamps[:i])))
+                        if i > 0
+                        else 0.0
+                        for i in range(1, n)
+                    ]
                 )
+                alpha_new = float(np.sum(inv_int[1:] * excitation_sums) / max(n, 1))
                 alpha_new = float(np.clip(alpha_new, 0.01, 0.99))
             else:
                 alpha_new = alpha
 
-            mu = mu_new
-            alpha = alpha_new
+            mu, alpha = mu_new, alpha_new
 
         self.params = HawkesParams(mu=float(mu), alpha=float(alpha), beta=self.beta)
         return self.params
