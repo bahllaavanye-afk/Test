@@ -1,14 +1,21 @@
 name: Keep-Alive — stop the Render backend from sleeping
 
 # Render's free web service sleeps after ~15 min of no HTTP traffic. When it sleeps the
-# 24/7 trade engine (StrategyRunner / BotRunner / PriceFeed) stops, so almost no orders
-# fire — the root cause of "only one trade / flat PnL". This pings /health frequently to
-# keep it awake. (For guaranteed uptime an external monitor like UptimeRobot is more
-# reliable than GitHub's cron, which can be delayed — this is the zero-setup option.)
+# 24/7 trade engine (StrategyRunner / BotRunner / PriceFeed / Scheduler) stops, so almost
+# no orders fire — the root cause of "only one trade / flat PnL / employees not always on".
+#
+# GitHub's scheduled cron is best-effort and gets throttled under load (a `*/N` schedule
+# can fire only a handful of times an hour). To compensate, each triggered run does NOT
+# ping once and exit — it pings for a ~5-minute WINDOW (one ping ~every 45s), so a single
+# run keeps the box warm across that whole window and bridges the cron jitter.
+#
+# NOTE: this reduces the sleep gaps but does NOT guarantee true always-on. For that, use an
+# external monitor (UptimeRobot, /health every 5 min) or Render's paid tier (no spin-down).
+# See docs/DEPLOYMENT.md §4.
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -21,19 +28,44 @@ concurrency:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 12
     steps:
-      - name: Ping health (loop to bridge cron jitter)
+      - name: Keep backend warm for a window, then fail loud if it never woke
         run: |
           URL="${{ vars.RENDER_API_URL || 'https://quantedge-api-agb8.onrender.com' }}/health"
-          ok=0
-          # max-time MUST exceed the free-tier cold start (~75-90s), or the ping
+          # Ping for ~5 minutes so one run keeps the box warm across a window, not a single
+          # instant. max-time MUST exceed the free-tier cold start (~75-90s) or the ping
           # times out before the box wakes and never actually keeps it warm.
-          for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 "$URL" || echo "000")
-            echo "ping $i -> $URL : HTTP $code"
-            [ "$code" = "200" ] && { ok=1; break; }
-            [ "$i" -lt 3 ] && sleep 30
+          deadline=$(( SECONDS + 300 ))
+          attempts=0
+          got_200=0
+          last_code="000"
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempts=$(( attempts + 1 ))
+            # curl prints "000" and exits non-zero on timeout/connection failure; `|| true`
+            # keeps that "000" without the loop aborting and without doubling the output.
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 "$URL" || true)
+            code=${code:-000}
+            last_code="$code"
+            echo "ping #$attempts -> $URL : HTTP $code"
+            if [ "$code" = "200" ]; then got_200=1; fi
+            # stop early once warm to save runner time, but only after proving it's up twice
+            [ "$got_200" = "1" ] && [ "$attempts" -ge 2 ] && break
+            sleep 45
           done
-          if [ "$ok" = "1" ]; then echo "✅ backend awake"; else
-            echo "::warning::backend did not return 200 — it may be down or still waking"; fi
+          {
+            echo "### Keep-Alive"
+            echo ""
+            echo "- URL: \`$URL\`"
+            echo "- pings: $attempts"
+            echo "- last HTTP: \`$last_code\`"
+            echo "- reached 200: $([ "$got_200" = "1" ] && echo '✅ yes' || echo '❌ no')"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$got_200" = "1" ]; then
+            echo "✅ backend is warm"
+          else
+            # Fail loud: a RED run is visible in Actions and can trigger failure alerts —
+            # unlike the old version, which exited 0 with only a buried ::warning::.
+            echo "::error::backend NEVER returned 200 over $attempts pings (~5 min) — it is DOWN, not just sleeping"
+            exit 1
+          fi
