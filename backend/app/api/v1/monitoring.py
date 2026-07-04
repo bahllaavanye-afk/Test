@@ -1,5 +1,6 @@
 """Monitoring and health check endpoints for the QA subsystem."""
 from __future__ import annotations
+
 import asyncio
 import json
 from pathlib import Path
@@ -9,10 +10,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 
-router = APIRouter(prefix="/monitoring", tags=["monitoring"])
+# Constants
+ROUTER_PREFIX = "/monitoring"
+ROUTER_TAGS = ["monitoring"]
+HEALTH_REPORT_FILENAME = "qa_health_report.json"
+FIX_LOG_FILENAME = "qa_fix_log.jsonl"
+DEFAULT_FIX_LIMIT = 50
+UNKNOWN_STATUS = "unknown"
+UNKNOWN_MESSAGE = "QA monitor not yet run"
+HEALTH_CORRUPTED_DETAIL = "Health report corrupted"
+FIX_LOG_READ_ERROR_DETAIL = "Could not read fix log: {}"
+RUN_NOW_MESSAGE = "QA cycle started — poll /monitoring/health for results"
 
-HEALTH_REPORT_PATH = Path(__file__).parents[4] / "qa_health_report.json"
-FIX_LOG_PATH = Path(__file__).parents[4] / "qa_fix_log.jsonl"
+router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
+
+HEALTH_REPORT_PATH = Path(__file__).parents[4] / HEALTH_REPORT_FILENAME
+FIX_LOG_PATH = Path(__file__).parents[4] / FIX_LOG_FILENAME
 
 
 @router.get("/health")
@@ -26,13 +39,13 @@ async def get_health_report():
         try:
             return json.loads(HEALTH_REPORT_PATH.read_text())
         except Exception:
-            raise HTTPException(status_code=500, detail="Health report corrupted")
-    return {"status": "unknown", "message": "QA monitor not yet run"}
+            raise HTTPException(status_code=500, detail=HEALTH_CORRUPTED_DETAIL)
+    return {"status": UNKNOWN_STATUS, "message": UNKNOWN_MESSAGE}
 
 
 @router.get("/fixes")
 async def get_fix_log(
-    limit: int = 50,
+    limit: int = DEFAULT_FIX_LIMIT,
     current_user: User = Depends(get_current_user),
 ):
     """Recent auto-fixes applied by the QA monitor (requires auth).
@@ -48,7 +61,7 @@ async def get_fix_log(
         lines = text.splitlines()
         return [json.loads(line) for line in lines[-limit:]]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Could not read fix log: {e}")
+        raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(e))
 
 
 @router.post("/run-now")
@@ -60,5 +73,6 @@ async def trigger_qa_cycle(
     The cycle runs asynchronously; poll GET /monitoring/health to see the result.
     """
     from app.tasks.qa_monitor import run_one_cycle
+
     asyncio.create_task(run_one_cycle())
-    return {"message": "QA cycle started — poll /monitoring/health for results"}
+    return {"message": RUN_NOW_MESSAGE}
