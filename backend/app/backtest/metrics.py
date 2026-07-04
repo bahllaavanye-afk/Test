@@ -15,49 +15,97 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 
 
 @dataclass
 class BacktestMetrics:
-    # Returns
+    """
+    Container for a comprehensive set of back‑test performance metrics.
+
+    Attributes
+    ----------
+    total_return_pct : float
+        Total portfolio return expressed as a percentage.
+    annual_return_pct : float
+        Annualized portfolio return expressed as a percentage.
+    sharpe : float
+        Annualized Sharpe ratio (risk‑free rate assumed to be zero).
+    sortino : float
+        Annualized Sortino ratio using downside deviation.
+    calmar : float
+        Calmar ratio = annual return / maximum drawdown (absolute value).
+    max_drawdown_pct : float
+        Maximum drawdown expressed as a percentage (negative value).
+    avg_drawdown_pct : float
+        Average drawdown expressed as a percentage (negative value).
+    max_drawdown_duration_days : int
+        Length of the longest consecutive drawdown period (in days).
+    total_trades : int
+        Number of executed trades.
+    win_rate : float
+        Percentage of trades with positive P&L.
+    avg_win_pct : float
+        Average winning trade size as a percentage of the initial equity.
+    avg_loss_pct : float
+        Average losing trade size as a percentage of the initial equity.
+    profit_factor : float
+        Ratio of gross profit to gross loss.
+    var_95 : float
+        95 % one‑day Value‑at‑Risk (negative value indicates a loss).
+    cvar_95 : float
+        Conditional Value‑at‑Risk (expected shortfall) at the 95 % level.
+    information_ratio : float
+        Information ratio versus the supplied benchmark.
+    best_month_pct : float
+        Best monthly return expressed as a percentage.
+    worst_month_pct : float
+        Worst monthly return expressed as a percentage.
+    recovery_factor : float
+        Ratio of total return to maximum drawdown (absolute value).
+    """
+
     total_return_pct: float
     annual_return_pct: float
 
-    # Risk‑adjusted
-    sharpe: float           # annualized, rf=0
-    sortino: float          # downside deviation
-    calmar: float           # annual_return / max_drawdown
+    sharpe: float
+    sortino: float
+    calmar: float
 
-    # Drawdown
     max_drawdown_pct: float
     avg_drawdown_pct: float
     max_drawdown_duration_days: int
 
-    # Trading stats
     total_trades: int
     win_rate: float
     avg_win_pct: float
     avg_loss_pct: float
-    profit_factor: float    # sum(wins) / sum(losses)
+    profit_factor: float
 
-    # Tail risk
-    var_95: float           # 95% 1‑day VaR (negative number = loss)
-    cvar_95: float          # Expected Shortfall at 95%
+    var_95: float
+    cvar_95: float
 
-    # Information ratio vs benchmark
     information_ratio: float
 
-    # Extra
     best_month_pct: float
     worst_month_pct: float
-    recovery_factor: float  # total_return / max_drawdown
+    recovery_factor: float
 
 
 def _max_consecutive_true(arr: np.ndarray) -> int:
     """
-    Return the length of the longest run of consecutive `True` (or 1) values.
-    Uses a pure‑numpy implementation to avoid pandas overhead.
+    Return the length of the longest run of consecutive ``True`` (or ``1``) values.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        One‑dimensional array of boolean or integer values (0/1).
+
+    Returns
+    -------
+    int
+        Length of the longest consecutive sequence of ``True`` values.
+        Returns ``0`` for an empty array or when no ``True`` values are present.
     """
     if arr.size == 0:
         return 0
@@ -84,12 +132,12 @@ def compute_metrics(
     Parameters
     ----------
     equity_curve : pd.Series
-        Indexed by date, values are portfolio equity ($).
+        Portfolio equity indexed by date (values are dollar amounts).
     trades : pd.DataFrame, optional
         Must contain at least a ``pnl`` column. If omitted, trade‑level
         statistics are approximated from daily returns.
     benchmark : pd.Series, optional
-        Series of benchmark equity (same index or overlapping).
+        Benchmark equity series (must share the same index or overlap).
 
     Returns
     -------
@@ -218,43 +266,40 @@ def compute_metrics(
     # ------------------------------------------------------------------
     # Trade‑level statistics
     # ------------------------------------------------------------------
-    total_trades = 0
-    win_rate = 0.0
-    avg_win_pct = 0.0
-    avg_loss_pct = 0.0
-    profit_factor = 0.0
+    if trades is not None and "pnl" in trades.columns:
+        pnl_series = trades["pnl"].astype(float)
+        total_trades = int(len(pnl_series))
+        if total_trades > 0:
+            wins = pnl_series[pnl_series > 0]
+            losses = pnl_series[pnl_series < 0]
 
-    if trades is not None and len(trades) > 0 and "pnl" in trades.columns:
-        pnl = trades["pnl"].dropna().astype(float)
-        total_trades = len(pnl)
-        wins = pnl[pnl > 0]
-        losses = pnl[pnl <= 0]
+            win_rate = round(100.0 * len(wins) / total_trades, 4)
 
-        win_rate = round(len(wins) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(wins.mean()) * 100, 4) if len(wins) else 0.0
-        avg_loss_pct = round(float(losses.mean()) * 100, 4) if len(losses) else 0.0
+            avg_win_pct = (
+                round(100.0 * wins.mean() / initial, 4) if not wins.empty else 0.0
+            )
+            avg_loss_pct = (
+                round(100.0 * losses.mean() / initial, 4) if not losses.empty else 0.0
+            )
 
-        sum_losses = float(losses.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(wins.sum()) / abs(sum_losses), 4)
+            gross_profit = float(wins.sum()) if not wins.empty else 0.0
+            gross_loss = float(losses.abs().sum()) if not losses.empty else 0.0
+            profit_factor = (
+                round(gross_profit / gross_loss, 4) if gross_loss > 0 else float("inf")
+            )
         else:
-            profit_factor = float("inf") if len(wins) else 0.0
+            win_rate = avg_win_pct = avg_loss_pct = profit_factor = 0.0
+            total_trades = 0
     else:
-        # Approximate trade stats from daily returns
-        total_trades = len(daily_returns)
-        pos = daily_returns[daily_returns > 0]
-        neg = daily_returns[daily_returns <= 0]
+        total_trades = 0
+        win_rate = 0.0
+        avg_win_pct = 0.0
+        avg_loss_pct = 0.0
+        profit_factor = 0.0
 
-        win_rate = round(len(pos) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(pos.mean()) * 100, 4) if len(pos) else 0.0
-        avg_loss_pct = round(float(neg.mean()) * 100, 4) if len(neg) else 0.0
-
-        sum_losses = float(neg.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(pos.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(pos) else 0.0
-
+    # ------------------------------------------------------------------
+    # Assemble result
+    # ------------------------------------------------------------------
     return BacktestMetrics(
         total_return_pct=total_return_pct,
         annual_return_pct=annual_return_pct,
