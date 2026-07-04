@@ -104,6 +104,10 @@ class MLMomentumStrategy(AbstractStrategy):
         prediction = ml_result["prediction"]
         ml_conf = ml_result["confidence"]
 
+        # Ensure the ML confidence meets the configured threshold.
+        if ml_conf < self.confidence_threshold:
+            return None
+
         side_match = (
             (prediction == "up" and base_signal.side == "buy")
             or (prediction == "down" and base_signal.side == "sell")
