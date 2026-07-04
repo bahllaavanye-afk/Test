@@ -218,43 +218,30 @@ def compute_metrics(
     # ------------------------------------------------------------------
     # Trade‑level statistics
     # ------------------------------------------------------------------
-    total_trades = 0
-    win_rate = 0.0
-    avg_win_pct = 0.0
-    avg_loss_pct = 0.0
-    profit_factor = 0.0
+    if trades is not None and not trades.empty:
+        if 'pnl' not in trades.columns:
+            raise ValueError("trades DataFrame must contain a 'pnl' column")
+        total_trades = int(len(trades))
+        wins = trades[trades['pnl'] > 0]
+        losses = trades[trades['pnl'] < 0]
 
-    if trades is not None and len(trades) > 0 and "pnl" in trades.columns:
-        pnl = trades["pnl"].dropna().astype(float)
-        total_trades = len(pnl)
-        wins = pnl[pnl > 0]
-        losses = pnl[pnl <= 0]
+        win_rate = round(len(wins) / total_trades * 100, 4) if total_trades > 0 else 0.0
+        avg_win_pct = round(wins['pnl'].mean() * 100, 4) if not wins.empty else 0.0
+        avg_loss_pct = round(losses['pnl'].mean() * 100, 4) if not losses.empty else 0.0
 
-        win_rate = round(len(wins) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(wins.mean()) * 100, 4) if len(wins) else 0.0
-        avg_loss_pct = round(float(losses.mean()) * 100, 4) if len(losses) else 0.0
-
-        sum_losses = float(losses.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(wins.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(wins) else 0.0
+        sum_wins = wins['pnl'].sum()
+        sum_losses = -losses['pnl'].sum()  # make positive
+        profit_factor = round(sum_wins / sum_losses, 4) if sum_losses > 0 else float('inf')
     else:
-        # Approximate trade stats from daily returns
-        total_trades = len(daily_returns)
-        pos = daily_returns[daily_returns > 0]
-        neg = daily_returns[daily_returns <= 0]
+        total_trades = 0
+        win_rate = 0.0
+        avg_win_pct = 0.0
+        avg_loss_pct = 0.0
+        profit_factor = 0.0
 
-        win_rate = round(len(pos) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(pos.mean()) * 100, 4) if len(pos) else 0.0
-        avg_loss_pct = round(float(neg.mean()) * 100, 4) if len(neg) else 0.0
-
-        sum_losses = float(neg.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(pos.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(pos) else 0.0
-
+    # ------------------------------------------------------------------
+    # Assemble dataclass
+    # ------------------------------------------------------------------
     return BacktestMetrics(
         total_return_pct=total_return_pct,
         annual_return_pct=annual_return_pct,
