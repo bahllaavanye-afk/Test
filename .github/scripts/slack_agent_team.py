@@ -3715,7 +3715,46 @@ def new_commits_since_last_run(state: dict) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# ── Posting health guard ─────────────────────────────────────────────────────
+# The workspace died silently on 2026-06-29: every chat.postMessage came back
+# `message_limit_exceeded` (free-plan message quota exhausted by sheer post
+# volume) while the workflow kept reporting green. Two defenses, both enforced
+# at the single chat.postMessage choke point in slack_call():
+#   1. A per-run post cap (SLACK_MAX_POSTS_PER_RUN, default 12; was ~59+/run)
+#      so the agent waves can't burn the workspace quota again.
+#   2. A hard stop on fatal-class errors (quota exhausted / dead token) — no
+#      point attempting the remaining posts against a dead workspace.
+# _posting_health_exit_code() turns "posts attempted, zero landed" into a
+# non-zero exit so the workflow can raise a fallback alarm instead of green.
+_POST_CAP = int(os.environ.get("SLACK_MAX_POSTS_PER_RUN", "12"))
+_FATAL_POST_ERRORS = {
+    "message_limit_exceeded", "invalid_auth", "account_inactive",
+    "token_revoked", "not_authed",
+}
+_post_stats = {"attempted": 0, "ok": 0, "failed": 0, "skipped": 0, "fatal_error": ""}
+
+
+def _posting_health_exit_code() -> int:
+    """Non-zero when posting is provably broken (attempts made, zero landed)."""
+    if _post_stats["attempted"] > 0 and _post_stats["ok"] == 0:
+        print(
+            f"[slack] POSTING BROKEN: 0/{_post_stats['attempted']} posts landed "
+            f"(fatal={_post_stats['fatal_error'] or 'n/a'}, skipped={_post_stats['skipped']})"
+        )
+        return 2
+    return 0
+
+
 def slack_call(token: str, method: str, payload: dict) -> dict:
+    if method == "chat.postMessage":
+        if _post_stats["fatal_error"]:
+            _post_stats["skipped"] += 1
+            return {"ok": False, "error": f"skipped_after_{_post_stats['fatal_error']}"}
+        if _post_stats["attempted"] >= _POST_CAP:
+            _post_stats["skipped"] += 1
+            return {"ok": False, "error": "skipped_post_cap"}
+        _post_stats["attempted"] += 1
+
     url = f"https://slack.com/api/{method}"
     data = json.dumps(payload).encode()
     headers = {
@@ -3736,6 +3775,16 @@ def slack_call(token: str, method: str, payload: dict) -> dict:
         retry_after = int(result.get("headers", {}).get("Retry-After", 5))
         time.sleep(min(retry_after, 30))
         result = _do_request()
+
+    if method == "chat.postMessage" and isinstance(result, dict):
+        if result.get("ok"):
+            _post_stats["ok"] += 1
+        else:
+            _post_stats["failed"] += 1
+            err = result.get("error", "")
+            if err in _FATAL_POST_ERRORS:
+                _post_stats["fatal_error"] = err
+                print(f"[slack] FATAL post error '{err}' — halting all further posts this run")
     return result
 
 
@@ -8666,8 +8715,10 @@ def main() -> int:
     print("\n💬 Discussion pass — multi-turn threaded discussions")
     chains = build_discussion_chains(posted_ts)
     random.shuffle(chains)
-    # Run 4-7 chains per wave (varied so not every channel threads every run)
-    n_chains = random.randint(4, min(7, len(chains)))
+    # Run 4-7 chains per wave (varied so not every channel threads every run).
+    # When posting is degraded there may be fewer than 4 chains — randint(4, <4)
+    # raises ValueError and killed whole runs, so clamp the lower bound too.
+    n_chains = random.randint(min(4, len(chains)), min(7, len(chains))) if chains else 0
     chains_run = 0
     for channel, parent_ts, agent_chain in chains[:n_chains]:
         print(f"  💬 discussion in #{channel} ({len(agent_chain)} replies)")
@@ -10480,22 +10531,25 @@ def page_reports_main() -> int:
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
     if mode == "quick":
-        sys.exit(quick_main())
+        rc = quick_main()
     elif mode == "summons":
-        sys.exit(summons_only_main())
+        rc = summons_only_main()
     elif mode == "review":
-        sys.exit(review_gemini_changes_main())
+        rc = review_gemini_changes_main()
     elif mode == "precompute":
-        sys.exit(precompute_main())
+        rc = precompute_main()
     elif mode == "code_request":
-        sys.exit(code_request_main())
+        rc = code_request_main()
     elif mode == "frontend_improvements":
-        sys.exit(frontend_improvements_main())
+        rc = frontend_improvements_main()
     elif mode == "page_reports":
-        sys.exit(page_reports_main())
+        rc = page_reports_main()
     elif "--review-employees" in sys.argv:
-        sys.exit(review_employees_main())
+        rc = review_employees_main()
     elif "--run-experiments" in sys.argv:
-        sys.exit(run_experiments_main())
+        rc = run_experiments_main()
     else:
-        sys.exit(main())
+        rc = main()
+    # Posting health overrides a "successful" mode: if posts were attempted and
+    # none landed, exit non-zero so the workflow's fallback alarm fires.
+    sys.exit(rc or _posting_health_exit_code())
