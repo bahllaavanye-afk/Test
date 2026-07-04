@@ -15,8 +15,12 @@ from app.risk.manager import RiskManager
 
 def _order(qty=10.0, price=100.0, bucket="directional", symbol="AAPL") -> OrderRequest:
     return OrderRequest(
-        symbol=symbol, side="buy", order_type="limit",
-        quantity=qty, limit_price=price, risk_bucket=bucket,
+        symbol=symbol,
+        side="buy",
+        order_type="limit",
+        quantity=qty,
+        limit_price=price,
+        risk_bucket=bucket,
     )
 
 
@@ -93,10 +97,17 @@ async def test_correlation_cluster_limit_blocks_overconcentration():
 
 def test_update_positions_and_kelly_size():
     rm = RiskManager(max_position_pct=0.05, initial_equity=100_000)
-    rm.update_positions([{"symbol": "AAPL", "market_value": 5000}, {"symbol": "MSFT", "market_value": 3000}])
+    rm.update_positions(
+        [
+            {"symbol": "AAPL", "market_value": 5000},
+            {"symbol": "MSFT", "market_value": 3000},
+        ]
+    )
     assert rm._positions == {"AAPL": 5000.0, "MSFT": 3000.0}
     # Favourable edge → positive, capped size
-    size = rm.kelly_size("AAPL", price=100.0, win_rate=0.6, avg_win_pct=0.05, avg_loss_pct=0.03)
+    size = rm.kelly_size(
+        "AAPL", price=100.0, win_rate=0.6, avg_win_pct=0.05, avg_loss_pct=0.03
+    )
     assert isinstance(size, int) and size >= 0
 
 
@@ -108,11 +119,13 @@ def test_update_returns_builds_correlation_clusters():
 
     rng = np.random.default_rng(0)
     base = rng.normal(0, 0.01, 40)
-    df = pd.DataFrame({
-        "AAPL": base,
-        "MSFT": base + rng.normal(0, 0.0001, 40),  # nearly identical → high corr
-        "TLT": -base,                               # inverse
-    })
+    df = pd.DataFrame(
+        {
+            "AAPL": base,
+            "MSFT": base + rng.normal(0, 0.0001, 40),  # nearly identical → high corr
+            "TLT": -base,  # inverse
+        }
+    )
     rm = RiskManager(initial_equity=100_000)
     rm.update_returns(df)
     # AAPL and MSFT must land in the same cluster.
