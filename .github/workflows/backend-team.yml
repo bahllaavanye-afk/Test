@@ -31,6 +31,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,6 +64,8 @@ jobs:
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           FOCUS: ${{ github.event.inputs.focus || 'bugs, security, performance, correctness' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: python .github/scripts/backend_team.py
 
       - name: Persist dedup state

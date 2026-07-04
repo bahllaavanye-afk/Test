@@ -39,7 +39,7 @@ All services have free tiers and require no credit card.
    - `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`
    - `ALLOWED_ORIGINS=https://your-app.vercel.app`
 6. Deploy
-7. Note the URL: `https://quantedge-api.onrender.com`
+7. Note the URL: `https://quantedge-api-agb8.onrender.com`
 
 ## 4. UptimeRobot (Keep-Alive)
 
@@ -48,7 +48,7 @@ Render free tier spins down after 15 min of inactivity. UptimeRobot prevents thi
 1. Sign up: https://uptimerobot.com (free)
 2. Add new monitor:
    - Type: HTTP(s)
-   - URL: `https://quantedge-api.onrender.com/health`
+   - URL: `https://quantedge-api-agb8.onrender.com/health`
    - Interval: 5 minutes
 3. Save
 
@@ -65,7 +65,7 @@ Render free tier spins down after 15 min of inactivity. UptimeRobot prevents thi
    ```json
    {
      "rewrites": [
-       { "source": "/api/:path*", "destination": "https://quantedge-api.onrender.com/api/:path*" }
+       { "source": "/api/:path*", "destination": "https://quantedge-api-agb8.onrender.com/api/:path*" }
      ]
    }
    ```

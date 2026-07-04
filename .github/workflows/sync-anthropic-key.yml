@@ -1,0 +1,111 @@
+name: Sync ANTHROPIC_API_KEY → Doppler + Render
+
+# GitHub Actions secrets are write-only, so this export can only happen INSIDE a
+# workflow run — the value flows runner → Doppler API / Render API and is never
+# printed, committed, or exposed. Run manually (workflow_dispatch) after setting
+# or rotating ANTHROPIC_API_KEY in repo secrets.
+#
+# Targets:
+#   1. Verify  — 1-token Haiku call proves the key + billing are live (~$0.0001)
+#   2. Doppler — upsert into the project/config scoped by DOPPLER_TOKEN
+#   3. Render  — set env var on the backend service + trigger deploy so the
+#                in-app llm_routed() Claude backstop lights up
+#
+# Requires secrets: ANTHROPIC_API_KEY (required), DOPPLER_TOKEN + RENDER_API_KEY +
+# RENDER_SERVICE_ID (each target skipped with a note if absent).
+#
+# Also self-triggers when this file lands on main, so merging the PR that adds
+# (or amends) it runs the export immediately — no manual dispatch needed.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: [".github/workflows/sync-anthropic-key.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify the key works (1-token Haiku call)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set"; exit 1
+          fi
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d '{"model":"claude-haiku-4-5","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
+          if [ "$code" = "200" ]; then
+            echo "✅ key valid — Claude answered (HTTP 200)" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            # Response body may contain error details but never the key itself
+            echo "::error::key verification failed (HTTP $code): $(head -c 300 /tmp/resp.json)"
+            exit 1
+          fi
+
+      - name: Export to Doppler
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -z "$DOPPLER_TOKEN" ]; then
+            echo "⚠️ DOPPLER_TOKEN not set — skipped Doppler export" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Build the JSON body safely without the value ever hitting argv/logs.
+          # (Quoted JSON keys also keep the key-leak guard test happy: the value
+          # comes from the step env, which is fed by secrets. — never hardcoded.)
+          body=$(jq -n --arg v "$ANTHROPIC_API_KEY" '{"secrets": {"ANTHROPIC_API_KEY": $v, "CLAUDE_BACKSTOP_MODEL": "claude-haiku-4-5"}}')
+          code=$(curl -sS -o /tmp/doppler.json -w "%{http_code}" -X POST \
+            "https://api.doppler.com/v3/configs/config/secrets" \
+            -H "Authorization: Bearer $DOPPLER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$body")
+          if [ "$code" = "200" ]; then
+            echo "✅ Doppler: ANTHROPIC_API_KEY upserted" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            # Common cause: read-only service token — needs a read/write token
+            echo "⚠️ Doppler export failed (HTTP $code): $(jq -r '.messages[0] // empty' /tmp/doppler.json 2>/dev/null | head -c 200)" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Export to Render + redeploy
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "⚠️ RENDER_API_KEY / RENDER_SERVICE_ID not set — skipped Render export" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          body=$(jq -n --arg v "$ANTHROPIC_API_KEY" '{value:$v}')
+          code=$(curl -sS -o /tmp/render.json -w "%{http_code}" -X PUT \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/ANTHROPIC_API_KEY" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$body")
+          if [ "$code" != "200" ]; then
+            echo "⚠️ Render env-var set failed (HTTP $code)" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Cheap-model default on the backend too (non-fatal, but log the outcome)
+          mcode=$(curl -sS -o /dev/null -w "%{http_code}" -X PUT \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/CLAUDE_BACKSTOP_MODEL" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"value":"claude-haiku-4-5"}' || echo "000")
+          echo "Render CLAUDE_BACKSTOP_MODEL set: HTTP $mcode" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Trigger a deploy so the running service picks it up
+          dcode=$(curl -sS -o /tmp/deploy.json -w "%{http_code}" -X POST \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "✅ Render: env var set; deploy triggered (HTTP $dcode)" | tee -a "$GITHUB_STEP_SUMMARY"

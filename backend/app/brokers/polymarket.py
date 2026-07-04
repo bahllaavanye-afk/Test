@@ -62,7 +62,8 @@ class PolymarketBroker(AbstractBroker):
             import asyncio
             await asyncio.to_thread(self.client.cancel, broker_order_id)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("Polymarket cancel_order failed", order_id=broker_order_id, error=str(e))
             return False
 
     async def get_order(self, broker_order_id: str) -> dict:

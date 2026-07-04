@@ -82,7 +82,8 @@ class BinanceBroker(AbstractBroker):
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:

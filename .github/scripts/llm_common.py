@@ -229,9 +229,12 @@ _OPENROUTER_MODELS = [
     ).split(",") if m.strip()
 ]
 _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
-# Default backstop is a strong-but-not-Opus model; override to claude-haiku-4-5 (cheaper)
-# or claude-opus-4-8 (hardest) via env. Backstop fires only on tier="hard" or last resort.
-_CLAUDE_BACKSTOP_MODEL = os.environ.get("CLAUDE_BACKSTOP_MODEL", "claude-sonnet-4-6")
+# Default backstop is the CHEAPEST tier (Haiku, $1/$5 per MTok): the org runs on a
+# small prepaid credit balance, so routine backstop calls must sip, not gulp. Tasks
+# that genuinely need a stronger model set CLAUDE_BACKSTOP_MODEL in their own
+# workflow env (e.g. ai-pr-review pins claude-sonnet-4-6). Backstop still fires
+# only on tier="hard" or when the free cascade + OpenRouter are exhausted.
+_CLAUDE_BACKSTOP_MODEL = os.environ.get("CLAUDE_BACKSTOP_MODEL", "claude-haiku-4-5")
 
 # ── Response cache ────────────────────────────────────────────────────────────
 

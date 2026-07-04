@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,27 +18,27 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 class TradeOut(BaseModel):
     """Schema representing a trade record returned by the API."""
 
-    id: str = Field(..., description="Unique identifier for the trade.", example="trd_12345")
-    symbol: str = Field(..., description="Ticker symbol of the traded instrument.", example="AAPL")
+    id: str = Field(..., description="Unique identifier for the trade.", json_schema_extra={"example": "trd_12345"})
+    symbol: str = Field(..., description="Ticker symbol of the traded instrument.", json_schema_extra={"example": "AAPL"})
     side: str = Field(
         ...,
         description="Trade direction; either 'buy' or 'sell'.",
-        example="buy",
+        json_schema_extra={"example": "buy"},
     )
     realized_pnl: float | None = Field(
         None,
         description="Realized profit and loss in the account's base currency.",
-        example=152.35,
+        json_schema_extra={"example": 152.35},
     )
     entry_price: float | None = Field(
         None,
         description="Price at which the position was entered.",
-        example=145.30,
+        json_schema_extra={"example": 145.30},
     )
     exit_price: float | None = Field(
         None,
         description="Price at which the position was exited.",
-        example=150.00,
+        json_schema_extra={"example": 150.00},
     )
     avg_fill_price: float | None = Field(
         None,
@@ -47,39 +47,41 @@ class TradeOut(BaseModel):
             "When a dedicated fill-price column is unavailable, "
             "the entry price is used for buys and the exit price for sells."
         ),
-        example=145.30,
+        json_schema_extra={"example": 145.30},
     )
     quantity: float = Field(
         ...,
         description="Number of shares/contracts traded.",
-        example=100,
+        json_schema_extra={"example": 100},
     )
     opened_at: datetime | None = Field(
         None,
         description="Timestamp when the trade was opened.",
-        example="2023-01-01T09:30:00Z",
+        json_schema_extra={"example": "2023-01-01T09:30:00Z"},
     )
     closed_at: datetime | None = Field(
         None,
         description="Timestamp when the trade was closed.",
-        example="2023-01-01T15:45:00Z",
+        json_schema_extra={"example": "2023-01-01T15:45:00Z"},
     )
     strategy_name: str | None = Field(
         None,
         description="Name of the strategy that generated the trade.",
-        example="mean_rev_20_2",
+        json_schema_extra={"example": "mean_rev_20_2"},
     )
 
     model_config = ConfigDict(from_attributes=True)
 
-    @validator("side")
+    @field_validator("side")
+    @classmethod
     def validate_side(cls, v: str) -> str:
         """Ensure side is either 'buy' or 'sell'."""
         if v not in {"buy", "sell"}:
             raise ValueError("side must be either 'buy' or 'sell'")
         return v
 
-    @validator("quantity")
+    @field_validator("quantity")
+    @classmethod
     def validate_quantity(cls, v: float) -> float:
         """Quantity must be a positive number."""
         if v <= 0:

@@ -47,7 +47,6 @@ except Exception:
     _EMP_PERSONAS: dict = {}
 
 REPO_ROOT = Path(__file__).parent.parent
-BRANCH = "main"
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID.lower() == "true":
@@ -235,21 +234,50 @@ def git_setup() -> None:
     )
 
 
-def commit_and_push() -> None:
+def _open_reward_gated_pr(branch: str, n_agents: int) -> None:
+    """Reward gate: open an `automerge` PR so the full CI suite must pass before
+    review docs land on main. Mirrors continuous_improver._open_reward_gated_pr."""
+    title = f"docs(agent-reviews): {DATE_STR} independent deep review — {n_agents} agents"
+    body = (
+        f"Automated deep code review run ({DATE_STR}).\n\n"
+        f"{n_agents} employees reviewed their domains; reports written to `docs/agent-reviews/`.\n\n"
+        "**Reward-gated:** this PR only lands if the full CI suite passes — it is "
+        "auto-merged via the `automerge` label (`auto-merge.yml`) once every check is "
+        "green. This replaces direct-to-main commits.\n"
+    )
+    res = subprocess.run(
+        ["gh", "pr", "create", "--base", "main", "--head", branch,
+         "--title", title, "--body", body, "--label", "automerge"],
+        capture_output=True, text=True, cwd=REPO_ROOT, env={**os.environ},
+    )
+    if res.returncode == 0:
+        print(f"[review] Opened reward-gated PR for {branch}: {res.stdout.strip()}")
+    else:
+        print(f"[review] PR creation failed (rc={res.returncode}): {res.stderr.strip()}")
+
+
+def commit_and_push(n_agents: int = 8) -> None:
     subprocess.run(["git", "add", "docs/agent-reviews/"], cwd=REPO_ROOT)
     r = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=REPO_ROOT)
     if r.returncode == 0:
         print("[review] No new docs to commit")
         return
-    msg = f"docs(agent-reviews): {DATE_STR} independent deep review — 8 agents"
+    msg = f"docs(agent-reviews): {DATE_STR} independent deep review — {n_agents} agents"
     subprocess.run(["git", "commit", "-m", msg], cwd=REPO_ROOT, check=True)
+
+    # Reward gate: push a throwaway branch and open an automerge PR instead of
+    # pushing directly to main — the full CI suite must pass before anything lands.
+    run_id = os.environ.get("GITHUB_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    run_branch = f"deep-review/run-{run_id}"
+    subprocess.run(["git", "checkout", "-B", run_branch], cwd=REPO_ROOT, capture_output=True)
     for delay in [2, 4, 8, 16]:
-        result = subprocess.run(["git", "push", "-u", "origin", BRANCH], cwd=REPO_ROOT)
+        result = subprocess.run(["git", "push", "-u", "origin", run_branch], cwd=REPO_ROOT)
         if result.returncode == 0:
             print("[review] Pushed.")
             break
         print(f"[review] Push failed, retrying in {delay}s…")
         time.sleep(delay)
+    _open_reward_gated_pr(run_branch, n_agents)
 
 
 def main() -> None:
@@ -402,12 +430,12 @@ def main() -> None:
             f"*Daily Deep Review Summary ({DATE_STR}) — Top Priorities*\n"
             + "\n".join(f"• {line}" for line in all_priority_lines[:8]))
 
-    commit_and_push()
+    commit_and_push(n_agents=len(completed))
 
     slack_post("#engineering",
         f"✅ *Employee Deep Code Review complete* — {len(completed)}/{len(AGENTS)} employees\n"
         f"Completed: {', '.join(f'`{a}`' for a in completed)}\n"
-        f"All reports committed → `docs/agent-reviews/` on `{BRANCH}`\n"
+        f"All reports committed → `docs/agent-reviews/` via reward-gated PR (automerge label)\n"
         f"_Each employee used a different LLM. Zero Anthropic tokens. Full company brain context injected._")
 
     print(f"\n[review] Done. {len(completed)}/{len(AGENTS)} completed.", flush=True)

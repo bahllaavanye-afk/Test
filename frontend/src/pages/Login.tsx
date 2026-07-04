@@ -28,7 +28,11 @@ export default function Login() {
   }
 
   const handleGoogleLogin = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/auth/google`
+    // Same-origin default rides the vercel.json /api rewrite in prod; the localhost
+    // fallback only applies in local dev (prod builds don't set VITE_API_URL).
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
+    const apiBase = import.meta.env.VITE_API_URL || (isLocal ? 'http://localhost:8000/api/v1' : '/api/v1')
+    window.location.href = `${apiBase}/auth/google`
   }
 
   return (

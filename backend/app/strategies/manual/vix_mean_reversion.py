@@ -15,7 +15,7 @@ Sharpe target: 0.9–1.4
 
 import pandas as pd
 import numpy as np
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
@@ -28,31 +28,32 @@ class VIXMeanReversionParams(BaseModel):
         ge=0,
         le=100,
         description="RSI threshold above which a fear spike is detected, triggering a BUY signal.",
-        example=70,
+        json_schema_extra={"example": 70},
     )
     complacency_rsi_threshold: float = Field(
         default=30,
         ge=0,
         le=100,
         description="RSI threshold below which market complacency is detected, triggering a SELL signal.",
-        example=30,
+        json_schema_extra={"example": 30},
     )
     rsi_period: int = Field(
         default=5,
         ge=1,
         description="Look‑back period for the RSI calculation (must be >= 1).",
-        example=5,
+        json_schema_extra={"example": 5},
     )
     target_symbol: str = Field(
         default="SPY",
         description="Ticker symbol to trade when a signal is generated.",
-        example="SPY",
+        json_schema_extra={"example": "SPY"},
     )
 
-    @validator("fear_rsi_threshold")
+    @field_validator("fear_rsi_threshold")
+    @classmethod
     def fear_above_complacency(cls, v, values):
         """Ensure fear threshold is higher than complacency threshold."""
-        comp = values.get("complacency_rsi_threshold")
+        comp = values.data.get("complacency_rsi_threshold")
         if comp is not None and v <= comp:
             raise ValueError("fear_rsi_threshold must be greater than complacency_rsi_threshold")
         return v
@@ -78,7 +79,7 @@ class VIXMeanReversionStrategy(AbstractStrategy):
         if isinstance(params, VIXMeanReversionParams):
             validated = params
         else:
-            validated = VIXMeanReversionParams.parse_obj(params or {})
+            validated = VIXMeanReversionParams.model_validate(params or {})
 
         self.fear_rsi = float(validated.fear_rsi_threshold)
         self.complacency_rsi = float(validated.complacency_rsi_threshold)
