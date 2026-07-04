@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import time
 import urllib.request
 from datetime import date, timedelta
 
@@ -33,6 +35,8 @@ _DATA_BASE = "https://data.alpaca.markets"
 
 _VIX_PROXY_TICKER = "VIXY"  # iPath Series B VIX Short-Term Futures
 _VIX_FALLBACK     = "VXX"   # Barclays iPath VIX Short-Term Futures
+
+_logger = logging.getLogger(__name__)
 
 
 def _fetch_closes_sync(ticker: str, days: int) -> pd.Series:
@@ -72,16 +76,29 @@ class VolOfVolTimingStrategy(AbstractStrategy):
     MIN_BARS       = 50
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        start_time = time.perf_counter()
+        signal_generated = False
+
         # Fetch VIX proxy
         vix_prices = await asyncio.to_thread(_fetch_closes_sync, _VIX_PROXY_TICKER, self.HISTORY_WINDOW + 30)
         if len(vix_prices) < self.MIN_BARS:
             vix_prices = await asyncio.to_thread(_fetch_closes_sync, _VIX_FALLBACK, self.HISTORY_WINDOW + 30)
         if len(vix_prices) < self.MIN_BARS:
+            duration = time.perf_counter() - start_time
+            _logger.info(
+                "VolOfVolTimingStrategy analyze completed - insufficient VIX data",
+                extra={"symbol": symbol, "duration_s": duration, "signal_generated": False},
+            )
             return None
 
         vix_log_rets = np.log(vix_prices).diff().dropna()
         vvix_proxy   = vix_log_rets.rolling(self.VVIX_WINDOW, min_periods=10).std().dropna()
         if len(vvix_proxy) < 30:
+            duration = time.perf_counter() - start_time
+            _logger.info(
+                "VolOfVolTimingStrategy analyze completed - insufficient VVIX data",
+                extra={"symbol": symbol, "duration_s": duration, "signal_generated": False},
+            )
             return None
 
         current_vvix = float(vvix_proxy.iloc[-1])
@@ -95,13 +112,23 @@ class VolOfVolTimingStrategy(AbstractStrategy):
             side = "sell"
             conf = min(0.63 + (percentile - self.HIGH_PCTILE) / 100.0 * 1.5, 0.88)
         else:
+            duration = time.perf_counter() - start_time
+            _logger.info(
+                "VolOfVolTimingStrategy analyze completed - no regime signal",
+                extra={"symbol": symbol, "duration_s": duration, "signal_generated": False},
+            )
             return None
 
         if conf < self.confidence_threshold:
+            duration = time.perf_counter() - start_time
+            _logger.info(
+                "VolOfVolTimingStrategy analyze completed - confidence below threshold",
+                extra={"symbol": symbol, "duration_s": duration, "signal_generated": False, "confidence": conf},
+            )
             return None
 
         spot = float(data["close"].iloc[-1]) if len(data) > 0 and "close" in data.columns else 0.0
-        return Signal(
+        signal = Signal(
             symbol=symbol,
             side=side,
             confidence=conf,
@@ -116,13 +143,35 @@ class VolOfVolTimingStrategy(AbstractStrategy):
                 "vix_ticker":  _VIX_PROXY_TICKER,
             },
         )
+        signal_generated = True
+        duration = time.perf_counter() - start_time
+        _logger.info(
+            "VolOfVolTimingStrategy analyze completed",
+            extra={
+                "symbol": symbol,
+                "duration_s": duration,
+                "signal_generated": signal_generated,
+                "side": side,
+                "confidence": conf,
+                "percentile": percentile,
+                "vvix_proxy": current_vvix,
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.perf_counter()
         if "close" not in df.columns or len(df) < self.MIN_BARS:
-            return BacktestSignals(
+            result = BacktestSignals(
                 entries=pd.Series(False, index=df.index),
                 exits=pd.Series(False, index=df.index),
             )
+            _logger.info(
+                "VolOfVolTimingStrategy backtest_signals completed - insufficient data",
+                extra={"duration_s": time.perf_counter() - start_time, "entries": 0, "short_entries": 0},
+            )
+            return result
+
         close    = df["close"].astype(float)
         log_rets = np.log(close).diff()
 
@@ -134,4 +183,18 @@ class VolOfVolTimingStrategy(AbstractStrategy):
         entries       = (pctile.shift(1) <= self.LOW_PCTILE).fillna(False)
         short_entries = (pctile.shift(1) >= self.HIGH_PCTILE).fillna(False)
         exits         = ((pctile.shift(1) > 40) & (pctile.shift(1) < 60)).fillna(False)
-        return BacktestSignals(entries=entries, exits=exits, short_entries=short_entries)
+
+        result = BacktestSignals(entries=entries, exits=exits, short_entries=short_entries)
+
+        entry_count = int(entries.sum())
+        short_entry_count = int(short_entries.sum())
+        _logger.info(
+            "VolOfVolTimingStrategy backtest_signals completed",
+            extra={
+                "duration_s": time.perf_counter() - start_time,
+                "entries": entry_count,
+                "short_entries": short_entry_count,
+                "exits": int(exits.sum()),
+            },
+        )
+        return result
