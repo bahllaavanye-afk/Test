@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import time
+import unittest
 from itertools import combinations
 from typing import List
 
@@ -190,8 +191,6 @@ class CPCV:
         signals = signals.loc[common_idx]
         returns = returns.loc[common_idx]
 
-        signal_count = int(len(signals))
-
         sharpes: list[float] = []
         total_pnl = 0.0
 
@@ -222,15 +221,69 @@ class CPCV:
                 "is_overfit": dsr < 0.8 * mean_sr,
             }
 
-        exec_time = time.time() - start_time
-
-        logger.info(
-            "CPCV validation completed",
-            extra={
-                "signal_count": signal_count,
-                "execution_time_sec": exec_time,
-                "total_pnl": total_pnl,
-            },
+        logger.debug(
+            "CPCV validation completed in %.3f seconds",
+            time.time() - start_time,
         )
-
         return result
+
+
+class TestCPCV(unittest.TestCase):
+    """Edge‑case unit tests for the CPCV implementation."""
+
+    def test_split_raises_on_too_short_index(self):
+        """When the index length is smaller than n_splits, split should raise."""
+        index = pd.date_range(start="2020-01-01", periods=3, freq="D")
+        cpcv = CPCV(n_splits=5, purge_days=0, embargo_days=0)
+        with self.assertRaises(ValueError):
+            # Force evaluation of the generator
+            list(cpcv.split(index))
+
+    def test_split_purge_and_embargo_boundaries(self):
+        """Verify that purge and embargo gaps are correctly excluded."""
+        index = pd.date_range(start="2020-01-01", periods=10, freq="D")
+        cpcv = CPCV(n_splits=2, purge_days=1, embargo_days=1)
+        splits = list(cpcv.split(index))
+        # With 2 folds each of size 5, first test fold is positions 0‑4,
+        # second test fold is positions 5‑9.
+        train0, test0 = splits[0]
+        train1, test1 = splits[1]
+
+        # For first test fold, purge excludes position -1 (none) and embargo excludes position 5
+        self.assertNotIn(5, train0)
+        # For second test fold, purge excludes position 4 and embargo excludes position 10 (none)
+        self.assertNotIn(4, train1)
+
+        # Ensure all remaining indices are present
+        expected_train0 = [5, 6, 7, 8, 9]
+        expected_train1 = [0, 1, 2, 3, 4]
+        self.assertCountEqual(train0, expected_train0)
+        self.assertCountEqual(train1, expected_train1)
+
+    def test_deflated_sharpe_empty_and_single(self):
+        """Edge cases for deflated_sharpe with empty and singleton inputs."""
+        cpcv = CPCV()
+        # Empty list should return 0.0
+        self.assertEqual(cpcv.deflated_sharpe([], n_trials=10), 0.0)
+
+        # Single element should return that element unchanged (no variance)
+        self.assertAlmostEqual(cpcv.deflated_sharpe([1.5], n_trials=1), 1.5)
+
+    def test_validate_with_non_overlapping_indices(self):
+        """When signals and returns have no overlap, validate should return empty results."""
+        dates_sig = pd.date_range(start="2020-01-01", periods=5, freq="D")
+        dates_ret = pd.date_range(start="2020-02-01", periods=5, freq="D")
+        signals = pd.Series([1, -1, 0, 1, -1], index=dates_sig)
+        returns = pd.Series([0.01, -0.02, 0.015, -0.005, 0.02], index=dates_ret)
+
+        cpcv = CPCV(n_splits=2, purge_days=0, embargo_days=0)
+        result = cpcv.validate(signals, returns)
+
+        self.assertEqual(result["fold_sharpes"], [])
+        self.assertTrue(result["is_overfit"])
+        self.assertEqual(result["mean_sharpe"], 0.0)
+        self.assertEqual(result["deflated_sharpe"], 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
