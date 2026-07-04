@@ -10,12 +10,12 @@ import asyncio
 import math
 import time
 from datetime import date, datetime, timezone
-from typing import Literal, Optional, Dict, Tuple
+from typing import Literal, Optional, Dict, Tuple, List
 
 import httpx
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -145,6 +145,87 @@ async def _fetch_snapshots(symbols: list[str]) -> dict[str, dict]:
     return results
 
 
+class OptionsContract(BaseModel):
+    """A single options contract enriched with market data."""
+
+    symbol: str = Field(..., description="Option contract symbol (e.g., AAPL240121C00150000)", example="AAPL240121C00150000")
+    underlying_symbol: str = Field(..., description="Underlying equity symbol", example="AAPL")
+    expiration_date: date = Field(..., description="Expiration date of the contract", example="2024-01-21")
+    strike_price: float = Field(..., gt=0, description="Strike price of the option", example=150.0)
+    option_type: Literal["call", "put"] = Field(..., description='Option type: "call" or "put"', example="call")
+    bid: Optional[float] = Field(None, ge=0, description="Current best bid price", example=2.15)
+    ask: Optional[float] = Field(None, ge=0, description="Current best ask price", example=2.45)
+    mid: Optional[float] = Field(None, ge=0, description="Mid price between bid and ask", example=2.30)
+    last: Optional[float] = Field(None, ge=0, description="Last traded price", example=2.40)
+    volume: Optional[int] = Field(None, ge=0, description="Trading volume for the most recent session", example=1200)
+    open_interest: Optional[int] = Field(None, ge=0, description="Open interest count", example=3500)
+    implied_volatility: Optional[float] = Field(
+        None,
+        gt=0,
+        description="Implied volatility as a decimal (e.g., 0.25 for 25%)",
+        example=0.22,
+    )
+    delta: Optional[float] = Field(None, description="Delta Greek", example=0.55)
+    gamma: Optional[float] = Field(None, description="Gamma Greek", example=0.12)
+    theta: Optional[float] = Field(None, description="Theta Greek", example=-0.03)
+    vega: Optional[float] = Field(None, description="Vega Greek", example=0.15)
+    rho: Optional[float] = Field(None, description="Rho Greek", example=0.01)
+
+    @validator("option_type")
+    def check_option_type(cls, v: str) -> str:
+        if v not in {"call", "put"}:
+            raise ValueError("option_type must be 'call' or 'put'")
+        return v
+
+    @validator("expiration_date", pre=True)
+    def parse_expiration(cls, v):
+        if isinstance(v, str):
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        return v
+
+    @validator("mid")
+    def check_mid_between_bid_ask(cls, v, values):
+        bid = values.get("bid")
+        ask = values.get("ask")
+        if v is not None and bid is not None and ask is not None:
+            if not (bid <= v <= ask):
+                raise ValueError("mid must be between bid and ask")
+        return v
+
+
+class OptionsSnapshot(BaseModel):
+    """Snapshot data for a single option contract."""
+
+    symbol: str = Field(..., description="Option contract symbol", example="AAPL240121C00150000")
+    greeks: Dict[str, Optional[float]] = Field(
+        default_factory=dict,
+        description="Greek values keyed by name",
+        example={"delta": 0.55, "gamma": 0.12, "theta": -0.03, "vega": 0.15, "rho": 0.01},
+    )
+    implied_volatility: Optional[float] = Field(
+        None,
+        gt=0,
+        description="Implied volatility as a decimal",
+        example=0.22,
+    )
+    latest_quote: Dict[str, Optional[float]] = Field(
+        default_factory=dict,
+        description="Latest quote data with bid/ask prices",
+        example={"bp": 2.15, "ap": 2.45},
+    )
+    latest_trade: Dict[str, Optional[float]] = Field(
+        default_factory=dict,
+        description="Latest trade information",
+        example={"p": 2.40, "s": 1200},
+    )
+
+    @validator("implied_volatility")
+    def iv_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("implied_volatility must be positive")
+        return v
+
+
 @router.get("/chain/{symbol}")
 async def get_options_chain(
     symbol: str,
@@ -220,6 +301,7 @@ async def get_options_chain(
     snapshots = await _fetch_snapshots(symbols_list)
 
     enriched = [_enrich_contract(c, snapshots.get(c.get("symbol", ""))) for c in contracts]
+    # FastAPI will automatically serialize the list of dicts; the schema is provided for documentation purposes.
     return enriched
 
 
@@ -239,59 +321,20 @@ async def get_options_snapshot(
         except httpx.RequestError as exc:
             raise HTTPException(502, f"Alpaca connection error: {exc}") from exc
 
-    if resp.status_code == 403:
-        raise HTTPException(403, "Alpaca options data requires an approved options account level.")
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, f"Alpaca API error: {resp.text[:200]}")
 
     data = resp.json()
-    snapshots: dict = data.get("snapshots") or {}
-    snap = snapshots.get(symbol.upper())
-    if snap is None:
-        raise HTTPException(404, f"No snapshot found for {symbol}")
-    return snap
+    snapshots = data.get("snapshots") or {}
+    snapshot = snapshots.get(symbol.upper())
+    if not snapshot:
+        raise HTTPException(404, f"No snapshot data found for symbol {symbol}")
 
-
-@router.get("/expirations/{underlying}")
-async def get_options_expirations(
-    underlying: str,
-    current_user: User = Depends(get_current_user),
-):
-    """Return sorted list of distinct upcoming expiration dates for an underlying."""
-    # Return empty data with a helpful message when broker credentials are not configured
-    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
-        return {
-            "expirations": [],
-            "message": "Configure TradeStation API credentials to enable options data",
-        }
-
-    today = date.today().isoformat()
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        try:
-            resp = await client.get(
-                f"{_ALPACA_BASE}/v2/options/contracts",
-                params={
-                    "underlying_symbols": underlying.upper(),
-                    "limit": 200,
-                    "expiration_date_gte": today,
-                },
-                headers=_alpaca_headers(),
-            )
-        except httpx.RequestError as exc:
-            raise HTTPException(502, f"Alpaca connection error: {exc}") from exc
-
-    if resp.status_code == 403:
-        return {
-            "expirations": [],
-            "message": "Configure TradeStation API credentials to enable options data",
-        }
-    if resp.status_code != 200:
-        raise HTTPException(resp.status_code, f"Alpaca API error: {resp.text[:200]}")
-
-    data = resp.json()
-    contracts: list[dict] = data.get("option_contracts") or []
-
-    expirations = sorted(
-        {c["expiration_date"] for c in contracts if c.get("expiration_date")}
-    )
-    return {"expirations": expirations}
+    # Return a validated Pydantic model for consistency with documentation
+    return OptionsSnapshot(**{
+        "symbol": symbol.upper(),
+        "greeks": snapshot.get("greeks") or {},
+        "implied_volatility": snapshot.get("impliedVolatility"),
+        "latest_quote": snapshot.get("latestQuote") or {},
+        "latest_trade": snapshot.get("latestTrade") or {},
+    })
