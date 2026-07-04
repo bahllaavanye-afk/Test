@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import functools
 from datetime import date, datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import httpx
 import pandas as pd
@@ -26,7 +26,10 @@ ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # simple in‑memory cache for benchmark results keyed by (start, end)
-_benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
+_benchmark_cache: dict[Tuple[date, date], dict[str, List[dict]]] = {}
+
+# simple in‑memory cache for per‑ticker series keyed by (ticker, start, end)
+_ticker_series_cache: dict[Tuple[str, date, date], pd.Series] = {}
 
 
 @functools.lru_cache(maxsize=1)
@@ -45,6 +48,11 @@ async def _fetch_ticker_bars(
     Fetch daily close prices for a single ticker from Alpaca.
     Returns a pd.Series indexed by date, or empty Series on failure.
     """
+    cache_key = (ticker.upper(), start, end)
+    if cached_series := _ticker_series_cache.get(cache_key):
+        # Return a copy to protect the cached object from external mutation
+        return cached_series.copy()
+
     sym = ticker.upper()
     start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
     end_str = datetime.combine(end, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -69,6 +77,9 @@ async def _fetch_ticker_bars(
         series = pd.Series(closes, index=dates, name=ticker)
         # De‑duplicate any same‑day entries (take last)
         series = series[~series.index.duplicated(keep="last")]
+
+        # Cache the result for future calls with identical parameters
+        _ticker_series_cache[cache_key] = series.copy()
         return series
 
     except Exception as exc:  # pragma: no cover
@@ -116,14 +127,15 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     if len(aw_tickers) >= 3:
         aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
         aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
-        weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
-        weights = weights / weights.sum()  # renormalize if any tickers missing
-        monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
-        aw_ret = (monthly_returns * weights).sum(axis=1)
-        aw_equity = (1 + aw_ret).cumprod() * 100
-        result["ALL_WEATHER"] = [
-            {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
-        ]
+        if not aw_prices.empty:
+            weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
+            weights = weights / weights.sum()  # renormalize if any tickers missing
+            monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
+            aw_ret = (monthly_returns * weights).sum(axis=1)
+            aw_equity = (1 + aw_ret).cumprod() * 100
+            result["ALL_WEATHER"] = [
+                {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
+            ]
 
     # Cache the result for future identical requests
     _benchmark_cache[cache_key] = {k: v.copy() for k, v in result.items()}
