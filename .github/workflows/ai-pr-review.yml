@@ -45,4 +45,8 @@ jobs:
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          # PR review is the one routine task worth the mid tier (~5¢/review, and
+          # only when the free cascade is down). Everything else defaults to the
+          # cheaper Haiku backstop in llm_common.
+          CLAUDE_BACKSTOP_MODEL: claude-sonnet-4-6
         run: python .github/scripts/ai_pr_review.py
