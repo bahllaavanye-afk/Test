@@ -73,8 +73,12 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "strategy_logic on test/unit/test_security.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/vol_term_structure.py: success \u2014 tests green",
+    "strategy_logic on ml/models/base_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/advanced_indicators.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-04T22:27:54.610922+00:00",
   "total": 26
 }
