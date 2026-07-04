@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      models: read   # GitHub Models inference was 401ing without this
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,7 +79,12 @@ jobs:
         run: python .github/scripts/slack_bootstrap.py || echo "bootstrap had non-fatal errors"
 
       - name: Employee team discussion
+        id: team
         if: env.SKIP != '1'
+        # No `|| echo` swallow here anymore: that pattern hid a 4-day total Slack
+        # blackout (every post rejected message_limit_exceeded) behind green runs.
+        # continue-on-error lets the fallback-alarm step below react to failure.
+        continue-on-error: true
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ANTHROPIC_API_KEY: "disabled"
@@ -87,4 +93,27 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets' }}
-        run: python .github/scripts/slack_agent_team.py || echo "agent team had non-fatal errors"
+        run: python .github/scripts/slack_agent_team.py
+
+      - name: Fallback alarm — Slack pipeline is failing
+        # Slack itself is the alert channel, so a Slack outage is invisible from
+        # Slack. This raises a durable, Slack-independent alarm (GitHub issue) and
+        # turns the run red instead of silently passing.
+        if: env.SKIP != '1' && steps.team.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create slack-outage --color D93F0B \
+            --description "Slack posting pipeline is down" 2>/dev/null || true
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body="Slack agent-team run failed — posts are likely not reaching the workspace (quota \`message_limit_exceeded\`, dead token, or a crash). Check the run log: $run_url"
+          existing=$(gh issue list --label slack-outage --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -z "$existing" ]; then
+            gh issue create --title "Slack pipeline failing — bot posts not reaching the workspace" \
+              --label slack-outage --body "$body"
+          else
+            gh issue comment "$existing" --body "$body"
+          fi
+          echo "::error::Slack pipeline failing — fallback issue raised/updated"
+          exit 1

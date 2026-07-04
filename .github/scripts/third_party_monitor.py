@@ -24,7 +24,10 @@ ALPACA_KEY  = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SEC  = os.environ.get("ALPACA_SECRET_KEY", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-STATE_FILE  = Path("/tmp/qe_third_party_state.json")
+# Lives in the repo checkout and is persisted across CI runs by actions/cache
+# (see third-party-monitor.yml). /tmp was wiped every run, so transition-based
+# alerting re-paged the same outage every 30 minutes forever.
+STATE_FILE  = Path(os.environ.get("THIRD_PARTY_STATE_FILE", ".github/state/third_party_state.json"))
 CHANNEL     = "#infra-alerts"
 TIMEOUT     = 12  # seconds per check
 
@@ -52,7 +55,9 @@ SERVICES = [
         "name": "Binance REST API",
         "url": "https://api.binance.com/api/v3/ping",
         "method": "GET",
-        "expected_status": [200],
+        # 451 = permanent geo-block from GitHub's US runners, not an outage — it
+        # paged CRITICAL every cycle for weeks. The API answering 451 means it's up.
+        "expected_status": [200, 451],
         "headers": {},
         "critical": True,
         "slack_channel": "#desk-crypto",
@@ -61,7 +66,7 @@ SERVICES = [
         "name": "Binance Futures API",
         "url": "https://fapi.binance.com/fapi/v1/ping",
         "method": "GET",
-        "expected_status": [200],
+        "expected_status": [200, 451],  # 451 = geo-block from runners (see above)
         "headers": {},
         "critical": True,
         "slack_channel": "#desk-crypto",
@@ -154,6 +159,7 @@ def load_state() -> dict:
 
 
 def save_state(state: dict) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 

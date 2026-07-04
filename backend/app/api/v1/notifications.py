@@ -131,7 +131,9 @@ async def post_employee_report(current_user: User = Depends(get_current_user)):
     try:
         import json
         from pathlib import Path
-        report_path = Path("/home/user/Test/qa_health_report.json")
+        # Relative to the backend working dir (env-overridable) — this was a
+        # hardcoded dev-machine absolute path that could never exist on Render.
+        report_path = Path(os.getenv("QA_HEALTH_REPORT_PATH", "qa_health_report.json"))
         if report_path.exists():
             rpt = json.loads(report_path.read_text())
             passed = rpt.get("tests_passed", 0)

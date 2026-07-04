@@ -36,6 +36,18 @@ jobs:
       - name: Install dependencies
         run: pip install httpx --quiet
 
+      # The outage/recovery dedup state used to live in /tmp on the runner, which
+      # is wiped every run — so "alert only on state transition" never suppressed
+      # anything and the same CRITICAL page repeated every 30 minutes. Persist the
+      # state file across runs instead (rolling cache key = most recent wins).
+      - name: Restore alert-dedup state
+        uses: actions/cache@v4
+        with:
+          path: .github/state/third_party_state.json
+          key: third-party-state-${{ github.run_id }}
+          restore-keys: |
+            third-party-state-
+
       - name: Run health checks
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
