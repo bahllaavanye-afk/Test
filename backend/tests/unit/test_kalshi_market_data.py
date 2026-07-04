@@ -62,17 +62,23 @@ _SAMPLE = {
 
 
 def _patch(monkeypatch, payload, status=200):
-    monkeypatch.setattr(md.httpx, "AsyncClient", lambda *a, **k: _FakeClient(_FakeResp(payload, status)))
+    monkeypatch.setattr(
+        md.httpx,
+        "AsyncClient",
+        lambda *a, **k: _FakeClient(_FakeResp(payload, status)),
+    )
 
 
 @pytest.mark.asyncio
 async def test_kalshi_normalizes_dollar_fields(monkeypatch):
     _patch(monkeypatch, _SAMPLE)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    out = await md.get_kalshi_markets(
+        filter="", sort="volume", limit=50, current_user=None
+    )
     assert len(out) == 2
     top = out[0]  # sorted by volume desc → POTUS (1500) first
     assert top["id"] == "POTUS-2028"
-    assert top["yes_price"] == 0.42                  # last_price_dollars, already 0–1
+    assert top["yes_price"] == 0.42  # last_price_dollars, already 0–1
     assert top["no_price"] == round(1 - 0.42, 4)
     assert top["volume_24h"] == 1500.0
     assert top["liquidity"] == 9000.0
@@ -83,23 +89,29 @@ async def test_kalshi_normalizes_dollar_fields(monkeypatch):
 @pytest.mark.asyncio
 async def test_kalshi_uses_bidask_mid_when_no_last(monkeypatch):
     _patch(monkeypatch, _SAMPLE)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    out = await md.get_kalshi_markets(
+        filter="", sort="volume", limit=50, current_user=None
+    )
     btc = next(m for m in out if m["id"] == "BTC-100K")
-    assert btc["yes_price"] == 0.61                  # (0.60 + 0.62) / 2
+    assert btc["yes_price"] == 0.61  # (0.60 + 0.62) / 2
     assert btc["category"] == "crypto"
 
 
 @pytest.mark.asyncio
 async def test_kalshi_filter_matches_title(monkeypatch):
     _patch(monkeypatch, _SAMPLE)
-    out = await md.get_kalshi_markets(filter="bitcoin", sort="volume", limit=50, current_user=None)
+    out = await md.get_kalshi_markets(
+        filter="bitcoin", sort="volume", limit=50, current_user=None
+    )
     assert len(out) == 1 and out[0]["id"] == "BTC-100K"
 
 
 @pytest.mark.asyncio
 async def test_kalshi_non_200_returns_empty(monkeypatch):
     _patch(monkeypatch, {}, status=503)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    out = await md.get_kalshi_markets(
+        filter="", sort="volume", limit=50, current_user=None
+    )
     assert out == []
 
 
@@ -107,6 +119,44 @@ async def test_kalshi_non_200_returns_empty(monkeypatch):
 async def test_kalshi_upstream_error_returns_empty(monkeypatch):
     def _boom(*a, **k):
         raise RuntimeError("network down")
+
     monkeypatch.setattr(md.httpx, "AsyncClient", _boom)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    out = await md.get_kalshi_markets(
+        filter="", sort="volume", limit=50, current_user=None
+    )
     assert out == []
+
+
+# Edge‑case tests -----------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_kalshi_none_inputs(monkeypatch):
+    """Ensure the function gracefully handles None for optional parameters."""
+    _patch(monkeypatch, _SAMPLE)
+    out = await md.get_kalshi_markets(
+        filter=None, sort=None, limit=None, current_user=None
+    )
+    assert isinstance(out, list)
+    # With the sample data we expect two markets to be returned.
+    assert len(out) == 2
+
+
+@pytest.mark.asyncio
+async def test_kalshi_empty_market_list(monkeypatch):
+    """An empty markets list from the upstream should result in an empty output."""
+    _patch(monkeypatch, {"markets": []})
+    out = await md.get_kalshi_markets(
+        filter="", sort="volume", limit=50, current_user=None
+    )
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_kalshi_limit_one_off_by_one(monkeypatch):
+    """When limit is smaller than the number of markets, only the top‑sorted market is returned."""
+    _patch(monkeypatch, _SAMPLE)
+    out = await md.get_kalshi_markets(
+        filter="", sort="volume", limit=1, current_user=None
+    )
+    assert len(out) == 1
+    assert out[0]["id"] == "POTUS-2028"
