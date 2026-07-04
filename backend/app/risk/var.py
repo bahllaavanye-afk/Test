@@ -132,3 +132,45 @@ def historical_var(
         },
     )
     return result
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case validation
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    import unittest
+
+    class TestHistoricalVarEdgeCases(unittest.TestCase):
+        def test_insufficient_data_defaults(self):
+            """When fewer than 10 observations are provided, the function should return the conservative default."""
+            returns = [0.01, -0.02, 0.005, 0.003, -0.001]  # 5 observations
+            portfolio = 1_000_000
+            result = historical_var(returns, portfolio)
+            self.assertEqual(result.method, "default_insufficient_data")
+            self.assertEqual(result.n_observations, len(returns))
+            self.assertAlmostEqual(result.var_95_usd, portfolio * 0.02, places=2)
+            self.assertAlmostEqual(result.var_99_usd, portfolio * 0.03, places=2)
+
+        def test_historical_all_positive_returns(self):
+            """With all positive returns the historical VaR should be zero (no loss)."""
+            returns = [0.01, 0.015, 0.02, 0.005, 0.012, 0.018, 0.011, 0.009, 0.013, 0.017]
+            portfolio = 500_000
+            result = historical_var(returns, portfolio, method="historical")
+            self.assertEqual(result.var_95, 0)
+            self.assertEqual(result.var_99, 0)
+            self.assertEqual(result.var_95_usd, 0)
+            self.assertEqual(result.var_99_usd, 0)
+
+        def test_parametric_zero_variance(self):
+            """When returns have zero variance the parametric VaR should be zero regardless of the mean."""
+            returns = [0.01] * 20  # identical returns → sigma = 0
+            portfolio = 250_000
+            result = historical_var(returns, portfolio, method="parametric")
+            self.assertEqual(result.var_95, 0)
+            self.assertEqual(result.var_99, 0)
+            self.assertEqual(result.cvar_95, 0)
+            self.assertEqual(result.cvar_99, 0)
+            self.assertEqual(result.var_95_usd, 0)
+            self.assertEqual(result.var_99_usd, 0)
+
+    unittest.main(argv=["first-arg-is-ignored"], exit=False)
