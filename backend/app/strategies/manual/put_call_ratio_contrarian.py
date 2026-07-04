@@ -8,9 +8,13 @@ When ratio drops to extreme greed levels (< 0.5), go short.
 Data source: CBOE daily equity put/call ratio (free, public).
 Falls back to a synthetic proxy using VIX level when P/C data unavailable.
 """
+import logging
+import time
 import numpy as np
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+logger = logging.getLogger(__name__)
 
 
 class PutCallRatioContrarianStrategy(AbstractStrategy):
@@ -31,13 +35,28 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
         self.fear_threshold = p.get("fear_threshold", self.FEAR_THRESHOLD)
         self.greed_threshold = p.get("greed_threshold", self.GREED_THRESHOLD)
         self.smoothing = p.get("smoothing", self.SMOOTHING)
+        # runtime metrics
+        self._signal_count = 0
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         """
         Expects 'put_call_ratio' column (or 'vix_close' as fallback).
         For backtesting / live: data must include daily PCR.
         """
+        start_time = time.perf_counter()
+
         if "close" not in data.columns or len(data) < self.smoothing + 2:
+            exec_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "No signal generated (insufficient data)",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "signal_count": self._signal_count,
+                    "execution_time_ms": exec_ms,
+                    "pnl": None,
+                },
+            )
             return None
 
         if "put_call_ratio" in data.columns:
@@ -54,17 +73,40 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
             pcr_series = 0.4 + (rv.clip(10, 40) - 10) / 30.0
 
         if len(pcr_series) < self.smoothing + 1:
+            exec_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "No signal generated (insufficient PCR length)",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "signal_count": self._signal_count,
+                    "execution_time_ms": exec_ms,
+                    "pnl": None,
+                },
+            )
             return None
 
         pcr_smooth = pcr_series.rolling(self.smoothing).mean()
         current_pcr = float(pcr_smooth.iloc[-1])
 
         if np.isnan(current_pcr):
+            exec_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "No signal generated (NaN PCR)",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "signal_count": self._signal_count,
+                    "execution_time_ms": exec_ms,
+                    "pnl": None,
+                },
+            )
             return None
 
+        signal = None
         if current_pcr > self.fear_threshold:
             confidence = min(0.85, 0.60 + (current_pcr - self.fear_threshold) * 0.5)
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="buy",
                 confidence=confidence,
@@ -75,7 +117,7 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
             )
         elif current_pcr < self.greed_threshold:
             confidence = min(0.85, 0.60 + (self.greed_threshold - current_pcr) * 0.8)
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="sell",
                 confidence=confidence,
@@ -84,9 +126,42 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata={"pcr": round(current_pcr, 3), "signal": "extreme_greed"},
             )
-        return None
+
+        exec_ms = (time.perf_counter() - start_time) * 1000
+
+        if signal:
+            self._signal_count += 1
+            logger.info(
+                "Signal generated",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "side": signal.side,
+                    "confidence": signal.confidence,
+                    "pcr": round(current_pcr, 3),
+                    "signal_type": signal.metadata.get("signal"),
+                    "signal_count": self._signal_count,
+                    "execution_time_ms": exec_ms,
+                    "pnl": None,
+                },
+            )
+        else:
+            logger.info(
+                "No signal generated (thresholds not met)",
+                extra={
+                    "strategy": self.name,
+                    "symbol": symbol,
+                    "signal_count": self._signal_count,
+                    "execution_time_ms": exec_ms,
+                    "pnl": None,
+                },
+            )
+
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.perf_counter()
+
         if "put_call_ratio" in df.columns:
             pcr = df["put_call_ratio"]
         elif "vix_close" in df.columns:
@@ -104,9 +179,24 @@ class PutCallRatioContrarianStrategy(AbstractStrategy):
         short_entries = pcr_smooth < self.greed_threshold  # extreme greed → short
         short_exits = pcr_smooth > (self.greed_threshold * 1.1)
 
-        return BacktestSignals(
+        backtest = BacktestSignals(
             entries=entries.fillna(False),
             exits=exits.fillna(False),
             short_entries=short_entries.fillna(False),
             short_exits=short_exits.fillna(False),
         )
+
+        exec_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Backtest signal generation completed",
+            extra={
+                "strategy": self.name,
+                "entries_count": int(entries.sum()),
+                "exits_count": int(exits.sum()),
+                "short_entries_count": int(short_entries.sum()),
+                "short_exits_count": int(short_exits.sum()),
+                "execution_time_ms": exec_ms,
+                "pnl": None,
+            },
+        )
+        return backtest
