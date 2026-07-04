@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Sequence
 
 import numpy as np
 
@@ -187,3 +187,78 @@ class AbstractModel(ABC):
             if logits.shape[-1] == 1 or logits.dim() == 1:
                 return _torch.sigmoid(logits).numpy().flatten()
             return _torch.softmax(logits, dim=-1)[:, 1].numpy()
+
+    # ------------------------------------------------------------------
+    # Signal generation utilities
+    # ------------------------------------------------------------------
+    def generate_signal(
+        self,
+        x: Any,
+        entry_thresh: float = 0.6,
+        exit_thresh: float = 0.4,
+        confirmation_window: int = 3,
+        confirmation_std: float = 0.02,
+    ) -> np.ndarray:
+        """
+        Produce trading signals (1 for long, -1 for short, 0 for flat) based on model
+        probabilities with tightened entry conditions and confirmation filters.
+
+        The logic follows:
+        * **Entry** – probability > ``entry_thresh`` *and* the recent ``confirmation_window``
+          probabilities are consistently above the threshold with limited volatility
+          (standard deviation < ``confirmation_std``).
+        * **Exit** – probability falls below ``exit_thresh`` *or* the confirmation filter
+          fails (high volatility or probability crossing back under the entry threshold).
+
+        Parameters
+        ----------
+        x : Any
+            Input data passed to ``predict_proba``.
+        entry_thresh : float, default 0.6
+            Minimum probability required to consider opening a position.
+        exit_thresh : float, default 0.4
+            Probability below which an existing position is closed.
+        confirmation_window : int, default 3
+            Number of recent observations used for confirmation.
+        confirmation_std : float, default 0.02
+            Maximum allowed standard deviation within the confirmation window.
+
+        Returns
+        -------
+        np.ndarray
+            Array of signals aligned with the input order: 1 (long), -1 (short), 0 (flat).
+        """
+        probs = self.predict_proba(x)
+        if probs.ndim != 1:
+            raise ValueError("predict_proba must return a 1‑D array of probabilities")
+        signals = np.zeros_like(probs, dtype=int)
+
+        # Helper: confirm that a slice satisfies entry criteria
+        def _confirm(slice_: np.ndarray) -> bool:
+            return slice_.mean() > entry_thresh and slice_.std() <= confirmation_std
+
+        for idx in range(len(probs)):
+            # Entry condition
+            if probs[idx] > entry_thresh:
+                start = max(0, idx - confirmation_window + 1)
+                window = probs[start : idx + 1]
+                if len(window) == confirmation_window and _confirm(window):
+                    signals[idx] = 1  # long signal (could be extended to short logic)
+                    continue
+
+            # Exit condition for an open position
+            if signals[idx - 1] != 0 if idx > 0 else False:
+                # if probability drops below exit threshold or confirmation fails
+                if probs[idx] < exit_thresh:
+                    signals[idx] = 0
+                else:
+                    # re‑evaluate confirmation; lose position if volatility spikes
+                    start = max(0, idx - confirmation_window + 1)
+                    window = probs[start : idx + 1]
+                    if len(window) == confirmation_window and not _confirm(window):
+                        signals[idx] = 0
+                    else:
+                        # maintain previous signal
+                        signals[idx] = signals[idx - 1]
+
+        return signals
