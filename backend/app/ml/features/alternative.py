@@ -8,10 +8,12 @@ BinanceFundingRateFeatures:
 
 All API calls are async. For sync contexts, use compute_features_sync().
 """
+
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import List
 
 import httpx
 import numpy as np
@@ -22,14 +24,22 @@ _FUTURES_DATA_BASE = "https://fapi.binance.com"
 
 
 def _to_binance_symbol(symbol: str) -> str:
-    """Convert 'BTC-USD' or 'BTC/USDT' to 'BTCUSDT'."""
+    """Convert a generic symbol (e.g., ``BTC-USD`` or ``BTC/USDT``) to Binance's format.
+
+    Args:
+        symbol: The input trading symbol.
+
+    Returns:
+        A string with hyphens and slashes removed and upper‑cased, e.g. ``BTCUSDT``.
+    """
     return symbol.replace("-", "").replace("/", "").upper()
 
 
 class BinanceFundingRateFeatures:
     """
-    Pull Binance Futures funding rates + open interest.
-    Binance public endpoints — no API key required.
+    Pull Binance Futures funding rates and open interest.
+
+    Binance public endpoints are used; no API key or authentication is required.
     """
 
     async def get_funding_rate_history(
@@ -38,10 +48,17 @@ class BinanceFundingRateFeatures:
         limit: int = 500,
     ) -> pd.DataFrame:
         """
-        GET /fapi/v1/fundingRate
+        Retrieve historical funding rates for a given symbol.
 
-        Returns DataFrame with columns: [ts, funding_rate] sorted ascending.
-        Returns empty DataFrame on any error.
+        Calls the ``GET /fapi/v1/fundingRate`` endpoint.
+
+        Args:
+            symbol: Trading pair symbol (e.g., ``BTCUSDT``).
+            limit: Maximum number of rows to fetch (capped at 1000 by the API).
+
+        Returns:
+            A ``pandas.DataFrame`` with columns ``[ts, funding_rate]`` sorted
+            ascending by timestamp. Returns an empty ``DataFrame`` on any error.
         """
         bn_sym = _to_binance_symbol(symbol)
         url = f"{_FAPI_BASE}/fapi/v1/fundingRate"
@@ -72,11 +89,18 @@ class BinanceFundingRateFeatures:
         limit: int = 500,
     ) -> pd.DataFrame:
         """
-        GET /futures/data/openInterestHist
+        Retrieve open‑interest history for a given symbol.
 
-        Returns DataFrame with columns: [ts, open_interest, open_interest_value].
-        Returns empty DataFrame on any error.
-        Valid periods: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d
+        Calls the ``GET /futures/data/openInterestHist`` endpoint.
+
+        Args:
+            symbol: Trading pair symbol (e.g., ``BTCUSDT``).
+            period: Aggregation period accepted by Binance (e.g., ``1d``).
+            limit: Maximum number of rows to fetch (capped at 500 by the API).
+
+        Returns:
+            A ``pandas.DataFrame`` with columns ``[ts, open_interest, open_interest_value]``
+            sorted ascending by timestamp. Returns an empty ``DataFrame`` on any error.
         """
         bn_sym = _to_binance_symbol(symbol)
         url = f"{_FUTURES_DATA_BASE}/futures/data/openInterestHist"
@@ -102,18 +126,28 @@ class BinanceFundingRateFeatures:
             return pd.DataFrame()
 
     async def compute_features_async(
-        self, symbol: str, df: pd.DataFrame
+        self,
+        symbol: str,
+        df: pd.DataFrame,
     ) -> pd.DataFrame:
         """
-        Add funding rate and open interest features to an OHLCV DataFrame.
+        Add funding‑rate and open‑interest features to an OHLCV ``DataFrame``.
 
-        df must have a DatetimeIndex (UTC). Adds columns:
-          funding_rate        — most recent funding rate (8h)
-          funding_rate_ma7    — 7-period MA of funding rate
-          oi_change_pct       — day-over-day OI % change
-          oi_momentum         — 7-day OI momentum (current / MA7 - 1)
+        The input ``df`` must have a ``DatetimeIndex`` (UTC). Four new columns are added:
 
-        Missing data → NaN (not filled with fake values).
+        - ``funding_rate`` – most recent 8‑hour funding rate.
+        - ``funding_rate_ma7`` – 7‑day moving average of the funding rate.
+        - ``oi_change_pct`` – day‑over‑day open‑interest percentage change.
+        - ``oi_momentum`` – 7‑day open‑interest momentum (current / MA7 - 1).
+
+        Missing data are left as ``NaN``; no imputation is performed.
+
+        Args:
+            symbol: Trading pair symbol (e.g., ``BTCUSDT``).
+            df: OHLCV ``DataFrame`` with a UTC ``DatetimeIndex``.
+
+        Returns:
+            A copy of ``df`` with the four alternative‑data columns appended.
         """
         df = df.copy()
         for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
@@ -169,12 +203,28 @@ class BinanceFundingRateFeatures:
         return df
 
     def compute_features(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
-        """Sync wrapper — runs the async version via asyncio."""
+        """
+        Synchronous wrapper that executes the asynchronous feature computation.
+
+        This method can be called from regular (non‑async) code. It attempts to
+        reuse an existing event loop when possible; otherwise it creates a new loop.
+        In case of any failure, the original ``df`` is returned with the feature
+        columns added but filled with ``NaN`` values.
+
+        Args:
+            symbol: Trading pair symbol (e.g., ``BTCUSDT``).
+            df: OHLCV ``DataFrame`` with a ``DatetimeIndex``.
+
+        Returns:
+            A ``DataFrame`` containing the original data plus the alternative‑data
+            columns (or ``NaN`` values if the computation failed).
+        """
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                # Already inside an event loop (e.g., FastAPI) — create a task
+                # Already inside an event loop (e.g., FastAPI) — run in a thread.
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
                         asyncio.run, self.compute_features_async(symbol, df)
@@ -189,7 +239,7 @@ class BinanceFundingRateFeatures:
             return df
 
 
-ALTERNATIVE_FEATURE_COLS = [
+ALTERNATIVE_FEATURE_COLS: List[str] = [
     "funding_rate",
     "funding_rate_ma7",
     "oi_change_pct",
@@ -201,8 +251,20 @@ _binance_features = BinanceFundingRateFeatures()
 
 def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
     """
-    Add Binance alternative data features for crypto symbols.
-    For non-crypto symbols, adds columns filled with NaN.
+    Append Binance alternative‑data features to a DataFrame.
+
+    If ``symbol`` appears to be a cryptocurrency (based on a simple keyword
+    heuristic), the function fetches funding‑rate and open‑interest data from
+    Binance and merges the resulting features. For non‑crypto symbols, the
+    expected feature columns are added but populated with ``NaN``.
+
+    Args:
+        df: Input ``DataFrame`` (typically OHLCV) to which the features will be added.
+        symbol: Trading symbol to identify whether to query Binance data.
+
+    Returns:
+        A new ``DataFrame`` containing the original columns plus the
+        alternative‑data columns.
     """
     is_crypto = any(
         kw in symbol.upper()
