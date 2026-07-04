@@ -64,7 +64,6 @@ jobs:
               const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: number});
 
               if (pr.state !== 'open') { core.info(`#${number}: not open`); continue; }
-              if (pr.draft) { core.info(`#${number}: still draft`); continue; }
               if (pr.base.ref !== 'main') { core.info(`#${number}: base ${pr.base.ref} != main`); continue; }
               const labels = pr.labels.map(l => l.name);
               if (!labels.includes(REQUIRED_LABEL)) { core.info(`#${number}: no '${REQUIRED_LABEL}' label`); continue; }
@@ -90,6 +89,23 @@ jobs:
               const {data: combined} = await github.rest.repos.getCombinedStatusForRef({owner, repo, ref: pr.head.sha});
               if (combined.state === 'failure' || combined.state === 'error') {
                 core.info(`#${number}: combined status ${combined.state}`); continue;
+              }
+
+              // The agent loops open DRAFT PRs; a draft that carries the label and
+              // is fully green has earned its merge — flip it to ready here, since
+              // no human is around to click the button. (Everything above already
+              // passed: label, checks, statuses, no requested changes.)
+              if (pr.draft) {
+                try {
+                  await github.graphql(
+                    `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { number } } }`,
+                    {id: pr.node_id},
+                  );
+                  core.notice(`#${number}: green labeled draft — marked ready for review`);
+                } catch (e) {
+                  core.warning(`#${number}: could not mark ready — ${e.message}`);
+                  continue;
+                }
               }
 
               try {

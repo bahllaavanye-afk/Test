@@ -505,14 +505,34 @@ function OrderPanel({ contract, underlying, onClose }: OrderPanelProps) {
 
   const contractVal = parseFloat(limitPrice || '0') * 100
 
+  const { data: accounts } = useQuery({
+    queryKey: ['accounts-options'],
+    queryFn: () => api.get('/accounts/').then(r => r.data),
+    staleTime: 60_000,
+  })
+
   async function handleSubmit() {
     setSubmitting(true)
     setResult(null)
     try {
-      await new Promise(r => setTimeout(r, 300))
-      setResult(`Order preview: ${side.toUpperCase()} ${qty}x ${contract.symbol} @ ${orderType === 'market' ? 'MKT' : '$' + limitPrice}`)
-    } catch {
-      setResult('Order submission failed.')
+      const accts: any[] = Array.isArray(accounts) ? accounts : []
+      const accountId = accts.find(a => a.is_active)?.id ?? accts[0]?.id
+      if (!accountId) {
+        setResult('No trading account connected — add one in Accounts first.')
+        return
+      }
+      const order = await api.post('/orders/', {
+        symbol: contract.symbol,
+        side,
+        order_type: orderType,
+        quantity: qty,
+        limit_price: orderType === 'limit' ? parseFloat(limitPrice) : undefined,
+        time_in_force: 'day',
+        account_id: accountId,
+      }).then(r => r.data)
+      setResult(`Order ${order.status ?? 'submitted'}: ${side.toUpperCase()} ${qty}x ${contract.symbol} @ ${orderType === 'market' ? 'MKT' : '$' + limitPrice} (id ${String(order.id).slice(0, 8)})`)
+    } catch (e: any) {
+      setResult(`Order submission failed: ${e?.response?.data?.detail ?? e?.message ?? 'unknown error'}`)
     } finally {
       setSubmitting(false)
     }

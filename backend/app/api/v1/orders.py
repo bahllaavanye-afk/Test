@@ -18,7 +18,8 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 class OrderCreate(BaseModel):
-    symbol: str = Field(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9:/._-]+$")
+    # max_length 24 fits OCC option symbols (root ≤6 + YYMMDD + C/P + 8-digit strike)
+    symbol: str = Field(..., min_length=1, max_length=24, pattern=r"^[A-Za-z0-9:/._-]+$")
     side: str = Field(..., pattern=r"^(buy|sell)$")
     order_type: str = Field("market", pattern=r"^(market|limit|stop|stop_limit)$")
     quantity: float | None = Field(None, gt=0, le=1_000_000)  # make optional if notional given

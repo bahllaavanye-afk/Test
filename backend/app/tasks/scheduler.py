@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -354,6 +355,72 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             trigger_args={"hours": 1},
             func=_slack_employee_report,
             description="Post hourly employee status to Slack.",
+        ),
+    )
+
+    async def _ignite_bot_runner() -> None:
+        """Construct BotRunner, schedule every enabled bot, expose it on app.state.
+
+        BotRunner existed but nothing ever instantiated it — 29 enabled bots sat
+        at runs=0 forever because the class was never wired into startup, and
+        main.py (which can't be modified) only calls start_scheduler(). Running
+        the ignition as a one-shot scheduler job keeps the wiring inside this
+        safe-to-modify module and inside the running event loop.
+        """
+        try:
+            from app.tasks.bot_runner import BotRunner
+
+            runner = BotRunner(get_scheduler())
+            await runner.start()
+            try:
+                from app.main import app as _app
+
+                _app.state.bot_runner = runner  # bots.py reschedules through this
+            except Exception as exc:
+                logger.warning("BotRunner: could not attach to app.state", error=str(exc))
+            logger.info("BotRunner ignited — enabled bots scheduled")
+        except Exception as exc:
+            logger.error("BotRunner ignition failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="bot_runner_ignition",
+            trigger="date",  # one-shot, fires as soon as the loop is running
+            trigger_args={},
+            func=_ignite_bot_runner,
+            description="Schedule all enabled bots on startup.",
+        ),
+    )
+
+    async def _self_ping() -> None:
+        """Keep the free-tier Render dyno awake by hitting our own public /health.
+
+        Render sleeps the service after ~15 idle minutes, which kills APScheduler
+        and every bot with it. Inbound HTTP resets the idle clock, so the app
+        pings its own public URL. Only runs where Render injects
+        RENDER_EXTERNAL_URL — local/dev/test does nothing.
+        """
+        base = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
+        if not base:
+            return
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.get(f"{base}/health")
+            logger.info("Self-ping", status=resp.status_code)
+        except Exception as exc:
+            logger.warning("Self-ping failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="self_ping",
+            trigger="interval",
+            trigger_args={"minutes": 10},
+            func=_self_ping,
+            description="Ping our own /health so the free-tier dyno never idles out.",
         ),
     )
 
