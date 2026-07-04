@@ -1,4 +1,21 @@
-"""Drawdown-based circuit breakers — halt trading at configurable thresholds."""
+"""Drawdown-based circuit breakers — halt trading at configurable thresholds.
+
+The circuit breaker monitors equity drawdown and can halt trading when the drawdown
+exceeds a configured maximum percentage.  A confirmation period can be set to
+require multiple consecutive breaches before the breaker trips, reducing the
+likelihood of false positives.  An optional recovery threshold allows the breaker
+to automatically reset once drawdown improves.
+
+Typical usage::
+
+    breaker = CircuitBreaker(name="EquityCB", max_drawdown_pct=0.10,
+                             confirmation_period=3, recovery_drawdown_pct=0.05)
+    if not breaker.update(current_equity):
+        # trading is halted
+        ...
+
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,19 +27,44 @@ from app.utils.logging import logger
 
 
 class BreakerState(str, Enum):
+    """Possible states of a :class:`CircuitBreaker`."""
+
     NORMAL = "normal"
+    """The breaker is not tripped; trading may continue."""
+
     HALTED = "halted"
+    """The breaker has tripped and trading should be halted."""
 
 
 @dataclass
 class CircuitBreaker:
     """
-    Circuit breaker that monitors equity drawdown and halts trading when thresholds are breached.
+    Monitor equity drawdown and halt trading when configured thresholds are breached.
 
-    The breaker can be configured to require a consecutive number of drawdown breaches
-    (confirmation_period) before entering the HALTED state, reducing false positives.
-    It can also automatically recover when the drawdown falls below a recovery threshold.
+    Attributes
+    ----------
+    name: str
+        Identifier for the breaker (used in log messages).
+    max_drawdown_pct: float
+        Maximum allowed drawdown expressed as a fraction (e.g. ``0.10`` for 10 %).
+    peak_equity: float
+        Highest equity observed since the last reset.  Updated automatically.
+    current_equity: float
+        Most recent equity value supplied to :meth:`update`.
+    state: BreakerState
+        Current state of the breaker – either ``NORMAL`` or ``HALTED``.
+    halted_at: Optional[datetime]
+        Timestamp when the breaker entered the ``HALTED`` state; ``None`` if not halted.
+    halt_reasons: List[str]
+        Human‑readable reasons accumulated each time the breaker trips.
+    confirmation_period: int
+        Number of consecutive drawdown breaches required before the breaker trips.
+    recovery_drawdown_pct: float
+        Drawdown fraction below which the breaker automatically recovers.
+    _breach_count: int
+        Internal counter of consecutive breaches (not part of the public API).
     """
+
     name: str
     max_drawdown_pct: float                     # e.g. 0.10 = 10%
     peak_equity: float = 0.0
@@ -40,10 +82,18 @@ class CircuitBreaker:
 
     def update(self, equity: float) -> bool:
         """
-        Update the breaker with the latest equity snapshot.
+        Process a new equity snapshot and update the breaker state.
 
-        Returns:
-            bool: True if the breaker remains in NORMAL state, False if HALTED.
+        Parameters
+        ----------
+        equity: float
+            Latest equity value.  Must be a numeric type; otherwise the update is ignored.
+
+        Returns
+        -------
+        bool
+            ``True`` if the breaker remains in the ``NORMAL`` state,
+            ``False`` if it is currently ``HALTED``.
         """
         if equity is None or not isinstance(equity, (int, float)):
             logger.warning("Circuit breaker received invalid equity value", name=self.name, equity=equity)
@@ -76,9 +126,17 @@ class CircuitBreaker:
             if self._breach_count >= self.confirmation_period:
                 self.state = BreakerState.HALTED
                 self.halted_at = datetime.now(timezone.utc)
-                reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} (confirmed {self._breach_count}×)"
+                reason = (
+                    f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} "
+                    f"(confirmed {self._breach_count}×)"
+                )
                 self.halt_reasons.append(reason)
-                logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)
+                logger.error(
+                    "Circuit breaker TRIPPED",
+                    name=self.name,
+                    drawdown=drawdown,
+                    threshold=self.max_drawdown_pct,
+                )
                 return False
         else:
             # Reset breach counter when drawdown falls back below threshold
@@ -96,7 +154,12 @@ class CircuitBreaker:
         """
         Determine whether the breaker should automatically recover.
 
-        Recovery occurs when the current drawdown falls below `recovery_drawdown_pct`.
+        Recovery occurs when the current drawdown falls below ``recovery_drawdown_pct``.
+
+        Returns
+        -------
+        bool
+            ``True`` if recovery conditions are met, otherwise ``False``.
         """
         if self.recovery_drawdown_pct <= 0.0:
             return False
@@ -104,10 +167,12 @@ class CircuitBreaker:
 
     def reset(self, equity: float) -> None:
         """
-        Manually reset the breaker to NORMAL state.
+        Manually reset the breaker to the ``NORMAL`` state.
 
-        Args:
-            equity: The equity level to set as the new peak.
+        Parameters
+        ----------
+        equity: float
+            The equity level to set as the new peak after reset.
         """
         self.state = BreakerState.NORMAL
         self.peak_equity = equity
@@ -119,12 +184,12 @@ class CircuitBreaker:
 
     @property
     def is_halted(self) -> bool:
-        """Indicates whether the breaker is currently halted."""
+        """bool: ``True`` if the breaker is currently in the ``HALTED`` state."""
         return self.state == BreakerState.HALTED
 
     @property
     def current_drawdown(self) -> float:
-        """Current drawdown as a fraction of peak equity."""
+        """float: Current drawdown as a fraction of peak equity (0.0 if no peak)."""
         if self.peak_equity == 0:
             return 0.0
         return max(0.0, (self.peak_equity - self.current_equity) / self.peak_equity)
