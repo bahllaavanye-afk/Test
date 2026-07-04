@@ -129,20 +129,54 @@ class VWAPExecution:
             price, and an overall status (``filled`` if at least 95 % of the
             target quantity was executed, otherwise ``partial``).
         """
-        # Fetch dynamic profile; cap slices to profile length
         profile = await get_intraday_volume_profile(request.symbol, self.broker)
-        active_slices = min(self.slices, len(profile))
-        profile_slice = profile[:active_slices]
-        profile_total = sum(profile_slice)
+        slice_weights = self._compute_slice_weights(profile)
+        total_filled, total_cost, last_result = await self._run_slices(
+            request, slice_weights
+        )
+        avg_price = total_cost / total_filled if total_filled > 0 else None
+        fill_rate = total_filled / request.quantity if request.quantity > 0 else 0
+        return OrderResult(
+            broker_order_id=last_result.broker_order_id if last_result else "vwap",
+            status="filled" if fill_rate >= 0.95 else "partial",
+            filled_qty=total_filled,
+            avg_fill_price=avg_price,
+        )
 
+    def _compute_slice_weights(self, profile: list[float]) -> list[float]:
+        """Calculate normalized slice weights based on the intraday profile.
+
+        The number of slices is limited by both the configured ``self.slices`` and
+        the length of the provided profile.
+        """
+        active_slices = min(self.slices, len(profile))
+        relevant_profile = profile[:active_slices]
+        total = sum(relevant_profile)
+        # Guard against division by zero (unlikely with a valid profile)
+        if total == 0:
+            return [0.0] * active_slices
+        return [weight / total for weight in relevant_profile]
+
+    async def _run_slices(
+        self, request: OrderRequest, slice_weights: list[float]
+    ) -> tuple[float, float, OrderResult | None]:
+        """Iterate over slice weights, place orders and aggregate results.
+
+        Returns
+        -------
+        total_filled: float
+            Sum of filled quantities across all slices.
+        total_cost: float
+            Cumulative cost (price * quantity) for filled portions.
+        last_result: OrderResult | None
+            The most recent successful order result, used for broker_order_id.
+        """
         total_filled = 0.0
         total_cost = 0.0
         last_result: OrderResult | None = None
 
-        for i in range(active_slices):
-            slice_weight = profile_slice[i] / profile_total
-            slice_qty = request.quantity * slice_weight
-
+        for i, weight in enumerate(slice_weights):
+            slice_qty = request.quantity * weight
             slice_req = OrderRequest(
                 **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
             )
@@ -158,14 +192,8 @@ class VWAPExecution:
             except Exception as e:
                 logger.warning("VWAP slice failed", slice=i, error=str(e))
 
-            if i < active_slices - 1:
+            # Sleep between slices except after the final one
+            if i < len(slice_weights) - 1:
                 await asyncio.sleep(self.sleep_seconds)
 
-        avg_price = total_cost / total_filled if total_filled > 0 else None
-        fill_rate = total_filled / request.quantity if request.quantity > 0 else 0
-        return OrderResult(
-            broker_order_id=last_result.broker_order_id if last_result else "vwap",
-            status="filled" if fill_rate >= 0.95 else "partial",
-            filled_qty=total_filled,
-            avg_fill_price=avg_price,
-        )
+        return total_filled, total_cost, last_result
