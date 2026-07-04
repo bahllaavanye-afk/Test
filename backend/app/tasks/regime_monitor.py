@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
 
@@ -24,6 +26,50 @@ try:
     _HMM_AVAILABLE = True
 except ImportError:
     _HMM_AVAILABLE = False
+
+
+class RegimeData(BaseModel):
+    """Pydantic schema representing the market regime information.
+
+    Attributes
+    ----------
+    regime: int
+        Market regime identifier: 0=bear, 1=sideways, 2=bull.
+    label: str
+        Human‑readable label matching the regime.
+    timestamp: datetime
+        UTC timestamp when the regime was computed.
+    """
+
+    regime: int = Field(
+        ...,
+        description="Market regime identifier: 0=bear, 1=sideways, 2=bull",
+        example=2,
+    )
+    label: str = Field(
+        ...,
+        description="Human readable label for the regime",
+        example="bull",
+    )
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="UTC timestamp when the regime was computed",
+        example="2026-07-04T12:00:00Z",
+    )
+
+    @validator("regime")
+    def validate_regime(cls, v: int) -> int:
+        if v not in (0, 1, 2):
+            raise ValueError("regime must be 0, 1, or 2")
+        return v
+
+    @validator("label")
+    def validate_label(cls, v: str, values: dict[str, Any]) -> str:
+        mapping = {0: "bear", 1: "sideways", 2: "bull"}
+        regime = values.get("regime")
+        if regime is not None and mapping.get(regime) != v:
+            raise ValueError(f"label must match regime {regime}")
+        return v
 
 
 def _fit_regime(returns: np.ndarray) -> int:
@@ -102,6 +148,12 @@ async def _fetch_spy_returns() -> np.ndarray | None:
     return await loop.run_in_executor(None, _fetch_spy_returns_sync)
 
 
+def _build_regime_data(regime: int) -> RegimeData:
+    """Construct a validated RegimeData instance from a raw regime integer."""
+    labels = {0: "bear", 1: "sideways", 2: "bull"}
+    return RegimeData(regime=regime, label=labels[regime])
+
+
 async def run_once(redis_client) -> int | None:
     """Fit regime, write to Redis, return regime int or None on failure."""
     returns = await _fetch_spy_returns()
@@ -113,6 +165,12 @@ async def run_once(redis_client) -> int | None:
 
     regime = _fit_regime(returns)
     labels = {0: "bear", 1: "sideways", 2: "bull"}
+
+    # Validate and log using the Pydantic schema (does not affect downstream code)
+    try:
+        _ = RegimeData(regime=regime, label=labels[regime])
+    except Exception as exc:
+        logger.warning("Regime monitor: schema validation failed", error=str(exc))
 
     try:
         await redis_client.set("market:regime", str(regime), ex=600)  # TTL 10 min
