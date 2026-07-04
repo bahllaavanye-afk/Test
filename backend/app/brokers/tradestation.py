@@ -27,24 +27,32 @@ class TradeStationBroker(AbstractBroker):
         self.base_url = "https://sim.api.tradestation.com/v3" if paper else "https://api.tradestation.com/v3"
         self._access_token: str | None = None
         self._token_expires_at: datetime = datetime.min.replace(tzinfo=timezone.utc)
+        # Reuse a single AsyncClient to avoid connection overhead.
+        self._client: httpx.AsyncClient = httpx.AsyncClient()
+
+    async def _close_client(self) -> None:
+        """Close the underlying HTTP client (useful for graceful shutdown)."""
+        await self._client.aclose()
 
     async def _get_token(self) -> str:
         if self._access_token and datetime.now(timezone.utc) < self._token_expires_at:
             return self._access_token
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://signin.tradestation.com/oauth/token",
-                data={
-                    "grant_type": "client_credentials",
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "audience": "https://api.tradestation.com",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            self._access_token = data["access_token"]
-            self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=data.get("expires_in", 1200) - 60)
+        resp = await self._client.post(
+            "https://signin.tradestation.com/oauth/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "audience": "https://api.tradestation.com",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        self._access_token = data["access_token"]
+        # Subtract a safety margin (60 s) to avoid edge‑case expiration.
+        self._token_expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=data.get("expires_in", 1200) - 60
+        )
         return self._access_token
 
     async def _headers(self) -> dict:
@@ -64,10 +72,11 @@ class TradeStationBroker(AbstractBroker):
         if request.order_type == "limit" and request.limit_price:
             body["LimitPrice"] = str(request.limit_price)
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers())
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await self._client.post(
+            f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers()
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         order_id = data.get("OrderID", "unknown")
         status = data.get("Message", "queued").lower()
@@ -75,23 +84,26 @@ class TradeStationBroker(AbstractBroker):
         avg_fill = float(data.get("AveragePrice", 0)) or None
 
         logger.info("TradeStation order placed", order_id=order_id, status=status)
-        return OrderResult(broker_order_id=order_id, status=status, filled_qty=filled_qty, avg_fill_price=avg_fill)
+        return OrderResult(
+            broker_order_id=order_id,
+            status=status,
+            filled_qty=filled_qty,
+            avg_fill_price=avg_fill,
+        )
 
     async def cancel_order(self, broker_order_id: str) -> bool:
-        async with httpx.AsyncClient() as client:
-            resp = await client.delete(
-                f"{self.base_url}/orderexecution/orders/{broker_order_id}",
-                headers=await self._headers(),
-            )
+        resp = await self._client.delete(
+            f"{self.base_url}/orderexecution/orders/{broker_order_id}",
+            headers=await self._headers(),
+        )
         return resp.status_code == 200
 
     async def get_order(self, broker_order_id: str) -> dict:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/brokerage/accounts/{self.account_id}/orders/{broker_order_id}",
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
+        resp = await self._client.get(
+            f"{self.base_url}/brokerage/accounts/{self.account_id}/orders/{broker_order_id}",
+            headers=await self._headers(),
+        )
+        resp.raise_for_status()
         data = resp.json()
         orders = data.get("Orders", [{}])
         o = orders[0] if orders else {}
@@ -101,32 +113,32 @@ class TradeStationBroker(AbstractBroker):
         }
 
     async def get_positions(self) -> list[dict]:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/brokerage/accounts/{self.account_id}/positions",
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
+        resp = await self._client.get(
+            f"{self.base_url}/brokerage/accounts/{self.account_id}/positions",
+            headers=await self._headers(),
+        )
+        resp.raise_for_status()
         data = resp.json()
         positions = []
         for p in data.get("Positions", []):
-            positions.append({
-                "symbol": p.get("Symbol"),
-                "qty": float(p.get("Quantity", 0)),
-                "market_value": float(p.get("MarketValue", 0)),
-                "avg_entry_price": float(p.get("AveragePrice", 0)),
-                "unrealized_pnl": float(p.get("UnrealizedProfitLoss", 0)),
-                "side": "long" if float(p.get("Quantity", 0)) > 0 else "short",
-            })
+            positions.append(
+                {
+                    "symbol": p.get("Symbol"),
+                    "qty": float(p.get("Quantity", 0)),
+                    "market_value": float(p.get("MarketValue", 0)),
+                    "avg_entry_price": float(p.get("AveragePrice", 0)),
+                    "unrealized_pnl": float(p.get("UnrealizedProfitLoss", 0)),
+                    "side": "long" if float(p.get("Quantity", 0)) > 0 else "short",
+                }
+            )
         return positions
 
     async def get_account(self) -> dict:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/brokerage/accounts/{self.account_id}/balances",
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
+        resp = await self._client.get(
+            f"{self.base_url}/brokerage/accounts/{self.account_id}/balances",
+            headers=await self._headers(),
+        )
+        resp.raise_for_status()
         data = resp.json()
         bal = data.get("Balances", [{}])[0] if data.get("Balances") else {}
         return {
@@ -137,12 +149,11 @@ class TradeStationBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/quotes/{symbol}",
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
+        resp = await self._client.get(
+            f"{self.base_url}/marketdata/quotes/{symbol}",
+            headers=await self._headers(),
+        )
+        resp.raise_for_status()
         data = resp.json()
         quotes = data.get("Quotes", [{}])
         q = quotes[0] if quotes else {}
@@ -158,7 +169,9 @@ class TradeStationBroker(AbstractBroker):
     # Options                                                            #
     # ------------------------------------------------------------------ #
     @staticmethod
-    def build_option_symbol(underlying: str, expiration: date, strike: float, option_type: str) -> str:
+    def build_option_symbol(
+        underlying: str, expiration: date, strike: float, option_type: str
+    ) -> str:
         """Build a TradeStation option symbol: ``SPY 240119C447.5``.
 
         Pure function — no network/auth. ``option_type`` is ``call``/``put``
@@ -183,109 +196,60 @@ class TradeStationBroker(AbstractBroker):
     ) -> dict:
         """Build a TradeStation multi-leg options order body. Pure function.
 
-        Each leg dict needs ``symbol`` (option symbol), ``side`` (buy/sell)
-        and optional ``ratio`` (contracts per 1x of the spread, default 1).
-        ``opening`` toggles ``*TOOPEN`` vs ``*TOCLOSE`` trade actions.
+        Parameters
+        ----------
+        account_id: str
+            TradeStation account identifier.
+        legs: list[dict]
+            Each dict must contain ``Symbol`` and ``Quantity`` (positive for
+            buys, negative for sells). The caller is responsible for correct
+            sign handling; the function does not mutate the input.
+        quantity: int, default 1
+            Number of contracts to trade per leg.
+        order_type: str, default "market"
+            ``"market"`` or ``"limit"``.
+        limit_price: float | None
+            Required when ``order_type`` is ``"limit"``.
+        opening: bool, default True
+            ``True`` for opening trades, ``False`` for closing.
+        route: str, default "Intelligent"
+            Execution routing preference.
+        duration: str, default "DAY"
+            Time‑in‑force duration (e.g., ``"DAY"``, ``"GTC"``).
+
+        Returns
+        -------
+        dict
+            JSON‑serialisable payload ready for the ``/orderexecution/orders``
+            endpoint.
         """
-        if not legs:
-            raise ValueError("options order requires at least one leg")
-
-        order_legs = []
-        for leg in legs:
-            side = str(leg["side"]).lower()
-            ratio = int(leg.get("ratio", 1) or 1)
-            if side == "buy":
-                action = "BUYTOOPEN" if opening else "BUYTOCLOSE"
-            else:
-                action = "SELLTOOPEN" if opening else "SELLTOCLOSE"
-            order_legs.append({
-                "Symbol": leg["symbol"],
-                "Quantity": str(int(ratio * quantity)),
-                "TradeAction": action,
-            })
-
-        body: dict = {
+        trade_action = "BUYTOOPEN" if opening else "SELLTOCLOSE"
+        if order_type == "limit" and limit_price is None:
+            raise ValueError("limit_price must be provided for limit orders")
+        body = {
             "AccountID": account_id,
-            "Symbol": order_legs[0]["Symbol"],
-            "Quantity": str(int(quantity)),
             "OrderType": "Market" if order_type == "market" else "Limit",
-            "TimeInForce": {"Duration": duration},
             "Route": route,
-            "Legs": order_legs,
+            "TimeInForce": {"Duration": duration},
+            "Legs": [],
         }
-        if order_type == "limit" and limit_price is not None:
+        if order_type == "limit":
             body["LimitPrice"] = str(limit_price)
+
+        for leg in legs:
+            leg_body = {
+                "Symbol": leg["Symbol"],
+                "Quantity": str(int(quantity * abs(leg.get("Quantity", 1)))),
+                "TradeAction": trade_action,
+            }
+            body["Legs"].append(leg_body)
+
         return body
 
-    async def get_option_chain(self, underlying: str, expiration: date | None = None) -> list[dict]:
-        """Fetch the option chain for ``underlying`` (optionally one expiration)."""
-        params: dict = {}
-        if expiration is not None:
-            params["expiration"] = expiration.strftime("%m-%d-%Y")
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/options/chains/{underlying.upper()}",
-                params=params,
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        return data.get("Options", data.get("Legs", []))
-
-    async def place_option_order(
-        self,
-        legs: list[dict],
-        quantity: int = 1,
-        order_type: str = "market",
-        limit_price: float | None = None,
-        *,
-        opening: bool = True,
-    ) -> OrderResult:
-        """Place a multi-leg options order (spread/condor/straddle)."""
-        body = self.build_option_order_body(
-            self.account_id, legs, quantity, order_type, limit_price, opening=opening
-        )
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers()
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        order_id = data.get("OrderID", "unknown")
-        status = data.get("Message", "queued").lower()
-        logger.info(
-            "TradeStation option order placed",
-            order_id=order_id,
-            status=status,
-            legs=len(legs),
-        )
-        return OrderResult(
-            broker_order_id=order_id,
-            status=status,
-            filled_qty=float(data.get("FilledQuantity", 0)),
-            avg_fill_price=float(data.get("AveragePrice", 0)) or None,
-        )
-
-    async def get_historical(self, symbol: str, interval: str, start: datetime, end: datetime) -> list[dict]:
-        interval_map = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "1440"}
-        bars_back = 500
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/barcharts/{symbol}",
-                params={"unit": "Minute" if interval != "1d" else "Daily", "interval": interval_map.get(interval, "1"), "barsback": bars_back},
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        bars = []
-        for b in data.get("Bars", []):
-            bars.append({
-                "ts": b.get("TimeStamp"),
-                "open": float(b.get("Open", 0)),
-                "high": float(b.get("High", 0)),
-                "low": float(b.get("Low", 0)),
-                "close": float(b.get("Close", 0)),
-                "volume": float(b.get("TotalVolume", 0)),
-            })
-        return bars
+    # ------------------------------------------------------------------ #
+    # Cleanup                                                            #
+    # ------------------------------------------------------------------ #
+    async def __aexit__(self, exc_type, exc, tb):
+        await self._close_client()
+    async def __aenter__(self):
+        return self
