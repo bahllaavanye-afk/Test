@@ -25,10 +25,14 @@ concurrency:
 
 jobs:
   claude:
-    # Only react to an explicit @claude mention, and never to bot comments
-    # (prevents loops with the AI-review / CI-debug bots).
+    # Only react to an explicit @claude mention from a repo owner/member/
+    # collaborator — never bots (prevents loops with the AI-review / CI-debug
+    # bots), and never drive-by commenters (public repo: without this gate,
+    # anyone could mention @claude and burn the prepaid credit balance).
     if: >
       github.event.sender.type != 'Bot' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+               github.event.comment.author_association || github.event.issue.author_association) &&
       contains(github.event.comment.body || github.event.issue.body, '@claude')
     runs-on: ubuntu-latest
     timeout-minutes: 30
