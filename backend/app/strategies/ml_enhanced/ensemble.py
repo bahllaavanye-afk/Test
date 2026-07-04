@@ -1,10 +1,40 @@
-"""Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+"""Ensemble strategy: pure ML signal from all models combined with additional confirmation filters.
+
+This module implements the ``EnsembleStrategy`` which aggregates predictions from multiple
+machine‑learning models (LSTM, XGBoost, Lorentzian K‑NN) and applies simple price‑ and
+volume‑based confirmation filters before emitting a trade signal. The strategy is used
+both in live trading (``analyze``) and back‑testing (``backtest_signals``)."""
+
 import pandas as pd
+from typing import Optional, Dict, Any
+
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
 
 
 class EnsembleStrategy(AbstractStrategy):
+    """Concrete implementation of an ML‑enhanced ensemble trading strategy.
+
+    Attributes
+    ----------
+    name : str
+        Internal identifier for the strategy.
+    display_name : str
+        Human‑readable name shown in UI components.
+    market_type : str
+        Market classification (e.g., ``equity``).
+    strategy_type : str
+        Category of the strategy; here it is ``ml_enhanced``.
+    risk_bucket : str
+        Risk classification used by the portfolio manager.
+    tick_interval_seconds : float
+        Minimum time between ticks for this strategy.
+    confidence_threshold : float
+        Minimum confidence required from the ML model before a signal is considered.
+    sma_window : int
+        Window size for the simple moving average used as a price confirmation filter.
+    """
+
     name = "ensemble"
     display_name = "Ensemble ML (LSTM + XGB + Lorentzian)"
     market_type = "equity"
@@ -14,25 +44,42 @@ class EnsembleStrategy(AbstractStrategy):
     confidence_threshold = 0.70  # higher bar for pure ML
     sma_window = 20  # simple moving average window for confirmation
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        """
-        Produce a trading signal based on the ML inference combined with
-        price‑based confirmation filters.
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
+        """Generate a live trading signal.
 
-        Entry Conditions
-        ----------------
-        1. ML model predicts a directional move (up/down) with confidence >= threshold.
-        2. Current close price is above the SMA for a long signal, or below the SMA for a short.
-        3. Volume is above the median of the recent window (default 20 periods).
+        Parameters
+        ----------
+        data : pd.DataFrame
+            Historical price and volume data for the target symbol. Must contain
+            ``close`` and ``volume`` columns.
+        symbol : str
+            Ticker symbol for which the signal is being generated.
 
-        Exit Conditions
-        ----------------
-        A signal is not emitted if any of the above conditions fail, which the
-        back‑testing engine interprets as an exit for the active position.
+        Returns
+        -------
+        Optional[Signal]
+            A populated :class:`Signal` object when all entry criteria are met,
+            otherwise ``None`` indicating no actionable signal (or an exit signal
+            for the back‑testing engine).
+
+        Notes
+        -----
+        The method performs the following steps:
+
+        1. Calls the ML inference service to obtain a directional prediction and confidence.
+        2. Validates that the prediction is not ``neutral`` and that confidence exceeds
+           :attr:`confidence_threshold`.
+        3. Computes a simple moving average (SMA) and median volume over the most recent
+           ``sma_window`` periods.
+        4. Confirms that the latest close price is above the SMA for a long signal or
+           below the SMA for a short signal.
+        5. Ensures the latest volume is at least the median volume of the window.
+
+        If any condition fails, ``None`` is returned.
         """
         try:
             inference = get_inference_service()
-            ml_result = await inference.predict(data, symbol)
+            ml_result: Dict[str, Any] = await inference.predict(data, symbol)
 
             # Basic ML validation
             if not ml_result or ml_result.get("prediction") == "neutral":
@@ -79,16 +126,26 @@ class EnsembleStrategy(AbstractStrategy):
             return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Generate entry and exit signals for back‑testing.
+        """Generate entry and exit signals for back‑testing.
 
-        Expected DataFrame columns:
-        - 'close': price series
-        - 'volume': volume series
-        - 'ml_prediction': string ("up", "down", "neutral")
-        - 'ml_confidence': float (0‑1)
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame containing historical data with at least the following columns:
+            ``close``, ``volume``, ``ml_prediction`` (values ``up``, ``down`` or ``neutral``),
+            and ``ml_confidence`` (float between 0 and 1).
 
-        The method mirrors the runtime `analyze` logic but operates row‑wise.
+        Returns
+        -------
+        BacktestSignals
+            A container with two boolean Series: ``entries`` and ``exits`` aligned to
+            ``df.index``. ``True`` indicates an entry or exit signal at the corresponding
+            timestamp.
+
+        Notes
+        -----
+        The implementation mirrors the runtime ``analyze`` logic but operates on a row‑wise
+        basis using rolling windows for the SMA and median volume calculations.
         """
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
