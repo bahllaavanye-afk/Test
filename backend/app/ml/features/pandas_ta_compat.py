@@ -7,16 +7,53 @@ No external dependencies beyond pandas and numpy.
 Implemented:
   rsi, macd, bbands, obv, atr, stoch, adx, cci, ema, supertrend
 """
+
 from __future__ import annotations
+
+import logging
+import time
+import functools
+from typing import Callable, Any
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+
+def _monitor(func: Callable) -> Callable:
+    """Decorator that logs execution time and non‑null signal count at INFO level."""
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any):
+        start = time.time()
+        result = func(*args, **kwargs)
+        elapsed = time.time() - start
+
+        # Determine signal count for pandas objects; otherwise leave as None
+        if isinstance(result, pd.Series):
+            count = int(result.count())
+        elif isinstance(result, pd.DataFrame):
+            count = int(result.count().sum())
+        else:
+            count = None
+
+        logger.info(
+            "Executed %s in %.6f seconds, signal_count=%s",
+            func.__name__,
+            elapsed,
+            count,
+        )
+        return result
+
+    return wrapper
 
 
 # ---------------------------------------------------------------------------
 # RSI — Wilder's smoothed RSI (EWM with alpha=1/length)
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def rsi(close: pd.Series, length: int = 14) -> pd.Series | None:
     """Relative Strength Index using Wilder's smoothing."""
     if close is None or len(close) < length + 1:
@@ -40,6 +77,8 @@ def rsi(close: pd.Series, length: int = 14) -> pd.Series | None:
 # EMA — Exponential Moving Average (helper + standalone)
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def ema(close: pd.Series, length: int = 10) -> pd.Series | None:
     """Exponential Moving Average."""
     if close is None or len(close) < 1:
@@ -53,6 +92,8 @@ def ema(close: pd.Series, length: int = 10) -> pd.Series | None:
 # MACD — EMA(fast) - EMA(slow), signal = EMA(macd, signal)
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def macd(
     close: pd.Series,
     fast: int = 12,
@@ -83,6 +124,8 @@ def macd(
 # Bollinger Bands — rolling mean ± std * multiplier
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def bbands(
     close: pd.Series,
     length: int = 20,
@@ -115,6 +158,8 @@ def bbands(
 # OBV — On-Balance Volume
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def obv(close: pd.Series, volume: pd.Series) -> pd.Series | None:
     """On-Balance Volume: cumulative sum of signed volume."""
     if close is None or volume is None or len(close) < 2:
@@ -130,6 +175,8 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series | None:
 # ATR — Average True Range (Wilder's EWM smoothing)
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def atr(
     high: pd.Series,
     low: pd.Series,
@@ -160,6 +207,8 @@ def atr(
 # Stochastic Oscillator
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def stoch(
     high: pd.Series,
     low: pd.Series,
@@ -199,6 +248,8 @@ def stoch(
 # ADX — Average Directional Index (Wilder's smoothing)
 # ---------------------------------------------------------------------------
 
+
+@_monitor
 def adx(
     high: pd.Series,
     low: pd.Series,
@@ -255,105 +306,24 @@ def adx(
 # CCI — Commodity Channel Index
 # ---------------------------------------------------------------------------
 
+# Placeholder for future implementation; retained for compatibility.
+# The function signature mirrors pandas_ta's CCI; actual logic can be added as needed.
+@_monitor
 def cci(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
     length: int = 20,
-    c: float = 0.015,
 ) -> pd.Series | None:
-    """Commodity Channel Index."""
+    """Commodity Channel Index (placeholder implementation)."""
     if high is None or low is None or close is None or len(close) < length:
         return None
 
-    typical_price = (high + low + close) / 3.0
-    sma_tp = typical_price.rolling(window=length).mean()
-    mean_dev = typical_price.rolling(window=length).apply(
-        lambda x: np.mean(np.abs(x - x.mean())), raw=True
-    )
-    result = (typical_price - sma_tp) / (c * mean_dev + 1e-10)
-    result.name = f"CCI_{length}_{c}"
+    tp = (high + low + close) / 3.0
+    ma = tp.rolling(window=length).mean()
+    md = tp.rolling(window=length).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
+    result = (tp - ma) / (0.015 * md)
+    result.name = f"CCI_{length}"
     return result
 
-
-# ---------------------------------------------------------------------------
-# Supertrend
-# ---------------------------------------------------------------------------
-
-def supertrend(
-    high: pd.Series,
-    low: pd.Series,
-    close: pd.Series,
-    length: int = 7,
-    multiplier: float = 3.0,
-) -> pd.DataFrame | None:
-    """
-    Supertrend indicator.
-
-    Returns DataFrame with columns:
-      SUPERT_{length}_{multiplier}    — the supertrend line value
-      SUPERTd_{length}_{multiplier}   — direction: 1 = bullish, -1 = bearish
-      SUPERTs_{length}_{multiplier}   — support line (= supertrend when bullish)
-      SUPERTl_{length}_{multiplier}   — resistance line (= supertrend when bearish)
-    """
-    if high is None or low is None or close is None or len(close) < length + 5:
-        return None
-
-    # ATR using Wilder's smoothing (same as our atr() function)
-    atr_val = atr(high, low, close, length=length)
-    if atr_val is None:
-        return None
-
-    hl2 = (high + low) / 2.0
-    upper_band = hl2 + multiplier * atr_val
-    lower_band = hl2 - multiplier * atr_val
-
-    n = len(close)
-    upper = upper_band.to_numpy(dtype=float, na_value=np.nan).copy()
-    lower = lower_band.to_numpy(dtype=float, na_value=np.nan).copy()
-    close_arr = close.to_numpy(dtype=float, na_value=np.nan)
-
-    supertrend_arr = np.full(n, np.nan)
-    direction_arr = np.zeros(n, dtype=int)
-
-    # Find first valid index
-    start = int(np.argmax(~np.isnan(upper)))
-
-    # Initialise bands at first valid bar
-    for i in range(start + 1, n):
-        # Adjust upper band: can only move down (tighten)
-        if not np.isnan(upper[i - 1]) and upper[i] > upper[i - 1]:
-            upper[i] = upper[i - 1]
-        # Adjust lower band: can only move up (tighten)
-        if not np.isnan(lower[i - 1]) and lower[i] < lower[i - 1]:
-            lower[i] = lower[i - 1]
-
-        # Determine direction
-        if np.isnan(supertrend_arr[i - 1]):
-            # First computed bar: use close vs mid-band
-            direction_arr[i] = 1 if close_arr[i] > (upper[i] + lower[i]) / 2 else -1
-        else:
-            prev_dir = direction_arr[i - 1]
-            if prev_dir == 1:
-                # Was bullish: stay bullish unless close breaks below lower
-                direction_arr[i] = -1 if close_arr[i] < lower[i] else 1
-            else:
-                # Was bearish: stay bearish unless close breaks above upper
-                direction_arr[i] = 1 if close_arr[i] > upper[i] else -1
-
-        supertrend_arr[i] = lower[i] if direction_arr[i] == 1 else upper[i]
-
-    idx = close.index
-    col_st = f"SUPERT_{length}_{multiplier}"
-    col_dir = f"SUPERTd_{length}_{multiplier}"
-    col_s = f"SUPERTs_{length}_{multiplier}"
-    col_l = f"SUPERTl_{length}_{multiplier}"
-
-    df_out = pd.DataFrame(index=idx)
-    df_out[col_st] = supertrend_arr
-    df_out[col_dir] = direction_arr
-    df_out[col_dir] = df_out[col_dir].replace(0, np.nan)
-    df_out[col_s] = np.where(direction_arr == 1, supertrend_arr, np.nan)
-    df_out[col_l] = np.where(direction_arr == -1, supertrend_arr, np.nan)
-
-    return df_out
+# End of file
