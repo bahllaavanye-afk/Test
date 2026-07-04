@@ -393,6 +393,36 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _check_bot_exits() -> None:
+        """Close bot positions that hit take-profit / stop-loss / expiry.
+
+        check_bot_exits() documents itself as 'runs every 5 minutes via
+        scheduler' but nothing ever scheduled it — positions opened and never
+        closed. This is the deterministic monitor-and-close half of the
+        Option Alpha-style loop; no LLM anywhere in the path.
+        """
+        try:
+            from app.bots.engine import check_bot_exits
+            from app.database import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                closed = await check_bot_exits(db)
+            if closed:
+                logger.info("Bot exit checker closed positions", count=closed)
+        except Exception as exc:
+            logger.error("Bot exit checker failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="bot_exit_checker",
+            trigger="interval",
+            trigger_args={"minutes": 5},
+            func=_check_bot_exits,
+            description="Deterministic take-profit/stop-loss/expiry closer for bot positions.",
+        ),
+    )
+
     async def _self_ping() -> None:
         """Keep the free-tier Render dyno awake by hitting our own public /health.
 

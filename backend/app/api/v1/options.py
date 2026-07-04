@@ -502,7 +502,7 @@ async def validate_trade_rules(
         profit_target_price = round(premium * 0.5, 2)          # buy back at 50% of credit
         stop_loss_price = round(premium * 2.0, 2)              # stop at 2x credit
         max_profit = round(premium * 100 * body.quantity, 2)
-        max_loss_if_stopped = round(premium * 100 * body.quantity, 2)  # (2x − 1x) credit
+        max_loss_if_stopped = round(premium * 100 * body.quantity, 2)  # net loss at the 2x stop: pay back 2x, keep 1x
     elif premium:
         profit_target_price = round(premium * 2.0, 2)          # sell at 100% gain
         stop_loss_price = round(premium * 0.5, 2)              # stop at 50% of debit
@@ -725,4 +725,3 @@ async def get_next_fomc(current_user: User = Depends(get_current_user)):
         if d >= today:
             return {"date": iso, "days_away": (d - today).days}
     return {"date": None, "days_away": None}
-    return {"expirations": expirations}
