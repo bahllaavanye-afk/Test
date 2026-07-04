@@ -91,6 +91,7 @@ class LimitFirstExecution:
             "Starting LimitFirstExecution",
             extra={
                 "signal_id": signal_id,
+                "total_signals": LimitFirstExecution._signal_counter,
                 "symbol": request.symbol,
                 "side": request.side,
                 "quantity": request.quantity,
@@ -194,6 +195,7 @@ class LimitFirstExecution:
             "LimitFirstExecution completed",
             extra={
                 "signal_id": signal_id,
+                "total_signals": LimitFirstExecution._signal_counter,
                 "symbol": request.symbol,
                 "side": request.side,
                 "quantity": request.quantity,
