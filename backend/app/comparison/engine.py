@@ -3,9 +3,12 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
 from datetime import date
+from functools import lru_cache
+from typing import Awaitable
 
 import numpy as np
 import pandas as pd
@@ -14,6 +17,25 @@ from scipy import stats
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
+
+
+def _async_lru_cache(maxsize: int = 32):
+    """Simple async LRU cache decorator for coroutine functions."""
+    def decorator(func):
+        cached_func = lru_cache(maxsize=maxsize)(func)
+
+        async def wrapper(*args, **kwargs):
+            return cached_func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+@_async_lru_cache()
+async def _cached_fetch_benchmark_curves(start_date: date, end_date: date):
+    """Cache benchmark curve fetches to avoid repeated I/O."""
+    return await fetch_benchmark_curves(start_date, end_date)
 
 
 @dataclass
@@ -47,21 +69,33 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
-        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
-        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        # Run the two backtests concurrently (they are CPU‑bound synchronous functions)
+        manual_task: Awaitable[BacktestMetrics] = asyncio.to_thread(
+            run_backtest, manual_signals, prices, initial_equity
+        )
+        ml_task: Awaitable[BacktestMetrics] = asyncio.to_thread(
+            run_backtest, ml_signals, prices, initial_equity
+        )
+        manual_metrics, ml_metrics = await asyncio.gather(manual_task, ml_task)
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        # Fetch benchmark data with caching
+        benchmark_curves = await _cached_fetch_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
-        # Extract daily return series for t-test
+        # Extract daily return series for t‑test using vectorized pandas operations
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
+        # Perform t‑test only when enough data points exist
         min_len = min(len(manual_ret), len(ml_ret))
         if min_len > 10:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+            t_stat, p_val = stats.ttest_ind(
+                ml_ret.iloc[:min_len].to_numpy(),
+                manual_ret.iloc[:min_len].to_numpy(),
+                equal_var=False,
+            )
         else:
             t_stat, p_val = 0.0, 1.0
 
@@ -70,11 +104,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
