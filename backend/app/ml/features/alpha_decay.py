@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from scipy.stats import spearmanr
 from scipy.optimize import curve_fit
 
-
 @dataclass
 class DecayProfile:
     strategy_name: str
@@ -136,3 +135,55 @@ class AlphaDecayTracker:
             -staleness_hours * np.log(2) / profile.half_life_hours
         )
         return float(base_confidence * max(float(decay), 0.0))
+
+
+# ==============================
+# Unit tests for edge cases
+# ==============================
+import pytest
+
+
+def test_compute_ic_profile_insufficient_data():
+    """When there are not enough overlapping points, the profile should default to zero IC and infinite half‑life."""
+    rng = pd.date_range("2023-01-01", periods=10, freq="H")
+    signals = pd.Series(np.random.choice([-1, 0, 1], size=10), index=rng)
+    prices = pd.DataFrame({"close": np.random.rand(10)}, index=rng)
+
+    tracker = AlphaDecayTracker()
+    profile = tracker.compute_ic_profile(signals, prices, "test_strategy")
+
+    assert profile.ic_0 == 0.0
+    assert profile.half_life_hours == float("inf")
+    # horizons should be empty because no horizon met the minimum sample size
+    assert profile.horizons == {}
+
+
+def test_compute_ic_profile_missing_close_column():
+    """A missing 'close' column must raise a ValueError."""
+    rng = pd.date_range("2023-01-01", periods=50, freq="H")
+    signals = pd.Series(np.random.choice([-1, 0, 1], size=50), index=rng)
+    prices = pd.DataFrame({"open": np.random.rand(50)}, index=rng)  # no close column
+
+    tracker = AlphaDecayTracker()
+    with pytest.raises(ValueError, match="prices DataFrame must contain a 'close' column"):
+        tracker.compute_ic_profile(signals, prices, "test_strategy")
+
+
+def test_scale_confidence_boundary_conditions():
+    """Check behaviour when half‑life is zero/negative and when staleness is large."""
+    # Case 1: zero half‑life should return the base confidence unchanged
+    profile_zero = DecayProfile(strategy_name="zero", ic_0=0.5, half_life_hours=0.0, horizons={})
+    tracker = AlphaDecayTracker()
+    assert tracker.scale_confidence(0.8, profile_zero, staleness_hours=10) == 0.8
+
+    # Case 2: finite half‑life with very large staleness should decay towards zero but never become negative
+    profile_finite = DecayProfile(strategy_name="finite", ic_0=0.5, half_life_hours=5.0, horizons={})
+    conf = tracker.scale_confidence(0.9, profile_finite, staleness_hours=100)
+    assert 0.0 <= conf <= 0.9
+    # The decay factor for 100 hours with half‑life 5h is exp(-100*log2/5) ≈ 2^-20 ≈ 9.5e-07
+    expected_decay = np.exp(-100 * np.log(2) / 5.0)
+    assert np.isclose(conf, 0.9 * expected_decay, atol=1e-12)
+
+
+# The tests can be run with pytest in the repository root:
+#   pytest -q backend/app/ml/features/alpha_decay.py
