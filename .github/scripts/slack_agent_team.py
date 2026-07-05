@@ -3746,17 +3746,31 @@ _DISCORD_CAP = int(os.environ.get("DISCORD_MAX_POSTS_PER_RUN", "20"))
 _discord_stats = {"sent": 0, "failed": 0, "skipped": 0}
 
 
+def _discord_webhook_for(channel: str) -> str:
+    """Channel-specific webhook when configured, else the shared default.
+
+    One Discord webhook == one channel, so real per-channel routing needs one
+    webhook per channel: set DISCORD_WEBHOOK_URL_DESK_CRYPTO for #desk-crypto
+    etc. (slug = channel upper-cased, '#' stripped, '-'→'_'). Unmapped
+    channels fall back to DISCORD_WEBHOOK_URL with a [#channel] prefix.
+    """
+    slug = str(channel).lstrip("#").upper().replace("-", "_")
+    return os.environ.get(f"DISCORD_WEBHOOK_URL_{slug}", "") or _DISCORD_WEBHOOK
+
+
 def _discord_post(channel: str, username: str, text: str) -> bool:
     """Deliver one message to the Discord failover webhook. Never raises."""
-    if not _DISCORD_WEBHOOK or not text:
+    webhook = _discord_webhook_for(channel)
+    if not webhook or not text:
         return False
     if _discord_stats["sent"] >= _DISCORD_CAP:
         _discord_stats["skipped"] += 1
         return False
-    content = f"**[#{str(channel).lstrip('#')}] {username}:** {text}"[:2000]
-    data = json.dumps({"content": content}).encode()
+    content = f"**[#{str(channel).lstrip('#')}]** {text}"[:2000]
+    # `username` renders each employee as its own bot profile in Discord.
+    data = json.dumps({"content": content, "username": str(username)[:80] or "QuantEdge"}).encode()
     req = urllib.request.Request(
-        _DISCORD_WEBHOOK, data=data,
+        webhook, data=data,
         headers={"Content-Type": "application/json"}, method="POST",
     )
     try:

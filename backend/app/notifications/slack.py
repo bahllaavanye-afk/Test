@@ -73,7 +73,12 @@ class SlackClient:
     async def _post_discord(self, channel: str, title: str, text: str,
                             fields: dict[str, Any] | None = None) -> bool:
         """Failover delivery to a Discord webhook (free, generous rate limits)."""
-        if not self._discord_webhook:
+        # Per-channel webhook when configured (DISCORD_WEBHOOK_URL_PNL_DAILY
+        # for #pnl-daily, etc.); unmapped channels share the default with a
+        # [#channel] prefix so one webhook still works as a unified feed.
+        slug = str(channel).lstrip("#").upper().replace("-", "_")
+        webhook = os.environ.get(f"DISCORD_WEBHOOK_URL_{slug}", "") or self._discord_webhook
+        if not webhook:
             return False
         lines = [f"**[#{channel}] {title}**"]
         if text:
@@ -83,7 +88,9 @@ class SlackClient:
         content = "\n".join(lines)[:2000]  # Discord hard message limit
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
-                resp = await client.post(self._discord_webhook, json={"content": content})
+                resp = await client.post(
+                    webhook, json={"content": content, "username": "QuantEdge"}
+                )
                 return resp.status_code in (200, 204)
         except Exception as e:
             logger.warning("Discord post failed", error=str(e))
