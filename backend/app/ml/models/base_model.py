@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import numpy as np
 
@@ -158,9 +158,11 @@ class AbstractModel(ABC):
             raise RuntimeError("torch is required to load model checkpoints")
         import torch as _torch
         checkpoint = _torch.load(path, map_location="cpu", weights_only=False)
-        model = cls(**checkpoint.get("metadata", {}).get("init_kwargs", {}))
-        if checkpoint["state_dict"] and hasattr(model, "load_state_dict"):
-            model.load_state_dict(checkpoint["state_dict"])  # type: ignore[attr-defined]
+        init_kwargs = checkpoint.get("metadata", {}).get("init_kwargs", {})
+        model = cls(**init_kwargs)
+        state_dict = checkpoint.get("state_dict", {})
+        if state_dict and hasattr(model, "load_state_dict"):
+            model.load_state_dict(state_dict)  # type: ignore[attr-defined]
         return model
 
     def predict_proba(self, x: Any) -> np.ndarray:
