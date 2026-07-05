@@ -76,10 +76,14 @@ DESKS: list[DeskConfig] = [
         name="Crypto",
         slack_channel="#desk-crypto",
         symbols=["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD"],
+        # basis_carry / funding_rate_arb (Binance 451 geo-block from US
+        # runners) and mvrv_zscore_timing (CoinGecko now requires an API key)
+        # can NEVER fetch their data here — they errored on every run. Removed
+        # until their data is rerouted (see agent-fix-needed issue); keeping
+        # them was pure log noise masquerading as desk coverage.
         strategy_names=[
             "crypto_adaptive_trend", "mean_reversion", "breakout",
-            "basis_carry", "btc_eth_stat_arb", "mvrv_zscore_timing",
-            "intraday_seasonality", "funding_rate_arb",
+            "btc_eth_stat_arb", "intraday_seasonality",
             "on_chain_exchange_netflow", "vol_of_vol_timing",
         ],
         notional_usd=300.0,

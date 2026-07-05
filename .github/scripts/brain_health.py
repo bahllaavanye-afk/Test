@@ -21,21 +21,14 @@ _UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/53
 
 
 def _alert_slack(text: str) -> None:
-    token = os.environ.get("SLACK_BOT_TOKEN", "")
-    if not token:
-        return
+    # Shared Slack→Discord delivery — a brain-down page that only tries the
+    # (quota-dead) Slack workspace is a page nobody receives.
     channel = os.environ.get("ALERT_CHANNEL", "infra-alerts")
-    body = json.dumps({"channel": channel, "text": text}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                 "User-Agent": _UA},
-    )
     try:
-        urllib.request.urlopen(req, timeout=15)
+        import notify
+        notify.post(channel, text, username="Brain Health")
     except Exception as e:  # noqa: BLE001
-        print(f"[warn] slack alert failed: {e}", file=sys.stderr)
+        print(f"[warn] alert delivery failed: {e}", file=sys.stderr)
 
 
 def main() -> int:

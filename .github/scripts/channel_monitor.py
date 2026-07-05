@@ -236,6 +236,15 @@ def post_to_slack(
     if not result.get("ok") and result.get("error") in ("not_allowed_token_type", "missing_scope"):
         fallback = {"channel": channel_ref, "text": f"*[{username}]* {text}", "mrkdwn": True}
         result = slack_call(token, "chat.postMessage", fallback)
+    if not result.get("ok"):
+        # Slack rejected outright (dead quota / revoked token) — deliver the
+        # loop-consistency report via Discord instead of losing it.
+        try:
+            import notify
+            if notify.discord_post(channel, text, username=username):
+                return {"ok": True, "via": "discord"}
+        except Exception as exc:  # noqa: BLE001
+            print(f"  discord fallback failed: {exc}")
     return result
 
 
