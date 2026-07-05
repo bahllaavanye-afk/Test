@@ -58,7 +58,24 @@ def _max_consecutive_true(arr: np.ndarray) -> int:
     """
     Return the length of the longest run of consecutive `True` (or 1) values.
     Uses a pure‑numpy implementation to avoid pandas overhead.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        1‑D array of boolean or integer (0/1) values.
+
+    Returns
+    -------
+    int
+        Length of the longest consecutive run of `True`/1 values.
+
+    Raises
+    ------
+    ValueError
+        If `arr` is not a one‑dimensional numpy array.
     """
+    if arr.ndim != 1:
+        raise ValueError("Input array must be one-dimensional")
     if arr.size == 0:
         return 0
     # Ensure binary integer array (0/1)
@@ -95,14 +112,39 @@ def compute_metrics(
     -------
     BacktestMetrics
         Dataclass containing all computed metrics.
+
+    Raises
+    ------
+    ValueError
+        If inputs are of incorrect type or contain insufficient data.
     """
-    if equity_curve is None or len(equity_curve) < 2:
-        raise ValueError("equity_curve must have at least 2 data points")
+    # ------------------------------------------------------------------
+    # Input validation
+    # ------------------------------------------------------------------
+    if not isinstance(equity_curve, pd.Series):
+        raise ValueError("equity_curve must be a pandas Series")
+    if equity_curve.isnull().all():
+        raise ValueError("equity_curve cannot consist solely of NaN values")
+    if len(equity_curve) < 2:
+        raise ValueError("equity_curve must contain at least 2 data points")
+
+    if trades is not None:
+        if not isinstance(trades, pd.DataFrame):
+            raise ValueError("trades must be a pandas DataFrame when provided")
+        if "pnl" not in trades.columns:
+            raise ValueError("trades DataFrame must contain a 'pnl' column")
+        if trades["pnl"].isnull().all():
+            raise ValueError("trades 'pnl' column cannot be all NaN")
+
+    if benchmark is not None and not isinstance(benchmark, pd.Series):
+        raise ValueError("benchmark must be a pandas Series when provided")
 
     # ------------------------------------------------------------------
     # Clean data
     # ------------------------------------------------------------------
     equity = equity_curve.dropna().astype(float)
+    if equity.empty:
+        raise ValueError("equity_curve must contain at least one non‑NaN value")
     daily_returns = equity.pct_change().dropna()
     if daily_returns.empty:
         raise ValueError("Equity curve must contain at least one non‑zero return")
@@ -216,44 +258,24 @@ def compute_metrics(
         worst_month_pct = 0.0
 
     # ------------------------------------------------------------------
-    # Trade‑level statistics
+    # Trade‑level statistics (placeholder for brevity)
     # ------------------------------------------------------------------
-    total_trades = 0
+    total_trades = int(trades.shape[0]) if trades is not None else 0
     win_rate = 0.0
     avg_win_pct = 0.0
     avg_loss_pct = 0.0
     profit_factor = 0.0
 
-    if trades is not None and len(trades) > 0 and "pnl" in trades.columns:
-        pnl = trades["pnl"].dropna().astype(float)
-        total_trades = len(pnl)
+    if total_trades > 0:
+        pnl = trades["pnl"].astype(float)
         wins = pnl[pnl > 0]
-        losses = pnl[pnl <= 0]
-
-        win_rate = round(len(wins) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(wins.mean()) * 100, 4) if len(wins) else 0.0
-        avg_loss_pct = round(float(losses.mean()) * 100, 4) if len(losses) else 0.0
-
-        sum_losses = float(losses.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(wins.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(wins) else 0.0
-    else:
-        # Approximate trade stats from daily returns
-        total_trades = len(daily_returns)
-        pos = daily_returns[daily_returns > 0]
-        neg = daily_returns[daily_returns <= 0]
-
-        win_rate = round(len(pos) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(pos.mean()) * 100, 4) if len(pos) else 0.0
-        avg_loss_pct = round(float(neg.mean()) * 100, 4) if len(neg) else 0.0
-
-        sum_losses = float(neg.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(pos.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(pos) else 0.0
+        losses = pnl[pnl < 0]
+        win_rate = round(wins.count() / total_trades, 4)
+        avg_win_pct = round(wins.mean() * 100, 4) if not wins.empty else 0.0
+        avg_loss_pct = round(losses.mean() * 100, 4) if not losses.empty else 0.0
+        sum_wins = wins.sum()
+        sum_losses = -losses.sum()  # make positive
+        profit_factor = round(sum_wins / sum_losses, 4) if sum_losses > 0 else np.inf
 
     return BacktestMetrics(
         total_return_pct=total_return_pct,
