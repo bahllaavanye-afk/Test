@@ -7,28 +7,101 @@ from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, desk_of, list_desks, strategies_by_desk
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, validator
 import uuid
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
 
 class StrategyOut(BaseModel):
-    id: str
-    name: str
-    market_type: str
-    strategy_type: str
-    risk_bucket: str
-    is_enabled: bool
-    symbols: list[str]
-    tick_interval_seconds: float
-    confidence_threshold: float
+    """Schema representing a strategy as returned by the API."""
 
-    model_config = ConfigDict(from_attributes=True)
+    id: str = Field(
+        ...,
+        description="Unique identifier of the strategy.",
+        example="123e4567-e89b-12d3-a456-426614174000",
+    )
+    name: str = Field(
+        ...,
+        description="Human‑readable name of the strategy.",
+        example="Mean Reversion 20",
+    )
+    market_type: str = Field(
+        ...,
+        description="Market classification (e.g., equities, crypto).",
+        example="equities",
+    )
+    strategy_type: str = Field(
+        ...,
+        description="Strategy category (e.g., mean_rev, momentum).",
+        example="mean_rev",
+    )
+    risk_bucket: str = Field(
+        ...,
+        description="Risk bucket the strategy belongs to.",
+        example="low",
+    )
+    is_enabled: bool = Field(
+        ...,
+        description="Whether the strategy is currently enabled.",
+        example=True,
+    )
+    symbols: list[str] = Field(
+        ...,
+        description="List of symbols the strategy trades.",
+        example=["AAPL", "MSFT"],
+    )
+    tick_interval_seconds: float = Field(
+        ...,
+        description="Time interval between strategy ticks in seconds.",
+        example=3600,
+    )
+    confidence_threshold: float = Field(
+        ...,
+        description="Confidence threshold for signal generation (0‑1).",
+        example=0.6,
+    )
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "name": "Mean Reversion 20",
+                "market_type": "equities",
+                "strategy_type": "mean_rev",
+                "risk_bucket": "low",
+                "is_enabled": True,
+                "symbols": ["AAPL", "MSFT"],
+                "tick_interval_seconds": 3600,
+                "confidence_threshold": 0.6,
+            }
+        },
+    )
+
+    @validator("confidence_threshold")
+    def confidence_between_0_and_1(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("confidence_threshold must be between 0 and 1")
+        return v
+
+    @validator("tick_interval_seconds")
+    def tick_interval_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("tick_interval_seconds must be a positive number")
+        return v
 
 
 class StrategyToggle(BaseModel):
-    is_enabled: bool
+    """Schema for toggling a strategy's enabled state."""
+
+    is_enabled: bool = Field(
+        ...,
+        description="Flag indicating whether the strategy should be enabled.",
+        example=False,
+    )
+
+    model_config = ConfigDict(json_schema_extra={"example": {"is_enabled": False}})
 
 
 @router.get("/params-schema")
