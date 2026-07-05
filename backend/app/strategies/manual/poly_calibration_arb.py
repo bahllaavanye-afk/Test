@@ -1,10 +1,17 @@
 """Polymarket calibration arbitrage — compare vs Metaculus/Manifold forecasts."""
 from __future__ import annotations
+
 import asyncio
+import logging
 import re
+import time
+from typing import List
+
 import pandas as pd
+
 try:
     import httpx
+
     _HTTPX = True
 except ImportError:
     _HTTPX = False
@@ -14,6 +21,8 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 CLOB_BASE = "https://clob.polymarket.com"
 METACULUS_BASE = "https://www.metaculus.com/api2"
 MANIFOLD_BASE = "https://manifold.markets/api/v0"
+
+_logger = logging.getLogger(__name__)
 
 
 class PolymarketCalibrationArb(AbstractStrategy):
@@ -53,7 +62,7 @@ class PolymarketCalibrationArb(AbstractStrategy):
             return 0.0
         return len(words1 & words2) / len(words1 | words2)
 
-    async def _fetch_poly_markets(self) -> list[dict]:
+    async def _fetch_poly_markets(self) -> List[dict]:
         if not _HTTPX:
             return []
         try:
@@ -67,7 +76,7 @@ class PolymarketCalibrationArb(AbstractStrategy):
         except Exception:
             return []
 
-    async def _fetch_metaculus(self) -> list[dict]:
+    async def _fetch_metaculus(self) -> List[dict]:
         if not _HTTPX:
             return []
         try:
@@ -91,6 +100,9 @@ class PolymarketCalibrationArb(AbstractStrategy):
         Scan Polymarket markets and compare prices against Metaculus community forecasts.
         data is not used directly — strategy fetches live CLOB and Metaculus data.
         """
+        start_time = time.perf_counter()
+        signal: Signal | None = None
+
         poly_markets, meta_questions = await asyncio.gather(
             self._fetch_poly_markets(),
             self._fetch_metaculus(),
@@ -137,7 +149,7 @@ class PolymarketCalibrationArb(AbstractStrategy):
                 continue
 
             side = "buy" if edge > 0 else "sell"
-            return Signal(
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -155,7 +167,26 @@ class PolymarketCalibrationArb(AbstractStrategy):
                     "order_type": "limit",
                 },
             )
-        return None
+            break  # Only one signal per analysis cycle
+
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        signal_count = 1 if signal else 0
+        # Estimate P&L as edge * max_position_usd when a signal is present; otherwise zero.
+        pnl_estimate = (
+            signal.metadata.get("edge", 0.0) * self.max_position_usd
+            if signal
+            else 0.0
+        )
+
+        _logger.info(
+            "PolymarketCalibrationArb analysis completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_ms": round(elapsed_ms, 2),
+                "pnl_estimate_usd": round(pnl_estimate, 2),
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
