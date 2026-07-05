@@ -142,10 +142,16 @@ DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
 def discord_post(channel: str, text: str) -> None:
     """Failover alert delivery — Slack's free-tier quota can die entirely
     (message_limit_exceeded), and a monitor whose alerts go nowhere is useless."""
-    if not DISCORD_WEBHOOK:
+    slug = str(channel).lstrip("#").upper().replace("-", "_")
+    webhook = os.environ.get(f"DISCORD_WEBHOOK_URL_{slug}", "") or DISCORD_WEBHOOK
+    if not webhook:
         return
     try:
-        r = httpx.post(DISCORD_WEBHOOK, json={"content": f"**[{channel}]** {text}"[:2000]}, timeout=10)
+        r = httpx.post(
+            webhook,
+            json={"content": f"**[{channel}]** {text}"[:2000], "username": "QuantEdge Monitor"},
+            timeout=10,
+        )
         if r.status_code not in (200, 204):
             print(f"  Discord error: HTTP {r.status_code}")
     except Exception as e:
