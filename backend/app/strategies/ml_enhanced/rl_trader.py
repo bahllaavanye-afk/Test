@@ -4,6 +4,8 @@ Uses A3C-LSTM agent to generate buy/hold/sell signals.
 Falls back to RSI-based signals if no trained model is loaded.
 """
 from pathlib import Path
+import logging
+import time
 
 import numpy as np
 import pandas as pd
@@ -17,6 +19,8 @@ except ImportError:
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
+# Configure module logger
+_logger = logging.getLogger(__name__)
 
 # Default path where a trained A3C-LSTM checkpoint is expected.
 _DEFAULT_MODEL_PATH = Path(__file__).parents[3] / "checkpoints" / "a3c_lstm_latest.pt"
@@ -93,6 +97,10 @@ class RLTraderStrategy(AbstractStrategy):
         self._model_path = Path(model_path)
         self._try_load_agent()
 
+        # Monitoring metrics
+        self._signal_count: int = 0
+        self._cumulative_pnl: float = 0.0  # Placeholder; actual P&L tracking occurs elsewhere.
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -148,21 +156,48 @@ class RLTraderStrategy(AbstractStrategy):
         """
         Run A3C-LSTM inference on recent OHLCV; fall back to RSI if model absent.
         """
+        start_ts = time.time()
+
         if self._agent is None:
-            return self._rsi_signal(data, symbol)
+            signal = self._rsi_signal(data, symbol)
+            duration = time.time() - start_ts
+            _logger.info(
+                "RLTrader analyze (fallback RSI)",
+                extra={
+                    "symbol": symbol,
+                    "duration_ms": duration * 1000,
+                    "signal_generated": bool(signal),
+                    "signal_count": self._signal_count,
+                    "cumulative_pnl": self._cumulative_pnl,
+                },
+            )
+            if signal:
+                self._signal_count += 1
+            return signal
 
         x = _build_feature_tensor(data, seq_len=self.SEQ_LEN)
         if x is None:
-            return self._rsi_signal(data, symbol)
+            signal = self._rsi_signal(data, symbol)
+            duration = time.time() - start_ts
+            _logger.info(
+                "RLTrader analyze (insufficient data)",
+                extra={
+                    "symbol": symbol,
+                    "duration_ms": duration * 1000,
+                    "signal_generated": bool(signal),
+                    "signal_count": self._signal_count,
+                    "cumulative_pnl": self._cumulative_pnl,
+                },
+            )
+            if signal:
+                self._signal_count += 1
+            return signal
 
         # Pad or trim feature dimension to match model expectations
         if x.shape[-1] != self._agent.n_features:
-            # Pad with zeros to match training feature count
             pad_size = self._agent.n_features - x.shape[-1]
             if pad_size > 0:
-                x = torch.cat(
-                    [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                )
+                x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
             else:
                 x = x[..., : self._agent.n_features]
 
@@ -171,8 +206,9 @@ class RLTraderStrategy(AbstractStrategy):
         confidence = float(action_probs[0, action].item())
         close = float(data["close"].iloc[-1])
 
+        signal: Signal | None = None
         if action == _BUY and confidence >= self.confidence_threshold:
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="buy",
                 confidence=confidence,
@@ -182,8 +218,8 @@ class RLTraderStrategy(AbstractStrategy):
                 target_price=close,
                 metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
             )
-        if action == _SELL and confidence >= self.confidence_threshold:
-            return Signal(
+        elif action == _SELL and confidence >= self.confidence_threshold:
+            signal = Signal(
                 symbol=symbol,
                 side="sell",
                 confidence=confidence,
@@ -193,22 +229,50 @@ class RLTraderStrategy(AbstractStrategy):
                 target_price=close,
                 metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
             )
-        return None
+
+        duration = time.time() - start_ts
+        _logger.info(
+            "RLTrader analyze (model inference)",
+            extra={
+                "symbol": symbol,
+                "duration_ms": duration * 1000,
+                "signal_generated": bool(signal),
+                "confidence": confidence if signal else None,
+                "action": action,
+                "signal_count": self._signal_count,
+                "cumulative_pnl": self._cumulative_pnl,
+            },
+        )
+        if signal:
+            self._signal_count += 1
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
         Vectorized backtest: roll the model over each window (or RSI if no model).
         Uses .shift(1) to prevent lookahead bias.
         """
+        start_ts = time.time()
+
         if self._agent is None or len(df) < self.SEQ_LEN + 1:
             # RSI fallback — vectorized
             rsi_series = _rsi(df["close"]).shift(1)
             entries = (rsi_series < 30).fillna(False)
             exits = (rsi_series > 70).fillna(False)
+
+            duration = time.time() - start_ts
+            signal_count = int(entries.sum() + exits.sum())
+            _logger.info(
+                "RLTrader backtest_signals (fallback RSI)",
+                extra={
+                    "duration_ms": duration * 1000,
+                    "signal_count": signal_count,
+                },
+            )
             return BacktestSignals(entries=entries, exits=exits)
 
-        actions = pd.Series(index=df.index, dtype=int)
-        actions[:] = _HOLD
+        entries = pd.Series(False, index=df.index)
+        exits = pd.Series(False, index=df.index)
 
         self._agent.eval()
         with torch.no_grad():
@@ -220,25 +284,24 @@ class RLTraderStrategy(AbstractStrategy):
                 if x.shape[-1] != self._agent.n_features:
                     pad_size = self._agent.n_features - x.shape[-1]
                     if pad_size > 0:
-                        x = torch.cat(
-                            [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                        )
+                        x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
                     else:
                         x = x[..., : self._agent.n_features]
-                action_probs, _ = self._agent.forward(x)
-                actions.iloc[i] = int(action_probs[0].argmax().item())
 
-        # Apply shift(1) — no lookahead
-        actions = actions.shift(1).fillna(_HOLD).astype(int)
+                action = self._agent.select_action(x)
 
-        entries = actions == _BUY
-        exits = actions == _SELL
-        short_entries = actions == _SELL
-        short_exits = actions == _BUY
+                if action == _BUY:
+                    entries.iloc[i] = True
+                elif action == _SELL:
+                    exits.iloc[i] = True
 
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
+        duration = time.time() - start_ts
+        signal_count = int(entries.sum() + exits.sum())
+        _logger.info(
+            "RLTrader backtest_signals (model inference)",
+            extra={
+                "duration_ms": duration * 1000,
+                "signal_count": signal_count,
+            },
         )
+        return BacktestSignals(entries=entries, exits=exits)
