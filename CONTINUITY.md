@@ -6,7 +6,7 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-06-24._
+_Last updated: 2026-07-04._
 
 ## Mission
 QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, and
@@ -42,14 +42,31 @@ QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, 
   pytest-asyncio deprecation removed (#206). Backend verified deploy-ready locally (158 routes, seeds
   29 bots). **Live blockers are human-only: Render build-minutes (#197) + default branch → `main` (#196).**
 
-## IN THIS BRANCH (`claude/sota-docs-and-fixes`)
-- ✅ **Cost-tiered routing** `llm_routed()`: free → OpenRouter open-mid → Claude backstop.
-- ✅ `/ws/prices` wildcard delivery fix (all-symbols ticker now receives per-symbol ticks).
-- ✅ Redis connection-failure **circuit breaker** + prod default (`REDIS_URL` unset ⇒ no-op,
-  no localhost spam).
-- ✅ Research docs + `MODEL_ROUTING.md` + this continuity system + tests.
+## 2026-07-04 — the big landing (12 PRs merged in one session)
+- ✅ #270 commodity_reversion strategy + commodities research; #271 stale backend URLs → agb8;
+  #272 keep-alive hardening; #273 website fixes (Google OAuth, WS revival, cold-start retry);
+  #274 Slack fail-loud pipeline; #275 pydantic v2; #276 reward-gate all editors; #277 broker
+  logging; #278 **ANTHROPIC_API_KEY wiring** (haiku default backstop, sonnet PR reviews,
+  @claude mention agent, key-sync workflow); #279 **Discord failover** at all 3 posting
+  chokepoints + models:read + weekly claude-queue-worker; #280 Option Alpha parity research.
+- ✅ **Key sync VERIFIED live**: self-trigger hack fired on #278's merge — 1-token Haiku call OK,
+  Doppler upserted, Render env var set (deploy call was 429 but the merge train's auto-deploy
+  covers it). The sync re-runs whenever `sync-anthropic-key.yml` itself changes on main.
+- ✅ #281 (`claude/stoic-johnson-7z4wtz`) **why-no-trades root fix**: BotRunner was NEVER
+  instantiated (29 bots at runs=0) → ignition one-shot job in `tasks/scheduler.py`;
+  `check_bot_exits` was never scheduled (positions would never close) → 5-min interval job;
+  self-ping keeps the Render dyno awake; Option Alpha endpoints the frontend 404'd on
+  (`/options/rules/validate`, `/flow`, `/put-call-ratio`, `/wheel`, `/macro-calendar`,
+  `/next-fomc`); real order submit in Options.tsx; `automerge` drafts now auto-ready+merge.
 
 ## NEXT (see `IMPROVEMENTS.md` for the full list)
+- Verify on prod after redeploy: bots show `last_run`/`run_count` > 0, `/api/v1/scheduler/jobs`
+  exists, trades appear once markets open (Jul 6 Mon).
+- ML experiments: torch can't run on the 512MB Render dyno — run training in GitHub Actions
+  (CPU-friendly models) or a worker with the `[ml]` extra; nightly retrain job now actually
+  fires (scheduler starts) but degrades without torch.
+- Human-only: DISCORD_WEBHOOK_URL secret (GitHub + Render), UptimeRobot pinger, Alpaca keys
+  rotation, delete the Vercel stub project (`quantedge.vercel.app`), Slack plan decision.
 - Refresh dead free-provider keys in Doppler (only Groq works) → multi-provider resilience.
 - Langfuse/OTel tracing on `llm_common`; pgvector memory (Mem0/Letta); verifiable-reward
   self-improvement gate; durable orchestration (Temporal); A2A protocol.

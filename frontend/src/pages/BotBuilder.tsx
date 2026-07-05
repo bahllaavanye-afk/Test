@@ -583,6 +583,7 @@ function BuildView({
                   onChange={(v) => setForm((f) => ({ ...f, market_type: v }))}
                   options={[
                     { label: 'Equity', value: 'equity' },
+                    { label: 'Options', value: 'options' },
                     { label: 'Crypto', value: 'crypto' },
                     { label: 'Polymarket', value: 'polymarket' },
                   ]}
