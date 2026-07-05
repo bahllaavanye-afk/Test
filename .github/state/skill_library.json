@@ -73,8 +73,13 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "validation on risk/correlation_monitor.py: success \u2014 tests green",
+    "validation on backtest/metrics.py: success \u2014 tests green",
+    "validation on tasks/backtest_worker.py: success \u2014 tests green",
+    "validation on strategies/manual/crypto_whale_momentum.py: success \u2014 tests green",
+    "validation on ml/models/multiscale_transformer.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-05T16:07:02.710998+00:00",
   "total": 26
 }
