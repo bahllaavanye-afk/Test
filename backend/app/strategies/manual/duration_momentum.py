@@ -26,20 +26,30 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DURATION_ETFS = {
-    "SHY":  2.0,    # duration ~2y
-    "IEF":  7.5,    # duration ~7.5y
-    "TLT":  17.0,   # duration ~17y
-    "TIPS": 7.0,    # inflation-linked ~7y
+    "SHY": 2.0,   # duration ~2y
+    "IEF": 7.5,   # duration ~7.5y
+    "TLT": 17.0,  # duration ~17y
+    "TIPS": 7.0,  # inflation-linked ~7y
 }
 _MOMENTUM_DAYS = 63   # 3 months
-_REBAL_DAYS    = 21   # 1 month
+_REBAL_DAYS = 21      # 1 month
 
 
 def _fetch_yf(symbol: str, period: str = "2y") -> pd.Series | None:
+    """Fetch adjusted close price series from yfinance.
+
+    Args:
+        symbol: Ticker symbol to fetch.
+        period: Historical period (default ``"2y"``).
+
+    Returns:
+        A pandas Series of close prices indexed by datetime or ``None`` if the fetch fails.
+    """
     try:
         import yfinance as yf
         hist = yf.Ticker(symbol).history(period=period, auto_adjust=True)
@@ -52,10 +62,34 @@ def _fetch_yf(symbol: str, period: str = "2y") -> pd.Series | None:
         return None
 
 
+class DurationMomentumParams(BaseModel):
+    """Configuration parameters for :class:`DurationMomentumStrategy`.
+
+    Attributes:
+        momentum_days: Number of look‑back days used to compute 3‑month momentum.
+    """
+
+    momentum_days: int = Field(
+        default=_MOMENTUM_DAYS,
+        ge=1,
+        le=365,
+        description="Look‑back period in days for momentum calculation. "
+                    "Typical value is 63 days (~3 months).",
+        example=63,
+    )
+
+    @validator("momentum_days")
+    def must_be_multiple_of_week(cls, v: int) -> int:
+        """Ensure the look‑back window aligns with weekly data granularity."""
+        if v % 7 != 0:
+            raise ValueError("momentum_days should be a multiple of 7 for weekly alignment.")
+        return v
+
+
 class DurationMomentumStrategy(AbstractStrategy):
     """
-    Rotates across Treasury duration buckets (SHY/IEF/TLT/TIPS) by 3-month momentum.
-    Holds the single best-performing duration. Monthly rebalancing.
+    Rotates across Treasury duration buckets (SHY/IEF/TLT/TIPS) by 3‑month momentum.
+    Holds the single best‑performing duration. Monthly rebalancing.
     Risk bucket: directional, market_type: equity
     """
 
@@ -66,10 +100,13 @@ class DurationMomentumStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 86400.0
 
+    Params = DurationMomentumParams
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        p = params or {}
-        self.momentum_days = int(p.get("momentum_days", _MOMENTUM_DAYS))
+        # Validate and store parameters using the Pydantic model
+        validated_params = self.Params(**(params or {}))
+        self.momentum_days = int(validated_params.momentum_days)
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         series = {}
@@ -81,8 +118,10 @@ class DurationMomentumStrategy(AbstractStrategy):
         if len(series) < 2:
             return None
 
-        returns = {etf: float(s.iloc[-1] / s.iloc[-self.momentum_days] - 1)
-                   for etf, s in series.items()}
+        returns = {
+            etf: float(s.iloc[-1] / s.iloc[-self.momentum_days] - 1)
+            for etf, s in series.items()
+        }
 
         ranked = sorted(returns.items(), key=lambda x: x[1], reverse=True)
         best_etf, best_ret = ranked[0]
@@ -104,7 +143,11 @@ class DurationMomentumStrategy(AbstractStrategy):
                     "best_duration_years": _DURATION_ETFS.get(best_etf, 0),
                     "momentum_3m": round(best_ret, 4),
                     "all_returns": {k: round(v, 4) for k, v in returns.items()},
-                    "rate_trend": "falling" if best_etf == "TLT" else "rising" if best_etf == "SHY" else "stable",
+                    "rate_trend": "falling"
+                    if best_etf == "TLT"
+                    else "rising"
+                    if best_etf == "SHY"
+                    else "stable",
                     "academic_ref": "Asness, Moskowitz & Pedersen (2013, JF) Momentum Everywhere",
                 },
             )
@@ -135,6 +178,6 @@ class DurationMomentumStrategy(AbstractStrategy):
         mom = close.pct_change(self.momentum_days)
 
         entries = (mom.shift(1) > 0.01).fillna(False)
-        exits   = (mom.shift(1) < 0.00).fillna(False)
+        exits = (mom.shift(1) < 0.00).fillna(False)
 
         return BacktestSignals(entries=entries, exits=exits)
