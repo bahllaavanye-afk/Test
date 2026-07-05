@@ -191,3 +191,124 @@ class SmartOrderRouter:
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior of SmartOrderRouter
+# ----------------------------------------------------------------------
+import unittest
+import asyncio
+
+class _MockBroker(AbstractBroker):
+    async def place_order(self, request: OrderRequest) -> OrderResult:
+        # Simple mock that pretends the order is fully filled at a constant price
+        return OrderResult(
+            broker_order_id="mock",
+            order_id="mock",
+            symbol=request.symbol,
+            status="filled",
+            filled_qty=request.quantity,
+            avg_fill_price=100.0,
+        )
+
+class _MockRiskManager:
+    def __init__(self, allowed=True, reason=""):
+        self.allowed = allowed
+        self.reason = reason
+
+    async def check_order(self, request: OrderRequest):
+        class Decision:
+            def __init__(self, allowed, reason):
+                self.allowed = allowed
+                self.reason = reason
+                self.adjusted_quantity = None
+        return Decision(self.allowed, self.reason)
+
+
+class TestSmartOrderRouterEdgeCases(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.broker = _MockBroker()
+        self.router = SmartOrderRouter(broker=self.broker)
+
+    async def test_select_algorithm_boundary_twap(self):
+        """
+        Verify that an order whose estimated USD value is exactly 100_000
+        selects TWAP when the RL execution path is unavailable.
+        """
+        # Force RL path to be unavailable for the test
+        global _RL_EXEC_AVAILABLE
+        original_flag = _RL_EXEC_AVAILABLE
+        _RL_EXEC_AVAILABLE = False
+
+        try:
+            request = OrderRequest(
+                symbol="TEST",
+                quantity=2000,          # 2000 * 50 = 100_000
+                limit_price=None,
+                stop_price=None,
+                order_type="market",
+                metadata={},
+                execution_algo="auto",
+            )
+            algo = self.router._select_algorithm(request)
+            self.assertEqual(algo, "twap")
+        finally:
+            _RL_EXEC_AVAILABLE = original_flag
+
+    async def test_select_algorithm_boundary_almgren(self):
+        """
+        Verify that an order whose estimated USD value is exactly 5_000
+        selects Almgren‑Chriss.
+        """
+        request = OrderRequest(
+            symbol="TEST",
+            quantity=100,            # 100 * 50 = 5_000
+            limit_price=None,
+            stop_price=None,
+            order_type="market",
+            metadata={},
+            execution_algo="auto",
+        )
+        algo = self.router._select_algorithm(request)
+        self.assertEqual(algo, "almgren_chriss")
+
+    async def test_limit_first_override(self):
+        """
+        Ensure that a limit order with a limit price forces the limit_first algorithm,
+        irrespective of the USD size.
+        """
+        request = OrderRequest(
+            symbol="TEST",
+            quantity=10,
+            limit_price=1.0,
+            stop_price=None,
+            order_type="limit",
+            metadata={},
+            execution_algo="auto",
+        )
+        algo = self.router._select_algorithm(request)
+        self.assertEqual(algo, "limit_first")
+
+    async def test_risk_manager_blocks_order(self):
+        """
+        When the risk manager denies an order, execute should return None
+        and must not call the broker.
+        """
+        blocked_risk = _MockRiskManager(allowed=False, reason="exceeds limit")
+        router = SmartOrderRouter(broker=self.broker, risk_manager=blocked_risk)
+
+        request = OrderRequest(
+            symbol="TEST",
+            quantity=1,
+            limit_price=None,
+            stop_price=None,
+            order_type="market",
+            metadata={},
+            execution_algo="auto",
+        )
+        result = await router.execute(request)
+        self.assertIsNone(result)
+
+
+if __name__ == "__main__":
+    unittest.main()
