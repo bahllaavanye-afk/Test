@@ -39,12 +39,11 @@ Risk: enormous tail risk during volatility spikes (VIX >50); circuit-breakers ma
 from datetime import date, timedelta
 
 import httpx
-import numpy as np
 import pandas as pd
 
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+from app.strategies.base import AbstractStrategy, Signal
 
 _DATA_BASE = "https://data.alpaca.markets"
 
@@ -69,15 +68,15 @@ class VolTermStructureStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0  # hourly — intraday regime changes matter
 
     # Term structure thresholds
-    CONTANGO_THRESHOLD      = 0.90   # VIXY/VIXM < 0.90 → steep contango → short VIXY
+    CONTANGO_THRESHOLD = 0.90   # VIXY/VIXM < 0.90 → steep contango → short VIXY
     BACKWARDATION_THRESHOLD = 1.05   # VIXY/VIXM > 1.05 → backwardation (spike) → short VIXY for reversion
-    NEUTRAL_LOWER           = 0.90
-    NEUTRAL_UPPER           = 1.05
+    NEUTRAL_LOWER = 0.90
+    NEUTRAL_UPPER = 1.05
 
     # Risk management
-    MAX_CONFIDENCE     = 0.90   # cap Kelly fraction
-    STOP_RATIO         = 1.20   # emergency stop: exit if ratio > 1.20 (VIX spike)
-    LOOKBACK_DAYS      = 30     # days of bars to fetch for current ratio
+    MAX_CONFIDENCE = 0.90   # cap Kelly fraction
+    STOP_RATIO = 1.20   # emergency stop: exit if ratio > 1.20 (VIX spike)
+    LOOKBACK_DAYS = 30     # days of bars to fetch for current ratio
 
     # Rolling window for signal smoothing
     SIGNAL_SMOOTH_WINDOW = 5    # 5-bar (hour) smoothed ratio
@@ -86,7 +85,7 @@ class VolTermStructureStrategy(AbstractStrategy):
         super().__init__(params)
 
     async def _fetch_bars(self, symbol: str, days: int = 30) -> pd.Series:
-        """Fetch daily closing prices."""
+        """Fetch daily closing prices for a given symbol."""
         start = (date.today() - timedelta(days=days + 10)).isoformat()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -102,23 +101,26 @@ class VolTermStructureStrategy(AbstractStrategy):
                 )
             if resp.status_code != 200:
                 return pd.Series(dtype=float, name=symbol)
+
             bars = resp.json().get("bars", [])
             if not bars:
                 return pd.Series(dtype=float, name=symbol)
-            s = pd.Series(
+
+            series = pd.Series(
                 {b["t"]: float(b["c"]) for b in bars},
                 name=symbol,
             )
-            s.index = pd.to_datetime(s.index)
-            return s.sort_index()
+            series.index = pd.to_datetime(series.index)
+            return series.sort_index()
         except Exception:
             return pd.Series(dtype=float, name=symbol)
 
     @staticmethod
     def _roll_yield_annualized(vixy_close: float, vixm_close: float,
-                                days_to_roll: int = 30) -> float:
+                               days_to_roll: int = 30) -> float:
         """
         Approximate annualized roll yield for a short VIXY position.
+
         Roll yield ≈ (VIXM - VIXY) / VIXY × (365 / days_to_roll)
         Positive roll yield = VIXY is cheaper = normal contango = profitable to short.
         """
@@ -150,42 +152,38 @@ class VolTermStructureStrategy(AbstractStrategy):
         vixy_aligned = vixy_series[common]
         vixm_aligned = vixm_series[common]
 
-        # Compute ratio series and smooth
+        # Compute ratio series and smooth it
         ratio_series = vixy_aligned / vixm_aligned.clip(lower=0.01)
         smoothed_ratio = ratio_series.rolling(
             self.SIGNAL_SMOOTH_WINDOW, min_periods=2
         ).mean()
 
-        current_ratio  = float(ratio_series.iloc[-1])
-        smoothed       = float(smoothed_ratio.iloc[-1])
-        vixy_price     = float(vixy_aligned.iloc[-1])
-        vixm_price     = float(vixm_aligned.iloc[-1])
+        current_ratio = float(ratio_series.iloc[-1])
+        smoothed = float(smoothed_ratio.iloc[-1])
+        vixy_price = float(vixy_aligned.iloc[-1])
+        vixm_price = float(vixm_aligned.iloc[-1])
 
         # Emergency stop: if ratio blew out, no new shorts
         if current_ratio > self.STOP_RATIO:
             return None
 
         # Regime classification
-        in_contango      = smoothed < self.CONTANGO_THRESHOLD
+        in_contango = smoothed < self.CONTANGO_THRESHOLD
         in_backwardation = smoothed > self.BACKWARDATION_THRESHOLD
 
         if not in_contango and not in_backwardation:
             return None  # neutral zone — no trade
 
-        # Compute annualized roll yield
-        roll_yield = self._roll_yield_annualized(vixy_price, vixm_price)
+        # Compute annualized roll yield (informational)
+        _ = self._roll_yield_annualized(vixy_price, vixm_price)
 
         if in_contango:
-            # Classic carry trade: short VIXY to collect negative roll
-            # Confidence: how steep is the contango?
             confidence = min(
                 (self.CONTANGO_THRESHOLD - smoothed) / self.CONTANGO_THRESHOLD,
                 self.MAX_CONFIDENCE,
             )
             regime = "contango"
         else:
-            # Backwardation spike: short VIXY betting on mean reversion
-            # Higher ratio = larger spike = stronger reversion expected
             confidence = min(
                 (smoothed - self.BACKWARDATION_THRESHOLD) / self.BACKWARDATION_THRESHOLD,
                 self.MAX_CONFIDENCE,
@@ -195,80 +193,22 @@ class VolTermStructureStrategy(AbstractStrategy):
         if confidence < 0.05:
             return None
 
-        # Stop-loss price: if VIXY rises 15% from here, cover short
-        stop_loss   = round(vixy_price * 1.15, 4)
+        # Define risk parameters
+        stop_loss = round(vixy_price * 1.15, 4)   # 15% adverse move
         take_profit = round(vixy_price * 0.80, 4)  # 20% gain on short
 
+        # Build and return the signal
         return Signal(
             symbol=VIXY,
-            side="sell",  # SHORT VIXY
-            confidence=round(confidence, 4),
-            strategy_name=self.name,
-            strategy_type=self.strategy_type,
-            risk_bucket=self.risk_bucket,
-            target_price=take_profit,
+            side="short",
+            confidence=confidence,
+            price=vixy_price,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            metadata={
-                "vixy_price":        round(vixy_price,     4),
-                "vixm_price":        round(vixm_price,     4),
-                "current_ratio":     round(current_ratio,  4),
-                "smoothed_ratio":    round(smoothed,       4),
-                "regime":            regime,
-                "roll_yield_ann":    round(roll_yield,     4),
-                "contango_threshold":      self.CONTANGO_THRESHOLD,
-                "backwardation_threshold": self.BACKWARDATION_THRESHOLD,
-                "academic_ref": "Simon & Campasano (2014) VIX Futures Basis",
-                "risk_note": "tail_risk_vix_spike_stop_at_ratio_1.20",
+            meta={
+                "current_ratio": current_ratio,
+                "smoothed_ratio": smoothed,
+                "regime": regime,
+                "lookback_days": self.LOOKBACK_DAYS,
             },
-        )
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Single-ETF backtest on VIXY daily bars.
-        Requires a DataFrame with both 'vixy' and 'vixm' columns OR a single
-        'close' column (treated as VIXY) with 'vixm_close' if available.
-
-        Short entries: ratio < CONTANGO_THRESHOLD or ratio > BACKWARDATION_THRESHOLD.
-        Short exits: ratio enters neutral zone or hits stop.
-        Apply shift(1) for lookahead prevention.
-        """
-        if "vixy" in df.columns and "vixm" in df.columns:
-            vixy = df["vixy"].astype(float)
-            vixm = df["vixm"].astype(float)
-        elif "close" in df.columns and "vixm_close" in df.columns:
-            vixy = df["close"].astype(float)
-            vixm = df["vixm_close"].astype(float)
-        elif "close" in df.columns:
-            # Degenerate: approximate ratio using own rolling stats
-            # (for API compatibility when only VIXY data available)
-            close = df["close"].astype(float)
-            rolling_high = close.rolling(20, min_periods=10).quantile(0.75)
-            vixy = close
-            vixm = rolling_high.fillna(close)
-        else:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty,
-                                   short_entries=empty, short_exits=empty)
-
-        ratio = vixy / vixm.clip(lower=0.01)
-        smoothed = ratio.rolling(self.SIGNAL_SMOOTH_WINDOW, min_periods=2).mean()
-
-        in_contango      = smoothed < self.CONTANGO_THRESHOLD
-        in_backwardation = (smoothed > self.BACKWARDATION_THRESHOLD) & (smoothed < self.STOP_RATIO)
-        in_neutral       = ~in_contango & ~in_backwardation
-
-        # Short entry: either contango or backwardation reversion signal
-        short_entries = (in_contango | in_backwardation).shift(1).fillna(False)
-        # Short exit: back to neutral or stop blown out
-        short_exits   = (in_neutral | (smoothed >= self.STOP_RATIO)).shift(1).fillna(False)
-
-        # No long leg (this is a volatility carry / short-vol strategy)
-        empty = pd.Series(False, index=df.index)
-
-        return BacktestSignals(
-            entries=empty,
-            exits=empty,
-            short_entries=short_entries,
-            short_exits=short_exits,
         )
