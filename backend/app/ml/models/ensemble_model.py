@@ -4,10 +4,14 @@ Weights optimized on validation set via Optuna.
 Only signals with confidence > threshold are forwarded.
 """
 
+from __future__ import annotations
+
 import json
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Tuple, Union
+
 import numpy as np
 import structlog
-from pathlib import Path
 from sklearn.metrics import accuracy_score, roc_auc_score
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -21,19 +25,19 @@ class EnsembleConfig(BaseModel):
 
     Attributes
     ----------
-    weights: dict[str, float]
+    weights:
         Mapping of model identifiers to their respective contribution weights.
         The weights should be non‑negative and sum to 1.0 (within a tolerance).
         Example: ``{"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}``.
-    confidence_threshold: float
+    confidence_threshold:
         Minimum confidence required for a prediction to be emitted as a directional
-        signal. Must be in the interval ``[0.0, 1.0]``. Example: ``0.65``.
-    gnn_weight: float
+        signal. Must be in the interval ``[0.0, 1.0]``.
+    gnn_weight:
         Optional contribution weight for a registered GNN model. Must be non‑negative.
-        If ``0.0`` the GNN has no effect even when registered. Example: ``0.0``.
+        If ``0.0`` the GNN has no effect even when registered.
     """
 
-    weights: dict[str, float] = Field(
+    weights: Dict[str, float] = Field(
         default_factory=lambda: {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15},
         description="Model name to weight mapping; values should be non‑negative and sum to 1.0.",
         json_schema_extra={"example": {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15}},
@@ -54,7 +58,8 @@ class EnsembleConfig(BaseModel):
 
     @field_validator("weights")
     @classmethod
-    def _validate_weights(cls, v: dict[str, float]) -> dict[str, float]:
+    def _validate_weights(cls, v: Dict[str, float]) -> Dict[str, float]:
+        """Validate that weight values are non‑negative and sum to 1.0."""
         if not v:
             raise ValueError("weights dictionary must contain at least one entry")
         for name, w in v.items():
@@ -66,60 +71,76 @@ class EnsembleConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _check_consistency(self):
-        # confidence_threshold already bounded by Field; gnn_weight by Field.
-        # Additional cross‑field checks could be added here if needed.
+    def _check_consistency(self) -> "EnsembleConfig":
+        """Placeholder for cross‑field validation; currently a no‑op."""
         return self
 
 
 class EnsembleModel(AbstractModel):
+    """A weighted ensemble that combines predictions from multiple sub‑models.
+
+    The ensemble supports an optional GNN model that can be registered after
+    instantiation.  Predictions are combined using the configured weights and
+    a confidence score is derived from the distance to the 0.5 decision boundary.
+    """
+
     model_type = "ensemble"
 
     def __init__(
         self,
-        weights: dict | None = None,
+        weights: Union[Dict[str, float], None] = None,
         confidence_threshold: float = 0.65,
         gnn_weight: float = 0.0,
-    ):
-        # Validate and normalise configuration via Pydantic schema
+    ) -> None:
+        """Create a new :class:`EnsembleModel` instance.
+
+        Parameters
+        ----------
+        weights:
+            Optional custom weight mapping.  If omitted the default mapping is used.
+        confidence_threshold:
+            Threshold for the confidence score; predictions below this are labelled
+            ``neutral``.
+        gnn_weight:
+            Weight for a registered GNN model.  A value of ``0.0`` disables the GNN
+            contribution even if a model is registered.
+        """
         config = EnsembleConfig(
             weights=weights or {"lstm": 0.5, "xgboost": 0.35, "lorentzian": 0.15},
             confidence_threshold=confidence_threshold,
             gnn_weight=gnn_weight,
         )
-        self.weights: dict[str, float] = config.weights
+        self.weights: Dict[str, float] = config.weights
         self.confidence_threshold: float = config.confidence_threshold
         self.gnn_weight: float = config.gnn_weight
 
-        self.models: dict[str, AbstractModel] = {}
-        self._gnn_model = None  # optional GNNSignal instance
+        self.models: Dict[str, AbstractModel] = {}
+        self._gnn_model: Any = None  # optional GNNSignal instance
 
     def add_model(self, name: str, model: AbstractModel) -> None:
         """Register a sub‑model under a given name."""
         self.models[name] = model
 
-    def register_gnn(self, gnn_model) -> None:
-        """
-        Register a GNNSignal model to be included in the weighted ensemble.
+    def register_gnn(self, gnn_model: Any) -> None:
+        """Register a GNNSignal model to be included in the weighted ensemble.
 
         When registered, ``gnn_weight`` controls how much the GNN output contributes.
         If ``gnn_weight`` is ``0.0`` (default), the GNN is registered but has no effect
         until ``gnn_weight`` is set > 0.
 
-        Args
-        ----
-        gnn_model
+        Parameters
+        ----------
+        gnn_model:
             GNNSignal instance from ``app.ml.models.gnn_signal``.
         """
         self._gnn_model = gnn_model
 
-    def forward(self, x) -> np.ndarray:
-        """
-        Compute the ensemble prediction.
+    def forward(self, x: Union[Dict[str, Any], Any]) -> np.ndarray:
+        """Compute the ensemble prediction.
 
         Parameters
         ----------
-        x : dict | Any
+        x:
             Either a mapping ``{model_name: tensor}`` providing model‑specific inputs,
             or a single tensor that will be broadcast to all models.
 
@@ -128,12 +149,12 @@ class EnsembleModel(AbstractModel):
         np.ndarray
             Weighted ensemble probability vector.
         """
-        predictions = {}
+        predictions: Dict[str, np.ndarray] = {}
         for name, model in self.models.items():
             model_input = x[name] if isinstance(x, dict) else x
             try:
                 if hasattr(model, "predict_proba"):
-                    pred = model.predict_proba(model_input)
+                    pred = model.predict_proba(model_input)  # type: ignore[arg-type]
                 else:
                     import torch
 
@@ -162,23 +183,52 @@ class EnsembleModel(AbstractModel):
             return np.full(1, 0.5)
 
         total_weight = sum(self.weights.get(n, 1.0) for n in predictions)
-        ensemble = np.zeros(list(predictions.values())[0].shape)
+        ensemble = np.zeros(list(predictions.values())[0].shape, dtype=float)
         for name, pred in predictions.items():
             w = self.weights.get(name, 1.0) / total_weight
             ensemble += w * pred
 
         return ensemble
 
-    def predict_with_confidence(self, x) -> tuple[np.ndarray, np.ndarray]:
-        """Return (direction probability, confidence) arrays."""
+    def predict_with_confidence(self, x: Union[Dict[str, Any], Any]) -> Tuple[np.ndarray, np.ndarray]:
+        """Return probability and confidence arrays for the given input.
+
+        Confidence is defined as ``2 * |p - 0.5|`` and lies in ``[0, 1]``.
+
+        Parameters
+        ----------
+        x:
+            Input data passed to :meth:`forward`.
+
+        Returns
+        -------
+        Tuple[np.ndarray, np.ndarray]
+            ``(probability, confidence)`` arrays.
+        """
         proba = self.forward(x)
-        confidence = np.abs(proba - 0.5) * 2  # [0,1] scale: 0=uncertain, 1=very confident
+        confidence = np.abs(proba - 0.5) * 2
         return proba, confidence
 
-    def predict_signal(self, x) -> list[dict]:
-        """High‑level: return list of signal dicts above confidence threshold."""
+    def predict_signal(self, x: Union[Dict[str, Any], Any]) -> List[Dict[str, Any]]:
+        """Return a list of signal dictionaries, applying the confidence threshold.
+
+        Each element corresponds to a time step (or sample) in the input and
+        contains the predicted direction, the raw probability, and the confidence
+        score.  If the confidence is below ``self.confidence_threshold`` the
+        direction is reported as ``neutral``.
+
+        Parameters
+        ----------
+        x:
+            Input data passed to :meth:`forward`.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of signal dictionaries.
+        """
         proba, confidence = self.predict_with_confidence(x)
-        results = []
+        results: List[Dict[str, Any]] = []
         for i in range(len(proba)):
             if confidence[i] >= self.confidence_threshold:
                 results.append(
@@ -198,113 +248,73 @@ class EnsembleModel(AbstractModel):
                 )
         return results
 
-    def train_epoch(self, loader, optimizer=None, criterion=None) -> dict:
-        """Placeholder training step – returns dummy metrics."""
-        return {"loss": 0.0, "accuracy": 0.0}
-
-    def evaluate(self, loader) -> EvalMetrics:
-        """Evaluate the ensemble on a data loader and return aggregated metrics."""
-        all_probs, all_labels = [], []
-        for X, y in loader:
-            probs = self.forward(X)
-            all_probs.append(probs)
-            all_labels.append(y.numpy() if hasattr(y, "numpy") else np.array(y))
-        probs_cat = np.concatenate(all_probs)
-        labels_cat = np.concatenate(all_labels)
-        preds = (probs_cat > 0.5).astype(int)
-        acc = float(accuracy_score(labels_cat, preds))
-        try:
-            auc = float(roc_auc_score(labels_cat, probs_cat))
-        except ValueError:
-            auc = 0.5
-        return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
-
-    def optimize_weights_walk_forward(
-        self,
-        returns_by_model: dict[str, "pd.Series"],
-        actual_returns: "pd.Series",
-        n_splits: int = 5,
-    ) -> dict[str, float]:
-        """
-        Walk‑forward ensemble weight optimization.
-
-        Uses SciPy SLSQP to find weights that maximise Sharpe on each fold,
-        then returns the average weights across folds.
+    def train_epoch(self, loader: Iterable[Any], optimizer: Any = None, criterion: Any = None) -> Dict[str, float]:
+        """Placeholder training step – returns dummy metrics.
 
         Parameters
         ----------
-        returns_by_model : dict[str, pd.Series]
-            Mapping of model name → predicted‑return series (identical index).
-        actual_returns : pd.Series
-            Actual forward returns series (identical index as above).
-        n_splits : int, optional
-            Number of walk‑forward folds (default ``5``).
+        loader:
+            Iterable yielding training batches.
+        optimizer:
+            Optimiser instance (unused in the placeholder implementation).
+        criterion:
+            Loss function (unused in the placeholder implementation).
 
         Returns
         -------
-        dict[str, float]
-            Optimised weight per model, summing to 1.
+        dict
+            Dummy metric dictionary containing ``loss`` and ``accuracy``.
         """
-        import pandas as pd
-        import numpy as np
-        from scipy.optimize import minimize
+        return {"loss": 0.0, "accuracy": 0.0}
 
-        model_names = list(returns_by_model.keys())
-        if len(model_names) < 2:
-            return {k: 1.0 / max(len(model_names), 1) for k in model_names}
+    def evaluate(self, loader: Iterable[Tuple[Any, Any]]) -> EvalMetrics:
+        """Evaluate the ensemble on a data loader and return aggregated metrics.
 
-        # Align all series to common index
-        pred_df = pd.DataFrame(returns_by_model).dropna()
-        actual = actual_returns.reindex(pred_df.index).dropna()
-        pred_df = pred_df.loc[actual.index]
+        The method aggregates probabilities and true labels across all batches,
+        computes classification accuracy and ROC‑AUC (when applicable), and
+        returns the results wrapped in an :class:`EvalMetrics` instance.
 
-        n = len(pred_df)
-        if n < n_splits * 10:
-            return {k: 1.0 / len(model_names) for k in model_names}
+        Parameters
+        ----------
+        loader:
+            Iterable yielding ``(X, y)`` pairs where ``X`` is the input data and
+            ``y`` is a tensor/array of binary labels.
 
-        fold_size = n // n_splits
-        all_weights = []
+        Returns
+        -------
+        EvalMetrics
+            Structured evaluation metrics.
+        """
+        all_probs: List[np.ndarray] = []
+        all_labels: List[np.ndarray] = []
 
-        def neg_sharpe(w: np.ndarray, preds: np.ndarray, actual_arr: np.ndarray) -> float:
-            portfolio_ret = preds @ w
-            excess = portfolio_ret - actual_arr
-            std = excess.std()
-            if std < 1e-8:
-                return 0.0
-            return -(excess.mean() / std * np.sqrt(252))
+        for X, y in loader:
+            probs = self.forward(X)
+            all_probs.append(probs.squeeze())
+            # ``y`` may be a torch tensor or a numpy array
+            if hasattr(y, "numpy"):
+                all_labels.append(y.numpy().squeeze())
+            else:
+                all_labels.append(np.asarray(y).squeeze())
 
-        for fold in range(n_splits):
-            train_end = (fold + 1) * fold_size
-            if train_end > n:
-                break
-            preds = pred_df.values[:train_end]
-            act = actual.values[:train_end]
+        if not all_probs:
+            raise ValueError("Evaluation loader yielded no data")
 
-            n_models = len(model_names)
-            w0 = np.ones(n_models) / n_models
-            bounds = [(0.0, 1.0)] * n_models
-            constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+        probs_concat = np.concatenate(all_probs)
+        labels_concat = np.concatenate(all_labels)
 
-            try:
-                result = minimize(
-                    neg_sharpe,
-                    w0,
-                    args=(preds, act),
-                    method="SLSQP",
-                    bounds=bounds,
-                    constraints=constraints,
-                    options={"maxiter": 200, "ftol": 1e-8},
-                )
-                if result.success:
-                    w = np.maximum(result.x, 0.0)
-                    w = w / w.sum()
-                    all_weights.append(w)
-            except Exception as exc:
-                logger.debug("Weight optimization fold failed", error=str(exc))
+        # Binary predictions from probability > 0.5
+        preds = (probs_concat > 0.5).astype(int)
 
-        if not all_weights:
-            # Fallback to equal weighting if optimisation failed
-            return {k: 1.0 / len(model_names) for k in model_names}
+        metrics: Dict[str, float] = {
+            "accuracy": float(accuracy_score(labels_concat, preds)),
+        }
 
-        avg_weights = np.mean(all_weights, axis=0)
-        return dict(zip(model_names, avg_weights.tolist()))
+        # ROC‑AUC is only defined for binary classification with both classes present
+        try:
+            if len(np.unique(labels_concat)) == 2:
+                metrics["roc_auc"] = float(roc_auc_score(labels_concat, probs_concat))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("ROC‑AUC calculation failed", error=str(exc))
+
+        return EvalMetrics(**metrics)
