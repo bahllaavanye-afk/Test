@@ -4,18 +4,43 @@ Uses Upper Confidence Bound (UCB1) for exploration vs exploitation.
 Runs as a background asyncio task alongside the strategy runner.
 """
 from __future__ import annotations
+
 import asyncio
-import math
 import json
+import math
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from dataclasses import dataclass, field
 
 from app.utils.logging import logger
 
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+
+# Directory where experiment results are stored
 EXPERIMENTS_DIR = Path(__file__).parents[3] / "experiments" / "results"
 EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# AlgoAgent configuration
+DEFAULT_INTERVAL_SECONDS = 300
+UCB_EXPLORATION_COEF = 1.414
+
+# Alpaca data request settings
+ALPACA_BASE_URL = "https://data.alpaca.markets/v2/stocks"
+ALPACA_TIMEFRAME = "1Day"
+ALPACA_BAR_LIMIT = 1000
+ALPACA_HEADER_KEY = "APCA-API-KEY-ID"
+ALPACA_HEADER_SECRET = "APCA-API-SECRET-KEY"
+
+# Backtest validation thresholds
+MIN_REQUIRED_BARS = 60
+MIN_REQUIRED_SIGNALS = 30
+
+# Result persistence settings
+RESULTS_FILE_NAME = "algo_agent_results.json"
+MAX_RESULTS_HISTORY = 500
 
 
 @dataclass
@@ -33,7 +58,7 @@ class AlgoCandidate:
     def avg_sharpe(self) -> float:
         return self.total_sharpe / self.n_runs if self.n_runs > 0 else 0.0
 
-    def ucb_score(self, total_runs: int, c: float = 1.414) -> float:
+    def ucb_score(self, total_runs: int, c: float = UCB_EXPLORATION_COEF) -> float:
         """UCB1 formula: avg_reward + c * sqrt(ln(total_runs) / n_runs)"""
         if self.n_runs == 0:
             return float("inf")  # always try unexplored candidates first
@@ -85,7 +110,7 @@ class AlgoAgent:
         ("open_close_revert", "SPY", "manual"),
     ]
 
-    def __init__(self, broker=None, interval_seconds: int = 300):
+    def __init__(self, broker=None, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
         self.broker = broker
         self.interval_seconds = interval_seconds
         self._candidates: dict[str, AlgoCandidate] = {}
@@ -120,14 +145,14 @@ class AlgoAgent:
             start_str = start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
             headers = {
-                "APCA-API-KEY-ID": settings.alpaca_api_key,
-                "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+                ALPACA_HEADER_KEY: settings.alpaca_api_key,
+                ALPACA_HEADER_SECRET: settings.alpaca_secret_key,
             }
 
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(
-                    f"https://data.alpaca.markets/v2/stocks/{candidate.symbol.upper()}/bars",
-                    params={"timeframe": "1Day", "start": start_str, "limit": 1000},
+                    f"{ALPACA_BASE_URL}/{candidate.symbol.upper()}/bars",
+                    params={"timeframe": ALPACA_TIMEFRAME, "start": start_str, "limit": ALPACA_BAR_LIMIT},
                     headers=headers,
                 )
 
@@ -135,22 +160,22 @@ class AlgoAgent:
                 return 0.0
 
             raw_bars = resp.json().get("bars", [])
-            if not raw_bars or len(raw_bars) < 60:
+            if not raw_bars or len(raw_bars) < MIN_REQUIRED_BARS:
                 return 0.0
 
             dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True)
             closes = [float(b["c"]) for b in raw_bars]
-            opens  = [float(b["o"]) for b in raw_bars]
-            highs  = [float(b["h"]) for b in raw_bars]
-            lows   = [float(b["l"]) for b in raw_bars]
-            vols   = [float(b["v"]) for b in raw_bars]
+            opens = [float(b["o"]) for b in raw_bars]
+            highs = [float(b["h"]) for b in raw_bars]
+            lows = [float(b["l"]) for b in raw_bars]
+            vols = [float(b["v"]) for b in raw_bars]
 
             hist = pd.DataFrame(
                 {"Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": vols},
                 index=dates,
             )
 
-            if hist is None or len(hist) < 60:
+            if len(hist) < MIN_REQUIRED_BARS:
                 return 0.0
 
             close = hist["Close"]
@@ -161,7 +186,7 @@ class AlgoAgent:
 
             strategy = strategy_cls()
             signals = strategy.backtest_signals(hist)
-            if signals is None or len(signals) < 30:
+            if signals is None or len(signals) < MIN_REQUIRED_SIGNALS:
                 return 0.0
 
             if hasattr(signals, "values"):
@@ -190,14 +215,14 @@ class AlgoAgent:
         self._results.append(result)
 
         # Persist to disk
-        results_file = EXPERIMENTS_DIR / "algo_agent_results.json"
+        results_file = EXPERIMENTS_DIR / RESULTS_FILE_NAME
         try:
             if results_file.exists():
                 existing = json.loads(results_file.read_text())
             else:
                 existing = []
             existing.append(result)
-            existing = existing[-500:]  # keep last 500
+            existing = existing[-MAX_RESULTS_HISTORY:]  # keep last N results
             results_file.write_text(json.dumps(existing, indent=2))
         except Exception as e:
             logger.warning("AlgoAgent: failed to persist result", error=str(e))
@@ -205,50 +230,34 @@ class AlgoAgent:
     async def run(self) -> None:
         """Main loop — runs forever, selecting and testing candidates via UCB1."""
         self._running = True
-        logger.info("AlgoAgent started", candidates=len(self._candidates), interval=self.interval_seconds)
+        logger.info(
+            "AlgoAgent started",
+            candidates=len(self._candidates),
+            interval=self.interval_seconds,
+        )
 
         while self._running:
             try:
                 candidate = self._select_candidate()
-                logger.info("AlgoAgent testing", strategy=candidate.name, symbol=candidate.symbol,
-                            ucb=round(candidate.ucb_score(self._total_runs), 3))
-
+                logger.info(
+                    "AlgoAgent testing",
+                    strategy=candidate.name,
+                    symbol=candidate.symbol,
+                    type=candidate.strategy_type,
+                )
                 sharpe = await self._run_quick_backtest(candidate)
+
+                # Update candidate statistics
                 candidate.n_runs += 1
                 candidate.total_sharpe += sharpe
                 candidate.best_sharpe = max(candidate.best_sharpe, sharpe)
                 candidate.last_run_at = datetime.now(timezone.utc)
                 self._total_runs += 1
 
+                # Persist the result
                 self._save_result(candidate, sharpe)
 
-                logger.info("AlgoAgent result", strategy=candidate.name, symbol=candidate.symbol,
-                            sharpe=round(sharpe, 3), avg=round(candidate.avg_sharpe, 3),
-                            n_runs=candidate.n_runs)
-
-            except asyncio.CancelledError:
-                break
             except Exception as e:
-                logger.error("AlgoAgent error", error=str(e))
+                logger.error("AlgoAgent loop error", error=str(e))
 
             await asyncio.sleep(self.interval_seconds)
-
-    async def stop(self) -> None:
-        self._running = False
-
-    def get_leaderboard(self) -> list[dict]:
-        """Return candidates sorted by average Sharpe descending."""
-        def _safe(v: float) -> float:
-            import math
-            if math.isinf(v) or math.isnan(v):
-                return 9999.0 if v > 0 else -9999.0
-            return round(v, 3)
-
-        return sorted(
-            [{"key": k, "strategy": c.name, "symbol": c.symbol, "type": c.strategy_type,
-              "avg_sharpe": round(c.avg_sharpe, 3), "best_sharpe": round(c.best_sharpe, 3),
-              "n_runs": c.n_runs, "ucb": _safe(c.ucb_score(self._total_runs))}
-             for k, c in self._candidates.items()],
-            key=lambda x: x["avg_sharpe"],
-            reverse=True,
-        )
