@@ -43,7 +43,6 @@ class MLPCAStatArbStrategy(AbstractStrategy):
     strategy_type = "ml_enhanced"
     risk_bucket = "arbitrage"
     tick_interval_seconds = 86_400.0  # daily
-    confidence_threshold = 0.65
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
