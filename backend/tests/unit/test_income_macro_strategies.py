@@ -14,9 +14,37 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
+
+
+class StrategyTestConfig(BaseModel):
+    """Schema for configuring strategy unit tests.
+
+    Attributes
+    ----------
+    name: str
+        Strategy name to test. Example: ``"credit_spread_income"``.
+    risk_bucket: str
+        Risk bucket classification for the strategy. Example: ``"arbitrage"``.
+    ohlcv: pandas.DataFrame
+        OHLCV data used for backtesting. Must contain columns
+        ``open``, ``high``, ``low``, ``close``, and ``volume``.
+    """
+
+    name: str = Field(..., description="Strategy name to test.", example="credit_spread_income")
+    risk_bucket: str = Field(..., description="Risk bucket classification.", example="arbitrage")
+    ohlcv: pd.DataFrame = Field(..., description="OHLCV DataFrame for backtesting.")
+
+    @validator("ohlcv")
+    def validate_ohlcv(cls, v: pd.DataFrame) -> pd.DataFrame:
+        required = {"open", "high", "low", "close", "volume"}
+        missing = required - set(v.columns)
+        if missing:
+            raise ValueError(f"OHLCV DataFrame missing columns: {missing}")
+        return v
 
 
 @pytest.fixture
