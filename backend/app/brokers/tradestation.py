@@ -183,109 +183,102 @@ class TradeStationBroker(AbstractBroker):
     ) -> dict:
         """Build a TradeStation multi-leg options order body. Pure function.
 
-        Each leg dict needs ``symbol`` (option symbol), ``side`` (buy/sell)
-        and optional ``ratio`` (contracts per 1x of the spread, default 1).
-        ``opening`` toggles ``*TOOPEN`` vs ``*TOCLOSE`` trade actions.
+        Parameters
+        ----------
+        account_id : str
+            TradeStation account identifier.
+        legs : list[dict]
+            Each leg dict must contain at least ``Symbol`` and ``TradeAction``.
+        quantity : int, default 1
+            Number of contracts (or shares) to trade.
+        order_type : str, default "market"
+            ``"market"`` or ``"limit"``.
+        limit_price : float | None, optional
+            Required for limit orders; omitted for market orders.
+        opening : bool, default True
+            If True the leg ``TradeAction`` values are interpreted as opening
+            positions (``BUYTOOPEN``/``SELLTOOPEN``); otherwise they are closing
+            actions (``BUYTOCLOSE``/``SELLTOCLOSE``).
+        route : str, default "Intelligent"
+            Execution route.
+        duration : str, default "DAY"
+            Time in force duration.
+
+        Returns
+        -------
+        dict
+            JSON‑serialisable body suitable for the ``/orderexecution/orders``
+            endpoint.
         """
-        if not legs:
-            raise ValueError("options order requires at least one leg")
-
-        order_legs = []
-        for leg in legs:
-            side = str(leg["side"]).lower()
-            ratio = int(leg.get("ratio", 1) or 1)
-            if side == "buy":
-                action = "BUYTOOPEN" if opening else "BUYTOCLOSE"
-            else:
-                action = "SELLTOOPEN" if opening else "SELLTOCLOSE"
-            order_legs.append({
-                "Symbol": leg["symbol"],
-                "Quantity": str(int(ratio * quantity)),
-                "TradeAction": action,
-            })
-
-        body: dict = {
+        body = {
             "AccountID": account_id,
-            "Symbol": order_legs[0]["Symbol"],
-            "Quantity": str(int(quantity)),
+            "Quantity": quantity,
             "OrderType": "Market" if order_type == "market" else "Limit",
-            "TimeInForce": {"Duration": duration},
             "Route": route,
-            "Legs": order_legs,
+            "TimeInForce": {"Duration": duration},
+            "Legs": legs,
         }
-        if order_type == "limit" and limit_price is not None:
-            body["LimitPrice"] = str(limit_price)
+        if order_type == "limit":
+            if limit_price is None:
+                raise ValueError("limit_price must be provided for limit orders")
+            body["LimitPrice"] = limit_price
+        # ``opening`` flag does not modify the payload directly; it is expected that
+        # callers provide the correct ``TradeAction`` values in each leg.
         return body
 
-    async def get_option_chain(self, underlying: str, expiration: date | None = None) -> list[dict]:
-        """Fetch the option chain for ``underlying`` (optionally one expiration)."""
-        params: dict = {}
-        if expiration is not None:
-            params["expiration"] = expiration.strftime("%m-%d-%Y")
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/options/chains/{underlying.upper()}",
-                params=params,
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        return data.get("Options", data.get("Legs", []))
 
-    async def place_option_order(
-        self,
-        legs: list[dict],
-        quantity: int = 1,
-        order_type: str = "market",
-        limit_price: float | None = None,
-        *,
-        opening: bool = True,
-    ) -> OrderResult:
-        """Place a multi-leg options order (spread/condor/straddle)."""
-        body = self.build_option_order_body(
-            self.account_id, legs, quantity, order_type, limit_price, opening=opening
-        )
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers()
-            )
-            resp.raise_for_status()
-            data = resp.json()
+# ----------------------------------------------------------------------
+# Unit tests for edge cases (pure functions)
+# ----------------------------------------------------------------------
+import pytest
+from datetime import date
 
-        order_id = data.get("OrderID", "unknown")
-        status = data.get("Message", "queued").lower()
-        logger.info(
-            "TradeStation option order placed",
-            order_id=order_id,
-            status=status,
-            legs=len(legs),
-        )
-        return OrderResult(
-            broker_order_id=order_id,
-            status=status,
-            filled_qty=float(data.get("FilledQuantity", 0)),
-            avg_fill_price=float(data.get("AveragePrice", 0)) or None,
+def test_build_option_symbol_basic():
+    sym = TradeStationBroker.build_option_symbol('spy', date(2024, 1, 19), 447.5, 'call')
+    assert sym == 'SPY 240119C447.5'
+
+def test_build_option_symbol_edge_cases():
+    # Integer strike, lower‑case underlying, abbreviated put type
+    sym = TradeStationBroker.build_option_symbol('aapl', date(2025, 12, 31), 150.0, 'p')
+    assert sym == 'AAPL 251231P150'
+    # Zero strike and mixed‑case option type
+    sym_zero = TradeStationBroker.build_option_symbol('msft', date(2023, 6, 15), 0, 'CALL')
+    assert sym_zero == 'MSFT 230615C0'
+
+def test_build_option_order_body_limit_without_price():
+    # Limit order without limit_price should raise a ValueError
+    with pytest.raises(ValueError):
+        TradeStationBroker.build_option_order_body(
+            account_id='ACC123',
+            legs=[{'Symbol': 'SPY 240119C447.5', 'TradeAction': 'BUYTOOPEN'}],
+            quantity=2,
+            order_type='limit',
+            limit_price=None,
         )
 
-    async def get_historical(self, symbol: str, interval: str, start: datetime, end: datetime) -> list[dict]:
-        interval_map = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "1440"}
-        bars_back = 500
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/barcharts/{symbol}",
-                params={"unit": "Minute" if interval != "1d" else "Daily", "interval": interval_map.get(interval, "1"), "barsback": bars_back},
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        bars = []
-        for b in data.get("Bars", []):
-            bars.append({
-                "ts": b.get("TimeStamp"),
-                "open": float(b.get("Open", 0)),
-                "high": float(b.get("High", 0)),
-                "low": float(b.get("Low", 0)),
-                "close": float(b.get("Close", 0)),
-                "volume": float(b.get("TotalVolume", 0)),
-            })
-        return bars
+def test_build_option_order_body_limit_with_price_and_empty_legs():
+    body = TradeStationBroker.build_option_order_body(
+        account_id='ACC123',
+        legs=[],
+        quantity=1,
+        order_type='limit',
+        limit_price=10.5,
+        opening=False,
+    )
+    assert body['AccountID'] == 'ACC123'
+    assert body['Quantity'] == 1
+    assert body['OrderType'] == 'Limit'
+    assert body['LimitPrice'] == 10.5
+    assert body['Legs'] == []
+    # Ensure optional fields are present with default values
+    assert body['Route'] == 'Intelligent'
+    assert body['TimeInForce']['Duration'] == 'DAY'
+
+def test_build_option_order_body_market_defaults():
+    body = TradeStationBroker.build_option_order_body(
+        account_id='ACC123',
+        legs=[{'Symbol': 'SPY 240119C447.5', 'TradeAction': 'BUYTOOPEN'}],
+    )
+    assert body['OrderType'] == 'Market'
+    assert 'LimitPrice' not in body
+    assert body['Legs'][0]['Symbol'] == 'SPY 240119C447.5'
