@@ -428,25 +428,13 @@ def _run_agent_execution_tests(target_channel: str | None = None) -> list[AgentE
 # ─── Slack posting ────────────────────────────────────────────────────────────
 
 def _slack_post(channel: str, text: str) -> bool:
-    if DRY_RUN or not SLACK_BOT_TOKEN:
+    if DRY_RUN:
         print(f"[dry-run] #{channel}: {text[:120]}")
         return True
-    try:
-        payload = json.dumps({"channel": channel, "text": text}).encode()
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            resp = json.loads(r.read())
-        return bool(resp.get("ok"))
-    except Exception as e:
-        print(f"[health] slack post error: {e}")
-        return False
+    # Shared Slack→Discord delivery: health reports must reach a human even
+    # when Slack's quota is dead (this monitor's alerts went nowhere for days).
+    import notify
+    return notify.post(channel, text, username="Agent Health Monitor")
 
 
 # ─── Report builders ──────────────────────────────────────────────────────────

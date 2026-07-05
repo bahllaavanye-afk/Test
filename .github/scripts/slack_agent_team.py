@@ -3771,7 +3771,12 @@ def _discord_post(channel: str, username: str, text: str) -> bool:
     data = json.dumps({"content": content, "username": str(username)[:80] or "QuantEdge"}).encode()
     req = urllib.request.Request(
         webhook, data=data,
-        headers={"Content-Type": "application/json"}, method="POST",
+        headers={
+            "Content-Type": "application/json",
+            # Discord/Cloudflare 403s the default Python-urllib UA — browser UA required.
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) QuantEdge-Notify/1.0",
+        },
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=15):
@@ -8458,17 +8463,24 @@ def main() -> int:
     verify_zero_spend()
     token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     if not token.startswith("xoxb-"):
-        print("")
-        print("╔══════════════════════════════════════════════════════════════════╗")
-        print("║  ⚠  SLACK SILENT — agents ran but NO messages were posted       ║")
-        print("║                                                                  ║")
-        print("║  SLACK_BOT_TOKEN is missing or invalid (must start with xoxb-)  ║")
-        print("║                                                                  ║")
-        print("║  Add SLACK_BOT_TOKEN to repo secrets:                           ║")
-        print("║  Settings → Secrets and variables → Actions → New secret        ║")
-        print("╚══════════════════════════════════════════════════════════════════╝")
-        print("")
-        return 0
+        if _DISCORD_WEBHOOK:
+            # Full Discord mode — no Slack workspace required. Pre-marking the
+            # fatal flag makes every chat.postMessage short-circuit straight
+            # into the Discord delivery path (per-employee bot profiles,
+            # per-channel routing), so the whole company runs on Discord.
+            _post_stats["fatal_error"] = "no_slack_token"
+            print("ℹ Slack token absent/invalid — Discord is the primary channel for this run")
+        else:
+            print("")
+            print("╔══════════════════════════════════════════════════════════════════╗")
+            print("║  ⚠  SLACK SILENT — agents ran but NO messages were posted       ║")
+            print("║                                                                  ║")
+            print("║  SLACK_BOT_TOKEN is missing or invalid (must start with xoxb-)  ║")
+            print("║  Add SLACK_BOT_TOKEN — or DISCORD_WEBHOOK_URL — to repo secrets ║")
+            print("║  Settings → Secrets and variables → Actions → New secret        ║")
+            print("╚══════════════════════════════════════════════════════════════════╝")
+            print("")
+            return 0
 
     auth = slack_call(token, "auth.test", {})
     if not auth.get("ok"):
