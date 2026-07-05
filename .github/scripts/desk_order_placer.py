@@ -200,13 +200,19 @@ async def _get_account() -> dict | None:
 async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 200) -> "pd.DataFrame | None":
     import pandas as pd
     try:
+        # Without an explicit start, Alpaca defaults to the CURRENT DAY — one
+        # partial daily bar — so every symbol failed the >=50-row minimum and
+        # the whole pipeline ran signal generation on an empty bars cache
+        # (bars_fetched=0 on every run since inception). 300 calendar days
+        # ≈ 200 trading days, matching `limit`.
+        start = (datetime.now(timezone.utc) - timedelta(days=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
         is_crypto = "/" in symbol
         if is_crypto:
             path   = f"/v1beta3/crypto/us/bars"
-            params = {"symbols": symbol, "timeframe": timeframe, "limit": limit}
+            params = {"symbols": symbol, "timeframe": timeframe, "limit": limit, "start": start}
         else:
             path   = f"/v2/stocks/{symbol}/bars"
-            params = {"timeframe": timeframe, "limit": limit, "adjustment": "split"}
+            params = {"timeframe": timeframe, "limit": limit, "adjustment": "split", "start": start}
 
         data = await _alpaca_get(path, params, data_api=True)
 
@@ -554,11 +560,15 @@ async def main() -> None:
             )
             for sym, df in zip(all_symbols, results):
                 if isinstance(df, Exception) or df is None:
+                    print(f"    ⚠ {sym}: no bars returned", flush=True)
                     continue
                 if len(df) >= 50:
                     bars_cache[sym] = df
                     bars_fetched += 1
                     symbols_fetched.append(sym)
+                else:
+                    # A silent drop here hid the missing-start bug for weeks.
+                    print(f"    ⚠ {sym}: only {len(df)} bars (<50) — dropped", flush=True)
             tracker.set_output(bars_fetched=bars_fetched, symbols=symbols_fetched)
 
         # Detect market regime from SPY bars (0=bear, 1=sideways, 2=bull)
