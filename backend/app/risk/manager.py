@@ -75,8 +75,10 @@ class RiskManager:
             return RiskDecision(False, f"Arb circuit breaker halted: {reason}")
 
         if not self._equity_confirmed:
-            logger.warning("risk.manager: using estimated equity — broker snapshot not yet received",
-                           estimated_equity=self._equity)
+            logger.warning(
+                "risk.manager: using estimated equity — broker snapshot not yet received",
+                estimated_equity=self._equity,
+            )
         if self._equity <= 0:
             return RiskDecision(False, "equity is zero or negative — orders halted")
 
@@ -85,7 +87,12 @@ class RiskManager:
         max_allowed = self._equity * self.max_position_pct
         if estimated_value > max_allowed:
             adj_qty = max_allowed / (request.limit_price or 100)
-            logger.warning("Position size capped", symbol=request.symbol, original=request.quantity, adjusted=adj_qty)
+            logger.warning(
+                "Position size capped",
+                symbol=request.symbol,
+                original=request.quantity,
+                adjusted=adj_qty,
+            )
             return RiskDecision(True, "size capped", adj_qty)
 
         # Correlation cluster check
@@ -119,3 +126,66 @@ class RiskManager:
             price=price,
             max_pct=self.max_position_pct,
         )
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+import unittest
+from types import SimpleNamespace
+
+
+class TestRiskManager(unittest.IsolatedAsyncioTestCase):
+    async def test_equity_zero_or_negative(self):
+        rm = RiskManager()
+        rm._equity = 0
+        rm._equity_confirmed = True
+        request = SimpleNamespace(
+            symbol="TEST",
+            quantity=10,
+            limit_price=100,
+            risk_bucket="equity",
+        )
+        decision = await rm.check_order(request)
+        self.assertFalse(decision.allowed)
+        self.assertIn("equity is zero", decision.reason.lower())
+
+    async def test_position_size_exactly_at_cap(self):
+        rm = RiskManager(max_position_pct=0.05, initial_equity=1000)
+        rm._equity = 1000
+        rm._equity_confirmed = True
+        # max_allowed = 1000 * 0.05 = 50
+        request = SimpleNamespace(
+            symbol="CAP",
+            quantity=0.5,  # 0.5 * 100 = 50
+            limit_price=100,
+            risk_bucket="equity",
+        )
+        decision = await rm.check_order(request)
+        self.assertTrue(decision.allowed)
+        # Since no capping needed, adjusted_quantity should be the original quantity
+        self.assertEqual(decision.adjusted_quantity, request.quantity)
+
+    async def test_correlation_cluster_limit_exceeded(self):
+        rm = RiskManager(max_cluster_pct=0.30, initial_equity=1000)
+        rm._equity = 1000
+        rm._equity_confirmed = True
+        # Existing position in cluster
+        rm._positions = {"AAPL": 200.0}
+        # Define a single cluster containing AAPL and MSFT
+        rm._clusters = {"cluster_1": ["AAPL", "MSFT"]}
+
+        # Request that would push cluster exposure over 30% of equity (300)
+        request = SimpleNamespace(
+            symbol="MSFT",
+            quantity=3,  # 3 * 100 = 300
+            limit_price=100,
+            risk_bucket="equity",
+        )
+        decision = await rm.check_order(request)
+        self.assertFalse(decision.allowed)
+        self.assertIn("cluster", decision.reason.lower())
+
+
+if __name__ == "__main__":
+    unittest.main()
