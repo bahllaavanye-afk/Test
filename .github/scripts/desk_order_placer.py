@@ -52,6 +52,10 @@ class DeskConfig(NamedTuple):
     strategy_names:  list[str]       # must match STRATEGY_REGISTRY keys
     notional_usd:    float            # dollars per order
     confidence_min:  float            # minimum signal confidence to trade
+    # True for venues that never close (Alpaca crypto trades 24/7). The equity
+    # clock gated ALL desks for weeks — the "Crypto 24/7" workflow ran nights
+    # and weekends only to print "market closed" and exit with 0 orders.
+    always_open:     bool = False
 
 
 DESKS: list[DeskConfig] = [
@@ -80,6 +84,7 @@ DESKS: list[DeskConfig] = [
         ],
         notional_usd=300.0,
         confidence_min=0.70,
+        always_open=True,
     ),
     DeskConfig(
         name="Options",
@@ -634,12 +639,13 @@ async def main() -> None:
         all_orders: list[dict] = []
         desk_summaries: list[str] = []
         total_notional = 0.0
-        _can_trade = is_open and float(account.get("buying_power", 0)) > 0
+        _account_ok = float(account.get("buying_power", 0)) > 0
         with tracker.stage(ORDER_EXECUTION, "Place orders"):
+            # The market clock only gates equity-hours desks — always-open desks
+            # (crypto) trade through nights and weekends.
             if not is_open:
-                print("  ⚠ Market is closed — skipping order placement", flush=True)
-                tracker.set_output(orders_placed=0, reason="market_closed")
-            elif not _can_trade:
+                print("  ⚠ Equity market closed — only always-open desks may trade", flush=True)
+            if not _account_ok:
                 print("  ⚠ Skipping order placement (no buying power / account unavailable)", flush=True)
                 tracker.set_output(orders_placed=0, reason="account_unavailable")
             # Group approved signals by desk so we can still post per-desk summaries
@@ -651,7 +657,15 @@ async def main() -> None:
                 signal   = item["signal"]
                 conf     = item["confidence"]
 
-                if not _can_trade:
+                desk_open = is_open or desk.always_open
+                if not desk_open:
+                    print(
+                        f"  · {strategy.name}/{symbol} signal={signal.side.upper()} "
+                        f"conf={conf:.2f} — logged ({desk.name} closed)",
+                        flush=True,
+                    )
+                    continue
+                if not _account_ok:
                     print(
                         f"  · {strategy.name}/{symbol} signal={signal.side.upper()} "
                         f"conf={conf:.2f} — logged (no account)",

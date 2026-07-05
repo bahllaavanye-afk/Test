@@ -211,6 +211,9 @@ def _run_gemini_audit() -> None:
         return
 
     print("Backend AI Team starting audit via free LLM cascade...")
+    # Same file bundle the Anthropic path reads — this path crashed with
+    # NameError for weeks because `context` was only built in main().
+    context = read_files(AUDIT_FILES + SAFE_TO_FIX)
     prompt = (
         f"You are QuantEdge's senior backend engineer.\n"
         f"Focus: {FOCUS}\n\n"
