@@ -12,7 +12,10 @@ on:
   check_suite:
     types: [completed]
   workflow_run:
-    workflows: ["test"]
+    # Must match the CI workflow's `name:` ("CI"), not its filename — the old
+    # value "test" matched nothing, so the gate never re-fired after checks
+    # finished and green PRs sat unmerged until the next unrelated event.
+    workflows: ["CI"]
     types: [completed]
   workflow_dispatch: {}
 
