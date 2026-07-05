@@ -11,13 +11,26 @@ from app.utils.security import encrypt_secret, decrypt_secret
 from app.utils.logging import logger
 from pydantic import BaseModel, ConfigDict
 
+# Constants
+DEFAULT_ACCOUNT_MODE = "paper"
+ACTION_KEY_ADD = "key_add"
+RESOURCE_TYPE_ACCOUNT = "account"
+BROKER_ALPACA = "alpaca"
+USER_AGENT_MAX_LENGTH = 256
+
+ERR_ACCOUNT_NOT_FOUND = "Account not found"
+ERR_LIVE_EQUITY_UNAVAILABLE = (
+    "Live equity is only available for Alpaca accounts with stored credentials"
+)
+ERR_ALPACA_FETCH = "Unable to fetch live account data from Alpaca"
+
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
 class AccountCreate(BaseModel):
     broker: str
     label: str
-    mode: str = "paper"
+    mode: str = DEFAULT_ACCOUNT_MODE
     api_key: str
     api_secret: str
     extra_config: dict = {}
@@ -72,11 +85,13 @@ async def create_account(
     # Audit log for key addition
     log = AuditLog(
         user_id=current_user.id,
-        action="key_add",
-        resource_type="account",
+        action=ACTION_KEY_ADD,
+        resource_type=RESOURCE_TYPE_ACCOUNT,
         resource_id=None,  # will be set after commit
         ip_address=request.client.host if (request and request.client) else None,
-        user_agent=(request.headers.get("user-agent", "")[:256] if request else None),
+        user_agent=(
+            request.headers.get("user-agent", "")[:USER_AGENT_MAX_LENGTH] if request else None
+        ),
         extra_data={"broker": body.broker, "mode": body.mode},
     )
     db.add(log)
@@ -103,27 +118,31 @@ async def get_account_equity(
     )
     account = result.scalar_one_or_none()
     if not account:
-        raise HTTPException(404, "Account not found")
+        raise HTTPException(404, ERR_ACCOUNT_NOT_FOUND)
 
-    if account.broker != "alpaca" or not account.encrypted_key:
-        raise HTTPException(400, "Live equity is only available for Alpaca accounts with stored credentials")
+    if account.broker != BROKER_ALPACA or not account.encrypted_key:
+        raise HTTPException(400, ERR_LIVE_EQUITY_UNAVAILABLE)
 
     from app.brokers.alpaca_orders import get_alpaca_account
+
     try:
         data = await get_alpaca_account(account)
     except Exception as e:
         logger.warning(f"Alpaca account fetch failed for account {account_id}: {e}")
-        raise HTTPException(502, "Unable to fetch live account data from Alpaca")
+        raise HTTPException(502, ERR_ALPACA_FETCH)
 
     return AccountEquityOut(
         equity=float(data.get("equity", 0)),
         cash=float(data.get("cash", 0)),
         buying_power=float(data.get("buying_power", 0)),
         portfolio_value=float(data.get("portfolio_value", 0)),
-        day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
-        pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
+        day_trade_count=int(data["daytrade_count"])
+        if data.get("daytrade_count") is not None
+        else None,
+        pattern_day_trader=bool(data.get("pattern_day_trader"))
+        if data.get("pattern_day_trader") is not None
+        else None,
     )
-
 
 
 @router.delete("/{account_id}")
@@ -132,10 +151,12 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+    )
     account = result.scalar_one_or_none()
     if not account:
-        raise HTTPException(404, "Account not found")
+        raise HTTPException(404, ERR_ACCOUNT_NOT_FOUND)
     await db.delete(account)
     await db.commit()
     return {"deleted": account_id}
