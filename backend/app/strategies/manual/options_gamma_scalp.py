@@ -20,7 +20,7 @@ from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
 class OptionsGammaScalpStrategy(AbstractStrategy):
     name = "options_gamma_scalp"
-    display_name = "Options Gamma Scalping (High IV Rank)"
+    display_name = "Options Gamma Scalp (High IV Rank)"
     market_type = "equity"
     strategy_type = "manual"
     risk_bucket = "directional"
@@ -38,59 +38,86 @@ class OptionsGammaScalpStrategy(AbstractStrategy):
         self.dte_max = p.get("days_to_expiry_max", self.DAYS_TO_EXPIRY_MAX)
         self.rv_iv_ratio_min = p.get("rv_iv_ratio_min", self.RV_IV_RATIO_MIN)
 
-    def _iv_rank(self, iv_series: pd.Series) -> float:
-        """Compute IV rank over 52-week window."""
+    def _iv_rank(self, iv_series: pd.Series | None) -> float:
+        """Compute IV rank over a 52‑week window.
+
+        Returns a default of 50.0 when the input is None, empty, or when
+        high and low are equal (prevent division by zero).
+        """
+        if iv_series is None or iv_series.empty:
+            return 50.0
+
         if len(iv_series) < self.LOOKBACK_252:
             window = iv_series
         else:
             window = iv_series.iloc[-self.LOOKBACK_252:]
+
         low = float(window.min())
         high = float(window.max())
-        current = float(iv_series.iloc[-1])
         if high <= low:
             return 50.0
+
+        current = float(iv_series.iloc[-1])
         return (current - low) / (high - low) * 100.0
 
-    def _realized_vol(self, close: pd.Series, window: int = 20) -> float:
-        """Annualized realized volatility over window days."""
-        if len(close) < window + 1:
+    def _realized_vol(self, close: pd.Series | None, window: int = 20) -> float:
+        """Annualized realized volatility over `window` days.
+
+        Returns 0.0 for None, empty, or insufficient data.
+        """
+        if close is None or close.empty or len(close) < window + 1:
             return 0.0
         ret = close.pct_change().dropna()
         return float(ret.rolling(window).std().iloc[-1] * np.sqrt(252))
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str) -> Signal | None:
+        """Generate a trading signal based on the current market data.
+
+        Handles missing columns, None inputs, and empty collections gracefully.
+        """
+        if data is None or not isinstance(data, pd.DataFrame):
+            return None
         if "close" not in data.columns or len(data) < 30:
             return None
 
         close = data["close"]
 
-        # IV rank computation
+        # IV rank computation – prefer real IV, fall back to realized‑vol proxy
+        iv_series: pd.Series | None = None
+        current_iv: float = 0.0
+
         if "iv" in data.columns:
             iv_series = data["iv"].dropna()
-            iv_rank = self._iv_rank(iv_series)
-            current_iv = float(iv_series.iloc[-1])
-        else:
-            # Proxy: use rolling 20-day realized vol as IV estimate
+            if not iv_series.empty:
+                iv_rank = self._iv_rank(iv_series)
+                current_iv = float(iv_series.iloc[-1])
+        if iv_series is None or iv_series.empty:
+            # Proxy: use rolling 20‑day realized vol as IV estimate
             rv20 = close.pct_change().rolling(20).std() * np.sqrt(252)
             iv_series = rv20.dropna()
-            if len(iv_series) < 5:
+            if iv_series.empty or len(iv_series) < 5:
                 return None
             iv_rank = self._iv_rank(iv_series)
             current_iv = float(iv_series.iloc[-1])
 
-        # Days to expiry check
+        # Days‑to‑expiry check
         if "days_to_expiry" in data.columns:
-            dte = int(data["days_to_expiry"].iloc[-1])
+            dte_series = data["days_to_expiry"].dropna()
+            if not dte_series.empty:
+                dte = int(dte_series.iloc[-1])
+            else:
+                dte = None
         else:
+            dte = None
+
+        if dte is None:
             # Infer from trading calendar: assume monthly expiry cycles
-            # Use a proxy: enter in last 2 days of each month
             from datetime import datetime
             import calendar
-            if hasattr(data.index[-1], 'month'):
-                last_day = calendar.monthrange(
-                    data.index[-1].year, data.index[-1].month
-                )[1]
-                day_of_month = data.index[-1].day
+            last_idx = data.index[-1] if len(data.index) > 0 else None
+            if hasattr(last_idx, "month"):
+                last_day = calendar.monthrange(last_idx.year, last_idx.month)[1]
+                day_of_month = last_idx.day
                 dte = max(0, last_day - day_of_month)
             else:
                 dte = 1  # assume near expiry if unknown
@@ -100,11 +127,10 @@ class OptionsGammaScalpStrategy(AbstractStrategy):
         rv_iv_ratio = rv / current_iv if current_iv > 1e-6 else 0.0
 
         if iv_rank > self.iv_rank_threshold and dte <= self.dte_max:
-            # High IV rank near expiry → buy gamma (long straddle)
             confidence = min(0.80, 0.55 + iv_rank / 200 + rv_iv_ratio * 0.1)
             return Signal(
                 symbol=symbol,
-                side="buy",    # buy the straddle / long gamma
+                side="buy",
                 confidence=confidence,
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
@@ -119,11 +145,25 @@ class OptionsGammaScalpStrategy(AbstractStrategy):
             )
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, df: pd.DataFrame | None) -> BacktestSignals:
+        """Generate back‑test signals for a historical DataFrame.
+
+        Safely handles None, missing columns, or empty DataFrames by returning
+        empty signal series.
+        """
+        if df is None or not isinstance(df, pd.DataFrame) or "close" not in df.columns:
+            empty = pd.Series(dtype=bool)
+            return BacktestSignals(
+                entries=empty,
+                exits=empty,
+                short_entries=empty,
+                short_exits=empty,
+            )
+
         close = df["close"]
         ret = close.pct_change()
 
-        # IV proxy: 20-day realized vol
+        # IV proxy: 20‑day realized vol if real IV column is missing
         if "iv" in df.columns:
             iv = df["iv"]
         else:
@@ -137,12 +177,10 @@ class OptionsGammaScalpStrategy(AbstractStrategy):
         rv10 = ret.rolling(10).std() * np.sqrt(252)
         rv_iv = (rv10 / iv.replace(0, np.nan)).shift(1)
 
-        # Entry: high IV rank (options expensive, gamma cheap relative to IV)
         entries = (iv_rank > self.iv_rank_threshold) & (rv_iv > self.rv_iv_ratio_min)
         exits = iv_rank < 30.0
-        # Gamma scalp is direction-neutral — use both entries/short_entries
-        short_entries = (iv_rank > self.iv_rank_threshold) & (rv_iv > self.rv_iv_ratio_min)
-        short_exits = iv_rank < 30.0
+        short_entries = entries  # Gamma scalp is direction‑neutral
+        short_exits = exits
 
         return BacktestSignals(
             entries=entries.fillna(False),
