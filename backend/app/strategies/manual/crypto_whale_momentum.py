@@ -26,10 +26,23 @@ def _fetch_binance_klines(symbol: str = "BTCUSDT") -> pd.DataFrame | None:
         url = BINANCE_KLINES_URL.format(symbol=symbol)
         with urllib.request.urlopen(url, timeout=5) as resp:
             raw = json.loads(resp.read())
-        df = pd.DataFrame(raw, columns=[
-            "open_time", "open", "high", "low", "close", "volume",
-            "close_time", "quote_vol", "trades", "taker_base", "taker_quote", "ignore"
-        ])
+        df = pd.DataFrame(
+            raw,
+            columns=[
+                "open_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_vol",
+                "trades",
+                "taker_base",
+                "taker_quote",
+                "ignore",
+            ],
+        )
         df["close"] = df["close"].astype(float)
         df["volume"] = df["volume"].astype(float)
         return df
@@ -38,6 +51,8 @@ def _fetch_binance_klines(symbol: str = "BTCUSDT") -> pd.DataFrame | None:
 
 
 class CryptoWhaleMomentumStrategy(AbstractStrategy):
+    """Implementation of the Crypto Whale Volume Momentum strategy."""
+
     name = "crypto_whale_momentum"
     display_name = "Crypto Whale Volume Momentum"
     market_type = "crypto"
@@ -49,14 +64,69 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
     LOOKBACK_HOURS = 24      # hours for average volume calculation
 
     def __init__(self, params: dict | None = None):
+        """
+        Initialise the strategy.
+
+        Parameters
+        ----------
+        params : dict | None
+            Optional dictionary of parameters. Supported keys:
+            - ``spike_multiplier`` (float > 0)
+            - ``lookback_hours`` (int > 0)
+
+        Raises
+        ------
+        ValueError
+            If ``params`` is not a dict or contains invalid values.
+        """
+        if params is not None and not isinstance(params, dict):
+            raise ValueError("params must be a dict or None")
         super().__init__(params)
         p = params or {}
         self.spike_multiplier = p.get("spike_multiplier", self.SPIKE_MULTIPLIER)
         self.lookback_hours = p.get("lookback_hours", self.LOOKBACK_HOURS)
 
+        if not isinstance(self.spike_multiplier, (int, float)):
+            raise ValueError("spike_multiplier must be a numeric type")
+        if self.spike_multiplier <= 0:
+            raise ValueError("spike_multiplier must be greater than zero")
+
+        if not isinstance(self.lookback_hours, int):
+            raise ValueError("lookback_hours must be an integer")
+        if self.lookback_hours <= 0:
+            raise ValueError("lookback_hours must be greater than zero")
+
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """
+        Analyse incoming market data and generate a trading signal if a
+        volume spike is detected.
+
+        Parameters
+        ----------
+        data : pd.DataFrame
+            Historical OHLCV data. Must contain at least ``lookback_hours + 1``
+            rows and a ``close`` column.
+        symbol : str
+            Trading symbol (e.g., ``BTC-USD``).
+
+        Returns
+        -------
+        Signal | None
+            A populated ``Signal`` object when conditions are met, otherwise
+            ``None``.
+
+        Raises
+        ------
+        ValueError
+            If ``data`` is not a DataFrame, ``symbol`` is not a non‑empty string,
+            or required columns are missing.
+        """
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("data must be a pandas DataFrame")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a non‑empty string")
         if "close" not in data.columns:
-            return None
+            raise ValueError("data must contain a 'close' column")
 
         # Try live Binance data first
         binance_symbol = symbol.replace("-", "").replace("/", "")
@@ -74,7 +144,7 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
         else:
             return None
 
-        avg_vol = float(volume.iloc[-self.lookback_hours - 1:-1].mean())
+        avg_vol = float(volume.iloc[-self.lookback_hours - 1 : -1].mean())
         current_vol = float(volume.iloc[-1])
         prev_close = float(close_prices.iloc[-2])
         current_close = float(close_prices.iloc[-1])
@@ -86,12 +156,7 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
         price_change = (current_close - prev_close) / prev_close
 
         if vol_ratio > self.spike_multiplier:
-            # Volume spike detected — trade in direction of price move
-            if price_change > 0:
-                side = "buy"
-            else:
-                side = "sell"
-
+            side = "buy" if price_change > 0 else "sell"
             confidence = min(0.85, 0.60 + (vol_ratio - self.spike_multiplier) * 0.05)
             return Signal(
                 symbol=symbol,
@@ -108,6 +173,29 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        """
+        Generate back‑test signals from historical data.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Historical OHLCV data containing at least a ``close`` column.
+
+        Returns
+        -------
+        BacktestSignals
+            Object containing entry/exit boolean series.
+
+        Raises
+        ------
+        ValueError
+            If ``df`` is not a DataFrame or lacks a required ``close`` column.
+        """
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("df must be a pandas DataFrame")
+        if "close" not in df.columns:
+            raise ValueError("df must contain a 'close' column")
+
         close = df["close"]
         ret = close.pct_change()
 
@@ -118,14 +206,17 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
             ret_s = ret.shift(1)
         else:
             # Fallback: use absolute return as volume proxy
-            vol_ratio = (ret.abs() / ret.abs().rolling(self.lookback_hours).mean()).shift(1)
+            vol_ratio = (
+                ret.abs()
+                / ret.abs().rolling(self.lookback_hours).mean()
+            ).shift(1)
             ret_s = ret.shift(1)
 
         spike = vol_ratio > self.spike_multiplier
 
         entries = spike & (ret_s > 0)       # spike + up move
         exits = ~spike
-        short_entries = spike & (ret_s < 0) # spike + down move
+        short_entries = spike & (ret_s < 0)  # spike + down move
         short_exits = ~spike
 
         return BacktestSignals(
