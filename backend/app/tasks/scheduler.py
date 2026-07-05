@@ -393,6 +393,55 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _register_discord_commands() -> None:
+        """Register the Discord slash commands on startup — fully hands-off.
+
+        The GitHub integration can't dispatch the command-sync workflow (403),
+        and the auto-merge gate merges via GITHUB_TOKEN so the workflow's
+        self-trigger never fires. Registering here means every deploy
+        (idempotently) publishes /status /pnl /health /run-bot to Discord with
+        NO manual step — as long as DISCORD_BOT_TOKEN is in the backend env.
+        No-ops cleanly when the token is absent.
+        """
+        token = os.environ.get("DISCORD_BOT_TOKEN", "")
+        app_id = os.environ.get("DISCORD_APP_ID", "1523285730384810034")
+        if not token:
+            logger.info("Discord commands: DISCORD_BOT_TOKEN not set — skipping registration")
+            return
+        commands = [
+            {"name": "status", "type": 1, "description": "QuantEdge bot fleet status"},
+            {"name": "pnl", "type": 1, "description": "Equity and today's paper P&L"},
+            {"name": "health", "type": 1, "description": "Deep health: database, scheduler, API"},
+            {"name": "run-bot", "type": 1, "description": "Evaluate one enabled bot now (paper)",
+             "options": [{"name": "name", "description": "Part of the bot's name", "type": 3, "required": True}]},
+        ]
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.put(
+                    f"https://discord.com/api/v10/applications/{app_id}/commands",
+                    headers={"Authorization": f"Bot {token}", "Content-Type": "application/json"},
+                    json=commands,
+                )
+            if resp.status_code == 200:
+                logger.info("Discord commands registered", count=len(resp.json()))
+            else:
+                logger.warning("Discord command registration failed", status=resp.status_code)
+        except Exception as exc:
+            logger.error("Discord command registration error", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="discord_command_registration",
+            trigger="date",  # one-shot on startup — idempotent
+            trigger_args={},
+            func=_register_discord_commands,
+            description="Register Discord slash commands on startup (idempotent).",
+        ),
+    )
+
     async def _check_bot_exits() -> None:
         """Close bot positions that hit take-profit / stop-loss / expiry.
 
@@ -509,6 +558,86 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             trigger_args={"hour": 21, "minute": 10},  # ~after US close, daily
             func=_daily_pnl_digest,
             description="End-of-day P&L rollup to the trading channel (Slack→Discord failover).",
+        ),
+    )
+
+    async def _risk_surveillance() -> None:
+        """Citadel-style real-time risk watch — page Discord on breach.
+
+        Every top quant shop watches each book live for drawdown, leverage, and
+        concentration (see docs/research/GLOBAL_QUANT_FIRMS_2026.md §US, and the
+        open VaR item in IMPROVEMENTS.md). Deterministic read-only checks:
+          - portfolio drawdown from the trailing-30d equity peak
+          - single-name concentration (largest position / equity)
+          - gross exposure vs equity (leverage proxy)
+        Only pages when a threshold is breached — silence means healthy.
+        """
+        DRAWDOWN_PCT = float(os.environ.get("RISK_MAX_DRAWDOWN_PCT", "15"))
+        CONCENTRATION_PCT = float(os.environ.get("RISK_MAX_CONCENTRATION_PCT", "25"))
+        GROSS_LEVERAGE = float(os.environ.get("RISK_MAX_GROSS_LEVERAGE", "1.5"))
+        try:
+            from datetime import timedelta
+
+            from app.api.v1.accounts import latest_total_equity
+            from app.database import AsyncSessionLocal
+            from app.models.account import AccountSnapshot
+            from app.models.position import Position
+            from app.notifications.slack import slack
+
+            breaches: list[str] = []
+            async with AsyncSessionLocal() as db:
+                equity = await latest_total_equity(db)
+                if equity <= 0:
+                    return  # nothing to watch yet
+
+                # 30-day equity peak → drawdown
+                since = datetime.now(timezone.utc) - timedelta(days=30)
+                peak = (await db.execute(
+                    select(func.max(AccountSnapshot.total_equity))
+                    .where(AccountSnapshot.ts >= since)
+                )).scalar_one_or_none()
+                if peak and float(peak) > 0:
+                    dd = (float(peak) - equity) / float(peak) * 100.0
+                    if dd >= DRAWDOWN_PCT:
+                        breaches.append(f"Drawdown {dd:.1f}% ≥ {DRAWDOWN_PCT:.0f}% (peak ${float(peak):,.0f} → ${equity:,.0f})")
+
+                # Position concentration + gross leverage
+                positions = (await db.execute(select(Position))).scalars().all()
+                mkt_vals = []
+                for p in positions:
+                    qty = float(getattr(p, "quantity", 0) or 0)
+                    px = float(getattr(p, "current_price", 0) or getattr(p, "avg_entry_price", 0) or 0)
+                    mkt_vals.append(abs(qty * px))
+                gross = sum(mkt_vals)
+                if mkt_vals:
+                    top = max(mkt_vals)
+                    conc = top / equity * 100.0
+                    if conc >= CONCENTRATION_PCT:
+                        breaches.append(f"Concentration {conc:.1f}% of equity in one name ≥ {CONCENTRATION_PCT:.0f}%")
+                lev = gross / equity if equity else 0
+                if lev >= GROSS_LEVERAGE:
+                    breaches.append(f"Gross exposure {lev:.2f}× equity ≥ {GROSS_LEVERAGE:.1f}×")
+
+            if breaches:
+                await slack.send(
+                    channel="alerts",  # CHANNEL_MAP: alerts → #risk-alerts
+                    event_type="risk_alert",
+                    title="🛡️ Risk surveillance — threshold breach",
+                    text="\n".join(f"• {b}" for b in breaches),
+                    fields={"Equity": f"${equity:,.2f}", "Mode": os.environ.get("TRADING_MODE", "paper")},
+                )
+                logger.warning("Risk surveillance breach", breaches=breaches)
+        except Exception as exc:
+            logger.error("Risk surveillance failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="risk_surveillance",
+            trigger="interval",
+            trigger_args={"minutes": 30},
+            func=_risk_surveillance,
+            description="Drawdown/concentration/leverage watch → pages Discord on breach.",
         ),
     )
 
