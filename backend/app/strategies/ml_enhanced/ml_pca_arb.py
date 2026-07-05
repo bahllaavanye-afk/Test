@@ -61,12 +61,27 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Generate a signal only when PCA s-score AND LSTM agree.
 
-        Falls back to None (no trade) when ML is unavailable.
+        Falls back to None (no trade) when ML is unavailable or inputs are
+        invalid.
         """
+        # Guard against invalid inputs
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            return None
+        if not symbol:
+            return None
+
         # Step 1: get base PCA signal
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
             return None
+
+        # Ensure base_signal has the attributes we rely on
+        side = getattr(base_signal, "side", None)
+        confidence = getattr(base_signal, "confidence", 0.0)
+        if side not in {"buy", "sell"}:
+            return None
+        if confidence is None:
+            confidence = 0.0
 
         # Step 2: apply ML filter
         if not _INFERENCE_AVAILABLE:
@@ -76,7 +91,7 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         try:
             inference = _get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result is None:
+            if not ml_result:
                 return None
 
             ml_confidence: float = float(ml_result.get("confidence", 0.0))
@@ -89,18 +104,23 @@ class MLPCAStatArbStrategy(AbstractStrategy):
 
             # Direction agreement check
             direction_ok = (
-                (ml_prediction == "up" and base_signal.side == "buy")
-                or (ml_prediction == "down" and base_signal.side == "sell")
+                (ml_prediction == "up" and side == "buy")
+                or (ml_prediction == "down" and side == "sell")
             )
             if not direction_ok:
                 return None
 
-            # Blend confidences
-            blended = min(0.95, (base_signal.confidence + ml_confidence) / 2)
+            # Blend confidences safely, avoiding off‑by‑one errors
+            blended = min(0.95, (float(confidence) + ml_confidence) / 2.0)
             base_signal.confidence = blended
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
+
+            # Ensure metadata dict exists
+            if not hasattr(base_signal, "metadata") or base_signal.metadata is None:
+                base_signal.metadata = {}
             base_signal.metadata["ml_confidence"] = ml_confidence
+
             return base_signal
 
         except Exception:
@@ -111,8 +131,11 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Delegate to the base PCA strategy for backtesting.
 
-        In a production backtest with a trained LSTM available, the signals
-        would be gated per-bar.  Without a serialized model this delegation
-        is the correct fallback: it still uses the same PCA edge.
+        Handles empty or None DataFrames by returning an empty BacktestSignals
+        instance.
         """
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            # Return an empty BacktestSignals container; the constructor
+            # signature expects an iterable of signals.
+            return BacktestSignals([])
         return self._base.backtest_signals(df)
