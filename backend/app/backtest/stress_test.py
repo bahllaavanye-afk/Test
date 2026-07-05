@@ -91,7 +91,6 @@ def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timesta
     """Vectorized slice of a Series using .loc; returns None if input is None."""
     if series is None:
         return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
     try:
         return series.loc[start:end]
     except Exception:
@@ -120,15 +119,17 @@ def run_stress_tests(
 
     results: list[StressResult] = []
 
-    # Convert once to pandas Timestamp for efficient comparison
+    # Pre‑compute bounds of the price index for O(1) overlap checks
     price_index = prices.index
+    price_min = price_index.min()
+    price_max = price_index.max()
 
     for scenario in scenarios:
         start_ts = pd.Timestamp(scenario.start)
         end_ts = pd.Timestamp(scenario.end)
 
-        # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+        # Fast O(1) check: if the scenario window does not intersect the price index, skip early
+        if end_ts < price_min or start_ts > price_max:
             results.append(
                 StressResult(
                     scenario=scenario,
