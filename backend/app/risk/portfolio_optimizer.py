@@ -42,12 +42,12 @@ class CVaROptimizer:
         """
         Parameters
         ----------
-        confidence: float, default 0.95
+        confidence : float, default 0.95
             Confidence level for CVaR (must be between 0.5 and 1.0 exclusive).
         """
         if not (0.5 < confidence < 1.0):
             raise ValueError("confidence must be in (0.5, 1.0)")
-        self.confidence = confidence
+        self.confidence: float = confidence
 
     def compute_weights(
         self,
