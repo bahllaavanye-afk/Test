@@ -454,6 +454,66 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _daily_pnl_digest() -> None:
+        """Post a compact end-of-day P&L digest to the trading channel.
+
+        Deterministic read-only rollup: account equity, open positions, and the
+        day's closed trades. Delivery rides the notifications layer, which
+        already fails over Slack → Discord.
+        """
+        try:
+            from sqlalchemy import func
+
+            from app.database import AsyncSessionLocal
+            from app.models.account import Account
+            from app.models.position import Position
+            from app.models.trade import Trade
+            from app.notifications.slack import slack
+
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            async with AsyncSessionLocal() as db:
+                accounts = (
+                    (await db.execute(select(Account).where(Account.is_active == True)))  # noqa: E712
+                    .scalars().all()
+                )
+                equity = sum(float(a.total_equity or 0) for a in accounts)
+                closed_today = (
+                    (await db.execute(
+                        select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
+                        .where(Trade.closed_at >= today_start)
+                    )).one()
+                )
+                open_count = (
+                    (await db.execute(select(func.count(Position.id)))).scalar_one()
+                )
+
+            n_closed, pnl_today = int(closed_today[0]), float(closed_today[1])
+            await slack.send(
+                channel="orders",  # CHANNEL_MAP: orders → #pnl-daily
+                event_type="info" if pnl_today >= 0 else "warning",
+                title=f"📊 Daily P&L digest — {'▲' if pnl_today >= 0 else '▼'} ${pnl_today:,.2f}",
+                fields={
+                    "Equity (all accounts)": f"${equity:,.2f}",
+                    "Closed today": n_closed,
+                    "Open positions": int(open_count),
+                    "Mode": "paper",
+                },
+            )
+            logger.info("Daily P&L digest posted", pnl=pnl_today, closed=n_closed)
+        except Exception as exc:
+            logger.error("Daily P&L digest failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="daily_pnl_digest",
+            trigger="cron",
+            trigger_args={"hour": 21, "minute": 10},  # ~after US close, daily
+            func=_daily_pnl_digest,
+            description="End-of-day P&L rollup to the trading channel (Slack→Discord failover).",
+        ),
+    )
+
     # main.py calls start_scheduler() and stores the result without calling .start()
     # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
     # call, which registered jobs but never ran them (snapshot/retrain/order_sync/

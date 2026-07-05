@@ -1,0 +1,68 @@
+name: ML Experiments — weekly walk-forward training (CPU, free)
+
+# torch can't fit on the 512MB Render dyno, so ML training lives here instead:
+# a weekly scikit-learn walk-forward experiment on Actions CPU. Results go to
+# the run's step summary and a rolling `ml-experiments-log` issue so they're
+# durable and diffable week over week. Zero LLM spend — this is pure sklearn.
+
+on:
+  schedule:
+    - cron: "17 4 * * 0"   # Sundays 04:17 UTC — results ready before Monday open
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ml-experiments
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install --quiet numpy pandas scikit-learn httpx yfinance
+      - name: Run walk-forward experiment
+        id: run
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          python .github/scripts/ml_experiment.py | tee /tmp/ml_results.json
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-experiment-${{ github.run_id }}
+          path: /tmp/ml_results.json
+          retention-days: 90
+      - name: Append to the rolling results issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="ml-experiments-log"
+          n=$(gh issue list --search "in:title $title" --state open --json number \
+                --jq '.[0].number // empty' 2>/dev/null || echo "")
+          if [ -z "$n" ]; then
+            n=$(gh issue create --title "$title" \
+                  --body "Rolling log of weekly walk-forward ML experiment results. Each comment = one run." \
+                  | grep -o '[0-9]*$')
+          fi
+          {
+            echo "### Run $(date -u +%F) — [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo '```json'
+            head -c 60000 /tmp/ml_results.json
+            echo '```'
+          } > /tmp/comment.md
+          gh issue comment "$n" --body-file /tmp/comment.md

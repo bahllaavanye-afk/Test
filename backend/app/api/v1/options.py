@@ -367,6 +367,67 @@ def _iv_percentile(iv: float | None, universe: list[float]) -> float | None:
     return round(100.0 * below / len(universe), 1)
 
 
+# ── IV history → true IV rank ────────────────────────────────────────────────
+# The cross-sectional proxy above ranks a contract against today's chain, which
+# is NOT what traders mean by "IV rank" (current IV vs its own 52-week range).
+# Every chain fetch upserts one {date: median-chain-IV} point per underlying
+# into Redis; once ~a month of dailies accumulates, the wheel screener switches
+# to genuine time-series rank. Falls back to the proxy while history is thin
+# (and entirely no-ops when Redis is disabled).
+
+_IV_HIST_MAX_DAYS = 252          # one trading year
+_IV_HIST_MIN_POINTS = 20         # below this, history rank is meaningless
+_IV_HIST_TTL = 60 * 60 * 24 * 400  # Redis key TTL: refreshed on every write
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2
+
+
+def _iv_rank_from_history(current_iv: float | None, history: dict[str, float]) -> float | None:
+    """Percentile of current IV within its own trailing daily history.
+
+    ``history`` maps ISO date → that day's median chain IV. Returns None until
+    there are at least _IV_HIST_MIN_POINTS points — a thin series produces
+    confident-looking nonsense.
+    """
+    if current_iv is None or len(history) < _IV_HIST_MIN_POINTS:
+        return None
+    values = sorted(history.values())
+    below = sum(1 for v in values if v <= current_iv)
+    return round(100.0 * below / len(values), 1)
+
+
+async def _record_and_load_iv_history(ticker: str, snaps: dict[str, dict]) -> dict[str, float]:
+    """Upsert today's median chain IV for a ticker and return the full history."""
+    try:
+        from app.redis_client import price_cache
+
+        key = f"iv_hist:{ticker.upper()}"
+        raw = await price_cache.get(key)
+        import json as _json
+
+        history: dict[str, float] = _json.loads(raw) if raw else {}
+        today = date.today().isoformat()
+        if today not in history:
+            ivs = [s.get("impliedVolatility") for s in snaps.values() if s.get("impliedVolatility")]
+            med = _median([float(v) for v in ivs])
+            if med is not None:
+                history[today] = round(med, 5)
+                if len(history) > _IV_HIST_MAX_DAYS:
+                    for stale in sorted(history)[: len(history) - _IV_HIST_MAX_DAYS]:
+                        del history[stale]
+                await price_cache.set(key, _json.dumps(history), ttl=_IV_HIST_TTL)
+        return history
+    except Exception:
+        return {}
+
+
 class RulesValidationRequest(BaseModel):
     account_id: Optional[str] = None
     symbol: str
@@ -468,8 +529,8 @@ async def validate_trade_rules(
         if body.account_id:
             q = select(Account).where(Account.id == body.account_id, Account.user_id == current_user.id)
         acct = (await db.execute(q.limit(1))).scalar_one_or_none()
-        if acct is not None and getattr(acct, "equity", None):
-            equity = float(acct.equity)
+        if acct is not None and getattr(acct, "total_equity", None):
+            equity = float(acct.total_equity)
     except Exception:
         pass
 
@@ -624,6 +685,7 @@ async def get_wheel_candidates(
     results: list[dict] = []
     today = date.today()
     for underlying, snaps in zip(symbols, snap_sets):
+        iv_history = await _record_and_load_iv_history(underlying, snaps) if snaps else {}
         put_ivs = []
         candidates: list[dict] = []
         for occ, snap in snaps.items():
@@ -661,7 +723,14 @@ async def get_wheel_candidates(
                 "annualized_yield": round((mid / strike) * (365 / dte) * 100, 2),
             })
         for c in candidates:
-            c["iv_rank"] = _iv_percentile(c.pop("iv"), put_ivs) or 0.0
+            iv = c.pop("iv")
+            hist_rank = _iv_rank_from_history(iv, iv_history)
+            if hist_rank is not None:
+                c["iv_rank"] = hist_rank
+                c["iv_rank_source"] = "history"  # true trailing-252d rank
+            else:
+                c["iv_rank"] = _iv_percentile(iv, put_ivs) or 0.0
+                c["iv_rank_source"] = "chain_proxy"  # cross-sectional until history accrues
         candidates.sort(key=lambda c: c["annualized_yield"], reverse=True)
         if candidates:
             results.append(candidates[0])
