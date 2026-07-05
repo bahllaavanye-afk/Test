@@ -12,6 +12,13 @@ on:
   push:
     branches: [main]
     paths: [".github/workflows/discord-commands-sync.yml"]
+  # Belt-and-suspenders: the auto-merge gate merges via GITHUB_TOKEN, and GitHub
+  # does NOT fire push-triggered workflows from that token (loop prevention), so
+  # the self-trigger above never runs on a gate merge. A weekly schedule
+  # guarantees the commands get (idempotently) registered without any manual
+  # dispatch. Discord PUT /commands is idempotent, so re-running is harmless.
+  schedule:
+    - cron: "33 5 * * *"   # daily 05:33 UTC
 
 permissions:
   contents: read

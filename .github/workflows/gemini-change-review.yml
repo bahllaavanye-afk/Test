@@ -72,6 +72,7 @@ jobs:
       - name: Review Gemini changes
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
