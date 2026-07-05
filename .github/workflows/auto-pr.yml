@@ -1,0 +1,61 @@
+name: Auto-PR — open a draft PR for pushed agent branches
+
+# Agent sessions sometimes push a finished branch but lose their GitHub API
+# access before opening the PR (MCP disconnects, token expiry) — the branch
+# then strands forever, which has happened repeatedly. This closes the gap at
+# the repo side: any push to an agent branch gets a draft `automerge` PR and a
+# CI dispatch, and the existing gate does the rest. Push-triggered workflows
+# run from the pushed ref, so this bootstraps itself on its own first push.
+#
+# CI note: PRs created with GITHUB_TOKEN do NOT fire `pull_request` workflows
+# (recursion guard), so this dispatches CI explicitly — workflow_dispatch is
+# GitHub's documented exception. The dispatched run's check runs land on the
+# branch head SHA, which is exactly where the auto-merge gate looks.
+
+on:
+  push:
+    branches:
+      - "claude/**"
+      - "queue-worker/**"
+      - "agents/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: auto-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open draft PR + dispatch CI if none exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          TITLE: ${{ github.event.head_commit.message }}
+        run: |
+          existing=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "PR #$existing already open for $BRANCH — dispatching CI only"
+          else
+            title=$(printf '%s' "$TITLE" | head -n 1 | cut -c1-120)
+            [ -z "$title" ] && title="Agent work on $BRANCH"
+            body=$(printf '%s\n\n%s' \
+              "Auto-opened by auto-pr.yml for a pushed agent branch (the pushing session lost its GitHub API access before it could open the PR itself). Commit messages carry the details; the automerge gate lands it when CI is green." \
+              "🤖 Generated with [Claude Code](https://claude.com/claude-code)")
+            gh pr create --draft --base main --head "$BRANCH" \
+              --title "$title" \
+              --label automerge \
+              --body "$body"
+            echo "✅ draft PR opened for $BRANCH" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          # GITHUB_TOKEN-created PRs never fire pull_request workflows — run CI
+          # explicitly so the gate has real checks to verify.
+          gh workflow run test.yml --ref "$BRANCH"
+          echo "✅ CI dispatched on $BRANCH" | tee -a "$GITHUB_STEP_SUMMARY"
