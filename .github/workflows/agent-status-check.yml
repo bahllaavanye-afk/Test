@@ -48,6 +48,7 @@ jobs:
           TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY_1 }}
           SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           ALLOW_PAID_APIS:      "False"
         run: python .github/scripts/agent_status_checker.py
 

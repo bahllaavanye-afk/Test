@@ -54,6 +54,7 @@ jobs:
         if: inputs.test_mode == 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           # Post a real @agent message to #general so the watcher has something to answer
           python - <<'EOF'
@@ -93,6 +94,7 @@ jobs:
       - name: Answer summons
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}

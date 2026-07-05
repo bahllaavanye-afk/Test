@@ -53,6 +53,7 @@ jobs:
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           TOGETHER_API_KEY:     ${{ secrets.TOGETHER_API_KEY_1 }}
           SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           FORCE_CHANNEL:        ${{ github.event.inputs.channel }}
           ALLOW_PAID_APIS:      "False"
         run: python .github/scripts/multi_agent_discussion.py
