@@ -5,10 +5,10 @@ IS = (fill_price - arrival_price) / arrival_price * 10000
 where arrival_price is the mid-price when the order was first submitted.
 """
 import uuid
-import numpy as np
 from datetime import datetime, timezone
+import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from app.brokers.base import OrderRequest, OrderResult
 from app.models.slippage import SlippageRecord
 from app.utils.logging import logger
@@ -85,23 +85,20 @@ class SlippageTracker:
 
             from app.notifications.slack import slack
             from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
-            await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+
+            tracker.record(
+                "order_filled",
+                "order",
+                f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
+                slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
-
-            from app.notifications.slack import slack
-            from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
             await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+                request.symbol,
+                request.side,
+                request.quantity,
+                result.avg_fill_price,
+                slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
 
@@ -138,6 +135,7 @@ class SlippageTracker:
             raise RuntimeError("DB session required for execution quality stats")
 
         from datetime import timedelta
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         stmt = (
