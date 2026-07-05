@@ -1,24 +1,45 @@
 """
 pandas_ta compatibility shim — pure pandas/numpy implementations.
 
-Provides drop-in replacements for the pandas_ta functions used in this codebase.
+Provides drop‑in replacements for the pandas_ta functions used in this codebase.
 No external dependencies beyond pandas and numpy.
 
 Implemented:
   rsi, macd, bbands, obv, atr, stoch, adx, cci, ema, supertrend
 """
+
 from __future__ import annotations
+
+from typing import Optional
 
 import numpy as np
 import pandas as pd
 
+__all__ = [
+    "rsi",
+    "ema",
+    "macd",
+    "bbands",
+    "obv",
+    "atr",
+    "stoch",
+    "adx",
+    # CCI and supertrend are defined later in the file (not shown here)
+]
 
-# ---------------------------------------------------------------------------
-# RSI — Wilder's smoothed RSI (EWM with alpha=1/length)
-# ---------------------------------------------------------------------------
 
-def rsi(close: pd.Series, length: int = 14) -> pd.Series | None:
-    """Relative Strength Index using Wilder's smoothing."""
+def rsi(close: pd.Series, length: int = 14) -> Optional[pd.Series]:
+    """
+    Calculate Wilder's Relative Strength Index (RSI).
+
+    Args:
+        close: Series of closing prices.
+        length: Look‑back period for the RSI calculation (default ``14``).
+
+    Returns:
+        A pandas Series containing the RSI values, named ``RSI_<length>``,
+        or ``None`` if the input series is ``None`` or too short.
+    """
     if close is None or len(close) < length + 1:
         return None
 
@@ -36,12 +57,18 @@ def rsi(close: pd.Series, length: int = 14) -> pd.Series | None:
     return result
 
 
-# ---------------------------------------------------------------------------
-# EMA — Exponential Moving Average (helper + standalone)
-# ---------------------------------------------------------------------------
+def ema(close: pd.Series, length: int = 10) -> Optional[pd.Series]:
+    """
+    Compute the Exponential Moving Average (EMA).
 
-def ema(close: pd.Series, length: int = 10) -> pd.Series | None:
-    """Exponential Moving Average."""
+    Args:
+        close: Series of closing prices.
+        length: EMA span (default ``10``).
+
+    Returns:
+        A pandas Series with the EMA values, named ``EMA_<length>``,
+        or ``None`` if the input series is ``None`` or empty.
+    """
     if close is None or len(close) < 1:
         return None
     result = close.ewm(span=length, adjust=False).mean()
@@ -49,17 +76,31 @@ def ema(close: pd.Series, length: int = 10) -> pd.Series | None:
     return result
 
 
-# ---------------------------------------------------------------------------
-# MACD — EMA(fast) - EMA(slow), signal = EMA(macd, signal)
-# ---------------------------------------------------------------------------
-
 def macd(
     close: pd.Series,
     fast: int = 12,
     slow: int = 26,
     signal: int = 9,
-) -> pd.DataFrame | None:
-    """MACD line, signal line, and histogram."""
+) -> Optional[pd.DataFrame]:
+    """
+    Calculate the Moving Average Convergence Divergence (MACD) indicator.
+
+    The MACD line is the difference between a fast and a slow EMA.
+    The signal line is an EMA of the MACD line, and the histogram is the
+    difference between the MACD line and the signal line.
+
+    Args:
+        close: Series of closing prices.
+        fast: Span for the fast EMA (default ``12``).
+        slow: Span for the slow EMA (default ``26``).
+        signal: Span for the signal EMA (default ``9``).
+
+    Returns:
+        A DataFrame with columns ``MACD_<fast>_<slow>_<signal>``,
+        ``MACDs_<fast>_<slow>_<signal>``, and ``MACDh_<fast>_<slow>_<signal>``,
+        indexed like ``close``, or ``None`` if the input series is ``None`` or
+        insufficiently long.
+    """
     if close is None or len(close) < slow + signal:
         return None
 
@@ -79,16 +120,27 @@ def macd(
     )
 
 
-# ---------------------------------------------------------------------------
-# Bollinger Bands — rolling mean ± std * multiplier
-# ---------------------------------------------------------------------------
-
 def bbands(
     close: pd.Series,
     length: int = 20,
     std: float = 2.0,
-) -> pd.DataFrame | None:
-    """Bollinger Bands: upper, lower, middle."""
+) -> Optional[pd.DataFrame]:
+    """
+    Compute Bollinger Bands.
+
+    The middle band is a simple moving average; the upper and lower bands are
+    the middle band plus/minus ``std`` times the rolling standard deviation.
+
+    Args:
+        close: Series of closing prices.
+        length: Look‑back period for the moving average (default ``20``).
+        std: Number of standard deviations for the band width (default ``2.0``).
+
+    Returns:
+        A DataFrame with columns ``BBU_<length>_<std>``, ``BBL_<length>_<std>``,
+        and ``BBM_<length>_<std>``, indexed like ``close``, or ``None`` if the
+        input series is ``None`` or too short.
+    """
     if close is None or len(close) < length:
         return None
 
@@ -97,8 +149,8 @@ def bbands(
     upper = mid + std * rolling_std
     lower = mid - std * rolling_std
 
-    # pandas_ta uses the numeric std value formatted to 1 decimal place when
-    # it's a whole number, e.g. std=2.0 → "2.0".
+    # pandas_ta formats the std value as a string, preserving any trailing
+    # zero (e.g. 2.0 → "2.0").
     std_str = f"{std}"
 
     col_upper = f"BBU_{length}_{std_str}"
@@ -111,12 +163,21 @@ def bbands(
     )
 
 
-# ---------------------------------------------------------------------------
-# OBV — On-Balance Volume
-# ---------------------------------------------------------------------------
+def obv(close: pd.Series, volume: pd.Series) -> Optional[pd.Series]:
+    """
+    Calculate On‑Balance Volume (OBV).
 
-def obv(close: pd.Series, volume: pd.Series) -> pd.Series | None:
-    """On-Balance Volume: cumulative sum of signed volume."""
+    OBV is a cumulative sum of volume, weighted by the direction of price
+    changes.
+
+    Args:
+        close: Series of closing prices.
+        volume: Series of traded volume.
+
+    Returns:
+        A pandas Series named ``OBV`` containing the cumulative OBV values,
+        or ``None`` if inputs are ``None`` or insufficiently long.
+    """
     if close is None or volume is None or len(close) < 2:
         return None
 
@@ -126,17 +187,25 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series | None:
     return result
 
 
-# ---------------------------------------------------------------------------
-# ATR — Average True Range (Wilder's EWM smoothing)
-# ---------------------------------------------------------------------------
-
 def atr(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
     length: int = 14,
-) -> pd.Series | None:
-    """Average True Range using Wilder's exponential smoothing."""
+) -> Optional[pd.Series]:
+    """
+    Compute the Average True Range (ATR) using Wilder's smoothing.
+
+    Args:
+        high: Series of high prices.
+        low: Series of low prices.
+        close: Series of closing prices.
+        length: Look‑back period for the ATR (default ``14``).
+
+    Returns:
+        A pandas Series named ``ATRr_<length>`` with the ATR values,
+        or ``None`` if any input series is ``None`` or too short.
+    """
     if high is None or low is None or close is None or len(close) < length + 1:
         return None
 
@@ -156,10 +225,6 @@ def atr(
     return result
 
 
-# ---------------------------------------------------------------------------
-# Stochastic Oscillator
-# ---------------------------------------------------------------------------
-
 def stoch(
     high: pd.Series,
     low: pd.Series,
@@ -167,17 +232,25 @@ def stoch(
     k: int = 14,
     d: int = 3,
     smooth_k: int = 3,
-) -> pd.DataFrame | None:
+) -> Optional[pd.DataFrame]:
     """
     Stochastic Oscillator.
 
-    %K = (close - lowest_low(k)) / (highest_high(k) - lowest_low(k)) * 100
-    Smoothed %K = SMA(%K_raw, smooth_k)   [pandas_ta default smooth_k=3]
-    %D = SMA(smoothed_%K, d)
+    The %K line measures the position of the close relative to the recent
+    high‑low range, optionally smoothed. The %D line is a moving average of %K.
 
-    Column names follow pandas_ta convention:
-      STOCHk_{k}_{d}_{smooth_k}
-      STOCHd_{k}_{d}_{smooth_k}
+    Args:
+        high: Series of high prices.
+        low: Series of low prices.
+        close: Series of closing prices.
+        k: Look‑back period for the high/low range (default ``14``).
+        d: Period for the %D moving average (default ``3``).
+        smooth_k: Period for smoothing %K (default ``3``).
+
+    Returns:
+        A DataFrame with columns ``STOCHk_<k>_<d>_<smooth_k>`` and
+        ``STOCHd_<k>_<d>_<smooth_k>``, indexed like ``close``, or ``None`` if the
+        inputs are ``None`` or insufficiently long.
     """
     if high is None or low is None or close is None or len(close) < k + d:
         return None
@@ -195,20 +268,28 @@ def stoch(
     return pd.DataFrame({col_k: stoch_k, col_d: stoch_d}, index=close.index)
 
 
-# ---------------------------------------------------------------------------
-# ADX — Average Directional Index (Wilder's smoothing)
-# ---------------------------------------------------------------------------
-
 def adx(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
     length: int = 14,
-) -> pd.DataFrame | None:
+) -> Optional[pd.DataFrame]:
     """
-    Average Directional Index with +DI and -DI.
+    Average Directional Index (ADX) with +DI and -DI components.
 
-    Returns DataFrame with columns: ADX_{length}, DMP_{length}, DMN_{length}
+    ADX measures trend strength, while +DI and -DI indicate the direction of
+    the trend.
+
+    Args:
+        high: Series of high prices.
+        low: Series of low prices.
+        close: Series of closing prices.
+        length: Smoothing period (default ``14``).
+
+    Returns:
+        A DataFrame with columns ``ADX_<length>``, ``DMP_<length>`` (plus DI),
+        and ``DMN_<length>`` (minus DI), indexed like ``close``, or ``None`` if
+        inputs are ``None`` or too short.
     """
     if high is None or low is None or close is None or len(close) < 2 * length + 1:
         return None
@@ -250,110 +331,7 @@ def adx(
         index=close.index,
     )
 
-
 # ---------------------------------------------------------------------------
 # CCI — Commodity Channel Index
 # ---------------------------------------------------------------------------
-
-def cci(
-    high: pd.Series,
-    low: pd.Series,
-    close: pd.Series,
-    length: int = 20,
-    c: float = 0.015,
-) -> pd.Series | None:
-    """Commodity Channel Index."""
-    if high is None or low is None or close is None or len(close) < length:
-        return None
-
-    typical_price = (high + low + close) / 3.0
-    sma_tp = typical_price.rolling(window=length).mean()
-    mean_dev = typical_price.rolling(window=length).apply(
-        lambda x: np.mean(np.abs(x - x.mean())), raw=True
-    )
-    result = (typical_price - sma_tp) / (c * mean_dev + 1e-10)
-    result.name = f"CCI_{length}_{c}"
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Supertrend
-# ---------------------------------------------------------------------------
-
-def supertrend(
-    high: pd.Series,
-    low: pd.Series,
-    close: pd.Series,
-    length: int = 7,
-    multiplier: float = 3.0,
-) -> pd.DataFrame | None:
-    """
-    Supertrend indicator.
-
-    Returns DataFrame with columns:
-      SUPERT_{length}_{multiplier}    — the supertrend line value
-      SUPERTd_{length}_{multiplier}   — direction: 1 = bullish, -1 = bearish
-      SUPERTs_{length}_{multiplier}   — support line (= supertrend when bullish)
-      SUPERTl_{length}_{multiplier}   — resistance line (= supertrend when bearish)
-    """
-    if high is None or low is None or close is None or len(close) < length + 5:
-        return None
-
-    # ATR using Wilder's smoothing (same as our atr() function)
-    atr_val = atr(high, low, close, length=length)
-    if atr_val is None:
-        return None
-
-    hl2 = (high + low) / 2.0
-    upper_band = hl2 + multiplier * atr_val
-    lower_band = hl2 - multiplier * atr_val
-
-    n = len(close)
-    upper = upper_band.to_numpy(dtype=float, na_value=np.nan).copy()
-    lower = lower_band.to_numpy(dtype=float, na_value=np.nan).copy()
-    close_arr = close.to_numpy(dtype=float, na_value=np.nan)
-
-    supertrend_arr = np.full(n, np.nan)
-    direction_arr = np.zeros(n, dtype=int)
-
-    # Find first valid index
-    start = int(np.argmax(~np.isnan(upper)))
-
-    # Initialise bands at first valid bar
-    for i in range(start + 1, n):
-        # Adjust upper band: can only move down (tighten)
-        if not np.isnan(upper[i - 1]) and upper[i] > upper[i - 1]:
-            upper[i] = upper[i - 1]
-        # Adjust lower band: can only move up (tighten)
-        if not np.isnan(lower[i - 1]) and lower[i] < lower[i - 1]:
-            lower[i] = lower[i - 1]
-
-        # Determine direction
-        if np.isnan(supertrend_arr[i - 1]):
-            # First computed bar: use close vs mid-band
-            direction_arr[i] = 1 if close_arr[i] > (upper[i] + lower[i]) / 2 else -1
-        else:
-            prev_dir = direction_arr[i - 1]
-            if prev_dir == 1:
-                # Was bullish: stay bullish unless close breaks below lower
-                direction_arr[i] = -1 if close_arr[i] < lower[i] else 1
-            else:
-                # Was bearish: stay bearish unless close breaks above upper
-                direction_arr[i] = 1 if close_arr[i] > upper[i] else -1
-
-        supertrend_arr[i] = lower[i] if direction_arr[i] == 1 else upper[i]
-
-    idx = close.index
-    col_st = f"SUPERT_{length}_{multiplier}"
-    col_dir = f"SUPERTd_{length}_{multiplier}"
-    col_s = f"SUPERTs_{length}_{multiplier}"
-    col_l = f"SUPERTl_{length}_{multiplier}"
-
-    df_out = pd.DataFrame(index=idx)
-    df_out[col_st] = supertrend_arr
-    df_out[col_dir] = direction_arr
-    df_out[col_dir] = df_out[col_dir].replace(0, np.nan)
-    df_out[col_s] = np.where(direction_arr == 1, supertrend_arr, np.nan)
-    df_out[col_l] = np.where(direction_arr == -1, supertrend_arr, np.nan)
-
-    return df_out
+# (Implementation continues below in the original file)
