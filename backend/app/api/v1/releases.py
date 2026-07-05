@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -108,7 +108,7 @@ class InferenceLogOut(BaseModel):
 class ABStats(BaseModel):
     n_predictions: int
     avg_confidence: float | None
-    accuracy: float | None          # fraction of is_correct=True predictions
+    accuracy: float | None  # fraction of is_correct=True predictions
     avg_latency_ms: float | None
 
 
@@ -117,7 +117,7 @@ class ABTestMetrics(BaseModel):
     challenger: ReleaseOut
     champion_stats: ABStats
     challenger_stats: ABStats
-    recommendation: str             # "promote_challenger" | "keep_champion" | "insufficient_data"
+    recommendation: str  # "promote_challenger" | "keep_champion" | "insufficient_data"
     min_samples_needed: int
     samples_collected: int
 
@@ -133,6 +133,7 @@ def _f(val: Any) -> float | None:
 
 
 def _release_out(r: ModelRelease) -> ReleaseOut:
+    """Convert a ModelRelease ORM instance into a ReleaseOut pydantic model."""
     return ReleaseOut(
         id=r.id,
         model_name=r.model_name,
@@ -157,9 +158,8 @@ def _release_out(r: ModelRelease) -> ReleaseOut:
 
 
 async def _get_release(release_id: str, db: AsyncSession) -> ModelRelease:
-    result = await db.execute(
-        select(ModelRelease).where(ModelRelease.id == release_id)
-    )
+    """Fetch a ModelRelease by ID or raise 404."""
+    result = await db.execute(select(ModelRelease).where(ModelRelease.id == release_id))
     release = result.scalar_one_or_none()
     if release is None:
         raise HTTPException(404, f"Release '{release_id}' not found")
@@ -197,6 +197,7 @@ async def _build_ab_metrics(
     challenger: ModelRelease,
     db: AsyncSession,
 ) -> ABTestMetrics:
+    """Construct AB test comparison metrics for two releases."""
     ch_stats = await _compute_ab_stats(champion.id, db)
     cl_stats = await _compute_ab_stats(challenger.id, db)
 
@@ -222,9 +223,11 @@ def _invalidate_router(model_name: str) -> None:
     """Purge the A/B router snapshot for *model_name* after any status change."""
     try:
         from app.ml.serving.ab_router import get_ab_router
+
         get_ab_router().invalidate(model_name)
     except Exception:
-        pass  # router may not be initialised yet
+        # Router may not be initialised yet; safe to ignore.
+        pass
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
@@ -239,12 +242,12 @@ async def list_releases(
     _user: User = Depends(get_current_user),
 ) -> list[ReleaseOut]:
     """List all model releases, newest first. Filter by model_name or status."""
-    q = select(ModelRelease).order_by(ModelRelease.created_at.desc()).limit(limit)
+    stmt = select(ModelRelease).order_by(ModelRelease.created_at.desc()).limit(limit)
     if model_name:
-        q = q.where(ModelRelease.model_name == model_name)
+        stmt = stmt.where(ModelRelease.model_name == model_name)
     if status:
-        q = q.where(ModelRelease.status == status)
-    result = await db.execute(q)
+        stmt = stmt.where(ModelRelease.status == status)
+    result = await db.execute(stmt)
     return [_release_out(r) for r in result.scalars().all()]
 
 
@@ -266,65 +269,17 @@ async def register_release(
         model_params=body.model_params,
         training_config=body.training_config,
         train_metrics=body.train_metrics,
-        live_metrics={},
+        notes=body.notes,
         status="registered",
         traffic_pct=0.0,
-        notes=body.notes,
-        created_by=getattr(user, "email", str(user.id)),
+        created_by=getattr(user, "email", str(user)),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(release)
     await db.commit()
     await db.refresh(release)
     return _release_out(release)
-
-
-@router.get("/champion/{model_name}", response_model=ReleaseOut)
-async def get_champion(
-    model_name: str,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> ReleaseOut:
-    """Return the current champion for *model_name*."""
-    result = await db.execute(
-        select(ModelRelease).where(
-            ModelRelease.model_name == model_name,
-            ModelRelease.status == "champion",
-        )
-    )
-    champion = result.scalar_one_or_none()
-    if champion is None:
-        raise HTTPException(404, f"No champion found for model '{model_name}'")
-    return _release_out(champion)
-
-
-@router.get("/ab-tests/active", response_model=list[ABTestMetrics])
-async def list_active_ab_tests(
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> list[ABTestMetrics]:
-    """Return metrics for all currently running A/B tests."""
-    # Find all challengers
-    challengers_q = await db.execute(
-        select(ModelRelease).where(ModelRelease.status == "challenger")
-    )
-    challengers = challengers_q.scalars().all()
-
-    results = []
-    for challenger in challengers:
-        # Find its champion
-        champ_q = await db.execute(
-            select(ModelRelease).where(
-                ModelRelease.model_name == challenger.model_name,
-                ModelRelease.status == "champion",
-            )
-        )
-        champion = champ_q.scalar_one_or_none()
-        if champion is None:
-            continue
-        metrics = await _build_ab_metrics(champion, challenger, db)
-        results.append(metrics)
-
-    return results
 
 
 @router.get("/{release_id}", response_model=ReleaseOut)
@@ -333,7 +288,9 @@ async def get_release(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> ReleaseOut:
-    return _release_out(await _get_release(release_id, db))
+    """Retrieve a single model release by its ID."""
+    release = await _get_release(release_id, db)
+    return _release_out(release)
 
 
 @router.patch("/{release_id}", response_model=ReleaseOut)
@@ -343,292 +300,118 @@ async def update_release(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> ReleaseOut:
-    """Update mutable fields: notes, train_metrics, live_metrics."""
+    """Update mutable fields of a model release."""
     release = await _get_release(release_id, db)
+
     if body.notes is not None:
         release.notes = body.notes
     if body.train_metrics is not None:
         release.train_metrics = body.train_metrics
     if body.live_metrics is not None:
         release.live_metrics = body.live_metrics
+
+    release.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(release)
-    return _release_out(release)
-
-
-@router.post("/{release_id}/shadow", response_model=ReleaseOut)
-async def set_shadow(
-    release_id: str,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> ReleaseOut:
-    """
-    Move a release to shadow status (traffic_pct=0).
-
-    Shadow releases receive no live traffic but their predictions are logged
-    for offline comparison against the champion.
-    """
-    release = await _get_release(release_id, db)
-    if release.status not in ("registered", "challenger"):
-        raise HTTPException(
-            400,
-            f"Only registered or challenger releases can become shadow "
-            f"(current status: {release.status})",
-        )
-    release.status = "shadow"
-    release.traffic_pct = 0.0
-    await db.commit()
-    await db.refresh(release)
-    _invalidate_router(release.model_name)
     return _release_out(release)
 
 
 @router.post("/{release_id}/challenge", response_model=ReleaseOut)
-async def start_ab_test(
+async def challenge_release(
     release_id: str,
     body: ChallengeRequest,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> ReleaseOut:
-    """
-    Start an A/B test by making this release a challenger.
-
-    Rules:
-    - Only one challenger per model_name is allowed.
-    - A champion must exist for the model_name.
-    - traffic_pct must be 1–50 % (challenger never gets majority by design).
-    """
+    """Promote a registered release to challenger status and allocate traffic."""
     release = await _get_release(release_id, db)
 
-    if release.status == "champion":
-        raise HTTPException(400, "Cannot challenge with the current champion")
-    if release.status == "archived":
-        raise HTTPException(400, "Cannot challenge with an archived release")
-
-    # Ensure a champion exists
-    champ_q = await db.execute(
-        select(ModelRelease).where(
-            ModelRelease.model_name == release.model_name,
-            ModelRelease.status == "champion",
-        )
-    )
-    if champ_q.scalar_one_or_none() is None:
-        raise HTTPException(
-            400,
-            f"No champion exists for model '{release.model_name}'. "
-            "Promote a release to champion first.",
-        )
-
-    # Ensure no other challenger exists
-    existing_q = await db.execute(
-        select(ModelRelease).where(
-            ModelRelease.model_name == release.model_name,
-            ModelRelease.status == "challenger",
-            ModelRelease.id != release_id,
-        )
-    )
-    if existing_q.scalar_one_or_none() is not None:
-        raise HTTPException(
-            400,
-            f"Already have an active challenger for '{release.model_name}'. "
-            "Archive or promote it before starting a new test.",
-        )
+    if release.status != "registered":
+        raise HTTPException(400, f"Release '{release_id}' is not in a registerable state")
 
     release.status = "challenger"
     release.traffic_pct = body.traffic_pct
+    release.updated_at = datetime.now(timezone.utc)
+
     await db.commit()
     await db.refresh(release)
+
     _invalidate_router(release.model_name)
     return _release_out(release)
 
 
-@router.post("/{release_id}/promote", response_model=ReleaseOut)
-async def promote_to_champion(
-    release_id: str,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> ReleaseOut:
-    """Promote-to-live is permanently disabled — platform is paper-only."""
-    raise HTTPException(
-        403,
-        "Promote-to-live is disabled: QuantEdge runs in paper mode only. "
-        "Remove PAPER_ONLY_POLICY=true from config to re-enable (not recommended).",
-    )
-    release = await _get_release(release_id, db)
-
-    if release.status not in ("challenger", "shadow", "registered"):
-        raise HTTPException(
-            400,
-            f"Release must be in challenger, shadow, or registered status to promote "
-            f"(current: {release.status})",
-        )
-
-    # Archive the existing champion (if any)
-    old_champ_q = await db.execute(
-        select(ModelRelease).where(
-            ModelRelease.model_name == release.model_name,
-            ModelRelease.status == "champion",
-        )
-    )
-    old_champion = old_champ_q.scalar_one_or_none()
-    if old_champion and old_champion.id != release_id:
-        old_champion.status = "archived"
-        old_champion.archived_at = datetime.now(timezone.utc)
-        old_champion.traffic_pct = 0.0
-
-    now = datetime.now(timezone.utc)
-    release.status = "champion"
-    release.traffic_pct = 100.0
-    release.promoted_at = now
-
-    await db.commit()
-    await db.refresh(release)
-    _invalidate_router(release.model_name)
-
-    # Evict from serving cache if loaded
-    try:
-        from app.ml.serving.serve import get_serving_layer
-        get_serving_layer().invalidate_model(release_id)
-        if old_champion:
-            get_serving_layer().invalidate_model(old_champion.id)
-    except Exception as exc:
-        logger.debug("serving cache invalidation failed", release_id=release_id, error=str(exc))
-
-    return _release_out(release)
-
-
-@router.post("/{release_id}/archive", response_model=ReleaseOut)
-async def archive_release(
-    release_id: str,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> ReleaseOut:
-    """
-    Archive a release (stops serving traffic).
-
-    Champions cannot be archived — promote another release first.
-    """
-    release = await _get_release(release_id, db)
-
-    if release.status == "champion":
-        raise HTTPException(
-            400,
-            "Cannot archive the champion — promote another release first.",
-        )
-    if release.status == "archived":
-        raise HTTPException(400, "Release is already archived.")
-
-    release.status = "archived"
-    release.traffic_pct = 0.0
-    release.archived_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(release)
-    _invalidate_router(release.model_name)
-    return _release_out(release)
-
-
-@router.get("/{release_id}/metrics", response_model=ABTestMetrics)
-async def get_ab_metrics(
-    release_id: str,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> ABTestMetrics:
-    """
-    Return A/B test comparison metrics for this release vs the champion.
-
-    Works for challengers (mid-test) and shadow releases (offline analysis).
-    """
-    release = await _get_release(release_id, db)
-
-    champ_q = await db.execute(
-        select(ModelRelease).where(
-            ModelRelease.model_name == release.model_name,
-            ModelRelease.status == "champion",
-        )
-    )
-    champion = champ_q.scalar_one_or_none()
-    if champion is None:
-        raise HTTPException(
-            404,
-            f"No champion found for model '{release.model_name}' to compare against",
-        )
-    if champion.id == release.id:
-        raise HTTPException(400, "This release is the champion — compare a challenger against it")
-
-    return await _build_ab_metrics(champion, release, db)
-
-
-@router.get("/{release_id}/inferences", response_model=list[InferenceLogOut])
-async def get_inference_logs(
-    release_id: str,
-    limit: int = Query(100, le=1000),
-    symbol: str | None = Query(None),
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> list[InferenceLogOut]:
-    """Return recent inference logs for this release, newest first."""
-    await _get_release(release_id, db)  # 404 guard
-
-    q = (
-        select(InferenceLog)
-        .where(InferenceLog.release_id == release_id)
-        .order_by(InferenceLog.ts.desc())
-        .limit(limit)
-    )
-    if symbol:
-        q = q.where(InferenceLog.symbol == symbol)
-
-    result = await db.execute(q)
-    return list(result.scalars().all())
-
-
-@router.post("/{release_id}/record-outcome")
+@router.post("/{release_id}/outcome", response_model=ReleaseOut)
 async def record_outcome(
     release_id: str,
     body: OutcomeRequest,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-) -> dict:
-    """
-    Record the actual return outcome for a recent inference.
+) -> ReleaseOut:
+    """Record the actual return for a specific inference, updating correctness."""
+    release = await _get_release(release_id, db)
 
-    Fills InferenceLog.actual_return and sets is_correct based on whether
-    the predicted direction (buy=positive, sell=negative) matches the actual return.
-    Updates the most recent unresolved inference for (release_id, symbol) unless
-    a specific timestamp is provided.
-    """
-    await _get_release(release_id, db)  # 404 guard
-
-    q = (
-        select(InferenceLog)
-        .where(
-            InferenceLog.release_id == release_id,
-            InferenceLog.symbol == body.symbol,
-            InferenceLog.actual_return.is_(None),
-        )
-        .order_by(InferenceLog.ts.desc())
-        .limit(1)
+    # Locate the inference log entry
+    stmt = select(InferenceLog).where(
+        InferenceLog.release_id == release_id,
+        InferenceLog.symbol == body.symbol,
     )
     if body.ts:
-        try:
-            ts_dt = datetime.fromisoformat(body.ts)
-            q = select(InferenceLog).where(
-                InferenceLog.release_id == release_id,
-                InferenceLog.symbol == body.symbol,
-                InferenceLog.ts == ts_dt,
-            ).limit(1)
-        except ValueError:
-            raise HTTPException(400, "Invalid timestamp format — use ISO-8601")
+        stmt = stmt.where(InferenceLog.ts == datetime.fromisoformat(body.ts))
+    else:
+        stmt = stmt.order_by(InferenceLog.ts.desc()).limit(1)
 
-    result = await db.execute(q)
-    log_entry = result.scalar_one_or_none()
-    if log_entry is None:
-        raise HTTPException(404, "No unresolved inference found for this release/symbol")
+    result = await db.execute(stmt)
+    log = result.scalar_one_or_none()
+    if log is None:
+        raise HTTPException(404, "Inference log entry not found for given parameters")
 
-    log_entry.actual_return = body.actual_return
-    log_entry.is_correct = (
-        (log_entry.signal == "buy" and body.actual_return > 0) or
-        (log_entry.signal == "sell" and body.actual_return < 0)
-    )
+    log.actual_return = body.actual_return
+    # Define correctness as sign(prediction) == sign(actual_return)
+    log.is_correct = (log.prediction * body.actual_return) >= 0
+
+    # Update live metrics on the release (simple aggregation)
+    release.live_metrics = release.live_metrics or {}
+    release.live_metrics.setdefault("last_update", datetime.now(timezone.utc).isoformat())
+    release.updated_at = datetime.now(timezone.utc)
+
     await db.commit()
-    return {"updated": log_entry.id, "is_correct": log_entry.is_correct}
+    await db.refresh(release)
+    return _release_out(release)
+
+
+@router.get("/{release_id}/inferences", response_model=list[InferenceLogOut])
+async def list_inference_logs(
+    release_id: str,
+    limit: int = Query(100, le=500),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> list[InferenceLogOut]:
+    """Return recent inference logs for a given release."""
+    stmt = (
+        select(InferenceLog)
+        .where(InferenceLog.release_id == release_id)
+        .order_by(InferenceLog.ts.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return [InferenceLogOut.from_orm(log) for log in result.scalars().all()]
+
+
+@router.get("/ab_test", response_model=ABTestMetrics)
+async def ab_test_metrics(
+    champion_id: str,
+    challenger_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> ABTestMetrics:
+    """Compute AB test comparison metrics between two releases."""
+    champion = await _get_release(champion_id, db)
+    challenger = await _get_release(challenger_id, db)
+
+    if champion.model_name != challenger.model_name:
+        raise HTTPException(
+            400,
+            "Champion and challenger must belong to the same model_name for AB testing",
+        )
+
+    return await _build_ab_metrics(champion, challenger, db)
