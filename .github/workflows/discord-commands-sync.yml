@@ -1,0 +1,52 @@
+name: Discord Commands Sync — register slash commands
+
+# Registers the QuantEdge slash commands (/status /pnl /health /run-bot) with
+# Discord. Self-triggers when this file lands on main (same hack as
+# sync-anthropic-key.yml — the agent's token can't dispatch workflows), and can
+# be re-run via dispatch after adding commands. Requires the DISCORD_BOT_TOKEN
+# repo secret (Developer Portal → Bot → Reset Token → paste as secret; never
+# in chat). Skips cleanly when the secret is absent.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: [".github/workflows/discord-commands-sync.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Register slash commands
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          APP_ID: "1523285730384810034"
+        run: |
+          if [ -z "$DISCORD_BOT_TOKEN" ]; then
+            echo "⚠️ DISCORD_BOT_TOKEN not set — skipped. Add the repo secret to register commands." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat > /tmp/commands.json <<'EOF'
+          [
+            {"name": "status", "type": 1, "description": "QuantEdge bot fleet status"},
+            {"name": "pnl", "type": 1, "description": "Equity and today's paper P&L"},
+            {"name": "health", "type": 1, "description": "Deep health: database, scheduler, API"},
+            {"name": "run-bot", "type": 1, "description": "Evaluate one enabled bot right now (paper)",
+             "options": [{"name": "name", "description": "Part of the bot's name", "type": 3, "required": true}]}
+          ]
+          EOF
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X PUT \
+            "https://discord.com/api/v10/applications/$APP_ID/commands" \
+            -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/commands.json)
+          if [ "$code" = "200" ]; then
+            echo "✅ Registered $(python3 -c "import json;print(len(json.load(open('/tmp/resp.json'))))") slash commands" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ Registration failed (HTTP $code): $(head -c 300 /tmp/resp.json)" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

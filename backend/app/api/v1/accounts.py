@@ -14,6 +14,34 @@ from pydantic import BaseModel, ConfigDict
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
+async def latest_total_equity(db: AsyncSession) -> float:
+    """Sum of each active account's most recent snapshot equity.
+
+    The Account model itself has NO equity column — equity is a time series on
+    AccountSnapshot (written hourly from live broker data). Every caller that
+    wants "current equity" must read the latest snapshot, not the account row;
+    reading `account.total_equity` is an AttributeError.
+    """
+    from app.models.account import AccountSnapshot
+
+    account_ids = (
+        (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
+        .scalars().all()
+    )
+    total = 0.0
+    for acc_id in account_ids:
+        snap = (
+            await db.execute(
+                select(AccountSnapshot.total_equity)
+                .where(AccountSnapshot.account_id == acc_id)
+                .order_by(AccountSnapshot.ts.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        total += float(snap or 0)
+    return total
+
+
 class AccountCreate(BaseModel):
     broker: str
     label: str

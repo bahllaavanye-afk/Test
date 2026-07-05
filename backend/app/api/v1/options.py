@@ -525,12 +525,22 @@ async def validate_trade_rules(
     # ── Position size rule vs account equity ─────────────────────────────
     equity = _DEFAULT_EQUITY
     try:
-        q = select(Account).where(Account.user_id == current_user.id, Account.is_active == True)  # noqa: E712
+        # Equity is a time series on AccountSnapshot, not a column on Account.
+        from app.models.account import AccountSnapshot
+
+        q = select(Account.id).where(Account.user_id == current_user.id, Account.is_active == True)  # noqa: E712
         if body.account_id:
-            q = select(Account).where(Account.id == body.account_id, Account.user_id == current_user.id)
-        acct = (await db.execute(q.limit(1))).scalar_one_or_none()
-        if acct is not None and getattr(acct, "total_equity", None):
-            equity = float(acct.total_equity)
+            q = select(Account.id).where(Account.id == body.account_id, Account.user_id == current_user.id)
+        acct_id = (await db.execute(q.limit(1))).scalar_one_or_none()
+        if acct_id:
+            snap = (await db.execute(
+                select(AccountSnapshot.total_equity)
+                .where(AccountSnapshot.account_id == acct_id)
+                .order_by(AccountSnapshot.ts.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+            if snap:
+                equity = float(snap)
     except Exception:
         pass
 

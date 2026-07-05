@@ -464,19 +464,17 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         try:
             from sqlalchemy import func
 
+            from app.api.v1.accounts import latest_total_equity
             from app.database import AsyncSessionLocal
-            from app.models.account import Account
             from app.models.position import Position
             from app.models.trade import Trade
             from app.notifications.slack import slack
 
             today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             async with AsyncSessionLocal() as db:
-                accounts = (
-                    (await db.execute(select(Account).where(Account.is_active == True)))  # noqa: E712
-                    .scalars().all()
-                )
-                equity = sum(float(a.total_equity or 0) for a in accounts)
+                # Equity lives on AccountSnapshot, NOT Account — reading
+                # a.total_equity here raised AttributeError every evening.
+                equity = await latest_total_equity(db)
                 closed_today = (
                     (await db.execute(
                         select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
