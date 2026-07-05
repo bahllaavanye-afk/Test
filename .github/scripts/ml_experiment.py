@@ -118,7 +118,7 @@ def walk_forward(feat: pd.DataFrame) -> dict:
     def sharpe(x: np.ndarray) -> float:
         return float(ANNUALIZE * x.mean() / x.std()) if x.std() > 0 else 0.0
 
-    hit = float((p > 0.5).astype(int).mean() * 0 + ((p > 0.5).astype(int) == actual).mean())
+    hit = float(((p > 0.5).astype(int) == actual).mean())
     curve = np.cumprod(1 + strat_ret)
     dd = float((1 - curve / np.maximum.accumulate(curve)).max())
     return {

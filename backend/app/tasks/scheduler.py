@@ -496,7 +496,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                     "Equity (all accounts)": f"${equity:,.2f}",
                     "Closed today": n_closed,
                     "Open positions": int(open_count),
-                    "Mode": "paper",
+                    "Mode": os.environ.get("TRADING_MODE", "paper"),
                 },
             )
             logger.info("Daily P&L digest posted", pnl=pnl_today, closed=n_closed)
