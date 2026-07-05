@@ -6,10 +6,11 @@ from __future__ import annotations
 import asyncio
 import functools
 from datetime import date, datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Literal
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.utils.logging import logger
@@ -36,6 +37,59 @@ def _alpaca_headers() -> dict:
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
+
+
+class BenchmarkDataPoint(BaseModel):
+    """Single data point of a benchmark time series."""
+
+    date: str = Field(
+        ...,
+        description="ISO‑formatted date string (YYYY‑MM‑DD).",
+        example="2023-01-02",
+    )
+    value: float = Field(
+        ...,
+        description="Benchmark value normalized to 100 at the start date.",
+        example=105.23,
+    )
+
+    @validator("date")
+    def validate_iso_date(cls, v: str) -> str:
+        """Ensure the date string follows ISO format."""
+        try:
+            datetime.fromisoformat(v)
+        except ValueError as exc:
+            raise ValueError("date must be ISO formatted YYYY-MM-DD") from exc
+        return v
+
+
+class BenchmarkSeries(BaseModel):
+    """Time series for a single benchmark ticker."""
+
+    ticker: str = Field(
+        ...,
+        description="Ticker symbol of the benchmark.",
+        example="SPY",
+    )
+    data: List[BenchmarkDataPoint] = Field(
+        ...,
+        description="Ordered list of data points for the ticker.",
+    )
+
+    @validator("ticker")
+    def ticker_must_not_be_empty(cls, v: str) -> str:
+        if not v:
+            raise ValueError("ticker cannot be empty")
+        return v
+
+
+class BenchmarkResponse(BaseModel):
+    """Container for multiple benchmark series."""
+
+    benchmarks: List[BenchmarkSeries] = Field(
+        ...,
+        description="Collection of benchmark time series.",
+    )
 
 
 async def _fetch_ticker_bars(
