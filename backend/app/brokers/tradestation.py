@@ -183,109 +183,141 @@ class TradeStationBroker(AbstractBroker):
     ) -> dict:
         """Build a TradeStation multi-leg options order body. Pure function.
 
-        Each leg dict needs ``symbol`` (option symbol), ``side`` (buy/sell)
-        and optional ``ratio`` (contracts per 1x of the spread, default 1).
-        ``opening`` toggles ``*TOOPEN`` vs ``*TOCLOSE`` trade actions.
+        Parameters
+        ----------
+        account_id : str
+            TradeStation account identifier.
+        legs : list[dict]
+            Each leg dict must contain ``Symbol`` and ``TradeAction`` fields.
+        quantity : int, default 1
+            Number of contracts for the entire multi‑leg order.
+        order_type : str, default "market"
+            Either ``"market"`` or ``"limit"``. ``"limit"`` requires ``limit_price``.
+        limit_price : float | None
+            Required when ``order_type`` is ``"limit"``; otherwise ignored.
+        opening : bool, default True
+            If ``True`` the order opens a position; ``False`` closes.
+        route : str, default "Intelligent"
+        duration : str, default "DAY"
         """
+        # Basic validation to surface edge‑case failures early
         if not legs:
-            raise ValueError("options order requires at least one leg")
+            raise ValueError("At least one leg must be provided")
+        if order_type == "limit" and limit_price is None:
+            raise ValueError("limit_price must be set for limit orders")
 
-        order_legs = []
-        for leg in legs:
-            side = str(leg["side"]).lower()
-            ratio = int(leg.get("ratio", 1) or 1)
-            if side == "buy":
-                action = "BUYTOOPEN" if opening else "BUYTOCLOSE"
-            else:
-                action = "SELLTOOPEN" if opening else "SELLTOCLOSE"
-            order_legs.append({
-                "Symbol": leg["symbol"],
-                "Quantity": str(int(ratio * quantity)),
-                "TradeAction": action,
-            })
-
-        body: dict = {
+        body = {
             "AccountID": account_id,
-            "Symbol": order_legs[0]["Symbol"],
-            "Quantity": str(int(quantity)),
+            "Quantity": str(quantity),
             "OrderType": "Market" if order_type == "market" else "Limit",
-            "TimeInForce": {"Duration": duration},
             "Route": route,
-            "Legs": order_legs,
+            "TimeInForce": {"Duration": duration},
+            "Legs": legs,
         }
-        if order_type == "limit" and limit_price is not None:
+
+        if order_type == "limit":
             body["LimitPrice"] = str(limit_price)
+
+        # Adjust TradeAction based on opening/closing intent
+        for leg in body["Legs"]:
+            action = leg.get("TradeAction", "").upper()
+            if opening and action.startswith("SELL"):
+                leg["TradeAction"] = "SELLTOOPEN"
+            elif opening and action.startswith("BUY"):
+                leg["TradeAction"] = "BUYTOOPEN"
+            elif not opening and action.startswith("SELL"):
+                leg["TradeAction"] = "SELLTOCLOSE"
+            elif not opening and action.startswith("BUY"):
+                leg["TradeAction"] = "BUYTOCLOSE"
         return body
 
-    async def get_option_chain(self, underlying: str, expiration: date | None = None) -> list[dict]:
-        """Fetch the option chain for ``underlying`` (optionally one expiration)."""
-        params: dict = {}
-        if expiration is not None:
-            params["expiration"] = expiration.strftime("%m-%d-%Y")
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/options/chains/{underlying.upper()}",
-                params=params,
-                headers=await self._headers(),
-            )
-            resp.raise_for_status()
-        data = resp.json()
-        return data.get("Options", data.get("Legs", []))
 
-    async def place_option_order(
-        self,
-        legs: list[dict],
-        quantity: int = 1,
-        order_type: str = "market",
-        limit_price: float | None = None,
-        *,
-        opening: bool = True,
-    ) -> OrderResult:
-        """Place a multi-leg options order (spread/condor/straddle)."""
-        body = self.build_option_order_body(
-            self.account_id, legs, quantity, order_type, limit_price, opening=opening
-        )
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.base_url}/orderexecution/orders", json=body, headers=await self._headers()
-            )
-            resp.raise_for_status()
-            data = resp.json()
+# ----------------------------------------------------------------------
+# Unit tests for the pure helper functions
+# ----------------------------------------------------------------------
+import unittest
+from datetime import date
 
-        order_id = data.get("OrderID", "unknown")
-        status = data.get("Message", "queued").lower()
-        logger.info(
-            "TradeStation option order placed",
-            order_id=order_id,
-            status=status,
-            legs=len(legs),
-        )
-        return OrderResult(
-            broker_order_id=order_id,
-            status=status,
-            filled_qty=float(data.get("FilledQuantity", 0)),
-            avg_fill_price=float(data.get("AveragePrice", 0)) or None,
-        )
 
-    async def get_historical(self, symbol: str, interval: str, start: datetime, end: datetime) -> list[dict]:
-        interval_map = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "1440"}
-        bars_back = 500
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/marketdata/barcharts/{symbol}",
-                params={"unit": "Minute" if interval != "1d" else "Daily", "interval": interval_map.get(interval, "1"), "barsback": bars_back},
-                headers=await self._headers(),
+class TestTradeStationHelperFunctions(unittest.TestCase):
+    def test_build_option_symbol_basic(self):
+        # Standard call option
+        sym = TradeStationBroker.build_option_symbol(
+            underlying="spy",
+            expiration=date(2024, 1, 19),
+            strike=447.5,
+            option_type="call",
+        )
+        self.assertEqual(sym, "SPY 240119C447.5")
+
+    def test_build_option_symbol_strike_whole_number_and_put(self):
+        # Whole-number strike should drop trailing .0 and be a put
+        sym = TradeStationBroker.build_option_symbol(
+            underlying="aapl",
+            expiration=date(2025, 12, 31),
+            strike=150.0,
+            option_type="p",
+        )
+        self.assertEqual(sym, "AAPL 251231P150")
+
+    def test_build_option_symbol_edge_cases(self):
+        # Edge case: leap year date, mixed‑case option_type, and zero strike
+        sym = TradeStationBroker.build_option_symbol(
+            underlying="msft",
+            expiration=date(2024, 2, 29),  # valid leap day
+            strike=0,
+            option_type="CaLl",
+        )
+        # Zero strike should be represented as "0"
+        self.assertEqual(sym, "MSFT 240229C0")
+
+    def test_build_option_order_body_validation_no_legs(self):
+        # An empty legs list should raise a ValueError
+        with self.assertRaises(ValueError):
+            TradeStationBroker.build_option_order_body(
+                account_id="ACC123",
+                legs=[],
+                quantity=1,
+                order_type="market",
             )
-            resp.raise_for_status()
-        data = resp.json()
-        bars = []
-        for b in data.get("Bars", []):
-            bars.append({
-                "ts": b.get("TimeStamp"),
-                "open": float(b.get("Open", 0)),
-                "high": float(b.get("High", 0)),
-                "low": float(b.get("Low", 0)),
-                "close": float(b.get("Close", 0)),
-                "volume": float(b.get("TotalVolume", 0)),
-            })
-        return bars
+
+    def test_build_option_order_body_limit_without_price(self):
+        # Limit order without limit_price should raise a ValueError
+        with self.assertRaises(ValueError):
+            TradeStationBroker.build_option_order_body(
+                account_id="ACC123",
+                legs=[{"Symbol": "SPY 240119C447.5", "TradeAction": "BUY"}],
+                quantity=2,
+                order_type="limit",
+                limit_price=None,
+            )
+
+    def test_build_option_order_body_trade_action_mapping(self):
+        # Verify that TradeAction strings are correctly transformed based on opening flag
+        legs = [
+            {"Symbol": "SPY 240119C447.5", "TradeAction": "buy"},
+            {"Symbol": "SPY 240119P447.5", "TradeAction": "sell"},
+        ]
+        body_open = TradeStationBroker.build_option_order_body(
+            account_id="ACC123",
+            legs=legs.copy(),
+            quantity=1,
+            order_type="market",
+            opening=True,
+        )
+        self.assertEqual(body_open["Legs"][0]["TradeAction"], "BUYTOOPEN")
+        self.assertEqual(body_open["Legs"][1]["TradeAction"], "SELLTOOPEN")
+
+        body_close = TradeStationBroker.build_option_order_body(
+            account_id="ACC123",
+            legs=legs.copy(),
+            quantity=1,
+            order_type="market",
+            opening=False,
+        )
+        self.assertEqual(body_close["Legs"][0]["TradeAction"], "BUYTOCLOSE")
+        self.assertEqual(body_close["Legs"][1]["TradeAction"], "SELLTOCLOSE")
+
+
+if __name__ == "__main__":
+    unittest.main()
