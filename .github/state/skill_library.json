@@ -73,8 +73,11 @@
     "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "docstrings on ml/features/technical.py: success \u2014 tests green",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
-    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green"
+    "docstrings on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "docstrings on ml/models/ensemble_model.py: success \u2014 tests green",
+    "docstrings on ml/features/pandas_ta_compat.py: success \u2014 tests green",
+    "docstrings on execution/smart_router.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-06-30T00:02:07.380027+00:00",
+  "last_updated": "2026-07-05T12:49:44.259620+00:00",
   "total": 26
 }
