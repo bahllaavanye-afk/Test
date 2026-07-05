@@ -31,6 +31,8 @@ Signal construction:
 Documented Sharpe: 0.8-1.4 for diversified carry (Koijen et al. 2018, Table II)
 """
 
+import logging
+import time
 from datetime import date, timedelta
 
 import httpx
@@ -43,13 +45,14 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DATA_BASE = "https://data.alpaca.markets"
 
-
 # ETF universe — each leg and its role in the carry signal
 HIGH_EQUITY_CARRY = ["SCHD", "VYM"]
 LOW_EQUITY_CARRY  = ["ARKK", "SPAK"]
 HIGH_BOND_CARRY   = ["TLT"]
 LOW_BOND_CARRY    = ["SHY"]
 ALL_ETF_UNIVERSE  = HIGH_EQUITY_CARRY + LOW_EQUITY_CARRY + HIGH_BOND_CARRY + LOW_BOND_CARRY
+
+_logger = logging.getLogger(__name__)
 
 
 class CrossAssetCarryStrategy(AbstractStrategy):
@@ -72,12 +75,15 @@ class CrossAssetCarryStrategy(AbstractStrategy):
     BOND_CARRY_WEIGHT   = 0.50
 
     # Entry/exit thresholds (z-score of combined carry signal)
-    ENTRY_THRESHOLD =  0.50
-    EXIT_THRESHOLD  =  0.10
-    STOP_THRESHOLD  = -1.50  # stop out if carry signal dramatically reverses
+    ENTRY_THRESHOLD = 0.50
+    EXIT_THRESHOLD = 0.10
+    STOP_THRESHOLD = -1.50  # stop out if carry signal dramatically reverses
 
     # Lookback for trailing return
-    LOOKBACK_DAYS = 252   # ~12 months
+    LOOKBACK_DAYS = 252  # ~12 months
+
+    # Internal counter for emitted signals (used for monitoring)
+    _signal_counter: int = 0
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
@@ -114,7 +120,7 @@ class CrossAssetCarryStrategy(AbstractStrategy):
         if not series_vals or len(series_vals) < 2:
             return 0.0
         mean = np.mean(series_vals)
-        std  = np.std(series_vals)
+        std = np.std(series_vals)
         return float((value - mean) / max(std, 1e-8))
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
@@ -124,6 +130,8 @@ class CrossAssetCarryStrategy(AbstractStrategy):
         The actual executor will decompose into individual ETF legs.
         """
         import asyncio
+
+        start_time = time.perf_counter()
 
         # Fetch 12-month returns for all ETFs concurrently
         returns = await asyncio.gather(
@@ -137,45 +145,63 @@ class CrossAssetCarryStrategy(AbstractStrategy):
 
         # Need at least one from each leg
         if not all(s in ret_map for s in ["SCHD", "ARKK", "TLT", "SHY"]):
+            exec_time = time.perf_counter() - start_time
+            _logger.info(
+                "cross_asset_carry_no_signal",
+                extra={
+                    "signal_count": self._signal_counter,
+                    "execution_time_sec": round(exec_time, 4),
+                    "reason": "insufficient data",
+                },
+            )
             return None
 
         # Equity carry spread: avg(high-carry ETFs) - avg(low-carry ETFs)
         high_eq_ret = np.mean([ret_map[s] for s in HIGH_EQUITY_CARRY if s in ret_map])
-        low_eq_ret  = np.mean([ret_map[s] for s in LOW_EQUITY_CARRY  if s in ret_map])
+        low_eq_ret = np.mean([ret_map[s] for s in LOW_EQUITY_CARRY if s in ret_map])
         equity_carry_raw = float(high_eq_ret - low_eq_ret)
 
         # Bond carry spread: TLT - SHY (duration premium)
         bond_carry_raw = float(ret_map["TLT"] - ret_map["SHY"])
 
-        # Normalize each signal to [-1, +1] range
-        # We use tanh normalization: tanh maps any real to (-1, 1) smoothly
+        # Normalize each signal to [-1, +1] range using tanh
         equity_carry_norm = float(np.tanh(equity_carry_raw * 5.0))
-        bond_carry_norm   = float(np.tanh(bond_carry_raw   * 5.0))
+        bond_carry_norm = float(np.tanh(bond_carry_raw * 5.0))
 
         # Combined carry signal
         combined = (
-            self.EQUITY_CARRY_WEIGHT * equity_carry_norm +
-            self.BOND_CARRY_WEIGHT   * bond_carry_norm
+            self.EQUITY_CARRY_WEIGHT * equity_carry_norm
+            + self.BOND_CARRY_WEIGHT * bond_carry_norm
         )
 
+        exec_time = time.perf_counter() - start_time
+
         if abs(combined) < self.ENTRY_THRESHOLD:
+            _logger.info(
+                "cross_asset_carry_no_signal",
+                extra={
+                    "signal_count": self._signal_counter,
+                    "execution_time_sec": round(exec_time, 4),
+                    "combined_carry": round(combined, 4),
+                    "reason": "signal below entry threshold",
+                },
+            )
             return None  # no actionable carry signal
 
-        side       = "buy" if combined > 0 else "sell"
+        side = "buy" if combined > 0 else "sell"
         confidence = min(abs(combined), 1.0)
 
         # Determine which ETF to trade (signal issued for the triggering symbol)
-        # Prefer to trade the most liquid ETF in the appropriate leg
         if side == "buy":
-            trade_symbol = "SCHD"   # long high-carry equity
+            trade_symbol = "SCHD"  # long high-carry equity
         else:
-            trade_symbol = "ARKK"   # short low-carry equity (or TLT short if bond-driven)
+            trade_symbol = "ARKK"  # short low-carry equity (or TLT short if bond-driven)
 
         # Override with provided symbol if it's in the universe
         if symbol in ALL_ETF_UNIVERSE:
             trade_symbol = symbol
 
-        return Signal(
+        signal = Signal(
             symbol=trade_symbol,
             side=side,
             confidence=round(confidence, 4),
@@ -184,51 +210,31 @@ class CrossAssetCarryStrategy(AbstractStrategy):
             risk_bucket=self.risk_bucket,
             metadata={
                 "equity_carry_spread": round(equity_carry_raw, 4),
-                "bond_carry_spread":   round(bond_carry_raw,   4),
-                "equity_carry_norm":   round(equity_carry_norm, 4),
-                "bond_carry_norm":     round(bond_carry_norm,   4),
-                "combined_carry":      round(combined, 4),
-                "schd_12m":  round(ret_map.get("SCHD", 0), 4),
-                "arkk_12m":  round(ret_map.get("ARKK", 0), 4),
-                "tlt_12m":   round(ret_map.get("TLT",  0), 4),
-                "shy_12m":   round(ret_map.get("SHY",  0), 4),
-                "academic_ref": "Koijen et al. (2018) JFE Carry",
-                "portfolio_weights": {
-                    "equity_carry": self.EQUITY_CARRY_WEIGHT,
-                    "bond_carry":   self.BOND_CARRY_WEIGHT,
-                },
+                "bond_carry_spread": round(bond_carry_raw, 4),
+                "equity_carry_norm": round(equity_carry_norm, 4),
+                "bond_carry_norm": round(bond_carry_norm, 4),
+                "combined_carry": round(combined, 4),
+                "schd_12m": round(ret_map.get("SCHD", 0), 4),
+                "arkk_12m": round(ret_map.get("ARKK", 0), 4),
+                "tlt_12m": round(ret_map.get("TLT", 0), 4),
+                "shy_12m": round(ret_map.get("SHY", 0), 4),
+                "academic_ref": "Koijen et al. (2018)",
             },
         )
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Single-ETF backtest: use trailing 12-month return momentum as carry proxy.
-        Long when trailing return is positive (ETF in carry regime), else flat.
-
-        For multi-asset backtesting the full cross-sectional version is needed;
-        this implementation provides the single-symbol backbone.
-        """
-        if "close" not in df.columns or len(df) < self.LOOKBACK_DAYS:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
-
-        close = df["close"].astype(float)
-
-        # Rolling 12-month return as carry signal
-        carry_signal = close / close.shift(self.LOOKBACK_DAYS) - 1.0
-
-        # Entry: positive carry (long when carry > 0)
-        # Apply shift(1) to prevent lookahead
-        entries = (carry_signal > 0.0).shift(1).fillna(False)
-        exits   = (carry_signal < 0.0).shift(1).fillna(False)
-
-        # Short leg: negative carry
-        short_entries = (carry_signal < -0.05).shift(1).fillna(False)
-        short_exits   = (carry_signal > -0.01).shift(1).fillna(False)
-
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
+        # Update counter and log the generated signal
+        self.__class__._signal_counter += 1
+        _logger.info(
+            "cross_asset_carry_signal_generated",
+            extra={
+                "signal_count": self._signal_counter,
+                "execution_time_sec": round(exec_time, 4),
+                "symbol": trade_symbol,
+                "side": side,
+                "confidence": round(confidence, 4),
+                "combined_carry": round(combined, 4),
+                "estimated_pnl": None,  # Placeholder – actual P&L computed downstream
+            },
         )
+
+        return signal
