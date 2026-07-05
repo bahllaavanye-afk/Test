@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 import re
 import subprocess
 from pathlib import Path
@@ -97,7 +98,7 @@ def apply_and_push(files: list[dict], summary: str = "") -> bool:
 
     # Reward gate: push a throwaway branch and open an automerge PR instead of
     # pushing directly to main — the full CI suite must pass before anything lands.
-    run_id = os.environ.get("GITHUB_RUN_ID") or __import__("datetime").datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    run_id = os.environ.get("GITHUB_RUN_ID") or datetime.utcnow().strftime("%Y%m%d%H%M%S")
     run_branch = f"frontend-team/run-{run_id}"
     subprocess.run(["git", "checkout", "-B", run_branch], cwd=REPO_ROOT, capture_output=True)
     subprocess.run(["git", "push", "-u", "origin", run_branch], cwd=REPO_ROOT, check=True)

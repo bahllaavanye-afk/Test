@@ -64,5 +64,5 @@ jobs:
         run: |
           git add .github/state/ || true
           git diff --cached --quiet || git commit -m "scan: market scanner state update [skip ci]"
-          git pull --rebase origin claude/advanced-trading-bot-d5Lmw || true
-          git push origin claude/advanced-trading-bot-d5Lmw || true
+          git pull --rebase origin main || true
+          git push origin main || true

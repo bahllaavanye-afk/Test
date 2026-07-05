@@ -37,7 +37,7 @@ jobs:
         run: |
           git config user.email "agent-memory@quantedge.ai"
           git config user.name "Agent Memory System"
-          git pull origin claude/advanced-trading-bot-d5Lmw --rebase || true
+          git pull origin main --rebase || true
 
       - name: Run Claude ↔ Employee conversations
         continue-on-error: true
@@ -70,7 +70,7 @@ jobs:
         run: |
           git add .github/state/agent_memory.json || true
           git diff --cached --quiet || git commit -m "chore(memory): update agent memory state [skip ci]"
-          git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true || true
+          git pull --rebase --quiet origin main 2>/dev/null || true; git push -u origin main || true || true
 
       - name: Post conversation summary to GitHub step summary
         if: always()

@@ -5,7 +5,7 @@ name: Slack Pulse — Keep Team Informed
 
 on:
   push:
-    branches: [claude/advanced-trading-bot-d5Lmw, main]
+    branches: [main, main]
     # Ignore automated state-persist commits — they have [skip ci] in the message
     # but also explicitly filter to code changes only to be safe
     paths:
@@ -91,7 +91,7 @@ jobs:
             git add "$STATE_FILE"
             git diff --cached --quiet || git commit -m "chore: persist agent state [skip ci]"
             for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+              git pull --rebase --quiet origin main && break || sleep $((i*2))
             done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git push -u origin main || true
           fi

@@ -241,10 +241,32 @@ def _call_groq(prompt: str) -> str:
 
 
 def _call_llm(prompt: str) -> tuple[str, str]:
+    """Route through the full cost-tiered cascade, not just Gemini+Groq.
+
+    The old two-provider path ("All LLM providers failed") gave up whenever
+    Gemini AND Groq were both down/quota'd — ignoring the 6 other free
+    providers, OpenRouter, and the funded Claude backstop. Fixing a code issue
+    is a hard task, so use tier="hard": FREE cascade → OpenRouter → Claude. The
+    agent now only fails if EVERY tier including the paid backstop is exhausted.
     """
-    Try Gemini Flash first, fall back to Groq.
-    Returns (text, agent_name).
-    """
+    try:
+        import llm_common  # sibling module in .github/scripts
+
+        text = llm_common.llm_routed(
+            prompt,
+            system="You are an autonomous senior engineer at QuantEdge. Return only what is asked.",
+            max_tokens=1500,
+            temperature=0.2,
+            tier="hard",
+            inject_company_context=False,
+        )
+        if text and text.strip():
+            print(f"[free-agent] LLM response via routed cascade ({len(text)} chars)")
+            return text, "routed-cascade"
+    except Exception as e:
+        print(f"[free-agent] routed cascade error: {e}")
+
+    # Last-resort legacy path (environments without llm_common).
     for caller, name in [(_call_gemini, "gemini-flash"), (_call_groq, "groq-llama3")]:
         try:
             text = caller(prompt)
@@ -252,7 +274,7 @@ def _call_llm(prompt: str) -> tuple[str, str]:
             return text, name
         except Exception as e:
             print(f"[free-agent] {name} failed: {e}")
-    raise RuntimeError("All free LLM providers failed")
+    raise RuntimeError("All LLM tiers failed (free cascade + OpenRouter + Claude backstop exhausted)")
 
 
 # ─── Fix prompt builder ───────────────────────────────────────────────────────

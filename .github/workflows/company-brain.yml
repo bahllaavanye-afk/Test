@@ -58,4 +58,4 @@ jobs:
           git config user.name "QuantEdge Brain"
           git add .github/state/company_brain.json .github/state/llm_cache.json || true
           git diff --cached --quiet || git commit -m "chore: company brain sync $(date -u +%H:%M)"
-          git push origin claude/advanced-trading-bot-d5Lmw || true
+          git push origin main || true
