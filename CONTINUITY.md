@@ -42,6 +42,19 @@ QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, 
   pytest-asyncio deprecation removed (#206). Backend verified deploy-ready locally (158 routes, seeds
   29 bots). **Live blockers are human-only: Render build-minutes (#197) + default branch → `main` (#196).**
 
+## 2026-07-05 — Discord two-way + pipeline self-heal
+- Discord fully wired: webhook delivery (verified 204), per-employee bot profiles,
+  per-channel routing, Discord-primary employee runs, shared `notify.py` chokepoint.
+- **Slash commands** (`/status /pnl /health /run-bot`): Ed25519-verified endpoint at
+  `/api/v1/discord/interactions` + `discord-commands-sync.yml` (needs DISCORD_BOT_TOKEN).
+  Caught+fixed a real merged bug: equity lives on AccountSnapshot, not Account.
+- **`auto-pr.yml`**: pushes to `claude/**` now auto-open an `automerge` PR + dispatch CI —
+  closes the stranded-branch gap (needs repo setting "Allow Actions to create PRs" ON).
+- Bars-fetch root cause fixed (#286): Alpaca defaulted `start` to today → every desk ran
+  on an empty cache. Now 200d of real bars; 3 crypto strategies pruned (Binance 451 /
+  CoinGecko 401 unreachable from US runners → issue #289 to reroute via Bybit/OKX).
+- ML experiments VERIFIED working: Sunday run, real Alpaca data, honest OOS results (#288).
+
 ## 2026-07-04 — the big landing (12 PRs merged in one session)
 - ✅ #270 commodity_reversion strategy + commodities research; #271 stale backend URLs → agb8;
   #272 keep-alive hardening; #273 website fixes (Google OAuth, WS revival, cold-start retry);
