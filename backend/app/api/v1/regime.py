@@ -4,8 +4,33 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
 from app.risk.correlation_monitor import correlation_monitor
+from collections import Counter
+from threading import Lock
+from time import time
 
 router = APIRouter(prefix="/regime", tags=["regime"])
+
+# Simple in‑memory cache with TTL to avoid repeated heavy computations.
+_CACHE_TTL = 5.0  # seconds
+_cache = {}
+_cache_lock = Lock()
+
+
+def _cached(key: str, compute_func):
+    """Return cached value for *key* or compute it via *compute_func*.
+
+    The cache expires after ``_CACHE_TTL`` seconds. Thread‑safe.
+    """
+    now = time()
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and now - entry["ts"] < _CACHE_TTL:
+            return entry["value"]
+    # Compute outside the lock to avoid blocking other threads.
+    value = compute_func()
+    with _cache_lock:
+        _cache[key] = {"value": value, "ts": now}
+    return value
 
 
 @router.get("/current")
@@ -15,11 +40,11 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     Returns the most common regime (bull/bear/sideways mapped from detector enums)
     and average confidence. Falls back to safe defaults when no data is available.
     """
-    states = regime_monitor.all_states()
+    states = _cached("regime_states", regime_monitor.all_states)
     if not states:
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return {"regime": "unknown", "confidence": 0.0, "updated_at": None, "symbol_count": 0}
 
-    # Map detector regimes → frontend-friendly labels
+    # Map detector regimes → frontend‑friendly labels
     _label_map = {
         "trending": "bull",
         "mean_reverting": "sideways",
@@ -27,7 +52,6 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         "unknown": "unknown",
     }
 
-    from collections import Counter
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
@@ -55,7 +79,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 @router.get("/states")
 async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
-    return regime_monitor.all_states()
+    return _cached("regime_states", regime_monitor.all_states)
 
 
 @router.get("/states/{symbol}")
@@ -68,9 +92,10 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
-    """Live cross-strategy correlation matrix."""
+    """Live cross‑strategy correlation matrix."""
+    matrix = _cached("correlation_matrix", correlation_monitor.matrix_as_list)
     return {
-        "matrix": correlation_monitor.matrix_as_list(),
+        "matrix": matrix,
         "reduced_strategies": list(correlation_monitor._reduced),
         "recent_alerts": correlation_monitor.recent_alerts(10),
     }
