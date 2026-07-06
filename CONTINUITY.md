@@ -6,7 +6,7 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-04._
+_Last updated: 2026-07-06._
 
 ## Mission
 QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, and
@@ -41,6 +41,32 @@ QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, 
   guards for income/macro strategies (#202), momentum lookahead (#207), cross-tenant isolation (#208);
   pytest-asyncio deprecation removed (#206). Backend verified deploy-ready locally (158 routes, seeds
   29 bots). **Live blockers are human-only: Render build-minutes (#197) + default branch → `main` (#196).**
+
+## 2026-07-06 — org layer + honest data + the cron-starvation fix
+- **Fake data purged:** live-stats hardcoded Sharpe 2.1/68%/14.7% → computed from real
+  trades (null until data); tearsheet 500 (Postgres-only date_trunc) → DB-agnostic;
+  Landing hero shows "—" until real metrics. Smoke gate (smoke-test.yml) verifies the
+  DEPLOYED api twice hourly + post-merge and pages #ci-failures.
+- **Google login 404 root cause:** OAuth callback redirected to cors_origins[0] = the
+  dead quantedge.vercel.app stub. Now FRONTEND_URL-aware; render.yaml reordered.
+- **Org layer:** team_lead.py (reviews automerge PRs — revokes label on protected-file
+  edits (the #298 failure), assigns issues, reports to #leadership-summary) +
+  data_team.py (bars coverage/freshness/ML-readiness for every desk symbol) +
+  bot lifecycle manager (disable losers / promote winners / instantiate templates).
+- **P&L loop closed:** desk_trade_sync (Alpaca fills → Trade rows, FIFO, idempotent);
+  /leaderboard/live; perf-weighted desk sizing (winners 1.3x, losers 0.6x);
+  /bots/{id}/performance (per-bot cum-P&L series).
+- **Options desk:** wheel/iron_condor/credit_spread wired with iv_rank injection
+  (verified firing); crypto desk 4 → 12 Alpaca pairs; India ETF sleeve (INDA/EPI/SMIN).
+- **CRON STARVATION (critical infra fact):** GitHub schedules barely fire in this repo
+  (keep-alive cron */5 = 162 runs EVER; discord-sync daily NEVER ran). Anything critical
+  must be EVENT-driven → new ops-sync job in CI (test.yml) creates Discord channels,
+  registers slash commands, and relays keys GitHub→Render on every CI run.
+  VERIFIED 08:25Z: commands HTTP 200; DISCORD_BOT_TOKEN/GOOGLE_SERVICE_ACCOUNT_JSON/
+  ALPACA keys → Render all HTTP 200. Bot was in NO server (root cause of empty
+  Discord) — user re-invited it 08:2x.
+- Hourly standup → Discord #engineering + self-provisioned "QuantEdge Standups" Google
+  Doc (ensure_doc finds-or-creates + silent share; link posted in Discord, not email).
 
 ## 2026-07-05 — Discord two-way + pipeline self-heal
 - Discord fully wired: webhook delivery (verified 204), per-employee bot profiles,
