@@ -117,8 +117,12 @@
     "Verify DB connections",
     "Review code changes",
     "Optimize trading scripts",
-    "Improve model docs"
+    "Improve model docs",
+    "constants on comparison/engine.py: success \u2014 tests green",
+    "constants on tasks/ml_retrain.py: success \u2014 tests green",
+    "constants on api/v1/backtests.py: success \u2014 tests green",
+    "constants on strategies/manual/tlt_spy_rotation.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-06T17:20:01.293423+00:00",
+  "last_updated": "2026-07-06T18:23:51.364538+00:00",
   "total": 118
 }
