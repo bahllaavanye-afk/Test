@@ -10,9 +10,10 @@ agree on direction, and it adjusts the confidence accordingly.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.strategies.manual.momentum import MomentumStrategy
@@ -20,6 +21,54 @@ from app.ml.inference import get_inference_service
 
 
 logger = logging.getLogger(__name__)
+
+
+class MLStrategyParams(BaseModel):
+    """Configuration parameters for :class:`MLMomentumStrategy`.
+
+    Attributes
+    ----------
+    confidence_threshold : float
+        Minimum combined confidence required for a signal to be emitted. Must be
+        between 0 and 1. Defaults to ``0.65``.
+    """
+
+    confidence_threshold: float = Field(
+        default=0.65,
+        ge=0.0,
+        le=1.0,
+        description="Minimum combined confidence required for a signal.",
+        example=0.70,
+    )
+
+
+class MLResult(BaseModel):
+    """Result returned by the ML inference service.
+
+    Attributes
+    ----------
+    prediction : Literal["up", "down", "neutral"]
+        Directional prediction from the model.
+    confidence : float
+        Model confidence for the prediction, expressed as a value between 0 and 1.
+    """
+
+    prediction: Literal["up", "down", "neutral"] = Field(
+        description="Directional prediction from the ML model.",
+        example="up",
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Confidence of the prediction, ranging from 0 (no confidence) to 1 (full confidence).",
+        example=0.82,
+    )
+
+    @validator("confidence")
+    def _check_confidence(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("confidence must be between 0 and 1")
+        return v
 
 
 class MLMomentumStrategy(AbstractStrategy):
@@ -43,8 +92,13 @@ class MLMomentumStrategy(AbstractStrategy):
         Parameters
         ----------
         params : dict | None, optional
-            Optional configuration parameters passed to the base strategy.
+            Optional configuration parameters passed to the base strategy. If
+            provided, they are validated against :class:`MLStrategyParams`.
         """
+        # Validate and normalise configuration parameters.
+        if params is not None:
+            validated_params = MLStrategyParams.parse_obj(params)
+            self.confidence_threshold = validated_params.confidence_threshold
         super().__init__(params)
         self._base = MomentumStrategy(params)
 
@@ -75,8 +129,14 @@ class MLMomentumStrategy(AbstractStrategy):
 
         try:
             inference = get_inference_service()
-            ml_result = await inference.predict(data, symbol)
-            if ml_result is None or ml_result["prediction"] == "neutral":
+            ml_raw = await inference.predict(data, symbol)
+            if ml_raw is None:
+                return None
+
+            # Validate the raw ML output using the MLResult schema.
+            ml_result = MLResult.parse_obj(ml_raw)
+
+            if ml_result.prediction == "neutral":
                 return None
 
             return self._apply_ml_filter(base_signal, ml_result)
@@ -84,16 +144,15 @@ class MLMomentumStrategy(AbstractStrategy):
             logger.exception("ML inference failed for %s: %s", symbol, e)
             return None
 
-    def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
+    def _apply_ml_filter(self, base_signal: Signal, ml_result: MLResult) -> Optional[Signal]:
         """Adjust the base signal if the ML prediction agrees.
 
         Parameters
         ----------
         base_signal : Signal
             Signal produced by the underlying momentum strategy.
-        ml_result : dict
-            Result from the ML inference service containing ``prediction`` and
-            ``confidence`` keys.
+        ml_result : MLResult
+            Validated result from the ML inference service.
 
         Returns
         -------
@@ -101,8 +160,8 @@ class MLMomentumStrategy(AbstractStrategy):
             Updated signal if directions match and confidence meets the threshold,
             otherwise ``None``.
         """
-        prediction = ml_result["prediction"]
-        ml_conf = ml_result["confidence"]
+        prediction = ml_result.prediction
+        ml_conf = ml_result.confidence
 
         side_match = (
             (prediction == "up" and base_signal.side == "buy")
@@ -113,6 +172,9 @@ class MLMomentumStrategy(AbstractStrategy):
 
         # Combine confidences, respecting the configured maximum.
         combined_confidence = min(0.95, (base_signal.confidence + ml_conf) / 2)
+        if combined_confidence < self.confidence_threshold:
+            return None
+
         base_signal.confidence = combined_confidence
         base_signal.strategy_name = self.name
         base_signal.strategy_type = self.strategy_type
