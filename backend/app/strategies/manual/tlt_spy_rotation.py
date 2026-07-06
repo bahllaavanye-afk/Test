@@ -25,18 +25,33 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-
+# Constants
 _SPY = "SPY"
 _TLT = "TLT"
 _GLD = "GLD"
 
-_MA_WINDOW       = 200
-_VOL_WINDOW      = 20
-_VOL_THRESHOLD   = 0.20   # annualised vol threshold — above this = stressed
+_MA_WINDOW = 200
+_VOL_WINDOW = 20
+_VOL_THRESHOLD = 0.20  # annualised vol threshold — above this = stressed
+
+_DEFAULT_YF_PERIOD = "3y"
+
+_BUY_SIDE = "buy"
+
+_CONFIDENCE_MAX_EQUITY = 0.85
+_CONFIDENCE_BASE_EQUITY = 0.65
+_CONFIDENCE_MULT_EQUITY = 3.0
+
+_CONFIDENCE_MAX_BOND = 0.82
+_CONFIDENCE_BASE_BOND = 0.62
+_CONFIDENCE_MULT_BOND = 1.5
+_CONFIDENCE_DEFAULT_BOND = 0.72
+
+_ACADEMIC_REF_EQUITY = "Faber (2007) Tactical Asset Allocation"
+_ACADEMIC_REF_BOND = "Faber (2007) TAA"
 
 
-def _fetch_yf(symbol: str, period: str = "3y") -> pd.Series | None:
+def _fetch_yf(symbol: str, period: str = _DEFAULT_YF_PERIOD) -> pd.Series | None:
     try:
         import yfinance as yf
         hist = yf.Ticker(symbol).history(period=period, auto_adjust=True)
@@ -66,8 +81,8 @@ class TLTSPYRotationStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
         p = params or {}
-        self.ma_window     = int(p.get("ma_window",     _MA_WINDOW))
-        self.vol_window    = int(p.get("vol_window",    _VOL_WINDOW))
+        self.ma_window = int(p.get("ma_window", _MA_WINDOW))
+        self.vol_window = int(p.get("vol_window", _VOL_WINDOW))
         self.vol_threshold = float(p.get("vol_threshold", _VOL_THRESHOLD))
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
@@ -87,10 +102,13 @@ class TLTSPYRotationStrategy(AbstractStrategy):
         trade_sym = symbol if symbol in (_SPY, _TLT, _GLD) else _SPY
 
         if spy_now > spy_ma and not high_vol:
-            confidence = min(0.85, 0.65 + (spy_now / spy_ma - 1) * 3.0)
+            confidence = min(
+                _CONFIDENCE_MAX_EQUITY,
+                _CONFIDENCE_BASE_EQUITY + (spy_now / spy_ma - 1) * _CONFIDENCE_MULT_EQUITY,
+            )
             return Signal(
                 symbol=_SPY if trade_sym == _SPY else trade_sym,
-                side="buy",
+                side=_BUY_SIDE,
                 confidence=round(confidence, 4),
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
@@ -99,16 +117,21 @@ class TLTSPYRotationStrategy(AbstractStrategy):
                     "regime": "equity",
                     "spy_above_200ma": True,
                     "spy_rvol": round(spy_rvol, 4),
-                    "academic_ref": "Faber (2007) Tactical Asset Allocation",
+                    "academic_ref": _ACADEMIC_REF_EQUITY,
                 },
             )
 
         if tlt_now > tlt_ma or high_vol:
             trade = _TLT if not high_vol else (_GLD if trade_sym == _GLD else _TLT)
-            confidence = min(0.82, 0.62 + (spy_rvol - self.vol_threshold) * 1.5 if high_vol else 0.72)
+            confidence = min(
+                _CONFIDENCE_MAX_BOND,
+                _CONFIDENCE_BASE_BOND + (spy_rvol - self.vol_threshold) * _CONFIDENCE_MULT_BOND
+                if high_vol
+                else _CONFIDENCE_DEFAULT_BOND,
+            )
             return Signal(
                 symbol=trade,
-                side="buy",
+                side=_BUY_SIDE,
                 confidence=round(confidence, 4),
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
@@ -119,7 +142,7 @@ class TLTSPYRotationStrategy(AbstractStrategy):
                     "tlt_above_200ma": tlt_now > tlt_ma,
                     "spy_rvol": round(spy_rvol, 4),
                     "high_vol_regime": high_vol,
-                    "academic_ref": "Faber (2007) TAA",
+                    "academic_ref": _ACADEMIC_REF_BOND,
                 },
             )
 
@@ -130,14 +153,14 @@ class TLTSPYRotationStrategy(AbstractStrategy):
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
-        close   = df["close"].astype(float)
-        ma      = close.rolling(self.ma_window).mean()
-        rvol    = close.pct_change().rolling(self.vol_window).std() * np.sqrt(252)
+        close = df["close"].astype(float)
+        ma = close.rolling(self.ma_window).mean()
+        rvol = close.pct_change().rolling(self.vol_window).std() * np.sqrt(252)
 
         spy_above = close.shift(1) > ma.shift(1)
-        low_vol   = rvol.shift(1) < self.vol_threshold
+        low_vol = rvol.shift(1) < self.vol_threshold
 
         entries = (spy_above & low_vol).fillna(False)
-        exits   = (~spy_above | ~low_vol).fillna(False)
+        exits = (~spy_above | ~low_vol).fillna(False)
 
         return BacktestSignals(entries=entries, exits=exits)
