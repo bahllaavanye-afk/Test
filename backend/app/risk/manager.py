@@ -217,18 +217,80 @@ class RiskManager:
                 avg_win_pct=avg_win_pct,
                 avg_loss_pct=avg_loss_pct,
                 price=price,
-                max_pct=self.max_position_pct,
+                symbol=symbol,
             )
         except Exception as exc:
             logger.error(
-                "Kelly sizing calculation failed",
+                "Kelly sizing failed",
                 symbol=symbol,
-                price=price,
                 win_rate=win_rate,
                 avg_win_pct=avg_win_pct,
                 avg_loss_pct=avg_loss_pct,
+                price=price,
                 exc_type=type(exc).__name__,
                 exc_msg=str(exc),
                 exc_info=True,
             )
-            raise KellySizingError("Error computing Kelly size") from exc
+            raise KellySizingError("Kelly sizing error") from exc
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+import unittest
+from unittest.mock import patch
+
+
+class TestRiskManagerEdgeCases(unittest.TestCase):
+    def setUp(self):
+        # Use default parameters; they are sufficient for edge testing
+        self.rm = RiskManager(max_position_pct=0.05, max_drawdown_pct=0.1, arb_drawdown_pct=0.05)
+
+    def test_zero_equity_rejects_order(self):
+        """When equity is zero, any order should be rejected."""
+        self.rm._equity = 0.0
+        self.rm._equity_confirmed = True
+        request = OrderRequest(
+            symbol="AAPL",
+            quantity=10,
+            limit_price=100,
+            risk_bucket="equity",
+        )
+        decision = asyncio.run(self.rm.check_order(request))
+        self.assertFalse(decision.allowed)
+        self.assertIn("equity is zero", decision.reason)
+
+    def test_price_zero_raises_order_check_error(self):
+        """A zero limit price should raise OrderCheckError due to division by zero."""
+        self.rm._equity = 100_000
+        self.rm._equity_confirmed = True
+        request = OrderRequest(
+            symbol="AAPL",
+            quantity=10,
+            limit_price=0,  # Trigger ZeroDivisionError inside check_order
+            risk_bucket="equity",
+        )
+        with self.assertRaises(OrderCheckError):
+            asyncio.run(self.rm.check_order(request))
+
+    def test_position_size_at_boundary(self):
+        """When order value equals max_position_pct * equity, it should be allowed unchanged."""
+        self.rm._equity = 100_000
+        self.rm._equity_confirmed = True
+        price = 100.0
+        max_allowed = self.rm._equity * self.rm.max_position_pct  # 5,000
+        quantity = max_allowed / price  # 50 shares
+        request = OrderRequest(
+            symbol="AAPL",
+            quantity=quantity,
+            limit_price=price,
+            risk_bucket="equity",
+        )
+        decision = asyncio.run(self.rm.check_order(request))
+        self.assertTrue(decision.allowed)
+        # No adjustment should be made when exactly at the limit
+        self.assertEqual(decision.adjusted_quantity, quantity)
+
+
+if __name__ == "__main__":
+    unittest.main()
