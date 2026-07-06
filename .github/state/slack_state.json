@@ -14,60 +14,7 @@
     "74bfa4d9c913"
   ],
   "replied_to": [],
-  "post_dedup": {
-    "standup-channel:standup": 1781148818.9894352,
-    "agent-api-usage:api_usage_report": 1781144507.892683,
-    "agent-api-usage:throughput_report": 1781148851.847452,
-    "engineering:silent_vp_eng": 1781144509.0931396,
-    "alpha-research:silent_alpha_dir": 1781144514.163885,
-    "desk-crypto:silent_ml_lead": 1781144523.0861034,
-    "risk-alerts:silent_risk_eng": 1781144526.375295,
-    "squad-backend:silent_backend_lead": 1781144529.6086128,
-    "squad-qa:silent_qa_dir": 1781144533.000043,
-    "infra-alerts:silent_devops_dir": 1781144536.1786745,
-    "squad-execution:silent_exec_eng": 1781144539.3795488,
-    "desk-polymarket:silent_poly_desk": 1781144542.3669803,
-    "ml-experiments:silent_ml_researcher": 1781144545.3813572,
-    "desk-fx-rates:silent_vp_research": 1781144553.224684,
-    "alpha-research:silent_quant_researcher": 1781144556.4895883,
-    "leadership-summary:silent_cro": 1781144563.2392685,
-    "squad-frontend:silent_frontend": 1781144566.4303582,
-    "engineering:silent_equity_lead": 1781144569.3519373,
-    "engineering:silent_fixed_income_desk": 1781144572.7179937,
-    "engineering:silent_macro_researcher": 1781144574.1984336,
-    "engineering:silent_stat_arb_desk": 1781144581.5147562,
-    "engineering:silent_vol_trader": 1781144588.3613918,
-    "engineering:silent_momentum_quant": 1781144589.850213,
-    "engineering:silent_alt_data_lead": 1781144596.3004665,
-    "engineering:silent_model_validator": 1781144602.6971917,
-    "engineering:silent_feature_engineer": 1781144609.0155878,
-    "engineering:silent_crypto_quant": 1781144610.4881392,
-    "engineering:silent_derivatives_desk": 1781144611.9482567,
-    "engineering:silent_arb_trader": 1781144613.37342,
-    "engineering:silent_portfolio_manager": 1781144614.7446232,
-    "engineering:silent_market_maker": 1781144616.1154058,
-    "engineering:silent_regime_analyst": 1781144617.492037,
-    "engineering:silent_backtest_engineer": 1781144618.9252996,
-    "engineering:silent_data_engineer_2": 1781144620.3717165,
-    "engineering:silent_infra_lead": 1781144621.7854426,
-    "engineering:silent_nlp_researcher": 1781144623.2757201,
-    "engineering:silent_rl_trader": 1781144624.7341473,
-    "engineering:silent_graph_ml_researcher": 1781144626.0849392,
-    "engineering:silent_crypto_defi_desk": 1781144634.0336993,
-    "desk-kalshi:silent_kalshi_desk": 1781144635.3812113,
-    "engineering:silent_research_ops": 1781144636.7933104,
-    "engineering:silent_senior_quant": 1781144638.236384,
-    "engineering:silent_latency_engineer": 1781144639.6207528,
-    "squad-frontend:silent_frontend_lead": 1781144641.0338166,
-    "engineering:silent_data_lead": 1781144642.4630313,
-    "desk-equities:silent_alpha_researcher": 1781144643.9058127,
-    "engineering:silent_exec_lead": 1781144645.2788508,
-    "engineering:silent_security_lead": 1781144646.9642503,
-    "engineering:silent_product_lead": 1781144648.3990734,
-    "desk-crypto:silent_ml_infra": 1781144649.7614918,
-    "engineering:agent_reminder": 1781144651.9900837,
-    "help:agent_reminder": 1781144652.8149197
-  },
+  "post_dedup": {},
   "response_cache": {},
   "posted_today": [],
   "last_post_ts": {
@@ -120,79 +67,79 @@
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "alpha_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "ml_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "risk_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "backend_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "qa_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "devops_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "exec_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "poly_desk": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "ml_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "vp_research": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "quant_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       },
       "cro": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-06-11"
+        "date": "2026-07-06"
       }
     }
   },
