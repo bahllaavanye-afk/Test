@@ -5,7 +5,9 @@ Minimizes market impact for large positions.
 """
 import asyncio
 from dataclasses import asdict
-from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
+from typing import Any
+
+from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, BrokerError
 from app.utils.logging import logger
 
 
@@ -16,6 +18,19 @@ class TWAPExecution:
         self.sleep_seconds = (duration_minutes * 60) / slices
 
     async def execute(self, request: OrderRequest) -> OrderResult:
+        """
+        Execute a TWAP order.
+
+        Parameters
+        ----------
+        request : OrderRequest
+            The original order request to be split.
+
+        Returns
+        -------
+        OrderResult
+            Aggregated result of the TWAP execution.
+        """
         slice_qty = request.quantity / self.slices
         total_filled = 0.0
         total_cost = 0.0
@@ -33,12 +48,25 @@ class TWAPExecution:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
                 consecutive_failures = 0
-            except Exception as e:
+            except (BrokerError, ConnectionError, TimeoutError) as e:
                 consecutive_failures += 1
-                logger.warning(f"TWAP slice {i+1}/{self.slices} failed for {request.symbol}: {e}")
+                logger.warning(
+                    f"TWAP slice {i + 1}/{self.slices} failed for {request.symbol}: {e}",
+                    extra={"symbol": request.symbol, "slice": i + 1, "error": str(e)},
+                )
                 if consecutive_failures >= 3:
-                    logger.error(f"TWAP {request.symbol}: {consecutive_failures} consecutive failures — aborting")
+                    logger.error(
+                        f"TWAP {request.symbol}: {consecutive_failures} consecutive failures — aborting",
+                        extra={"symbol": request.symbol, "consecutive_failures": consecutive_failures},
+                    )
                     break
+            except Exception as e:
+                # Unexpected exception: log full traceback and abort execution
+                logger.exception(
+                    f"Unexpected error during TWAP execution for {request.symbol} slice {i + 1}",
+                    extra={"symbol": request.symbol, "slice": i + 1, "error": str(e)},
+                )
+                raise
 
             if i < self.slices - 1:
                 await asyncio.sleep(self.sleep_seconds)
@@ -46,7 +74,9 @@ class TWAPExecution:
         avg_price = total_cost / total_filled if total_filled > 0 else None
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "twap",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
+            status="filled"
+            if total_filled >= request.quantity * 0.95
+            else "partial",
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )

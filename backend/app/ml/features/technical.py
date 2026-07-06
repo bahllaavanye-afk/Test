@@ -16,10 +16,44 @@ Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 
 from __future__ import annotations
 
+import logging
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 
 import app.ml.features.pandas_ta_compat as ta
+
+_logger = logging.getLogger(__name__)
+
+
+def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
+    """
+    Helper to execute a function safely.
+
+    Parameters
+    ----------
+    func : callable
+        The function to execute.
+    *args, **kwargs :
+        Arguments passed to ``func``.
+
+    Returns
+    -------
+    Optional[pd.DataFrame]
+        The result of ``func`` if successful, otherwise ``None``.
+    """
+    try:
+        return func(*args, **kwargs)
+    except (KeyError, ValueError, TypeError) as exc:
+        _logger.error(
+            "Technical feature computation failed in %s with args=%s, kwargs=%s",
+            func.__name__,
+            args,
+            kwargs,
+            exc_info=exc,
+        )
+        return None
 
 
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -38,36 +72,13 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        A new DataFrame containing the original columns plus the following
-        technical feature columns:
-
-        - ``returns_{n}`` : Percentage change over *n* periods for n in
-          ``[1, 5, 10, 21]``.
-        - ``vol_{n}`` : Annualised volatility (rolling std of log returns)
-          for n in ``[5, 21, 63]``.
-        - ``ema_{span}_diff`` : Normalised distance between price and its EMA
-          for spans 9, 21, 50.
-        - ``rsi_14``, ``rsi_21`` : Normalised RSI values.
-        - ``macd``, ``macd_signal``, ``macd_hist`` : Normalised MACD components.
-        - ``bb_upper_dist``, ``bb_lower_dist``, ``bb_width`` : Bollinger
-          Band distances and width.
-        - ``obv_change`` : 5‑period percentage change of On‑Balance Volume.
-        - ``volume_ratio`` : Current volume divided by its 20‑period moving
-          average.
-        - ``atr_14``, ``atr_pct`` : Average True Range and its percentage of
-          price.
-        - ``stoch_k``, ``stoch_d`` : Normalised Stochastic %K and %D.
-        - ``adx`` : Normalised Average Directional Index.
-
-    Notes
-    -----
-    * All calculations are performed on a copy of ``df`` to avoid mutating
-      the original input.
-    * Small epsilon values (``1e-9``) are added to denominators to avoid
-      division‑by‑zero errors.
-    * The function relies on the ``pandas_ta_compat`` wrapper which provides
-      a stable API for the underlying ``pandas‑ta`` library.
+        A new DataFrame containing the original columns plus the technical
+        feature columns. If a particular indicator cannot be computed,
+        its column is omitted and the error is logged.
     """
+    if "close" not in df.columns:
+        raise ValueError("Input DataFrame must contain a 'close' column.")
+
     df = df.copy()
     close = df["close"]
     high = df.get("high", close)
@@ -76,67 +87,97 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- Returns ---
     for n in [1, 5, 10, 21]:
-        df[f"returns_{n}"] = close.pct_change(n)
+        try:
+            df[f"returns_{n}"] = close.pct_change(n)
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute returns_%d", n, exc_info=exc)
 
     # --- Volatility (rolling std of log returns) ---
-    log_ret = np.log(close / close.shift(1))
-    for n in [5, 21, 63]:
-        df[f"vol_{n}"] = log_ret.rolling(n).std() * np.sqrt(252)
+    try:
+        log_ret = np.log(close / close.shift(1))
+        for n in [5, 21, 63]:
+            df[f"vol_{n}"] = log_ret.rolling(n).std() * np.sqrt(252)
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute volatility features", exc_info=exc)
 
     # --- EMA distance (normalized) ---
     for span in [9, 21, 50]:
-        ema = close.ewm(span=span).mean()
-        df[f"ema_{span}_diff"] = (close - ema) / (ema + 1e-9)
+        try:
+            ema = close.ewm(span=span).mean()
+            df[f"ema_{span}_diff"] = (close - ema) / (ema + 1e-9)
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute EMA distance for span %d", span, exc_info=exc)
 
     # --- RSI ---
-    rsi14 = ta.rsi(close, length=14)
-    rsi21 = ta.rsi(close, length=21)
+    rsi14 = _safe_apply(ta.rsi, close, length=14)
+    rsi21 = _safe_apply(ta.rsi, close, length=21)
     if rsi14 is not None:
         df["rsi_14"] = rsi14 / 100.0  # normalize to [0,1]
     if rsi21 is not None:
         df["rsi_21"] = rsi21 / 100.0
 
     # --- MACD ---
-    macd_df = ta.macd(close, fast=12, slow=26, signal=9)
+    macd_df = _safe_apply(ta.macd, close, fast=12, slow=26, signal=9)
     if macd_df is not None:
-        df["macd"] = macd_df["MACD_12_26_9"] / (close + 1e-9)
-        df["macd_signal"] = macd_df["MACDs_12_26_9"] / (close + 1e-9)
-        df["macd_hist"] = macd_df["MACDh_12_26_9"] / (close + 1e-9)
+        try:
+            df["macd"] = macd_df["MACD_12_26_9"] / (close + 1e-9)
+            df["macd_signal"] = macd_df["MACDs_12_26_9"] / (close + 1e-9)
+            df["macd_hist"] = macd_df["MACDh_12_26_9"] / (close + 1e-9)
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to normalize MACD components", exc_info=exc)
 
     # --- Bollinger Bands ---
-    bb = ta.bbands(close, length=20, std=2.0)
+    bb = _safe_apply(ta.bbands, close, length=20, std=2.0)
     if bb is not None:
-        upper = bb["BBU_20_2.0"]
-        lower = bb["BBL_20_2.0"]
-        mid = bb["BBM_20_2.0"]
-        df["bb_upper_dist"] = (upper - close) / (close + 1e-9)
-        df["bb_lower_dist"] = (close - lower) / (close + 1e-9)
-        df["bb_width"] = (upper - lower) / (mid + 1e-9)
+        try:
+            upper = bb["BBU_20_2.0"]
+            lower = bb["BBL_20_2.0"]
+            mid = bb["BBM_20_2.0"]
+            df["bb_upper_dist"] = (upper - close) / (close + 1e-9)
+            df["bb_lower_dist"] = (close - lower) / (close + 1e-9)
+            df["bb_width"] = (upper - lower) / (mid + 1e-9)
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute Bollinger Band features", exc_info=exc)
 
     # --- OBV change (normalized) ---
-    obv = ta.obv(close, volume)
+    obv = _safe_apply(ta.obv, close, volume)
     if obv is not None:
-        df["obv_change"] = obv.pct_change(5).fillna(0)
+        try:
+            df["obv_change"] = obv.pct_change(5).fillna(0)
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute OBV change", exc_info=exc)
 
     # --- Volume ratio ---
-    vol_ma = volume.rolling(20).mean()
-    df["volume_ratio"] = volume / (vol_ma + 1e-9)
+    try:
+        vol_ma = volume.rolling(20).mean()
+        df["volume_ratio"] = volume / (vol_ma + 1e-9)
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute volume ratio", exc_info=exc)
 
     # --- ATR ---
-    atr = ta.atr(high, low, close, length=14)
+    atr = _safe_apply(ta.atr, high, low, close, length=14)
     if atr is not None:
-        df["atr_14"] = atr
-        df["atr_pct"] = atr / (close + 1e-9)
+        try:
+            df["atr_14"] = atr
+            df["atr_pct"] = atr / (close + 1e-9)
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute ATR related features", exc_info=exc)
 
     # --- Stochastic ---
-    stoch = ta.stoch(high, low, close, k=14, d=3)
+    stoch = _safe_apply(ta.stoch, high, low, close, k=14, d=3)
     if stoch is not None:
-        df["stoch_k"] = stoch["STOCHk_14_3_3"] / 100.0
-        df["stoch_d"] = stoch["STOCHd_14_3_3"] / 100.0
+        try:
+            df["stoch_k"] = stoch["STOCHk_14_3_3"] / 100.0
+            df["stoch_d"] = stoch["STOCHd_14_3_3"] / 100.0
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute Stochastic Oscillator features", exc_info=exc)
 
     # --- ADX ---
-    adx_df = ta.adx(high, low, close, length=14)
+    adx_df = _safe_apply(ta.adx, high, low, close, length=14)
     if adx_df is not None:
-        df["adx"] = adx_df["ADX_14"] / 100.0
+        try:
+            df["adx"] = adx_df["ADX_14"] / 100.0
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute ADX feature", exc_info=exc)
 
     return df
