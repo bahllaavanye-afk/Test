@@ -239,12 +239,14 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          OANDA_API_KEY: ${{ secrets.OANDA_API_KEY }}
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
         run: |
           [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ] && { echo "render creds absent — skip"; exit 0; }
           # Non-secret but deploy-critical: the Google-login redirect target.
           # render.yaml sets it for blueprint syncs; this covers plain deploys.
           export FRONTEND_URL="https://quantedge-eight.vercel.app"
-          for k in FRONTEND_URL DISCORD_BOT_TOKEN DISCORD_WEBHOOK_URL GOOGLE_SERVICE_ACCOUNT_JSON ALPACA_API_KEY ALPACA_SECRET_KEY; do
+          for k in FRONTEND_URL DISCORD_BOT_TOKEN DISCORD_WEBHOOK_URL GOOGLE_SERVICE_ACCOUNT_JSON ALPACA_API_KEY ALPACA_SECRET_KEY OANDA_API_KEY OANDA_ACCOUNT_ID; do
             v="${!k}"
             [ -z "$v" ] && { echo "· $k not set — skip"; continue; }
             code=$(curl -sS -o /dev/null -w "%{http_code}" -X PUT \
