@@ -822,8 +822,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
 
             # Self-provisioning: with only the service-account credential set, the
             # platform finds-or-creates its own "QuantEdge Standups" doc and shares
-            # it to the operator's email — no doc ID or sharing step to configure.
-            # STANDUP_DOC_ID still wins when explicitly set.
+            # it (silently — Discord is the announcement channel, not email) to the
+            # operator's account. STANDUP_DOC_ID still wins when explicitly set.
+            doc_url = ""
             try:
                 from app.integrations.google_docs import append_to_doc, ensure_doc, is_configured
 
@@ -833,6 +834,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                         os.environ.get("STANDUP_SHARE_EMAIL", "bahl.laavanye@gmail.com"),
                     )
                     if doc_id:
+                        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
                         await asyncio.to_thread(
                             append_to_doc, doc_id, "\n".join(lines),
                             heading=f"Standup {now.strftime('%Y-%m-%d %H:%M UTC')}",
@@ -845,7 +847,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                 channel="system",  # CHANNEL_MAP: system → #engineering
                 event_type="info",
                 title="🗓️ Hourly standup",
-                text="\n".join(lines),
+                text="\n".join(lines) + (f"\n📄 Minutes: {doc_url}" if doc_url else ""),
             )
         except Exception as exc:
             logger.error("Hourly standup failed", error=str(exc))

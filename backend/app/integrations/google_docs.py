@@ -132,8 +132,12 @@ def create_doc(title: str, folder_id: str | None = None) -> str | None:
         return None
 
 
-def share_file(file_id: str, email: str, role: str = "writer") -> bool:
-    """Share a Drive file with a human account so they can open it in their Drive."""
+def share_file(file_id: str, email: str, role: str = "writer", notify_email: bool = False) -> bool:
+    """Share a Drive file with a human account so they can open it in their Drive.
+
+    Silent by default (no Google notification email) — the platform announces
+    new docs on Discord instead; the share only grants access.
+    """
     creds = _load_credentials()
     if not creds or not email:
         return False
@@ -144,7 +148,7 @@ def share_file(file_id: str, email: str, role: str = "writer") -> bool:
         drive.permissions().create(
             fileId=file_id,
             body={"type": "user", "role": role, "emailAddress": email},
-            sendNotificationEmail=True,  # the email IS how the user discovers the doc
+            sendNotificationEmail=notify_email,
         ).execute()
         return True
     except Exception as e:
