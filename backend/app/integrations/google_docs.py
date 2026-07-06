@@ -132,6 +132,67 @@ def create_doc(title: str, folder_id: str | None = None) -> str | None:
         return None
 
 
+def share_file(file_id: str, email: str, role: str = "writer") -> bool:
+    """Share a Drive file with a human account so they can open it in their Drive."""
+    creds = _load_credentials()
+    if not creds or not email:
+        return False
+    try:
+        from googleapiclient.discovery import build
+
+        drive = build("drive", "v3", credentials=creds, cache_discovery=False)
+        drive.permissions().create(
+            fileId=file_id,
+            body={"type": "user", "role": role, "emailAddress": email},
+            sendNotificationEmail=True,  # the email IS how the user discovers the doc
+        ).execute()
+        return True
+    except Exception as e:
+        logger.warning("google_docs.share_file failed", error=str(e))
+        return False
+
+
+def find_doc_by_title(title: str) -> str | None:
+    """Return the ID of a Doc the service account can see with this exact title."""
+    creds = _load_credentials()
+    if not creds:
+        return None
+    try:
+        from googleapiclient.discovery import build
+
+        drive = build("drive", "v3", credentials=creds, cache_discovery=False)
+        safe_title = title.replace("'", "\\'")
+        resp = drive.files().list(
+            q=(f"name = '{safe_title}' and "
+               "mimeType = 'application/vnd.google-apps.document' and trashed = false"),
+            fields="files(id)", pageSize=1,
+        ).execute()
+        files = resp.get("files", [])
+        return files[0]["id"] if files else None
+    except Exception as e:
+        logger.warning("google_docs.find_doc_by_title failed", error=str(e))
+        return None
+
+
+def ensure_doc(title: str, share_with: str = "") -> str | None:
+    """Find-or-create a Doc by title; share it on first creation. Returns the ID.
+
+    This removes the 'create a doc, copy its ID, share it, paste the ID as a
+    secret' manual dance: with only the service-account credential configured,
+    the platform mints its own docs and hands the human access. Idempotent —
+    the title is the natural key, so no ID needs to be persisted anywhere.
+    """
+    doc_id = find_doc_by_title(title)
+    if doc_id:
+        return doc_id
+    doc_id = create_doc(title)
+    if doc_id:
+        logger.info("google_docs: created doc", title=title, doc_id=doc_id)
+        if share_with:
+            share_file(doc_id, share_with)
+    return doc_id
+
+
 # ── Google Sheets ──────────────────────────────────────────────────────────
 
 def append_to_sheet(sheet_id: str, range_name: str, values: list[list[Any]]) -> bool:

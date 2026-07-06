@@ -820,13 +820,23 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                 f"Mode {os.environ.get('TRADING_MODE', 'paper')} | {now.strftime('%Y-%m-%d %H:%M UTC')}",
             ]
 
-            doc_id = os.environ.get("STANDUP_DOC_ID", "")
+            # Self-provisioning: with only the service-account credential set, the
+            # platform finds-or-creates its own "QuantEdge Standups" doc and shares
+            # it to the operator's email — no doc ID or sharing step to configure.
+            # STANDUP_DOC_ID still wins when explicitly set.
             try:
-                from app.integrations.google_docs import append_to_doc, is_configured
+                from app.integrations.google_docs import append_to_doc, ensure_doc, is_configured
 
-                if doc_id and is_configured():
-                    append_to_doc(doc_id, "\n".join(lines),
-                                  heading=f"Standup {now.strftime('%Y-%m-%d %H:%M UTC')}")
+                if is_configured():
+                    doc_id = os.environ.get("STANDUP_DOC_ID", "") or await asyncio.to_thread(
+                        ensure_doc, "QuantEdge Standups",
+                        os.environ.get("STANDUP_SHARE_EMAIL", "bahl.laavanye@gmail.com"),
+                    )
+                    if doc_id:
+                        await asyncio.to_thread(
+                            append_to_doc, doc_id, "\n".join(lines),
+                            heading=f"Standup {now.strftime('%Y-%m-%d %H:%M UTC')}",
+                        )
             except Exception as exc:
                 logger.debug("Standup: Google Doc append skipped", error=str(exc))
 
