@@ -9,7 +9,7 @@ on:
     - cron: "0 9,13,17,21 * * *"   # 4x daily (9am, 1pm, 5pm, 9pm UTC)
   push:
     branches:
-      - claude/advanced-trading-bot-d5Lmw
+      - main
       - main
     paths:
       - ".github/scripts/ai_slack_bot.py"

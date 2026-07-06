@@ -7,7 +7,7 @@ name: Agent Self-Review
 
 on:
   push:
-    branches: [claude/advanced-trading-bot-d5Lmw]
+    branches: [main]
     paths:
       - '.github/scripts/slack_agent_team.py'
       - '.github/workflows/slack-realtime.yml'

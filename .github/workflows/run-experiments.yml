@@ -87,5 +87,5 @@ jobs:
             echo "No new experiment results to commit."
           else
             git commit -m "chore: add experiment results $(date -u +%Y-%m-%dT%H:%M)Z [skip ci]"
-            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw 2>/dev/null || true; git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git pull --rebase --quiet origin main 2>/dev/null || true; git push -u origin main || true
           fi

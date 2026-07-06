@@ -57,3 +57,10 @@ jobs:
             echo "❌ Registration failed (HTTP $code): $(head -c 300 /tmp/resp.json)" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - name: Create Discord channel structure (bot needs Manage Channels)
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: python .github/scripts/discord_setup_channels.py | tee -a "$GITHUB_STEP_SUMMARY"

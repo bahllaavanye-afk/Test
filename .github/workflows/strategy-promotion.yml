@@ -54,4 +54,4 @@ jobs:
           git config user.name "QuantEdge Strategy Promoter"
           git add .github/state/strategy_promotions.json .github/state/company_brain.json || true
           git diff --cached --quiet || git commit -m "chore: strategy promotion state $(date -u +%Y-%m-%d)"
-          git push origin claude/advanced-trading-bot-d5Lmw || true
+          git push origin main || true

@@ -110,9 +110,9 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "feat(ml): Gemini cloud training results — $(date -u '+%Y-%m-%d')"
             for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+              git pull --rebase --quiet origin main && break || sleep $((i*2))
             done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git push -u origin main || true
           else
             echo "No new results to commit"
           fi

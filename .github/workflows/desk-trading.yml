@@ -2,7 +2,7 @@ name: Desk Trading (Paper Orders)
 
 on:
   push:
-    branches: [claude/advanced-trading-bot-d5Lmw]
+    branches: [main]
     paths:
       - ".github/workflows/desk-trading.yml"
       - ".github/scripts/desk_order_placer.py"

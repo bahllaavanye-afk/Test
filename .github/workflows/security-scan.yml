@@ -1,0 +1,82 @@
+name: Security Scan — SAST + deps + secret + agent red-team
+
+# Answers "is red team working?" — it wasn't; this is it. Layers:
+#   1. Bandit  — Python static analysis (injection, unsafe eval, weak crypto).
+#   2. pip-audit — known-CVE dependencies.
+#   3. Secret-leak guard — the existing test_script_safety checks (no keys in
+#      workflows/code) run as a hard gate.
+#   4. Agent prompt-injection red-team — a lightweight adversarial probe of the
+#      agent scripts' handling of untrusted input (GitHub issue/PR bodies).
+# On drift/finding it files an `agent-fix-needed` issue so the queue worker
+# repairs it. Free (all OSS tooling), weekly + on PR to catch regressions.
+
+on:
+  pull_request:
+    paths: ["backend/**", ".github/scripts/**", ".github/workflows/**"]
+  schedule:
+    - cron: "19 6 * * 2"   # Tuesdays 06:19 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Scheduled runs execute on the default branch's copy; pin main so the scan
+      # sees the latest merged code (enforced by test_script_safety.py).
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install security tooling
+        run: pip install --quiet bandit pip-audit
+
+      - name: Bandit SAST (backend + agent scripts)
+        id: bandit
+        run: |
+          # -ll = medium+ severity, -ii = medium+ confidence (cut noise).
+          bandit -r backend/app .github/scripts -ll -ii -f txt -o /tmp/bandit.txt || true
+          tail -c 4000 /tmp/bandit.txt | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: pip-audit (dependency CVEs)
+        run: |
+          pip-audit -r backend/requirements.txt --desc --format markdown -o /tmp/audit.md 2>/dev/null || \
+            pip-audit --format markdown -o /tmp/audit.md 2>/dev/null || echo "pip-audit: no requirements or none found" > /tmp/audit.md
+          head -c 4000 /tmp/audit.md | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Secret-leak guard (hard gate)
+        run: |
+          pip install --quiet pytest pytest-asyncio httpx
+          cd backend && python -m pytest tests/unit/test_script_safety.py -q
+
+      - name: Agent prompt-injection red-team
+        run: |
+          python .github/scripts/security_redteam.py | tee /tmp/redteam.txt
+          tail -c 3000 /tmp/redteam.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: File an issue on high-severity findings
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          high=$(grep -ic "Severity: High" /tmp/bandit.txt 2>/dev/null || echo 0)
+          rt=$(grep -c "RED-TEAM FAIL" /tmp/redteam.txt 2>/dev/null || echo 0)
+          if [ "$high" -gt 0 ] || [ "$rt" -gt 0 ]; then
+            title="Security scan: $high high-severity SAST + $rt red-team findings"
+            n=$(gh issue list --search "in:title \"Security scan:\"" --state open --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+            body=$(printf 'Automated weekly security scan found issues.\n\n### Bandit (high)\n```\n%s\n```\n\n### Red-team\n```\n%s\n```\n' "$(grep -A3 'Severity: High' /tmp/bandit.txt | head -40)" "$(grep 'RED-TEAM' /tmp/redteam.txt | head -20)")
+            if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "$title" --label agent-fix-needed --body "$body"; fi
+          else
+            echo "✅ No high-severity SAST or red-team findings" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi

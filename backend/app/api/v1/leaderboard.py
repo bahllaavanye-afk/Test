@@ -381,3 +381,60 @@ async def get_leaderboard_summary(
     """Aggregate leaderboard roll-up (totals, avg Sharpe, best strategy)."""
     data = await get_leaderboard(current_user=current_user, db=db)
     return data["summary"]
+
+
+async def compute_live_strategy_performance(db: AsyncSession) -> list[dict]:
+    """The P&L feedback loop: rank strategies by their ACTUAL closed paper trades.
+
+    The rest of the leaderboard ranks by *backtest* Sharpe. This ranks by live
+    realized results grouped by ``Trade.strategy_name`` — the signal a real desk
+    uses to scale winners and throttle losers (Marshall Wace TOPS / High-Flyer
+    regime-shift, see docs/research/GLOBAL_QUANT_FIRMS_2026.md). ``pnl_sharpe``
+    is the per-trade P&L Sharpe (mean/std of realized_pnl) — a distribution
+    quality proxy, honestly not annualized. Empty until positions close.
+    """
+    from app.models.trade import Trade
+
+    rows = (await db.execute(
+        select(Trade).where(Trade.closed_at != None)  # noqa: E711
+    )).scalars().all()
+
+    by_strat: dict[str, list] = {}
+    for t in rows:
+        by_strat.setdefault(t.strategy_name or "unattributed", []).append(t)
+
+    out: list[dict] = []
+    for name, trades in by_strat.items():
+        pnls = [float(t.realized_pnl or 0) for t in trades]
+        n = len(pnls)
+        wins = sum(1 for p in pnls if p > 0)
+        total = sum(pnls)
+        mean = total / n if n else 0.0
+        std = (sum((p - mean) ** 2 for p in pnls) / (n - 1)) ** 0.5 if n > 1 else 0.0
+        sharpe = (mean / std) if std > 0 else None
+        holds = [int(t.hold_seconds) for t in trades if t.hold_seconds]
+        out.append({
+            "strategy": name,
+            "trades": n,
+            "win_rate": round(wins / n, 4) if n else None,
+            "total_pnl": round(total, 2),
+            "avg_pnl": round(mean, 2),
+            "pnl_sharpe": round(sharpe, 3) if sharpe is not None else None,
+            "avg_hold_hours": round(sum(holds) / len(holds) / 3600, 2) if holds else None,
+        })
+    out.sort(key=lambda r: (r["total_pnl"], r["pnl_sharpe"] or 0), reverse=True)
+    return out
+
+
+@router.get("/live", response_model=dict)
+async def get_live_leaderboard(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Live per-strategy performance from actual closed paper trades (P&L loop)."""
+    perf = await compute_live_strategy_performance(db)
+    return {
+        "strategies": perf,
+        "total_strategies_traded": len(perf),
+        "note": "Ranked by realized paper P&L from closed trades. Empty until positions close.",
+    }

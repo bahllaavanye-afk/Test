@@ -56,6 +56,6 @@ jobs:
           git add .github/state/agent_memory.json
           git diff --cached --quiet || git commit -m "chore(health): heartbeat $(date -u +%H:%M)"
           for i in 1 2 3 4; do
-            git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+            git pull --rebase --quiet origin main && break || sleep $((i*2))
           done
-          git push -u origin claude/advanced-trading-bot-d5Lmw || true
+          git push -u origin main || true

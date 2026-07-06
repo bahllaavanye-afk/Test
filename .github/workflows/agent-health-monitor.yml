@@ -8,7 +8,7 @@ on:
   schedule:
     - cron: "*/30 * * * *"   # every 30 minutes, 24/7
   push:
-    branches: [claude/advanced-trading-bot-d5Lmw, main]
+    branches: [main, main]
     paths:
       - ".github/scripts/slack_agent_team.py"
       - ".github/scripts/agent_health_monitor.py"
@@ -107,7 +107,7 @@ jobs:
             git add -u
             git commit -m "chore: auto-heal from health monitor run $(date -u +'%Y-%m-%dT%H:%M') [skip ci]"
             for i in 1 2 3 4; do
-              git pull --rebase --quiet origin claude/advanced-trading-bot-d5Lmw && break || sleep $((i*2))
+              git pull --rebase --quiet origin main && break || sleep $((i*2))
             done
-            git push -u origin claude/advanced-trading-bot-d5Lmw || true
+            git push -u origin main || true
           fi

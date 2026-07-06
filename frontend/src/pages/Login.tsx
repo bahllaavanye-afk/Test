@@ -35,6 +35,24 @@ export default function Login() {
     window.location.href = `${apiBase}/auth/google`
   }
 
+  const handleDemo = async () => {
+    // Guest access — keeps the app browsable with no credentials so making
+    // login the entry point can't lock anyone out (e.g. if Google OAuth's
+    // consent screen is still in testing).
+    setLoading(true)
+    setError('')
+    try {
+      const { api } = await import('../api/client')
+      const { data } = await api.post('/auth/demo')
+      dispatch(setCredentials(data))
+      navigate('/')
+    } catch {
+      setError('Demo session failed — backend may be waking up, try again in a moment.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen mesh-bg flex items-center justify-center px-4 relative overflow-hidden">
       {/* Animated corner accent lines */}
@@ -200,6 +218,20 @@ export default function Login() {
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
             </svg>
             Continue with Google
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDemo}
+            disabled={loading}
+            style={{
+              marginTop: 12, width: '100%', padding: '10px 0',
+              background: 'transparent', color: 'var(--accent)',
+              border: '1px solid var(--border, #1e1e1e)', borderRadius: 8,
+              fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            Explore as Guest (Demo)
           </button>
 
           <div style={{
