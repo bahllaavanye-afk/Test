@@ -641,6 +641,39 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _sync_desk_trades() -> None:
+        """Turn desk paper fills into closed Trade rows so EVERY strategy feeds the P&L loop.
+
+        The desks place real ``qe-``-tagged paper orders on Alpaca that never
+        touched the DB, so only *bots* ever produced Trade rows — the leaderboard
+        and self-scaling weighting were blind to 59 strategies. This pulls the
+        filled desk orders, reconstructs closed round trips (FIFO), and writes
+        them as Trades attributed to the originating strategy. Idempotent, so the
+        15-minute cadence never double-counts.
+        """
+        try:
+            from app.tasks.desk_trade_sync import sync_desk_trades
+
+            factory = db_session_factory
+            if factory is None:
+                from app.database import AsyncSessionLocal as factory  # type: ignore
+            written = await sync_desk_trades(factory)
+            if written:
+                logger.info("Desk trade sync tick", written=written)
+        except Exception as exc:
+            logger.error("Desk trade sync tick failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="desk_trade_sync",
+            trigger="interval",
+            trigger_args={"minutes": 15},
+            func=_sync_desk_trades,
+            description="Ingest desk Alpaca fills → closed Trade rows for the P&L feedback loop.",
+        ),
+    )
+
     # main.py calls start_scheduler() and stores the result without calling .start()
     # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
     # call, which registered jobs but never ran them (snapshot/retrain/order_sync/
