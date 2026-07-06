@@ -117,8 +117,13 @@
     "Verify DB connections",
     "Review code changes",
     "Optimize trading scripts",
-    "Improve model docs"
+    "Improve model docs",
+    "strategy_logic on test/unit/test_benchmarks.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/central_bank_window.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "strategy_logic on ml/features/macro_signals.py: success \u2014 tests green",
+    "strategy_logic on risk/manager.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-06T19:13:58.796030+00:00",
+  "last_updated": "2026-07-06T22:45:26.014479+00:00",
   "total": 118
 }
