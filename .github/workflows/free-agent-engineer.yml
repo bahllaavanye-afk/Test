@@ -4,11 +4,21 @@ name: Free Agent Engineer — autonomous issue fixing
 # or manually via workflow_dispatch.  Uses only free LLMs (Gemini Flash → Groq).
 
 on:
+  # Event-driven autonomy: GitHub cron is starved in this repo (see
+  # CONTINUITY.md 2026-07-06), so ride CI completions — they fire constantly.
+  # The concurrency group below is the rate limit: max one active + one queued.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   issues:
     types: [labeled]   # fires when label "agent-fix-needed" is added
   schedule:
     - cron: "0 */2 * * *"   # every 2 hours
   workflow_dispatch:
+
+concurrency:
+  group: free-agent-engineer
+  cancel-in-progress: false
 
 jobs:
   fix:

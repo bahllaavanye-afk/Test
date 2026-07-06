@@ -7,6 +7,12 @@ name: Team Lead — review, assign, report
 # PR/issue. Runs every 6h + on dispatch.
 
 on:
+  # Event-driven autonomy: GitHub cron is starved in this repo (see
+  # CONTINUITY.md 2026-07-06), so ride CI completions — they fire constantly.
+  # The concurrency group below is the rate limit: max one active + one queued.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch: {}
   schedule:
     - cron: "23 */6 * * *"

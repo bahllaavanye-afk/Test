@@ -13,6 +13,11 @@ from app.models.slippage import SlippageRecord
 from app.models.comparison import ComparisonResult
 from app.models.audit_log import AuditLog
 from app.models.bot import Bot
+# These two were never imported here, so Base.metadata didn't know them and
+# create_all deployments silently lacked their tables — /releases/* 500'd
+# with 'no such table: model_releases' (caught by the whole-app system test).
+from app.models.model_release import ModelRelease
+from app.models.inference_log import InferenceLog
 
 __all__ = [
     "User", "Account", "AccountSnapshot",
@@ -21,5 +26,5 @@ __all__ = [
     "Experiment", "MLModel", "MLPrediction",
     "OHLCV", "RiskRule", "RiskEvent",
     "SlippageRecord", "ComparisonResult",
-    "AuditLog", "Bot",
+    "AuditLog", "Bot", "ModelRelease", "InferenceLog",
 ]

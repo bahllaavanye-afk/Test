@@ -185,6 +185,35 @@ async def get_performance(
     }
 
 
+async def _daily_pnl_buckets(db, account_ids: list[str], since) -> "dict[str, dict]":
+    """{YYYY-MM-DD: {pnl, n}} from closed trades, grouped in Python.
+
+    Deliberately NOT func.date_trunc(): it's Postgres-only and raises a 500 on
+    SQLite (the whole-app system test caught daily-pnl / equity-curve /
+    monthly-returns crashing exactly like the tearsheet did). Paper trade
+    volume is small; Python grouping is DB-agnostic and plenty fast.
+    """
+    from collections import OrderedDict
+
+    rows = (await db.execute(
+        select(Trade.closed_at, Trade.realized_pnl)
+        .where(
+            Trade.account_id.in_(account_ids),
+            Trade.closed_at >= since,
+            Trade.realized_pnl.isnot(None),
+        )
+        .order_by(Trade.closed_at)
+    )).all()
+
+    daily: "OrderedDict[str, dict]" = OrderedDict()
+    for closed_at, pnl in rows:
+        key = closed_at.strftime("%Y-%m-%d") if hasattr(closed_at, "strftime") else str(closed_at)[:10]
+        d = daily.setdefault(key, {"pnl": 0.0, "n": 0})
+        d["pnl"] += float(pnl)
+        d["n"] += 1
+    return daily
+
+
 @router.get("/daily-pnl")
 async def get_daily_pnl(
     days: int = Query(30, ge=1, le=365),
@@ -198,34 +227,17 @@ async def get_daily_pnl(
     if not account_ids:
         return {"series": [], "total_pnl": 0.0, "today_pnl": 0.0}
 
-    result = await db.execute(
-        select(
-            func.date_trunc("day", Trade.closed_at).label("day"),
-            func.sum(Trade.realized_pnl).label("daily_pnl"),
-            func.count(Trade.id).label("n_trades"),
-        )
-        .where(
-            Trade.account_id.in_(account_ids),
-            Trade.closed_at >= since,
-            Trade.realized_pnl.isnot(None),
-        )
-        .group_by(func.date_trunc("day", Trade.closed_at))
-        .order_by(func.date_trunc("day", Trade.closed_at))
-    )
-    rows = result.all()
+    daily = await _daily_pnl_buckets(db, account_ids, since)
 
-    today = datetime.now(timezone.utc).date()
-    today_pnl = 0.0
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     total_pnl = 0.0
+    today_pnl = 0.0
     series = []
-    for row in rows:
-        day_val = row.day
-        day_str = day_val.strftime("%Y-%m-%d") if hasattr(day_val, "strftime") else str(day_val)[:10]
-        pnl = float(row.daily_pnl or 0)
-        total_pnl += pnl
-        series.append({"date": day_str, "pnl": round(pnl, 2), "trades": row.n_trades})
-        if day_str == today.strftime("%Y-%m-%d"):
-            today_pnl = pnl
+    for day_str, d in daily.items():
+        total_pnl += d["pnl"]
+        series.append({"date": day_str, "pnl": round(d["pnl"], 2), "trades": d["n"]})
+        if day_str == today_str:
+            today_pnl = d["pnl"]
 
     return {"series": series, "total_pnl": round(total_pnl, 2), "today_pnl": round(today_pnl, 2)}
 
@@ -912,24 +924,15 @@ async def get_portfolio_snapshot(
     )
     open_positions = int(open_pos_result.scalar_one() or 0)
 
-    # Sharpe ratio: annualized from last 252 daily PnL values (scoped)
-    daily_pnl_result = await db.execute(
-        select(
-            func.date_trunc("day", Trade.closed_at).label("day"),
-            func.sum(Trade.realized_pnl).label("daily_pnl"),
-        )
-        .where(
-            Trade.account_id.in_(account_ids),
-            Trade.closed_at >= datetime.now(timezone.utc) - timedelta(days=365),
-        )
-        .group_by(func.date_trunc("day", Trade.closed_at))
-        .order_by(func.date_trunc("day", Trade.closed_at))
+    # Sharpe ratio: annualized from last 252 daily PnL values (scoped).
+    # Grouped in Python — date_trunc is Postgres-only and 500s on SQLite.
+    daily = await _daily_pnl_buckets(
+        db, account_ids, datetime.now(timezone.utc) - timedelta(days=365)
     )
-    daily_rows = daily_pnl_result.all()
     sharpe = 0.0
     max_drawdown = 0.0
-    if len(daily_rows) >= 5:
-        daily_pnls = [float(r.daily_pnl) for r in daily_rows]
+    if len(daily) >= 5:
+        daily_pnls = [d["pnl"] for d in daily.values()]
         s = pd.Series(daily_pnls)
         mean = s.mean()
         std = s.std()
@@ -971,32 +974,15 @@ async def get_equity_curve(
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    result = await db.execute(
-        select(
-            func.date_trunc("day", Trade.closed_at).label("day"),
-            func.sum(Trade.realized_pnl).label("daily_pnl"),
-        )
-        .where(
-            Trade.account_id.in_(account_ids),
-            Trade.closed_at >= since,
-            Trade.realized_pnl.isnot(None),
-        )
-        .group_by(func.date_trunc("day", Trade.closed_at))
-        .order_by(func.date_trunc("day", Trade.closed_at))
-    )
-    rows = result.all()
-    if not rows:
+    daily = await _daily_pnl_buckets(db, account_ids, since)
+    if not daily:
         return []
 
     equity = initial_equity
     curve = []
-    for row in rows:
-        equity += float(row.daily_pnl)
-        day = row.day
-        curve.append({
-            "date": day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)[:10],
-            "equity": round(equity, 2),
-        })
+    for day_str, d in daily.items():
+        equity += d["pnl"]
+        curve.append({"date": day_str, "equity": round(equity, 2)})
     return curve
 
 
@@ -1018,36 +1004,27 @@ async def get_monthly_returns(
 
     since = datetime.now(timezone.utc) - timedelta(days=730)
 
-    result = await db.execute(
-        select(
-            func.date_trunc("month", Trade.closed_at).label("month"),
-            func.sum(Trade.realized_pnl).label("monthly_pnl"),
-        )
-        .where(
-            Trade.account_id.in_(account_ids),
-            Trade.closed_at >= since,
-            Trade.realized_pnl.isnot(None),
-        )
-        .group_by(func.date_trunc("month", Trade.closed_at))
-        .order_by(func.date_trunc("month", Trade.closed_at))
-    )
-    rows = result.all()
-    if not rows:
+    daily = await _daily_pnl_buckets(db, account_ids, since)
+    if not daily:
         return []
 
-    # Build running equity to compute return % relative to start-of-month equity
-    baseline = 100_000.0
-    running_equity = baseline
+    # Roll daily buckets up by YYYY-MM, then compute return % vs running equity.
+    from collections import OrderedDict
+
+    monthly: "OrderedDict[str, float]" = OrderedDict()
+    for day_str, d in daily.items():
+        monthly[day_str[:7]] = monthly.get(day_str[:7], 0.0) + d["pnl"]
+
+    running_equity = 100_000.0
     out = []
-    for row in rows:
-        monthly_pnl = float(row.monthly_pnl)
-        ret_pct = round(monthly_pnl / max(running_equity, 1) * 100, 2)
-        running_equity += monthly_pnl
-        month = row.month
-        out.append({
-            "month": month.strftime("%b %Y") if hasattr(month, "strftime") else str(month)[:7],
-            "ret": ret_pct,
-        })
+    for mkey, mpnl in monthly.items():
+        ret_pct = round(mpnl / max(running_equity, 1) * 100, 2)
+        running_equity += mpnl
+        try:
+            label = datetime.strptime(mkey, "%Y-%m").strftime("%b %Y")
+        except ValueError:
+            label = mkey
+        out.append({"month": label, "ret": ret_pct})
     return out
 
 

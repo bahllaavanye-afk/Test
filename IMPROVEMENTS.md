@@ -15,6 +15,14 @@ _Last updated: 2026-06-29_
 
 ## Session 2026-06-29 — review backlog (see `docs/REVIEW_2026-06-29.md`)
 Queued for the autonomous loop / employees. Priority order top-to-bottom.
+- [ ] **[P0] Discord per-channel routing via bot token** — notify.py posts everything through ONE
+  webhook into #general with a [#channel] prefix; channels exist now, so resolve channel name → id
+  via the bot token (GET /guilds/{id}/channels) and POST /channels/{id}/messages, webhook fallback.
+  Embed author = employee name for per-employee identity. Kills the "all channels empty" state.
+- [ ] **[P1] LLM-brain employee personas on Discord** — desk/agent posts composed by llm_routed()
+  with per-employee persona prompts (slack_agent_team.py personas exist), not fixed templates;
+  numbers stay deterministic, only the commentary is generated. Two-way: reply when @mentioned
+  via the interactions endpoint.
 - [ ] **[P0] Forex desk** — add `market_type="forex"` strategies (carry, trend/momentum), register,
       add "Forex" to `_MARKET_TYPE_DESK`, route data_loader to `EURUSD=X` etc., + scheduled desk.
 - [ ] **[P0] Commodities desk** — add `market_type="commodity"` strategies (term-structure roll,
