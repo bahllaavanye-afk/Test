@@ -442,6 +442,89 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _setup_discord_channels() -> None:
+        """Create the Discord channel structure on startup — no manual dispatch.
+
+        Webhooks can't create channels; only the bot (with Manage Channels) can.
+        The channel-setup GitHub workflow needs a manual dispatch this agent can't
+        trigger (403 for the integration), and gate merges via GITHUB_TOKEN don't
+        fire its self-trigger — which is why the server only ever had #general.
+        Mirroring it here means every deploy idempotently (re)creates the desk /
+        ops / company channels using DISCORD_BOT_TOKEN. No-ops cleanly without the
+        token or the Manage Channels permission.
+        """
+        token = os.environ.get("DISCORD_BOT_TOKEN", "")
+        if not token:
+            logger.info("Discord channels: DISCORD_BOT_TOKEN not set — skipping")
+            return
+        api = "https://discord.com/api/v10"
+        structure = {
+            "TRADING DESKS": ["desk-equities", "desk-crypto", "desk-options",
+                              "desk-polymarket", "desk-fx-rates", "desk-stat-arb"],
+            "OPS & ALERTS": ["infra-alerts", "risk-alerts", "pnl-daily", "ci-failures"],
+            "COMPANY": ["engineering", "alpha-research", "leadership-summary", "okrs"],
+        }
+        headers = {
+            "Authorization": f"Bot {token}",
+            "Content-Type": "application/json",
+            # Discord/Cloudflare 403 the default urllib UA (error 1010) — send a browser-ish UA.
+            "User-Agent": "QuantEdge-Setup (https://quantedge, 1.0)",
+        }
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
+                g = await client.get(f"{api}/users/@me/guilds")
+                if g.status_code != 200:
+                    logger.warning("Discord channels: cannot list guilds", status=g.status_code)
+                    return
+                created = 0
+                for guild in g.json():
+                    gid = guild["id"]
+                    ch = await client.get(f"{api}/guilds/{gid}/channels")
+                    if ch.status_code != 200:
+                        logger.warning("Discord channels: cannot read channels (Manage Channels?)",
+                                       guild=guild.get("name"), status=ch.status_code)
+                        continue
+                    existing = ch.json()
+                    have = {c["name"].lower() for c in existing}
+                    for category, channels in structure.items():
+                        cat = next((c for c in existing
+                                    if c["name"].lower() == category.lower() and c.get("type") == 4), None)
+                        cat_id = cat["id"] if cat else None
+                        if cat_id is None:
+                            r = await client.post(f"{api}/guilds/{gid}/channels",
+                                                  json={"name": category, "type": 4})
+                            if r.status_code in (200, 201):
+                                cat_id = r.json()["id"]
+                                created += 1
+                            await asyncio.sleep(0.4)  # stay under the create rate limit
+                        for name in channels:
+                            if name in have:
+                                continue
+                            r = await client.post(f"{api}/guilds/{gid}/channels",
+                                                  json={"name": name, "type": 0, "parent_id": cat_id})
+                            if r.status_code in (200, 201):
+                                created += 1
+                            await asyncio.sleep(0.4)
+                if created:
+                    logger.info("Discord channels created on startup", count=created)
+                else:
+                    logger.info("Discord channels: structure already present")
+        except Exception as exc:
+            logger.error("Discord channel setup failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="discord_channel_setup",
+            trigger="date",  # one-shot on startup — idempotent
+            trigger_args={},
+            func=_setup_discord_channels,
+            description="Create Discord desk/ops/company channels on startup (idempotent).",
+        ),
+    )
+
     async def _check_bot_exits() -> None:
         """Close bot positions that hit take-profit / stop-loss / expiry.
 
