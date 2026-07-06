@@ -118,6 +118,17 @@ async def run_bot_lifecycle(db_session_factory=None) -> dict:
             # BOT_TEMPLATES: {template_id: template dict}
             missing = {tid: t for tid, t in BOT_TEMPLATES.items()
                        if t.get("name") and t["name"] not in existing_names}
+            if not missing:
+                # Static templates exhausted → explore the options grid: pull the
+                # next generation of factory variants (bounded research budget).
+                # Generation index = how many [gen] bots already exist / batch size,
+                # so successive cycles walk fresh grid territory deterministically.
+                from app.bots.factory import MAX_VARIANTS, generate_variants
+
+                n_gen_bots = sum(1 for s in stats if s.name.startswith("[gen]"))
+                variants = generate_variants(generation=n_gen_bots // MAX_VARIANTS)
+                missing = {vid: v for vid, v in variants.items()
+                           if v["name"] not in existing_names}
             actions = decide_bot_actions(stats, list(missing.keys()))
 
             for s in actions["disable"] + actions["enable"]:

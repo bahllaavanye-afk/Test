@@ -15,6 +15,16 @@ _Last updated: 2026-06-29_
 
 ## Session 2026-06-29 — review backlog (see `docs/REVIEW_2026-06-29.md`)
 Queued for the autonomous loop / employees. Priority order top-to-bottom.
+- [ ] **[P0] Options Alpha dashboard parity in the frontend** — per-bot detail view in
+  BotBuilder: cumulative P&L graph (endpoint /bots/{id}/performance is LIVE), open
+  positions table (orders with bot_id in raw_payload), trade history (Trades by
+  strategy_name == bot.name), settings editor (PATCH /bots/{id}). Use LWEquityCurve.
+- [ ] **[P0] Alpaca multi-leg options orders** — Alpaca paper supports options + multi-leg;
+  extend brokers/alpaca_orders.py with the legs order shape so every oa_* bot fills REAL
+  option legs with existing keys. Kills the TradeStation dependency.
+- [ ] **[P1] Synthetic options backtester** — Black-Scholes pricer over underlying OHLCV +
+  realized vol to approximate premium-structure backtests (no chain history yet); gate
+  bot enablement on a passing synthetic backtest (paper-first stays).
 - [ ] **[P0] Discord per-channel routing via bot token** — notify.py posts everything through ONE
   webhook into #general with a [#channel] prefix; channels exist now, so resolve channel name → id
   via the bot token (GET /guilds/{id}/channels) and POST /channels/{id}/messages, webhook fallback.
