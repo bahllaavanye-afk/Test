@@ -40,7 +40,9 @@ def test_options_templates_have_valid_legs(tid):
     for leg in action.legs:
         assert leg.side in ("buy", "sell")
         assert leg.option_type in ("call", "put")
-        assert leg.dte > 0
+        # dte == 0 is valid: 0DTE structures expire same-day (engine maps it
+        # to date.today()); the > 0 invariant predated the OA 0DTE clones.
+        assert leg.dte >= 0
         assert leg.ratio >= 1
 
 

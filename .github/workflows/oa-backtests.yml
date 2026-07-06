@@ -1,0 +1,47 @@
+name: OA Backtests — score every options clone weekly
+
+# Backtests every oa_*/gen_* template on 2y of real daily bars with the
+# synthetic-BS engine; ranked table → Discord #alpha-research + committed JSON.
+# New clones (OA Scout, screenshots, factory generations) are scored
+# automatically on the next run.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "41 7 * * 0"   # Sundays 07:41 UTC
+  push:
+    branches: [main]
+    paths: ["backend/app/bots/templates.py"]   # re-score when the library changes
+
+permissions:
+  contents: write
+
+concurrency:
+  group: oa-backtests
+  cancel-in-progress: true
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install backend (light)
+        run: pip install --quiet pydantic pydantic-settings sqlalchemy structlog 2>/dev/null || pip install --quiet pydantic
+      - name: Run backtests
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SECRET_KEY: "ci-only-not-a-real-secret-0000000000000000"
+          DATABASE_URL: "sqlite+aiosqlite:///./ci.db"
+        run: python .github/scripts/oa_backtest_runner.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Persist results
+        run: |
+          git config user.name "oa-backtests"
+          git config user.email "actions@github.com"
+          git add backend/performance_log/oa_backtests.json
+          git diff --cached --quiet || { git commit -m "chore(backtests): weekly OA clone scores [skip ci]"; git push; }

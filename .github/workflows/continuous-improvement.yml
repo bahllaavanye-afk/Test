@@ -1,6 +1,12 @@
 name: Continuous Improvement — Autonomous Code Quality (CTO OKR ≥50 commits/day)
 
 on:
+  # Event-driven autonomy: GitHub cron is starved in this repo (see
+  # CONTINUITY.md 2026-07-06), so ride CI completions — they fire constantly.
+  # The concurrency group below is the rate limit: max one active + one queued.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     # Every 30 minutes — 48 runs/day × 3 commits each = 144+ commits/day toward CTO OKR
     - cron: "*/30 * * * *"
@@ -10,6 +16,10 @@ on:
         description: "Number of files to improve per run (1-5)"
         required: false
         default: "3"
+
+concurrency:
+  group: continuous-improvement
+  cancel-in-progress: false
 
 jobs:
   improve:

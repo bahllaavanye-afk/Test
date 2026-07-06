@@ -1,0 +1,46 @@
+name: OA Scout — watch Options Alpha for new bots
+
+# "Whenever there is a new bot added to Options Alpha, automatically add it to
+# our paper trading": the scout diffs OA's library/leaderboard pages against
+# .github/state/oa_library.json and files an implementation issue per new find
+# — the worker fleet clones it as a reward-gated BOT_TEMPLATES PR. Requires the
+# OA_SESSION_COOKIE secret (operator's own account; every OA page is now behind
+# login — verified 2026-07-06). Runs daily + on CI completions (cron is starved).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch: {}
+  schedule:
+    - cron: "51 6 * * *"
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: oa-scout
+  cancel-in-progress: false
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Scout Options Alpha
+        env:
+          OA_SESSION_COOKIE: ${{ secrets.OA_SESSION_COOKIE }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/oa_scout.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Persist library state
+        run: |
+          git config user.name "oa-scout"
+          git config user.email "actions@github.com"
+          git add .github/state/oa_library.json
+          git diff --cached --quiet || { git commit -m "chore(oa-scout): update library state [skip ci]"; git push; }

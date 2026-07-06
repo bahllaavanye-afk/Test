@@ -131,3 +131,27 @@ export const botsApi = {
   run: (id: string) =>
     api.post<BotRunResult>(`/bots/${id}/run`).then((r) => r.data),
 }
+
+export interface BotPerfPoint {
+  date: string | null
+  pnl: number
+  cum_pnl: number
+  symbol: string
+}
+
+export interface BotPerformance {
+  bot_id: string
+  bot_name: string
+  days: number
+  series: BotPerfPoint[]
+  total_pnl: number
+  trades: number
+  win_rate: number | null
+  max_drawdown: number
+  avg_hold_hours: number | null
+}
+
+export const botsPerfApi = {
+  performance: (id: string, days = 30) =>
+    api.get<BotPerformance>(`/bots/${id}/performance?days=${days}`).then((r) => r.data),
+}

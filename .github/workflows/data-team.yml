@@ -7,6 +7,12 @@ name: Data Team — coverage, freshness, ML-readiness
 # no LLM in the data-quality path.
 
 on:
+  # Event-driven autonomy: GitHub cron is starved in this repo (see
+  # CONTINUITY.md 2026-07-06), so ride CI completions — they fire constantly.
+  # The concurrency group below is the rate limit: max one active + one queued.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch: {}
   schedule:
     - cron: "7 */6 * * *"   # every 6h, offset from the desks

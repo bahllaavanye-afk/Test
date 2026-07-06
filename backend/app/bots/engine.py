@@ -893,13 +893,14 @@ class BotEngine:
         return result
 
     async def _route_option_spread(self, bot: Bot, legs: list, db: AsyncSession) -> str | None:
-        """Place a real multi-leg order — ONLY for a live TradeStation account.
+        """Place a real multi-leg order — Alpaca paper first, live TradeStation second.
 
-        Paper-first is absolute: returns None (→ stays an alert) unless the bot's
-        account is ``mode == "live"`` AND ``broker == "tradestation"`` with creds.
-        Delta-based legs need an option-chain lookup to resolve strikes, which
-        can't be validated without live TS data, so only explicit-strike legs are
-        routed today; delta legs fall back to alert. Never raises.
+        Alpaca supports multi-leg options on the PAPER venue with our existing
+        keys ("use Alpaca until TradeStation" — 2026-07-06), including delta→
+        strike resolution via the contracts + snapshots endpoints. That path
+        satisfies paper-first: fills land on Alpaca's paper book. A live order
+        still requires mode=="live" + broker=="tradestation" with creds.
+        Anything unresolved degrades to the alert path. Never raises.
         """
         try:
             if not bot.account_id:
@@ -909,8 +910,36 @@ class BotEngine:
             account = (
                 await db.execute(select(Account).where(Account.id == bot.account_id))
             ).scalar_one_or_none()
-            if account is None or account.mode != "live" or account.broker != "tradestation":
-                return None  # paper / non-TS account → never routes a live order
+            if account is None:
+                return None
+
+            # ── Path 1: Alpaca (paper or live) — real multi-leg via order_class=mleg
+            if account.broker == "alpaca" and account.encrypted_key:
+                try:
+                    from app.brokers.alpaca_orders import submit_alpaca_multileg_order
+
+                    result = await submit_alpaca_multileg_order(
+                        account,
+                        bot.symbol,
+                        [
+                            {"side": lg.side, "option_type": lg.option_type,
+                             "delta": lg.delta, "strike": lg.strike,
+                             "dte": lg.dte, "ratio": lg.ratio}
+                            for lg in legs
+                        ],
+                    )
+                    if result and result.get("id"):
+                        logger.info("Options spread routed to Alpaca (mleg)",
+                                    bot_id=bot.id, order_id=result["id"])
+                        return str(result["id"])
+                except Exception as exc:  # noqa: BLE001 — degrade to alert, never crash the bot
+                    logger.warning("Alpaca mleg routing failed — alerting instead",
+                                   bot_id=bot.id, error=str(exc))
+                return None
+
+            # ── Path 2: TradeStation — live accounts only (paper-first is absolute)
+            if account.mode != "live" or account.broker != "tradestation":
+                return None  # non-Alpaca paper account → never routes a live order
 
             if any(lg.strike is None for lg in legs):
                 logger.info(

@@ -6,6 +6,11 @@ name: Desk Trading — Crypto 24/7 (Paper Orders)
 # Equities/options/futures stay on desk-trading.yml (correct — those markets close).
 
 on:
+  # Cron starvation fix: desks ride CI completions (constant) — the script's
+  # own market clock + top-K + no-position guards keep cadence safe.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   push:
     branches: [main]
     paths:
@@ -16,6 +21,10 @@ on:
     # the fleet-wide top-of-hour spike.
     - cron: "7,27,47 * * * *"
   workflow_dispatch: {}
+
+concurrency:
+  group: desk-crypto
+  cancel-in-progress: false
 
 jobs:
   place-crypto-orders:

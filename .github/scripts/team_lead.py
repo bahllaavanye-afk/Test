@@ -110,6 +110,42 @@ def assign_issues() -> list[str]:
     return out
 
 
+def sync_improvements_to_queue(max_new: int = 3) -> list[str]:
+    """Feed the worker queue from IMPROVEMENTS.md — the always-improving loop.
+
+    The LLM workers (free-agent-engineer, continuous-improvement) consume
+    `agent-fix-needed` issues; IMPROVEMENTS.md is where humans/research park
+    intent. This bridges them: top unchecked [P0]/[P1] items become issues
+    (deduped by title), so the backlog is ALWAYS being worked, not just read.
+    """
+    import re
+    from pathlib import Path
+
+    md = Path("IMPROVEMENTS.md")
+    if not md.exists():
+        return []
+    items = re.findall(r"^- \[ \] \*\*(\[P[01]\][^*]+)\*\*", md.read_text(), re.MULTILINE)
+    if not items:
+        return []
+
+    existing = _req("GET", f"{API}/issues?state=all&labels=agent-fix-needed&per_page=100")
+    have = {i.get("title", "") for i in existing}
+    created = []
+    for item in items:
+        title = f"[backlog] {item.strip()[:120]}"
+        if title in have or len(created) >= max_new:
+            continue
+        _req("POST", f"{API}/issues", {
+            "title": title,
+            "body": f"Auto-filed by the Team Lead from IMPROVEMENTS.md:\n\n> {item.strip()}\n\n"
+                    "Definition of done: the IMPROVEMENTS.md checkbox is ticked in the same PR "
+                    "that implements it, with tests. Reward-gated via the automerge label.",
+            "labels": ["agent-fix-needed"],
+        })
+        created.append(title)
+    return created
+
+
 def merged_recently(hours: int = 6) -> list[str]:
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     prs = _req("GET", f"{API}/pulls?state=closed&sort=updated&direction=desc&per_page=20")
@@ -122,6 +158,7 @@ def main() -> int:
     shipped = merged_recently()
     ok, blocked = review_prs()
     assigned = assign_issues()
+    queued = sync_improvements_to_queue()
 
     lines = ["**📋 Team Lead report** (facts from the GitHub API — nothing synthesized)"]
     lines.append(f"\n**Shipped (last 6h):** {len(shipped)}")
@@ -134,6 +171,9 @@ def main() -> int:
     if assigned:
         lines.append(f"\n**Assigned:** {len(assigned)}")
         lines += [f"• {s}" for s in assigned[:6]]
+    if queued:
+        lines.append(f"\n**Queued from IMPROVEMENTS.md:** {len(queued)}")
+        lines += [f"• {s}" for s in queued]
 
     report = "\n".join(lines)
     print(report)

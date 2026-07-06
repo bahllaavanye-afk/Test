@@ -507,6 +507,321 @@ BOT_TEMPLATES: dict[str, dict] = {
         },
         "exit_rules": [{"type": "take_profit", "value": 50}],
     },
+    # ── Options Alpha clone fleet (user's OA account, screenshot 2026-07-06) ──
+    # All: 1-minute evaluation cadence, $2,500 allocation (2.5% of the $100k
+    # paper account), paper-first. Truncated OA names → canonical archetypes;
+    # unknown parameters use Options Alpha community defaults and are noted in
+    # each description. SPX bots trade SPY as the listed proxy (SPX itself
+    # isn't on our chain feed). "Delta adjusting" rebalancing isn't supported
+    # yet — implemented as static entry + tighter stop, flagged below.
+    "oa_friday_14dte_bwb": {
+        "name": "Friday 14 DTE Broken Wing Butterfly",
+        "description": "OA clone: Fridays only, 14 DTE SPY put broken-wing butterfly (buy 40Δ, sell 2× 30Δ, buy 15Δ — skewed lower wing = no upside risk). TP 25%, hard stop 100%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "14:35", "end_time": "20:00"},  # UTC; US Friday session
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 25,
+            "legs": [
+                {"side": "buy", "option_type": "put", "delta": 0.40, "dte": 14, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.30, "dte": 14, "ratio": 2},
+                {"side": "buy", "option_type": "put", "delta": 0.15, "dte": 14, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 25}, {"type": "stop_loss", "value": 100},
+                       {"type": "time_exit", "hours": 240}],
+    },
+    "oa_ib_0945_10d": {
+        "name": "IB @9:45 10D $2.5k",
+        "description": "OA clone: iron butterfly opened at 9:45 ET (13:45 UTC), ~10 DTE SPY — sell ATM call+put (50Δ), buy 10Δ wings. TP 25%, stop 100%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "13:45", "end_time": "13:50"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 25,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.50, "dte": 10, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.50, "dte": 10, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.10, "dte": 10, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.10, "dte": 10, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 25}, {"type": "stop_loss", "value": 100}],
+    },
+    "oa_ncr_0dte_spx_a": {
+        "name": "NCR_0DTE_SPX (A)",
+        "description": "OA clone: 0DTE neutral credit iron condor on SPY (SPX proxy) — sell 15Δ call+put, buy 5Δ wings, opened mid-morning, closed by end of day. TP 50%, stop 200% of credit.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "14:05", "end_time": "14:15"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.15, "dte": 0, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.05, "dte": 0, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.15, "dte": 0, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.05, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 200},
+                       {"type": "time_exit", "hours": 7}],
+    },
+    "oa_vix_range": {
+        "name": "Vix range",
+        "description": "OA clone: premium selling gated to a calm-vol regime. Regime proxy: 20-bar realized-vol percentile via RSI band (native VIX conditions not wired yet — flagged assumption). Sells a 16Δ SPY iron condor, 7 DTE.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 40},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": "<", "value": 60},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.16, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.05, "dte": 7, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.16, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.05, "dte": 7, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 100}],
+    },
+    "oa_ncr_spx_0dte_b": {
+        "name": "NCR_SPX_0DTE (B)",
+        "description": "OA clone: tighter 0DTE variant — sell 10Δ call+put, buy 3Δ wings on SPY (SPX proxy), afternoon entry. TP 50%, stop 200%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "17:00", "end_time": "17:10"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.10, "dte": 0, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.03, "dte": 0, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.10, "dte": 0, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.03, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 200},
+                       {"type": "time_exit", "hours": 4}],
+    },
+    "oa_iron_butter_clone": {
+        "name": "Iron butter 1 Clone",
+        "description": "OA clone: 7 DTE QQQ iron butterfly — sell ATM straddle, buy 10Δ wings. TP 25%, stop 100%.",
+        "symbol": "QQQ",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [{"type": "no_position"}],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 25,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.50, "dte": 7, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.50, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.10, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.10, "dte": 7, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 25}, {"type": "stop_loss", "value": 100}],
+    },
+    "oa_short_put_spread": {
+        "name": "Short Put Spread 25Δ",
+        "description": "OA clone: SPY put credit spread — sell 25Δ, buy 15Δ, 21 DTE, entered when trend is constructive (price above 20-MA). TP 50%, stop 100%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "price_vs_ma", "ma_period": 20, "operator": ">", "ma_type": "sma"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.25, "dte": 21, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.15, "dte": 21, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 100}],
+    },
+    "oa_ccs_friday_15d": {
+        "name": "CCS FRIDAY 15D",
+        "description": "OA clone: call credit spread, Fridays — sell 15Δ call, buy 5Δ call, 14 DTE, entered when momentum is soft (price below 20-MA). TP 50%, stop 100%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "14:35", "end_time": "20:00"},
+            {"type": "price_vs_ma", "ma_period": 20, "operator": "<", "ma_type": "sma"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.15, "dte": 14, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.05, "dte": 14, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 100}],
+    },
+    "oa_long_calls_confirm": {
+        "name": "Long Calls with confirmation",
+        "description": "OA clone: momentum long calls — buy 60Δ call, 30 DTE, when price > 20-MA AND RSI > 55 (dual confirmation). TP 100%, stop 50%, 10-day time exit.",
+        "symbol": "QQQ",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "price_vs_ma", "ma_period": 20, "operator": ">", "ma_type": "sma"},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 55},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 100,
+            "legs": [{"side": "buy", "option_type": "call", "delta": 0.60, "dte": 30, "ratio": 1}],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 100}, {"type": "stop_loss", "value": 50},
+                       {"type": "time_exit", "hours": 240}],
+    },
+    "oa_iron_boi": {
+        "name": "IRON Boi",
+        "description": "OA clone: weekly SPY iron condor — sell 20Δ call+put, buy 5Δ wings, 7 DTE. TP 50%, stop 150%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [{"type": "no_position"}],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.20, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "call", "delta": 0.05, "dte": 7, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.20, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.05, "dte": 7, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 150}],
+    },
+    "oa_delta_adjusting_strangle": {
+        "name": "Delta Adjusting Strangle",
+        "description": "OA clone: short 16Δ strangle, 21 DTE on SPY. NOTE: dynamic delta re-adjustment isn't supported yet — implemented as static entry with a tighter 75% stop as the risk substitute (flagged assumption). TP 50%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [{"type": "no_position"}],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.16, "dte": 21, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.16, "dte": 21, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 75}],
+    },
+    "oa_steamrolled_spy": {
+        "name": "Steamrolled - Tractor SPY",
+        "description": "OA clone (community 'Steamroller' family): daily SPY put credit spread ladder — sell 20Δ, buy 10Δ, 7 DTE. NOTE: true laddering (stacking a new rung daily) needs per-rung tracking we don't have yet — one open rung at a time via no_position (flagged assumption). TP 50%, stop 100%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "14:45", "end_time": "15:00"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.20, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.10, "dte": 7, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 100}],
+    },
+    "oa_steamrolled_qqq": {
+        "name": "Steamrolled - Tractor QQQ",
+        "description": "OA clone: second Steamroller variant on QQQ — same daily 20Δ/10Δ put credit spread, 7 DTE, one rung at a time. TP 50%, stop 100%.",
+        "symbol": "QQQ",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "14:45", "end_time": "15:00"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.20, "dte": 7, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.10, "dte": 7, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 100}],
+    },
+    "oa_td_npdt_s1_trend": {
+        "name": "TD.NPDT.S1.Trend",
+        "description": "OA clone: no-position day-trade, trend leg S1 — intraday long 60Δ call (1 DTE) when trend confirms (price > 20-MA and RSI > 60), flat by end of day (6h time exit). TP 60%, stop 40%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "14:35", "end_time": "18:00"},
+            {"type": "price_vs_ma", "ma_period": 20, "operator": ">", "ma_type": "sma"},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": ">", "value": 60},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 60,
+            "legs": [{"side": "buy", "option_type": "call", "delta": 0.60, "dte": 1, "ratio": 1}],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 60}, {"type": "stop_loss", "value": 40},
+                       {"type": "time_exit", "hours": 6}],
+    },
+    "oa_trendy_short_put": {
+        "name": "Trendy Short Put Spread",
+        "description": "OA clone: trend-filtered put credit spread — only sells when SPY > 50-MA (the 'trendy' gate). Sell 20Δ, buy 10Δ, 30 DTE. TP 50%, stop 100%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "price_vs_ma", "ma_period": 50, "operator": ">", "ma_type": "sma"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread", "size_pct": 2.5, "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.20, "dte": 30, "ratio": 1},
+                {"side": "buy", "option_type": "put", "delta": 0.10, "dte": 30, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "take_profit", "value": 50}, {"type": "stop_loss", "value": 100}],
+    },
     "opt_long_straddle_gamma": {
         "name": "Options — Long Straddle (gamma / event)",
         "description": "Buy an ATM call + ATM put to be long gamma into an expected volatility expansion (earnings, macro). ~21 DTE.",

@@ -15,6 +15,34 @@ _Last updated: 2026-06-29_
 
 ## Session 2026-06-29 — review backlog (see `docs/REVIEW_2026-06-29.md`)
 Queued for the autonomous loop / employees. Priority order top-to-bottom.
+- [ ] **[P0] OA Scout — auto-copy new Options Alpha bots daily** — workflow fetches the
+  public optionalpha.com template/library pages, diffs against .github/state/oa_library.json,
+  LLM-parses any NEW bot into a BOT_TEMPLATES entry (delta/DTE/TP/entry window), opens a
+  reward-gated PR, posts the find to #alpha-research. Runs daily + on CI events. Private
+  account bots can't be scraped (auth) — screenshots remain the path for those.
+- [ ] **[P1] ForexFactory calendar feed** — ingest the public ff_calendar_thisweek.json into
+  /market-data/forex-calendar and gate Macro/FX desk entries around red-folder events.
+- [ ] **[P2] TradingView/FxReplay/Tradezilla** — no public trade APIs (manual UIs);
+  TradingView useful as charts + webhook-IN alerts (receiver endpoint), not for dummy
+  trading automation. Document + build the webhook receiver only.
+- [ ] **[P0] Options Alpha dashboard parity in the frontend** — per-bot detail view in
+  BotBuilder: cumulative P&L graph (endpoint /bots/{id}/performance is LIVE), open
+  positions table (orders with bot_id in raw_payload), trade history (Trades by
+  strategy_name == bot.name), settings editor (PATCH /bots/{id}). Use LWEquityCurve.
+- [ ] **[P0] Alpaca multi-leg options orders** — Alpaca paper supports options + multi-leg;
+  extend brokers/alpaca_orders.py with the legs order shape so every oa_* bot fills REAL
+  option legs with existing keys. Kills the TradeStation dependency.
+- [ ] **[P1] Synthetic options backtester** — Black-Scholes pricer over underlying OHLCV +
+  realized vol to approximate premium-structure backtests (no chain history yet); gate
+  bot enablement on a passing synthetic backtest (paper-first stays).
+- [ ] **[P0] Discord per-channel routing via bot token** — notify.py posts everything through ONE
+  webhook into #general with a [#channel] prefix; channels exist now, so resolve channel name → id
+  via the bot token (GET /guilds/{id}/channels) and POST /channels/{id}/messages, webhook fallback.
+  Embed author = employee name for per-employee identity. Kills the "all channels empty" state.
+- [ ] **[P1] LLM-brain employee personas on Discord** — desk/agent posts composed by llm_routed()
+  with per-employee persona prompts (slack_agent_team.py personas exist), not fixed templates;
+  numbers stay deterministic, only the commentary is generated. Two-way: reply when @mentioned
+  via the interactions endpoint.
 - [ ] **[P0] Forex desk** — add `market_type="forex"` strategies (carry, trend/momentum), register,
       add "Forex" to `_MARKET_TYPE_DESK`, route data_loader to `EURUSD=X` etc., + scheduled desk.
 - [ ] **[P0] Commodities desk** — add `market_type="commodity"` strategies (term-structure roll,
