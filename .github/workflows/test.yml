@@ -200,3 +200,47 @@ jobs:
         run: |
           EXIT=$(cat /tmp/pytest.exitcode 2>/dev/null || echo 1)
           exit $EXIT
+
+  # Event-driven ops sync — GitHub cron is starved in this repo (keep-alive at
+  # */5 has hours-long gaps; the daily discord-sync NEVER fired), so critical
+  # side-effects ride CI instead: CI fires reliably on every push/PR. Both
+  # steps are idempotent; continue-on-error so this can never block a merge.
+  ops-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Discord channels + register slash commands (idempotent)
+        continue-on-error: true
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          APP_ID: "1523285730384810034"
+        run: |
+          python .github/scripts/discord_setup_channels.py || true
+          if [ -n "$DISCORD_BOT_TOKEN" ]; then
+            curl -sS -o /dev/null -w "commands sync: HTTP %{http_code}\n" -X PUT \
+              "https://discord.com/api/v10/applications/$APP_ID/commands" \
+              -H "Authorization: Bot $DISCORD_BOT_TOKEN" -H "Content-Type: application/json" \
+              --data '[{"name":"status","type":1,"description":"QuantEdge bot fleet status"},{"name":"pnl","type":1,"description":"Equity and today'\''s paper P&L"},{"name":"health","type":1,"description":"Deep health: database, scheduler, API"},{"name":"run-bot","type":1,"description":"Evaluate one enabled bot now (paper)","options":[{"name":"name","description":"Part of the bot'\''s name","type":3,"required":true}]}]'
+          fi
+      - name: Relay runtime keys to Render (idempotent PUTs)
+        continue-on-error: true
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ] && { echo "render creds absent — skip"; exit 0; }
+          for k in DISCORD_BOT_TOKEN GOOGLE_SERVICE_ACCOUNT_JSON ALPACA_API_KEY ALPACA_SECRET_KEY; do
+            v="${!k}"
+            [ -z "$v" ] && { echo "· $k not set — skip"; continue; }
+            code=$(curl -sS -o /dev/null -w "%{http_code}" -X PUT \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/$k" \
+              -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
+              --data "{\"value\": $(printf '%s' "$v" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}")
+            echo "$k → HTTP $code"
+          done
