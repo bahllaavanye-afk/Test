@@ -43,7 +43,7 @@ async def _fetch_ticker_bars(
 ) -> pd.Series:
     """
     Fetch daily close prices for a single ticker from Alpaca.
-    Returns a pd.Series indexed by date, or empty Series on failure.
+    Returns a pd.Series indexed by date, or an empty Series on failure.
     """
     sym = ticker.upper()
     start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -57,7 +57,10 @@ async def _fetch_ticker_bars(
             timeout=15.0,
         )
         if resp.status_code != 200:
-            logger.warning("Alpaca bars fetch failed", ticker=ticker, status=resp.status_code)
+            logger.warning(
+                "Alpaca bars fetch failed",
+                extra={"ticker": ticker, "status_code": resp.status_code},
+            )
             return pd.Series(dtype=float)
 
         raw_bars = resp.json().get("bars", [])
@@ -71,14 +74,33 @@ async def _fetch_ticker_bars(
         series = series[~series.index.duplicated(keep="last")]
         return series
 
+    except httpx.HTTPError as exc:
+        logger.error(
+            "HTTP error while fetching Alpaca bars",
+            extra={"ticker": ticker, "error": str(exc)},
+        )
+        return pd.Series(dtype=float)
+    except (ValueError, KeyError) as exc:
+        logger.error(
+            "Data parsing error while processing Alpaca response",
+            extra={"ticker": ticker, "error": str(exc)},
+        )
+        return pd.Series(dtype=float)
     except Exception as exc:  # pragma: no cover
-        logger.warning("Alpaca bars exception", ticker=ticker, error=str(exc))
+        logger.exception(
+            "Unexpected error while fetching Alpaca bars",
+            extra={"ticker": ticker},
+        )
         return pd.Series(dtype=float)
 
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
     if start >= end:
+        logger.warning(
+            "Invalid benchmark date range",
+            extra={"start": start.isoformat(), "end": end.isoformat()},
+        )
         return {}
 
     cache_key = (start, end)
@@ -89,9 +111,22 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
     async with httpx.AsyncClient(timeout=20.0) as client:
-        series_list = await asyncio.gather(
-            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers]
+        raw_series = await asyncio.gather(
+            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers],
+            return_exceptions=True,
         )
+
+    # Convert any exceptions returned by gather into empty Series and log them
+    series_list: List[pd.Series] = []
+    for ticker, result in zip(all_tickers, raw_series):
+        if isinstance(result, Exception):
+            logger.error(
+                "Error fetching ticker data",
+                extra={"ticker": ticker, "error": str(result)},
+            )
+            series_list.append(pd.Series(dtype=float))
+        else:
+            series_list.append(result)
 
     closes_dict: dict[str, pd.Series] = {
         ticker: series
