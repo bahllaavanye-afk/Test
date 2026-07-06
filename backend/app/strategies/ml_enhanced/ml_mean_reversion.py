@@ -32,9 +32,9 @@ class MLMeanReversionStrategy(AbstractStrategy):
                     base_signal.strategy_name = self.name
                     base_signal.strategy_type = self.strategy_type
                     return base_signal
-                return None  # ML disagrees — skip
+                return None
         except Exception:
-            return base_signal  # fallback
+            return base_signal
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
