@@ -17,11 +17,11 @@ const theme = {
     positive: '#00c853',
     negative: '#ff1744',
     info: '#2196F3',
-    purple: '', // not specified, assume variable should be imported
+    purple: 'var(--purple)',
   },
 }
 
-export default function AppShell() {
+export const AppShell = () => {
   const location = useLocation()
   return (
     <div className={`flex h-screen overflow-hidden bg-[${theme.colors.background}] relative`}>
