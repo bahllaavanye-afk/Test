@@ -10,39 +10,70 @@ import pandas as pd
 
 from app.utils.logging import logger
 
+# Constants
+DATA_LOOKBACK_DAYS = 730
+DEFAULT_INTERVAL = "1h"
+DEFAULT_MAX_EPOCHS = 30
+MAX_RETRAIN_PER_NIGHT = 10
+
+DEFAULT_EXPERIMENT_MODEL = "lstm"
+DEFAULT_EXPERIMENT_SYMBOL = "SPY"
+DEFAULT_EXPERIMENT_INTERVAL = "1d"
+
+DEFAULT_FALLBACK_CONFIGS = [
+    ("lstm", "BTC-USD", "1h"),
+    ("lstm", "ETH-USD", "1h"),
+    ("lstm", "SPY", "1d"),
+]
+
 ARTIFACTS_DIR = Path(__file__).parents[3] / "models_artifacts"
+CONFIGS_DIR = Path(__file__).parents[3] / "experiments" / "configs"
 
 
-async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> dict:
+async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
     try:
         import yfinance as yf
         loop = asyncio.get_running_loop()
         end = datetime.now(timezone.utc)
-        start = end - timedelta(days=730)
+        start = end - timedelta(days=DATA_LOOKBACK_DAYS)
 
         hist = await loop.run_in_executor(
             None,
-            lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                  interval=interval, auto_adjust=True, progress=False)
+            lambda: yf.download(
+                symbol,
+                start=str(start.date()),
+                end=str(end.date()),
+                interval=interval,
+                auto_adjust=True,
+                progress=False,
+            ),
         )
         if hist is None or len(hist) < 200:
             return {"status": "skipped", "reason": "insufficient data"}
 
         # Normalize column names
-        hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
+        hist.columns = [
+            c.lower() if isinstance(c, str) else c[0].lower()
+            for c in hist.columns
+        ]
 
         from app.ml.training.train_lstm import train
         experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
-        result = await train(hist, experiment_name=experiment_name, max_epochs=30)
+        result = await train(hist, experiment_name=experiment_name, max_epochs=DEFAULT_MAX_EPOCHS)
         result["symbol"] = symbol
         result["model"] = model_name
         result["retrained_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info("Model retrained", **{k: v for k, v in result.items() if k != "best_model_path"})
+        logger.info(
+            "Model retrained",
+            **{k: v for k, v in result.items() if k != "best_model_path"},
+        )
         return result
 
     except Exception as e:
-        logger.error("Retrain failed", model=model_name, symbol=symbol, error=str(e))
+        logger.error(
+            "Retrain failed", model=model_name, symbol=symbol, error=str(e)
+        )
         return {"status": "error", "error": str(e)}
 
 
@@ -52,7 +83,6 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
-    configs_dir = Path(__file__).parents[3] / "experiments" / "configs"
     seen: set[tuple[str, str, str]] = set()
     results: list[tuple[str, str, str]] = []
 
@@ -62,7 +92,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
     except ImportError:
         _load_yaml = None
 
-    for cfg_path in sorted(configs_dir.glob("*.yaml")):
+    for cfg_path in sorted(CONFIGS_DIR.glob("*.yaml")):
         try:
             with open(cfg_path) as f:
                 if _load_yaml:
@@ -70,16 +100,22 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                 else:
                     # Minimal fallback: regex-extract model/symbol/interval from YAML text
                     import re
+
                     text = f.read()
-                    cfg = {"experiment": {
-                        k: v for k, v in re.findall(
-                            r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)", text, re.MULTILINE
-                        )
-                    }}
+                    cfg = {
+                        "experiment": {
+                            k: v
+                            for k, v in re.findall(
+                                r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)",
+                                text,
+                                re.MULTILINE,
+                            )
+                        }
+                    }
             exp = (cfg or {}).get("experiment", {})
-            model = exp.get("model", "lstm")
-            symbol = exp.get("symbol", "SPY")
-            interval = exp.get("interval", "1d")
+            model = exp.get("model", DEFAULT_EXPERIMENT_MODEL)
+            symbol = exp.get("symbol", DEFAULT_EXPERIMENT_SYMBOL)
+            interval = exp.get("interval", DEFAULT_EXPERIMENT_INTERVAL)
             key = (model, symbol, interval)
             if key not in seen:
                 seen.add(key)
@@ -88,7 +124,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
             continue
 
     if not results:
-        results = [("lstm", "BTC-USD", "1h"), ("lstm", "ETH-USD", "1h"), ("lstm", "SPY", "1d")]
+        results = DEFAULT_FALLBACK_CONFIGS
 
     return results
 
@@ -96,12 +132,14 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
 async def nightly_retrain() -> None:
     """Retrain all models discovered from experiment configs. Called by APScheduler at 02:00 UTC."""
     retrain_configs = _load_retrain_configs()
-    # Cap at 10 per night to avoid overwhelming free-tier CPU
-    retrain_configs = retrain_configs[:10]
+    # Cap at MAX_RETRAIN_PER_NIGHT per night to avoid overwhelming free-tier CPU
+    retrain_configs = retrain_configs[:MAX_RETRAIN_PER_NIGHT]
     logger.info("Nightly retrain starting", configs=len(retrain_configs))
     results = await asyncio.gather(
         *[retrain_model(m, s, i) for m, s, i in retrain_configs],
-        return_exceptions=True
+        return_exceptions=True,
     )
     successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
-    logger.info("Nightly retrain complete", total=len(retrain_configs), succeeded=successes)
+    logger.info(
+        "Nightly retrain complete", total=len(retrain_configs), succeeded=successes
+    )
