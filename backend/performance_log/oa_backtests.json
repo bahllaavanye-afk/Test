@@ -1,0 +1,171 @@
+{
+ "as_of": "2026-07-06T13:47:19.141313+00:00",
+ "method": "synthetic-BS (HV20\u00d71.1) over 2y daily bars \u2014 ranking only",
+ "results": [
+  {
+   "trades": 39,
+   "win_rate": 0.4872,
+   "total_pnl": 18730.45,
+   "avg_pnl": 480.27,
+   "max_drawdown": 6276.45,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_long_calls_confirm",
+   "name": "Long Calls with confirmation",
+   "symbol": "QQQ"
+  },
+  {
+   "trades": 239,
+   "win_rate": 0.4226,
+   "total_pnl": 13914.01,
+   "avg_pnl": 58.22,
+   "max_drawdown": 2187.09,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_td_npdt_s1_trend",
+   "name": "TD.NPDT.S1.Trend",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 55,
+   "win_rate": 0.6727,
+   "total_pnl": 3743.23,
+   "avg_pnl": 68.06,
+   "max_drawdown": 2951.88,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_ib_0945_10d",
+   "name": "IB @9:45 10D $2.5k",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 81,
+   "win_rate": 0.7654,
+   "total_pnl": 2225.17,
+   "avg_pnl": 27.47,
+   "max_drawdown": 1188.73,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_short_put_spread",
+   "name": "Short Put Spread 25\u0394",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 72,
+   "win_rate": 0.75,
+   "total_pnl": 1977.35,
+   "avg_pnl": 27.46,
+   "max_drawdown": 1311.84,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_trendy_short_put",
+   "name": "Trendy Short Put Spread",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 149,
+   "win_rate": 0.7517,
+   "total_pnl": 1192.12,
+   "avg_pnl": 8.0,
+   "max_drawdown": 1465.6,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_steamrolled_spy",
+   "name": "Steamrolled - Tractor SPY",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 151,
+   "win_rate": 0.7483,
+   "total_pnl": 544.12,
+   "avg_pnl": 3.6,
+   "max_drawdown": 1616.75,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_steamrolled_qqq",
+   "name": "Steamrolled - Tractor QQQ",
+   "symbol": "QQQ"
+  },
+  {
+   "trades": 239,
+   "win_rate": 0.7573,
+   "total_pnl": 453.47,
+   "avg_pnl": 1.9,
+   "max_drawdown": 2029.65,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_ncr_0dte_spx_a",
+   "name": "NCR_0DTE_SPX (A)",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 190,
+   "win_rate": 0.7632,
+   "total_pnl": 70.72,
+   "avg_pnl": 0.37,
+   "max_drawdown": 730.34,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_friday_14dte_bwb",
+   "name": "Friday 14 DTE Broken Wing Butterfly",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 87,
+   "win_rate": 0.7126,
+   "total_pnl": -121.32,
+   "avg_pnl": -1.39,
+   "max_drawdown": 2594.96,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_iron_boi",
+   "name": "IRON Boi",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 99,
+   "win_rate": 0.697,
+   "total_pnl": -284.41,
+   "avg_pnl": -2.87,
+   "max_drawdown": 2373.18,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_vix_range",
+   "name": "Vix range",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 102,
+   "win_rate": 0.6569,
+   "total_pnl": -713.08,
+   "avg_pnl": -6.99,
+   "max_drawdown": 1157.97,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_ccs_friday_15d",
+   "name": "CCS FRIDAY 15D",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 239,
+   "win_rate": 0.8201,
+   "total_pnl": -1124.92,
+   "avg_pnl": -4.71,
+   "max_drawdown": 2018.14,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_ncr_spx_0dte_b",
+   "name": "NCR_SPX_0DTE (B)",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 64,
+   "win_rate": 0.625,
+   "total_pnl": -3255.92,
+   "avg_pnl": -50.87,
+   "max_drawdown": 5286.2,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_delta_adjusting_strangle",
+   "name": "Delta Adjusting Strangle",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 67,
+   "win_rate": 0.5373,
+   "total_pnl": -6457.71,
+   "avg_pnl": -96.38,
+   "max_drawdown": 8311.55,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_iron_butter_clone",
+   "name": "Iron butter 1 Clone",
+   "symbol": "QQQ"
+  }
+ ]
+}
