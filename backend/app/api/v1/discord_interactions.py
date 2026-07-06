@@ -44,6 +44,7 @@ _EPHEMERAL = 64
 
 
 def _verify_signature(signature_hex: str, timestamp: str, body: bytes) -> bool:
+    """Verify the Ed25519 signature sent by Discord."""
     try:
         key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(_PUBLIC_KEY_HEX))
         key.verify(bytes.fromhex(signature_hex), timestamp.encode() + body)
@@ -53,6 +54,7 @@ def _verify_signature(signature_hex: str, timestamp: str, body: bytes) -> bool:
 
 
 def _msg(text: str, ephemeral: bool = False) -> dict:
+    """Create a Discord message payload."""
     data: dict = {"content": text[:1990]}
     if ephemeral:
         data["flags"] = _EPHEMERAL
@@ -60,17 +62,31 @@ def _msg(text: str, ephemeral: bool = False) -> dict:
 
 
 async def _cmd_status() -> str:
+    """Return a short status summary."""
     from app.database import AsyncSessionLocal
     from app.models.bot import Bot
 
     async with AsyncSessionLocal() as db:
-        total = (await db.execute(select(func.count(Bot.id)).where(Bot.is_archived == False))).scalar_one()  # noqa: E712
-        enabled = (await db.execute(
-            select(func.count(Bot.id)).where(Bot.is_enabled == True, Bot.is_archived == False)  # noqa: E712
-        )).scalar_one()
-        ran = (await db.execute(
-            select(func.count(Bot.id)).where(Bot.run_count > 0, Bot.is_archived == False)  # noqa: E712
-        )).scalar_one()
+        total = (
+            await db.execute(
+                select(func.count(Bot.id)).where(Bot.is_archived == False)  # noqa: E712
+            )
+        ).scalar_one()
+        enabled = (
+            await db.execute(
+                select(func.count(Bot.id)).where(
+                    Bot.is_enabled == True,  # noqa: E712
+                    Bot.is_archived == False,  # noqa: E712
+                )
+            )
+        ).scalar_one()
+        ran = (
+            await db.execute(
+                select(func.count(Bot.id)).where(
+                    Bot.run_count > 0, Bot.is_archived == False  # noqa: E712
+                )
+            )
+        ).scalar_one()
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     return (
         f"**QuantEdge status** · {now}\n"
@@ -80,18 +96,23 @@ async def _cmd_status() -> str:
 
 
 async def _cmd_pnl() -> str:
+    """Return today's P&L and equity information."""
     from app.api.v1.accounts import latest_total_equity
     from app.database import AsyncSessionLocal
     from app.models.position import Position
     from app.models.trade import Trade
 
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
     async with AsyncSessionLocal() as db:
         equity = await latest_total_equity(db)
-        n_closed, pnl_today = (await db.execute(
-            select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
-            .where(Trade.closed_at >= today_start)
-        )).one()
+        n_closed, pnl_today = (
+            await db.execute(
+                select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
+                .where(Trade.closed_at >= today_start)
+            )
+        ).one()
         open_count = (await db.execute(select(func.count(Position.id)))).scalar_one()
     arrow = "▲" if float(pnl_today) >= 0 else "▼"
     return (
@@ -101,6 +122,7 @@ async def _cmd_pnl() -> str:
 
 
 async def _cmd_health() -> str:
+    """Perform health checks and return a summary."""
     checks: list[str] = []
     try:
         from app.database import AsyncSessionLocal
@@ -123,6 +145,7 @@ async def _cmd_health() -> str:
 
 
 async def _cmd_run_bot(name_query: str) -> str:
+    """Trigger a bot evaluation by name."""
     from app.bots.engine import BotEngine
     from app.database import AsyncSessionLocal
     from app.models.bot import Bot
@@ -131,13 +154,15 @@ async def _cmd_run_bot(name_query: str) -> str:
     if not q:
         return "Usage: `/run-bot name:<part of the bot's name>`"
     async with AsyncSessionLocal() as db:
-        bots = (await db.execute(
-            select(Bot).where(
-                Bot.is_enabled == True,  # noqa: E712
-                Bot.is_archived == False,  # noqa: E712
-                Bot.name.ilike(f"%{q}%"),
-            ).limit(2)
-        )).scalars().all()
+        bots = (
+            await db.execute(
+                select(Bot).where(
+                    Bot.is_enabled == True,  # noqa: E712
+                    Bot.is_archived == False,  # noqa: E712
+                    Bot.name.ilike(f"%{q}%"),
+                ).limit(2)
+            )
+        ).scalars().all()
         if not bots:
             return f"No enabled bot matches `{q}`."
         if len(bots) > 1:
