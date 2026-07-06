@@ -117,8 +117,13 @@
     "Verify DB connections",
     "Review code changes",
     "Optimize trading scripts",
-    "Improve model docs"
+    "Improve model docs",
+    "schemas on comparison/engine.py: success \u2014 tests green",
+    "schemas on tasks/ml_retrain.py: success \u2014 tests green",
+    "schemas on api/v1/backtests.py: success \u2014 tests green",
+    "schemas on test/unit/test_backtest.py: success \u2014 tests green",
+    "schemas on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-06T17:20:01.293423+00:00",
+  "last_updated": "2026-07-06T19:16:05.687192+00:00",
   "total": 118
 }
