@@ -892,3 +892,75 @@ async def get_bars_query_alias(
 ):
     """Underscore-prefix alias for /market-data/bars (query-param form)."""
     return await get_bars_query(symbol=symbol, timeframe=timeframe, limit=limit, current_user=current_user)
+
+
+# ─── ForexFactory calendar (public feed) ─────────────────────────────────────
+# The operator's pick for forex news is ForexFactory; its weekly calendar has a
+# public JSON feed. This powers /market-data/forex-calendar and the Macro/FX
+# desk's event gate (don't enter carry/trend right before red-folder news).
+
+_FF_FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+
+
+def _parse_ff_events(raw: list, impact: str | None, country: str | None,
+                     now=None) -> list[dict]:
+    """Filter + normalize ForexFactory events. Pure — unit-tested without network."""
+    from datetime import datetime, timezone
+
+    now = now or datetime.now(timezone.utc)
+    out = []
+    for e in raw or []:
+        if impact and str(e.get("impact", "")).lower() != impact.lower():
+            continue
+        if country and str(e.get("country", "")).upper() != country.upper():
+            continue
+        try:
+            dt = datetime.fromisoformat(str(e.get("date", "")))
+            hours_away = (dt - now).total_seconds() / 3600.0
+        except ValueError:
+            dt, hours_away = None, None
+        out.append({
+            "title": e.get("title"),
+            "country": e.get("country"),
+            "impact": e.get("impact"),
+            "time": dt.isoformat() if dt else e.get("date"),
+            "hours_away": round(hours_away, 2) if hours_away is not None else None,
+            "forecast": e.get("forecast") or None,
+            "previous": e.get("previous") or None,
+        })
+    out.sort(key=lambda x: x["hours_away"] if x["hours_away"] is not None else 1e9)
+    return out
+
+
+@router.get("/forex-calendar")
+async def get_forex_calendar(
+    impact: str | None = Query(None, description="Filter: High|Medium|Low|Holiday"),
+    country: str | None = Query(None, description="Currency code, e.g. USD, EUR"),
+    current_user: User = Depends(get_current_user),
+):
+    """This week's forex economic calendar (ForexFactory public feed).
+
+    Also returns ``high_impact_within_2h`` — the flag the Macro/FX desk gates
+    entries on (never open a carry/trend position into red-folder news).
+    Empty list + note when the feed is unreachable — never fabricated events.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(_FF_FEED_URL, headers={"User-Agent": "Mozilla/5.0"})
+        raw = resp.json() if resp.status_code == 200 else []
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ForexFactory feed unavailable", error=str(exc))
+        raw = []
+
+    events = _parse_ff_events(raw, impact, country)
+    red_soon = any(
+        e["impact"] == "High" and e["hours_away"] is not None and 0 <= e["hours_away"] <= 2
+        for e in _parse_ff_events(raw, None, None)
+    )
+    return {
+        "events": events,
+        "count": len(events),
+        "high_impact_within_2h": red_soon,
+        "source": "forexfactory (ff_calendar_thisweek.json)",
+        "note": None if raw else "feed unreachable — no events (nothing fabricated)",
+    }
