@@ -1,6 +1,6 @@
 {
-  "last_run_ts": 1781148851,
-  "last_commit_sha": "",
+  "last_run_ts": 1783313263,
+  "last_commit_sha": "fefe6b0",
   "posted_hashes": [
     "3fb4bde6f86f",
     "226dff1963e9",
@@ -11,12 +11,69 @@
     "579bff070680",
     "88e99790daf1",
     "9d5d85bc1236",
-    "74bfa4d9c913"
+    "74bfa4d9c913",
+    "ac6f77a92068",
+    "c78f754e60b1",
+    "951be1ba632f",
+    "f0960b30dda9",
+    "21e437e0268a",
+    "dfdb08460f82",
+    "20b2faf1e70f",
+    "0d3022e51441",
+    "ec2abc3b78c9",
+    "169e5b6beee0"
   ],
   "replied_to": [],
   "post_dedup": {},
   "response_cache": {},
-  "posted_today": [],
+  "posted_today": [
+    "Alpha Research Director",
+    "Incident Bot",
+    "Standup bot",
+    "Backend Lead",
+    "Junior Engineer",
+    "Research Scientist",
+    "ML Modeling Lead (MP)",
+    "Wins bot",
+    "Frontend Lead",
+    "Alpha Research Director (SR)",
+    "Chief Risk Officer",
+    "Equity desk bot",
+    "Polymarket Researcher",
+    "CEO / Founder",
+    "ML Research Lead",
+    "ML Modeling Lead",
+    "PnL bot",
+    "Options desk bot",
+    "Quant ML Researcher",
+    "Director of QA",
+    "Macro/FX desk bot",
+    "Security Engineer",
+    "Risk Engineer",
+    "Data Engineer",
+    "CEO/Founder",
+    "Laavanye Bahl \u2014 CEO/Founder",
+    "Feature Engineering Lead",
+    "Crypto desk bot",
+    "Deep Learning Engineer",
+    "VP Engineering (CR)",
+    "Quant Researcher",
+    "Options Researcher",
+    "Compliance Engineer",
+    "Finance Engineer",
+    "Futures desk bot",
+    "Commodities desk bot",
+    "Kalshi desk bot",
+    "Director of DevOps",
+    "StatArb desk bot",
+    "Rates desk bot",
+    "Execution Engineer",
+    "ML Infrastructure Engineer",
+    "Polymarket desk bot",
+    "Frontend Bot",
+    "VP Research",
+    "VP Engineering"
+  ],
   "last_post_ts": {
     "vp_eng": 1781144509.093116,
     "alpha_dir": 1781144509.093116,
@@ -56,7 +113,7 @@
       }
     }
   },
-  "onboarding_posted_week": "",
+  "onboarding_posted_week": "2026-W27",
   "governance": {
     "freeze_algos": false,
     "paused_engineers": {},
@@ -1093,5 +1150,7 @@
     "2026-06-10": {
       "GEMINI_API_KEY_3": 300
     }
-  }
+  },
+  "posted_today_date": "2026-07-06",
+  "skip_wave": false
 }
