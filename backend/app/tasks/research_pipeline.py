@@ -17,8 +17,10 @@ import logging
 import os
 import subprocess
 import time
+import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, List
 
 from app.tasks.free_llm_router import call_race, call_consensus
 from app.tasks.agent_memory import AgentMemory
@@ -42,11 +44,14 @@ class ResearchPipeline:
             configs = await self._ideas_to_experiment_configs(ideas)
             await self._queue_experiments(configs)
             if self._memory:
-                await self._memory.write("research_findings", {
-                    "ideas_count": len(ideas),
-                    "configs_queued": len(configs),
-                    "ideas": ideas[:3],
-                })
+                await self._memory.write(
+                    "research_findings",
+                    {
+                        "ideas_count": len(ideas),
+                        "configs_queued": len(configs),
+                        "ideas": ideas[:3],
+                    },
+                )
             logger.info("ResearchPipeline: queued %d experiments", len(configs))
         except Exception as e:
             logger.exception("ResearchPipeline error: %s", e)
@@ -69,7 +74,7 @@ class ResearchPipeline:
             f"Recent LLM suggestions: {'; '.join(prev_ideas[:2])}"
         )
 
-    async def _generate_research_ideas(self, context: str) -> list[dict]:
+    async def _generate_research_ideas(self, context: str) -> List[dict]:
         prompt = f"""You are a quantitative trading researcher.
 
 Market context: {context}
@@ -101,10 +106,10 @@ Respond as JSON array:
             logger.warning("ResearchPipeline: failed to parse LLM ideas: %s", e)
         return []
 
-    async def _ideas_to_experiment_configs(self, ideas: list[dict]) -> list[Path]:
+    async def _ideas_to_experiment_configs(self, ideas: List[dict]) -> List[Path]:
         """Convert LLM ideas to YAML experiment configs."""
         CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
-        configs = []
+        configs: List[Path] = []
 
         for idea in ideas[:2]:  # limit to 2 per cycle
             name = idea.get("name", f"auto_{int(time.time())}")
@@ -162,7 +167,7 @@ strategy:
 
         return configs
 
-    async def _queue_experiments(self, configs: list[Path]) -> None:
+    async def _queue_experiments(self, configs: List[Path]) -> None:
         """Fire-and-forget experiment runs as background subprocesses."""
         script = EXPERIMENTS_DIR / "run_experiment.py"
         if not script.exists():
@@ -180,3 +185,87 @@ strategy:
                 logger.info("ResearchPipeline: queued experiment %s", config.name)
             except Exception as e:
                 logger.warning("ResearchPipeline: failed to queue %s: %s", config.name, e)
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ----------------------------------------------------------------------
+class TestResearchPipelineEdgeCases(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Use a temporary directory for config files to keep tests isolated
+        self._temp_dir = Path(await asyncio.to_thread(lambda: os.makedirs(
+            Path(__file__).parent / "tmp_test_configs", exist_ok=True
+        )))
+        self.original_config_dir = CONFIGS_DIR
+        # Monkey‑patch CONFIGS_DIR to point to the temporary location
+        globals()["CONFIGS_DIR"] = Path(__file__).parent / "tmp_test_configs"
+
+    async def asyncTearDown(self):
+        # Clean up temporary files
+        for child in globals()["CONFIGS_DIR"].iterdir():
+            child.unlink()
+        globals()["CONFIGS_DIR"] = self.original_config_dir
+
+    async def test_generate_ideas_returns_empty_on_none_response(self):
+        """When the LLM returns None, _generate_research_ideas should return an empty list."""
+        async def fake_call_race(*args, **kwargs):
+            return None
+
+        # Patch the call_race function
+        original = globals()["call_race"]
+        globals()["call_race"] = fake_call_race
+        pipeline = ResearchPipeline()
+        ideas = await pipeline._generate_research_ideas("dummy context")
+        self.assertIsInstance(ideas, list)
+        self.assertEqual(len(ideas), 0)
+        # Restore original function
+        globals()["call_race"] = original
+
+    async def test_generate_ideas_handles_malformed_json(self):
+        """Malformed JSON from the LLM should be caught and result in an empty list."""
+        class BadResponse:
+            content = "Here is my answer: not a json array"
+
+        async def fake_call_race(*args, **kwargs):
+            return BadResponse()
+
+        original = globals()["call_race"]
+        globals()["call_race"] = fake_call_race
+        pipeline = ResearchPipeline()
+        ideas = await pipeline._generate_research_ideas("dummy context")
+        self.assertEqual(ideas, [])
+        globals()["call_race"] = original
+
+    async def test_ideas_to_experiment_configs_with_empty_ideas(self):
+        """Passing an empty ideas list should not raise and return an empty config list."""
+        pipeline = ResearchPipeline()
+        configs = await pipeline._ideas_to_experiment_configs([])
+        self.assertIsInstance(configs, list)
+        self.assertEqual(len(configs), 0)
+
+    async def test_ideas_to_experiment_configs_avoids_overwrite(self):
+        """If a config file already exists, it should be skipped, not overwritten."""
+        pipeline = ResearchPipeline()
+        # Prepare a dummy idea
+        idea = {
+            "name": "test_duplicate",
+            "model": "lstm",
+            "symbol": "BTC/USDT",
+            "interval": "1h",
+            "features": ["rsi_14"],
+            "hypothesis": "test hypothesis",
+        }
+        # Create a file with the same name beforehand
+        preexisting_path = CONFIGS_DIR / "test_duplicate.yaml"
+        preexisting_path.parent.mkdir(parents=True, exist_ok=True)
+        preexisting_path.write_text("preexisting content")
+
+        configs = await pipeline._ideas_to_experiment_configs([idea])
+        # The function should skip the existing file, returning an empty list
+        self.assertEqual(configs, [])
+        # Ensure the original content was not altered
+        self.assertEqual(preexisting_path.read_text(), "preexisting content")
+
+
+if __name__ == "__main__":
+    unittest.main()
