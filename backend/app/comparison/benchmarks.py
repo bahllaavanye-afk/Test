@@ -173,3 +173,60 @@ def get_benchmark_stats() -> dict:
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ----------------------------------------------------------------------
+import pytest
+
+@pytest.mark.asyncio
+async def test_invalid_date_range():
+    """Start date equal to end date should return an empty dict."""
+    from backend.app.comparison import benchmarks as bm
+    result = await bm.fetch_benchmark_curves(date(2023, 1, 1), date(2023, 1, 1))
+    assert result == {}
+
+@pytest.mark.asyncio
+async def test_all_weather_missing_tickers(monkeypatch):
+    """
+    When fewer than three All‑Weather component tickers are available,
+    the 'ALL_WEATHER' entry must be omitted.
+    """
+    from backend.app.comparison import benchmarks as bm
+
+    async def mock_fetch(client, ticker, start, end):
+        if ticker == "TLT":
+            dates = pd.date_range(start, end, freq="D")
+            return pd.Series([1.0] * len(dates), index=dates, name=ticker)
+        return pd.Series(dtype=float)
+
+    monkeypatch.setattr(bm, "_fetch_ticker_bars", mock_fetch)
+
+    result = await bm.fetch_benchmark_curves(date(2023, 1, 1), date(2023, 1, 10))
+    assert "ALL_WEATHER" not in result
+
+@pytest.mark.asyncio
+async def test_zero_start_price(monkeypatch):
+    """
+    Verify that a ticker whose first closing price is zero does not raise
+    an exception and returns infinite (or very large) normalized values.
+    """
+    from backend.app.comparison import benchmarks as bm
+
+    async def mock_fetch(client, ticker, start, end):
+        dates = pd.date_range(start, end, freq="D")
+        # first price zero, subsequent prices positive
+        values = [0.0] + [1.0] * (len(dates) - 1)
+        return pd.Series(values, index=dates, name=ticker)
+
+    monkeypatch.setattr(bm, "_fetch_ticker_bars", mock_fetch)
+
+    result = await bm.fetch_benchmark_curves(date(2023, 1, 1), date(2023, 1, 5))
+    # SPY is one of the standard benchmarks; it should be present
+    assert "SPY" in result
+    # Normalized values should be infinite due to division by zero
+    for entry in result["SPY"]:
+        # float('inf') compares equal to itself
+        assert entry["value"] == float("inf") or entry["value"] != entry["value"]  # NaN guard
+
+# End of file
