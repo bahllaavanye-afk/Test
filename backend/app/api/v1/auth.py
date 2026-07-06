@@ -298,8 +298,20 @@ async def google_oauth_callback(
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
 
-    # Redirect to frontend with tokens in query params (SPA handles them)
-    frontend_url = settings.cors_origins[0].strip()
+    # Redirect to frontend with tokens in query params (SPA handles them).
+    # FRONTEND_URL wins when set; otherwise prefer the first non-localhost CORS
+    # origin. Using cors_origins[0] blindly sent users to whatever was listed
+    # first — in prod that was the dead quantedge.vercel.app stub, so every
+    # successful Google login landed on Vercel's 404 page.
+    import os as _os
+
+    frontend_url = _os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+    if not frontend_url:
+        origins = [o.strip() for o in settings.cors_origins]
+        frontend_url = next(
+            (o for o in origins if "localhost" not in o and "127.0.0.1" not in o),
+            origins[0] if origins else "http://localhost:5173",
+        ).rstrip("/")
     redirect_url = (
         f"{frontend_url}/auth/google/callback"
         f"?access_token={access_token}&refresh_token={refresh_token}"

@@ -1,0 +1,36 @@
+name: Team Lead — review, assign, report
+
+# The management layer: reviews open automerge PRs (revokes automerge from any
+# autonomous PR touching protected files — the #298 failure mode), assigns
+# open agent-fix-needed issues to owning areas, and posts a facts-only digest
+# to Discord #leadership-summary. Deterministic; every line links to a real
+# PR/issue. Runs every 6h + on dispatch.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "23 */6 * * *"
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: team-lead
+  cancel-in-progress: true
+
+jobs:
+  manage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Review PRs, assign issues, report
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python .github/scripts/team_lead.py | tee -a "$GITHUB_STEP_SUMMARY"

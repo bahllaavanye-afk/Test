@@ -1,0 +1,37 @@
+name: Data Team — coverage, freshness, ML-readiness
+
+# The shared data function every other team sits on: verifies bars/quotes for
+# every desk symbol (equities + full crypto universe), that ML training windows
+# are satisfiable, and reports gaps to Discord #alpha-research. Files an
+# agent-fix-needed issue when >25% of the universe is broken. Deterministic —
+# no LLM in the data-quality path.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "7 */6 * * *"   # every 6h, offset from the desks
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: data-team
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Run data-quality audit
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/data_team.py | tee -a "$GITHUB_STEP_SUMMARY"

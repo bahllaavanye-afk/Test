@@ -75,7 +75,15 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Crypto",
         slack_channel="#desk-crypto",
-        symbols=["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD"],
+        # Full Alpaca US crypto universe (majors + liquid alts) — the desk was
+        # stuck on 4 pairs while Alpaca supports ~20. More symbols = more
+        # independent shots at a ≥conf_min setup every 24/7 run; per-desk
+        # top-K + Kelly caps keep total exposure unchanged.
+        symbols=[
+            "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD",
+            "LTC/USD", "DOGE/USD", "LINK/USD", "UNI/USD",
+            "AAVE/USD", "BCH/USD", "DOT/USD", "XRP/USD",
+        ],
         # basis_carry / funding_rate_arb (Binance 451 geo-block from US
         # runners) and mvrv_zscore_timing (CoinGecko now requires an API key)
         # can NEVER fetch their data here — they errored on every run. Removed
