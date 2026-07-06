@@ -30,7 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Scheduled runs execute on the default branch's copy; pin main so the scan
+      # sees the latest merged code (enforced by test_script_safety.py).
       - uses: actions/checkout@v4
+        with: { ref: main }
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
