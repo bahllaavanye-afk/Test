@@ -1,0 +1,93 @@
+name: Key Relay — GitHub secrets → Render env (no manual steps)
+
+# The user adds keys ONCE as GitHub repo secrets; this relays them to the
+# backend's Render environment so the running app gets them too — no dashboard
+# clicking. Same pattern as sync-anthropic-key.yml (which proved RENDER_API_KEY
+# + RENDER_SERVICE_ID work), generalized to every runtime credential. Values
+# never touch the repo or logs; empty secrets are skipped with a note.
+#
+# Triggers: self-trigger on main (edit this file to re-run), daily schedule
+# (gate merges via GITHUB_TOKEN can't fire the self-trigger), and manual
+# dispatch. Ends with a deploy poke so the backend restarts with the new env —
+# which also makes the startup jobs (Discord channel/commands setup) run.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: [".github/workflows/key-relay.yml"]
+  schedule:
+    - cron: "41 4 * * *"   # daily 04:41 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: key-relay
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Relay secrets to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          # Everything below is relayed if non-empty. Add a new line here +
+          # the repo secret and it reaches the backend on the next run.
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          POLYMARKET_PRIVATE_KEY: ${{ secrets.POLYMARKET_PRIVATE_KEY }}
+          POLYMARKET_KEY_ID: ${{ secrets.POLYMARKET_KEY_ID }}
+          POLYMARKET_KEY_SECRET: ${{ secrets.POLYMARKET_KEY_SECRET }}
+          TRADESTATION_CLIENT_ID: ${{ secrets.TRADESTATION_CLIENT_ID }}
+          TRADESTATION_SECRET: ${{ secrets.TRADESTATION_SECRET }}
+          KALSHI_KEY_ID: ${{ secrets.KALSHI_KEY_ID }}
+          KALSHI_KEY_SECRET: ${{ secrets.KALSHI_KEY_SECRET }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "❌ RENDER_API_KEY / RENDER_SERVICE_ID secrets missing — cannot relay" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          relay() {  # $1 = env var name; value read from the step env, never echoed
+            local name="$1"
+            local val="${!name}"
+            if [ -z "$val" ]; then
+              echo "· $name: not set — skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+              return 0
+            fi
+            local code
+            code=$(curl -sS -o /dev/null -w "%{http_code}" -X PUT \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/$name" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Content-Type: application/json" \
+              --data "{\"value\": $(printf '%s' "$val" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}")
+            if [ "$code" = "200" ] || [ "$code" = "201" ]; then
+              echo "✅ $name relayed" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "⚠️ $name relay failed (HTTP $code)" | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          for k in ALPACA_API_KEY ALPACA_SECRET_KEY DISCORD_BOT_TOKEN DISCORD_WEBHOOK_URL \
+                   POLYMARKET_PRIVATE_KEY POLYMARKET_KEY_ID POLYMARKET_KEY_SECRET \
+                   TRADESTATION_CLIENT_ID TRADESTATION_SECRET \
+                   KALSHI_KEY_ID KALSHI_KEY_SECRET OPENROUTER_API_KEY GROQ_API_KEY; do
+            relay "$k"
+          done
+
+      - name: Trigger deploy so the backend picks up the new env
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          code=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" --data '{}')
+          echo "Deploy poke: HTTP $code (429 is fine — the merge train's autodeploy covers it)" | tee -a "$GITHUB_STEP_SUMMARY"

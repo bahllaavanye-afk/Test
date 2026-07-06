@@ -757,6 +757,31 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _bot_lifecycle() -> None:
+        """Autonomous fleet management — disable losers, promote winners, grow the fleet.
+
+        The 'employee using Options Alpha' loop with no human: deterministic
+        policy over each bot's real closed-trade record (app/bots/lifecycle.py).
+        Conservative evidence thresholds so bots aren't churned on noise.
+        """
+        try:
+            from app.bots.lifecycle import run_bot_lifecycle
+
+            await run_bot_lifecycle(db_session_factory)
+        except Exception as exc:
+            logger.error("Bot lifecycle tick failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="bot_lifecycle",
+            trigger="interval",
+            trigger_args={"hours": 6},
+            func=_bot_lifecycle,
+            description="Disable losing bots, re-enable recovered ones, instantiate missing templates.",
+        ),
+    )
+
     # main.py calls start_scheduler() and stores the result without calling .start()
     # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
     # call, which registered jobs but never ran them (snapshot/retrain/order_sync/
