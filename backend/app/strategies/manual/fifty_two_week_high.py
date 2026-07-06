@@ -1,37 +1,8 @@
-"""
-52-Week High Proximity Momentum
-=================================
-Source: George & Hwang (2004) "The 52-Week High and Momentum Investing",
-Journal of Finance.
-
-George & Hwang make a startling claim: a stock's proximity to its 52-week high
-is a STRONGER cross-sectional predictor of future returns than its past 6 or
-12-month return. Their preferred metric:
-
-        signal_i = price_i,t  /  max(price_i, t-252 .. t)
-
-Stocks trading NEAR their 52-week high (signal > 0.95) systematically outperform
-stocks trading far below. The economic story is anchoring bias: investors
-underreact to good news that pushes a price close to its prior high (fearing
-the anchor) and overreact to bad news that pushes it well below.
-
-Crucially, in horse-race regressions, the 52-week-high signal SUBSUMES the
-classical 12-month-return signal — momentum is mostly an anchoring artefact.
-
-Strategy:
-  - Liquid universe (large-cap S&P names with deep volume)
-  - Long stocks with 0.95 < close / 52w_high < 1.0
-    (close to anchor, but not at all-time-high — avoiding fresh blow-off tops)
-  - Skip "broken" names: close / 52w_high < 0.5
-  - Rebalance monthly, equal-weight, ~6-month holding period.
-"""
-
-import asyncio
-from datetime import date, timedelta
-
 import httpx
 import numpy as np
 import pandas as pd
+
+from datetime import date, timedelta
 
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
@@ -128,8 +99,6 @@ class FiftyTwoWeekHighStrategy(AbstractStrategy):
         if ratio >= self.NEAR_HIGH_CEILING:
             # at or above prior 52w high — avoid blow-off-top buys
             return None
-        if ratio < self.BROKEN_THRESHOLD:
-            return None  # redundant given >= 0.95, but explicit
 
         # Confidence: tighter to the high → higher confidence, scaled in [0.95, 1.0)
         confidence = float(min(0.60 + 4.0 * (ratio - self.NEAR_HIGH_THRESHOLD), 0.95))
