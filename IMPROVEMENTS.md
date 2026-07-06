@@ -15,6 +15,16 @@ _Last updated: 2026-06-29_
 
 ## Session 2026-06-29 — review backlog (see `docs/REVIEW_2026-06-29.md`)
 Queued for the autonomous loop / employees. Priority order top-to-bottom.
+- [ ] **[P0] OA Scout — auto-copy new Options Alpha bots daily** — workflow fetches the
+  public optionalpha.com template/library pages, diffs against .github/state/oa_library.json,
+  LLM-parses any NEW bot into a BOT_TEMPLATES entry (delta/DTE/TP/entry window), opens a
+  reward-gated PR, posts the find to #alpha-research. Runs daily + on CI events. Private
+  account bots can't be scraped (auth) — screenshots remain the path for those.
+- [ ] **[P1] ForexFactory calendar feed** — ingest the public ff_calendar_thisweek.json into
+  /market-data/forex-calendar and gate Macro/FX desk entries around red-folder events.
+- [ ] **[P2] TradingView/FxReplay/Tradezilla** — no public trade APIs (manual UIs);
+  TradingView useful as charts + webhook-IN alerts (receiver endpoint), not for dummy
+  trading automation. Document + build the webhook receiver only.
 - [ ] **[P0] Options Alpha dashboard parity in the frontend** — per-bot detail view in
   BotBuilder: cumulative P&L graph (endpoint /bots/{id}/performance is LIVE), open
   positions table (orders with bot_id in raw_payload), trade history (Trades by
