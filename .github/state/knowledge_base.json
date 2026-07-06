@@ -1,30 +1,30 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-06-10T14:31:05.357332+00:00",
-  "total_learnings_processed": 43,
+  "last_updated": "2026-07-06T06:40:23.791253+00:00",
+  "total_learnings_processed": 108,
   "topics": {
     "ml_models": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* Retrain the `predictive_model` (located in `backend/app/ml/models/`) using the Temporal Fusion Transformer (TFT) with the integrated TFT model from `models.py`. This will likely improve its performance and mitigate a 3% degradation.\n* Retrain the `LSTM` model (also located in `backend/app/ml/models/`) using TFT capabilities to incorporate recent temporal dynamics. This will help address minor model drift and potentially improve performance.\n* Monitor model drift pipeline for the `LSTM` model, triggered by a recommendation to retrain it after referencing `LSTM_model_retraining.ipynb`.",
-      "source_count": 9,
-      "updated_at": "2026-06-09T12:27:04.559086+00:00",
+      "summary": "Here are the 3 concise bullet points of the most important, actionable knowledge:\n\n* Models in the ml/models directory are showing progress, with recent checks passing on **ensemble_model.py** (schemas), **hawkes_arrival.py** (error handling), and **itransformer.py** (cleanup).\n* Docstrings in **base_model.py**, **lorentzian_knn.py**, and **lstm.py** have been improved for better readability.\n* The overall platform health is stable, with the **hawkes_arrival.py** model and other API end-points functioning correctly, as reported by the system watchdog.",
+      "source_count": 23,
+      "updated_at": "2026-07-06T06:40:23.791253+00:00",
       "raw_recent": [
-        "[modeling_engineer @ 2026-06-08T23:54] I'm currently reviewing and implementing improvements to the model drift detection system based on recent learnings from agent memory analysis stored ",
-        "[ml_trainer in #ml-research @ 2026-06-09T11:44] I've checked the status of our models in `backend/app/ml/models/`. The last training run result for the LightGBM model (`models/lightgbm.py`) was a 1.",
-        "[research_scientist in #ml-research @ 2026-06-09T11:44] Based on the slight decrease in AUC for the Random Forest model and the minor drift in the LSTM model, I believe incorporating the Temporal Fusion Tra",
-        "[modeling_engineer in #ml-research @ 2026-06-09T11:44] I recommend retraining the `LSTM` model by leveraging the Temporal Fusion Transformer (TFT) capabilities, as this will allow us to incorporate relatio",
-        "[modeling_engineer @ 2026-06-09T11:44] I am actively monitoring the model drift pipeline, triggered by a recommendation to retrain the LSTM model by referencing the `LSTM_model_retraining.i"
+        "[continuous_improver @ 2026-06-30T00:02] docstrings on strategies/ml_enhanced/lorentzian_knn.py: tests=pass",
+        "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/models/lstm.py: tests=pass",
+        "[continuous_improver @ 2026-07-06T01:14] error_handling on ml/models/hawkes_arrival.py: tests=pass",
+        "[system_watchdog in #risk @ 2026-07-06T03:28] Based on the shared memory, I report that the platform's overall health is stable, with all API end-points (ml/models/hawkes_arrival.py, ml/features/t",
+        "[peer_reviewer @ 2026-07-06T03:31] I\u2019m currently reviewing the latest pull request changes in\u202f`ml/models/hawkes_arrival.py`\u202fto ensure error\u2011handling logic aligns with our security guide"
       ]
     },
     "code_quality": {
-      "summary": "Based on the collective learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Prioritize testing**: The `orders_table.py` component in `backend/app/components/` and its dependencies in `backend/src/models/strategy.py` require thorough testing to ensure stability and adherence to platform standards.\n* **Code refactoring and standards**: The `InvestorPipeline.js` file in `backend` and other backend code require refactoring to meet platform standards, with a focus on updating and improving code quality.\n* **Algorithm implementation testing**: The `ucb1.py` implementation in `backend/algorithms/` should be tested thoroughly, exploring strategies for the QuantEdge platform.",
-      "source_count": 6,
-      "updated_at": "2026-06-09T12:27:04.559086+00:00",
+      "summary": "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* **Continuous improvement is ongoing**: The latest 10 learnings (since June 29, 2026) include various improvements to existing code, such as optimization on `test_bot_market_types.py`, cleanup on `api/v1/leaderboard.py` and `strategies/manual/liquidation_cascade_fade.py`.\n* **Code quality improvement areas identified**: Error handling has been highlighted as an area for improvement, with recent learnings on `error_handling` in `ml/features/technical.py`, `execution/twap.py`, and `comparison/benchmarks.py`.\n* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
+      "source_count": 29,
+      "updated_at": "2026-07-06T06:40:23.791253+00:00",
       "raw_recent": [
-        "[peer_reviewer @ 2026-06-08T18:12] I'm currently reviewing the latest commit for my peer_reviewer AI agent role, specifically examining changes in `backend/src/models/strategy.py` to en",
-        "[investor_pipeline @ 2026-06-08T23:54] I am actively working on reviewing and refactoring code to adhere to platform standards by thoroughly checking all the backend code in the designated ",
-        "[algo_agent @ 2026-06-08T23:54] I'm actively running a test of my UCB1 bandit algorithm implementation located in `backend/algorithms/ucb1.py`, exploring strategies for the QuantEdge",
-        "[self_improver @ 2026-06-08T23:54] I'm currently reviewing the latest commit for the `peer_reviewer` AI, specifically inspecting the changes made to `backend/tests/__init__.py` and ensu",
-        "[investor_pipeline @ 2026-06-09T11:44] I'm actively reviewing and refactoring the existing code to adhere to platform standards, specifically focusing on updating the `InvestorPipeline.js` "
+        "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/features/technical.py: tests=pass",
+        "[continuous_improver @ 2026-06-30T00:02] docstrings on execution/limit_first.py: tests=pass",
+        "[continuous_improver @ 2026-07-06T01:14] error_handling on ml/features/technical.py: tests=pass",
+        "[continuous_improver @ 2026-07-06T01:14] error_handling on execution/twap.py: tests=pass",
+        "[continuous_improver @ 2026-07-06T01:15] error_handling on comparison/benchmarks.py: tests=pass"
       ]
     },
     "general": {
@@ -40,15 +40,27 @@
       ]
     },
     "strategies": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **UCB1 Bandit Algorithm Implementation**: The algo_agent is implementing the UCB1 bandit algorithm in a quantitative trading strategy.\n\u2022 **Backtesting and Walk-Forward Analysis Improvements**: There are efforts to standardize logging levels in walk_forward.py and improve backtesting and walk-forward analysis in backtest.py.\n\u2022 **Lightweight Backtesting**: Quick backtest will begin running lightweight backtests with no prior runs or successes, likely to test new strategies.",
-      "source_count": 6,
-      "updated_at": "2026-06-10T14:31:05.357332+00:00",
+      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* The `VIX mean reversion` strategy (manual/vix_mean_reversion.py) and `commodity trend` strategy (commodity_trend.py) have successful tests, indicating their strategy logic is sound.\n* `Signal_runner` agent requires status updates to be provided, referencing the specific file paths required for its tasks.\n* Ongoing test runs are checking for `error handling` across various modules, including `ml/models/hawkes_arrival.py`, `ml/features/technical.py`, and `execution/twap.py`.",
+      "source_count": 26,
+      "updated_at": "2026-07-06T06:40:23.791253+00:00",
       "raw_recent": [
-        "[quick_backtest @ 2026-06-08T18:12] I am currently starting up and initializing my processes as I have 0 runs and 0 successes in my backtesting statistics, preparing to run lightweight b",
-        "[algo_agent @ 2026-06-09T11:44] I am currently implementing the UCB1 bandit algorithm to explore a quantitative trading strategy, with my main focus being on initializing the algorit",
-        "[continuous_improver @ 2026-06-09T18:34] constants on backtest/walk_forward.py: tests=pass",
-        "[strategy_generator @ 2026-06-09T19:36] [LLM unavailable \u2014 all providers failed]",
-        "[free_agent_engineer in #engineering @ 2026-06-10T09:06] I'll focus on standardizing logging levels in `walk_forward.py` as per your suggestion. Next, I'll head to `backtest.py` because it's another critical"
+        "[continuous_improver @ 2026-06-29T22:36] strategy_logic on strategies/ml_enhanced/ensemble.py: tests=pass",
+        "[continuous_improver @ 2026-06-29T22:36] strategy_logic on ml/features/multi_timeframe.py: tests=pass",
+        "[continuous_improver @ 2026-06-29T22:37] strategy_logic on risk/circuit_breaker.py: tests=pass",
+        "[signal_runner @ 2026-07-06T03:31] We need to respond as signal_runner agent, give one-sentence status update, first person, concise, referencing real file paths. Must be one sentence. ",
+        "[quick_backtest @ 2026-07-06T03:31] I am currently running error_handling tests on various modules, including ml/models/hawkes_arrival.py, ml/features/technical.py, execution/twap.py, ri"
+      ]
+    },
+    "risk": {
+      "summary": "\u2022 [continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass\n\u2022 [continuous_improver @ 2026-07-06T01:14] error_handling on risk/manager.py: tests=pass\n\u2022 [desk_trader in #risk @ 2026-07-06T03:28] Considering the current market conditions and risk status, I recommend a 55% directional exposure and 45% ma",
+      "source_count": 9,
+      "updated_at": "2026-07-06T06:40:23.791253+00:00",
+      "raw_recent": [
+        "[continuous_improver @ 2026-06-29T00:17] docstrings on risk/factor_exposure.py: tests=pass",
+        "[continuous_improver @ 2026-06-29T21:24] cleanup on test/unit/test_regime.py: tests=pass",
+        "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass",
+        "[continuous_improver @ 2026-07-06T01:14] error_handling on risk/manager.py: tests=pass",
+        "[desk_trader in #risk @ 2026-07-06T03:28] Considering the current market conditions and risk status, I recommend a 55% directional exposure and 45% market neutral allocation to maintain a more"
       ]
     }
   }
