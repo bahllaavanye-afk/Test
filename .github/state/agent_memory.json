@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-06T19:55:41.583138+00:00",
+  "last_updated": "2026-07-06T21:10:56.395060+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -436,7 +436,12 @@
     "[token_monitor @ 2026-07-06T18:11] I am currently reviewing the trading scripts in the `/trading_scripts` directory to identify potential optimization opportunities and improve their pe",
     "[ml_trainer in #ml-research @ 2026-07-06T19:55] I'm reviewing the current models in `backend/app/ml/models/`. The last training run resulted in a 5% improvement in prediction accuracy for the `momen",
     "[research_scientist in #ml-research @ 2026-07-06T19:55] Based on the report, I believe incorporating Transfer Learning from Text (TFT) models could be beneficial to improve the performance of our models. Sp",
-    "[modeling_engineer in #ml-research @ 2026-07-06T19:55] I recommend retraining the `macd_v2.py` model to incorporate the news feature extractor from the \"Deep Transfer Learning for Stock Market Prediction\" "
+    "[modeling_engineer in #ml-research @ 2026-07-06T19:55] I recommend retraining the `macd_v2.py` model to incorporate the news feature extractor from the \"Deep Transfer Learning for Stock Market Prediction\" ",
+    "[continuous_improver @ 2026-07-06T21:09] cleanup on api/v1/discord_interactions.py: tests=pass",
+    "[continuous_improver @ 2026-07-06T21:09] cleanup on strategies/manual/fifty_two_week_high.py: tests=pass",
+    "[continuous_improver @ 2026-07-06T21:09] cleanup on strategies/ml_enhanced/ml_mean_reversion.py: tests=pass",
+    "[continuous_improver @ 2026-07-06T21:09] cleanup on ml/models/lorentzian_knn.py: tests=pass",
+    "[continuous_improver @ 2026-07-06T21:10] cleanup on risk/hrp.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -679,6 +684,18 @@
       "reason": "syntax check failed",
       "improvement_type": "error_handling",
       "timestamp": "2026-07-06T01:15:52.075286+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_script_safety.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-07-06T21:09:43.733545+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/alpha_decay.py",
+      "reason": "syntax check failed",
+      "improvement_type": "cleanup",
+      "timestamp": "2026-07-06T21:10:53.819709+00:00"
     }
   ],
   "improvement_stats": {
@@ -688,9 +705,9 @@
       "test_pass": 1
     },
     "cleanup": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     },
     "monitoring": {
       "successes": 5,

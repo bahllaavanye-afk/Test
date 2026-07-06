@@ -117,8 +117,13 @@
     "Verify DB connections",
     "Review code changes",
     "Optimize trading scripts",
-    "Improve model docs"
+    "Improve model docs",
+    "cleanup on api/v1/discord_interactions.py: success \u2014 tests green",
+    "cleanup on strategies/manual/fifty_two_week_high.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "cleanup on ml/models/lorentzian_knn.py: success \u2014 tests green",
+    "cleanup on risk/hrp.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-06T19:13:58.796030+00:00",
+  "last_updated": "2026-07-06T21:10:56.394823+00:00",
   "total": 118
 }
