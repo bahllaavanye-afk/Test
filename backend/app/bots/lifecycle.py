@@ -24,7 +24,7 @@ from app.utils.logging import logger
 MIN_TRADES_TO_JUDGE = 8       # need this many closed trades before disabling
 DISABLE_WIN_RATE = 0.45       # losing money AND winning < 45% → disable
 MIN_TRADES_TO_PROMOTE = 5     # positive record this size → re-enable
-MAX_CREATES_PER_RUN = 2       # bounded fleet growth per cycle
+MAX_CREATES_PER_RUN = 4       # bounded fleet growth per cycle (11 OA clones → full rollout in ~3 cycles)
 
 
 @dataclass
