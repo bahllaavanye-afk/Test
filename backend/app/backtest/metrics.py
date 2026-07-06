@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 
 @dataclass
@@ -56,8 +56,8 @@ class BacktestMetrics:
 
 def _max_consecutive_true(arr: np.ndarray) -> int:
     """
-    Return the length of the longest run of consecutive `True` (or 1) values.
-    Uses a pure‑numpy implementation to avoid pandas overhead.
+    Return the length of the longest run of consecutive ``True`` (or ``1``)
+    values using a pure‑numpy implementation.
     """
     if arr.size == 0:
         return 0
@@ -71,6 +71,58 @@ def _max_consecutive_true(arr: np.ndarray) -> int:
     if starts.size == 0:
         return 0
     return int((ends - starts).max())
+
+
+def _calc_drawdowns(equity: pd.Series) -> Tuple[float, float, int]:
+    """
+    Compute maximum drawdown, average drawdown, and longest drawdown duration.
+    """
+    rolling_max = equity.cummax()
+    drawdown_series = (equity - rolling_max) / rolling_max  # ≤ 0
+
+    max_dd = float(drawdown_series.min())
+    max_dd_pct = round(max_dd * 100, 4)
+
+    if (drawdown_series < 0).any():
+        avg_dd = float(drawdown_series[drawdown_series < 0].mean())
+        avg_dd_pct = round(avg_dd * 100, 4)
+    else:
+        avg_dd_pct = 0.0
+
+    in_dd = (drawdown_series < 0).values.astype(np.int8)
+    max_dd_duration = _max_consecutive_true(in_dd)
+
+    return max_dd_pct, avg_dd_pct, int(max_dd_duration)
+
+
+def _calc_trade_stats(trades: Optional[pd.DataFrame], daily_returns: pd.Series) -> Tuple[int, float, float, float, float]:
+    """
+    Derive trade‑level statistics. If a ``trades`` DataFrame with a
+    ``pnl`` column is supplied, it is used directly; otherwise an
+    approximate set of statistics is derived from daily returns.
+    """
+    if trades is not None and "pnl" in trades.columns:
+        pnl = trades["pnl"].dropna().astype(float)
+        total_trades = int(pnl.shape[0])
+        wins = pnl[pnl > 0]
+        losses = pnl[pnl < 0]
+
+        win_rate = round(wins.shape[0] / total_trades, 4) if total_trades > 0 else 0.0
+        avg_win_pct = round(wins.mean() * 100, 4) if not wins.empty else 0.0
+        avg_loss_pct = round(losses.mean() * 100, 4) if not losses.empty else 0.0
+        profit_factor = round(wins.sum() / abs(losses.sum()), 4) if not losses.empty and losses.sum() != 0 else np.inf
+    else:
+        # Approximation: treat each positive daily return as a “win” and each negative as a “loss”.
+        pos = daily_returns[daily_returns > 0]
+        neg = daily_returns[daily_returns < 0]
+
+        total_trades = int(daily_returns.shape[0])
+        win_rate = round(pos.shape[0] / total_trades, 4) if total_trades > 0 else 0.0
+        avg_win_pct = round(pos.mean() * 100, 4) if not pos.empty else 0.0
+        avg_loss_pct = round(neg.mean() * 100, 4) if not neg.empty else 0.0
+        profit_factor = round(pos.sum() / abs(neg.sum()), 4) if not neg.empty and neg.sum() != 0 else np.inf
+
+    return total_trades, win_rate, avg_win_pct, avg_loss_pct, profit_factor
 
 
 def compute_metrics(
@@ -103,6 +155,8 @@ def compute_metrics(
     # Clean data
     # ------------------------------------------------------------------
     equity = equity_curve.dropna().astype(float)
+    if equity.empty:
+        raise ValueError("Equity curve contains only NaN values")
     daily_returns = equity.pct_change().dropna()
     if daily_returns.empty:
         raise ValueError("Equity curve must contain at least one non‑zero return")
@@ -127,47 +181,26 @@ def compute_metrics(
     # ------------------------------------------------------------------
     # Sharpe (rf = 0)
     # ------------------------------------------------------------------
-    sharpe = (
-        float(daily_mean / daily_std * np.sqrt(252)) if daily_std > 0 else 0.0
-    )
+    sharpe = (daily_mean / daily_std * np.sqrt(252)) if daily_std > 0 else 0.0
 
     # ------------------------------------------------------------------
     # Sortino (downside deviation)
     # ------------------------------------------------------------------
     downside = daily_returns[daily_returns < 0]
     downside_std = float(downside.std()) if len(downside) > 1 else 0.0
-    sortino = (
-        float(daily_mean / downside_std * np.sqrt(252))
-        if downside_std > 0
-        else 0.0
-    )
+    sortino = (daily_mean / downside_std * np.sqrt(252)) if downside_std > 0 else 0.0
 
     # ------------------------------------------------------------------
     # Drawdown metrics
     # ------------------------------------------------------------------
-    rolling_max = equity.cummax()
-    drawdown_series = (equity - rolling_max) / rolling_max  # <= 0
-
-    max_drawdown = float(drawdown_series.min())  # most negative
-    max_drawdown_pct = round(max_drawdown * 100, 4)
-
-    if (drawdown_series < 0).any():
-        avg_dd = float(drawdown_series[drawdown_series < 0].mean())
-        avg_drawdown_pct = round(avg_dd * 100, 4)
-    else:
-        avg_drawdown_pct = 0.0
-
-    # Max drawdown duration: longest consecutive period below the peak
-    in_dd = (drawdown_series < 0).values.astype(np.int8)
-    max_dd_duration = _max_consecutive_true(in_dd)
-    max_drawdown_duration_days = int(max_dd_duration)
+    max_dd_pct, avg_dd_pct, max_dd_duration = _calc_drawdowns(equity)
 
     # ------------------------------------------------------------------
     # Calmar & Recovery factor
     # ------------------------------------------------------------------
-    if max_drawdown != 0:
-        calmar = round(annual_return / abs(max_drawdown), 4)
-        recovery_factor = round(total_return / abs(max_drawdown), 4)
+    if max_dd_pct != 0:
+        calmar = round(annual_return / abs(max_dd_pct / 100), 4)
+        recovery_factor = round(total_return / abs(max_dd_pct / 100), 4)
     else:
         calmar = 0.0
         recovery_factor = 0.0
@@ -202,7 +235,7 @@ def compute_metrics(
     # ------------------------------------------------------------------
     # Monthly best / worst
     # ------------------------------------------------------------------
-    if hasattr(equity.index, "to_period"):
+    if hasattr(equity.index, "freq") or hasattr(equity.index, "to_period"):
         monthly = equity.resample("ME").last()
         monthly_returns = monthly.pct_change().dropna()
     else:
@@ -218,52 +251,22 @@ def compute_metrics(
     # ------------------------------------------------------------------
     # Trade‑level statistics
     # ------------------------------------------------------------------
-    total_trades = 0
-    win_rate = 0.0
-    avg_win_pct = 0.0
-    avg_loss_pct = 0.0
-    profit_factor = 0.0
+    total_trades, win_rate, avg_win_pct, avg_loss_pct, profit_factor = _calc_trade_stats(
+        trades, daily_returns
+    )
 
-    if trades is not None and len(trades) > 0 and "pnl" in trades.columns:
-        pnl = trades["pnl"].dropna().astype(float)
-        total_trades = len(pnl)
-        wins = pnl[pnl > 0]
-        losses = pnl[pnl <= 0]
-
-        win_rate = round(len(wins) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(wins.mean()) * 100, 4) if len(wins) else 0.0
-        avg_loss_pct = round(float(losses.mean()) * 100, 4) if len(losses) else 0.0
-
-        sum_losses = float(losses.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(wins.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(wins) else 0.0
-    else:
-        # Approximate trade stats from daily returns
-        total_trades = len(daily_returns)
-        pos = daily_returns[daily_returns > 0]
-        neg = daily_returns[daily_returns <= 0]
-
-        win_rate = round(len(pos) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(pos.mean()) * 100, 4) if len(pos) else 0.0
-        avg_loss_pct = round(float(neg.mean()) * 100, 4) if len(neg) else 0.0
-
-        sum_losses = float(neg.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(pos.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(pos) else 0.0
-
+    # ------------------------------------------------------------------
+    # Assemble result
+    # ------------------------------------------------------------------
     return BacktestMetrics(
         total_return_pct=total_return_pct,
         annual_return_pct=annual_return_pct,
         sharpe=sharpe,
         sortino=sortino,
         calmar=calmar,
-        max_drawdown_pct=max_drawdown_pct,
-        avg_drawdown_pct=avg_drawdown_pct,
-        max_drawdown_duration_days=max_drawdown_duration_days,
+        max_drawdown_pct=max_dd_pct,
+        avg_drawdown_pct=avg_dd_pct,
+        max_drawdown_duration_days=max_dd_duration,
         total_trades=total_trades,
         win_rate=win_rate,
         avg_win_pct=avg_win_pct,
