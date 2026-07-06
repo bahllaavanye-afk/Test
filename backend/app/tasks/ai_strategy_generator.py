@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,14 +24,15 @@ from app.tasks.agent_memory import AgentMemory
 logger = logging.getLogger(__name__)
 
 STAGING_DIR = Path(__file__).parent.parent / "strategies" / "staging"
+_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
-_STRATEGY_TEMPLATE = '''"""
+_STRATEGY_TEMPLATE = """\"\"\"
 Auto-generated strategy proposal by AIStrategyGenerator.
 Generated: {timestamp}
 Hypothesis: {hypothesis}
 Expected Sharpe: {expected_sharpe}
 Status: STAGING (requires human approval)
-"""
+\"\"\"
 from __future__ import annotations
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
@@ -62,7 +62,7 @@ class {class_name}(AbstractStrategy):
             return None
 {analyze_body}
         return None
-'''
+"""
 
 
 class AIStrategyGenerator:
@@ -85,11 +85,14 @@ class AIStrategyGenerator:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
@@ -137,14 +140,18 @@ For each strategy, provide:
                     if name and name not in seen:
                         seen.add(name)
                         all_proposals.append(p)
+                        if len(all_proposals) >= 2:
+                            break
+                if len(all_proposals) >= 2:
+                    break
             except Exception:
                 continue
 
-        return all_proposals[:2]
+        return all_proposals
 
     def _write_staging_file(self, proposal: dict) -> Path | None:
         name = proposal.get("name", "")
-        if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
+        if not name or not _NAME_PATTERN.fullmatch(name):
             return None
 
         path = STAGING_DIR / f"{name}.py"
@@ -155,26 +162,31 @@ For each strategy, provide:
         exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
 
         # Build simple backtest body from entry/exit conditions
-        backtest_body = "        close = df['close']\n"
-        backtest_body += "        rsi = ta.rsi(close, length=14).fillna(50)\n"
-        backtest_body += "        ema_21 = ta.ema(close, length=21).fillna(close)\n"
-        backtest_body += "        entries = pd.Series(False, index=df.index)\n"
-        backtest_body += "        exits = pd.Series(False, index=df.index)\n"
-        backtest_body += f"        # Entry: {', '.join(entry_conditions)}\n"
-        backtest_body += "        entries = (rsi < 35) & (close > ema_21)\n"
-        backtest_body += f"        # Exit: {', '.join(exit_conditions)}\n"
-        backtest_body += "        exits = rsi > 65\n"
+        backtest_body = (
+            "        close = df['close']\n"
+            "        rsi = ta.rsi(close, length=14).fillna(50)\n"
+            "        ema_21 = ta.ema(close, length=21).fillna(close)\n"
+            "        entries = pd.Series(False, index=df.index)\n"
+            "        exits = pd.Series(False, index=df.index)\n"
+            f"        # Entry: {', '.join(entry_conditions)}\n"
+            "        entries = (rsi < 35) & (close > ema_21)\n"
+            f"        # Exit: {', '.join(exit_conditions)}\n"
+            "        exits = rsi > 65\n"
+        )
 
-        analyze_body = "        close = data['close']\n"
-        analyze_body += "        rsi = ta.rsi(close, length=14)\n"
-        analyze_body += "        if rsi is None or rsi.empty: return None\n"
-        analyze_body += "        last_rsi = rsi.iloc[-1]\n"
-        analyze_body += "        ema_21 = ta.ema(close, length=21).iloc[-1]\n"
-        analyze_body += "        if last_rsi < 35 and close.iloc[-1] > ema_21:\n"
-        analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
+        analyze_body = (
+            "        close = data['close']\n"
+            "        rsi = ta.rsi(close, length=14)\n"
+            "        if rsi is None or rsi.empty: return None\n"
+            "        last_rsi = rsi.iloc[-1]\n"
+            "        ema_21 = ta.ema(close, length=21).iloc[-1]\n"
+            "        if last_rsi < 35 and close.iloc[-1] > ema_21:\n"
+            "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
+        )
 
+        timestamp = datetime.now(timezone.utc).isoformat()
         code = _STRATEGY_TEMPLATE.format(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=timestamp,
             hypothesis=proposal.get("hypothesis", "AI-generated strategy"),
             expected_sharpe=proposal.get("expected_sharpe", 0.8),
             class_name=proposal.get("class_name", "AutoStrategy"),
