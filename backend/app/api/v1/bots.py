@@ -103,6 +103,70 @@ async def get_bot(
     return bot
 
 
+@router.get("/{bot_id}/performance", response_model=dict)
+async def get_bot_performance(
+    bot_id: str,
+    days: int = 30,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Option Alpha-style per-bot performance: cumulative realized P&L series + stats.
+
+    Built from real closed Trade rows attributed to this bot (strategy_name ==
+    bot.name, written by check_bot_exits). Honest: an empty series means the bot
+    hasn't closed a position yet — nothing is fabricated. Powers the per-bot
+    sparkline in BotBuilder (the requested screenshot-parity graph).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.trade import Trade
+
+    bot = await _get_user_bot(bot_id, current_user.id, db)
+    days = max(1, min(days, 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = (await db.execute(
+        select(Trade)
+        .where(Trade.strategy_name == bot.name, Trade.closed_at >= since)
+        .order_by(Trade.closed_at.asc())
+    )).scalars().all()
+
+    series: list[dict] = []
+    cum = 0.0
+    wins = 0
+    peak = 0.0
+    max_dd = 0.0
+    holds: list[int] = []
+    for t in rows:
+        pnl = float(t.realized_pnl or 0)
+        cum += pnl
+        if pnl > 0:
+            wins += 1
+        peak = max(peak, cum)
+        max_dd = max(max_dd, peak - cum)
+        if t.hold_seconds:
+            holds.append(int(t.hold_seconds))
+        series.append({
+            "date": t.closed_at.isoformat() if t.closed_at else None,
+            "pnl": round(pnl, 2),
+            "cum_pnl": round(cum, 2),
+            "symbol": t.symbol,
+        })
+
+    n = len(rows)
+    return {
+        "bot_id": bot.id,
+        "bot_name": bot.name,
+        "days": days,
+        "series": series,
+        "total_pnl": round(cum, 2),
+        "trades": n,
+        "win_rate": round(wins / n, 4) if n else None,
+        "max_drawdown": round(max_dd, 2),
+        "avg_hold_hours": round(sum(holds) / len(holds) / 3600, 2) if holds else None,
+    }
+
+
 @router.patch("/{bot_id}", response_model=BotOut)
 async def update_bot(
     bot_id: str,

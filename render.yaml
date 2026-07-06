@@ -27,8 +27,14 @@ services:
         value: "false"
       - key: ALPACA_BASE_URL
         value: "https://paper-api.alpaca.markets"
+      # quantedge-eight is the REAL app and must be first: the Google OAuth
+      # callback redirects to the first non-localhost origin (plus FRONTEND_URL
+      # override below). The bare quantedge.vercel.app is a dead stub — listing
+      # it first sent every successful login to Vercel's 404 page.
       - key: ALLOWED_ORIGINS
-        value: "https://quantedge.vercel.app,http://localhost:5173"
+        value: "https://quantedge-eight.vercel.app,https://quantedge.vercel.app,http://localhost:5173"
+      - key: FRONTEND_URL
+        value: "https://quantedge-eight.vercel.app"
       - key: DATABASE_URL
         fromDatabase:
           name: quantedge-db

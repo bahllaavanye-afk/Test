@@ -75,7 +75,15 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Crypto",
         slack_channel="#desk-crypto",
-        symbols=["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD"],
+        # Full Alpaca US crypto universe (majors + liquid alts) — the desk was
+        # stuck on 4 pairs while Alpaca supports ~20. More symbols = more
+        # independent shots at a ≥conf_min setup every 24/7 run; per-desk
+        # top-K + Kelly caps keep total exposure unchanged.
+        symbols=[
+            "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD",
+            "LTC/USD", "DOGE/USD", "LINK/USD", "UNI/USD",
+            "AAVE/USD", "BCH/USD", "DOT/USD", "XRP/USD",
+        ],
         # basis_carry / funding_rate_arb (Binance 451 geo-block from US
         # runners) and mvrv_zscore_timing (CoinGecko now requires an API key)
         # can NEVER fetch their data here — they errored on every run. Removed
@@ -94,10 +102,17 @@ DESKS: list[DeskConfig] = [
         name="Options",
         slack_channel="#desk-options",
         symbols=["SPY", "QQQ", "AAPL", "TSLA", "NVDA"],
+        # Income structures (wheel/condor/credit-spread — the Options Alpha core,
+        # see docs/research/OPTIONS_ALPHA_DEEP_2026.md §3) trade the underlying as
+        # a directional proxy until real multi-leg routing lands. They need
+        # iv_rank injected into bars (done after the bars fetch below) — without
+        # it their analyze() returns None on every call. covered_call is NOT
+        # wired: it requires existing share inventory the desk doesn't track.
         strategy_names=[
             "vix_mean_reversion", "gamma_exposure", "skew_arb",
             "vrp_systematic", "dispersion_trading", "vol_term_structure",
             "vol_of_vol_timing",
+            "wheel", "iron_condor", "credit_spread_income",
         ],
         notional_usd=400.0,
         confidence_min=0.70,
@@ -116,7 +131,10 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Macro/FX",
         slack_channel="#desk-fx-rates",
-        symbols=["GLD", "TLT", "UUP", "EWJ", "EEM"],
+        # INDA/EPI/SMIN = India sleeve (docs/research/INDIA_GLOBAL_SOTA_2026.md §1):
+        # NSE is the largest derivatives market globally and Indian equities carry a
+        # documented momentum premium — tradable today as US ETFs on Alpaca, no new broker.
+        symbols=["GLD", "TLT", "UUP", "EWJ", "EEM", "INDA", "EPI", "SMIN"],
         strategy_names=[
             "cross_asset_carry", "sector_rotation", "time_series_momentum",
             "intraday_fomc_momentum", "pead_sue", "multi_factor_equity",
@@ -337,6 +355,11 @@ _STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "vrp_systematic":            [0, 1, 2],
     "dispersion_trading":        [0, 1, 2],
     "vol_term_structure":        [0, 1, 2],
+    # Options income (premium selling — avoid strong bear trends)
+    "wheel":                     [1, 2],
+    "iron_condor":               [1],      # range-bound only
+    "credit_spread_income":      [1, 2],
+    "covered_call":              [1, 2],
     # Polymarket
     "polymarket_sentiment_momentum": [1, 2],
     "poly_calibration_arb":      [0, 1, 2],
@@ -354,6 +377,79 @@ _STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "stablecoin_depeg_arb":      [0, 1, 2],
 }
 _DEFAULT_REGIMES = [0, 1, 2]
+
+
+def _inject_iv_rank(df) -> None:
+    """Attach an HV-based iv_rank proxy to a bars DataFrame (via df.attrs).
+
+    The options income strategies (wheel / iron_condor / credit_spread_income)
+    gate on data.attrs['iv_rank'] and silently return None without it — wiring
+    them into the desk without this injection would be pure log noise. Proxy:
+    percentile-rank of 20-day realized vol within the fetched history (~200d).
+    Same construction the strategies use internally for backtests.
+    """
+    import numpy as np
+    try:
+        log_ret = np.log(df["close"] / df["close"].shift(1)).dropna()
+        if len(log_ret) < 60:
+            return
+        hv20 = log_ret.rolling(20).std() * np.sqrt(252)
+        hv20 = hv20.dropna()
+        cur, lo, hi = float(hv20.iloc[-1]), float(hv20.min()), float(hv20.max())
+        df.attrs["iv_rank"] = (cur - lo) / max(hi - lo, 1e-6) * 100.0
+    except Exception:
+        pass  # strategies just skip when iv_rank is absent
+
+
+# ── Performance-weighted sizing (the self-scaling loop) ───────────────────────
+# Read the platform's live per-strategy P&L ranking and scale winners up /
+# losers down (Marshall Wace TOPS-style, see docs/research/GLOBAL_QUANT_FIRMS_2026.md).
+# Uses the public demo token exactly like the website does; best-effort — any
+# failure returns {} and every strategy sizes at 1.0x. Bounds keep it sane.
+
+_WEIGHT_MAX = 1.3
+_WEIGHT_MIN = 0.6
+_API_BASE = os.environ.get("QUANTEDGE_API_URL", "https://quantedge-api-agb8.onrender.com").rstrip("/")
+
+
+def _fetch_performance_weights() -> dict[str, float]:
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            f"{_API_BASE}/api/v1/auth/demo", data=b"", method="POST",
+            headers={"User-Agent": "QuantEdge-Desk/1.0", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            token = json.loads(r.read()).get("access_token", "")
+        if not token:
+            return {}
+        req = urllib.request.Request(
+            f"{_API_BASE}/api/v1/leaderboard/live",
+            headers={"User-Agent": "QuantEdge-Desk/1.0", "Authorization": f"Bearer {token}"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            strategies = json.loads(r.read()).get("strategies", [])
+    except Exception as exc:
+        print(f"  · performance weights unavailable ({exc}) — sizing all at 1.0x", flush=True)
+        return {}
+
+    weights: dict[str, float] = {}
+    for s in strategies:
+        n = int(s.get("trades") or 0)
+        if n < 5:
+            continue  # not enough evidence to re-weight
+        pnl = float(s.get("total_pnl") or 0)
+        sharpe = s.get("pnl_sharpe")
+        if pnl > 0 and (sharpe or 0) > 0:
+            w = min(_WEIGHT_MAX, 1.0 + min(float(sharpe) * 0.15, 0.3))
+        elif pnl < 0:
+            w = _WEIGHT_MIN
+        else:
+            w = 1.0
+        weights[s.get("strategy", "")] = round(w, 3)
+    if weights:
+        print(f"✓ Performance weights active for {len(weights)} strategies", flush=True)
+    return weights
 
 
 def _detect_regime_from_bars(spy_df) -> int:
@@ -567,6 +663,7 @@ async def main() -> None:
                     print(f"    ⚠ {sym}: no bars returned", flush=True)
                     continue
                 if len(df) >= 50:
+                    _inject_iv_rank(df)  # options income strategies gate on this
                     bars_cache[sym] = df
                     bars_fetched += 1
                     symbols_fetched.append(sym)
@@ -580,6 +677,9 @@ async def main() -> None:
         spy_df = bars_cache.get("SPY")
         current_regime: int = _detect_regime_from_bars(spy_df) if spy_df is not None else 1
         print(f"  Market regime: {_REGIME_NAMES[current_regime]} ({current_regime})", flush=True)
+
+        # Live P&L-based sizing weights (self-scaling loop; {} on any failure)
+        _perf_weights = await asyncio.to_thread(_fetch_performance_weights)
 
         # ── Stage 3: Signal Generation ────────────────────────────────────────
         raw_signals: list[dict] = []
@@ -687,6 +787,11 @@ async def main() -> None:
                     )
                     continue
                 kelly_notional = _kelly_notional(equity, conf)
+                # Self-scaling: winners (by live realized P&L) size up, losers down.
+                perf_w = _perf_weights.get(strategy.name, 1.0)
+                if perf_w != 1.0:
+                    print(f"    · perf weight {perf_w:.2f}x for {strategy.name}", flush=True)
+                    kelly_notional *= perf_w
                 coid = f"qe-{strategy.name[:10]}-{symbol[:4].replace('/', '')}-{int(time.time())}"
                 limit_price: float | None = None
                 _df = bars_cache.get(symbol)

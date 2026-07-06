@@ -442,6 +442,89 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _setup_discord_channels() -> None:
+        """Create the Discord channel structure on startup — no manual dispatch.
+
+        Webhooks can't create channels; only the bot (with Manage Channels) can.
+        The channel-setup GitHub workflow needs a manual dispatch this agent can't
+        trigger (403 for the integration), and gate merges via GITHUB_TOKEN don't
+        fire its self-trigger — which is why the server only ever had #general.
+        Mirroring it here means every deploy idempotently (re)creates the desk /
+        ops / company channels using DISCORD_BOT_TOKEN. No-ops cleanly without the
+        token or the Manage Channels permission.
+        """
+        token = os.environ.get("DISCORD_BOT_TOKEN", "")
+        if not token:
+            logger.info("Discord channels: DISCORD_BOT_TOKEN not set — skipping")
+            return
+        api = "https://discord.com/api/v10"
+        structure = {
+            "TRADING DESKS": ["desk-equities", "desk-crypto", "desk-options",
+                              "desk-polymarket", "desk-fx-rates", "desk-stat-arb"],
+            "OPS & ALERTS": ["infra-alerts", "risk-alerts", "pnl-daily", "ci-failures"],
+            "COMPANY": ["engineering", "alpha-research", "leadership-summary", "okrs"],
+        }
+        headers = {
+            "Authorization": f"Bot {token}",
+            "Content-Type": "application/json",
+            # Discord/Cloudflare 403 the default urllib UA (error 1010) — send a browser-ish UA.
+            "User-Agent": "QuantEdge-Setup (https://quantedge, 1.0)",
+        }
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
+                g = await client.get(f"{api}/users/@me/guilds")
+                if g.status_code != 200:
+                    logger.warning("Discord channels: cannot list guilds", status=g.status_code)
+                    return
+                created = 0
+                for guild in g.json():
+                    gid = guild["id"]
+                    ch = await client.get(f"{api}/guilds/{gid}/channels")
+                    if ch.status_code != 200:
+                        logger.warning("Discord channels: cannot read channels (Manage Channels?)",
+                                       guild=guild.get("name"), status=ch.status_code)
+                        continue
+                    existing = ch.json()
+                    have = {c["name"].lower() for c in existing}
+                    for category, channels in structure.items():
+                        cat = next((c for c in existing
+                                    if c["name"].lower() == category.lower() and c.get("type") == 4), None)
+                        cat_id = cat["id"] if cat else None
+                        if cat_id is None:
+                            r = await client.post(f"{api}/guilds/{gid}/channels",
+                                                  json={"name": category, "type": 4})
+                            if r.status_code in (200, 201):
+                                cat_id = r.json()["id"]
+                                created += 1
+                            await asyncio.sleep(0.4)  # stay under the create rate limit
+                        for name in channels:
+                            if name in have:
+                                continue
+                            r = await client.post(f"{api}/guilds/{gid}/channels",
+                                                  json={"name": name, "type": 0, "parent_id": cat_id})
+                            if r.status_code in (200, 201):
+                                created += 1
+                            await asyncio.sleep(0.4)
+                if created:
+                    logger.info("Discord channels created on startup", count=created)
+                else:
+                    logger.info("Discord channels: structure already present")
+        except Exception as exc:
+            logger.error("Discord channel setup failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="discord_channel_setup",
+            trigger="date",  # one-shot on startup — idempotent
+            trigger_args={},
+            func=_setup_discord_channels,
+            description="Create Discord desk/ops/company channels on startup (idempotent).",
+        ),
+    )
+
     async def _check_bot_exits() -> None:
         """Close bot positions that hit take-profit / stop-loss / expiry.
 
@@ -671,6 +754,112 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             trigger_args={"minutes": 15},
             func=_sync_desk_trades,
             description="Ingest desk Alpaca fills → closed Trade rows for the P&L feedback loop.",
+        ),
+    )
+
+    async def _bot_lifecycle() -> None:
+        """Autonomous fleet management — disable losers, promote winners, grow the fleet.
+
+        The 'employee using Options Alpha' loop with no human: deterministic
+        policy over each bot's real closed-trade record (app/bots/lifecycle.py).
+        Conservative evidence thresholds so bots aren't churned on noise.
+        """
+        try:
+            from app.bots.lifecycle import run_bot_lifecycle
+
+            await run_bot_lifecycle(db_session_factory)
+        except Exception as exc:
+            logger.error("Bot lifecycle tick failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="bot_lifecycle",
+            trigger="interval",
+            trigger_args={"hours": 6},
+            func=_bot_lifecycle,
+            description="Disable losing bots, re-enable recovered ones, instantiate missing templates.",
+        ),
+    )
+
+    async def _hourly_standup() -> None:
+        """Hourly standup: real fleet/P&L status → Google Docs (+ Discord always).
+
+        Deterministic status rollup, no LLM: scheduler jobs, enabled bots,
+        today's closed trades/P&L, open positions, equity. Appends to the
+        standup Google Doc when GOOGLE_SERVICE_ACCOUNT_JSON + STANDUP_DOC_ID
+        are configured (see app/integrations/google_docs.py docstring for the
+        one-time key setup); otherwise Discord #engineering still gets it.
+        """
+        try:
+            from sqlalchemy import func as _f
+
+            from app.api.v1.accounts import latest_total_equity
+            from app.database import AsyncSessionLocal
+            from app.models.bot import Bot
+            from app.models.position import Position
+            from app.models.trade import Trade
+
+            now = datetime.now(timezone.utc)
+            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            async with AsyncSessionLocal() as db:
+                equity = await latest_total_equity(db)
+                enabled = (await db.execute(
+                    select(_f.count(Bot.id)).where(Bot.is_enabled == True)  # noqa: E712
+                )).scalar_one()
+                closed = (await db.execute(
+                    select(_f.count(Trade.id), _f.coalesce(_f.sum(Trade.realized_pnl), 0.0))
+                    .where(Trade.closed_at >= today)
+                )).one()
+                open_pos = (await db.execute(select(_f.count(Position.id)))).scalar_one()
+
+            jobs = len(get_scheduler().get_jobs())
+            lines = [
+                f"Equity ${equity:,.2f} | trades today {int(closed[0])} (P&L ${float(closed[1]):,.2f})",
+                f"Bots enabled {int(enabled)} | open positions {int(open_pos)} | scheduler jobs {jobs}",
+                f"Mode {os.environ.get('TRADING_MODE', 'paper')} | {now.strftime('%Y-%m-%d %H:%M UTC')}",
+            ]
+
+            # Self-provisioning: with only the service-account credential set, the
+            # platform finds-or-creates its own "QuantEdge Standups" doc and shares
+            # it (silently — Discord is the announcement channel, not email) to the
+            # operator's account. STANDUP_DOC_ID still wins when explicitly set.
+            doc_url = ""
+            try:
+                from app.integrations.google_docs import append_to_doc, ensure_doc, is_configured
+
+                if is_configured():
+                    doc_id = os.environ.get("STANDUP_DOC_ID", "") or await asyncio.to_thread(
+                        ensure_doc, "QuantEdge Standups",
+                        os.environ.get("STANDUP_SHARE_EMAIL", "bahl.laavanye@gmail.com"),
+                    )
+                    if doc_id:
+                        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
+                        await asyncio.to_thread(
+                            append_to_doc, doc_id, "\n".join(lines),
+                            heading=f"Standup {now.strftime('%Y-%m-%d %H:%M UTC')}",
+                        )
+            except Exception as exc:
+                logger.debug("Standup: Google Doc append skipped", error=str(exc))
+
+            from app.notifications.slack import slack
+            await slack.send(
+                channel="system",  # CHANNEL_MAP: system → #engineering
+                event_type="info",
+                title="🗓️ Hourly standup",
+                text="\n".join(lines) + (f"\n📄 Minutes: {doc_url}" if doc_url else ""),
+            )
+        except Exception as exc:
+            logger.error("Hourly standup failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="hourly_standup",
+            trigger="cron",
+            trigger_args={"minute": 5},  # five past every hour
+            func=_hourly_standup,
+            description="Hourly standup rollup → Google Docs (when configured) + Discord.",
         ),
     )
 
