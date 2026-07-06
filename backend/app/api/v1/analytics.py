@@ -1077,35 +1077,51 @@ async def get_tearsheet(
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Fetch daily P&L
-    result = await db.execute(
-        select(
-            func.date_trunc("day", Trade.closed_at).label("day"),
-            func.sum(Trade.realized_pnl).label("daily_pnl"),
-            func.count(Trade.id).label("n_trades"),
-            func.sum(case((Trade.realized_pnl > 0, 1), else_=0)).label("n_wins"),
-            func.avg(case((Trade.realized_pnl > 0, Trade.realized_pnl), else_=None)).label("avg_win"),
-            func.avg(case((Trade.realized_pnl <= 0, Trade.realized_pnl), else_=None)).label("avg_loss"),
-        )
+    # Fetch the raw closed trades and bucket them in Python. We deliberately do
+    # NOT use func.date_trunc(): it is Postgres-only and raises a 500 on SQLite
+    # (tests, and any deploy that fell back to the SQLite default when the free
+    # Postgres expired). Grouping in Python is DB-agnostic and paper volume is small.
+    trade_rows = (await db.execute(
+        select(Trade.closed_at, Trade.realized_pnl)
         .where(
             Trade.account_id.in_(account_ids),
             Trade.closed_at >= since,
             Trade.realized_pnl.isnot(None),
         )
-        .group_by(func.date_trunc("day", Trade.closed_at))
-        .order_by(func.date_trunc("day", Trade.closed_at))
-    )
-    rows = result.all()
+        .order_by(Trade.closed_at)
+    )).all()
 
-    if not rows:
+    if not trade_rows:
         raise HTTPException(status_code=404, detail="No trade data found in the requested period")
 
-    # Build daily series
-    daily_pnls = [float(r.daily_pnl) for r in rows]
-    n_trades_total = sum(r.n_trades for r in rows)
-    n_wins_total = sum(r.n_wins for r in rows)
-    avg_win = float(next((r.avg_win for r in rows if r.avg_win is not None), 0) or 0)
-    avg_loss = float(next((r.avg_loss for r in rows if r.avg_loss is not None), 0) or 0)
+    from collections import OrderedDict
+
+    daily: "OrderedDict[str, dict]" = OrderedDict()
+    for closed_at, pnl in trade_rows:
+        pnl = float(pnl)
+        day_key = closed_at.strftime("%Y-%m-%d") if hasattr(closed_at, "strftime") else str(closed_at)[:10]
+        d = daily.get(day_key)
+        if d is None:
+            d = {"pnl": 0.0, "n": 0, "wins": 0, "win_sum": 0.0, "win_n": 0, "loss_sum": 0.0, "loss_n": 0}
+            daily[day_key] = d
+        d["pnl"] += pnl
+        d["n"] += 1
+        if pnl > 0:
+            d["wins"] += 1
+            d["win_sum"] += pnl
+            d["win_n"] += 1
+        else:
+            d["loss_sum"] += pnl
+            d["loss_n"] += 1
+
+    day_keys = list(daily.keys())
+    daily_pnls = [daily[k]["pnl"] for k in day_keys]
+    n_trades_total = sum(daily[k]["n"] for k in day_keys)
+    n_wins_total = sum(daily[k]["wins"] for k in day_keys)
+    tot_win_n = sum(daily[k]["win_n"] for k in day_keys)
+    tot_loss_n = sum(daily[k]["loss_n"] for k in day_keys)
+    avg_win = (sum(daily[k]["win_sum"] for k in day_keys) / tot_win_n) if tot_win_n else 0.0
+    avg_loss = (sum(daily[k]["loss_sum"] for k in day_keys) / tot_loss_n) if tot_loss_n else 0.0
 
     s = pd.Series(daily_pnls)
     rf_daily = 0.05 / 252
@@ -1115,13 +1131,11 @@ async def get_tearsheet(
     equity_curve = []
     drawdown_curve = []
     peak = initial_equity
-    for i, (row, pnl) in enumerate(zip(rows, daily_pnls)):
+    for day_str, pnl in zip(day_keys, daily_pnls):
         equity += pnl
         if equity > peak:
             peak = equity
         dd_pct = round((equity - peak) / peak * 100, 4) if peak > 0 else 0.0
-        day = row.day
-        day_str = day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)[:10]
         equity_curve.append({"date": day_str, "equity": round(equity, 2)})
         drawdown_curve.append({"date": day_str, "drawdown_pct": dd_pct})
 
@@ -1154,32 +1168,21 @@ async def get_tearsheet(
     win_rate = n_wins_total / max(n_trades_total, 1)
     profit_factor = abs(avg_win * n_wins_total / (avg_loss * max(n_trades_total - n_wins_total, 1))) if avg_loss != 0 else 0.0
 
-    # Monthly returns
-    monthly_result = await db.execute(
-        select(
-            func.date_trunc("month", Trade.closed_at).label("month"),
-            func.sum(Trade.realized_pnl).label("monthly_pnl"),
-        )
-        .where(
-            Trade.account_id.in_(account_ids),
-            Trade.closed_at >= since,
-            Trade.realized_pnl.isnot(None),
-        )
-        .group_by(func.date_trunc("month", Trade.closed_at))
-        .order_by(func.date_trunc("month", Trade.closed_at))
-    )
-    monthly_rows = monthly_result.all()
+    # Monthly returns — roll the daily buckets up by YYYY-MM (still DB-agnostic).
+    monthly: "OrderedDict[str, float]" = OrderedDict()
+    for k in day_keys:
+        mkey = k[:7]  # YYYY-MM
+        monthly[mkey] = monthly.get(mkey, 0.0) + daily[k]["pnl"]
     running_eq = initial_equity
     monthly_returns = []
-    for row in monthly_rows:
-        mpnl = float(row.monthly_pnl)
+    for mkey, mpnl in monthly.items():
         ret_pct = round(mpnl / max(running_eq, 1) * 100, 2)
         running_eq += mpnl
-        month = row.month
-        monthly_returns.append({
-            "month": month.strftime("%b %Y") if hasattr(month, "strftime") else str(month)[:7],
-            "ret": ret_pct,
-        })
+        try:
+            label = datetime.strptime(mkey, "%Y-%m").strftime("%b %Y")
+        except ValueError:
+            label = mkey
+        monthly_returns.append({"month": label, "ret": ret_pct})
 
     # Benchmark SPY via yfinance (best-effort, non-blocking)
     benchmark_sharpe_spy = None
@@ -1201,7 +1204,7 @@ async def get_tearsheet(
 
     return {
         "period_days": days,
-        "n_trading_days": len(rows),
+        "n_trading_days": len(day_keys),
         "n_trades": n_trades_total,
         # Core metrics
         "sharpe": round(sharpe, 4),
@@ -1244,34 +1247,64 @@ async def get_live_stats(db: AsyncSession = Depends(get_db)):
     model_files = glob.glob("app/ml/models/*.py")
     model_count = len([f for f in model_files if "__init__" not in f and "base" not in f])
 
-    # Trade stats from DB
+    # HONEST metrics computed from real closed trades — no fabricated constants.
+    # Any metric with insufficient data returns null so the UI shows "—" rather
+    # than a made-up Sharpe/win-rate (the platform is paper and starts empty).
+    total_trades = 0
+    win_rate = None
+    sharpe_ratio = None
+    avg_pnl = 0.0
     try:
-        from sqlalchemy import func, select
+        from sqlalchemy import select
         from app.models.trade import Trade
-        result = await db.execute(
-            select(
-                func.count(Trade.id).label("total_trades"),
-                func.avg(Trade.realized_pnl).label("avg_pnl"),
-            )
-        )
-        row = result.first()
-        total_trades = row.total_trades or 0
-        avg_pnl = float(row.avg_pnl or 0)
+        pnls = [
+            float(p) for p in
+            (await db.execute(select(Trade.realized_pnl).where(Trade.realized_pnl.isnot(None)))).scalars().all()
+        ]
+        total_trades = len(pnls)
+        if total_trades > 0:
+            wins = sum(1 for p in pnls if p > 0)
+            win_rate = round(wins / total_trades * 100, 1)
+            avg_pnl = sum(pnls) / total_trades
+            if total_trades > 1:
+                std = (sum((p - avg_pnl) ** 2 for p in pnls) / (total_trades - 1)) ** 0.5
+                if std > 0:
+                    sharpe_ratio = round(avg_pnl / std, 2)  # per-trade Sharpe (not annualized)
     except Exception:
-        total_trades = 0
-        avg_pnl = 0
+        pass
 
-    win_rate = 68.0  # computed from trades when available
+    # Max drawdown from the real equity-snapshot curve; null until we have snapshots.
+    max_drawdown_pct = None
+    try:
+        from sqlalchemy import select
+        from app.models.account import AccountSnapshot
+        eq = [
+            float(e) for e in
+            (await db.execute(
+                select(AccountSnapshot.total_equity).order_by(AccountSnapshot.ts.asc())
+            )).scalars().all() if e is not None
+        ]
+        if len(eq) > 1:
+            peak = eq[0]
+            max_dd = 0.0
+            for v in eq:
+                peak = max(peak, v)
+                if peak > 0:
+                    max_dd = max(max_dd, (peak - v) / peak * 100)
+            max_drawdown_pct = round(max_dd, 1)
+    except Exception:
+        pass
 
     return {
-        "sharpe_ratio": 2.1,
-        "max_drawdown_pct": 14.7,
+        "sharpe_ratio": sharpe_ratio,
+        "max_drawdown_pct": max_drawdown_pct,
         "win_rate_pct": win_rate,
-        "strategy_count": max(strategy_count, 60),
-        "model_count": max(model_count, 7),
+        "avg_trade_pnl": round(avg_pnl, 2),
+        "strategy_count": strategy_count,
+        "model_count": model_count,
         "total_trades": total_trades,
         "platform_status": "live",
-        "trading_mode": "paper",
+        "trading_mode": settings.trading_mode if hasattr(settings, "trading_mode") else "paper",
     }
 
 
