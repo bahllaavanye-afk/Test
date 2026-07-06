@@ -1,6 +1,11 @@
 name: Desk Trading (Paper Orders)
 
 on:
+  # Cron starvation fix: desks ride CI completions (constant) — the script's
+  # own market clock + top-K + no-position guards keep cadence safe.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   push:
     branches: [main]
     paths:
@@ -16,6 +21,10 @@ on:
         description: "Specific desk to run (leave empty for all)"
         required: false
         default: ""
+
+concurrency:
+  group: desk-trading
+  cancel-in-progress: false
 
 jobs:
   place-orders:
