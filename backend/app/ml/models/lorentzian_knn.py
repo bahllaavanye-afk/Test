@@ -12,12 +12,11 @@ Features used (same as original TV indicator):
 """
 try:
     import torch
-    import torch.nn as nn
     _TORCH_AVAILABLE = True
 except ImportError:
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
+
 import numpy as np
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
@@ -31,7 +30,9 @@ LORENTZIAN_FEATURES = ["rsi_14", "cci_20", "adx_20", "ema_fast_delta", "ema_slow
 def lorentzian_distance(x, y):
     """Lorentzian distance between two feature vectors."""
     if not _TORCH_AVAILABLE:
-        raise ImportError("torch is required for lorentzian_distance — install with `pip install torch`")
+        raise ImportError(
+            "torch is required for lorentzian_distance — install with `pip install torch`"
+        )
     return torch.sqrt(torch.sum(torch.log(1 + torch.abs(x - y)) ** 2, dim=-1))
 
 
@@ -48,7 +49,11 @@ def compute_lorentzian_features(df: pd.DataFrame) -> pd.DataFrame:
 
     df["rsi_14"] = (rsi / 100.0) if rsi is not None else 0.5
     df["cci_20"] = (cci / 200.0).clip(-1, 1) if cci is not None else 0.0
-    df["adx_20"] = (adx_df["ADX_20"] / 100.0) if (adx_df is not None and "ADX_20" in adx_df.columns) else 0.5
+    df["adx_20"] = (
+        adx_df["ADX_20"] / 100.0
+        if (adx_df is not None and "ADX_20" in adx_df.columns)
+        else 0.5
+    )
 
     ema_fast = close.ewm(span=9).mean()
     ema_slow = close.ewm(span=21).mean()
@@ -64,11 +69,14 @@ class LorentzianKNN(AbstractModel):
     KNN with Lorentzian distance. Stores historical feature library.
     k=8 neighbors, max lookback=2000 bars, subsampling every 4 bars.
     """
+
     model_type = "lorentzian_knn"
 
     def __init__(self, k: int = 8, lookback: int = 2000, subsample: int = 4):
         if not _TORCH_AVAILABLE:
-            raise ImportError("torch is required for LorentzianKNN — install with `pip install torch`")
+            raise ImportError(
+                "torch is required for LorentzianKNN — install with `pip install torch`"
+            )
         self.k = k
         self.lookback = lookback
         self.subsample = subsample
@@ -83,7 +91,9 @@ class LorentzianKNN(AbstractModel):
         results = []
         for i in range(x.shape[0]):
             query = x[i].unsqueeze(0)  # (1, n_features)
-            dists = lorentzian_distance(query.expand_as(self._library_X), self._library_X)
+            dists = lorentzian_distance(
+                query.expand_as(self._library_X), self._library_X
+            )
             _, top_k = torch.topk(dists, self.k, largest=False)
             k_labels = self._library_y[top_k].float()
             results.append(k_labels.mean())
@@ -120,14 +130,24 @@ class LorentzianKNN(AbstractModel):
     def save(self, path: str, metadata: dict | None = None) -> None:
         import pickle
         from pathlib import Path
+
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "wb") as f:
-            pickle.dump({"library_X": self._library_X, "library_y": self._library_y,
-                         "k": self.k, "lookback": self.lookback, "model_type": self.model_type}, f)
+            pickle.dump(
+                {
+                    "library_X": self._library_X,
+                    "library_y": self._library_y,
+                    "k": self.k,
+                    "lookback": self.lookback,
+                    "model_type": self.model_type,
+                },
+                f,
+            )
 
     @classmethod
     def load(cls, path: str) -> "LorentzianKNN":
         import pickle
+
         with open(path, "rb") as f:
             data = pickle.load(f)
         model = cls(k=data["k"], lookback=data["lookback"])
