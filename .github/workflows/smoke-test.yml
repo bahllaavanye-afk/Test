@@ -1,0 +1,62 @@
+name: Smoke Test — live endpoints stay healthy & honest
+
+# The "features always work as soon as they ship" gate. Hits the DEPLOYED
+# backend the way the website does (demo login → data endpoints) and fails loud
+# if anything 5xx's, 404s from a missing trailing slash, or serves fabricated
+# metrics. Runs after every push to main (post-merge/pre-deploy signal) and on a
+# 30-min schedule so a bad deploy or an expired database is caught within the hour.
+#
+# Would have caught both 2026-07-06 regressions: the fake /analytics/live-stats
+# constants and the /analytics/tearsheet 500. On failure it pages Discord
+# #ci-failures via the shared notify layer.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17,47 * * * *"   # twice an hour, offset off the top
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-test
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Run live smoke test
+        id: smoke
+        env:
+          SMOKE_BASE_URL: ${{ vars.RENDER_API_URL || 'https://quantedge-api-agb8.onrender.com' }}
+        run: python .github/scripts/smoke_test_live.py
+
+      - name: Page Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL_CI_FAILURES: ${{ secrets.DISCORD_WEBHOOK_URL_CI_FAILURES }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, ".github/scripts")
+          try:
+              from notify import discord_post
+              discord_post(
+                  "ci-failures",
+                  "🚨 **Live smoke test FAILED** — a deployed endpoint is broken or serving fake data. "
+                  f"See run: {os.environ.get('GITHUB_SERVER_URL','')}/{os.environ.get('GITHUB_REPOSITORY','')}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}",
+                  username="QuantEdge Smoke Test",
+              )
+          except Exception as e:
+              print(f"notify failed: {e}")
+          PY
