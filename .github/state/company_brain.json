@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783356448.0714371,
+    "last_updated": 1783364909.9055192,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1783346583.405578
+    "last_brain_update": 1783364909.9053814
   },
   "episodic": [
     {
@@ -268,6 +268,34 @@
       },
       "lesson": "We need to write a 2-sentence morning market brief for QuantEdge trading desk. Given data: regime=bull (score=3), VIX 15.91 falling, SPY strong uptrend, credit spreads tightening, yield curve flat/inverted, breadth 7/11 sectors above 20-SMA. Tactical implication: which strategy type to favour today. Likely momentum or trend-following given strong uptrend and bull regime. Also note low VIX, tightening credit spreads support risk-on. Yield curve flat/inverted is a warning but not overriding. So favour trend-following or long-biased strategies. Keep brief: 2 sentences. First sentence: summarize market conditions. Second sentence: tactical implication.",
       "ts": 1783356448.0721068
+    },
+    {
+      "lesson": "Repeated 'Auto-fix failed' across multiple commits indicates a systemic CI pipeline issue with patch application \u2014 investigate tooling and merge conflict resolution.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783364887.604071
+    },
+    {
+      "lesson": "CI debug shows Python 3.11.15 and aiohttp 3.14.1; verify compatibility with current codebase to rule out dependency-related patch failures.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783364887.6049309
+    },
+    {
+      "lesson": "Auto-fix failures block automated code quality and deployment; prioritize manual review or alternative fix strategies to unblock CI.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783364887.605702
+    },
+    {
+      "lesson": "No ML model or data artifacts mentioned; the issue is purely operational \u2014 consider dedicating a sprint to harden CI patch application logic.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783364887.6064847
     }
   ],
   "github_insights": [
@@ -280,6 +308,11 @@
       "summary": "We need to summarize two GitHub PR/issue discussions. The input shows two sections: one for commit `54681c3` and one for `efcf653`. Both have \"Python version 3.11.15\" and \"Installed packages (head 50)\" but the actual package lists are truncated (only \"P\" shown). The user likely wants a concise summary of these debug outputs. Since the content is minimal, the summary should note that both are CI debug logs showing Python",
       "item_count": 20,
       "ts": 1783346583.403962
+    },
+    {
+      "summary": "The discussion indicates that an automated fix attempt failed twice because the patch could not be applied to the file.",
+      "item_count": 20,
+      "ts": 1783364909.9019272
     }
   ]
 }
