@@ -20,20 +20,22 @@ from scipy.spatial.distance import squareform
 
 
 def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
-    """Convert correlation matrix to distance matrix: d = sqrt(0.5*(1-rho))."""
+    """Convert correlation matrix to distance matrix: d = sqrt(0.5 * (1 - rho))."""
     dist = np.sqrt(0.5 * (1.0 - corr.values))
     np.fill_diagonal(dist, 0.0)
     return dist
 
 
 def _get_quasi_diag(link: np.ndarray) -> list[int]:
-    """Sort clustered items by the dendrogram leaf order (quasi-diagonalisation)."""
-    root, _ = to_tree(link, rd=True)
+    """Return leaf order from the hierarchical clustering dendrogram."""
+    # to_tree is called only for its side‑effect of building the tree structure;
+    # the root node is not needed for the leaf ordering.
+    _ = to_tree(link, rd=True)  # noqa: F841
     return leaves_list(link).tolist()
 
 
 def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
-    """Minimum-variance portfolio variance for a sub-cluster."""
+    """Calculate the variance of the minimum‑variance portfolio for a sub‑cluster."""
     sub_cov = cov.iloc[items, items].values
     n = len(items)
     if n == 1:
@@ -44,17 +46,20 @@ def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
 
 
 def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
-    """Recursive bisection: split into two halves and allocate by inverse cluster variance."""
+    """Recursively bisect clusters and allocate weights by inverse cluster variance."""
     weights = pd.Series(1.0, index=sorted_items)
     items_to_bisect = [sorted_items]
 
     while items_to_bisect:
+        # Split each cluster into two halves
         items_to_bisect = [
-            i[j:k]
-            for i in items_to_bisect
-            for j, k in ((0, len(i) // 2), (len(i) // 2, len(i)))
-            if len(i) > 1
+            cluster[start:end]
+            for cluster in items_to_bisect
+            for start, end in ((0, len(cluster) // 2), (len(cluster) // 2, len(cluster)))
+            if len(cluster) > 1
         ]
+
+        # Allocate between adjacent pairs of clusters
         for i in range(0, len(items_to_bisect), 2):
             if i + 1 >= len(items_to_bisect):
                 break
@@ -62,7 +67,8 @@ def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
             right = items_to_bisect[i + 1]
             var_left = _get_cluster_var(cov, left)
             var_right = _get_cluster_var(cov, right)
-            alpha = 1.0 - var_left / max(var_left + var_right, 1e-10)
+            denom = max(var_left + var_right, 1e-10)
+            alpha = var_right / denom  # proportion allocated to left cluster
             weights[left] *= alpha
             weights[right] *= (1.0 - alpha)
 
@@ -96,13 +102,12 @@ class HRPOptimizer:
         if n < 2 or len(returns) < 10:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
-        # Drop columns with all-NaN and fill remaining NaN with 0
+        # Clean data: drop entirely NaN columns and fill remaining NaNs with zero
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
         if returns_clean.shape[1] < 2:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         symbols_clean = list(returns_clean.columns)
-        n_clean = len(symbols_clean)
 
         try:
             corr = returns_clean.corr().clip(-0.9999, 0.9999)
@@ -114,16 +119,16 @@ class HRPOptimizer:
             link = linkage(condensed, method="ward")
             sorted_items = _get_quasi_diag(link)
 
-            # sorted_items contains indices into symbols_clean
+            # Compute raw weights on the cleaned, sorted asset list
             weights_raw = _recursive_bisect(cov, sorted_items)
 
-            # Re-index back to original symbols
+            # Map raw weights back to the original symbol order
             result = pd.Series(0.0, index=symbols)
             for idx, sym in enumerate(symbols_clean):
                 if idx in weights_raw.index:
                     result[sym] = float(weights_raw[idx])
 
-            # Normalise
+            # Normalise to sum to one
             total = result.sum()
             if total > 0:
                 result = result / total
@@ -133,4 +138,5 @@ class HRPOptimizer:
             return result
 
         except Exception:
+            # Any unexpected error falls back to equal weighting
             return pd.Series(1.0 / n, index=symbols)
