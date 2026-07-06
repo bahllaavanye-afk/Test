@@ -18,12 +18,17 @@ type Metric = {
 }
 
 function useLiveMetrics(): Metric[] {
+  // Performance metrics start as "—" (honest placeholder), NOT fabricated
+  // numbers. The platform is paper and starts with zero trades; the backend
+  // fills real Sharpe / drawdown / win-rate once trades close. Strategy and
+  // model counts are static-but-real (counted from the codebase) so they show
+  // immediately. See frontend/src/CLAUDE.md: "display no mock values."
   const [metrics, setMetrics] = useState<Metric[]>([
-    { label: 'Sharpe Ratio', value: 2.1, suffix: '+', decimals: 1, color: 'var(--green)' },
-    { label: 'Max Drawdown', value: 15, prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
-    { label: 'Win Rate', value: 68, prefix: '~', suffix: '%', decimals: 0, color: 'var(--blue)' },
-    { label: 'Strategies', value: 68, suffix: '+', decimals: 0, color: 'var(--purple)' },
-    { label: 'ML Models', value: 7, suffix: '', decimals: 0, color: 'var(--green)' },
+    { label: 'Sharpe Ratio', value: null, display: '—', decimals: 1, color: 'var(--green)' },
+    { label: 'Max Drawdown', value: null, display: '—', prefix: '<', suffix: '%', decimals: 0, color: 'var(--accent)' },
+    { label: 'Win Rate', value: null, display: '—', suffix: '%', decimals: 0, color: 'var(--blue)' },
+    { label: 'Strategies', value: null, display: '—', suffix: '+', decimals: 0, color: 'var(--purple)' },
+    { label: 'ML Models', value: null, display: '—', decimals: 0, color: 'var(--green)' },
     { label: 'Uptime', value: null, display: '24/7', color: 'var(--accent)' },
   ])
 
@@ -32,16 +37,22 @@ function useLiveMetrics(): Metric[] {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return
+        // Only replace "—" with a real number when the backend actually has one
+        // (it returns null until there's data). `display: undefined` re-enables
+        // the animated counter for that tile.
+        const num = (v: unknown): number | null =>
+          typeof v === 'number' && isFinite(v) ? v : null
         setMetrics(prev => prev.map(m => {
-          if (m.label === 'Sharpe Ratio' && data.sharpe_ratio) return { ...m, value: data.sharpe_ratio }
-          if (m.label === 'Max Drawdown' && data.max_drawdown_pct) return { ...m, value: data.max_drawdown_pct }
-          if (m.label === 'Win Rate' && data.win_rate_pct) return { ...m, value: data.win_rate_pct }
-          if (m.label === 'Strategies' && data.strategy_count) return { ...m, value: data.strategy_count }
-          if (m.label === 'ML Models' && data.model_count) return { ...m, value: data.model_count }
+          const set = (v: number | null) => v == null ? m : { ...m, value: v, display: undefined }
+          if (m.label === 'Sharpe Ratio') return set(num(data.sharpe_ratio))
+          if (m.label === 'Max Drawdown') return set(num(data.max_drawdown_pct))
+          if (m.label === 'Win Rate') return set(num(data.win_rate_pct))
+          if (m.label === 'Strategies') return set(num(data.strategy_count))
+          if (m.label === 'ML Models') return set(num(data.model_count))
           return m
         }))
       })
-      .catch(() => {}) // keep defaults on error
+      .catch(() => {}) // keep honest "—" placeholders on error
   }, [])
 
   return metrics
