@@ -50,6 +50,8 @@ jobs:
           KALSHI_KEY_SECRET: ${{ secrets.KALSHI_KEY_SECRET }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          STANDUP_DOC_ID: ${{ secrets.STANDUP_DOC_ID }}
         run: |
           if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
             echo "❌ RENDER_API_KEY / RENDER_SERVICE_ID secrets missing — cannot relay" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -77,7 +79,8 @@ jobs:
           for k in ALPACA_API_KEY ALPACA_SECRET_KEY DISCORD_BOT_TOKEN DISCORD_WEBHOOK_URL \
                    POLYMARKET_PRIVATE_KEY POLYMARKET_KEY_ID POLYMARKET_KEY_SECRET \
                    TRADESTATION_CLIENT_ID TRADESTATION_SECRET \
-                   KALSHI_KEY_ID KALSHI_KEY_SECRET OPENROUTER_API_KEY GROQ_API_KEY; do
+                   KALSHI_KEY_ID KALSHI_KEY_SECRET OPENROUTER_API_KEY GROQ_API_KEY \
+                   GOOGLE_SERVICE_ACCOUNT_JSON STANDUP_DOC_ID; do
             relay "$k"
           done
 

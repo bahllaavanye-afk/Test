@@ -782,6 +782,75 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _hourly_standup() -> None:
+        """Hourly standup: real fleet/P&L status → Google Docs (+ Discord always).
+
+        Deterministic status rollup, no LLM: scheduler jobs, enabled bots,
+        today's closed trades/P&L, open positions, equity. Appends to the
+        standup Google Doc when GOOGLE_SERVICE_ACCOUNT_JSON + STANDUP_DOC_ID
+        are configured (see app/integrations/google_docs.py docstring for the
+        one-time key setup); otherwise Discord #engineering still gets it.
+        """
+        try:
+            from sqlalchemy import func as _f
+
+            from app.api.v1.accounts import latest_total_equity
+            from app.database import AsyncSessionLocal
+            from app.models.bot import Bot
+            from app.models.position import Position
+            from app.models.trade import Trade
+
+            now = datetime.now(timezone.utc)
+            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            async with AsyncSessionLocal() as db:
+                equity = await latest_total_equity(db)
+                enabled = (await db.execute(
+                    select(_f.count(Bot.id)).where(Bot.is_enabled == True)  # noqa: E712
+                )).scalar_one()
+                closed = (await db.execute(
+                    select(_f.count(Trade.id), _f.coalesce(_f.sum(Trade.realized_pnl), 0.0))
+                    .where(Trade.closed_at >= today)
+                )).one()
+                open_pos = (await db.execute(select(_f.count(Position.id)))).scalar_one()
+
+            jobs = len(get_scheduler().get_jobs())
+            lines = [
+                f"Equity ${equity:,.2f} | trades today {int(closed[0])} (P&L ${float(closed[1]):,.2f})",
+                f"Bots enabled {int(enabled)} | open positions {int(open_pos)} | scheduler jobs {jobs}",
+                f"Mode {os.environ.get('TRADING_MODE', 'paper')} | {now.strftime('%Y-%m-%d %H:%M UTC')}",
+            ]
+
+            doc_id = os.environ.get("STANDUP_DOC_ID", "")
+            try:
+                from app.integrations.google_docs import append_to_doc, is_configured
+
+                if doc_id and is_configured():
+                    append_to_doc(doc_id, "\n".join(lines),
+                                  heading=f"Standup {now.strftime('%Y-%m-%d %H:%M UTC')}")
+            except Exception as exc:
+                logger.debug("Standup: Google Doc append skipped", error=str(exc))
+
+            from app.notifications.slack import slack
+            await slack.send(
+                channel="system",  # CHANNEL_MAP: system → #engineering
+                event_type="info",
+                title="🗓️ Hourly standup",
+                text="\n".join(lines),
+            )
+        except Exception as exc:
+            logger.error("Hourly standup failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="hourly_standup",
+            trigger="cron",
+            trigger_args={"minute": 5},  # five past every hour
+            func=_hourly_standup,
+            description="Hourly standup rollup → Google Docs (when configured) + Discord.",
+        ),
+    )
+
     # main.py calls start_scheduler() and stores the result without calling .start()
     # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
     # call, which registered jobs but never ran them (snapshot/retrain/order_sync/

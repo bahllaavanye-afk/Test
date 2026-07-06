@@ -123,7 +123,10 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Macro/FX",
         slack_channel="#desk-fx-rates",
-        symbols=["GLD", "TLT", "UUP", "EWJ", "EEM"],
+        # INDA/EPI/SMIN = India sleeve (docs/research/INDIA_GLOBAL_SOTA_2026.md §1):
+        # NSE is the largest derivatives market globally and Indian equities carry a
+        # documented momentum premium — tradable today as US ETFs on Alpaca, no new broker.
+        symbols=["GLD", "TLT", "UUP", "EWJ", "EEM", "INDA", "EPI", "SMIN"],
         strategy_names=[
             "cross_asset_carry", "sector_rotation", "time_series_momentum",
             "intraday_fomc_momentum", "pead_sue", "multi_factor_equity",
