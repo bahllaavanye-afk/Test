@@ -1,14 +1,14 @@
 """Synthetic options backtester — score option-spread bot templates on history.
 
 We have years of underlying OHLCV but no historical option chains, so spreads
-are repriced with Black-Scholes using realized vol as the IV proxy (HV20 ×
-IV_PREMIUM, the variance-risk-premium markup). This is the standard research
+are repriced with Black‑Scholes using realized vol as the IV proxy (HV20 ×
+IV_PREMIUM, the variance‑risk‑premium markup). This is the standard research
 approximation; it captures theta/delta/vega mechanics and regime behavior but
 NOT skew dynamics or bid/ask — results are for RANKING templates against each
 other, not for promising returns. Every consumer must carry that caveat.
 
 Pure numpy/math (no scipy): norm CDF via math.erf, inverse CDF via the
-Acklam approximation. Deterministic; fully unit-testable.
+Acklam approximation. Deterministic; fully unit‑testable.
 """
 from __future__ import annotations
 
@@ -88,7 +88,27 @@ class _Leg:
 
 
 def _net_value(legs: list[_Leg], S: float, T: float, sigma: float) -> float:
-    return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
+    """Optimized net value computation for a collection of legs.
+
+    Common terms (sqrt(T), discount factor, etc.) are calculated once per call,
+    reducing repeated work inside the loop.
+    """
+    T = max(T, MIN_T)
+    sigma = max(sigma, 1e-4)
+    sqrt_T = math.sqrt(T)
+    disc = math.exp(-RISK_FREE * T)
+    common = (RISK_FREE + sigma ** 2 / 2) * T
+
+    total = 0.0
+    for l in legs:
+        d1 = (math.log(S / l.strike) + common) / (sigma * sqrt_T)
+        d2 = d1 - sigma * sqrt_T
+        if l.option_type.startswith("c"):
+            price = S * norm_cdf(d1) - l.strike * disc * norm_cdf(d2)
+        else:
+            price = l.strike * disc * norm_cdf(-d2) - S * norm_cdf(-d1)
+        total += l.sign * l.ratio * price
+    return total
 
 
 def backtest_template(template: dict, closes: list[float],
@@ -126,7 +146,8 @@ def backtest_template(template: dict, closes: list[float],
                     K = float(lg["strike"])
                 else:
                     K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
+                pos.append(_Leg(+1 if lg["side"] == "buy" else -1,
+                                lg["option_type"], K,
                                 int(lg.get("ratio", 1))))
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
