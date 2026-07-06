@@ -7,8 +7,9 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Mapping
 
+import numpy as np
 import pandas as pd
 
 from app.brokers.base import OrderRequest
@@ -56,11 +57,15 @@ class RiskManager:
         max_drawdown_pct: float = 0.10,
         arb_drawdown_pct: float = 0.05,
         max_cluster_pct: float = 0.30,
+        volatility_threshold: float = 0.03,
+        signal_confidence_min: float = 0.7,
         initial_equity: float = 100_000.0,
     ):
         self.max_position_pct = max_position_pct
         self.max_drawdown_pct = max_drawdown_pct
         self.max_cluster_pct = max_cluster_pct
+        self.volatility_threshold = volatility_threshold
+        self.signal_confidence_min = signal_confidence_min
 
         # Seed with a conservative default so orders are not blocked during broker
         # cold-start. update_equity() replaces this with the real broker value.
@@ -134,6 +139,7 @@ class RiskManager:
     async def check_order(self, request: OrderRequest) -> RiskDecision:
         """Gate every order through risk checks. Returns RiskDecision."""
         try:
+            # Global circuit breaker
             if self.global_breaker.is_halted:
                 reason = (
                     self.global_breaker.halt_reasons[-1]
@@ -142,6 +148,7 @@ class RiskManager:
                 )
                 return RiskDecision(False, f"Global circuit breaker halted: {reason}")
 
+            # Arbitrage specific circuit breaker
             if request.risk_bucket == "arbitrage" and self.arb_breaker.is_halted:
                 reason = (
                     self.arb_breaker.halt_reasons[-1]
@@ -150,6 +157,7 @@ class RiskManager:
                 )
                 return RiskDecision(False, f"Arb circuit breaker halted: {reason}")
 
+            # Equity sanity check
             if not self._equity_confirmed:
                 logger.warning(
                     "risk.manager: using estimated equity — broker snapshot not yet received",
@@ -157,6 +165,25 @@ class RiskManager:
                 )
             if self._equity <= 0:
                 return RiskDecision(False, "equity is zero or negative — orders halted")
+
+            # ---- Entry confirmation filters ----
+            # 1. Signal confidence (if supplied)
+            confidence = getattr(request, "signal_confidence", None)
+            if confidence is not None and confidence < self.signal_confidence_min:
+                return RiskDecision(
+                    False,
+                    f"Signal confidence {confidence:.2f} below threshold {self.signal_confidence_min:.2f}",
+                )
+
+            # 2. Volatility filter based on recent returns (if available)
+            if isinstance(self._returns_history, pd.DataFrame) and not self._returns_history.empty:
+                if request.symbol in self._returns_history.columns:
+                    recent_vol = self._returns_history[request.symbol].std()
+                    if pd.notna(recent_vol) and recent_vol > self.volatility_threshold:
+                        return RiskDecision(
+                            False,
+                            f"Recent volatility {recent_vol:.4f} exceeds threshold {self.volatility_threshold:.4f}",
+                        )
 
             # Position size cap
             price = request.limit_price if request.limit_price is not None else 100.0
@@ -188,6 +215,7 @@ class RiskManager:
                     return RiskDecision(False, reason)
 
             return RiskDecision(True, "ok", request.quantity)
+
         except RiskManagerError:
             # Propagate known risk manager errors without extra logging
             raise
@@ -210,6 +238,7 @@ class RiskManager:
         avg_win_pct: float,
         avg_loss_pct: float,
     ) -> int:
+        """Calculate position size using the Kelly criterion."""
         try:
             return size_from_kelly(
                 equity=self._equity,
@@ -217,13 +246,12 @@ class RiskManager:
                 avg_win_pct=avg_win_pct,
                 avg_loss_pct=avg_loss_pct,
                 price=price,
-                max_pct=self.max_position_pct,
+                symbol=symbol,
             )
         except Exception as exc:
             logger.error(
-                "Kelly sizing calculation failed",
+                "Kelly sizing failure",
                 symbol=symbol,
-                price=price,
                 win_rate=win_rate,
                 avg_win_pct=avg_win_pct,
                 avg_loss_pct=avg_loss_pct,
@@ -232,3 +260,43 @@ class RiskManager:
                 exc_info=True,
             )
             raise KellySizingError("Error computing Kelly size") from exc
+
+    def assess_exit(
+        self,
+        symbol: str,
+        entry_price: float,
+        current_price: float,
+        quantity: float,
+    ) -> RiskDecision:
+        """
+        Evaluate an exit request. If the unrealized loss exceeds the
+        max_drawdown_pct of the position, the exit is forced.
+        """
+        if quantity <= 0:
+            return RiskDecision(False, "Quantity must be positive for exit evaluation")
+
+        position_value = entry_price * quantity
+        unrealized_pnl = (current_price - entry_price) * quantity
+        drawdown = -unrealized_pnl / position_value if position_value != 0 else 0
+
+        if drawdown > self.max_drawdown_pct:
+            logger.info(
+                "Forced exit due to drawdown",
+                symbol=symbol,
+                entry_price=entry_price,
+                current_price=current_price,
+                quantity=quantity,
+                drawdown=drawdown,
+            )
+            return RiskDecision(
+                True,
+                f"Forced exit: drawdown {drawdown:.2%} exceeds limit {self.max_drawdown_pct:.2%}",
+                quantity,
+            )
+
+        # If no forced exit, allow normal exit with original quantity
+        return RiskDecision(True, "exit ok", quantity)
+
+    # Placeholder for future async risk checks (e.g., external limit checks)
+    async def _placeholder_async(self) -> None:
+        await asyncio.sleep(0)
