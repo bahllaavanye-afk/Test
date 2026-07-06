@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Bot,
@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
+  TrendingUp,
   Settings,
   List,
   Loader2,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react'
 import {
   botsApi,
+  botsPerfApi,
   BotCreate,
   BotOut,
   BotTemplate,
@@ -1179,6 +1181,61 @@ interface ListViewProps {
   archived?: boolean
 }
 
+
+/** Option Alpha-style per-bot performance: 30D cumulative P&L sparkline + stats.
+ *  Honest by construction: renders real closed-trade data from
+ *  /bots/{id}/performance, and says so when there is none yet. */
+function BotPerfPanel({ botId }: { botId: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['bot-perf', botId],
+    queryFn: () => botsPerfApi.performance(botId),
+    staleTime: 60_000,
+  })
+
+  if (isLoading) return <div className="text-[#555] text-xs font-mono py-3">Loading performance…</div>
+  if (error || !data) return <div className="text-[#ff1744] text-xs font-mono py-3">Failed to load performance.</div>
+  if (!data.series.length) {
+    return (
+      <div className="text-[#555] text-xs font-mono py-3">
+        No closed trades in the last {data.days} days — the graph appears after this bot's first round trip.
+      </div>
+    )
+  }
+
+  const w = 560, h = 96, pad = 6
+  const vals = data.series.map((p) => p.cum_pnl)
+  const min = Math.min(0, ...vals), max = Math.max(0, ...vals)
+  const span = max - min || 1
+  const x = (i: number) => pad + (i * (w - 2 * pad)) / Math.max(data.series.length - 1, 1)
+  const y = (v: number) => h - pad - ((v - min) * (h - 2 * pad)) / span
+  const points = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  const up = data.total_pnl >= 0
+  const zeroY = y(0)
+
+  return (
+    <div className="flex flex-wrap items-center gap-6">
+      <svg width={w} height={h} className="shrink-0 max-w-full" viewBox={`0 0 ${w} ${h}`}>
+        <line x1={pad} y1={zeroY} x2={w - pad} y2={zeroY} stroke="#2a2a2a" strokeDasharray="4 4" />
+        <polyline points={points} fill="none" stroke={up ? '#00c853' : '#ff1744'} strokeWidth={1.5} />
+      </svg>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-8 gap-y-2 text-xs font-mono">
+        <div><div className="text-[#555] uppercase">Total P/L</div>
+          <div className={up ? 'text-[#00c853]' : 'text-[#ff1744]'}>
+            {up ? '+' : ''}{data.total_pnl.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+          </div></div>
+        <div><div className="text-[#555] uppercase">Win rate</div>
+          <div className="text-[#e8e8e8]">{data.win_rate != null ? `${(data.win_rate * 100).toFixed(0)}%` : '—'}</div></div>
+        <div><div className="text-[#555] uppercase">Trades</div>
+          <div className="text-[#e8e8e8]">{data.trades}</div></div>
+        <div><div className="text-[#555] uppercase">Max DD</div>
+          <div className="text-[#e8e8e8]">${data.max_drawdown.toLocaleString()}</div></div>
+        <div><div className="text-[#555] uppercase">Avg hold</div>
+          <div className="text-[#e8e8e8]">{data.avg_hold_hours != null ? `${data.avg_hold_hours.toFixed(1)}h` : '—'}</div></div>
+      </div>
+    </div>
+  )
+}
+
 function ListView({
   bots,
   isLoading,
@@ -1192,6 +1249,7 @@ function ListView({
   runningId,
   archived = false,
 }: ListViewProps) {
+  const [expandedPerf, setExpandedPerf] = useState<string | null>(null)
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center text-[#555]">
@@ -1247,8 +1305,8 @@ function ListView({
             {bots.map((bot) => {
               const rr = runResults[bot.id]
               return (
+                <React.Fragment key={bot.id}>
                 <tr
-                  key={bot.id}
                   className="border-b border-[#111111] hover:bg-[#111111] transition-colors"
                 >
                   <td className="py-2.5 px-3">
@@ -1326,6 +1384,13 @@ function ListView({
                             )}
                           </button>
                           <button
+                            onClick={() => setExpandedPerf(expandedPerf === bot.id ? null : bot.id)}
+                            title="P&L graph (30D)"
+                            className={`transition-colors ${expandedPerf === bot.id ? 'text-[#f5a623]' : 'text-[#888] hover:text-[#f5a623]'}`}
+                          >
+                            <TrendingUp size={14} />
+                          </button>
+                          <button
                             onClick={() => onEdit(bot)}
                             title="Edit"
                             className="text-[#888] hover:text-[#e8e8e8] transition-colors"
@@ -1354,6 +1419,14 @@ function ListView({
                     )}
                   </td>
                 </tr>
+                {expandedPerf === bot.id && (
+                  <tr className="border-b border-[#111111]">
+                    <td colSpan={7} className="px-3 pb-3 pt-1 bg-[#0d0d0d]">
+                      <BotPerfPanel botId={bot.id} />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               )
             })}
           </tbody>
