@@ -157,8 +157,10 @@
     "Test network latency",
     "Validate config files",
     "Check firewall rules",
-    "Verify SSL certs"
+    "Verify SSL certs",
+    "Verify thread counts",
+    "Test API timeouts"
   ],
-  "last_updated": "2026-07-07T21:54:09.225553+00:00",
-  "total": 158
+  "last_updated": "2026-07-07T22:57:51.685036+00:00",
+  "total": 160
 }
