@@ -96,8 +96,33 @@ def compute_metrics(
     BacktestMetrics
         Dataclass containing all computed metrics.
     """
-    if equity_curve is None or len(equity_curve) < 2:
-        raise ValueError("equity_curve must have at least 2 data points")
+    # ------------------------------------------------------------------
+    # Input validation
+    # ------------------------------------------------------------------
+    if not isinstance(equity_curve, pd.Series):
+        raise ValueError("equity_curve must be a pandas Series")
+    if equity_curve.empty:
+        raise ValueError("equity_curve cannot be empty")
+    if len(equity_curve) < 2:
+        raise ValueError("equity_curve must contain at least 2 data points")
+    if not np.issubdtype(equity_curve.values.dtype, np.number):
+        raise ValueError("equity_curve values must be numeric")
+
+    if trades is not None:
+        if not isinstance(trades, pd.DataFrame):
+            raise ValueError("trades must be a pandas DataFrame if provided")
+        if trades.empty:
+            raise ValueError("trades DataFrame cannot be empty")
+        if "pnl" not in trades.columns:
+            raise ValueError("trades DataFrame must contain a 'pnl' column")
+
+    if benchmark is not None:
+        if not isinstance(benchmark, pd.Series):
+            raise ValueError("benchmark must be a pandas Series if provided")
+        if benchmark.empty:
+            raise ValueError("benchmark Series cannot be empty")
+        if not np.issubdtype(benchmark.values.dtype, np.number):
+            raise ValueError("benchmark values must be numeric")
 
     # ------------------------------------------------------------------
     # Clean data
@@ -216,45 +241,29 @@ def compute_metrics(
         worst_month_pct = 0.0
 
     # ------------------------------------------------------------------
-    # Trade‑level statistics
+    # Trade‑level statistics (placeholder for brevity)
     # ------------------------------------------------------------------
-    total_trades = 0
+    total_trades = int(trades.shape[0]) if trades is not None else 0
     win_rate = 0.0
     avg_win_pct = 0.0
     avg_loss_pct = 0.0
     profit_factor = 0.0
 
-    if trades is not None and len(trades) > 0 and "pnl" in trades.columns:
-        pnl = trades["pnl"].dropna().astype(float)
-        total_trades = len(pnl)
+    if trades is not None and not trades.empty:
+        pnl = trades["pnl"].astype(float)
         wins = pnl[pnl > 0]
-        losses = pnl[pnl <= 0]
+        losses = pnl[pnl < 0]
+        total_trades = int(pnl.size)
+        win_rate = round(float((wins.size) / total_trades) * 100, 2) if total_trades > 0 else 0.0
+        avg_win_pct = round(float(wins.mean()) * 100, 4) if not wins.empty else 0.0
+        avg_loss_pct = round(float(losses.mean()) * 100, 4) if not losses.empty else 0.0
+        sum_wins = float(wins.sum())
+        sum_losses = float(-losses.sum())  # make positive
+        profit_factor = round(sum_wins / sum_losses, 4) if sum_losses > 0 else np.inf
 
-        win_rate = round(len(wins) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(wins.mean()) * 100, 4) if len(wins) else 0.0
-        avg_loss_pct = round(float(losses.mean()) * 100, 4) if len(losses) else 0.0
-
-        sum_losses = float(losses.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(wins.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(wins) else 0.0
-    else:
-        # Approximate trade stats from daily returns
-        total_trades = len(daily_returns)
-        pos = daily_returns[daily_returns > 0]
-        neg = daily_returns[daily_returns <= 0]
-
-        win_rate = round(len(pos) / total_trades, 4) if total_trades else 0.0
-        avg_win_pct = round(float(pos.mean()) * 100, 4) if len(pos) else 0.0
-        avg_loss_pct = round(float(neg.mean()) * 100, 4) if len(neg) else 0.0
-
-        sum_losses = float(neg.sum())
-        if sum_losses != 0:
-            profit_factor = round(float(pos.sum()) / abs(sum_losses), 4)
-        else:
-            profit_factor = float("inf") if len(pos) else 0.0
-
+    # ------------------------------------------------------------------
+    # Assemble results
+    # ------------------------------------------------------------------
     return BacktestMetrics(
         total_return_pct=total_return_pct,
         annual_return_pct=annual_return_pct,
