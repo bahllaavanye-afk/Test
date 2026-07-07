@@ -11,6 +11,7 @@ All API calls are async. For sync contexts, use compute_features_sync().
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import httpx
@@ -19,6 +20,8 @@ import pandas as pd
 
 _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
+
+_logger = logging.getLogger(__name__)
 
 
 def _to_binance_symbol(symbol: str) -> str:
@@ -51,19 +54,40 @@ class BinanceFundingRateFeatures:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
-            if not data:
-                return pd.DataFrame()
-            rows = [
-                {
-                    "ts": pd.to_datetime(int(r["fundingTime"]), unit="ms", utc=True),
-                    "funding_rate": float(r["fundingRate"]),
-                }
-                for r in data
-            ]
-            df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
-            return df
-        except Exception:
+        except httpx.HTTPError as e:
+            _logger.error(
+                "Failed to fetch funding rate history",
+                extra={"symbol": symbol, "url": url, "error": str(e)},
+            )
             return pd.DataFrame()
+        except Exception as e:
+            _logger.exception(
+                "Unexpected error during funding rate request",
+                extra={"symbol": symbol, "url": url},
+            )
+            return pd.DataFrame()
+
+        if not data:
+            return pd.DataFrame()
+
+        rows = []
+        for r in data:
+            try:
+                rows.append(
+                    {
+                        "ts": pd.to_datetime(int(r["fundingTime"]), unit="ms", utc=True),
+                        "funding_rate": float(r["fundingRate"]),
+                    }
+                )
+            except (KeyError, ValueError, TypeError) as e:
+                _logger.warning(
+                    "Malformed funding rate entry skipped",
+                    extra={"symbol": symbol, "entry": r, "error": str(e)},
+                )
+                continue
+
+        df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
+        return df
 
     async def get_open_interest_hist(
         self,
@@ -86,20 +110,41 @@ class BinanceFundingRateFeatures:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
-            if not data:
-                return pd.DataFrame()
-            rows = [
-                {
-                    "ts": pd.to_datetime(int(r["timestamp"]), unit="ms", utc=True),
-                    "open_interest": float(r["sumOpenInterest"]),
-                    "open_interest_value": float(r["sumOpenInterestValue"]),
-                }
-                for r in data
-            ]
-            df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
-            return df
-        except Exception:
+        except httpx.HTTPError as e:
+            _logger.error(
+                "Failed to fetch open interest history",
+                extra={"symbol": symbol, "url": url, "error": str(e)},
+            )
             return pd.DataFrame()
+        except Exception as e:
+            _logger.exception(
+                "Unexpected error during open interest request",
+                extra={"symbol": symbol, "url": url},
+            )
+            return pd.DataFrame()
+
+        if not data:
+            return pd.DataFrame()
+
+        rows = []
+        for r in data:
+            try:
+                rows.append(
+                    {
+                        "ts": pd.to_datetime(int(r["timestamp"]), unit="ms", utc=True),
+                        "open_interest": float(r["sumOpenInterest"]),
+                        "open_interest_value": float(r["sumOpenInterestValue"]),
+                    }
+                )
+            except (KeyError, ValueError, TypeError) as e:
+                _logger.warning(
+                    "Malformed open interest entry skipped",
+                    extra={"symbol": symbol, "entry": r, "error": str(e)},
+                )
+                continue
+
+        df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
+        return df
 
     async def compute_features_async(
         self, symbol: str, df: pd.DataFrame
@@ -119,10 +164,17 @@ class BinanceFundingRateFeatures:
         for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
             df[col] = np.nan
 
-        fr_df, oi_df = await asyncio.gather(
-            self.get_funding_rate_history(symbol, limit=500),
-            self.get_open_interest_hist(symbol, period="1d", limit=500),
-        )
+        try:
+            fr_df, oi_df = await asyncio.gather(
+                self.get_funding_rate_history(symbol, limit=500),
+                self.get_open_interest_hist(symbol, period="1d", limit=500),
+            )
+        except Exception as e:
+            _logger.exception(
+                "Error gathering funding rate or open interest data",
+                extra={"symbol": symbol},
+            )
+            return df
 
         # Merge funding rate
         if not fr_df.empty:
@@ -149,7 +201,9 @@ class BinanceFundingRateFeatures:
         if not oi_df.empty:
             oi_df = oi_df.set_index("ts").resample("D").last()
             oi_df["oi_change_pct"] = oi_df["open_interest"].pct_change() * 100
-            oi_df["oi_momentum"] = oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
+            oi_df["oi_momentum"] = (
+                oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
+            )
 
             if hasattr(df.index, "tz") and df.index.tz is not None:
                 idx = df.index.normalize()
@@ -175,6 +229,7 @@ class BinanceFundingRateFeatures:
             if loop.is_running():
                 # Already inside an event loop (e.g., FastAPI) — create a task
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
                         asyncio.run, self.compute_features_async(symbol, df)
@@ -182,7 +237,11 @@ class BinanceFundingRateFeatures:
                     return future.result(timeout=30)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
-        except Exception:
+        except Exception as e:
+            _logger.exception(
+                "Error computing alternative features synchronously",
+                extra={"symbol": symbol},
+            )
             df = df.copy()
             for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
                 df[col] = np.nan
