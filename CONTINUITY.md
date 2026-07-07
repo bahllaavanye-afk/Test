@@ -42,6 +42,23 @@ QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, 
   pytest-asyncio deprecation removed (#206). Backend verified deploy-ready locally (158 routes, seeds
   29 bots). **Live blockers are human-only: Render build-minutes (#197) + default branch → `main` (#196).**
 
+## 2026-07-07 — THE no-trades root cause found & fixed
+- **Zero trades for days despite open markets** traced to ONE bug: 3 crypto
+  strategies (basis_carry, funding_settlement_timer, mvrv_zscore_timing) did a
+  module-level `import aiohttp`, which isn't in the desk workflow pip env. That
+  crashed `from app.strategies import STRATEGY_REGISTRY` → desk_order_placer
+  FATAL'd at line 690 on EVERY run (scheduled + event-driven), before placing a
+  single order. One optional dep took down all 6 desks. Fixed: lazy aiohttp
+  import at call sites + aiohttp added to desk deps + regression test
+  (test_registry_import_safe). Merged #348.
+- Gate race fixed (#324): auto-merge ignored ops-sync/Vercel non-gating checks;
+  green PRs had stranded overnight. Improver now dispatches CI on its own PR
+  branch (GITHUB_TOKEN fires no events) — closes the org perpetual-motion loop.
+- 5 evidence-based hybrid strategies live (#303); 15 OA clones + factory + ML
+  variant generation + synthetic-BS backtester scoring every options template.
+- STILL MANUAL (1 paste): DISCORD_WEBHOOK_URL secret — the webhook works (204),
+  it's just not saved as a GitHub secret, so automated Discord senders have no pipe.
+
 ## 2026-07-06 — org layer + honest data + the cron-starvation fix
 - **Fake data purged:** live-stats hardcoded Sharpe 2.1/68%/14.7% → computed from real
   trades (null until data); tearsheet 500 (Postgres-only date_trunc) → DB-agnostic;
