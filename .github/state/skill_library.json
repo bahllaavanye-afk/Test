@@ -147,8 +147,12 @@
     "Check API keys",
     "Verify trade limits",
     "Test algo_agent init",
-    "Verify market hours"
+    "Verify market hours",
+    "Check data feeds",
+    "Log trade rejections",
+    "Monitor CPU usage",
+    "Check dependency versions"
   ],
-  "last_updated": "2026-07-07T11:23:27.624373+00:00",
-  "total": 148
+  "last_updated": "2026-07-07T13:32:19.955224+00:00",
+  "total": 152
 }
