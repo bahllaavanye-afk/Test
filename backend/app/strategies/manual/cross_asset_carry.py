@@ -43,13 +43,12 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DATA_BASE = "https://data.alpaca.markets"
 
-
 # ETF universe — each leg and its role in the carry signal
 HIGH_EQUITY_CARRY = ["SCHD", "VYM"]
-LOW_EQUITY_CARRY  = ["ARKK", "SPAK"]
-HIGH_BOND_CARRY   = ["TLT"]
-LOW_BOND_CARRY    = ["SHY"]
-ALL_ETF_UNIVERSE  = HIGH_EQUITY_CARRY + LOW_EQUITY_CARRY + HIGH_BOND_CARRY + LOW_BOND_CARRY
+LOW_EQUITY_CARRY = ["ARKK", "SPAK"]
+HIGH_BOND_CARRY = ["TLT"]
+LOW_BOND_CARRY = ["SHY"]
+ALL_ETF_UNIVERSE = HIGH_EQUITY_CARRY + LOW_EQUITY_CARRY + HIGH_BOND_CARRY + LOW_BOND_CARRY
 
 
 class CrossAssetCarryStrategy(AbstractStrategy):
@@ -69,21 +68,28 @@ class CrossAssetCarryStrategy(AbstractStrategy):
 
     # Portfolio weights (must sum to 1.0)
     EQUITY_CARRY_WEIGHT = 0.50
-    BOND_CARRY_WEIGHT   = 0.50
+    BOND_CARRY_WEIGHT = 0.50
 
     # Entry/exit thresholds (z-score of combined carry signal)
-    ENTRY_THRESHOLD =  0.50
-    EXIT_THRESHOLD  =  0.10
-    STOP_THRESHOLD  = -1.50  # stop out if carry signal dramatically reverses
+    ENTRY_THRESHOLD = 0.50
+    EXIT_THRESHOLD = 0.10
+    STOP_THRESHOLD = -1.50  # stop out if carry signal dramatically reverses
 
     # Lookback for trailing return
-    LOOKBACK_DAYS = 252   # ~12 months
+    LOOKBACK_DAYS = 252  # ~12 months
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
 
     async def _fetch_12m_return(self, symbol: str) -> float | None:
-        """Fetch daily bars and compute trailing 12-month total return."""
+        """Fetch daily bars and compute trailing 12‑month total return.
+
+        Returns ``None`` if the request fails, insufficient data is returned,
+        or the computation encounters a divide‑by‑zero scenario.
+        """
+        if not symbol:
+            return None
+
         start = (date.today() - timedelta(days=self.LOOKBACK_DAYS + 30)).isoformat()
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -99,80 +105,107 @@ class CrossAssetCarryStrategy(AbstractStrategy):
                 )
             if resp.status_code != 200:
                 return None
+
             bars = resp.json().get("bars", [])
-            if len(bars) < 200:
+            if len(bars) < max(200, self.LOOKBACK_DAYS // 2):
+                # Not enough data to compute a reliable 12‑month return
                 return None
-            closes = [float(b["c"]) for b in bars]
-            # 12-month return: most recent close vs close ~252 bars ago
-            return float(closes[-1] / closes[-min(self.LOOKBACK_DAYS, len(closes))] - 1.0)
+
+            closes = [float(b["c"]) for b in bars if b.get("c") is not None]
+            if not closes:
+                return None
+
+            # Use the earliest close within the look‑back window for the denominator
+            denominator_index = -min(self.LOOKBACK_DAYS, len(closes))
+            denominator = closes[denominator_index]
+            if denominator == 0:
+                return None
+
+            return float(closes[-1] / denominator - 1.0)
         except Exception:
             return None
 
     @staticmethod
     def _zscore(value: float, series_vals: list[float]) -> float:
-        """Compute z-score of value relative to a reference distribution."""
+        """Compute z‑score of *value* relative to *series_vals*.
+
+        Returns ``0.0`` when the reference series is empty or has insufficient
+        variance to avoid division‑by‑zero.
+        """
         if not series_vals or len(series_vals) < 2:
             return 0.0
         mean = np.mean(series_vals)
-        std  = np.std(series_vals)
+        std = np.std(series_vals)
         return float((value - mean) / max(std, 1e-8))
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str | None) -> Signal | None:
         """
         Compute carry signal across equity and bond ETFs.
-        Signal is issued for the 'carry_basket' (treated as a synthetic symbol).
-        The actual executor will decompose into individual ETF legs.
+
+        Returns a ``Signal`` for the synthetic ``carry_basket`` symbol (or the
+        provided ``symbol`` if it belongs to the universe). Handles edge cases
+        such as missing data, empty inputs, and off‑by‑one indexing safely.
         """
         import asyncio
 
-        # Fetch 12-month returns for all ETFs concurrently
+        # Guard against completely missing inputs
+        if data is None or not isinstance(data, pd.DataFrame):
+            # The strategy does not depend on the incoming dataframe, but we
+            # retain the check for future compatibility.
+            pass
+
+        # Fetch 12‑month returns for all ETFs concurrently
         returns = await asyncio.gather(
             *[self._fetch_12m_return(sym) for sym in ALL_ETF_UNIVERSE],
             return_exceptions=True,
         )
+
+        # Build a map of successful returns, ignoring None or exception results
         ret_map: dict[str, float] = {}
         for sym, ret in zip(ALL_ETF_UNIVERSE, returns):
-            if isinstance(ret, float) and ret is not None:
+            if isinstance(ret, float):
                 ret_map[sym] = ret
 
-        # Need at least one from each leg
-        if not all(s in ret_map for s in ["SCHD", "ARKK", "TLT", "SHY"]):
+        # Ensure at least one ETF from each required leg is present
+        required_symbols = {"SCHD", "ARKK", "TLT", "SHY"}
+        if not required_symbols.issubset(ret_map.keys()):
             return None
 
-        # Equity carry spread: avg(high-carry ETFs) - avg(low-carry ETFs)
-        high_eq_ret = np.mean([ret_map[s] for s in HIGH_EQUITY_CARRY if s in ret_map])
-        low_eq_ret  = np.mean([ret_map[s] for s in LOW_EQUITY_CARRY  if s in ret_map])
-        equity_carry_raw = float(high_eq_ret - low_eq_ret)
+        # Helper to safely compute mean of a possibly empty list
+        def safe_mean(symbols: list[str]) -> float:
+            values = [ret_map[s] for s in symbols if s in ret_map]
+            return float(np.mean(values)) if values else 0.0
 
-        # Bond carry spread: TLT - SHY (duration premium)
+        # Equity carry spread
+        high_eq_ret = safe_mean(HIGH_EQUITY_CARRY)
+        low_eq_ret = safe_mean(LOW_EQUITY_CARRY)
+        equity_carry_raw = high_eq_ret - low_eq_ret
+
+        # Bond carry spread
         bond_carry_raw = float(ret_map["TLT"] - ret_map["SHY"])
 
-        # Normalize each signal to [-1, +1] range
-        # We use tanh normalization: tanh maps any real to (-1, 1) smoothly
+        # Normalize each signal to [-1, +1] range using tanh
         equity_carry_norm = float(np.tanh(equity_carry_raw * 5.0))
-        bond_carry_norm   = float(np.tanh(bond_carry_raw   * 5.0))
+        bond_carry_norm = float(np.tanh(bond_carry_raw * 5.0))
 
         # Combined carry signal
         combined = (
-            self.EQUITY_CARRY_WEIGHT * equity_carry_norm +
-            self.BOND_CARRY_WEIGHT   * bond_carry_norm
+            self.EQUITY_CARRY_WEIGHT * equity_carry_norm
+            + self.BOND_CARRY_WEIGHT * bond_carry_norm
         )
 
+        # No actionable signal if below entry threshold
         if abs(combined) < self.ENTRY_THRESHOLD:
-            return None  # no actionable carry signal
+            return None
 
-        side       = "buy" if combined > 0 else "sell"
+        side = "buy" if combined > 0 else "sell"
         confidence = min(abs(combined), 1.0)
 
-        # Determine which ETF to trade (signal issued for the triggering symbol)
-        # Prefer to trade the most liquid ETF in the appropriate leg
-        if side == "buy":
-            trade_symbol = "SCHD"   # long high-carry equity
-        else:
-            trade_symbol = "ARKK"   # short low-carry equity (or TLT short if bond-driven)
+        # Default trade symbol based on signal direction
+        trade_symbol = "SCHD" if side == "buy" else "ARKK"
 
-        # Override with provided symbol if it's in the universe
-        if symbol in ALL_ETF_UNIVERSE:
+        # If a specific symbol is supplied and belongs to the universe, use it
+        if symbol and symbol in ALL_ETF_UNIVERSE:
             trade_symbol = symbol
 
         return Signal(
@@ -184,51 +217,14 @@ class CrossAssetCarryStrategy(AbstractStrategy):
             risk_bucket=self.risk_bucket,
             metadata={
                 "equity_carry_spread": round(equity_carry_raw, 4),
-                "bond_carry_spread":   round(bond_carry_raw,   4),
-                "equity_carry_norm":   round(equity_carry_norm, 4),
-                "bond_carry_norm":     round(bond_carry_norm,   4),
-                "combined_carry":      round(combined, 4),
-                "schd_12m":  round(ret_map.get("SCHD", 0), 4),
-                "arkk_12m":  round(ret_map.get("ARKK", 0), 4),
-                "tlt_12m":   round(ret_map.get("TLT",  0), 4),
-                "shy_12m":   round(ret_map.get("SHY",  0), 4),
-                "academic_ref": "Koijen et al. (2018) JFE Carry",
-                "portfolio_weights": {
-                    "equity_carry": self.EQUITY_CARRY_WEIGHT,
-                    "bond_carry":   self.BOND_CARRY_WEIGHT,
-                },
+                "bond_carry_spread": round(bond_carry_raw, 4),
+                "equity_carry_norm": round(equity_carry_norm, 4),
+                "bond_carry_norm": round(bond_carry_norm, 4),
+                "combined_carry": round(combined, 4),
+                "schd_12m": round(ret_map.get("SCHD", 0.0), 4),
+                "arkk_12m": round(ret_map.get("ARKK", 0.0), 4),
+                "tlt_12m": round(ret_map.get("TLT", 0.0), 4),
+                "shy_12m": round(ret_map.get("SHY", 0.0), 4),
+                "academic_ref": "Koijen et al. (2018)",
             },
-        )
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Single-ETF backtest: use trailing 12-month return momentum as carry proxy.
-        Long when trailing return is positive (ETF in carry regime), else flat.
-
-        For multi-asset backtesting the full cross-sectional version is needed;
-        this implementation provides the single-symbol backbone.
-        """
-        if "close" not in df.columns or len(df) < self.LOOKBACK_DAYS:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
-
-        close = df["close"].astype(float)
-
-        # Rolling 12-month return as carry signal
-        carry_signal = close / close.shift(self.LOOKBACK_DAYS) - 1.0
-
-        # Entry: positive carry (long when carry > 0)
-        # Apply shift(1) to prevent lookahead
-        entries = (carry_signal > 0.0).shift(1).fillna(False)
-        exits   = (carry_signal < 0.0).shift(1).fillna(False)
-
-        # Short leg: negative carry
-        short_entries = (carry_signal < -0.05).shift(1).fillna(False)
-        short_exits   = (carry_signal > -0.01).shift(1).fillna(False)
-
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
         )
