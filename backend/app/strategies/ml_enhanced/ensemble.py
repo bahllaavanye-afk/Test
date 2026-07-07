@@ -30,6 +30,14 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        # Defensive checks for None / empty inputs
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            return None
+        if not symbol:
+            return None
+        if self.sma_window <= 0:
+            return None
+
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -50,6 +58,10 @@ class EnsembleStrategy(AbstractStrategy):
                 return None
             sma = recent["close"].mean()
             median_vol = recent["volume"].median()
+
+            # Safely obtain the latest price/volume; guard against off‑by‑one errors
+            if len(data) == 0:
+                return None
             latest_close = data["close"].iloc[-1]
             latest_vol = data["volume"].iloc[-1]
 
@@ -90,6 +102,15 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
+        # Defensive handling of None / empty DataFrames
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            empty = pd.Series(False, index=pd.RangeIndex(0))
+            return BacktestSignals(entries=empty, exits=empty)
+
+        if self.sma_window <= 0:
+            empty = pd.Series(False, index=df.index)
+            return BacktestSignals(entries=empty, exits=empty)
+
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
