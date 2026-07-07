@@ -1,7 +1,11 @@
 """Volume-confirmed price breakout above rolling high."""
+import logging
+import time
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+_logger = logging.getLogger(__name__)
 
 
 class BreakoutStrategy(AbstractStrategy):
@@ -24,9 +28,21 @@ class BreakoutStrategy(AbstractStrategy):
         self.lookback = effective["lookback"]
         self.vol_mult = effective["vol_mult"]
         self.atr_mult = effective["atr_mult"]
+        self._signal_count = 0  # cumulative signals generated for this instance
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        start_time = time.time()
+
         if len(data) < self.lookback + 20:
+            _logger.info(
+                "analyze_skipped",
+                extra={
+                    "symbol": symbol,
+                    "reason": "insufficient_data",
+                    "required_rows": self.lookback + 20,
+                    "available_rows": len(data),
+                },
+            )
             return None
 
         close = data["close"]
@@ -35,7 +51,11 @@ class BreakoutStrategy(AbstractStrategy):
 
         resistance = high.rolling(self.lookback).max().shift(1)
         atr = ta.atr(data["high"], data["low"], close, length=14)
-        vol_avg = volume.rolling(20).mean() if len(volume) > 0 else pd.Series(1, index=data.index)
+        vol_avg = (
+            volume.rolling(20).mean()
+            if len(volume) > 0
+            else pd.Series(1, index=data.index)
+        )
 
         price = close.iloc[-1]
         res = resistance.iloc[-1]
@@ -43,16 +63,43 @@ class BreakoutStrategy(AbstractStrategy):
         vol_curr = volume.iloc[-1] if len(volume) > 0 else 1
         vol_mean = vol_avg.iloc[-1] if len(volume) > 0 else 1
 
+        signal = None
         if price > res + self.atr_mult * atr_val and vol_curr > self.vol_mult * vol_mean:
             pct_break = (price - res) / max(res, 1e-8)
             confidence = min(0.82, 0.55 + pct_break * 3)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"resistance": round(res, 4), "atr": round(atr_val, 4)})
-        return None
+            signal = Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={"resistance": round(res, 4), "atr": round(atr_val, 4)},
+            )
+            self._signal_count += 1
+
+        exec_ms = (time.time() - start_time) * 1000
+        if signal:
+            _logger.info(
+                "signal_generated",
+                extra={
+                    "symbol": symbol,
+                    "strategy": self.name,
+                    "signal_count": self._signal_count,
+                    "execution_ms": exec_ms,
+                    "confidence": signal.confidence,
+                },
+            )
+        else:
+            _logger.info(
+                "analyze_completed",
+                extra={"symbol": symbol, "strategy": self.name, "execution_ms": exec_ms},
+            )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.time()
+
         close = df["close"]
         high = df["high"]
         volume = df.get("volume", pd.Series(1, index=df.index))
@@ -60,9 +107,25 @@ class BreakoutStrategy(AbstractStrategy):
         atr = ta.atr(df["high"], df["low"], close, length=14)
         vol_avg = volume.rolling(20).mean()
 
-        breakout = close.shift(1) > resistance + self.atr_mult * (atr.shift(1) if atr is not None else 0)
+        breakout = close.shift(1) > resistance + self.atr_mult * (
+            atr.shift(1) if atr is not None else 0
+        )
         vol_confirm = volume.shift(1) > self.vol_mult * vol_avg.shift(1)
         entries = breakout & vol_confirm
         exits = close.shift(1) < resistance  # price falls back below resistance
 
-        return BacktestSignals(entries=entries.fillna(False), exits=exits.fillna(False))
+        signals = BacktestSignals(
+            entries=entries.fillna(False), exits=exits.fillna(False)
+        )
+
+        exec_ms = (time.time() - start_time) * 1000
+        entry_count = int(entries.sum())
+        _logger.info(
+            "backtest_completed",
+            extra={
+                "strategy": self.name,
+                "entry_count": entry_count,
+                "execution_ms": exec_ms,
+            },
+        )
+        return signals
