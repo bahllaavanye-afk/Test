@@ -107,6 +107,65 @@ def run_backtest(
     fill_at_open: If True, position changes fill at the bar's OPEN price, not
                   the previous bar's close. This is more realistic for EOD signals.
     """
+    # -------------------- Input validation --------------------
+    if not isinstance(signals, pd.Series):
+        raise ValueError("`signals` must be a pandas Series.")
+    if not isinstance(prices, pd.Series):
+        raise ValueError("`prices` must be a pandas Series.")
+    if signals.empty:
+        raise ValueError("`signals` Series cannot be empty.")
+    if prices.empty:
+        raise ValueError("`prices` Series cannot be empty.")
+    if not signals.index.equals(prices.index):
+        raise ValueError("`signals` and `prices` must share the same index.")
+    if not signals.dtype.kind in "biufc":
+        raise ValueError("`signals` must contain numeric values.")
+    allowed_signal_vals = {-1, 0, 1}
+    if not signals.isin(allowed_signal_vals).all():
+        raise ValueError("`signals` values must be -1, 0, or 1.")
+    if (prices <= 0).any():
+        raise ValueError("`prices` must contain only positive values.")
+
+    if opens is not None:
+        if not isinstance(opens, pd.Series):
+            raise ValueError("`opens` must be a pandas Series when provided.")
+        if not opens.index.equals(prices.index):
+            raise ValueError("`opens` must share the same index as `prices`.")
+        if (opens <= 0).any():
+            raise ValueError("`opens` must contain only positive values.")
+
+    if volume is not None:
+        if not isinstance(volume, pd.Series):
+            raise ValueError("`volume` must be a pandas Series when provided.")
+        if not volume.index.equals(prices.index):
+            raise ValueError("`volume` must share the same index as `prices`.")
+        if (volume < 0).any():
+            raise ValueError("`volume` cannot contain negative values.")
+
+    if not isinstance(initial_equity, (int, float)):
+        raise ValueError("`initial_equity` must be a numeric value.")
+    if initial_equity <= 0:
+        raise ValueError("`initial_equity` must be greater than zero.")
+
+    if not isinstance(commission_pct, (int, float)):
+        raise ValueError("`commission_pct` must be a numeric value.")
+    if commission_pct < 0:
+        raise ValueError("`commission_pct` cannot be negative.")
+
+    if not isinstance(slippage_pct, (int, float)):
+        raise ValueError("`slippage_pct` must be a numeric value.")
+    if slippage_pct < 0:
+        raise ValueError("`slippage_pct` cannot be negative.")
+
+    if not isinstance(fill_at_open, bool):
+        raise ValueError("`fill_at_open` must be a boolean.")
+
+    if not isinstance(risk_free_annual, (int, float)):
+        raise ValueError("`risk_free_annual` must be a numeric value.")
+    if risk_free_annual < 0:
+        raise ValueError("`risk_free_annual` cannot be negative.")
+    # ---------------------------------------------------------
+
     fill_prices = opens if (fill_at_open and opens is not None) else prices
 
     df = pd.DataFrame({
@@ -220,22 +279,23 @@ def run_backtest(
 
     total_return = float(equity[-1] / initial_equity - 1.0)
 
-    return BacktestMetrics(
-        total_return=round(total_return, 4),
-        annualized_return=round(ann_return, 4),
-        sharpe=round(sharpe, 4),
-        sortino=round(sortino, 4),
-        calmar=round(calmar, 4),
-        omega_ratio=round(min(omega, 99.99), 4),
-        ulcer_index=round(ulcer, 4),
-        max_drawdown=round(max_dd, 4),
-        avg_drawdown=round(avg_dd, 4),
-        max_drawdown_duration_days=max_dur,
+    metrics = BacktestMetrics(
+        total_return=total_return,
+        annualized_return=ann_return,
+        sharpe=sharpe,
+        sortino=sortino,
+        calmar=calmar,
+        omega_ratio=omega,
+        ulcer_index=ulcer,
+        max_drawdown=max_dd,
+        avg_drawdown=avg_dd,
+        max_drawdown_duration_days=int(max_dur),
         num_trades=len(trade_pnls),
-        win_rate=round(win_rate, 4),
-        avg_win_pct=round(avg_win * 100, 4),
-        avg_loss_pct=round(avg_loss * 100, 4),
-        profit_factor=round(profit_factor, 4),
-        expectancy=round(expectancy * 100, 4),
+        win_rate=win_rate,
+        avg_win_pct=avg_win,
+        avg_loss_pct=avg_loss,
+        profit_factor=profit_factor,
+        expectancy=expectancy,
         equity_curve=equity_curve,
     )
+    return metrics
