@@ -18,6 +18,7 @@ import json
 import logging
 import time
 import uuid
+import inspect
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -50,7 +51,10 @@ class Task:
     error: str = ""
 
     def to_redis(self) -> dict[str, str]:
-        return {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in asdict(self).items()}
+        return {
+            k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+            for k, v in asdict(self).items()
+        }
 
     @classmethod
     def from_redis(cls, fields: dict) -> "Task":
@@ -85,6 +89,12 @@ class TaskQueue:
 
     def register(self, task_type: str, handler: TaskFn) -> None:
         """Register an async handler for a task type."""
+        if not isinstance(task_type, str) or not task_type:
+            raise ValueError("task_type must be a non‑empty string")
+        if not callable(handler):
+            raise ValueError("handler must be callable")
+        if not inspect.iscoroutinefunction(handler):
+            raise ValueError("handler must be an async function (coroutine)")
         self._handlers[task_type] = handler
 
     # ── Enqueuing ─────────────────────────────────────────────────────────────
@@ -97,6 +107,22 @@ class TaskQueue:
         max_retries: int = 3,
         delay_seconds: float = 0,
     ) -> str:
+        """Add a new task to the queue and return its UUID."""
+        # Validation
+        if not isinstance(task_type, str) or not task_type:
+            raise ValueError("task_type must be a non‑empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be a dict")
+        if priority not in (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW):
+            raise ValueError(
+                f"priority must be one of {PRIORITY_CRITICAL}, {PRIORITY_HIGH}, "
+                f"{PRIORITY_NORMAL}, {PRIORITY_LOW}"
+            )
+        if not isinstance(max_retries, int) or max_retries < 0:
+            raise ValueError("max_retries must be a non‑negative integer")
+        if not isinstance(delay_seconds, (int, float)) or delay_seconds < 0:
+            raise ValueError("delay_seconds must be a non‑negative number")
+
         task_id = str(uuid.uuid4())
         task = Task(
             task_id=task_id,
@@ -109,7 +135,9 @@ class TaskQueue:
         key = f"{_QUEUE_PREFIX}{priority}"
         try:
             await self._r.xadd(key, task.to_redis(), maxlen=_MAX_STREAM_LEN, approximate=True)
-            logger.debug("TaskQueue.enqueue type=%s id=%s priority=%d", task_type, task_id, priority)
+            logger.debug(
+                "TaskQueue.enqueue type=%s id=%s priority=%d", task_type, task_id, priority
+            )
         except Exception as e:
             logger.warning("TaskQueue.enqueue failed: %s", e)
         return task_id
@@ -137,6 +165,8 @@ class TaskQueue:
 
     async def run_worker(self, poll_interval: float = 0.5) -> None:
         """Continuous worker loop. Run as background task."""
+        if not isinstance(poll_interval, (int, float)) or poll_interval <= 0:
+            raise ValueError("poll_interval must be a positive number")
         logger.info("TaskQueue worker started")
         while True:
             try:
@@ -168,7 +198,10 @@ class TaskQueue:
             task.error = str(exc)
             logger.warning(
                 "TaskQueue task failed type=%s attempt=%d/%d: %s",
-                task.task_type, task.attempt, task.max_retries, exc,
+                task.task_type,
+                task.attempt,
+                task.max_retries,
+                exc,
             )
             if task.attempt < task.max_retries:
                 backoff = 2 ** task.attempt
@@ -185,7 +218,12 @@ class TaskQueue:
             logger.debug("TaskQueue._requeue failed: %s", e)
 
     async def _dead_letter(self, task: Task) -> None:
-        logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
+        logger.error(
+            "TaskQueue: task permanently failed type=%s id=%s error=%s",
+            task.task_type,
+            task.task_id,
+            task.error,
+        )
         try:
             await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
         except Exception:
@@ -214,10 +252,12 @@ _queue: TaskQueue | None = None
 
 
 def get_task_queue(redis_client: Any | None = None) -> TaskQueue:
+    """Return a singleton TaskQueue instance. Optionally inject a Redis client."""
     global _queue
     if _queue is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _queue = TaskQueue(redis_client)
     return _queue
