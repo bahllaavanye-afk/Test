@@ -11,7 +11,7 @@ on:
     - cron: "41 7 * * 0"   # Sundays 07:41 UTC
   push:
     branches: [main]
-    paths: ["backend/app/bots/templates.py"]   # re-score when the library changes
+    paths: ["backend/app/bots/templates.py", ".github/scripts/oa_backtest_runner.py"]   # re-score when library or scorer changes
 
 permissions:
   contents: write
