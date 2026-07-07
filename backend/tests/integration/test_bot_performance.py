@@ -15,12 +15,9 @@ _PASSWORD = "B0tPerf!2026x"
 
 
 async def _auth_headers(client) -> dict[str, str]:
-    email = f"botperf_{uuid.uuid4().hex[:10]}@example.com"
-    r = await client.post("/api/v1/auth/register", json={"email": email, "password": _PASSWORD})
-    if r.status_code in (500, 503):
-        pytest.skip(f"Auth backend unavailable ({r.status_code})")
-    assert r.status_code == 201, r.text
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+    from tests.integration._auth_helper import auth_headers
+
+    return await auth_headers(client, prefix="botperf", password=_PASSWORD)
 
 
 def _bot_payload(name: str) -> dict:

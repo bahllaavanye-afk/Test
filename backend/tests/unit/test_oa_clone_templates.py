@@ -13,6 +13,8 @@ OA_IDS = [
     "oa_ccs_friday_15d", "oa_long_calls_confirm", "oa_iron_boi",
     "oa_delta_adjusting_strangle", "oa_steamrolled_spy", "oa_steamrolled_qqq",
     "oa_td_npdt_s1_trend", "oa_trendy_short_put",
+    "hybrid_regime_gamma", "hybrid_regime_theta", "hybrid_put_ladder_trend",
+    "hybrid_wide_0dte_tp25", "hybrid_morning_momentum",
 ]
 
 

@@ -25,17 +25,18 @@ async def _auth_and_account(client):
     from app.models.account import Account
     from app.models.user import User
 
-    email = f"analytics_{uuid.uuid4().hex[:10]}@example.com"
-    r = await client.post("/api/v1/auth/register", json={"email": email, "password": _PASSWORD})
-    if r.status_code in (500, 503):
-        pytest.skip(f"Auth backend unavailable ({r.status_code})")
-    assert r.status_code == 201, r.text
-    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    from jose import jwt as _jwt
+
+    from tests.integration._auth_helper import auth_headers
+
+    headers = await auth_headers(client, prefix="analytics", password=_PASSWORD)
+    # user id straight from the JWT sub claim — no /auth/me endpoint exists
+    token = headers["Authorization"].split(" ", 1)[1]
+    user_id = _jwt.get_unverified_claims(token)["sub"]
 
     async with AsyncSessionLocal() as db:
-        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
         acct = Account(
-            id=str(uuid.uuid4()), user_id=user.id, broker="alpaca",
+            id=str(uuid.uuid4()), user_id=user_id, broker="alpaca",
             label="Paper", mode="paper", is_active=True,
         )
         db.add(acct)
