@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783397162.083289,
+    "last_updated": 1783402394.9728148,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1783387546.359403
+    "last_brain_update": 1783402394.9726558
   },
   "episodic": [
     {
@@ -323,6 +323,11 @@
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of encoded text and messages. The first part seems like an encoded string (maybe a token or reference). Then there are two robot messages: \"Auto-fix skipped \u2014 too complex for automated resolution.\" and \"Auto-fix failed \u2014 could not apply patch to file.\" There's also a mention of \"Reason: The repository content\" but incomplete. The user wants a summary",
       "item_count": 20,
       "ts": 1783387546.3575475
+    },
+    {
+      "summary": "We need to summarize two separate discussions: one about Slack agent-team run failed due to message_limit_exceeded, and another about auto-fix failed to apply patch. The user gave a single input with two distinct items separated by \"|\". The first is \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" (truncated). The second is \"[:robot: **Auto-fix failed** \u2014 could not apply patch to",
+      "item_count": 20,
+      "ts": 1783402394.970713
     }
   ]
 }
