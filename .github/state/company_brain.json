@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783436065.5284173,
+    "last_updated": 1783441037.756431,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -63,52 +63,52 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-06T16:47:09.081426+00:00",
+      "generated_at": "2026-07-07T16:16:41.824707+00:00",
       "signals": {
         "vix": {
-          "value": 15.91,
+          "value": 16.05,
           "trend": "falling"
         },
         "spy": {
-          "price": 750.9,
-          "sma50": 736.74,
-          "sma200": 689.23,
+          "price": 748.12,
+          "sma50": 737.58,
+          "sma200": 689.71,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0409,
+          "ratio": 1.0355,
           "median": 1.0527,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 0.402,
+          "hyg_lqd_momentum_20d": 0.707,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 7,
+          "sectors_above_sma20": 9,
           "total_sectors": 11,
-          "breadth_pct": 63.6
+          "breadth_pct": 81.8
         },
         "btc": {
-          "price": 63671,
-          "24h_pct": 1.74
+          "price": 63806,
+          "24h_pct": 0.29
         }
       },
-      "score": 3,
+      "score": 4,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "We need to write a 2-sentence morning market brief for QuantEdge trading desk. Given data: regime=bull (score=3), VIX 15.91 falling, SPY strong uptrend, credit spreads tightening, yield curve flat/inverted, breadth 7/11 sectors above 20-SMA. Tactical implication: which strategy type to favour today. Likely momentum or trend-following given strong uptrend and bull regime. Also note low VIX, tightening credit spreads support risk-on. Yield curve flat/inverted is a warning but not overriding. So favour trend-following or long-biased strategies. Keep brief: 2 sentences. First sentence: summarize market conditions. Second sentence: tactical implication."
+      "summary": "[LLM unavailable \u2014 all providers failed]"
     },
     "strategy_gates": {
       "directional": true,
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 3,
+    "opinion_score": 4,
     "macro_score": 0,
     "vix": 22.22,
     "market_scan_ts": 1781136270.285874,
@@ -296,6 +296,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1783364887.6064847
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 4,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1783441037.7572668
     }
   ],
   "github_insights": [
