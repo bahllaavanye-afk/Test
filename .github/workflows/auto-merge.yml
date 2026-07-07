@@ -82,7 +82,11 @@ jobs:
 
               // Every check run on the head sha must have concluded success/neutral/skipped.
               const {data: checks} = await github.rest.checks.listForRef({owner, repo, ref: pr.head.sha, per_page: 100});
-              const runs = checks.check_runs.filter(c => c.name !== 'automerge');
+              // ops-sync is continue-on-error side-effects (~10s) and raced the gate
+              // into skipping green PRs for hours; Vercel comments are decorative.
+              // Neither gates correctness — only real CI jobs do.
+              const IGNORE = ['automerge', 'ops-sync', 'Vercel Preview Comments'];
+              const runs = checks.check_runs.filter(c => !IGNORE.includes(c.name));
               const unfinished = runs.filter(c => c.status !== 'completed');
               if (unfinished.length) { core.info(`#${number}: ${unfinished.length} check(s) still running`); continue; }
               const failed = runs.filter(c => !['success', 'neutral', 'skipped'].includes(c.conclusion));
