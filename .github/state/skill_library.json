@@ -151,8 +151,13 @@
     "Check data feeds",
     "Log trade rejections",
     "Monitor CPU usage",
-    "Check dependency versions"
+    "Check dependency versions",
+    "validation on brokers/base.py: success \u2014 tests green",
+    "validation on backtest/options_synth.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on tasks/scheduler.py: success \u2014 tests green",
+    "validation on api/v1/backtests.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-07T13:32:19.955224+00:00",
+  "last_updated": "2026-07-07T16:28:45.251244+00:00",
   "total": 152
 }
