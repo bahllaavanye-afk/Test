@@ -10,10 +10,25 @@ filter: a trade is only taken when BOTH conditions are true:
 If the ML inference service is unavailable the strategy falls back
 gracefully (returns None from analyze, uses base signals in backtest).
 """
+
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.strategies.manual.pca_stat_arb import PCAStatArbStrategy
+
+# Constants
+DEFAULT_ML_CONFIDENCE_THRESHOLD = 0.60
+DEFAULT_STRATEGY_CONFIDENCE_THRESHOLD = 0.65
+DAILY_TICK_INTERVAL_SECONDS = 86_400.0
+MAX_BLENDED_CONFIDENCE = 0.95
+PREDICTION_NEUTRAL = "neutral"
+PREDICTION_UP = "up"
+PREDICTION_DOWN = "down"
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+METADATA_ML_CONFIDENCE_KEY = "ml_confidence"
+STRATEGY_NAME = "ml_pca_arb"
+STRATEGY_DISPLAY_NAME = "ML PCA Statistical Arbitrage (LSTM-Gated)"
 
 # ML inference is optional — import defensively
 try:
@@ -21,9 +36,6 @@ try:
     _INFERENCE_AVAILABLE = True
 except Exception:
     _INFERENCE_AVAILABLE = False
-
-
-_ML_CONFIDENCE_THRESHOLD = 0.60
 
 
 class MLPCAStatArbStrategy(AbstractStrategy):
@@ -37,20 +49,20 @@ class MLPCAStatArbStrategy(AbstractStrategy):
       - backtest_signals()  → delegates to the base PCA strategy
     """
 
-    name = "ml_pca_arb"
-    display_name = "ML PCA Statistical Arbitrage (LSTM-Gated)"
+    name = STRATEGY_NAME
+    display_name = STRATEGY_DISPLAY_NAME
     market_type = "equity"
     strategy_type = "ml_enhanced"
     risk_bucket = "arbitrage"
-    tick_interval_seconds = 86_400.0  # daily
-    confidence_threshold = 0.65
+    tick_interval_seconds = DAILY_TICK_INTERVAL_SECONDS
+    confidence_threshold = DEFAULT_STRATEGY_CONFIDENCE_THRESHOLD
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
         p = params or {}
         self._base = PCAStatArbStrategy(params)
         self._ml_threshold: float = float(
-            p.get("ml_confidence_threshold", _ML_CONFIDENCE_THRESHOLD)
+            p.get("ml_confidence_threshold", DEFAULT_ML_CONFIDENCE_THRESHOLD)
         )
 
     # ------------------------------------------------------------------
@@ -80,27 +92,27 @@ class MLPCAStatArbStrategy(AbstractStrategy):
                 return None
 
             ml_confidence: float = float(ml_result.get("confidence", 0.0))
-            ml_prediction: str = ml_result.get("prediction", "neutral")
+            ml_prediction: str = ml_result.get("prediction", PREDICTION_NEUTRAL)
 
             if ml_confidence < self._ml_threshold:
                 return None
-            if ml_prediction == "neutral":
+            if ml_prediction == PREDICTION_NEUTRAL:
                 return None
 
             # Direction agreement check
             direction_ok = (
-                (ml_prediction == "up" and base_signal.side == "buy")
-                or (ml_prediction == "down" and base_signal.side == "sell")
+                (ml_prediction == PREDICTION_UP and base_signal.side == SIDE_BUY)
+                or (ml_prediction == PREDICTION_DOWN and base_signal.side == SIDE_SELL)
             )
             if not direction_ok:
                 return None
 
             # Blend confidences
-            blended = min(0.95, (base_signal.confidence + ml_confidence) / 2)
+            blended = min(MAX_BLENDED_CONFIDENCE, (base_signal.confidence + ml_confidence) / 2)
             base_signal.confidence = blended
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
-            base_signal.metadata["ml_confidence"] = ml_confidence
+            base_signal.metadata[METADATA_ML_CONFIDENCE_KEY] = ml_confidence
             return base_signal
 
         except Exception:
