@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any, Mapping, Sequence
 
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
@@ -21,14 +22,23 @@ MULTIPLIER = 100        # options contract multiplier
 MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
 
 
+def _validate_number(name: str, value: Any, *, positive: bool = False) -> None:
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a numeric type, got {type(value).__name__}")
+    if positive and value <= 0:
+        raise ValueError(f"{name} must be > 0, got {value}")
+
+
 def norm_cdf(x: float) -> float:
+    _validate_number("x", x)
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 def norm_ppf(p: float) -> float:
     """Acklam's inverse-normal approximation (|err| < 1.15e-9)."""
+    _validate_number("p", p)
     if not 0.0 < p < 1.0:
-        raise ValueError("p must be in (0,1)")
+        raise ValueError("p must be in the open interval (0, 1)")
     a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
          1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
     b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
@@ -52,29 +62,84 @@ def norm_ppf(p: float) -> float:
            (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
 
 
-def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
-             r: float = RISK_FREE) -> float:
+def bs_price(
+    S: float,
+    K: float,
+    T: float,
+    sigma: float,
+    option_type: str,
+    r: float = RISK_FREE,
+) -> float:
+    """Black‑Scholes price for European options."""
+    _validate_number("S (spot)", S, positive=True)
+    _validate_number("K (strike)", K, positive=True)
+    _validate_number("T (time to expiry)", T, positive=True)
+    _validate_number("sigma (volatility)", sigma, positive=True)
+    _validate_number("r (risk‑free rate)", r)
+    if not isinstance(option_type, str) or not option_type:
+        raise ValueError("option_type must be a non‑empty string")
+    opt_type = option_type.lower()
+    if not (opt_type.startswith("c") or opt_type.startswith("p")):
+        raise ValueError("option_type must start with 'c' (call) or 'p' (put)")
+
     T = max(T, MIN_T)
     sigma = max(sigma, 1e-4)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
-    if option_type.startswith("c"):
+    if opt_type.startswith("c"):
         return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
     return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
 
 
-def bs_delta(S: float, K: float, T: float, sigma: float, option_type: str,
-             r: float = RISK_FREE) -> float:
+def bs_delta(
+    S: float,
+    K: float,
+    T: float,
+    sigma: float,
+    option_type: str,
+    r: float = RISK_FREE,
+) -> float:
+    """Black‑Scholes delta."""
+    _validate_number("S (spot)", S, positive=True)
+    _validate_number("K (strike)", K, positive=True)
+    _validate_number("T (time to expiry)", T, positive=True)
+    _validate_number("sigma (volatility)", sigma, positive=True)
+    _validate_number("r (risk‑free rate)", r)
+    if not isinstance(option_type, str) or not option_type:
+        raise ValueError("option_type must be a non‑empty string")
+    opt_type = option_type.lower()
+    if not (opt_type.startswith("c") or opt_type.startswith("p")):
+        raise ValueError("option_type must start with 'c' (call) or 'p' (put)")
+
     T = max(T, MIN_T)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
-    return norm_cdf(d1) if option_type.startswith("c") else norm_cdf(d1) - 1.0
+    return norm_cdf(d1) if opt_type.startswith("c") else norm_cdf(d1) - 1.0
 
 
-def strike_from_delta(S: float, target_delta: float, T: float, sigma: float,
-                      option_type: str, r: float = RISK_FREE) -> float:
+def strike_from_delta(
+    S: float,
+    target_delta: float,
+    T: float,
+    sigma: float,
+    option_type: str,
+    r: float = RISK_FREE,
+) -> float:
     """Invert BS delta → strike (calls: Δ=N(d1); puts: |Δ|=N(-d1))."""
+    _validate_number("S (spot)", S, positive=True)
+    _validate_number("target_delta", target_delta)
+    if not 0.0 < target_delta < 1.0:
+        raise ValueError("target_delta must be in the open interval (0, 1)")
+    _validate_number("T (time to expiry)", T, positive=True)
+    _validate_number("sigma (volatility)", sigma, positive=True)
+    _validate_number("r (risk‑free rate)", r)
+    if not isinstance(option_type, str) or not option_type:
+        raise ValueError("option_type must be a non‑empty string")
+    opt_type = option_type.lower()
+    if not (opt_type.startswith("c") or opt_type.startswith("p")):
+        raise ValueError("option_type must start with 'c' (call) or 'p' (put)")
+
     T = max(T, MIN_T)
-    p = target_delta if option_type.startswith("c") else 1.0 - target_delta
+    p = target_delta if opt_type.startswith("c") else 1.0 - target_delta
     d1 = norm_ppf(p)
     return S * math.exp((r + sigma ** 2 / 2) * T - d1 * sigma * math.sqrt(T))
 
@@ -91,19 +156,41 @@ def _net_value(legs: list[_Leg], S: float, T: float, sigma: float) -> float:
     return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
 
 
-def backtest_template(template: dict, closes: list[float],
-                      trading_days_per_entry: int = 1) -> dict:
+def backtest_template(
+    template: Mapping[str, Any],
+    closes: Sequence[float],
+    trading_days_per_entry: int = 1,
+) -> dict:
     """Walk daily closes; open the template's spread whenever flat, manage exits.
 
     Entry uses HV20×IV_PREMIUM as sigma and resolves strikes from leg deltas.
     Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
     plus expiry settlement. Returns ranking metrics — see module caveat.
     """
+    if not isinstance(template, Mapping):
+        raise ValueError("template must be a mapping (e.g., dict)")
+    if "action" not in template or not isinstance(template["action"], Mapping):
+        raise ValueError("template must contain an 'action' mapping")
+    if not isinstance(closes, Sequence) or len(closes) < 2:
+        raise ValueError("closes must be a sequence with at least two price points")
+    if not isinstance(trading_days_per_entry, int) or trading_days_per_entry < 1:
+        raise ValueError("trading_days_per_entry must be a positive integer")
+
     action = template["action"]
-    tp_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "take_profit"), 50) or 50
-    sl_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "stop_loss"), None)
+    if not isinstance(action.get("legs"), list) or not action["legs"]:
+        raise ValueError("action must contain a non‑empty list of legs")
+    tp_pct = next(
+        (r["value"] for r in template.get("exit_rules", []) if r.get("type") == "take_profit"),
+        50,
+    )
+    if not isinstance(tp_pct, (int, float)):
+        raise ValueError("take_profit value must be numeric")
+    sl_pct = next(
+        (r["value"] for r in template.get("exit_rules", []) if r.get("type") == "stop_loss"),
+        None,
+    )
+    if sl_pct is not None and not isinstance(sl_pct, (int, float)):
+        raise ValueError("stop_loss value must be numeric")
 
     trades: list[float] = []
     pos: list[_Leg] | None = None
@@ -125,18 +212,38 @@ def backtest_template(template: dict, closes: list[float],
                 if lg.get("strike"):
                     K = float(lg["strike"])
                 else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
-                                int(lg.get("ratio", 1))))
+                    delta_val = float(lg.get("delta") or 0.5)
+                    K = strike_from_delta(
+                        S,
+                        delta_val,
+                        T0,
+                        sigma,
+                        lg["option_type"],
+                    )
+                pos.append(
+                    _Leg(
+                        +1 if lg["side"] == "buy" else -1,
+                        lg["option_type"],
+                        K,
+                        int(lg.get("ratio", 1)),
+                    )
+                )
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
             continue
 
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
-        cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
-                                   else (l.strike - S), 0.0) for l in pos)
+        cur = (
+            _net_value(pos, S, T_rem, sigma)
+            if T_rem > 0
+            else sum(
+                l.sign
+                * l.ratio
+                * max((S - l.strike) if l.option_type.startswith("c") else (l.strike - S), 0.0)
+                for l in pos
+            )
+        )
         pnl = (cur - entry_net) * MULTIPLIER
         base = max(abs(entry_net) * MULTIPLIER, 1.0)
 
