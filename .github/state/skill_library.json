@@ -125,8 +125,13 @@
     "Track API timeouts",
     "Review code for optimization",
     "Analyze signal data trends",
-    "Backtest new strategy variants"
+    "Backtest new strategy variants",
+    "validation on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "validation on brokers/polymarket.py: success \u2014 tests green",
+    "validation on backtest/metrics.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on tasks/strategy_auction.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-07T00:04:46.547652+00:00",
+  "last_updated": "2026-07-07T04:03:32.825227+00:00",
   "total": 126
 }
