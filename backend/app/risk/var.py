@@ -55,7 +55,24 @@ def historical_var(
         returns: List of daily returns (e.g. 0.01 = +1%)
         portfolio_value: Current portfolio value in USD
         method: 'historical' (empirical) or 'parametric' (Gaussian)
+
+    Raises:
+        ValueError: If inputs are of incorrect type or contain invalid values.
     """
+    # ---- Input validation ----
+    if not isinstance(returns, (list, tuple, np.ndarray)):
+        raise ValueError("returns must be a list, tuple, or numpy array of numeric values")
+    if any(not isinstance(r, (int, float, np.floating, np.integer)) for r in returns):
+        raise ValueError("All elements in returns must be numeric (int or float)")
+
+    if not isinstance(portfolio_value, (int, float, np.floating, np.integer)):
+        raise ValueError("portfolio_value must be a numeric type")
+    if portfolio_value <= 0:
+        raise ValueError("portfolio_value must be a positive number")
+
+    if method not in ("historical", "parametric"):
+        raise ValueError("method must be either 'historical' or 'parametric'")
+
     start_time = time.perf_counter()
 
     arr = np.array(returns, dtype=float)
