@@ -14,10 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, List
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -71,49 +70,63 @@ class AIStrategyGenerator:
         STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
     async def run(self) -> None:
+        """Main entry point executed by APScheduler."""
         logger.info("AIStrategyGenerator: starting 6h generation cycle")
-        providers = available_providers()
+        providers = available_providers() or []
         if not providers:
             logger.info("AIStrategyGenerator: no LLM providers configured, skipping")
             return
+
         try:
             proposals = await self._generate_proposals()
-            written = []
+            if not proposals:
+                logger.info("AIStrategyGenerator: no proposals generated")
+                return
+
+            written: List[dict] = []
             for p in proposals:
+                if not isinstance(p, dict):
+                    continue
                 path = self._write_staging_file(p)
                 if path:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
-        system = """You are a senior quantitative analyst. Propose trading strategy parameters.
-Output ONLY a JSON array of exactly 2 strategies, no other text."""
-
-        user = """Propose 2 novel indicator-based trading strategy configurations.
-
-Available indicators: RSI(14), EMA(8/21/55), MACD(12,26,9), Bollinger Bands(20,2), ATR(14), ADX(14), Stochastic(14,3), VWAP.
-
-For each strategy, provide:
-{
-  "name": "snake_case_name",
-  "class_name": "PascalCaseName",
-  "hypothesis": "one sentence why this works",
-  "market_type": "equity|crypto",
-  "risk_bucket": "directional|arbitrage",
-  "tick_interval": 3600,
-  "expected_sharpe": 0.8,
-  "entry_conditions": ["rsi < 30", "price > ema_21"],
-  "exit_conditions": ["rsi > 70"]
-}"""
+    async def _generate_proposals(self) -> List[dict]:
+        """Ask the LLM consensus for up to two strategy proposals."""
+        system = (
+            "You are a senior quantitative analyst. Propose trading strategy parameters.\n"
+            "Output ONLY a JSON array of exactly 2 strategies, no other text."
+        )
+        user = (
+            "Propose 2 novel indicator-based trading strategy configurations.\n\n"
+            "Available indicators: RSI(14), EMA(8/21/55), MACD(12,26,9), Bollinger Bands(20,2), "
+            "ATR(14), ADX(14), Stochastic(14,3), VWAP.\n\n"
+            "For each strategy, provide:\n"
+            "{\n"
+            '  "name": "snake_case_name",\n'
+            '  "class_name": "PascalCaseName",\n'
+            '  "hypothesis": "one sentence why this works",\n'
+            '  "market_type": "equity|crypto",\n'
+            '  "risk_bucket": "directional|arbitrage",\n'
+            '  "tick_interval": 3600,\n'
+            '  "expected_sharpe": 0.8,\n'
+            '  "entry_conditions": ["rsi < 30", "price > ema_21"],\n'
+            '  "exit_conditions": ["rsi > 70"]\n'
+            "}"
+        )
 
         responses = await call_consensus(
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -123,16 +136,23 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
+        all_proposals: List[dict] = []
         seen = set()
+
         for resp in responses:
+            if not resp or not getattr(resp, "content", None):
+                continue
             try:
                 content = resp.content.strip()
                 start, end = content.find("["), content.rfind("]") + 1
                 if start < 0 or end <= start:
                     continue
                 proposals = json.loads(content[start:end])
+                if not isinstance(proposals, list):
+                    continue
                 for p in proposals:
+                    if not isinstance(p, dict):
+                        continue
                     name = p.get("name", "")
                     if name and name not in seen:
                         seen.add(name)
@@ -140,19 +160,31 @@ For each strategy, provide:
             except Exception:
                 continue
 
+        # Return at most two proposals; handle case where fewer were generated
         return all_proposals[:2]
 
     def _write_staging_file(self, proposal: dict) -> Path | None:
+        """Write a single strategy proposal to the staging directory."""
+        if not proposal:
+            return None
+
         name = proposal.get("name", "")
         if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
+            logger.debug("AIStrategyGenerator: invalid strategy name '%s'", name)
             return None
 
         path = STAGING_DIR / f"{name}.py"
         if path.exists():
+            logger.debug("AIStrategyGenerator: file already exists for strategy '%s'", name)
             return None
 
-        entry_conditions = proposal.get("entry_conditions", ["rsi < 30"])
-        exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
+        # Safely retrieve conditions; fall back to defaults if empty or malformed
+        entry_conditions = proposal.get("entry_conditions")
+        if not isinstance(entry_conditions, list) or not entry_conditions:
+            entry_conditions = ["rsi < 30"]
+        exit_conditions = proposal.get("exit_conditions")
+        if not isinstance(exit_conditions, list) or not exit_conditions:
+            exit_conditions = ["rsi > 70"]
 
         # Build simple backtest body from entry/exit conditions
         backtest_body = "        close = df['close']\n"
@@ -167,11 +199,14 @@ For each strategy, provide:
 
         analyze_body = "        close = data['close']\n"
         analyze_body += "        rsi = ta.rsi(close, length=14)\n"
-        analyze_body += "        if rsi is None or rsi.empty: return None\n"
+        analyze_body += "        if rsi is None or rsi.empty:\n"
+        analyze_body += "            return None\n"
         analyze_body += "        last_rsi = rsi.iloc[-1]\n"
         analyze_body += "        ema_21 = ta.ema(close, length=21).iloc[-1]\n"
         analyze_body += "        if last_rsi < 35 and close.iloc[-1] > ema_21:\n"
-        analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
+        analyze_body += (
+            "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
+        )
 
         code = _STRATEGY_TEMPLATE.format(
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -186,6 +221,10 @@ For each strategy, provide:
             analyze_body=analyze_body,
         )
 
-        path.write_text(code)
-        logger.info("AIStrategyGenerator: staged %s", path.name)
-        return path
+        try:
+            path.write_text(code)
+            logger.info("AIStrategyGenerator: staged %s", path.name)
+            return path
+        except Exception as e:
+            logger.exception("AIStrategyGenerator: failed to write file for %s: %s", name, e)
+            return None
