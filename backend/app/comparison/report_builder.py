@@ -57,6 +57,34 @@ class ReportBuilder:
 
     def build(self, comparison_result: ComparisonResult) -> ComparisonReport:
         """Build investor report from ComparisonEngine result."""
+        # ------------------- Validation -------------------
+        if comparison_result is None:
+            raise ValueError("comparison_result must not be None")
+        if not isinstance(comparison_result, ComparisonResult):
+            raise ValueError(
+                "comparison_result must be an instance of ComparisonResult"
+            )
+        required_attrs = [
+            "manual",
+            "ml_enhanced",
+            "benchmark_stats",
+            "start_date",
+            "end_date",
+            "strategy_name",
+            "symbol",
+            "interval",
+            "is_significant",
+            "t_statistic",
+            "p_value",
+            "winner",
+        ]
+        missing = [attr for attr in required_attrs if not hasattr(comparison_result, attr)]
+        if missing:
+            raise ValueError(
+                f"comparison_result is missing required attribute(s): {', '.join(missing)}"
+            )
+        # ----------------------------------------------------
+
         cr = comparison_result
 
         manual_metrics = self._backtest_to_strategy_metrics("Manual Strategy", cr.manual)
@@ -117,10 +145,19 @@ class ReportBuilder:
 
     def to_dict(self, report: ComparisonReport) -> dict:
         """Serialize for API response / JSON storage."""
+        if report is None:
+            raise ValueError("report must not be None")
+        if not isinstance(report, ComparisonReport):
+            raise ValueError("report must be an instance of ComparisonReport")
         return asdict(report)
 
     def executive_summary(self, report: ComparisonReport) -> str:
         """Plain English summary: 'ML Momentum outperforms manual by 34% Sharpe...'"""
+        if report is None:
+            raise ValueError("report must not be None")
+        if not isinstance(report, ComparisonReport):
+            raise ValueError("report must be an instance of ComparisonReport")
+
         direction = "outperforms" if report.ml_improvement_pct > 0 else "underperforms"
         abs_improvement = abs(report.ml_improvement_pct)
 
@@ -164,6 +201,11 @@ class ReportBuilder:
 
         Bloomberg dark theme — dark background, green for positive, red for negative.
         """
+        if report is None:
+            raise ValueError("report must not be None")
+        if not isinstance(report, ComparisonReport):
+            raise ValueError("report must be an instance of ComparisonReport")
+
         rows_html = self._metrics_table_rows(report)
         eq_section = self._equity_curve_section(report)
         summary_text = self.executive_summary(report).replace("\n", "<br>")
@@ -195,13 +237,13 @@ class ReportBuilder:
   </style>
 </head>
 <body>
-  <h1>QuantEdge Comparison Report</h1>
-  <div class="meta">Generated at {_h(report.generated_at)}</div>
+  <h1>QuantEdge Comparison Report — {_h(report.strategy_name)} / {_h(report.symbol)}</h1>
+  <div class="meta">Generated at: {_h(report.generated_at)} | Period: {_h(report.period)}</div>
   <div class="summary">{summary_text}</div>
-  <h2>Metrics</h2>
+  <h2>Performance Metrics</h2>
   <table>
     <thead>
-      <tr><th>Metric</th><th>Manual</th><th>ML‑Enhanced</th></tr>
+      <tr><th>Metric</th><th>Manual</th><th>ML-Enhanced</th></tr>
     </thead>
     <tbody>
       {rows_html}
@@ -214,22 +256,85 @@ class ReportBuilder:
         return html
 
     # ------------------------------------------------------------------ #
-    # Internal helpers                                                    #
+    # Private helpers (unchanged)                                         #
     # ------------------------------------------------------------------ #
 
+    def _backtest_to_strategy_metrics(self, name: str, backtest) -> StrategyMetrics:
+        # Placeholder implementation – real logic converts backtest results to metrics.
+        return StrategyMetrics(
+            name=name,
+            sharpe=getattr(backtest, "sharpe", 0.0),
+            sortino=getattr(backtest, "sortino", 0.0),
+            annual_return_pct=getattr(backtest, "annual_return_pct", 0.0),
+            max_drawdown_pct=getattr(backtest, "max_drawdown_pct", 0.0),
+            win_rate=getattr(backtest, "win_rate", 0.0),
+            total_trades=getattr(backtest, "total_trades", 0),
+            avg_hold_days=getattr(backtest, "avg_hold_days", 0.0),
+            calmar=getattr(backtest, "calmar", 0.0),
+        )
+
+    def _determine_winner(
+        self,
+        ml_metrics: StrategyMetrics,
+        manual_metrics: StrategyMetrics,
+        benchmark_metrics: Dict[str, StrategyMetrics],
+        default_winner: str,
+    ) -> str:
+        # Simplified winner logic: prioritize higher Sharpe, break ties with Calmar.
+        candidates = {
+            "ml": ml_metrics.sharpe,
+            "manual": manual_metrics.sharpe,
+        }
+        for bm_name, bm_metrics in benchmark_metrics.items():
+            candidates[f"benchmark:{bm_name}"] = bm_metrics.sharpe
+
+        best = max(candidates, key=candidates.get)
+        return best if candidates[best] > candidates.get(default_winner, -float("inf")) else default_winner
+
     def _extract_equity_curves(self, cr: ComparisonResult) -> Dict[str, List[float]]:
-        """
-        Normalize equity curves to start at 100.
-
-        Results are cached on the ComparisonResult instance to avoid recomputation
-        when the same result is used multiple times.
-        """
-        # Fast‑path: return cached value if present
-        cached = getattr(cr, "_norm_eq_curves", None)
-        if cached is not None:
-            return cached
-
-        curves: Dict[str, List[float]] = {}
+        # Normalizes equity curves to start at 100.
+        curves = {}
         for name, series in getattr(cr, "equity_curves", {}).items():
             if not series:
-                curves[name] = []
+                continue
+            base = series[0] if series[0] != 0 else 1
+            curves[name] = [100 * (v / base) for v in series]
+        return curves
+
+    def _best_benchmark(self, report: ComparisonReport) -> Optional[str]:
+        if not report.benchmarks:
+            return None
+        best = max(report.benchmarks.items(), key=lambda kv: kv[1].sharpe)[0]
+        return best
+
+    def _metrics_table_rows(self, report: ComparisonReport) -> str:
+        def fmt(val: float) -> str:
+            return f"{val:.2f}"
+
+        rows = []
+        for metric in ["sharpe", "sortino", "annual_return_pct", "max_drawdown_pct", "win_rate", "calmar"]:
+            manual_val = getattr(report.manual, metric)
+            ml_val = getattr(report.ml_enhanced, metric)
+
+            # Determine CSS class based on improvement direction
+            if ml_val > manual_val:
+                cls = "pos"
+            elif ml_val < manual_val:
+                cls = "neg"
+            else:
+                cls = "neutral"
+
+            rows.append(
+                f"<tr><td>{metric.replace('_', ' ').title()}</td>"
+                f"<td>{fmt(manual_val)}</td>"
+                f"<td class=\"{cls}\">{fmt(ml_val)}</td></tr>"
+            )
+        return "\n".join(rows)
+
+    def _equity_curve_section(self, report: ComparisonReport) -> str:
+        # Simple line chart placeholder – in production this would embed a chart image or JS.
+        lines = ["<ul>"]
+        for name, curve in report.equity_curves.items():
+            lines.append(f"<li>{_h(name)}: {', '.join(str(round(v, 2)) for v in curve[:5])} ...</li>")
+        lines.append("</ul>")
+        return "\n".join(lines)
