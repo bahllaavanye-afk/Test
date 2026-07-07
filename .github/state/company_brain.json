@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783454833.6389434,
+    "last_updated": 1783461217.311139,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1783414490.7588801
+    "last_brain_update": 1783461217.310968
   },
   "episodic": [
     {
@@ -308,6 +308,41 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1783441037.7572668
+    },
+    {
+      "lesson": "Automerge revoked for PR modifying protected broker base file; enforce mandatory human review for all changes to `backend/app/brokers/base.py` and similar risk-critical paths.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783461203.5049064
+    },
+    {
+      "lesson": "Auto-fix failed twice and skipped due to complexity; improve automated patch generation by adding unit tests for broker base changes and requiring concrete issue descriptions before attempting fixes.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783461203.5059037
+    },
+    {
+      "lesson": "Previous autonomous edit (#298) broke main; implement mandatory staging deployment and automated regression tests for all autonomous PRs targeting protected files.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783461203.5068178
+    },
+    {
+      "lesson": "Commodities desk functionality requirements are undefined; schedule a discovery session with the desk to document missing features and define acceptance criteria before any code changes.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783461203.5076888
+    },
+    {
+      "lesson": "Skipped auto-fix indicates 50-line limit may be too restrictive for complex issues; review and adjust the limit or provide a manual override workflow for escalated problems.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783461203.5086222
     }
   ],
   "github_insights": [
@@ -345,6 +380,11 @@
       "summary": "We need to summarize the given text in 1-2 sentences. The text appears to be a GitHub PR/issue discussion title or snippet. It mentions \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" and then some encoded string. The user wants a summary of the discussion. The summary should capture the main point: a Slack agent-team run failed because posts are not reaching the workspace, likely due to exceeding a message limit quota",
       "item_count": 20,
       "ts": 1783414490.7570062
+    },
+    {
+      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a truncated or encoded string. The first part seems to be a base64 or similar encoded string, but the actual content is partially readable: \"[vc]: #2fb9L0vzqSC8unOyyZyv282+ygEsG3lPSxLE0PF5En0=:eyJpc01vbm9yZXBvIjp",
+      "item_count": 20,
+      "ts": 1783461217.3089068
     }
   ]
 }
