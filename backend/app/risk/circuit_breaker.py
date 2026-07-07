@@ -14,6 +14,10 @@ class BreakerState(str, Enum):
     HALTED = "halted"
 
 
+class CircuitBreakerError(Exception):
+    """Base exception for circuit breaker errors."""
+
+
 @dataclass
 class CircuitBreaker:
     """
@@ -45,52 +49,79 @@ class CircuitBreaker:
         Returns:
             bool: True if the breaker remains in NORMAL state, False if HALTED.
         """
-        if equity is None or not isinstance(equity, (int, float)):
-            logger.warning("Circuit breaker received invalid equity value", name=self.name, equity=equity)
-            return not self.is_halted
+        try:
+            if equity is None or not isinstance(equity, (int, float)):
+                raise ValueError("Equity must be a numeric value")
 
-        # Update peak and current equity
-        if equity > self.peak_equity:
-            self.peak_equity = equity
-        self.current_equity = equity
+            # Update peak and current equity
+            if equity > self.peak_equity:
+                self.peak_equity = equity
+            self.current_equity = equity
 
-        # If already halted, check for possible auto‑recovery
-        if self.state == BreakerState.HALTED:
-            if self._should_recover():
-                self.reset(equity)
-                logger.info("Circuit breaker auto‑recovered", name=self.name)
-            else:
-                return False
+            # If already halted, check for possible auto‑recovery
+            if self.state == BreakerState.HALTED:
+                if self._should_recover():
+                    self.reset(equity)
+                    logger.info("Circuit breaker auto‑recovered", name=self.name)
+                else:
+                    return False
 
-        # Compute drawdown only when peak_equity is positive
-        drawdown = self.current_drawdown
-        if drawdown >= self.max_drawdown_pct:
-            self._breach_count += 1
-            logger.debug(
-                "Circuit breaker drawdown breach",
-                name=self.name,
-                drawdown=drawdown,
-                threshold=self.max_drawdown_pct,
-                breach_count=self._breach_count,
-            )
-            if self._breach_count >= self.confirmation_period:
-                self.state = BreakerState.HALTED
-                self.halted_at = datetime.now(timezone.utc)
-                reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} (confirmed {self._breach_count}×)"
-                self.halt_reasons.append(reason)
-                logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)
-                return False
-        else:
-            # Reset breach counter when drawdown falls back below threshold
-            if self._breach_count:
+            # Compute drawdown only when peak_equity is positive
+            drawdown = self.current_drawdown
+            if drawdown >= self.max_drawdown_pct:
+                self._breach_count += 1
                 logger.debug(
-                    "Circuit breaker breach counter reset",
+                    "Circuit breaker drawdown breach",
                     name=self.name,
-                    previous_breach_count=self._breach_count,
+                    drawdown=drawdown,
+                    threshold=self.max_drawdown_pct,
+                    breach_count=self._breach_count,
                 )
-            self._breach_count = 0
+                if self._breach_count >= self.confirmation_period:
+                    self.state = BreakerState.HALTED
+                    self.halted_at = datetime.now(timezone.utc)
+                    reason = (
+                        f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} "
+                        f"(confirmed {self._breach_count}×)"
+                    )
+                    self.halt_reasons.append(reason)
+                    logger.error(
+                        "Circuit breaker TRIPPED",
+                        name=self.name,
+                        drawdown=drawdown,
+                        threshold=self.max_drawdown_pct,
+                        reason=reason,
+                    )
+                    return False
+            else:
+                # Reset breach counter when drawdown falls back below threshold
+                if self._breach_count:
+                    logger.debug(
+                        "Circuit breaker breach counter reset",
+                        name=self.name,
+                        previous_breach_count=self._breach_count,
+                    )
+                self._breach_count = 0
 
-        return True
+            return True
+
+        except ValueError as ve:
+            logger.warning(
+                "Invalid equity value supplied to circuit breaker",
+                name=self.name,
+                equity=equity,
+                error=str(ve),
+            )
+            return not self.is_halted
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error in circuit breaker update",
+                name=self.name,
+                equity=equity,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            raise CircuitBreakerError("Update failed") from exc
 
     def _should_recover(self) -> bool:
         """
@@ -109,13 +140,32 @@ class CircuitBreaker:
         Args:
             equity: The equity level to set as the new peak.
         """
-        self.state = BreakerState.NORMAL
-        self.peak_equity = equity
-        self.current_equity = equity
-        self.halted_at = None
-        self.halt_reasons.clear()
-        self._breach_count = 0
-        logger.info("Circuit breaker RESET", name=self.name, equity=equity)
+        try:
+            if equity is None or not isinstance(equity, (int, float)):
+                raise ValueError("Equity must be a numeric value for reset")
+            self.state = BreakerState.NORMAL
+            self.peak_equity = equity
+            self.current_equity = equity
+            self.halted_at = None
+            self.halt_reasons.clear()
+            self._breach_count = 0
+            logger.info("Circuit breaker RESET", name=self.name, equity=equity)
+        except ValueError as ve:
+            logger.warning(
+                "Invalid equity value supplied to circuit breaker reset",
+                name=self.name,
+                equity=equity,
+                error=str(ve),
+            )
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error during circuit breaker reset",
+                name=self.name,
+                equity=equity,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            raise CircuitBreakerError("Reset failed") from exc
 
     @property
     def is_halted(self) -> bool:
