@@ -157,8 +157,13 @@
     "Test network latency",
     "Validate config files",
     "Check firewall rules",
-    "Verify SSL certs"
+    "Verify SSL certs",
+    "strategy_logic on strategies/manual/commodity_momentum.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "strategy_logic on ml/models/xgboost_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/pandas_ta_compat.py: success \u2014 tests green",
+    "strategy_logic on risk/kelly.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-07T21:54:09.225553+00:00",
+  "last_updated": "2026-07-07T22:11:46.942472+00:00",
   "total": 158
 }
