@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import logging
+import time
 from typing import Any, Dict, Optional, Union
 
 import numpy as np
@@ -12,6 +14,8 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -177,6 +181,7 @@ class AbstractModel(ABC):
         np.ndarray
             Array of probabilities for the positive class.
         """
+        start_time = time.time()
         if not TORCH_AVAILABLE:
             raise RuntimeError("torch is required for inference")
         import torch as _torch
@@ -185,5 +190,44 @@ class AbstractModel(ABC):
         with _torch.no_grad():
             logits = self.forward(x)
             if logits.shape[-1] == 1 or logits.dim() == 1:
-                return _torch.sigmoid(logits).numpy().flatten()
-            return _torch.softmax(logits, dim=-1)[:, 1].numpy()
+                probs = _torch.sigmoid(logits).numpy().flatten()
+            else:
+                probs = _torch.softmax(logits, dim=-1)[:, 1].numpy()
+        exec_time = time.time() - start_time
+
+        # Determine signal count safely
+        try:
+            signal_count = int(x.shape[0])
+        except Exception:
+            try:
+                signal_count = len(x)
+            except Exception:
+                signal_count = 0
+
+        # Log structured metrics; P&L is not known at inference time, default to 0.0
+        self.log_metrics(signal_count=signal_count, exec_time=exec_time, pnl=0.0)
+
+        return probs
+
+    def log_metrics(self, signal_count: int, exec_time: float, pnl: float) -> None:
+        """
+        Log key runtime metrics in a structured format.
+
+        Parameters
+        ----------
+        signal_count : int
+            Number of signals (e.g., rows) processed.
+        exec_time : float
+            Execution time in seconds for the operation.
+        pnl : float
+            Profit & loss associated with the processed signals.
+        """
+        logger.info(
+            "model_metrics",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_sec": exec_time,
+                "pnl": pnl,
+                "model_type": getattr(self, "model_type", "unknown"),
+            },
+        )
