@@ -1,22 +1,7 @@
-"""
-Technical indicator feature computation using pandas-ta.
-
-All indicators are computed using only past data (no lookahead) to ensure
-that the resulting features are suitable for training predictive models
-or for live trading. The function operates on a pandas DataFrame that
-contains at least a ``close`` price series and optionally ``high``, ``low``
-and ``volume`` series. Missing columns default to the ``close`` series (for
-``high``/``low``) or a constant series of ones (for ``volume``).
-
-The implementation mirrors the original code base and adds no new
-behaviour; it merely enriches the DataFrame with a collection of common
-technical features such as returns, volatility, EMA distance, RSI, MACD,
-Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
-"""
-
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
 import numpy as np
@@ -78,6 +63,9 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     if "close" not in df.columns:
         raise ValueError("Input DataFrame must contain a 'close' column.")
+
+    start_time = time.perf_counter()
+    original_columns = set(df.columns)
 
     df = df.copy()
     close = df["close"]
@@ -179,5 +167,22 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # Structured monitoring logging
+    new_columns = [col for col in df.columns if col not in original_columns]
+    signal_count = len(new_columns)
+    execution_time_sec = time.perf_counter() - start_time
+    pnl = 0.0
+    if not close.empty:
+        pnl = (close.iloc[-1] / close.iloc[0] - 1.0)
+
+    _logger.info(
+        "Technical feature computation completed",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_sec": execution_time_sec,
+            "pnl": pnl,
+        },
+    )
 
     return df
