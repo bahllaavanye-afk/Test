@@ -155,8 +155,10 @@
     "Check database connections",
     "Verify algo_agent updates",
     "Test network latency",
-    "Validate config files"
+    "Validate config files",
+    "Check firewall rules",
+    "Verify SSL certs"
   ],
-  "last_updated": "2026-07-07T18:29:38.929104+00:00",
-  "total": 156
+  "last_updated": "2026-07-07T21:54:09.225553+00:00",
+  "total": 158
 }
