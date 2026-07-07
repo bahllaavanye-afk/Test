@@ -10,6 +10,7 @@ agree on direction, and it adjusts the confidence accordingly.
 """
 
 import logging
+import time
 from typing import Any, Dict, Optional
 
 import pandas as pd
@@ -48,6 +49,10 @@ class MLMomentumStrategy(AbstractStrategy):
         super().__init__(params)
         self._base = MomentumStrategy(params)
 
+        # Monitoring metrics
+        self._signal_count: int = 0
+        self._total_pnl: float = 0.0  # Placeholder; actual P&L is calculated downstream
+
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """Generate a trading signal for a given symbol.
 
@@ -69,19 +74,71 @@ class MLMomentumStrategy(AbstractStrategy):
             A populated :class:`app.strategies.base.Signal` if both the base and
             ML models agree, otherwise ``None``.
         """
+        start_time = time.time()
+        signal_generated = False
+
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.info(
+                "MLMomentum analysis completed",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": False,
+                    "execution_time_ms": round(duration_ms, 2),
+                    "total_signal_count": self._signal_count,
+                    "pnl": None,
+                },
+            )
             return None
 
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
             if ml_result is None or ml_result["prediction"] == "neutral":
+                duration_ms = (time.time() - start_time) * 1000
+                logger.info(
+                    "MLMomentum analysis completed",
+                    extra={
+                        "symbol": symbol,
+                        "signal_generated": False,
+                        "execution_time_ms": round(duration_ms, 2),
+                        "total_signal_count": self._signal_count,
+                        "pnl": None,
+                    },
+                )
                 return None
 
-            return self._apply_ml_filter(base_signal, ml_result)
+            final_signal = self._apply_ml_filter(base_signal, ml_result)
+            if final_signal is not None:
+                self._signal_count += 1
+                signal_generated = True
+
+            duration_ms = (time.time() - start_time) * 1000
+            logger.info(
+                "MLMomentum analysis completed",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": signal_generated,
+                    "execution_time_ms": round(duration_ms, 2),
+                    "total_signal_count": self._signal_count,
+                    "pnl": None,
+                },
+            )
+            return final_signal
         except Exception as e:  # pragma: no cover
+            duration_ms = (time.time() - start_time) * 1000
             logger.exception("ML inference failed for %s: %s", symbol, e)
+            logger.info(
+                "MLMomentum analysis completed with error",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": False,
+                    "execution_time_ms": round(duration_ms, 2),
+                    "total_signal_count": self._signal_count,
+                    "pnl": None,
+                },
+            )
             return None
 
     def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
