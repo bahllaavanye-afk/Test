@@ -14,6 +14,16 @@ import pandas as pd
 from app.config import settings
 from app.utils.logging import logger
 
+# Constants
+ALPACA_DATA_URL = "https://data.alpaca.markets"
+ALPACA_BARS_LIMIT = 1500
+ALPACA_TIMEOUT = 15.0
+HTTP_CLIENT_TIMEOUT = 20.0
+DATE_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+RESAMPLE_MONTH_END = "ME"
+NORMALIZATION_BASE = 100
+ROUND_PRECISION = 2
+
 BENCHMARKS = {
     "SPY": {"name": "S&P 500", "color": "#2196F3"},
     "QQQ": {"name": "NASDAQ 100", "color": "#9C27B0"},
@@ -22,8 +32,6 @@ BENCHMARKS = {
 }
 
 ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP": 0.075}
-
-ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # simple in‑memory cache for benchmark results keyed by (start, end)
 _benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
@@ -46,15 +54,15 @@ async def _fetch_ticker_bars(
     Returns a pd.Series indexed by date, or an empty Series on failure.
     """
     sym = ticker.upper()
-    start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_str = datetime.combine(end, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start_str = datetime.combine(start, datetime.min.time()).strftime(DATE_TIME_FORMAT)
+    end_str = datetime.combine(end, datetime.min.time()).strftime(DATE_TIME_FORMAT)
 
     try:
         resp = await client.get(
             f"{ALPACA_DATA_URL}/v2/stocks/{sym}/bars",
-            params={"timeframe": "1Day", "start": start_str, "end": end_str, "limit": 1500},
+            params={"timeframe": "1Day", "start": start_str, "end": end_str, "limit": ALPACA_BARS_LIMIT},
             headers=_alpaca_headers(),
-            timeout=15.0,
+            timeout=ALPACA_TIMEOUT,
         )
         if resp.status_code != 200:
             logger.warning(
@@ -110,7 +118,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
         raw_series = await asyncio.gather(
             *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers],
             return_exceptions=True,
@@ -141,7 +149,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         series = closes_dict.get(ticker)
         if series is None or series.empty:
             continue
-        normalized = (series.dropna() / series.iloc[0] * 100).round(2)
+        normalized = (series.dropna() / series.iloc[0] * NORMALIZATION_BASE).round(ROUND_PRECISION)
         result[ticker] = [
             {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
         ]
@@ -153,11 +161,11 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
         weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
         weights = weights / weights.sum()  # renormalize if any tickers missing
-        monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
+        monthly_returns = aw_prices.resample(RESAMPLE_MONTH_END).last().pct_change().dropna()
         aw_ret = (monthly_returns * weights).sum(axis=1)
-        aw_equity = (1 + aw_ret).cumprod() * 100
+        aw_equity = (1 + aw_ret).cumprod() * NORMALIZATION_BASE
         result["ALL_WEATHER"] = [
-            {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
+            {"date": idx.date().isoformat(), "value": round(float(v), ROUND_PRECISION)} for idx, v in aw_equity.items()
         ]
 
     # Cache the result for future identical requests
