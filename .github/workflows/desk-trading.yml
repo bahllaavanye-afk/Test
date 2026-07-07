@@ -54,7 +54,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install \
-            pandas numpy scipy statsmodels scikit-learn \
+            aiohttp pandas numpy scipy statsmodels scikit-learn \
             fastapi pydantic pydantic-settings \
             python-dotenv structlog tenacity anyio \
             python-jose[cryptography] passlib[bcrypt] cryptography slowapi \

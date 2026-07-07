@@ -26,7 +26,6 @@ import asyncio
 import math
 from typing import Any
 
-import aiohttp
 import numpy as np
 import pandas as pd
 
@@ -86,6 +85,7 @@ class BasisCarryStrategy(AbstractStrategy):
     async def _fetch_prices(self) -> tuple[float, float]:
         """Return (spot_price, perp_price) from Binance public REST. Raises on failure."""
         params = {"symbol": self.symbol}
+        import aiohttp  # lazy: optional dep — never break STRATEGY_REGISTRY import
         async with aiohttp.ClientSession() as session:
             spot_task = session.get(_BINANCE_SPOT_URL, params=params, timeout=aiohttp.ClientTimeout(total=5))
             perp_task = session.get(_BINANCE_PERP_URL, params=params, timeout=aiohttp.ClientTimeout(total=5))

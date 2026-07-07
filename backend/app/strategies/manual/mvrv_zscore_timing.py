@@ -29,7 +29,6 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-import aiohttp
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -98,6 +97,7 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
             "days": str(days),
             "interval": "daily",
         }
+        import aiohttp  # lazy: optional dep — never break STRATEGY_REGISTRY import
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 _COINGECKO_MARKET_CHART_URL,
