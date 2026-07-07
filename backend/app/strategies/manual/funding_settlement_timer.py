@@ -25,7 +25,6 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-import aiohttp
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -110,6 +109,7 @@ class FundingSettlementTimer(AbstractStrategy):
     async def _fetch_funding_rate(self) -> float:
         """Fetch current funding rate from Binance FAPI. Raises on failure."""
         params = {"symbol": self.symbol}
+        import aiohttp  # lazy: optional dep — never break STRATEGY_REGISTRY import
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 _PREMIUM_INDEX_URL,
