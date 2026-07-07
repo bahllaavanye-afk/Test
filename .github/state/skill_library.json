@@ -143,8 +143,12 @@
     "Handle timeouts",
     "Optimize code quality",
     "Improve backtest efficiency",
-    "Review system logs"
+    "Review system logs",
+    "Check API keys",
+    "Verify trade limits",
+    "Test algo_agent init",
+    "Verify market hours"
   ],
-  "last_updated": "2026-07-07T08:19:52.939069+00:00",
-  "total": 144
+  "last_updated": "2026-07-07T11:23:27.624373+00:00",
+  "total": 148
 }
