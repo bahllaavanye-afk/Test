@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783461217.311139,
+    "last_updated": 1783465064.3509927,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1783461217.310968
+    "last_brain_update": 1783465064.3507953
   },
   "episodic": [
     {
@@ -343,6 +343,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1783461203.5086222
+    },
+    {
+      "lesson": "Autonomous PRs modifying protected files (broker bases) bypass human review and have previously broken main \u2014 enforce mandatory human approval for all changes to risk-manager, broker/strategy bases, models, and app factory paths.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783465047.0236306
+    },
+    {
+      "lesson": "Auto-fix patches repeatedly fail to apply \u2014 investigate root cause (e.g., conflicting edits, stale branches, or patch generation errors) and add fallback to manual intervention.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783465047.0249286
+    },
+    {
+      "lesson": "The automerge label was revoked due to a prior breakage (#298) \u2014 implement pre-merge smoke tests or integration checks for protected paths before allowing any autonomous merge.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783465047.0260386
+    },
+    {
+      "lesson": "No clear process exists for re-adding the automerge label after human review \u2014 define a workflow (e.g., manual approval + label re-apply) to avoid stalled PRs.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783465047.0270526
     }
   ],
   "github_insights": [
@@ -385,6 +413,11 @@
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a truncated or encoded string. The first part seems to be a base64 or similar encoded string, but the actual content is partially readable: \"[vc]: #2fb9L0vzqSC8unOyyZyv282+ygEsG3lPSxLE0PF5En0=:eyJpc01vbm9yZXBvIjp",
       "item_count": 20,
       "ts": 1783461217.3089068
+    },
+    {
+      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a series of encoded strings and a message. The first two lines look like base64 or some encoded data, possibly from a tool like \"vc\" (version control?). The third line is a clear message: \"\ud83d\uded1 **Team Lead review \u2014 automerge revoked.** This autonomous PR modifies protected file(s): - `backe`\". The text is cut off at \"back",
+      "item_count": 20,
+      "ts": 1783465064.3467476
     }
   ]
 }
