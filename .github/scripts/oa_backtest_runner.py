@@ -49,7 +49,7 @@ def main() -> int:
     from app.bots.templates import BOT_TEMPLATES
 
     targets = {tid: t for tid, t in BOT_TEMPLATES.items()
-               if tid.startswith(("oa_", "gen_")) and t.get("market_type") == "options"}
+               if tid.startswith(("oa_", "gen_", "hybrid_")) and t.get("market_type") == "options"}
     closes_cache: dict[str, list[float]] = {}
     results = []
     for tid, t in sorted(targets.items()):
