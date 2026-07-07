@@ -125,8 +125,13 @@
     "Track API timeouts",
     "Review code for optimization",
     "Analyze signal data trends",
-    "Backtest new strategy variants"
+    "Backtest new strategy variants",
+    "docstrings on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "docstrings on ml/models/gnn_signal.py: success \u2014 tests green",
+    "docstrings on ml/features/normalization.py: success \u2014 tests green",
+    "docstrings on execution/advanced_orders.py: success \u2014 tests green",
+    "docstrings on risk/kelly.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-07T00:04:46.547652+00:00",
+  "last_updated": "2026-07-07T00:06:03.960900+00:00",
   "total": 126
 }
