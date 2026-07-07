@@ -6,6 +6,19 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 
+# Constants
+DEFAULT_MODEL_TYPE: str = "base"
+METADATA_SUFFIX: str = ".json"
+JSON_INDENT: int = 2
+TORCH_REQUIRED_LOAD_ERROR: str = "torch is required to load model checkpoints"
+TORCH_REQUIRED_INFER_ERROR: str = "torch is required for inference"
+STATE_DICT_KEY: str = "state_dict"
+MODEL_TYPE_KEY: str = "model_type"
+METADATA_KEY: str = "metadata"
+INIT_KWARGS_KEY: str = "init_kwargs"
+MAP_LOCATION_CPU: str = "cpu"
+WEIGHTS_ONLY_FLAG: bool = False
+
 try:
     import torch
     TORCH_AVAILABLE = True
@@ -54,7 +67,7 @@ class AbstractModel(ABC):
     PyTorch state dictionaries when the library is available.
     """
 
-    model_type: str = "base"
+    model_type: str = DEFAULT_MODEL_TYPE
 
     @abstractmethod
     def forward(self, x: Any) -> Any:  # type: ignore[override]
@@ -129,15 +142,15 @@ class AbstractModel(ABC):
             import torch as _torch
             _torch.save(
                 {
-                    "state_dict": self.state_dict() if hasattr(self, "state_dict") else {},  # type: ignore[attr-defined]
-                    "model_type": self.model_type,
-                    "metadata": metadata or {},
+                    STATE_DICT_KEY: self.state_dict() if hasattr(self, "state_dict") else {},  # type: ignore[attr-defined]
+                    MODEL_TYPE_KEY: self.model_type,
+                    METADATA_KEY: metadata or {},
                 },
                 path,
             )
         if metadata:
-            meta_path = Path(path).with_suffix(".json")
-            meta_path.write_text(json.dumps(metadata, default=str, indent=2))
+            meta_path = Path(path).with_suffix(METADATA_SUFFIX)
+            meta_path.write_text(json.dumps(metadata, default=str, indent=JSON_INDENT))
 
     @classmethod
     def load(cls, path: str) -> "AbstractModel":
@@ -155,12 +168,12 @@ class AbstractModel(ABC):
             An instance of the model class with loaded parameters.
         """
         if not TORCH_AVAILABLE:
-            raise RuntimeError("torch is required to load model checkpoints")
+            raise RuntimeError(TORCH_REQUIRED_LOAD_ERROR)
         import torch as _torch
-        checkpoint = _torch.load(path, map_location="cpu", weights_only=False)
-        model = cls(**checkpoint.get("metadata", {}).get("init_kwargs", {}))
-        if checkpoint["state_dict"] and hasattr(model, "load_state_dict"):
-            model.load_state_dict(checkpoint["state_dict"])  # type: ignore[attr-defined]
+        checkpoint = _torch.load(path, map_location=MAP_LOCATION_CPU, weights_only=WEIGHTS_ONLY_FLAG)
+        model = cls(**checkpoint.get(METADATA_KEY, {}).get(INIT_KWARGS_KEY, {}))
+        if checkpoint.get(STATE_DICT_KEY) and hasattr(model, "load_state_dict"):
+            model.load_state_dict(checkpoint[STATE_DICT_KEY])  # type: ignore[attr-defined]
         return model
 
     def predict_proba(self, x: Any) -> np.ndarray:
@@ -178,7 +191,7 @@ class AbstractModel(ABC):
             Array of probabilities for the positive class.
         """
         if not TORCH_AVAILABLE:
-            raise RuntimeError("torch is required for inference")
+            raise RuntimeError(TORCH_REQUIRED_INFER_ERROR)
         import torch as _torch
         if hasattr(self, "eval"):
             self.eval()  # type: ignore[attr-defined]
