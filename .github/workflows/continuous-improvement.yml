@@ -75,6 +75,26 @@ jobs:
       # NOTE: the script now pushes a throwaway `improver/run-*` branch and opens an
       # `automerge` PR (reward gate) instead of pushing to main. The full CI suite must
       # pass before anything lands — no more unvalidated direct-to-main commits.
+
+      # GITHUB_TOKEN pushes/PRs never fire event-triggered workflows (recursion
+      # guard), so the improver's PR would sit with NO CI forever — and since the
+      # whole org rides CI completions, the perpetual-motion loop stalled every
+      # night. Dispatching CI explicitly (allowed for GITHUB_TOKEN) closes the
+      # loop: improver → PR → CI → gate merges → CI completion → next improver.
+      - name: Dispatch CI on the improver branch (keeps the org loop alive)
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH=$(git -C . branch -r --list 'origin/improver/run-${{ github.run_id }}' --format='%(refname:short)' | sed 's|origin/||' | head -1)
+          [ -z "$BRANCH" ] && BRANCH=$(gh pr list --author "github-actions[bot]" --state open --json headRefName --jq '.[0].headRefName' 2>/dev/null || true)
+          if [ -n "$BRANCH" ]; then
+            gh workflow run test.yml --ref "$BRANCH" && echo "CI dispatched on $BRANCH"
+          else
+            echo "no improver branch found — nothing to dispatch"
+          fi
+
       - name: Post to step summary
         if: always()
         run: |
