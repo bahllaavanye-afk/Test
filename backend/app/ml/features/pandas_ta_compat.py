@@ -7,15 +7,16 @@ No external dependencies beyond pandas and numpy.
 Implemented:
   rsi, macd, bbands, obv, atr, stoch, adx, cci, ema, supertrend
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # RSI — Wilder's smoothed RSI (EWM with alpha=1/length)
 # ---------------------------------------------------------------------------
+
 
 def rsi(close: pd.Series, length: int = 14) -> pd.Series | None:
     """Relative Strength Index using Wilder's smoothing."""
@@ -40,6 +41,7 @@ def rsi(close: pd.Series, length: int = 14) -> pd.Series | None:
 # EMA — Exponential Moving Average (helper + standalone)
 # ---------------------------------------------------------------------------
 
+
 def ema(close: pd.Series, length: int = 10) -> pd.Series | None:
     """Exponential Moving Average."""
     if close is None or len(close) < 1:
@@ -52,6 +54,7 @@ def ema(close: pd.Series, length: int = 10) -> pd.Series | None:
 # ---------------------------------------------------------------------------
 # MACD — EMA(fast) - EMA(slow), signal = EMA(macd, signal)
 # ---------------------------------------------------------------------------
+
 
 def macd(
     close: pd.Series,
@@ -82,6 +85,7 @@ def macd(
 # ---------------------------------------------------------------------------
 # Bollinger Bands — rolling mean ± std * multiplier
 # ---------------------------------------------------------------------------
+
 
 def bbands(
     close: pd.Series,
@@ -115,6 +119,7 @@ def bbands(
 # OBV — On-Balance Volume
 # ---------------------------------------------------------------------------
 
+
 def obv(close: pd.Series, volume: pd.Series) -> pd.Series | None:
     """On-Balance Volume: cumulative sum of signed volume."""
     if close is None or volume is None or len(close) < 2:
@@ -129,6 +134,7 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series | None:
 # ---------------------------------------------------------------------------
 # ATR — Average True Range (Wilder's EWM smoothing)
 # ---------------------------------------------------------------------------
+
 
 def atr(
     high: pd.Series,
@@ -159,6 +165,7 @@ def atr(
 # ---------------------------------------------------------------------------
 # Stochastic Oscillator
 # ---------------------------------------------------------------------------
+
 
 def stoch(
     high: pd.Series,
@@ -198,6 +205,7 @@ def stoch(
 # ---------------------------------------------------------------------------
 # ADX — Average Directional Index (Wilder's smoothing)
 # ---------------------------------------------------------------------------
+
 
 def adx(
     high: pd.Series,
@@ -255,51 +263,42 @@ def adx(
 # CCI — Commodity Channel Index
 # ---------------------------------------------------------------------------
 
+
 def cci(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
     length: int = 20,
-    c: float = 0.015,
+    constant: float = 0.015,
 ) -> pd.Series | None:
     """Commodity Channel Index."""
     if high is None or low is None or close is None or len(close) < length:
         return None
 
-    typical_price = (high + low + close) / 3.0
-    sma_tp = typical_price.rolling(window=length).mean()
-    mean_dev = typical_price.rolling(window=length).apply(
-        lambda x: np.mean(np.abs(x - x.mean())), raw=True
-    )
-    result = (typical_price - sma_tp) / (c * mean_dev + 1e-10)
-    result.name = f"CCI_{length}_{c}"
+    tp = (high + low + close) / 3.0
+    ma = tp.rolling(window=length).mean()
+    md = tp.rolling(window=length).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=True)
+    result = (tp - ma) / (constant * md)
+    result.name = f"CCI_{length}"
     return result
 
 
 # ---------------------------------------------------------------------------
-# Supertrend
+# Supertrend (simplified version)
 # ---------------------------------------------------------------------------
+
 
 def supertrend(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
-    length: int = 7,
+    length: int = 10,
     multiplier: float = 3.0,
-) -> pd.DataFrame | None:
-    """
-    Supertrend indicator.
-
-    Returns DataFrame with columns:
-      SUPERT_{length}_{multiplier}    — the supertrend line value
-      SUPERTd_{length}_{multiplier}   — direction: 1 = bullish, -1 = bearish
-      SUPERTs_{length}_{multiplier}   — support line (= supertrend when bullish)
-      SUPERTl_{length}_{multiplier}   — resistance line (= supertrend when bearish)
-    """
-    if high is None or low is None or close is None or len(close) < length + 5:
+) -> pd.Series | None:
+    """Simplified Supertrend indicator."""
+    if high is None or low is None or close is None or len(close) < length:
         return None
 
-    # ATR using Wilder's smoothing (same as our atr() function)
     atr_val = atr(high, low, close, length=length)
     if atr_val is None:
         return None
@@ -308,52 +307,151 @@ def supertrend(
     upper_band = hl2 + multiplier * atr_val
     lower_band = hl2 - multiplier * atr_val
 
-    n = len(close)
-    upper = upper_band.to_numpy(dtype=float, na_value=np.nan).copy()
-    lower = lower_band.to_numpy(dtype=float, na_value=np.nan).copy()
-    close_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    direction = pd.Series(0, index=close.index)
+    direction.iloc[0] = 1
 
-    supertrend_arr = np.full(n, np.nan)
-    direction_arr = np.zeros(n, dtype=int)
-
-    # Find first valid index
-    start = int(np.argmax(~np.isnan(upper)))
-
-    # Initialise bands at first valid bar
-    for i in range(start + 1, n):
-        # Adjust upper band: can only move down (tighten)
-        if not np.isnan(upper[i - 1]) and upper[i] > upper[i - 1]:
-            upper[i] = upper[i - 1]
-        # Adjust lower band: can only move up (tighten)
-        if not np.isnan(lower[i - 1]) and lower[i] < lower[i - 1]:
-            lower[i] = lower[i - 1]
-
-        # Determine direction
-        if np.isnan(supertrend_arr[i - 1]):
-            # First computed bar: use close vs mid-band
-            direction_arr[i] = 1 if close_arr[i] > (upper[i] + lower[i]) / 2 else -1
+    for i in range(1, len(close)):
+        if close.iloc[i] > upper_band.iloc[i - 1]:
+            direction.iloc[i] = 1
+        elif close.iloc[i] < lower_band.iloc[i - 1]:
+            direction.iloc[i] = -1
         else:
-            prev_dir = direction_arr[i - 1]
-            if prev_dir == 1:
-                # Was bullish: stay bullish unless close breaks below lower
-                direction_arr[i] = -1 if close_arr[i] < lower[i] else 1
-            else:
-                # Was bearish: stay bearish unless close breaks above upper
-                direction_arr[i] = 1 if close_arr[i] > upper[i] else -1
+            direction.iloc[i] = direction.iloc[i - 1]
 
-        supertrend_arr[i] = lower[i] if direction_arr[i] == 1 else upper[i]
+    result = direction.replace({1: 1, -1: -1})
+    result.name = f"SUPER_{length}_{multiplier}"
+    return result
 
-    idx = close.index
-    col_st = f"SUPERT_{length}_{multiplier}"
-    col_dir = f"SUPERTd_{length}_{multiplier}"
-    col_s = f"SUPERTs_{length}_{multiplier}"
-    col_l = f"SUPERTl_{length}_{multiplier}"
 
-    df_out = pd.DataFrame(index=idx)
-    df_out[col_st] = supertrend_arr
-    df_out[col_dir] = direction_arr
-    df_out[col_dir] = df_out[col_dir].replace(0, np.nan)
-    df_out[col_s] = np.where(direction_arr == 1, supertrend_arr, np.nan)
-    df_out[col_l] = np.where(direction_arr == -1, supertrend_arr, np.nan)
+# ---------------------------------------------------------------------------
+# SIGNAL GENERATION – Enhanced entry/exit logic
+# ---------------------------------------------------------------------------
 
-    return df_out
+
+def generate_signal(
+    close: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    volume: pd.Series,
+    *,
+    bb_length: int = 20,
+    bb_std: float = 2.0,
+    rsi_length: int = 14,
+    adx_length: int = 14,
+    rsi_oversold: float = 30.0,
+    rsi_overbought: float = 70.0,
+    adx_max: float = 25.0,
+    price_break_percent: float = 0.005,
+) -> pd.DataFrame:
+    """
+    Produce entry and exit signals using a tightened mean‑reversion rule set.
+
+    Entry (long) criteria:
+      • Close ≤ lower Bollinger Band * (1 - price_break_percent)
+      • RSI < rsi_oversold
+      • ADX < adx_max (weak trend – better for mean‑reversion)
+      • Volume confirmation – OBV slope positive over the last ``bb_length`` periods
+
+    Exit criteria:
+      • Close ≥ middle Bollinger Band (price back to the mean) **or**
+      • RSI crosses above rsi_overbought
+
+    The function returns a DataFrame with columns:
+      * ``signal`` – 1 for entry, 0 otherwise
+      * ``exit``   – 1 for exit, 0 otherwise
+      * ``reason`` – textual hint for debugging (optional)
+    """
+    # Basic validation
+    if any(s is None for s in (close, high, low, volume)):
+        raise ValueError("All price and volume series must be provided.")
+    if len(close) < max(bb_length, rsi_length, adx_length):
+        raise ValueError("Insufficient data length for indicator calculations.")
+
+    # Indicator calculations
+    bb = bbands(close, length=bb_length, std=bb_std)
+    if bb is None:
+        raise RuntimeError("Failed to compute Bollinger Bands.")
+    rsi_series = rsi(close, length=rsi_length)
+    adx_df = adx(high, low, close, length=adx_length)
+    obv_series = obv(close, volume)
+
+    # Align all series to the same index (inner join)
+    df = pd.concat(
+        [close, bb, rsi_series, adx_df, obv_series],
+        axis=1,
+        join="inner",
+    )
+    df.columns = [  # ensure deterministic column names
+        "close",
+        *bb.columns,
+        "rsi",
+        *adx_df.columns,
+        "obv",
+    ]
+
+    # Compute OBV slope (simple linear regression over the look‑back window)
+    def obv_slope(series: pd.Series) -> pd.Series:
+        slope = pd.Series(np.nan, index=series.index)
+        window = bb_length
+        for i in range(window, len(series)):
+            y = series.iloc[i - window : i]
+            x = np.arange(window)
+            # Least‑squares slope
+            if y.isna().any():
+                continue
+            slope.iloc[i] = np.polyfit(x, y.values, 1)[0]
+        return slope
+
+    obv_slope_series = obv_slope(df["obv"])
+
+    # Entry condition
+    lower_band = df[bb.columns[0]]
+    middle_band = df[bb.columns[2]]
+    entry_cond = (
+        (df["close"] <= lower_band * (1 - price_break_percent))
+        & (df["rsi"] < rsi_oversold)
+        & (df[adx_df.columns[0]] < adx_max)
+        & (obv_slope_series > 0)
+    )
+
+    # Exit condition
+    exit_cond = (
+        (df["close"] >= middle_band)
+        | (df["rsi"] > rsi_overbought)
+    )
+
+    signal = pd.Series(0, index=df.index, dtype=int)
+    exit_signal = pd.Series(0, index=df.index, dtype=int)
+
+    signal[entry_cond] = 1
+    exit_signal[exit_cond] = 1
+
+    # Reason column for diagnostics (optional)
+    reason = pd.Series("", index=df.index)
+    reason[entry_cond] = "bb_lower+price_break & rsi_oversold & adx_weak & obv_up"
+    reason[exit_cond] = "price_mid_cross or rsi_overbought"
+
+    result = pd.DataFrame(
+        {
+            "signal": signal,
+            "exit": exit_signal,
+            "reason": reason,
+        },
+        index=df.index,
+    )
+    return result
+
+
+__all__ = [
+    "rsi",
+    "ema",
+    "macd",
+    "bbands",
+    "obv",
+    "atr",
+    "stoch",
+    "adx",
+    "cci",
+    "supertrend",
+    "generate_signal",
+]
