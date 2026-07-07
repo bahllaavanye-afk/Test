@@ -1,5 +1,5 @@
 {
- "as_of": "2026-07-07T04:00:05.656251+00:00",
+ "as_of": "2026-07-07T13:34:27.319465+00:00",
  "method": "synthetic-BS (HV20\u00d71.1) over 2y daily bars \u2014 ranking only",
  "results": [
   {
@@ -14,10 +14,32 @@
    "symbol": "QQQ"
   },
   {
-   "trades": 239,
-   "win_rate": 0.4226,
-   "total_pnl": 13914.01,
-   "avg_pnl": 58.22,
+   "trades": 240,
+   "win_rate": 0.4292,
+   "total_pnl": 16667.77,
+   "avg_pnl": 69.45,
+   "max_drawdown": 3416.24,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "hybrid_morning_momentum",
+   "name": "Hybrid \u2014 Morning Momentum Daytrade",
+   "symbol": "QQQ"
+  },
+  {
+   "trades": 36,
+   "win_rate": 0.4722,
+   "total_pnl": 15171.97,
+   "avg_pnl": 421.44,
+   "max_drawdown": 4341.24,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "hybrid_regime_gamma",
+   "name": "Hybrid \u2014 Regime Long Gamma",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 240,
+   "win_rate": 0.4208,
+   "total_pnl": 13550.73,
+   "avg_pnl": 56.46,
    "max_drawdown": 2187.09,
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_td_npdt_s1_trend",
@@ -36,10 +58,10 @@
    "symbol": "SPY"
   },
   {
-   "trades": 81,
-   "win_rate": 0.7654,
-   "total_pnl": 2225.17,
-   "avg_pnl": 27.47,
+   "trades": 82,
+   "win_rate": 0.7683,
+   "total_pnl": 2382.21,
+   "avg_pnl": 29.05,
    "max_drawdown": 1188.73,
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_short_put_spread",
@@ -55,6 +77,17 @@
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_trendy_short_put",
    "name": "Trendy Short Put Spread",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 103,
+   "win_rate": 0.7282,
+   "total_pnl": 1771.9,
+   "avg_pnl": 17.2,
+   "max_drawdown": 1164.86,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "hybrid_put_ladder_trend",
+   "name": "Hybrid \u2014 Trend Put Ladder",
    "symbol": "SPY"
   },
   {
@@ -80,10 +113,21 @@
    "symbol": "QQQ"
   },
   {
-   "trades": 239,
-   "win_rate": 0.7573,
-   "total_pnl": 453.47,
-   "avg_pnl": 1.9,
+   "trades": 240,
+   "win_rate": 0.7583,
+   "total_pnl": 543.05,
+   "avg_pnl": 2.26,
+   "max_drawdown": 2029.65,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "hybrid_wide_0dte_tp25",
+   "name": "Hybrid \u2014 Wide 0DTE TP25",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 240,
+   "win_rate": 0.7583,
+   "total_pnl": 543.05,
+   "avg_pnl": 2.26,
    "max_drawdown": 2029.65,
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_ncr_0dte_spx_a",
@@ -102,6 +146,17 @@
    "symbol": "SPY"
   },
   {
+   "trades": 118,
+   "win_rate": 0.7627,
+   "total_pnl": 9.7,
+   "avg_pnl": 0.08,
+   "max_drawdown": 1824.89,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "hybrid_regime_theta",
+   "name": "Hybrid \u2014 Regime Theta Harvest",
+   "symbol": "SPY"
+  },
+  {
    "trades": 87,
    "win_rate": 0.7126,
    "total_pnl": -121.32,
@@ -113,10 +168,10 @@
    "symbol": "SPY"
   },
   {
-   "trades": 98,
-   "win_rate": 0.6939,
-   "total_pnl": -425.65,
-   "avg_pnl": -4.34,
+   "trades": 99,
+   "win_rate": 0.697,
+   "total_pnl": -202.97,
+   "avg_pnl": -2.05,
    "max_drawdown": 2373.18,
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_vix_range",
@@ -135,10 +190,10 @@
    "symbol": "SPY"
   },
   {
-   "trades": 239,
-   "win_rate": 0.8201,
-   "total_pnl": -1124.92,
-   "avg_pnl": -4.71,
+   "trades": 240,
+   "win_rate": 0.8208,
+   "total_pnl": -1068.58,
+   "avg_pnl": -4.45,
    "max_drawdown": 2018.14,
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_ncr_spx_0dte_b",
@@ -146,10 +201,10 @@
    "symbol": "SPY"
   },
   {
-   "trades": 64,
-   "win_rate": 0.625,
-   "total_pnl": -3255.92,
-   "avg_pnl": -50.87,
+   "trades": 65,
+   "win_rate": 0.6308,
+   "total_pnl": -2911.91,
+   "avg_pnl": -44.8,
    "max_drawdown": 5286.2,
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_delta_adjusting_strangle",
@@ -157,10 +212,10 @@
    "symbol": "SPY"
   },
   {
-   "trades": 67,
-   "win_rate": 0.5373,
-   "total_pnl": -6457.71,
-   "avg_pnl": -96.38,
+   "trades": 68,
+   "win_rate": 0.5441,
+   "total_pnl": -5121.27,
+   "avg_pnl": -75.31,
    "max_drawdown": 8311.55,
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_iron_butter_clone",
