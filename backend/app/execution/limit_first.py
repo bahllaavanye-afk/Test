@@ -78,9 +78,9 @@ class LimitFirstExecution:
         Logs
         ----
         Emits an INFO log at the start and completion of execution containing
-        metrics such as ``signal_id``, ``symbol``, ``side``, ``quantity``,
-        ``execution_time_ms``, ``filled_qty``, ``fill_price``, ``status``, and
-        ``pnl`` when calculable.
+        metrics such as ``signal_id``, ``signal_count``, ``symbol``, ``side``,
+        ``quantity``, ``execution_time_ms``, ``filled_qty``, ``fill_price``,
+        ``status``, and ``pnl`` when calculable.
         """
         # Increment signal counter and capture start time
         LimitFirstExecution._signal_counter += 1
@@ -91,6 +91,7 @@ class LimitFirstExecution:
             "Starting LimitFirstExecution",
             extra={
                 "signal_id": signal_id,
+                "signal_count": LimitFirstExecution._signal_counter,
                 "symbol": request.symbol,
                 "side": request.side,
                 "quantity": request.quantity,
@@ -183,7 +184,6 @@ class LimitFirstExecution:
 
         pnl: Optional[float] = None
         if fill_price is not None and reference_price is not None:
-            # Simple P&L: (reference - fill) * quantity for buys, opposite for sells
             qty = getattr(result, "filled_qty", request.quantity)
             if request.side == "buy":
                 pnl = (reference_price - fill_price) * qty
@@ -194,6 +194,7 @@ class LimitFirstExecution:
             "LimitFirstExecution completed",
             extra={
                 "signal_id": signal_id,
+                "signal_count": LimitFirstExecution._signal_counter,
                 "symbol": request.symbol,
                 "side": request.side,
                 "quantity": request.quantity,
