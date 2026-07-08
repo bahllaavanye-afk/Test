@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783543624.9276192,
+    "last_updated": 1783548159.075645,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1783543624.9273672
+    "last_brain_update": 1783548159.0753665
   },
   "episodic": [
     {
@@ -475,6 +475,11 @@
       "summary": "We need to summarize the given GitHub PR/issue discussions. The input shows three lines: two identical lines saying \"Auto-fix failed \u2014 could not apply patch to file.\" and a third line that looks like a base64 encoded string with \"eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwi\" which decodes to something like {\"isMonorepo\":true,\"type",
       "item_count": 20,
       "ts": 1783543624.9227757
+    },
+    {
+      "summary": "We need to summarize three separate GitHub PR/issue discussion snippets. Each is a status message from an auto-fix robot. The user wants a 1-2 sentence summary of these discussions. The snippets are:\n\n1. \"Auto-fix aborted \u2014 validation failed: Fix changes ~72 lines (limit 50)\"\n2. \"Auto-fix failed \u2014 could not apply patch to file.\"\n3. \"Auto-fix skipped \u2014 too complex for automated resolution.\"\n\nPlus a trailing \"Reason:",
+      "item_count": 20,
+      "ts": 1783548159.0703187
     }
   ],
   "experiment_results": [
