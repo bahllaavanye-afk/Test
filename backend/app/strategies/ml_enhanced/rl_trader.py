@@ -36,6 +36,11 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
+def _ema(series: pd.Series, period: int = 20) -> pd.Series:
+    """Exponential moving average."""
+    return series.ewm(span=period, adjust=False).mean()
+
+
 def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor | None:
     """
     Build a (1, seq_len, n_features) tensor from the last `seq_len` rows
@@ -63,6 +68,33 @@ def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor |
     )  # (seq_len, 3)
 
     return torch.tensor(feat_matrix, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, 3)
+
+
+def _entry_confirmation(df: pd.DataFrame, side: str) -> bool:
+    """
+    Additional confirmation filters for entry signals.
+
+    - For ``buy``: price above 20‑period EMA, RSI < 40, and current volume
+      at least 20 % above the median of the last 30 periods.
+    - For ``sell``: price below 20‑period EMA, RSI > 60, and volume condition as above.
+    """
+    if df.empty:
+        return False
+
+    close = df["close"]
+    volume = df["volume"]
+
+    ema20 = _ema(close, period=20).iloc[-1]
+    rsi_val = _rsi(close).iloc[-1]
+    recent_vol = volume.tail(30)
+    median_vol = recent_vol.median()
+    vol_ok = volume.iloc[-1] > 1.2 * median_vol
+
+    if side == "buy":
+        return close.iloc[-1] > ema20 and rsi_val < 40 and vol_ok
+    if side == "sell":
+        return close.iloc[-1] < ema20 and rsi_val > 60 and vol_ok
+    return False
 
 
 class RLTraderStrategy(AbstractStrategy):
@@ -157,42 +189,43 @@ class RLTraderStrategy(AbstractStrategy):
 
         # Pad or trim feature dimension to match model expectations
         if x.shape[-1] != self._agent.n_features:
-            # Pad with zeros to match training feature count
             pad_size = self._agent.n_features - x.shape[-1]
             if pad_size > 0:
-                x = torch.cat(
-                    [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                )
+                x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
             else:
                 x = x[..., : self._agent.n_features]
 
+        # Model inference
         action = self._agent.select_action(x)
         action_probs, _ = self._agent.forward(x)
         confidence = float(action_probs[0, action].item())
         close = float(data["close"].iloc[-1])
 
+        # Enforce confidence threshold and additional confirmation filters
         if action == _BUY and confidence >= self.confidence_threshold:
-            return Signal(
-                symbol=symbol,
-                side="buy",
-                confidence=confidence,
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                target_price=close,
-                metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
-            )
+            if _entry_confirmation(data, "buy"):
+                return Signal(
+                    symbol=symbol,
+                    side="buy",
+                    confidence=confidence,
+                    strategy_name=self.name,
+                    strategy_type=self.strategy_type,
+                    risk_bucket=self.risk_bucket,
+                    target_price=close,
+                    metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
+                )
         if action == _SELL and confidence >= self.confidence_threshold:
-            return Signal(
-                symbol=symbol,
-                side="sell",
-                confidence=confidence,
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                target_price=close,
-                metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
-            )
+            if _entry_confirmation(data, "sell"):
+                return Signal(
+                    symbol=symbol,
+                    side="sell",
+                    confidence=confidence,
+                    strategy_name=self.name,
+                    strategy_type=self.strategy_type,
+                    risk_bucket=self.risk_bucket,
+                    target_price=close,
+                    metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
+                )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
@@ -207,8 +240,8 @@ class RLTraderStrategy(AbstractStrategy):
             exits = (rsi_series > 70).fillna(False)
             return BacktestSignals(entries=entries, exits=exits)
 
-        actions = pd.Series(index=df.index, dtype=int)
-        actions[:] = _HOLD
+        entries = pd.Series(False, index=df.index)
+        exits = pd.Series(False, index=df.index)
 
         self._agent.eval()
         with torch.no_grad():
@@ -217,28 +250,26 @@ class RLTraderStrategy(AbstractStrategy):
                 x = _build_feature_tensor(window, seq_len=self.SEQ_LEN)
                 if x is None:
                     continue
+
+                # Align feature dimensions
                 if x.shape[-1] != self._agent.n_features:
                     pad_size = self._agent.n_features - x.shape[-1]
                     if pad_size > 0:
-                        x = torch.cat(
-                            [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                        )
+                        x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
                     else:
                         x = x[..., : self._agent.n_features]
+
+                action = self._agent.select_action(x)
                 action_probs, _ = self._agent.forward(x)
-                actions.iloc[i] = int(action_probs[0].argmax().item())
+                confidence = float(action_probs[0, action].item())
 
-        # Apply shift(1) — no lookahead
-        actions = actions.shift(1).fillna(_HOLD).astype(int)
+                if confidence < self.confidence_threshold:
+                    continue
 
-        entries = actions == _BUY
-        exits = actions == _SELL
-        short_entries = actions == _SELL
-        short_exits = actions == _BUY
+                # Apply the same confirmation filters used in live analysis
+                if action == _BUY and _entry_confirmation(window, "buy"):
+                    entries.iloc[i] = True
+                elif action == _SELL and _entry_confirmation(window, "sell"):
+                    exits.iloc[i] = True
 
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
+        return BacktestSignals(entries=entries, exits=exits)
