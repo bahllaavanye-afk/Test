@@ -295,79 +295,79 @@
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "alpha_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "ml_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "risk_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "backend_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "qa_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "devops_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "exec_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "poly_desk": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "ml_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "vp_research": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "quant_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       },
       "cro": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-07"
+        "date": "2026-07-08"
       }
     }
   },
