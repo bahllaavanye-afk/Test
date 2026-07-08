@@ -173,8 +173,12 @@
     "* Prioritize code quality improvements in `backend/app/walk_forward.py`, focusing on logging and error handling.",
     "* The overall platform health is stable, with the **hawkes_arrival.py** model and other API end-points functioning correctly, as reported by the system watchdog.",
     "Implement retry logic",
-    "Test DB queries"
+    "Test DB queries",
+    "Check API timeouts",
+    "Log query params",
+    "Implement circuit breaker",
+    "Use transactions"
   ],
-  "last_updated": "2026-07-08T05:24:46.499767+00:00",
-  "total": 174
+  "last_updated": "2026-07-08T06:25:04.370590+00:00",
+  "total": 178
 }
