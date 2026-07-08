@@ -168,8 +168,13 @@
     "Verify dependency versions",
     "Refactor dark themes",
     "Validate date formats",
-    "Verify log rotation"
+    "Verify log rotation",
+    "validation on risk/factor_exposure.py: success \u2014 tests green",
+    "validation on brokers/base.py: success \u2014 tests green",
+    "validation on backtest/cpcv.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on tasks/ml_retrain.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T03:53:04.243545+00:00",
+  "last_updated": "2026-07-08T04:44:08.165077+00:00",
   "total": 169
 }
