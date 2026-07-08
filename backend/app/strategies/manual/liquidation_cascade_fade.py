@@ -1,37 +1,9 @@
-"""
-Liquidation Cascade Fade
-========================
-Fade forced liquidation cascades in crypto perpetual markets.
-
-During a liquidation cascade, stop-losses and margin calls trigger a chain of
-forced selling (or buying), creating temporary over-extension. The strategy
-fades that over-extension by taking the opposite side once cascade signals are
-detected, expecting mean reversion once the forced flow is exhausted.
-
-1-min live detection criteria (cascade event):
-  - 5-min price drop  < -3 %  (or +3 % for short cascades)
-  - 5-min volume      > 3 × rolling 60-min avg volume
-
-Entry long:  sharp drop + volume spike (long liquidations forced) → fade drop
-Entry short: sharp rip  + volume spike (short liquidations forced) → fade rip
-Exit: +1.5 % recovery OR 120-bar time stop
-
-Backtest proxy (daily OHLCV, no real-time liquidation WebSocket):
-  Liquidation-day proxy = (high - low) / close > 2 × ATR_20
-                          AND volume > 2 × rolling_20_vol
-                          AND close < open  (bearish candle = long liquidation)
-                          → Long entry: fade the down day
-  Exit after 1 bar (single-day holding period)
-
-Academic references:
-  Wen, Chen & Zhu (2024) "Liquidation Cascades in Cryptocurrency Markets"
-  Shams (2022) "The Structure of Cryptocurrency Returns"
-
-Documented Sharpe (proxy backtest): ~1.0–1.6 on BTC/ETH daily
-"""
+import logging
+import time
 import pandas as pd
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
+logger = logging.getLogger(__name__)
 
 class LiquidationCascadeFadeStrategy(AbstractStrategy):
     """
@@ -80,7 +52,16 @@ class LiquidationCascadeFadeStrategy(AbstractStrategy):
         (wss://fstream.binance.com/ws/!forceOrder@arr) and 1-min OHLCV.
         Not accessible in sandbox — return None gracefully.
         """
-        return None
+        start = time.perf_counter()
+        result = None
+        duration = time.perf_counter() - start
+        logger.info(
+            "Analyze called for %s (symbol=%s) – returning None in sandbox, duration=%.3fs",
+            self.name,
+            symbol,
+            duration,
+        )
+        return result
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -96,17 +77,28 @@ class LiquidationCascadeFadeStrategy(AbstractStrategy):
         Long entry on the bar AFTER the detected cascade day.
         Exit after 1 additional bar (single-day mean reversion).
         """
+        start_time = time.perf_counter()
+
         required_cols = {"open", "high", "low", "close", "volume"}
         min_bars = self.BT_ATR_PERIOD + 5
         false_series = pd.Series(False, index=df.index, dtype=bool)
 
         if not required_cols.issubset(df.columns) or len(df) < min_bars:
-            return BacktestSignals(
+            signals = BacktestSignals(
                 entries=false_series,
                 exits=false_series,
                 short_entries=false_series,
                 short_exits=false_series,
             )
+            duration = time.perf_counter() - start_time
+            logger.info(
+                "Backtest %s: insufficient data (rows=%d, cols=%s) – no signals generated, duration=%.3fs",
+                self.name,
+                len(df),
+                list(df.columns),
+                duration,
+            )
+            return signals
 
         open_  = df["open"].astype(float)
         high   = df["high"].astype(float)
@@ -116,11 +108,14 @@ class LiquidationCascadeFadeStrategy(AbstractStrategy):
 
         # ATR (Wilder / simple daily true range)
         prev_close = close.shift(1)
-        tr = pd.concat([
-            high - low,
-            (high - prev_close).abs(),
-            (low  - prev_close).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         atr20 = tr.rolling(self.BT_ATR_PERIOD, min_periods=self.BT_ATR_PERIOD // 2).mean()
 
         # Daily range ratio
@@ -130,31 +125,56 @@ class LiquidationCascadeFadeStrategy(AbstractStrategy):
         avg_vol20 = volume.rolling(self.BT_VOL_PERIOD, min_periods=self.BT_VOL_PERIOD // 2).mean()
 
         # Liquidation proxy flags (computed on same bar, before shift)
-        range_spike   = range_ratio > self.BT_ATR_MULT * atr20 / close.clip(lower=1e-8)
-        volume_spike  = volume > self.BT_VOL_MULT * avg_vol20
+        range_spike = range_ratio > self.BT_ATR_MULT * atr20 / close.clip(lower=1e-8)
+        volume_spike = volume > self.BT_VOL_MULT * avg_vol20
         bearish_close = close < open_
 
         # Bullish liquidation event (long cascade): large range, volume spike, bearish day
-        long_cascade_raw  = range_spike & volume_spike & bearish_close
+        long_cascade_raw = range_spike & volume_spike & bearish_close
 
         # Bullish liquidation event (short cascade): same range/vol criteria, but bullish day
         short_cascade_raw = range_spike & volume_spike & ~bearish_close
 
         # shift(1) — signals are generated on the bar AFTER detection
-        long_cascade  = long_cascade_raw.shift(1).fillna(False)
+        long_cascade = long_cascade_raw.shift(1).fillna(False)
         short_cascade = short_cascade_raw.shift(1).fillna(False)
 
         # Entry: day after cascade detected
-        entries       = long_cascade.astype(bool)
+        entries = long_cascade.astype(bool)
         short_entries = short_cascade.astype(bool)
 
         # Exit after 1 bar: shift entries by 1 more bar
-        exits       = long_cascade.shift(1).fillna(False).astype(bool)
+        exits = long_cascade.shift(1).fillna(False).astype(bool)
         short_exits = short_cascade.shift(1).fillna(False).astype(bool)
 
-        return BacktestSignals(
+        signals = BacktestSignals(
             entries=entries,
             exits=exits,
             short_entries=short_entries,
             short_exits=short_exits,
         )
+
+        # ---- Monitoring metrics ----
+        num_entries = int(entries.sum())
+        num_exits = int(exits.sum())
+        num_short_entries = int(short_entries.sum())
+        num_short_exits = int(short_exits.sum())
+
+        # Approximate P&L: assume exit occurs on the next day's close
+        next_close = close.shift(-1)
+        pnl_long = ((next_close - close) / close).where(entries, 0.0).sum()
+        pnl_short = ((close - next_close) / close).where(short_entries, 0.0).sum()
+        total_pnl = pnl_long + pnl_short
+
+        duration = time.perf_counter() - start_time
+        logger.info(
+            "Backtest %s: entries=%d, short_entries=%d, exits=%d, short_exits=%d, pnl=%.4f, duration=%.3fs",
+            self.name,
+            num_entries,
+            num_short_entries,
+            num_exits,
+            num_short_exits,
+            total_pnl,
+            duration,
+        )
+        return signals
