@@ -14,7 +14,6 @@ Architecture:
 """
 from __future__ import annotations
 
-import math
 try:
     import torch
     import torch.nn as nn
@@ -185,7 +184,7 @@ class SSMPredictor(AbstractModel, nn.Module):
     def save(self, path: str, metadata: dict | None = None) -> None:
         if not _TORCH_AVAILABLE:
             return
-        import os, pickle
+        import os
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         torch.save({
             "state_dict": self.state_dict(),
