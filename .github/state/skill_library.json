@@ -180,8 +180,13 @@
     "Use transactions",
     "Check db connections",
     "Use thread pooling",
-    "Handle async errors"
+    "Handle async errors",
+    "cleanup on api/v1/improvements.py: success \u2014 tests green",
+    "cleanup on strategies/manual/funding_rate_arb.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
+    "cleanup on ml/models/multiscale_transformer.py: success \u2014 tests green",
+    "cleanup on execution/iceberg.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T09:05:29.845116+00:00",
+  "last_updated": "2026-07-08T09:55:34.763611+00:00",
   "total": 181
 }
