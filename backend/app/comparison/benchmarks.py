@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import functools
 from datetime import date, datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import httpx
 import pandas as pd
@@ -26,7 +26,13 @@ ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # simple in‑memory cache for benchmark results keyed by (start, end)
-_benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
+_benchmark_cache: dict[Tuple[date, date], dict[str, List[dict]]] = {}
+
+# per‑ticker cache to avoid duplicate network calls for identical requests
+_ticker_cache: dict[Tuple[str, date, date], pd.Series] = {}
+
+# pre‑computed weight series for All Weather (used after filtering missing tickers)
+_ALL_WEATHER_WEIGHT_SERIES = pd.Series(ALL_WEATHER_WEIGHTS)
 
 
 @functools.lru_cache(maxsize=1)
@@ -45,6 +51,10 @@ async def _fetch_ticker_bars(
     Fetch daily close prices for a single ticker from Alpaca.
     Returns a pd.Series indexed by date, or an empty Series on failure.
     """
+    cache_key = (ticker.upper(), start, end)
+    if cached_series := _ticker_cache.get(cache_key):
+        return cached_series
+
     sym = ticker.upper()
     start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
     end_str = datetime.combine(end, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -61,37 +71,43 @@ async def _fetch_ticker_bars(
                 "Alpaca bars fetch failed",
                 extra={"ticker": ticker, "status_code": resp.status_code},
             )
-            return pd.Series(dtype=float)
-
-        raw_bars = resp.json().get("bars", [])
-        if not raw_bars:
-            return pd.Series(dtype=float)
-
-        dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True).normalize()
-        closes = [float(b["c"]) for b in raw_bars]
-        series = pd.Series(closes, index=dates, name=ticker)
-        # De‑duplicate any same‑day entries (take last)
-        series = series[~series.index.duplicated(keep="last")]
-        return series
-
+            series = pd.Series(dtype=float)
+        else:
+            raw_bars = resp.json().get("bars", [])
+            if not raw_bars:
+                series = pd.Series(dtype=float)
+            else:
+                dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True).normalize()
+                closes = [float(b["c"]) for b in raw_bars]
+                series = pd.Series(closes, index=dates, name=ticker)
+                series = series[~series.index.duplicated(keep="last")]
     except httpx.HTTPError as exc:
         logger.error(
             "HTTP error while fetching Alpaca bars",
             extra={"ticker": ticker, "error": str(exc)},
         )
-        return pd.Series(dtype=float)
+        series = pd.Series(dtype=float)
     except (ValueError, KeyError) as exc:
         logger.error(
             "Data parsing error while processing Alpaca response",
             extra={"ticker": ticker, "error": str(exc)},
         )
-        return pd.Series(dtype=float)
-    except Exception as exc:  # pragma: no cover
+        series = pd.Series(dtype=float)
+    except Exception:  # pragma: no cover
         logger.exception(
             "Unexpected error while fetching Alpaca bars",
             extra={"ticker": ticker},
         )
-        return pd.Series(dtype=float)
+        series = pd.Series(dtype=float)
+
+    _ticker_cache[cache_key] = series
+    return series
+
+
+def _series_to_records(series: pd.Series) -> List[dict]:
+    """Convert a pandas Series (indexed by Timestamp) to a list of dicts with ISO dates."""
+    # pandas .items() is efficient; avoid Python‑level loops over .index/.values separately
+    return [{"date": idx.date().isoformat(), "value": float(v)} for idx, v in series.items()]
 
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
@@ -116,7 +132,6 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
             return_exceptions=True,
         )
 
-    # Convert any exceptions returned by gather into empty Series and log them
     series_list: List[pd.Series] = []
     for ticker, result in zip(all_tickers, raw_series):
         if isinstance(result, Exception):
@@ -142,23 +157,20 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         if series is None or series.empty:
             continue
         normalized = (series.dropna() / series.iloc[0] * 100).round(2)
-        result[ticker] = [
-            {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
-        ]
+        result[ticker] = _series_to_records(normalized)
 
     # All Weather: monthly rebalanced weighted portfolio
     aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
     if len(aw_tickers) >= 3:
         aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
         aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
-        weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
-        weights = weights / weights.sum()  # renormalize if any tickers missing
+        # Filter weight series to only present tickers and renormalize
+        weights = _ALL_WEATHER_WEIGHT_SERIES[aw_tickers]
+        weights = weights / weights.sum()
         monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
         aw_ret = (monthly_returns * weights).sum(axis=1)
         aw_equity = (1 + aw_ret).cumprod() * 100
-        result["ALL_WEATHER"] = [
-            {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
-        ]
+        result["ALL_WEATHER"] = _series_to_records(aw_equity.round(2))
 
     # Cache the result for future identical requests
     _benchmark_cache[cache_key] = {k: v.copy() for k, v in result.items()}
