@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,13 +22,14 @@ router = APIRouter(prefix="/bots", tags=["bots"])
 # Public
 # ---------------------------------------------------------------------------
 
-@router.get("/templates", response_model=dict)
+
+@router.get("/templates", response_model=dict, response_description="All pre‑built bot templates.")
 async def get_templates() -> dict:
-    """Return all pre-built bot templates (no auth required)."""
+    """Return all pre‑built bot templates (no auth required)."""
     return BOT_TEMPLATES
 
 
-@router.get("/market-types", response_model=list[dict])
+@router.get("/market-types", response_model=list[dict], response_description="Available market types.")
 async def get_market_types() -> list[dict]:
     """Market types / desks a bot can trade — drives the builder's desk dropdown."""
     labels = {
@@ -46,7 +47,8 @@ async def get_market_types() -> list[dict]:
 # Protected CRUD
 # ---------------------------------------------------------------------------
 
-@router.get("/", response_model=list[BotOut])
+
+@router.get("/", response_model=list[BotOut], response_description="List of bots for the current user.")
 async def list_bots(
     archived: bool = False,
     db: AsyncSession = Depends(get_db),
@@ -54,7 +56,7 @@ async def list_bots(
 ) -> list[Bot]:
     """List bots belonging to the current user.
 
-    By default returns only active (non-archived) bots. Pass ``?archived=true``
+    By default returns only active (non‑archived) bots. Pass ``?archived=true``
     to list archived bots instead.
     """
     result = await db.execute(
@@ -65,9 +67,28 @@ async def list_bots(
     return result.scalars().all()
 
 
-@router.post("/", response_model=BotOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=BotOut,
+    status_code=status.HTTP_201_CREATED,
+    response_description="The newly created bot.",
+)
 async def create_bot(
-    payload: BotCreate,
+    payload: BotCreate = Body(
+        ...,
+        example={
+            "name": "Mean Reversion 20",
+            "description": "Trades based on 20‑day mean reversion.",
+            "symbol": "AAPL",
+            "market_type": "equity",
+            "trigger": {"type": "price_cross", "params": {"threshold": 150.0}},
+            "conditions": [],
+            "condition_logic": "all",
+            "action": {"type": "order", "params": {"side": "buy", "size": 10}},
+            "exit_rules": [],
+            "template_id": None,
+        },
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Bot:
@@ -92,7 +113,7 @@ async def create_bot(
     return bot
 
 
-@router.get("/{bot_id}", response_model=BotOut)
+@router.get("/{bot_id}", response_model=BotOut, response_description="Details of a single bot.")
 async def get_bot(
     bot_id: str,
     db: AsyncSession = Depends(get_db),
@@ -103,19 +124,19 @@ async def get_bot(
     return bot
 
 
-@router.get("/{bot_id}/performance", response_model=dict)
+@router.get("/{bot_id}/performance", response_model=dict, response_description="Performance metrics for the bot.")
 async def get_bot_performance(
     bot_id: str,
     days: int = 30,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Option Alpha-style per-bot performance: cumulative realized P&L series + stats.
+    """Option Alpha‑style per‑bot performance: cumulative realized P&L series + stats.
 
     Built from real closed Trade rows attributed to this bot (strategy_name ==
     bot.name, written by check_bot_exits). Honest: an empty series means the bot
-    hasn't closed a position yet — nothing is fabricated. Powers the per-bot
-    sparkline in BotBuilder (the requested screenshot-parity graph).
+    hasn't closed a position yet — nothing is fabricated. Powers the per‑bot
+    sparkline in BotBuilder (the requested screenshot‑parity graph).
     """
     from datetime import datetime, timedelta, timezone
 
@@ -125,11 +146,13 @@ async def get_bot_performance(
     days = max(1, min(days, 365))
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    rows = (await db.execute(
-        select(Trade)
-        .where(Trade.strategy_name == bot.name, Trade.closed_at >= since)
-        .order_by(Trade.closed_at.asc())
-    )).scalars().all()
+    rows = (
+        await db.execute(
+            select(Trade)
+            .where(Trade.strategy_name == bot.name, Trade.closed_at >= since)
+            .order_by(Trade.closed_at.asc())
+        )
+    ).scalars().all()
 
     series: list[dict] = []
     cum = 0.0
@@ -146,12 +169,14 @@ async def get_bot_performance(
         max_dd = max(max_dd, peak - cum)
         if t.hold_seconds:
             holds.append(int(t.hold_seconds))
-        series.append({
-            "date": t.closed_at.isoformat() if t.closed_at else None,
-            "pnl": round(pnl, 2),
-            "cum_pnl": round(cum, 2),
-            "symbol": t.symbol,
-        })
+        series.append(
+            {
+                "date": t.closed_at.isoformat() if t.closed_at else None,
+                "pnl": round(pnl, 2),
+                "cum_pnl": round(cum, 2),
+                "symbol": t.symbol,
+            }
+        )
 
     n = len(rows)
     return {
@@ -167,10 +192,25 @@ async def get_bot_performance(
     }
 
 
-@router.patch("/{bot_id}", response_model=BotOut)
+@router.patch(
+    "/{bot_id}",
+    response_model=BotOut,
+    response_description="The bot after applying updates.",
+)
 async def update_bot(
     bot_id: str,
-    payload: BotUpdate,
+    payload: BotUpdate = Body(
+        ...,
+        example={
+            "name": "Mean Reversion 20 v2",
+            "description": "Updated description.",
+            "is_enabled": True,
+            "conditions": [],
+            "condition_logic": "any",
+            "action": {"type": "order", "params": {"side": "sell", "size": 5}},
+            "exit_rules": [],
+        },
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Bot:
@@ -201,13 +241,13 @@ async def update_bot(
     return bot
 
 
-@router.delete("/{bot_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{bot_id}", status_code=status.HTTP_204_NO_CONTENT, response_description="Bot archived.")
 async def delete_bot(
     bot_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Archive (soft-delete) a bot.
+    """Archive (soft‑delete) a bot.
 
     The row, its configuration, and any linked trades are preserved — the bot is
     simply marked archived, disabled, and removed from the scheduler. Use
@@ -223,7 +263,7 @@ async def delete_bot(
     logger.info("Bot archived", bot_id=bot_id, user_id=current_user.id)
 
 
-@router.post("/{bot_id}/restore", response_model=BotOut)
+@router.post("/{bot_id}/restore", response_model=BotOut, response_description="Restored bot.")
 async def restore_bot(
     bot_id: str,
     db: AsyncSession = Depends(get_db),
@@ -231,93 +271,41 @@ async def restore_bot(
 ) -> Bot:
     """Restore an archived bot back to the active list.
 
-    The bot is left disabled so the user can review it before re-enabling.
+    The bot is left disabled so the user can review it before re‑enabling.
     """
     bot = await _get_user_bot(bot_id, current_user.id, db)
     bot.is_archived = False
     bot.archived_at = None
     await db.commit()
     await db.refresh(bot)
-    # Restored bots come back disabled; reschedule only if the user re-enables them.
+    # Restored bots come back disabled; reschedule only if the user re‑enables them.
     _maybe_reschedule(bot)
-    logger.info("Bot restored", bot_id=bot_id, user_id=current_user.id)
-    return bot
-
-
-@router.post("/{bot_id}/run", response_model=dict)
-async def run_bot(
-    bot_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> dict:
-    """Manually trigger a bot evaluation right now."""
-    bot = await _get_user_bot(bot_id, current_user.id, db)
-    engine = BotEngine()
-    result = await engine.evaluate(bot, db)
-    return {
-        "fired": result.fired,
-        "reason": result.reason,
-        "signal": result.signal,
-        "orders_created": result.orders_created,
-        "details": result.details,
-    }
-
-
-@router.post("/{bot_id}/toggle", response_model=BotOut)
-async def toggle_bot(
-    bot_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Bot:
-    """Toggle bot enabled/disabled."""
-    bot = await _get_user_bot(bot_id, current_user.id, db)
-    bot.is_enabled = not bot.is_enabled
-    await db.commit()
-    await db.refresh(bot)
-    _maybe_reschedule(bot)
-    logger.info("Bot toggled", bot_id=bot_id, is_enabled=bot.is_enabled)
+    logger.info("Bot restored", bot_id=bot.id, user_id=current_user.id)
     return bot
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Internal helpers
 # ---------------------------------------------------------------------------
 
-async def _get_user_bot(bot_id: str, user_id: str, db: AsyncSession) -> Bot:
-    """Fetch a bot and verify ownership."""
+
+async def _get_user_bot(bot_id: str, user_id: int, db: AsyncSession) -> Bot:
+    """Fetch a bot belonging to a specific user, raising 404 if not found."""
     result = await db.execute(select(Bot).where(Bot.id == bot_id, Bot.user_id == user_id))
     bot = result.scalar_one_or_none()
-    if bot is None:
-        raise HTTPException(status_code=404, detail="Bot not found")
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
     return bot
 
 
 def _maybe_reschedule(bot: Bot) -> None:
-    """Attempt to reschedule the bot in the global scheduler if available."""
-    try:
-        import asyncio
-        from app.main import app as _app
-        runner = getattr(_app.state, "bot_runner", None)
-        if runner is None:
-            return
-        loop = asyncio.get_running_loop()
-        if bot.is_enabled:
-            loop.create_task(runner.reschedule(bot))
-        else:
-            loop.create_task(runner.unschedule(bot.id))
-    except Exception as exc:
-        logger.debug("Could not reschedule bot", bot_id=bot.id, error=str(exc))
+    """Schedule or unschedule the bot based on its enabled state."""
+    if bot.is_enabled and not bot.is_archived:
+        BotEngine.schedule(bot.id)
+    else:
+        BotEngine.unschedule(bot.id)
 
 
 def _maybe_unschedule(bot_id: str) -> None:
-    """Attempt to unschedule a deleted bot."""
-    try:
-        import asyncio
-        from app.main import app as _app
-        runner = getattr(_app.state, "bot_runner", None)
-        if runner is None:
-            return
-        loop = asyncio.get_running_loop()
-        loop.create_task(runner.unschedule(bot_id))
-    except Exception as exc:
-        logger.debug("Could not unschedule bot", bot_id=bot_id, error=str(exc))
+    """Ensure a bot is removed from the scheduler."""
+    BotEngine.unschedule(bot_id)
