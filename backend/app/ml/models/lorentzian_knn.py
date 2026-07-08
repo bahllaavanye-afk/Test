@@ -10,6 +10,9 @@ compresses extreme differences, preventing rare events from dominating.
 Features used (same as original TV indicator):
   RSI(14), CCI(20), ADX(20), EMA delta (fast vs slow), SMA delta
 """
+import logging
+import time
+
 try:
     import torch
     import torch.nn as nn
@@ -18,12 +21,14 @@ except ImportError:
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
+
 import numpy as np
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
 from sklearn.metrics import roc_auc_score
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
+logger = logging.getLogger(__name__)
 
 LORENTZIAN_FEATURES = ["rsi_14", "cci_20", "adx_20", "ema_fast_delta", "ema_slow_delta"]
 
@@ -77,8 +82,19 @@ class LorentzianKNN(AbstractModel):
 
     def forward(self, x):
         """x: (batch, n_features) — single-step inference (no sequence)."""
+        start_time = time.time()
         if self._library_X is None:
-            return torch.zeros(x.shape[0])
+            result = torch.zeros(x.shape[0])
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                "LorentzianKNN forward - empty library",
+                extra={
+                    "signal_count": x.shape[0],
+                    "execution_time_ms": elapsed_ms,
+                    "pnl_estimate": None,
+                },
+            )
+            return result
 
         results = []
         for i in range(x.shape[0]):
@@ -87,7 +103,21 @@ class LorentzianKNN(AbstractModel):
             _, top_k = torch.topk(dists, self.k, largest=False)
             k_labels = self._library_y[top_k].float()
             results.append(k_labels.mean())
-        return torch.stack(results)
+        output = torch.stack(results)
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        # Simple P&L estimate: sum of predicted probabilities minus a neutral baseline (0.5)
+        pnl_estimate = float(output.sum().item() - 0.5 * output.shape[0])
+
+        logger.info(
+            "LorentzianKNN forward",
+            extra={
+                "signal_count": x.shape[0],
+                "execution_time_ms": elapsed_ms,
+                "pnl_estimate": pnl_estimate,
+            },
+        )
+        return output
 
     def fit_library(self, X: np.ndarray, y: np.ndarray) -> None:
         """Fit the KNN library from training data (subsampled)."""
@@ -115,19 +145,39 @@ class LorentzianKNN(AbstractModel):
             auc = float(roc_auc_score(labels_cat, probs_cat))
         except ValueError:
             auc = 0.5
+
+        logger.info(
+            "LorentzianKNN evaluate",
+            extra={
+                "signal_count": len(labels_cat),
+                "accuracy": acc,
+                "auc": auc,
+                "pnl_estimate": None,
+            },
+        )
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def save(self, path: str, metadata: dict | None = None) -> None:
         import pickle
         from pathlib import Path
+
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "wb") as f:
-            pickle.dump({"library_X": self._library_X, "library_y": self._library_y,
-                         "k": self.k, "lookback": self.lookback, "model_type": self.model_type}, f)
+            pickle.dump(
+                {
+                    "library_X": self._library_X,
+                    "library_y": self._library_y,
+                    "k": self.k,
+                    "lookback": self.lookback,
+                    "model_type": self.model_type,
+                },
+                f,
+            )
 
     @classmethod
     def load(cls, path: str) -> "LorentzianKNN":
         import pickle
+
         with open(path, "rb") as f:
             data = pickle.load(f)
         model = cls(k=data["k"], lookback=data["lookback"])
