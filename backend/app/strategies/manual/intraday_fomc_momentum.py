@@ -31,6 +31,10 @@ Backtest (daily bars):
 """
 
 from datetime import date, timedelta
+import logging
+import time
+from time import perf_counter
+from typing import Optional
 
 import pandas as pd
 
@@ -41,20 +45,33 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 # Source: Federal Reserve press releases / FOMC calendar.
 # ---------------------------------------------------------------------------
 FOMC_DATES_2024_2025: list[str] = [
-    "2024-01-31", "2024-03-20", "2024-05-01", "2024-06-12",
-    "2024-07-31", "2024-09-18", "2024-11-07", "2024-12-18",
-    "2025-01-29", "2025-03-19", "2025-05-07", "2025-06-18",
-    "2025-07-30", "2025-09-17", "2025-11-05", "2025-12-17",
+    "2024-01-31",
+    "2024-03-20",
+    "2024-05-01",
+    "2024-06-12",
+    "2024-07-31",
+    "2024-09-18",
+    "2024-11-07",
+    "2024-12-18",
+    "2025-01-29",
+    "2025-03-19",
+    "2025-05-07",
+    "2025-06-18",
+    "2025-07-30",
+    "2025-09-17",
+    "2025-11-05",
+    "2025-12-17",
 ]
 
 # Convert to a set of date objects for O(1) lookup
-_FOMC_DATE_SET: set[date] = {
-    date.fromisoformat(d) for d in FOMC_DATES_2024_2025
-}
+_FOMC_DATE_SET: set[date] = {date.fromisoformat(d) for d in FOMC_DATES_2024_2025}
 
 # Pre-FOMC drift parameters
 PRE_FOMC_CONFIDENCE = 0.65
-PRE_FOMC_TARGET_RETURN = 0.005   # 50 bps documented drift
+PRE_FOMC_TARGET_RETURN = 0.005  # 50 bps documented drift
+
+# Configure a module‑level logger for structured logging
+_logger = logging.getLogger(__name__)
 
 
 class IntradayFOMCMomentumStrategy(AbstractStrategy):
@@ -70,10 +87,10 @@ class IntradayFOMCMomentumStrategy(AbstractStrategy):
     market_type = "equity"
     strategy_type = "manual"
     risk_bucket = "directional"
-    tick_interval_seconds = 3600.0   # hourly check is sufficient (calendar-driven)
+    tick_interval_seconds = 3600.0  # hourly check is sufficient (calendar-driven)
     confidence_threshold = 0.60
 
-    def __init__(self, params: dict | None = None):
+    def __init__(self, params: Optional[dict] = None):
         super().__init__(params)
         # Allow injecting additional FOMC dates via params for forward extension
         extra_dates: list[str] = (params or {}).get("extra_fomc_dates", [])
@@ -96,7 +113,7 @@ class IntradayFOMCMomentumStrategy(AbstractStrategy):
         """Return True if today is a known FOMC announcement date."""
         return today in self._fomc_set
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """
         Check whether today is the day before a known FOMC meeting.
         If yes, emit a bullish signal with confidence=0.65 and target=current_price*1.005.
@@ -105,46 +122,46 @@ class IntradayFOMCMomentumStrategy(AbstractStrategy):
         If today is an FOMC day and the 'fomc_5min_move' key is in data metadata,
         use that to emit a directional signal.
         """
+        start_time = perf_counter()
         today = date.today()
+        signal: Optional[Signal] = None
 
         # --- Pre-FOMC drift signal ---
         if self._is_fomc_eve(today):
-            if data.empty or "close" not in data.columns:
-                return None
-            current_price = float(data["close"].iloc[-1])
-            target = round(current_price * (1.0 + PRE_FOMC_TARGET_RETURN), 4)
-            return Signal(
-                symbol=symbol,
-                side="buy",
-                confidence=PRE_FOMC_CONFIDENCE,
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                target_price=target,
-                metadata={
-                    "signal_type": "pre_fomc_drift",
-                    "fomc_date": (today + timedelta(days=1)).isoformat(),
-                    "current_price": current_price,
-                    "documented_edge_bps": 50,
-                },
-            )
+            if not data.empty and "close" in data.columns:
+                current_price = float(data["close"].iloc[-1])
+                target = round(current_price * (1.0 + PRE_FOMC_TARGET_RETURN), 4)
+                signal = Signal(
+                    symbol=symbol,
+                    side="buy",
+                    confidence=PRE_FOMC_CONFIDENCE,
+                    strategy_name=self.name,
+                    strategy_type=self.strategy_type,
+                    risk_bucket=self.risk_bucket,
+                    target_price=target,
+                    metadata={
+                        "signal_type": "pre_fomc_drift",
+                        "fomc_date": (today + timedelta(days=1)).isoformat(),
+                        "current_price": current_price,
+                        "documented_edge_bps": 50,
+                    },
+                )
 
         # --- Post-announcement 5-minute momentum signal ---
-        if self._is_fomc_day(today) and not data.empty and "close" in data.columns:
-            # Requires caller to supply recent intraday bars around 14:00–14:05 ET.
-            # We use the last two bars to infer the 5-minute direction.
+        elif self._is_fomc_day(today) and not data.empty and "close" in data.columns:
             if len(data) >= 2:
                 move_5min = float(data["close"].iloc[-1]) / float(data["close"].iloc[-2]) - 1.0
-                current_price = float(data["close"].iloc[-1])
-                if abs(move_5min) >= 0.001:   # at least 10 bps to act on
+                if abs(move_5min) >= 0.001:  # at least 10 bps to act on
+                    current_price = float(data["close"].iloc[-1])
                     side = "buy" if move_5min > 0 else "sell"
                     confidence = min(0.80, 0.60 + abs(move_5min) * 20)
                     target = round(
-                        current_price * (1 + abs(move_5min) * 3) if side == "buy"
+                        current_price * (1 + abs(move_5min) * 3)
+                        if side == "buy"
                         else current_price * (1 - abs(move_5min) * 3),
                         4,
                     )
-                    return Signal(
+                    signal = Signal(
                         symbol=symbol,
                         side=side,
                         confidence=round(confidence, 4),
@@ -160,7 +177,25 @@ class IntradayFOMCMomentumStrategy(AbstractStrategy):
                         },
                     )
 
-        return None
+        # Structured logging
+        exec_ms = (perf_counter() - start_time) * 1000
+        _logger.info(
+            "IntradayFOMCMomentum analyze completed",
+            extra={
+                "strategy": self.name,
+                "symbol": symbol,
+                "signal_generated": bool(signal),
+                "signal_type": signal.metadata.get("signal_type") if signal else None,
+                "execution_time_ms": round(exec_ms, 2),
+                # Expected P&L proxy: target - current_price if signal exists
+                "expected_pnl": (
+                    signal.target_price - signal.metadata.get("current_price")
+                    if signal
+                    else 0.0
+                ),
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -176,30 +211,47 @@ class IntradayFOMCMomentumStrategy(AbstractStrategy):
         Produces sparse signals (~8 per year) each carrying the documented
         pre-announcement edge.
         """
+        start_time = perf_counter()
         required = {"close"}
         if not required.issubset(df.columns) or len(df) < 3:
             empty = pd.Series(False, index=df.index, dtype=bool)
-            return BacktestSignals(entries=empty, exits=empty)
+            result = BacktestSignals(entries=empty, exits=empty)
+            exec_ms = (perf_counter() - start_time) * 1000
+            _logger.info(
+                "IntradayFOMCMomentum backtest completed (insufficient data)",
+                extra={
+                    "strategy": self.name,
+                    "entries": 0,
+                    "exits": 0,
+                    "execution_time_ms": round(exec_ms, 2),
+                },
+            )
+            return result
 
         # Normalise index to date objects for comparison
         if hasattr(df.index, "date"):
             index_dates = pd.Series(df.index.date, index=df.index)
         else:
-            # Try parsing if it's a string/object index
-            index_dates = pd.Series(
-                pd.to_datetime(df.index).date, index=df.index
-            )
+            # Fallback: assume index already consists of date objects
+            index_dates = pd.Series(df.index, index=df.index)
 
-        # FOMC-eve: the day immediately before a known FOMC date
-        fomc_eve = index_dates.apply(
-            lambda d: (d + timedelta(days=1)) in self._fomc_set
+        # Identify FOMC‑eve and FOMC‑day flags
+        is_fomc_day = index_dates.isin(self._fomc_set)
+        is_fomc_eve = index_dates.shift(-1).isin(self._fomc_set)
+
+        entries = is_fomc_eve.fillna(False)
+        exits = is_fomc_day.fillna(False)
+
+        result = BacktestSignals(entries=entries, exits=exits)
+
+        exec_ms = (perf_counter() - start_time) * 1000
+        _logger.info(
+            "IntradayFOMCMomentum backtest completed",
+            extra={
+                "strategy": self.name,
+                "entries": int(entries.sum()),
+                "exits": int(exits.sum()),
+                "execution_time_ms": round(exec_ms, 2),
+            },
         )
-
-        # FOMC day itself
-        fomc_day = index_dates.apply(lambda d: d in self._fomc_set)
-
-        # shift(1): signal known at end-of-bar, acted on next bar
-        entries = fomc_eve.shift(1).fillna(False).astype(bool)
-        exits = fomc_day.shift(1).fillna(False).astype(bool)
-
-        return BacktestSignals(entries=entries, exits=exits)
+        return result
