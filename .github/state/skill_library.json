@@ -180,8 +180,13 @@
     "Use transactions",
     "Check db connections",
     "Use thread pooling",
-    "Handle async errors"
+    "Handle async errors",
+    "monitoring on strategies/manual/intraday_fomc_momentum.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "monitoring on ml/models/patch_tst.py: success \u2014 tests green",
+    "monitoring on ml/features/alternative.py: success \u2014 tests green",
+    "monitoring on execution/iceberg.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T11:21:24.282662+00:00",
+  "last_updated": "2026-07-08T11:47:40.545799+00:00",
   "total": 181
 }
