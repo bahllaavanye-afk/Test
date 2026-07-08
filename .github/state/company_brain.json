@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783521664.0434895,
+    "last_updated": 1783526237.9067202,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -63,38 +63,38 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-07T16:16:41.824707+00:00",
+      "generated_at": "2026-07-08T15:56:41.948925+00:00",
       "signals": {
         "vix": {
-          "value": 16.05,
-          "trend": "falling"
+          "value": 18.17,
+          "trend": "rising"
         },
         "spy": {
-          "price": 748.12,
-          "sma50": 737.58,
-          "sma200": 689.71,
+          "price": 740.27,
+          "sma50": 738.13,
+          "sma200": 690.13,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0355,
+          "ratio": 1.0281,
           "median": 1.0527,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 0.707,
+          "hyg_lqd_momentum_20d": 0.719,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 9,
+          "sectors_above_sma20": 6,
           "total_sectors": 11,
-          "breadth_pct": 81.8
+          "breadth_pct": 54.5
         },
         "btc": {
-          "price": 63806,
-          "24h_pct": 0.29
+          "price": 61658,
+          "24h_pct": -3.46
         }
       },
-      "score": 4,
+      "score": 3,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
@@ -108,7 +108,7 @@
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 4,
+    "opinion_score": 3,
     "macro_score": 0,
     "vix": 22.22,
     "market_scan_ts": 1781136270.285874,
@@ -371,6 +371,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1783465047.0270526
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1783526237.9095035
     }
   ],
   "github_insights": [
