@@ -65,34 +65,38 @@ MONITORED_CHANNELS: list[str] = [
 # ─── Employee → channel mapping (derived from Post(channel=...) in each fn) ──
 # Key: employee display name for reports, Value: (function_name, channel)
 
+# NOTE: the values MUST be real zero-arg functions in slack_agent_team.py that
+# return list[Post]. The functions are role-named (not person-named); an earlier
+# rename left this map pointing at functions that no longer exist, so auto-heal
+# called nothing. Keys are person display names purely for report readability.
 EMPLOYEE_CHANNEL_MAP: dict[str, tuple[str, str]] = {
-    "maya_chen":              ("maya_chen_eng_daily",          "engineering"),
-    "aarav_patel":            ("aarav_patel_strategy_review",  "alpha-research"),
-    "linh_tran":              ("linh_tran_ml_results",         "ml-experiments"),
-    "diego_ramirez":          ("diego_ramirez_execution",      "squad-execution"),
-    "jian_wu":                ("jian_wu_risk",                 "risk-alerts"),
-    "priya_subramanian":      ("priya_subramanian_frontend",   "squad-frontend"),
-    "anna_hoffmann":          ("anna_hoffmann_backend",        "squad-backend"),
-    "sina_hassani":           ("sina_hassani_data",            "squad-data"),
-    "kenji_watanabe":         ("kenji_watanabe_devops",        "infra-alerts"),
-    "aditi_sharma":           ("aditi_sharma_qa",              "squad-qa"),
-    "cameron_park":           ("cameron_park_security",        "security-alerts"),
-    "sofia_karlsson":         ("sofia_karlsson_research",      "papers"),
-    "yuki_mori":              ("yuki_mori_options",            "desk-options"),
-    "hugo_bernardes":         ("hugo_bernardes_research",      "alpha-research"),
-    "tomas_lindqvist":        ("tomas_lindqvist_rl",           "pod-ml-rl"),
-    "lior_avraham":           ("lior_avraham_polymarket",      "desk-polymarket"),
-    "marcus_olufemi":         ("marcus_olufemi_risk",          "leadership-summary"),
-    "wei_chang":              ("wei_chang_finance",            "finance-ops"),
-    "helena_voss":            ("helena_voss_compliance",       "legal-compliance"),
-    "karl_nystrom":           ("karl_nystrom_question",        "help"),
-    "ravi_iyer":              ("ravi_iyer_ci",                 "engineering"),
-    "kenji_deploy":           ("kenji_deploy_readiness",       "infra-alerts"),
-    "sara_kim":               ("sara_kim_ml_research",         "ml-experiments"),
-    "marcus_williams":        ("marcus_williams_dl_engineer",  "engineering"),
-    "priya_nair":             ("priya_nair_feature_eng",       "alpha-research"),
-    "alex_chen":              ("alex_chen_quant_ml",           "alpha-research"),
-    "laavanye_bahl":          ("laavanye_bahl_ceo",            "announcements"),
+    "maya_chen":              ("vp_eng_daily",                 "engineering"),
+    "aarav_patel":            ("alpha_dir_strategy_review",    "alpha-research"),
+    "linh_tran":              ("ml_lead_results",              "ml-experiments"),
+    "diego_ramirez":          ("exec_eng_execution",           "squad-execution"),
+    "jian_wu":                ("risk_eng_risk",                "risk-alerts"),
+    "priya_subramanian":      ("frontend_eng_frontend",        "squad-frontend"),
+    "anna_hoffmann":          ("backend_lead_backend",         "squad-backend"),
+    "sina_hassani":           ("data_eng_data",                "squad-data"),
+    "kenji_watanabe":         ("devops_dir_devops",            "infra-alerts"),
+    "aditi_sharma":           ("qa_dir_qa",                    "squad-qa"),
+    "cameron_park":           ("security_eng_security",        "security-alerts"),
+    "sofia_karlsson":         ("vp_research_research",          "papers"),
+    "yuki_mori":              ("options_researcher_options",   "desk-options"),
+    "hugo_bernardes":         ("quant_researcher_research",     "alpha-research"),
+    "tomas_lindqvist":        ("rl_researcher_rl",             "pod-ml-rl"),
+    "lior_avraham":           ("poly_desk_polymarket",         "desk-polymarket"),
+    "marcus_olufemi":         ("cro_risk",                     "leadership-summary"),
+    "wei_chang":              ("finance_eng_finance",          "finance-ops"),
+    "helena_voss":            ("compliance_eng_compliance",     "legal-compliance"),
+    "karl_nystrom":           ("junior_eng_question",          "help"),
+    "ravi_iyer":              ("ci_eng_ci",                    "engineering"),
+    "kenji_deploy":           ("devops_dir_deploy_readiness",  "infra-alerts"),
+    "sara_kim":               ("ml_researcher_research",       "ml-experiments"),
+    "marcus_williams":        ("cro_dl_engineer",              "engineering"),
+    "priya_nair":             ("frontend_eng_feature_eng",     "alpha-research"),
+    "alex_chen":              ("quant_ml_quant_ml",            "alpha-research"),
+    "laavanye_bahl":          ("ceo_ceo",                      "announcements"),
 }
 
 # Templates that indicate onboarding/reminder spam rather than real content
@@ -345,6 +349,11 @@ def _load_agent_module():
         if spec is None or spec.loader is None:
             return None
         mod = importlib.util.module_from_spec(spec)
+        # Register BEFORE exec_module: @dataclass in the target resolves its
+        # module via sys.modules[cls.__module__]; without this the load crashes
+        # with "'NoneType' object has no attribute '__dict__'" and every
+        # auto-heal silently no-ops (0 agents ever healed).
+        sys.modules["slack_agent_team"] = mod
         spec.loader.exec_module(mod)  # type: ignore[arg-type]
         _agent_module = mod
         return mod
