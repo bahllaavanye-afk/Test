@@ -1,41 +1,51 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub-routers with lazy imports for faster startup."""
 from fastapi import APIRouter
-from app.api.v1 import auth, accounts, orders, positions, trades, strategies, backtests, comparison, experiments, ml, risk, market_data, analytics, agents, notifications, archive, improvements, monitoring, integrations, pipeline, leaderboard, releases
-from app.api.v1.scanners import router as scanners_router
-from app.api.v1.options import router as options_router
-from app.api.v1.regime import router as regime_router
-from app.api.v1.audit_log import router as audit_log_router
-from app.api.v1.bots import router as bots_router
-from app.api.v1.discord_interactions import router as discord_router
+from importlib import import_module
+
+# Mapping of module path to the attribute that holds the FastAPI router.
+# Most modules expose a `router` attribute; a few expose differently named attributes.
+_ROUTER_SPECS = [
+    ("app.api.v1.auth", "router"),
+    ("app.api.v1.accounts", "router"),
+    ("app.api.v1.orders", "router"),
+    ("app.api.v1.positions", "router"),
+    ("app.api.v1.trades", "router"),
+    ("app.api.v1.strategies", "router"),
+    ("app.api.v1.backtests", "router"),
+    ("app.api.v1.comparison", "router"),
+    ("app.api.v1.experiments", "router"),
+    ("app.api.v1.ml", "router"),
+    ("app.api.v1.risk", "router"),
+    ("app.api.v1.market_data", "router"),
+    # Underscore-prefixed alias so /market_data/* and /market-data/* both resolve
+    ("app.api.v1.market_data", "router_underscore"),
+    ("app.api.v1.analytics", "router"),
+    ("app.api.v1.agents", "router"),
+    ("app.api.v1.notifications", "router"),
+    ("app.api.v1.archive", "router"),
+    ("app.api.v1.improvements", "router"),
+    ("app.api.v1.monitoring", "router"),
+    ("app.api.v1.options", "router"),
+    ("app.api.v1.regime", "router"),
+    ("app.api.v1.audit_log", "router"),
+    ("app.api.v1.integrations", "router"),
+    ("app.api.v1.pipeline", "router"),
+    ("app.api.v1.leaderboard", "router"),
+    ("app.api.v1.releases", "router"),
+    ("app.api.v1.bots", "router"),
+    ("app.api.v1.scanners", "router"),
+    ("app.api.v1.discord_interactions", "router"),
+]
 
 api_router = APIRouter()
-api_router.include_router(auth.router)
-api_router.include_router(accounts.router)
-api_router.include_router(orders.router)
-api_router.include_router(positions.router)
-api_router.include_router(trades.router)
-api_router.include_router(strategies.router)
-api_router.include_router(backtests.router)
-api_router.include_router(comparison.router)
-api_router.include_router(experiments.router)
-api_router.include_router(ml.router)
-api_router.include_router(risk.router)
-api_router.include_router(market_data.router)
-# Underscore-prefix alias so /market_data/* and /market-data/* both resolve
-api_router.include_router(market_data.router_underscore)
-api_router.include_router(analytics.router)
-api_router.include_router(agents.router)
-api_router.include_router(notifications.router)
-api_router.include_router(archive.router)
-api_router.include_router(improvements.router)
-api_router.include_router(monitoring.router)
-api_router.include_router(options_router)
-api_router.include_router(regime_router)
-api_router.include_router(audit_log_router)
-api_router.include_router(integrations.router)
-api_router.include_router(pipeline.router)
-api_router.include_router(leaderboard.router)
-api_router.include_router(releases.router)
-api_router.include_router(bots_router)
-api_router.include_router(scanners_router)
-api_router.include_router(discord_router)
+
+def _include_router(module_path: str, attr_name: str) -> None:
+    """Import the module and include its router on the main APIRouter."""
+    module = import_module(module_path)
+    router_obj = getattr(module, attr_name)
+    api_router.include_router(router_obj)
+
+# Dynamically include all sub‑routers. This keeps import time low and centralises
+# the inclusion logic, making future additions easier and reducing boilerplate.
+for _module_path, _attr_name in _ROUTER_SPECS:
+    _include_router(_module_path, _attr_name)
