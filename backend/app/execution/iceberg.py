@@ -3,8 +3,11 @@ Iceberg execution: show only small visible quantity, refill as each slice fills.
 Prevents large orders from moving the market by hiding true size.
 """
 from __future__ import annotations
+
 import asyncio
+import time
 from dataclasses import asdict
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
@@ -16,6 +19,18 @@ class IcebergExecution:
         self.refill_delay_seconds = refill_delay_seconds
 
     async def execute(self, request: OrderRequest) -> OrderResult:
+        """
+        Execute an iceberg order by splitting the total quantity into visible slices.
+
+        Args:
+            request: The original order request.
+
+        Returns:
+            An OrderResult aggregating the fills of all slices.
+        """
+        start_time = time.perf_counter()
+        slice_count = 0
+
         visible_qty = max(1.0, request.quantity * self.visible_pct)
         remaining = request.quantity
         total_filled = 0.0
@@ -29,12 +44,18 @@ class IcebergExecution:
             )
             try:
                 result = await self.broker.place_order(slice_req)
+                slice_count += 1
                 total_filled += result.filled_qty
                 remaining -= result.filled_qty
                 if result.avg_fill_price:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
-                logger.debug("Iceberg slice", filled=result.filled_qty, remaining=remaining)
+                logger.debug(
+                    "Iceberg slice",
+                    filled=result.filled_qty,
+                    remaining=remaining,
+                    slice_qty=slice_qty,
+                )
 
                 if remaining > 0.01:
                     await asyncio.sleep(self.refill_delay_seconds)
@@ -43,9 +64,32 @@ class IcebergExecution:
                 break
 
         avg_price = total_cost / total_filled if total_filled > 0 else None
+
+        # Compute P&L if possible
+        pnl: float | None = None
+        side = getattr(request, "side", None)
+        target_price = getattr(request, "price", None)
+        if avg_price is not None and isinstance(target_price, (int, float)):
+            if side == "buy":
+                pnl = (target_price - avg_price) * total_filled
+            elif side == "sell":
+                pnl = (avg_price - target_price) * total_filled
+
+        exec_time = time.perf_counter() - start_time
+        logger.info(
+            "Iceberg execution completed",
+            signal_count=slice_count,
+            execution_time=exec_time,
+            pnl=pnl,
+            total_filled=total_filled,
+            avg_price=avg_price,
+        )
+
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "iceberg",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
+            status="filled"
+            if total_filled >= request.quantity * 0.95
+            else "partial",
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
