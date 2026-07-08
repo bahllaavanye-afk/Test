@@ -13,34 +13,52 @@ Steps:
 """
 from __future__ import annotations
 
+import logging
 import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
 from scipy.spatial.distance import squareform
+from numpy.linalg import LinAlgError
+
+logger = logging.getLogger(__name__)
 
 
 def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
     """Convert correlation matrix to distance matrix: d = sqrt(0.5*(1-rho))."""
-    dist = np.sqrt(0.5 * (1.0 - corr.values))
-    np.fill_diagonal(dist, 0.0)
-    return dist
+    try:
+        dist = np.sqrt(0.5 * (1.0 - corr.values))
+        np.fill_diagonal(dist, 0.0)
+        return dist
+    except Exception as e:
+        logger.error("Error converting correlation to distance matrix", exc_info=True)
+        raise ValueError("Failed to compute distance matrix") from e
 
 
 def _get_quasi_diag(link: np.ndarray) -> list[int]:
     """Sort clustered items by the dendrogram leaf order (quasi-diagonalisation)."""
-    root, _ = to_tree(link, rd=True)
-    return leaves_list(link).tolist()
+    try:
+        root, _ = to_tree(link, rd=True)
+        return leaves_list(link).tolist()
+    except Exception as e:
+        logger.error("Error extracting quasi-diagonal order from linkage matrix", exc_info=True)
+        raise ValueError("Failed to obtain quasi-diagonal ordering") from e
 
 
 def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
     """Minimum-variance portfolio variance for a sub-cluster."""
-    sub_cov = cov.iloc[items, items].values
-    n = len(items)
-    if n == 1:
-        return float(sub_cov[0, 0])
-    inv_var = 1.0 / np.maximum(np.diag(sub_cov), 1e-10)
-    w = inv_var / inv_var.sum()
-    return float(w @ sub_cov @ w)
+    try:
+        sub_cov = cov.iloc[items, items].values
+        n = len(items)
+        if n == 1:
+            return float(sub_cov[0, 0])
+        inv_var = 1.0 / np.maximum(np.diag(sub_cov), 1e-10)
+        w = inv_var / inv_var.sum()
+        return float(w @ sub_cov @ w)
+    except (IndexError, ValueError, LinAlgError) as e:
+        logger.error(
+            "Error computing cluster variance for items %s", items, exc_info=True
+        )
+        raise ValueError("Failed to compute cluster variance") from e
 
 
 def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
@@ -60,11 +78,17 @@ def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
                 break
             left = items_to_bisect[i]
             right = items_to_bisect[i + 1]
-            var_left = _get_cluster_var(cov, left)
-            var_right = _get_cluster_var(cov, right)
-            alpha = 1.0 - var_left / max(var_left + var_right, 1e-10)
-            weights[left] *= alpha
-            weights[right] *= (1.0 - alpha)
+            try:
+                var_left = _get_cluster_var(cov, left)
+                var_right = _get_cluster_var(cov, right)
+                alpha = 1.0 - var_left / max(var_left + var_right, 1e-10)
+                weights[left] *= alpha
+                weights[right] *= (1.0 - alpha)
+            except ValueError as e:
+                logger.error(
+                    "Recursive bisect failed for left %s and right %s", left, right, exc_info=True
+                )
+                raise
 
     return weights
 
@@ -94,43 +118,58 @@ class HRPOptimizer:
         n = len(symbols)
 
         if n < 2 or len(returns) < 10:
+            logger.info(
+                "Insufficient data for HRP (assets=%d, rows=%d); returning equal weights",
+                n,
+                len(returns),
+            )
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         # Drop columns with all-NaN and fill remaining NaN with 0
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
         if returns_clean.shape[1] < 2:
+            logger.info(
+                "After cleaning, insufficient assets (%d); returning equal weights",
+                returns_clean.shape[1],
+            )
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         symbols_clean = list(returns_clean.columns)
-        n_clean = len(symbols_clean)
 
         try:
             corr = returns_clean.corr().clip(-0.9999, 0.9999)
             cov = returns_clean.cov()
+        except Exception as e:
+            logger.error("Failed to compute correlation or covariance matrices", exc_info=True)
+            return pd.Series(1.0 / n, index=symbols)
 
+        try:
             dist = _corr_to_distance(corr)
             condensed = squareform(dist, checks=False)
-
             link = linkage(condensed, method="ward")
             sorted_items = _get_quasi_diag(link)
-
-            # sorted_items contains indices into symbols_clean
-            weights_raw = _recursive_bisect(cov, sorted_items)
-
-            # Re-index back to original symbols
-            result = pd.Series(0.0, index=symbols)
-            for idx, sym in enumerate(symbols_clean):
-                if idx in weights_raw.index:
-                    result[sym] = float(weights_raw[idx])
-
-            # Normalise
-            total = result.sum()
-            if total > 0:
-                result = result / total
-            else:
-                result = pd.Series(1.0 / n, index=symbols)
-
-            return result
-
-        except Exception:
+        except (ValueError, LinAlgError) as e:
+            logger.error("Clustering step failed", exc_info=True)
             return pd.Series(1.0 / n, index=symbols)
+
+        try:
+            weights_raw = _recursive_bisect(cov, sorted_items)
+        except Exception as e:
+            logger.error("Recursive bisection failed", exc_info=True)
+            return pd.Series(1.0 / n, index=symbols)
+
+        # Re-index back to original symbols
+        result = pd.Series(0.0, index=symbols)
+        for idx, sym in enumerate(symbols_clean):
+            if idx in weights_raw.index:
+                result[sym] = float(weights_raw[idx])
+
+        # Normalise
+        total = result.sum()
+        if total > 0:
+            result = result / total
+        else:
+            logger.warning("Resulting weights sum to zero; falling back to equal weights")
+            result = pd.Series(1.0 / n, index=symbols)
+
+        return result
