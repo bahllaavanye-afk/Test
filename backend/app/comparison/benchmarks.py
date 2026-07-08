@@ -45,6 +45,13 @@ async def _fetch_ticker_bars(
     Fetch daily close prices for a single ticker from Alpaca.
     Returns a pd.Series indexed by date, or an empty Series on failure.
     """
+    if not isinstance(ticker, str) or not ticker:
+        raise ValueError("ticker must be a non‑empty string")
+    if not isinstance(start, date) or not isinstance(end, date):
+        raise ValueError("start and end must be datetime.date instances")
+    if start >= end:
+        raise ValueError("start date must be earlier than end date")
+
     sym = ticker.upper()
     start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
     end_str = datetime.combine(end, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -96,12 +103,11 @@ async def _fetch_ticker_bars(
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
+    # Input validation
+    if not isinstance(start, date) or not isinstance(end, date):
+        raise ValueError("start and end must be datetime.date instances")
     if start >= end:
-        logger.warning(
-            "Invalid benchmark date range",
-            extra={"start": start.isoformat(), "end": end.isoformat()},
-        )
-        return {}
+        raise ValueError("start date must be earlier than end date")
 
     cache_key = (start, end)
     if cached := _benchmark_cache.get(cache_key):
