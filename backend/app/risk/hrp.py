@@ -13,10 +13,16 @@ Steps:
 """
 from __future__ import annotations
 
+import logging
+import time
+from typing import List
+
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
+from scipy.cluster.hierarchy import linkage, leaves_list, to_tree
 from scipy.spatial.distance import squareform
+
+_logger = logging.getLogger(__name__)
 
 
 def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
@@ -26,13 +32,13 @@ def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
     return dist
 
 
-def _get_quasi_diag(link: np.ndarray) -> list[int]:
+def _get_quasi_diag(link: np.ndarray) -> List[int]:
     """Sort clustered items by the dendrogram leaf order (quasi-diagonalisation)."""
     root, _ = to_tree(link, rd=True)
     return leaves_list(link).tolist()
 
 
-def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
+def _get_cluster_var(cov: pd.DataFrame, items: List[int]) -> float:
     """Minimum-variance portfolio variance for a sub-cluster."""
     sub_cov = cov.iloc[items, items].values
     n = len(items)
@@ -43,7 +49,7 @@ def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
     return float(w @ sub_cov @ w)
 
 
-def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
+def _recursive_bisect(cov: pd.DataFrame, sorted_items: List[int]) -> pd.Series:
     """Recursive bisection: split into two halves and allocate by inverse cluster variance."""
     weights = pd.Series(1.0, index=sorted_items)
     items_to_bisect = [sorted_items]
@@ -90,16 +96,41 @@ class HRPOptimizer:
             pd.Series of portfolio weights summing to 1.0, indexed by symbol.
             Falls back to equal weights if data is insufficient or degenerate.
         """
+        start_time = time.perf_counter()
+
+        def _log_metrics(result: pd.Series, signal_cnt: int) -> None:
+            """Emit structured INFO log with key metrics."""
+            exec_ms = (time.perf_counter() - start_time) * 1000.0
+            # Expected P&L approximated as mean return weighted by the portfolio
+            try:
+                mean_ret = returns.mean()
+                pnl = float(mean_ret @ result)
+            except Exception:
+                pnl = float("nan")
+            _logger.info(
+                "HRP compute_weights completed",
+                extra={
+                    "signal_count": signal_cnt,
+                    "execution_time_ms": exec_ms,
+                    "pnl": pnl,
+                },
+            )
+
         symbols = list(returns.columns)
         n = len(symbols)
 
+        # Insufficient data fallback
         if n < 2 or len(returns) < 10:
-            return pd.Series(1.0 / max(n, 1), index=symbols)
+            result = pd.Series(1.0 / max(n, 1), index=symbols)
+            _log_metrics(result, n)
+            return result
 
         # Drop columns with all-NaN and fill remaining NaN with 0
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
         if returns_clean.shape[1] < 2:
-            return pd.Series(1.0 / max(n, 1), index=symbols)
+            result = pd.Series(1.0 / max(n, 1), index=symbols)
+            _log_metrics(result, returns_clean.shape[1])
+            return result
 
         symbols_clean = list(returns_clean.columns)
         n_clean = len(symbols_clean)
@@ -130,7 +161,11 @@ class HRPOptimizer:
             else:
                 result = pd.Series(1.0 / n, index=symbols)
 
+            _log_metrics(result, n_clean)
             return result
 
-        except Exception:
-            return pd.Series(1.0 / n, index=symbols)
+        except Exception as exc:
+            _logger.exception("HRP compute_weights failed, falling back to equal weights")
+            result = pd.Series(1.0 / n, index=symbols)
+            _log_metrics(result, n)
+            return result
