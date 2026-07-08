@@ -180,8 +180,13 @@
     "Use transactions",
     "Check db connections",
     "Use thread pooling",
-    "Handle async errors"
+    "Handle async errors",
+    "monitoring on strategies/manual/hmm_regime.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "monitoring on ml/models/lorentzian_knn.py: success \u2014 tests green",
+    "monitoring on ml/features/normalization.py: success \u2014 tests green",
+    "monitoring on risk/correlation.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T11:21:24.282662+00:00",
+  "last_updated": "2026-07-08T11:59:39.566533+00:00",
   "total": 181
 }
