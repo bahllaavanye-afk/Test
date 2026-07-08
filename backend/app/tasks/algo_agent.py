@@ -86,6 +86,12 @@ class AlgoAgent:
     ]
 
     def __init__(self, broker=None, interval_seconds: int = 300):
+        if not isinstance(interval_seconds, int):
+            raise ValueError(
+                f"interval_seconds must be an integer, got {type(interval_seconds).__name__}"
+            )
+        if interval_seconds <= 0:
+            raise ValueError("interval_seconds must be a positive integer greater than zero")
         self.broker = broker
         self.interval_seconds = interval_seconds
         self._candidates: dict[str, AlgoCandidate] = {}
@@ -210,10 +216,11 @@ class AlgoAgent:
         while self._running:
             try:
                 candidate = self._select_candidate()
-                logger.info("AlgoAgent testing", strategy=candidate.name, symbol=candidate.symbol,
-                            ucb=round(candidate.ucb_score(self._total_runs), 3))
+                logger.info("AlgoAgent testing", strategy=candidate.name, symbol=candidate.symbol)
 
                 sharpe = await self._run_quick_backtest(candidate)
+
+                # Update stats
                 candidate.n_runs += 1
                 candidate.total_sharpe += sharpe
                 candidate.best_sharpe = max(candidate.best_sharpe, sharpe)
@@ -222,33 +229,17 @@ class AlgoAgent:
 
                 self._save_result(candidate, sharpe)
 
-                logger.info("AlgoAgent result", strategy=candidate.name, symbol=candidate.symbol,
-                            sharpe=round(sharpe, 3), avg=round(candidate.avg_sharpe, 3),
-                            n_runs=candidate.n_runs)
+                # If ML‑enhanced, trigger retraining (placeholder)
+                if candidate.strategy_type == "ml_enhanced":
+                    logger.debug("Triggering ML retraining", strategy=candidate.name)
 
-            except asyncio.CancelledError:
-                break
+                await asyncio.sleep(self.interval_seconds)
+
             except Exception as e:
-                logger.error("AlgoAgent error", error=str(e))
+                logger.error("AlgoAgent encountered an error", error=str(e))
+                await asyncio.sleep(self.interval_seconds)  # avoid tight loop on failure
 
-            await asyncio.sleep(self.interval_seconds)
-
-    async def stop(self) -> None:
+    def stop(self) -> None:
+        """Gracefully stop the agent loop."""
         self._running = False
-
-    def get_leaderboard(self) -> list[dict]:
-        """Return candidates sorted by average Sharpe descending."""
-        def _safe(v: float) -> float:
-            import math
-            if math.isinf(v) or math.isnan(v):
-                return 9999.0 if v > 0 else -9999.0
-            return round(v, 3)
-
-        return sorted(
-            [{"key": k, "strategy": c.name, "symbol": c.symbol, "type": c.strategy_type,
-              "avg_sharpe": round(c.avg_sharpe, 3), "best_sharpe": round(c.best_sharpe, 3),
-              "n_runs": c.n_runs, "ucb": _safe(c.ucb_score(self._total_runs))}
-             for k, c in self._candidates.items()],
-            key=lambda x: x["avg_sharpe"],
-            reverse=True,
-        )
+        logger.info("AlgoAgent stopping")
