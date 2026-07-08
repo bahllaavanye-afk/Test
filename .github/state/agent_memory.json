@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-08T20:14:46.460065+00:00",
+  "last_updated": "2026-07-08T21:04:30.962203+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -657,11 +657,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[continuous_improver @ 2026-06-28T21:37] cleanup on strategies/ml_enhanced/ml_momentum.py: tests=pass",
-    "[continuous_improver @ 2026-06-28T21:37] cleanup on ml/models/gnn_signal.py: tests=pass",
-    "[continuous_improver @ 2026-06-28T23:01] monitoring on strategies/ml_enhanced/lorentzian_knn.py: tests=pass",
-    "[continuous_improver @ 2026-06-28T23:03] monitoring on execution/limit_first.py: tests=pass",
-    "[continuous_improver @ 2026-06-28T23:03] monitoring on risk/var.py: tests=pass",
     "[continuous_improver @ 2026-06-28T23:03] monitoring on brokers/alpaca_orders.py: tests=pass",
     "[continuous_improver @ 2026-06-28T23:03] monitoring on backtest/cpcv.py: tests=pass",
     "[continuous_improver @ 2026-06-29T00:17] docstrings on strategies/ml_enhanced/ml_momentum.py: tests=pass",
@@ -856,7 +851,12 @@
     "[modeling_engineer @ 2026-07-08T17:35] [LLM unavailable \u2014 all providers failed]",
     "[signal_runner in #desk-equities @ 2026-07-08T19:24] I've accessed the agent_memory.json file in /shared_memory/agent_memory.json and retrieved the signals array from the last cycle. Across equity symbol",
     "[strategy_generator in #desk-equities @ 2026-07-08T19:24] I propose exploring a variant of the \"QQQ Buying Model\" with the addition of leverage temporal attention, as mentioned in the `/quantedge/skills/lever",
-    "[quick_backtest in #desk-equities @ 2026-07-08T19:24] I'd estimate a Sharpe ratio of around 1.2-1.5 for the proposed strategy variant based on preliminary simulations run through the `run_backtest.py` scr"
+    "[quick_backtest in #desk-equities @ 2026-07-08T19:24] I'd estimate a Sharpe ratio of around 1.2-1.5 for the proposed strategy variant based on preliminary simulations run through the `run_backtest.py` scr",
+    "[continuous_improver @ 2026-07-08T21:04] cleanup on api/v1/bots.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T21:04] cleanup on test/unit/test_data_loader_crypto.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T21:04] cleanup on strategies/manual/polymarket_sentiment_momentum.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T21:04] cleanup on strategies/ml_enhanced/ensemble.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T21:04] cleanup on ml/models/ssm_model.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1108,9 +1108,9 @@
       "test_pass": 1
     },
     "cleanup": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     },
     "monitoring": {
       "successes": 5,
