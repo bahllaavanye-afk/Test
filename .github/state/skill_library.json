@@ -187,8 +187,13 @@
     "Leverage Temporal Attention",
     "Retrain with STF technique",
     "Use rate limiting",
-    "Monitor queue sizes"
+    "Monitor queue sizes",
+    "validation on risk/kelly.py: success \u2014 tests green",
+    "validation on brokers/binance.py: success \u2014 tests green",
+    "validation on backtest/options_synth.py: success \u2014 tests green",
+    "validation on comparison/engine.py: success \u2014 tests green",
+    "validation on tasks/algo_agent.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T15:28:46.258352+00:00",
+  "last_updated": "2026-07-08T16:04:16.432946+00:00",
   "total": 188
 }
