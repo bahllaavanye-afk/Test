@@ -17,8 +17,11 @@ This strategy:
 2. Identifies current regime
 3. Returns the appropriate sub-strategy signal
 """
+
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
+
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 try:
@@ -26,6 +29,35 @@ try:
     HMM_AVAILABLE = True
 except ImportError:
     HMM_AVAILABLE = False
+
+
+class HMMRegimeParams(BaseModel):
+    """Configuration parameters for the HMMRegimeStrategy."""
+
+    n_states: int = Field(
+        3,
+        ge=1,
+        description="Number of hidden states in the Gaussian HMM.",
+        example=3,
+    )
+    min_train_bars: int = Field(
+        252,
+        ge=1,
+        description="Minimum number of historical bars required to train the model.",
+        example=252,
+    )
+
+    @validator("n_states")
+    def check_n_states(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("n_states must be at least 1")
+        return v
+
+    @validator("min_train_bars")
+    def check_min_train_bars(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("min_train_bars must be at least 1")
+        return v
 
 
 class HMMRegimeStrategy(AbstractStrategy):
@@ -41,11 +73,19 @@ class HMMRegimeStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 3600.0
 
+    # Defaults – may be overridden by ``params`` at runtime
     N_STATES = 3
     MIN_TRAIN_BARS = 252  # 1 year minimum
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        # Parse and validate parameters using the Pydantic model
+        if params is None:
+            parsed = HMMRegimeParams()
+        else:
+            parsed = HMMRegimeParams(**params)
+        self.N_STATES = parsed.n_states
+        self.MIN_TRAIN_BARS = parsed.min_train_bars
 
     def _extract_features(self, df: pd.DataFrame) -> np.ndarray:
         log_ret = np.log(df["close"] / df["close"].shift(1)).fillna(0)
@@ -69,8 +109,10 @@ class HMMRegimeStrategy(AbstractStrategy):
 
         # Map states to regimes by volatility level
         # State with lowest mean vol → bull, highest → crisis
-        state_vols = [X[states == s, 2].mean() if (states == s).any() else 0.0
-                      for s in range(self.N_STATES)]
+        state_vols = [
+            X[states == s, 2].mean() if (states == s).any() else 0.0
+            for s in range(self.N_STATES)
+        ]
         sorted_states = np.argsort(state_vols)
         # sorted_states[0] = low vol (bull), [1] = medium (neutral), [2] = high (crisis)
         regime_map = {
