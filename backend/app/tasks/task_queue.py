@@ -19,7 +19,7 @@ import logging
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,10 @@ class Task:
     error: str = ""
 
     def to_redis(self) -> dict[str, str]:
-        return {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in asdict(self).items()}
+        return {
+            k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+            for k, v in asdict(self).items()
+        }
 
     @classmethod
     def from_redis(cls, fields: dict) -> "Task":
@@ -185,7 +188,10 @@ class TaskQueue:
             logger.debug("TaskQueue._requeue failed: %s", e)
 
     async def _dead_letter(self, task: Task) -> None:
-        logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
+        logger.error(
+            "TaskQueue: task permanently failed type=%s id=%s error=%s",
+            task.task_type, task.task_id, task.error,
+        )
         try:
             await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
         except Exception:
@@ -194,17 +200,28 @@ class TaskQueue:
     # ── Monitoring ────────────────────────────────────────────────────────────
 
     async def queue_depths(self) -> dict[str, int]:
-        depths = {}
+        """Return the length of each priority stream and the dead-letter stream.
+
+        Uses concurrent Redis calls to minimise latency.
+        """
+        async def get_len(key: str) -> int:
+            try:
+                return await self._r.xlen(key)
+            except Exception:
+                return -1
+
+        tasks: List[asyncio.Task[int]] = []
         for priority in range(4):
             key = f"{_QUEUE_PREFIX}{priority}"
-            try:
-                depths[f"priority_{priority}"] = await self._r.xlen(key)
-            except Exception:
-                depths[f"priority_{priority}"] = -1
-        try:
-            depths["dead"] = await self._r.xlen(_DEAD_KEY)
-        except Exception:
-            depths["dead"] = -1
+            tasks.append(asyncio.create_task(get_len(key)))
+        dead_task = asyncio.create_task(get_len(_DEAD_KEY))
+
+        results = await asyncio.gather(*tasks, dead_task, return_exceptions=False)
+
+        depths: dict[str, int] = {
+            f"priority_{priority}": results[priority] for priority in range(4)
+        }
+        depths["dead"] = results[-1]
         return depths
 
 
