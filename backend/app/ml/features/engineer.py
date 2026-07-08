@@ -225,10 +225,10 @@ def add_labels(
     threshold: float = 0.002,
 ) -> pd.DataFrame:
     """
-    Append binary direction labels and a ``target`` alias for training.
+    Append binary direction labels and a ``target`` column for training.
 
-    The label is ``1`` when the future return over ``horizon`` bars exceeds ``threshold``,
-    otherwise ``0``.
+    The label is ``1`` when the forward return over ``horizon`` bars exceeds
+    ``threshold`` (in the positive direction). Otherwise the label is ``0``.
 
     Parameters
     ----------
@@ -242,11 +242,22 @@ def add_labels(
     Returns
     -------
     pd.DataFrame
-        Copy of ``df`` with ``label`` and ``target`` columns added, and rows with
-        undefined labels removed.
+        The original DataFrame with two new columns:
+        * ``future_return`` – the raw forward return.
+        * ``target`` – the binary label derived from ``future_return``.
     """
     df = df.copy()
-    future_return = df["close"].pct_change(horizon).shift(-horizon)
-    df["label"] = (future_return > threshold).astype(int)
-    df["target"] = df["label"]  # alias for create_sequences compatibility
-    return df.dropna(subset=["label"])
+
+    if "close" not in df.columns:
+        raise KeyError("Column 'close' is required for label generation.")
+
+    # Compute forward return: (price_{t+horizon} / price_t) - 1
+    df["future_return"] = df["close"].shift(-horizon) / df["close"] - 1.0
+
+    # Binary label: 1 if forward return > threshold, else 0
+    df["target"] = (df["future_return"] > threshold).astype(int)
+
+    # Remove rows that now contain NaNs due to the shift operation
+    df = df.dropna(subset=["future_return"])
+
+    return df
