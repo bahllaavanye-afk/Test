@@ -11,12 +11,17 @@ Steps:
   3. Quasi-diagonalisation: sort assets by cluster proximity
   4. Recursive bisection: allocate based on inverse-variance within each cluster
 """
+
 from __future__ import annotations
 
+import logging
 import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
 from scipy.spatial.distance import squareform
+from numpy.linalg import LinAlgError
+
+logger = logging.getLogger(__name__)
 
 
 def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
@@ -94,11 +99,20 @@ class HRPOptimizer:
         n = len(symbols)
 
         if n < 2 or len(returns) < 10:
+            logger.warning(
+                "Insufficient data for HRP computation: assets=%d, rows=%d. "
+                "Falling back to equal weighting.",
+                n,
+                len(returns),
+            )
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         # Drop columns with all-NaN and fill remaining NaN with 0
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
         if returns_clean.shape[1] < 2:
+            logger.warning(
+                "After cleaning, fewer than two assets remain. Falling back to equal weighting."
+            )
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         symbols_clean = list(returns_clean.columns)
@@ -128,9 +142,26 @@ class HRPOptimizer:
             if total > 0:
                 result = result / total
             else:
+                logger.error(
+                    "Normalization resulted in non-positive total weight (total=%f). "
+                    "Returning equal weights.",
+                    total,
+                )
                 result = pd.Series(1.0 / n, index=symbols)
 
             return result
 
-        except Exception:
+        except (ValueError, LinAlgError) as e:
+            logger.exception(
+                "HRP weight computation failed due to a numeric error: %s. "
+                "Falling back to equal weighting.",
+                e,
+            )
+            return pd.Series(1.0 / n, index=symbols)
+        except Exception as e:  # pragma: no cover
+            logger.exception(
+                "Unexpected error during HRP weight computation: %s. "
+                "Falling back to equal weighting.",
+                e,
+            )
             return pd.Series(1.0 / n, index=symbols)
