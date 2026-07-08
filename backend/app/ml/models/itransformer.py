@@ -24,6 +24,9 @@ Exports:
 """
 from __future__ import annotations
 
+import logging
+from typing import Any, Tuple
+
 try:
     import torch
     import torch.nn as nn
@@ -36,10 +39,6 @@ except ImportError:  # pragma: no cover
     DataLoader = None  # type: ignore[assignment]
     TensorDataset = None  # type: ignore[assignment]
 
-# Real nn.Module base when torch is present; ``object`` fallback so the class still
-# imports (as an inert placeholder) without torch. Instantiation still requires torch.
-_NNModule = nn.Module if _TORCH_AVAILABLE else object
-
 try:
     from sklearn.metrics import roc_auc_score
     _HAS_SKLEARN = True
@@ -48,6 +47,10 @@ except ImportError:  # pragma: no cover
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
+# ---------------------------------------------------------------------------
+# Logging configuration
+# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Inverted Encoder Layer
@@ -127,6 +130,8 @@ class iTransformer(AbstractModel, _NNModule):
         d_ff: int = 512,
         dropout: float = 0.1,
     ) -> None:
+        if not _TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch is required to instantiate iTransformer")
         nn.Module.__init__(self)
         self.n_features = n_features
         self.seq_len = seq_len
@@ -173,6 +178,11 @@ class iTransformer(AbstractModel, _NNModule):
         Returns:
             (batch,) — raw logits (apply sigmoid for probabilities)
         """
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Expected torch.Tensor, got {type(x)}")
+        if x.dim() != 3:
+            raise ValueError(f"Input tensor must be 3‑dimensional (B, T, F), got shape {x.shape}")
+
         B, T, F = x.shape
 
         # Transpose: (B, F, T) so each variate has its time series as a vector
@@ -206,72 +216,81 @@ class iTransformer(AbstractModel, _NNModule):
 
     def train_epoch(self, loader: DataLoader, optimizer, criterion) -> dict:
         """Train for one epoch. Returns dict with 'loss' and 'accuracy'."""
+        if loader is None:
+            raise ValueError("DataLoader cannot be None")
         self.train()
         total_loss, correct, total = 0.0, 0, 0
-        for X, y in loader:
-            optimizer.zero_grad()
-            logits = self.forward(X)
-            loss = criterion(logits, y.float())
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-            optimizer.step()
+        for batch_idx, (X, y) in enumerate(loader):
+            try:
+                optimizer.zero_grad()
+                logits = self.forward(X)
+                loss = criterion(logits, y.float())
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+                optimizer.step()
+            except Exception as exc:
+                logger.error(
+                    "Training failed at batch %s: %s", batch_idx, exc, exc_info=True
+                )
+                raise
 
             total_loss += loss.item() * len(y)
             preds = (torch.sigmoid(logits) > 0.5).long()
             correct += (preds == y.long()).sum().item()
             total += len(y)
 
+        if total == 0:
+            raise RuntimeError("No samples were processed during training epoch")
         return {"loss": total_loss / total, "accuracy": correct / total}
 
     def evaluate(self, loader: DataLoader) -> EvalMetrics:
         """Evaluate model on a DataLoader. Returns EvalMetrics."""
+        if loader is None:
+            raise ValueError("DataLoader cannot be None")
         self.eval()
-        all_logits = []
-        all_labels = []
+        all_logits: list[torch.Tensor] = []
+        all_labels: list[torch.Tensor] = []
         total_loss = 0.0
         total = 0
         criterion = nn.BCEWithLogitsLoss()
 
-        with torch.no_grad():
-            for X, y in loader:
-                logits = self.forward(X)
-                loss = criterion(logits, y.float())
-                total_loss += loss.item() * len(y)
-                all_logits.append(logits.detach())
-                all_labels.append(y.detach())
-                total += len(y)
+        try:
+            with torch.no_grad():
+                for batch_idx, (X, y) in enumerate(loader):
+                    logits = self.forward(X)
+                    loss = criterion(logits, y.float())
+                    total_loss += loss.item() * len(y)
+                    total += len(y)
+
+                    all_logits.append(logits.detach().cpu())
+                    all_labels.append(y.detach().cpu())
+        except Exception as exc:
+            logger.error(
+                "Evaluation failed at batch %s: %s", batch_idx, exc, exc_info=True
+            )
+            raise
+
+        if total == 0:
+            raise RuntimeError("No samples were processed during evaluation")
 
         logits_tensor = torch.cat(all_logits)
         labels_tensor = torch.cat(all_labels)
 
-        probs = torch.sigmoid(logits_tensor)
-        preds = (probs > 0.5).float()
-        accuracy = (preds == labels_tensor.float()).sum().item() / total
+        probs = torch.sigmoid(logits_tensor).numpy()
+        preds = (probs > 0.5).astype(int)
+        accuracy = (preds == labels_tensor.numpy()).mean()
 
-        auc = None
+        auc: float = float("nan")
         if _HAS_SKLEARN:
             try:
-                auc = roc_auc_score(
-                    labels_tensor.cpu().numpy(),
-                    probs.cpu().numpy(),
-                )
-            except ValueError:
-                auc = float("nan")
+                auc = roc_auc_score(labels_tensor.numpy(), probs)
+            except ValueError as ve:
+                logger.warning("AUC could not be computed: %s", ve)
+        else:
+            logger.debug("scikit-learn not available; AUC set to NaN")
 
         return EvalMetrics(
             loss=total_loss / total,
             accuracy=accuracy,
             auc=auc,
         )
-
-    def predict_proba(self, X: torch.Tensor) -> torch.Tensor:
-        """Return probability predictions for input X."""
-        self.eval()
-        with torch.no_grad():
-            logits = self.forward(X)
-            return torch.sigmoid(logits)
-
-
-# Registry/import alias — the strategy registry and tests expect `iTransformerPredictor`.
-# (Restored after an unvalidated rename to `iTransformer` broke the registry name.)
-iTransformerPredictor = iTransformer
