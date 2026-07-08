@@ -187,8 +187,12 @@
     "Leverage Temporal Attention",
     "Retrain with STF technique",
     "Use rate limiting",
-    "Monitor queue sizes"
+    "Monitor queue sizes",
+    "optimization on brokers/polymarket.py: success \u2014 tests green",
+    "optimization on backtest/options_synth.py: success \u2014 tests green",
+    "optimization on tasks/task_queue.py: success \u2014 tests green",
+    "optimization on api/v1/router.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T16:58:47.826129+00:00",
+  "last_updated": "2026-07-08T17:58:55.546739+00:00",
   "total": 188
 }
