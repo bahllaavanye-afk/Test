@@ -9,7 +9,52 @@ from __future__ import annotations
 
 import numpy as np
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Sequence
+
+
+def _validate_numeric_sequence(
+    name: str,
+    seq: Sequence,
+    *,
+    min_len: int = 1,
+    allow_none: bool = False,
+) -> None:
+    """Validate that *seq* is a non‑empty 1‑dimensional sequence of numbers.
+
+    Parameters
+    ----------
+    name : str
+        Name of the argument (used in error messages).
+    seq : Sequence
+        The sequence to validate.
+    min_len : int, optional
+        Minimum required length of the sequence. Default is ``1``.
+    allow_none : bool, optional
+        If ``True`` the function permits ``seq`` to be ``None`` and returns
+        without error. Default is ``False``.
+
+    Raises
+    ------
+    ValueError
+        If ``seq`` is ``None`` when ``allow_none`` is ``False``, not a sequence,
+        shorter than ``min_len``, or contains non‑numeric elements.
+    """
+    if seq is None:
+        if allow_none:
+            return
+        raise ValueError(f"{name} must not be None.")
+    if not isinstance(seq, (list, tuple, np.ndarray)):
+        raise ValueError(f"{name} must be a list, tuple, or numpy.ndarray.")
+    if len(seq) < min_len:
+        raise ValueError(f"{name} must contain at least {min_len} elements.")
+    # Convert to numpy array for efficient NaN checking
+    arr = np.asarray(seq)
+    if arr.ndim != 1:
+        raise ValueError(f"{name} must be a one‑dimensional sequence.")
+    if not np.issubdtype(arr.dtype, np.number):
+        raise ValueError(f"{name} must contain numeric values.")
+    if np.isnan(arr).any():
+        raise ValueError(f"{name} must not contain NaN values.")
 
 
 @dataclass
@@ -121,7 +166,24 @@ def compute_factor_exposure(
     -------
     FactorExposure
         The regression coefficients and diagnostics wrapped in a ``FactorExposure`` instance.
+
+    Raises
+    ------
+    ValueError
+        If any mandatory input is invalid (non‑numeric, too short, contains NaNs, etc.).
     """
+    # Validate mandatory inputs
+    _validate_numeric_sequence("portfolio_returns", portfolio_returns, min_len=1)
+    _validate_numeric_sequence("spy_returns", spy_returns, min_len=1)
+
+    # Validate optional inputs if provided
+    _validate_numeric_sequence(
+        "momentum_factor", momentum_factor, min_len=1, allow_none=True
+    )
+    _validate_numeric_sequence(
+        "low_vol_factor", low_vol_factor, min_len=1, allow_none=True
+    )
+
     n = min(len(portfolio_returns), len(spy_returns))
     if n < 20:
         return FactorExposure(
