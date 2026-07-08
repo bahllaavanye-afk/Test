@@ -1,22 +1,5 @@
-"""
-Hidden Markov Model (HMM) Regime Detection + Adaptive Strategy Switching
-=========================================================================
-Most strategies only work in specific regimes. The HMM identifies:
-  Regime 0: Bull/Low-Vol  (strong uptrend, low volatility) → run momentum
-  Regime 1: Bear/High-Vol (downtrend, high volatility) → run VRP/mean reversion
-  Regime 2: Crisis        (extreme volatility, panic) → cash or long vol
-
-Academic: Ang & Timmermann (2012) "Regime Changes and Financial Markets"
-          Hamilton (1989) "A New Approach to the Economic Analysis of Nonstationary"
-Implementation: hmmlearn GaussianHMM with n_states=3
-Features: [daily_return, rolling_vol_5d, rolling_vol_20d]
-Documented: Regime-aware portfolios outperform buy-and-hold by 2-3% annually
-
-This strategy:
-1. Fits a 3-state Gaussian HMM on 2 years of daily returns + volatility
-2. Identifies current regime
-3. Returns the appropriate sub-strategy signal
-"""
+import logging
+import time
 import numpy as np
 import pandas as pd
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -26,6 +9,8 @@ try:
     HMM_AVAILABLE = True
 except ImportError:
     HMM_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class HMMRegimeStrategy(AbstractStrategy):
@@ -43,6 +28,9 @@ class HMMRegimeStrategy(AbstractStrategy):
 
     N_STATES = 3
     MIN_TRAIN_BARS = 252  # 1 year minimum
+
+    # class‑level metric counters
+    _signal_counter: int = 0
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
@@ -69,8 +57,10 @@ class HMMRegimeStrategy(AbstractStrategy):
 
         # Map states to regimes by volatility level
         # State with lowest mean vol → bull, highest → crisis
-        state_vols = [X[states == s, 2].mean() if (states == s).any() else 0.0
-                      for s in range(self.N_STATES)]
+        state_vols = [
+            X[states == s, 2].mean() if (states == s).any() else 0.0
+            for s in range(self.N_STATES)
+        ]
         sorted_states = np.argsort(state_vols)
         # sorted_states[0] = low vol (bull), [1] = medium (neutral), [2] = high (crisis)
         regime_map = {
@@ -81,18 +71,27 @@ class HMMRegimeStrategy(AbstractStrategy):
         return model, current_state, regime_map
 
     async def analyze(self, data: pd.DataFrame, symbol: str = "SPY") -> Signal | None:
+        start_time = time.time()
+
         if not HMM_AVAILABLE:
-            # Fallback: simple vol-based regime
-            return await self._vol_regime_signal(data, symbol)
+            result = await self._vol_regime_signal(data, symbol)
+            exec_time_ms = (time.time() - start_time) * 1000
+            self._log_metrics(symbol, result, exec_time_ms)
+            return result
 
         if len(data) < self.MIN_TRAIN_BARS:
+            exec_time_ms = (time.time() - start_time) * 1000
+            self._log_metrics(symbol, None, exec_time_ms)
             return None
 
         X = self._extract_features(data)
         try:
             model, current_state, regime_map = self._fit_hmm(X)
         except Exception:
-            return await self._vol_regime_signal(data, symbol)
+            result = await self._vol_regime_signal(data, symbol)
+            exec_time_ms = (time.time() - start_time) * 1000
+            self._log_metrics(symbol, result, exec_time_ms)
+            return result
 
         regime = regime_map.get(current_state, "neutral")
 
@@ -103,13 +102,14 @@ class HMMRegimeStrategy(AbstractStrategy):
             side = "buy"
             confidence = 0.7
         elif regime == "neutral":
-            # Mean reversion
             side = "sell" if recent_mom > 0.01 else "buy"
             confidence = 0.5
         else:  # crisis
+            exec_time_ms = (time.time() - start_time) * 1000
+            self._log_metrics(symbol, None, exec_time_ms, regime=regime)
             return None  # Stay in cash during crisis
 
-        return Signal(
+        signal = Signal(
             symbol=symbol,
             side=side,
             confidence=confidence,
@@ -128,6 +128,10 @@ class HMMRegimeStrategy(AbstractStrategy):
                 }.get(regime),
             },
         )
+
+        exec_time_ms = (time.time() - start_time) * 1000
+        self._log_metrics(symbol, signal, exec_time_ms, regime=regime, confidence=confidence, recent_mom=recent_mom)
+        return signal
 
     async def _vol_regime_signal(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         """Fallback when hmmlearn not installed: vol-percentile regime."""
@@ -204,3 +208,31 @@ class HMMRegimeStrategy(AbstractStrategy):
         exits = (is_crisis | (~is_bull)).shift(1).fillna(False)
 
         return BacktestSignals(entries=entries, exits=exits)
+
+    @classmethod
+    def _log_metrics(
+        cls,
+        symbol: str,
+        signal: Signal | None,
+        exec_time_ms: float,
+        *,
+        regime: str | None = None,
+        confidence: float | None = None,
+        recent_mom: float | None = None,
+    ) -> None:
+        """
+        Emit a structured log entry containing key runtime metrics.
+        """
+        if signal:
+            cls._signal_counter += 1
+        log_payload = {
+            "event": "hmm_regime_analyze",
+            "symbol": symbol,
+            "signal_generated": bool(signal),
+            "total_signals": cls._signal_counter,
+            "execution_time_ms": round(exec_time_ms, 2),
+            "regime": regime,
+            "confidence": confidence,
+            "recent_momentum": round(recent_mom, 6) if recent_mom is not None else None,
+        }
+        logger.info(log_payload)
