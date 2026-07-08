@@ -1,4 +1,5 @@
 """Detect correlated clusters and enforce allocation limits per cluster."""
+import time
 import numpy as np
 import pandas as pd
 from app.utils.logging import logger
@@ -9,9 +10,15 @@ def compute_correlation_clusters(
     threshold: float = 0.70,
 ) -> dict[str, list[str]]:
     """Union-find connected components for correlation clustering."""
+    start_time = time.perf_counter()
     returns_df = returns.tail(60) if len(returns) > 60 else returns
     symbols = list(returns_df.columns)
     if len(symbols) < 2 or len(returns_df) < 3:
+        logger.info(
+            "Correlation clustering skipped",
+            signal_count=len(symbols),
+            execution_time=time.perf_counter() - start_time,
+        )
         return {}
 
     parent = {s: s for s in symbols}
@@ -39,6 +46,14 @@ def compute_correlation_clusters(
     for s in symbols:
         root = find(s)
         clusters.setdefault(root, []).append(s)
+
+    duration = time.perf_counter() - start_time
+    logger.info(
+        "Correlation clusters computed",
+        signal_count=len(symbols),
+        cluster_count=len(clusters),
+        execution_time=duration,
+    )
     return clusters
 
 
@@ -58,6 +73,28 @@ def check_cluster_limits(
         cluster_pct = cluster_value / total_equity
         if cluster_pct > max_cluster_pct:
             reason = f"{new_symbol} would push {cluster_id} to {cluster_pct:.1%} (max {max_cluster_pct:.1%})"
-            logger.warning("Cluster limit breached", **{"cluster": cluster_id, "pct": cluster_pct})
+            logger.warning(
+                "Cluster limit breached",
+                cluster=cluster_id,
+                pct=cluster_pct,
+                new_symbol=new_symbol,
+                new_value_usd=new_value_usd,
+            )
+            logger.info(
+                "Cluster limit check result",
+                symbol=new_symbol,
+                allowed=False,
+                cluster=cluster_id,
+                cluster_pct=cluster_pct,
+                execution_time=0.0,
+            )
             return False, reason
+    logger.info(
+        "Cluster limit check result",
+        symbol=new_symbol,
+        allowed=True,
+        cluster=None,
+        cluster_pct=0.0,
+        execution_time=0.0,
+    )
     return True, "ok"
