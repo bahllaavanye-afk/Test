@@ -45,6 +45,10 @@ class LimitFirstExecution:
 
     _signal_counter: int = 0
 
+    broker: AbstractBroker
+    offset_bps: float
+    fallback_seconds: int
+
     def __init__(self, broker: AbstractBroker, offset_bps: float = 5, fallback_seconds: int = 30) -> None:
         """
         Parameters
@@ -62,7 +66,13 @@ class LimitFirstExecution:
 
     async def execute(self, request: OrderRequest) -> OrderResult:
         """
-        Execute an order using the limit‑first strategy with structured logging.
+        Execute an order using the limit‑first strategy.
+
+        The method logs the start of execution, attempts a limit order with a
+        price adjusted by ``offset_bps``, waits up to ``fallback_seconds`` for a
+        fill, and finally falls back to a market order if needed. All steps are
+        wrapped in a ``try`` block so that any unexpected error results in a
+        direct market order.
 
         Parameters
         ----------
@@ -74,13 +84,6 @@ class LimitFirstExecution:
         OrderResult
             The final order result after either a successful limit fill or a
             fallback market execution.
-
-        Logs
-        ----
-        Emits an INFO log at the start and completion of execution containing
-        metrics such as ``signal_id``, ``symbol``, ``side``, ``quantity``,
-        ``execution_time_ms``, ``filled_qty``, ``fill_price``, ``status``, and
-        ``pnl`` when calculable.
         """
         # Increment signal counter and capture start time
         LimitFirstExecution._signal_counter += 1
