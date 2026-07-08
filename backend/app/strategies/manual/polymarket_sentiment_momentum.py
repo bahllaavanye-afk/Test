@@ -26,8 +26,6 @@ OHLCV proxy for backtesting:
   - All indicators shifted by 1 bar to prevent lookahead bias.
 """
 
-from datetime import date, timedelta
-
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -170,34 +168,44 @@ class PolymarketSentimentMomentumStrategy(AbstractStrategy):
         close = df["close"].astype(float)
         volume = df["volume"].astype(float)
 
-        # Momentum: close change over last MOMENTUM_BARS bars
+        # Momentum: percent change over the look‑back window
         momentum = close / close.shift(MOMENTUM_BARS) - 1.0
 
-        # Volume spike: current volume > 1.5× rolling average
+        # Volume spike detection
         rolling_avg_vol = volume.rolling(VOLUME_WINDOW, min_periods=5).mean()
         vol_spike = volume > (VOLUME_MULTIPLIER * rolling_avg_vol)
 
-        # Long signals
+        # Long entry conditions
         long_entry = (
             (momentum > BACKTEST_MOMENTUM_PCT)
             & vol_spike
             & (close > PROB_LOWER)
             & (close < PROB_UPPER)
         )
+
+        # Long exit condition (near resolution)
         long_exit = close > EXIT_THRESHOLD
 
-        # Short signals
+        # Short entry conditions (mirror of long entry with opposite momentum)
         short_entry = (
             (momentum < -BACKTEST_MOMENTUM_PCT)
             & vol_spike
             & (close > PROB_LOWER)
             & (close < PROB_UPPER)
         )
-        short_exit = close < (1.0 - EXIT_THRESHOLD)  # near-zero resolution proxy
+
+        # Short exit condition (near zero probability)
+        short_exit = close < 0.10
+
+        # Shift by one bar to avoid look‑ahead bias
+        entries = long_entry.shift(1).fillna(False)
+        exits = long_exit.shift(1).fillna(False)
+        short_entries = short_entry.shift(1).fillna(False)
+        short_exits = short_exit.shift(1).fillna(False)
 
         return BacktestSignals(
-            entries=long_entry.shift(1).fillna(False).astype(bool),
-            exits=long_exit.shift(1).fillna(False).astype(bool),
-            short_entries=short_entry.shift(1).fillna(False).astype(bool),
-            short_exits=short_exit.shift(1).fillna(False).astype(bool),
+            entries=entries,
+            exits=exits,
+            short_entries=short_entries,
+            short_exits=short_exits,
         )
