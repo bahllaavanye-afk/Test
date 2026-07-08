@@ -177,8 +177,13 @@
     "Check API timeouts",
     "Log query params",
     "Implement circuit breaker",
-    "Use transactions"
+    "Use transactions",
+    "schemas on comparison/engine.py: success \u2014 tests green",
+    "schemas on tasks/research_pipeline.py: success \u2014 tests green",
+    "schemas on api/v1/bots.py: success \u2014 tests green",
+    "schemas on test/unit/conftest.py: success \u2014 tests green",
+    "schemas on strategies/manual/hmm_regime.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T06:25:04.370590+00:00",
+  "last_updated": "2026-07-08T07:26:35.778937+00:00",
   "total": 178
 }
