@@ -10,7 +10,6 @@ import sys
 from datetime import date
 
 import pandas as pd
-import pytest
 
 import app.backtest.data_loader as dl
 
