@@ -180,8 +180,13 @@
     "Use transactions",
     "Check db connections",
     "Use thread pooling",
-    "Handle async errors"
+    "Handle async errors",
+    "Sanitize query strings",
+    "Cache frequent queries",
+    "Implement Transfer Learning",
+    "Leverage Temporal Attention",
+    "Retrain with STF technique"
   ],
-  "last_updated": "2026-07-08T11:21:24.282662+00:00",
-  "total": 181
+  "last_updated": "2026-07-08T12:59:53.494673+00:00",
+  "total": 186
 }
