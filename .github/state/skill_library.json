@@ -159,8 +159,15 @@
     "Check firewall rules",
     "Verify SSL certs",
     "Verify thread counts",
-    "Test API timeouts"
+    "Test API timeouts",
+    "Check RAM limits",
+    "Log disk space",
+    "Validate user perms",
+    "Test algo inputs",
+    "Review model configs",
+    "Verify dependency versions",
+    "Refactor dark themes"
   ],
-  "last_updated": "2026-07-07T22:57:51.685036+00:00",
-  "total": 160
+  "last_updated": "2026-07-08T00:00:13.579629+00:00",
+  "total": 167
 }
