@@ -191,8 +191,13 @@
     "Use timeout retries",
     "Refactor agent_memory",
     "Explore UCB1 bandit",
-    "Deploy TFT architecture"
+    "Deploy TFT architecture",
+    "strategy_logic on test/unit/test_redis_breaker.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/vol_of_vol_timing.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
+    "strategy_logic on ml/models/xgboost_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/normalization.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T21:39:31.331822+00:00",
+  "last_updated": "2026-07-08T22:32:26.894241+00:00",
   "total": 192
 }

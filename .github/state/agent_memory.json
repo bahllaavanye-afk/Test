@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-08T21:39:31.331822+00:00",
+  "last_updated": "2026-07-08T22:32:26.894489+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -681,11 +681,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[continuous_improver @ 2026-06-29T00:17] docstrings on ml/features/engineer.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T00:17] docstrings on execution/vwap.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T00:17] docstrings on risk/factor_exposure.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T05:11] optimization on brokers/binance.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T05:11] optimization on backtest/metrics.py: tests=pass",
     "[continuous_improver @ 2026-06-29T05:11] optimization on comparison/report_builder.py: tests=pass",
     "[continuous_improver @ 2026-06-29T05:11] optimization on tasks/modeling_engineer.py: tests=pass",
     "[continuous_improver @ 2026-06-29T05:11] optimization on api/v1/strategies.py: tests=pass",
@@ -880,7 +875,12 @@
     "[quick_backtest @ 2026-07-08T21:07] I am currently monitoring the queue sizes in `/queue/strategies.csv` and refactoring my agent memory in `/agent/memory.py` to optimize my performance ",
     "[peer_reviewer @ 2026-07-08T21:07] I'm currently reviewing the latest commit",
     "[frontend_design @ 2026-07-08T21:07] I\u2019m currently refactoring the `src/components/Chart/PriceChart.tsx` to extract theme\u2011aware styling into a shared `src/theme/bloombergDark.ts` module a",
-    "[token_monitor @ 2026-07-08T21:07] [LLM unavailable \u2014 all providers failed]"
+    "[token_monitor @ 2026-07-08T21:07] [LLM unavailable \u2014 all providers failed]",
+    "[continuous_improver @ 2026-07-08T22:32] strategy_logic on test/unit/test_redis_breaker.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T22:32] strategy_logic on strategies/manual/vol_of_vol_timing.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T22:32] strategy_logic on strategies/ml_enhanced/rl_trader.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T22:32] strategy_logic on ml/models/xgboost_model.py: tests=pass",
+    "[continuous_improver @ 2026-07-08T22:32] strategy_logic on ml/features/normalization.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1152,9 +1152,9 @@
       "test_pass": 10
     },
     "strategy_logic": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     },
     "schemas": {
       "successes": 5,
