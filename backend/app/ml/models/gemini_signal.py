@@ -16,6 +16,8 @@ import os
 import re
 import json
 import asyncio
+import time
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -71,11 +73,14 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     if "high" in df.columns and "low" in df.columns:
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        tr = pd.concat([
-            high - low,
-            (high - close.shift()).abs(),
-            (low - close.shift()).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
     else:
         atr = float(close.rolling(14).std().iloc[-1]) if n >= 14 else 0.0
@@ -87,17 +92,34 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
         avg_vol = float(vol.rolling(20).mean().iloc[-1]) if n >= 20 else float(vol.mean())
         vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9)
 
-    high_20 = float(df["high"].astype(float).rolling(20).max().iloc[-1]) if "high" in df.columns and n >= 20 else price
-    low_20 = float(df["low"].astype(float).rolling(20).min().iloc[-1]) if "low" in df.columns and n >= 20 else price
+    high_20 = (
+        float(df["high"].astype(float).rolling(20).max().iloc[-1])
+        if "high" in df.columns and n >= 20
+        else price
+    )
+    low_20 = (
+        float(df["low"].astype(float).rolling(20).min().iloc[-1])
+        if "low" in df.columns and n >= 20
+        else price
+    )
     range_pct = (high_20 - low_20) / (low_20 + 1e-9)
 
     ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if n >= 50 else price
     trend = "uptrend" if price > ema50 else "downtrend" if price < ema50 * 0.98 else "neutral"
 
     return _ANALYSIS_TEMPLATE.format(
-        symbol=symbol, interval=interval, n=n, price=price,
-        ret5=ret5, ret20=ret20, rsi=rsi, vs_sma=vs_sma,
-        atr_pct=atr_pct, vol_ratio=vol_ratio, range_pct=range_pct, trend=trend,
+        symbol=symbol,
+        interval=interval,
+        n=n,
+        price=price,
+        ret5=ret5,
+        ret20=ret20,
+        rsi=rsi,
+        vs_sma=vs_sma,
+        atr_pct=atr_pct,
+        vol_ratio=vol_ratio,
+        range_pct=range_pct,
+        trend=trend,
     )
 
 
@@ -105,6 +127,7 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
     """Synchronous Gemini call returning parsed JSON dict."""
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
@@ -115,7 +138,7 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
         text = response.text.strip() if response.text else ""
 
         # Extract JSON
-        m = re.search(r'\{.*?"direction_prob_up".*?\}', text, re.DOTALL)
+        m = re.search(r"\{.*?\"direction_prob_up\".*?\}", text, re.DOTALL)
         if m:
             return json.loads(m.group(0))
     except ImportError:
@@ -125,11 +148,45 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
     return {}
 
 
+# Thread‑safe counter for emitted signals
+_signal_counter = 0
+_counter_lock = threading.Lock()
+
+
+def _increment_signal_counter() -> int:
+    global _signal_counter
+    with _counter_lock:
+        _signal_counter += 1
+        return _signal_counter
+
+
+def _log_signal(
+    *,
+    symbol: str,
+    interval: str,
+    probability: float | None,
+    exec_time_ms: float,
+    pnl: float | None = None,
+) -> None:
+    """Emit structured log entry for a Gemini signal generation."""
+    count = _increment_signal_counter()
+    logger.info(
+        "gemini_signal",
+        symbol=symbol,
+        interval=interval,
+        probability=probability,
+        execution_time_ms=exec_time_ms,
+        signal_count=count,
+        pnl=pnl,
+    )
+
+
 class GeminiSignalEngine:
     """
     Wraps Gemini API as an ML-style signal generator.
     Implements the AbstractModel interface (predict method returns probability).
     """
+
     model_type = "gemini_signal"
 
     def __init__(self):
@@ -151,25 +208,47 @@ class GeminiSignalEngine:
         Returns probability of upward price movement (0.0–1.0), or None if unavailable.
         """
         if not self._available or df is None or len(df) < 20:
+            _log_signal(symbol=symbol, interval=interval, probability=None, exec_time_ms=0.0, pnl=None)
             return None
 
+        start = time.perf_counter()
         prompt = _compute_summary(df, symbol, interval)
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _call_gemini_json, prompt, self._key)
-
         prob = result.get("direction_prob_up")
-        if prob is not None:
-            return float(np.clip(prob, 0.0, 1.0))
-        return None
+        prob_clipped = float(np.clip(prob, 0.0, 1.0)) if prob is not None else None
+        exec_time_ms = (time.perf_counter() - start) * 1000.0
+
+        _log_signal(
+            symbol=symbol,
+            interval=interval,
+            probability=prob_clipped,
+            exec_time_ms=exec_time_ms,
+            pnl=None,
+        )
+        return prob_clipped
 
     def predict_proba_sync(self, df: pd.DataFrame, symbol: str, interval: str = "1d") -> float | None:
         """Synchronous version for use outside async context."""
         if not self._available or df is None or len(df) < 20:
+            _log_signal(symbol=symbol, interval=interval, probability=None, exec_time_ms=0.0, pnl=None)
             return None
+
+        start = time.perf_counter()
         prompt = _compute_summary(df, symbol, interval)
         result = _call_gemini_json(prompt, self._key)
         prob = result.get("direction_prob_up")
-        return float(np.clip(prob, 0.0, 1.0)) if prob is not None else None
+        prob_clipped = float(np.clip(prob, 0.0, 1.0)) if prob is not None else None
+        exec_time_ms = (time.perf_counter() - start) * 1000.0
+
+        _log_signal(
+            symbol=symbol,
+            interval=interval,
+            probability=prob_clipped,
+            exec_time_ms=exec_time_ms,
+            pnl=None,
+        )
+        return prob_clipped
 
 
 # Module-level singleton
