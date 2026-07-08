@@ -5,8 +5,67 @@ subscribes to the literal topic ``prices:*`` while the feed broadcasts to
 ``prices:{symbol}``. Before the fix, the wildcard subscriber received nothing.
 """
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.ws.manager import ConnectionManager
+
+
+class PriceMessage(BaseModel):
+    """Schema for price update messages broadcast over the ``prices`` channel.
+
+    Attributes
+    ----------
+    symbol: str
+        Ticker symbol for which the price update is emitted. Must be non‑empty.
+    last: float
+        The latest traded price. Must be a positive number.
+    """
+
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol for which the price update is emitted.",
+        example="AAPL",
+        min_length=1,
+    )
+    last: float = Field(
+        ...,
+        description="The latest traded price. Must be greater than zero.",
+        example=123.45,
+        gt=0,
+    )
+
+    @validator("symbol")
+    def strip_whitespace(cls, v: str) -> str:
+        """Remove surrounding whitespace from the symbol."""
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("symbol must contain non‑whitespace characters")
+        return cleaned
+
+
+class AlertMessage(BaseModel):
+    """Schema for generic alert messages broadcast over the ``alerts`` channel.
+
+    Attributes
+    ----------
+    msg: str
+        Human‑readable alert description.
+    """
+
+    msg: str = Field(
+        ...,
+        description="Human‑readable alert description.",
+        example="VaR breach",
+        min_length=1,
+    )
+
+    @validator("msg")
+    def non_empty(cls, v: str) -> str:
+        """Ensure the alert message is not empty or whitespace only."""
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("msg must contain non‑whitespace characters")
+        return cleaned
 
 
 class _FakeWS:
