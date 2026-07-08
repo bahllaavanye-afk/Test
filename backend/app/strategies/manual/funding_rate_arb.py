@@ -27,7 +27,7 @@ Academic references:
 
 Documented Sharpe (proxy backtest): ~1.2–1.8 on BTC/ETH daily
 """
-import numpy as np
+
 import pandas as pd
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -119,19 +119,19 @@ class FundingRateArbStrategy(AbstractStrategy):
 
         # Rolling z-score of the 3-bar return
         roll_mean = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).mean()
-        roll_std  = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).std()
-        proxy_z   = (mom3 - roll_mean) / roll_std.clip(lower=1e-8)
+        roll_std = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).std()
+        proxy_z = (mom3 - roll_mean) / roll_std.clip(lower=1e-8)
 
         # Shift(1) — no lookahead
         proxy_z_lag = proxy_z.shift(1)
 
         # Long: shorts crowded (z very negative → expect squeeze → collect funding)
-        entries       = (proxy_z_lag < -self.ENTRY_Z).fillna(False)
-        exits         = (proxy_z_lag > -self.EXIT_Z).fillna(False)
+        entries = (proxy_z_lag < -self.ENTRY_Z).fillna(False)
+        exits = (proxy_z_lag > -self.EXIT_Z).fillna(False)
 
         # Short: longs crowded (z very positive → expect flush)
-        short_entries = (proxy_z_lag >  self.ENTRY_Z).fillna(False)
-        short_exits   = (proxy_z_lag <  self.EXIT_Z).fillna(False)
+        short_entries = (proxy_z_lag > self.ENTRY_Z).fillna(False)
+        short_exits = (proxy_z_lag < self.EXIT_Z).fillna(False)
 
         return BacktestSignals(
             entries=entries.astype(bool),
