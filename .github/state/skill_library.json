@@ -180,8 +180,13 @@
     "Use transactions",
     "Check db connections",
     "Use thread pooling",
-    "Handle async errors"
+    "Handle async errors",
+    "monitoring on strategies/manual/bond_equity_rotation.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "monitoring on ml/models/foundation_model.py: success \u2014 tests green",
+    "monitoring on ml/features/sentiment.py: success \u2014 tests green",
+    "monitoring on risk/hrp.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T11:21:24.282662+00:00",
+  "last_updated": "2026-07-08T11:55:17.625657+00:00",
   "total": 181
 }
