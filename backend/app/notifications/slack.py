@@ -70,27 +70,68 @@ class SlackClient:
             or bool(self._discord_webhook)
         )
 
+    async def _discord_channel_id(self, channel: str) -> str | None:
+        """Resolve #channel-name → id via the bot token (cached). Needs the bot
+        in the server. This is what routes to the REAL channel instead of the
+        single default webhook (the reason everything landed in #general)."""
+        token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+        if not token:
+            return None
+        if getattr(self, "_discord_channel_ids", None) is None:
+            self._discord_channel_ids = {}
+            api = "https://discord.com/api/v10"
+            hdr = {"Authorization": f"Bot {token}",
+                   "User-Agent": "Mozilla/5.0 QuantEdge-Notify/1.0"}
+            try:
+                async with httpx.AsyncClient(timeout=10.0, headers=hdr) as client:
+                    guilds = (await client.get(f"{api}/users/@me/guilds")).json()
+                    for g in guilds:
+                        chans = (await client.get(f"{api}/guilds/{g['id']}/channels")).json()
+                        for c in chans:
+                            if c.get("type") == 0:
+                                self._discord_channel_ids.setdefault(
+                                    c["name"].lower().lstrip("#"), c["id"])
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Discord channel map failed", error=str(e))
+        return self._discord_channel_ids.get(str(channel).lower().lstrip("#"))
+
     async def _post_discord(self, channel: str, title: str, text: str,
                             fields: dict[str, Any] | None = None) -> bool:
-        """Failover delivery to a Discord webhook (free, generous rate limits)."""
-        # Per-channel webhook when configured (DISCORD_WEBHOOK_URL_PNL_DAILY
-        # for #pnl-daily, etc.); unmapped channels share the default with a
-        # [#channel] prefix so one webhook still works as a unified feed.
-        slug = str(channel).lstrip("#").upper().replace("-", "_")
-        webhook = os.environ.get(f"DISCORD_WEBHOOK_URL_{slug}", "") or self._discord_webhook
-        if not webhook:
-            return False
-        lines = [f"**[#{channel}] {title}**"]
+        """Deliver to Discord — real channel via bot token, else webhook failover."""
+        lines = [f"**{title}**"]
         if text:
             lines.append(text)
         for k, v in (fields or {}).items():
             lines.append(f"• {k}: {v}")
-        content = "\n".join(lines)[:2000]  # Discord hard message limit
+        body = "\n".join(lines)
+
+        # 1) bot-token routing to the actual channel
+        cid = await self._discord_channel_id(channel)
+        if cid:
+            token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+            try:
+                async with httpx.AsyncClient(timeout=8.0) as client:
+                    resp = await client.post(
+                        f"https://discord.com/api/v10/channels/{cid}/messages",
+                        headers={"Authorization": f"Bot {token}",
+                                 "User-Agent": "Mozilla/5.0 QuantEdge-Notify/1.0"},
+                        json={"content": body[:2000]},
+                    )
+                    if resp.status_code in (200, 201):
+                        return True
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Discord bot post failed", error=str(e))
+
+        # 2) webhook failover (per-channel override, else default → #general w/ prefix)
+        slug = str(channel).lstrip("#").upper().replace("-", "_")
+        webhook = os.environ.get(f"DISCORD_WEBHOOK_URL_{slug}", "") or self._discord_webhook
+        if not webhook:
+            return False
+        using_default = webhook == self._discord_webhook
+        content = (f"**[#{channel}]** {body}" if using_default else body)[:2000]
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
-                resp = await client.post(
-                    webhook, json={"content": content, "username": "QuantEdge"}
-                )
+                resp = await client.post(webhook, json={"content": content, "username": "QuantEdge"})
                 return resp.status_code in (200, 204)
         except Exception as e:
             logger.warning("Discord post failed", error=str(e))
