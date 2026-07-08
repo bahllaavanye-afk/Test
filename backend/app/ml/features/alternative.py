@@ -11,6 +11,8 @@ All API calls are async. For sync contexts, use compute_features_sync().
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 from datetime import datetime, timezone
 
 import httpx
@@ -19,6 +21,8 @@ import pandas as pd
 
 _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
+
+_logger = logging.getLogger(__name__)
 
 
 def _to_binance_symbol(symbol: str) -> str:
@@ -115,6 +119,7 @@ class BinanceFundingRateFeatures:
 
         Missing data → NaN (not filled with fake values).
         """
+        start_time = time.perf_counter()
         df = df.copy()
         for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
             df[col] = np.nan
@@ -166,27 +171,45 @@ class BinanceFundingRateFeatures:
                         oi_df.loc[ts_day, "oi_momentum"]
                     )
 
+        exec_time = time.perf_counter() - start_time
+        _logger.info(
+            "alternative_features_computed",
+            signal_count=len(df),
+            exec_time=exec_time,
+            pnl=None,
+        )
         return df
 
     def compute_features(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
         """Sync wrapper — runs the async version via asyncio."""
+        start_time = time.perf_counter()
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
                 # Already inside an event loop (e.g., FastAPI) — create a task
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
                         asyncio.run, self.compute_features_async(symbol, df)
                     )
-                    return future.result(timeout=30)
+                    result = future.result(timeout=30)
             else:
-                return loop.run_until_complete(self.compute_features_async(symbol, df))
+                result = loop.run_until_complete(self.compute_features_async(symbol, df))
         except Exception:
             df = df.copy()
             for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
                 df[col] = np.nan
-            return df
+            result = df
+        finally:
+            exec_time = time.perf_counter() - start_time
+            _logger.info(
+                "alternative_features_sync_completed",
+                signal_count=len(df),
+                exec_time=exec_time,
+                pnl=None,
+            )
+        return result
 
 
 ALTERNATIVE_FEATURE_COLS = [
@@ -209,9 +232,24 @@ def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame
         for kw in ("BTC", "ETH", "BNB", "SOL", "XRP", "USDT", "USDC", "CRYPTO")
     )
     if is_crypto and symbol:
-        return _binance_features.compute_features(symbol, df)
+        result = _binance_features.compute_features(symbol, df)
+        _logger.info(
+            "add_alternative_features",
+            symbol=symbol,
+            signal_count=len(df),
+            exec_time=None,
+            pnl=None,
+        )
+        return result
 
     df = df.copy()
     for col in ALTERNATIVE_FEATURE_COLS:
         df[col] = np.nan
+    _logger.info(
+        "add_alternative_features_skipped",
+        symbol=symbol,
+        signal_count=len(df),
+        exec_time=None,
+        pnl=None,
+    )
     return df
