@@ -1,21 +1,37 @@
 """
 Hawkes Self-Exciting Point Process for Order Arrival Rate Modeling
 ===================================================================
-Used to time crypto execution: execute aggressively during high-intensity
-periods (liquidity events), use limit orders during quiet periods.
 
-λ(t) = μ + Σ α·exp(-β·(t-t_i)) for t_i < t
+This module provides a lightweight implementation of a Hawkes self‑exciting
+point process that is used within the QuantEdge trading platform to model the
+arrival rate of market orders.  The intensity λ(t) evolves according to
 
-Fitted via MLE on historical trade timestamps.
+    λ(t) = μ + Σ α·exp(-β·(t - t_i))   for t_i < t
 
-Reference: Hawkes (1971) "Spectra of Some Self-Exciting and Mutually Exciting Point Processes"
-           Filimonov & Sornette (2012) "Quantifying Reflexivity in Financial Markets"
+where
+
+* μ (mu)   – baseline intensity (events per second),
+* α (alpha) – jump size added after each event,
+* β (beta) – exponential decay rate (1/second).
+
+The process is fitted to historical trade timestamps using an EM‑like maximum
+likelihood estimator and can be queried to predict short‑term arrival intensity.
+The resulting intensity estimate is then used by the SmartOrderRouter to decide
+whether to execute aggressively (market order) or more passively (limit order).
+
+References
+----------
+* Hawkes, A. G. (1971). “Spectra of Some Self‑Exciting and Mutually Exciting
+  Point Processes.” *Biometrika*, 58(1), 83‑90.
+* Filimonov, V., & Sornette, D. (2012). “Quantifying Reflexivity in Financial
+  Markets.” *Quantitative Finance*, 12(5), 761‑777.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 
@@ -24,6 +40,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class HawkesParams:
+    """
+    Container for the fitted Hawkes process parameters.
+
+    Attributes
+    ----------
+    mu : float
+        Baseline intensity (events per second).
+    alpha : float
+        Jump size added after each event.
+    beta : float
+        Decay rate (1/second).
+    """
     mu: float      # baseline intensity (events/second)
     alpha: float   # jump size on each event
     beta: float    # decay rate (1/s)
@@ -31,44 +59,74 @@ class HawkesParams:
 
 class HawkesProcess:
     """
-    Hawkes self-exciting point process for order arrival rate modeling.
+    Hawkes self‑exciting point process for order arrival rate modeling.
 
-    Fitted via iterative EM-like MLE on historical trade timestamps.
-    Used by the SmartOrderRouter to decide market vs limit order submission.
+    The model is fitted via an iterative EM‑like maximum‑likelihood estimator
+    on historical trade timestamps.  It is subsequently used by the
+    SmartOrderRouter to decide between market and limit order submission.
 
-    Parameters:
-        beta: decay rate (1/s), controls how quickly excitation dies off.
-              Default 1.0 → half-life of ~0.69 seconds.
+    Parameters
+    ----------
+    beta : float, optional
+        Decay rate (1/s) that controls how quickly excitation from past events
+        dissipates.  The default value of 1.0 corresponds to a half‑life of
+        roughly 0.69 seconds.
 
-    Usage:
-        hp = HawkesProcess(beta=2.0)
-        params = hp.fit(timestamps)   # timestamps in Unix seconds
-        intensity = hp.predict_intensity(timestamps, horizon_seconds=30)
-        order_type = hp.suggest_execution(intensity, threshold=5.0)
-        # 'market' if busy, 'limit' if quiet
+    Examples
+    --------
+    >>> hp = HawkesProcess(beta=2.0)
+    >>> params = hp.fit(timestamps)                     # timestamps in Unix seconds
+    >>> intensity = hp.predict_intensity(timestamps, horizon_seconds=30)
+    >>> order_type = hp.suggest_execution(intensity, threshold=5.0)
+    >>> # 'market' if busy, 'limit' if quiet
     """
 
-    def __init__(self, beta: float = 1.0):
+    def __init__(self, beta: float = 1.0) -> None:
+        """
+        Initialise a HawkesProcess instance.
+
+        Parameters
+        ----------
+        beta : float
+            Positive decay rate (1/s).  Raises ``TypeError`` if ``beta`` is not a
+            numeric type and ``ValueError`` if it is non‑positive.
+        """
         if not isinstance(beta, (int, float)):
             raise TypeError(f"beta must be a numeric type, got {type(beta)}")
         if beta <= 0:
             raise ValueError(f"beta must be positive, got {beta}")
-        self.beta = float(beta)
-        self.params: HawkesParams | None = None
+        self.beta: float = float(beta)
+        self.params: Optional[HawkesParams] = None
 
     def fit(self, timestamps: np.ndarray) -> HawkesParams:
         """
-        MLE fit of Hawkes process parameters to trade timestamps (Unix seconds).
+        Fit the Hawkes process parameters to a sequence of trade timestamps.
 
-        Uses EM-like iterative estimation (Veen & Schoenberg 2008).
+        The fitting routine follows an EM‑like iterative scheme (Veen & Schoenberg,
+        2008) that maximises the likelihood of the observed event times under the
+        Hawkes model.
 
-        Args:
-            timestamps: sorted 1-D array of Unix timestamps in seconds.
-                        Must have at least 10 events.
+        Parameters
+        ----------
+        timestamps : np.ndarray
+            One‑dimensional array of Unix timestamps (seconds).  The array must
+            contain at least ten events; otherwise a default stable parameter set
+            is returned.
 
-        Returns:
-            HawkesParams(mu, alpha, beta) with fitted parameters.
-            Returns default stable params if timestamps is too short.
+        Returns
+        -------
+        HawkesParams
+            The estimated ``mu``, ``alpha`` and ``beta`` values.  ``beta`` is fixed
+            to the value supplied at construction time.
+
+        Raises
+        ------
+        TypeError
+            If ``timestamps`` cannot be converted to a numeric NumPy array.
+        ValueError
+            If ``timestamps`` is not one‑dimensional.
+        RuntimeError
+            If an unexpected error occurs during the EM iteration.
         """
         try:
             timestamps = np.asarray(timestamps, dtype=float)
@@ -84,7 +142,7 @@ class HawkesProcess:
             logger.info("Insufficient timestamps (%d); using default parameters", len(timestamps))
             return HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
 
-        # Sort just in case
+        # Ensure timestamps are sorted
         timestamps = np.sort(timestamps)
         T = float(timestamps[-1] - timestamps[0])
         if T < 1e-9:
@@ -98,7 +156,7 @@ class HawkesProcess:
 
         for _ in range(50):  # EM-like iterations
             try:
-                # E-step: compute conditional intensities at each event time
+                # E‑step: compute conditional intensities at each event time
                 intensities = np.empty(n, dtype=float)
                 for i in range(n):
                     ti = timestamps[i]
@@ -109,7 +167,7 @@ class HawkesProcess:
                     )
                     intensities[i] = max(mu + excitation, 1e-10)
 
-                # M-step: update mu and alpha
+                # M‑step: update mu and alpha
                 inv_int = 1.0 / intensities
 
                 mu_new = mu * np.sum(inv_int) / (T + 1e-10)
@@ -142,16 +200,33 @@ class HawkesProcess:
         horizon_seconds: float = 30.0,
     ) -> float:
         """
-        Predict expected number of arrivals in the next horizon_seconds.
+        Predict the expected number of order arrivals over a future horizon.
 
-        Uses current excitation level from the last 5 minutes of timestamps.
+        The prediction uses the current excitation level inferred from the most
+        recent timestamps (by default the last five minutes).
 
-        Args:
-            timestamps: recent trade timestamps (Unix seconds), sorted.
-            horizon_seconds: prediction window length.
+        Parameters
+        ----------
+        timestamps : np.ndarray
+            Recent trade timestamps (Unix seconds), sorted in ascending order.
+        horizon_seconds : float, optional
+            Length of the prediction window in seconds.  Must be positive.
 
-        Returns:
-            Expected number of events in [t_last, t_last + horizon_seconds].
+        Returns
+        -------
+        float
+            Expected number of arrivals in the interval
+            ``[t_last, t_last + horizon_seconds]`` where ``t_last`` is the most
+            recent timestamp.
+
+        Raises
+        ------
+        TypeError
+            If ``timestamps`` cannot be converted to a numeric NumPy array or if
+            ``horizon_seconds`` is not numeric.
+        ValueError
+            If ``timestamps`` is not one‑dimensional or if ``horizon_seconds`` is
+            non‑positive.
         """
         if self.params is None:
             logger.debug("Parameters not fitted; returning default intensity 1.0")
@@ -181,7 +256,7 @@ class HawkesProcess:
 
         p = self.params
         t_last = float(timestamps[-1])
-        recent = timestamps[timestamps > t_last - 300.0]
+        recent = timestamps[timestamps > t_last - 300.0]  # last 5 minutes
         carry = float(
             p.alpha * p.beta * np.sum(np.exp(-p.beta * (t_last - recent)))
         )
@@ -199,17 +274,27 @@ class HawkesProcess:
         threshold: float = 5.0,
     ) -> str:
         """
-        Recommend order type based on predicted arrival intensity.
+        Recommend an order execution type based on predicted arrival intensity.
 
-        High intensity (many orders arriving) → market order (good liquidity).
-        Low intensity (few orders) → limit order (avoid crossing spread).
+        A high predicted intensity indicates a busy market with abundant liquidity,
+        favouring immediate market orders.  Conversely, a low intensity suggests a
+        quieter market where passive limit orders are preferable.
 
-        Args:
-            intensity: predicted arrivals in horizon from predict_intensity().
-            threshold: arrivals cutoff between limit and market order.
+        Parameters
+        ----------
+        intensity : float
+            Predicted number of arrivals over the horizon (output of
+            :meth:`predict_intensity`).
+        threshold : float, optional
+            Arrival count that separates the “limit” and “market” regimes.  The
+            default value of 5.0 is a heuristic that works well for typical
+            crypto trading horizons.
 
-        Returns:
-            'market' if intensity > threshold, else 'limit'.
+        Returns
+        -------
+        str
+            Either ``"market"`` if ``intensity`` exceeds ``threshold`` or
+            ``"limit"`` otherwise.
         """
         if not isinstance(intensity, (int, float)):
             logger.error("Invalid intensity type: %s", type(intensity))
@@ -217,10 +302,13 @@ class HawkesProcess:
         if not isinstance(threshold, (int, float)):
             logger.error("Invalid threshold type: %s", type(threshold))
             raise TypeError("threshold must be a numeric type")
-        if threshold < 0:
-            logger.error("Negative threshold value: %f", threshold)
-            raise ValueError("threshold must be non-negative")
+        if threshold <= 0:
+            logger.error("Non-positive threshold: %f", threshold)
+            raise ValueError("threshold must be positive")
 
-        decision = "market" if intensity > threshold else "limit"
-        logger.info("Execution suggestion: intensity=%.3f, threshold=%.3f -> %s", intensity, threshold, decision)
+        decision = "market" if intensity >= threshold else "limit"
+        logger.debug(
+            "Suggested execution: intensity=%f, threshold=%f -> %s",
+            intensity, threshold, decision,
+        )
         return decision
