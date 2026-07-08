@@ -185,8 +185,13 @@
     "Cache frequent queries",
     "Implement Transfer Learning",
     "Leverage Temporal Attention",
-    "Retrain with STF technique"
+    "Retrain with STF technique",
+    "error_handling on ml/models/itransformer.py: success \u2014 tests green",
+    "error_handling on ml/features/sentiment.py: success \u2014 tests green",
+    "error_handling on execution/position_exit.py: success \u2014 tests green",
+    "error_handling on risk/hrp.py: success \u2014 tests green",
+    "error_handling on brokers/tradestation.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T12:59:53.494673+00:00",
+  "last_updated": "2026-07-08T13:59:03.222599+00:00",
   "total": 186
 }
