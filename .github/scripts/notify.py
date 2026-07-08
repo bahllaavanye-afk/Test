@@ -21,7 +21,56 @@ import urllib.request
 
 _SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "").strip()
 _DEFAULT_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
+_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 _DISCORD_CAP = int(os.environ.get("DISCORD_MAX_POSTS_PER_RUN", "20"))
+_DISCORD_API = "https://discord.com/api/v10"
+_UA = "Mozilla/5.0 (X11; Linux x86_64) QuantEdge-Notify/1.0"
+
+# Bot-token channel routing: resolve #channel-name → channel id ONCE, so every
+# message lands in its real channel instead of dumping into #general via a single
+# webhook (the reason "all messages come to #general"). Cached per process.
+_channel_ids: dict[str, str] | None = None
+
+
+def _bot_req(method: str, path: str, body: dict | None = None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        _DISCORD_API + path, data=data, method=method,
+        headers={"Authorization": f"Bot {_BOT_TOKEN}", "Content-Type": "application/json",
+                 "User-Agent": _UA},
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read() or "{}")
+
+
+def _load_channel_ids() -> dict[str, str]:
+    """{normalized-channel-name: id} across every guild the bot is in."""
+    global _channel_ids
+    if _channel_ids is not None:
+        return _channel_ids
+    _channel_ids = {}
+    if not _BOT_TOKEN:
+        return _channel_ids
+    try:
+        for g in _bot_req("GET", "/users/@me/guilds"):
+            for c in _bot_req("GET", f"/guilds/{g['id']}/channels"):
+                if c.get("type") == 0:  # text channel
+                    _channel_ids.setdefault(c["name"].lower().lstrip("#"), c["id"])
+    except Exception as e:  # noqa: BLE001
+        print(f"[notify] channel map load failed: {str(e)[:80]}")
+    return _channel_ids
+
+
+def _post_to_channel_id(cid: str, text: str, username: str) -> bool:
+    """Post via bot API to a specific channel id. Bots can't set per-message
+    usernames, so the employee identity rides a bold name prefix."""
+    prefix = f"**{str(username).strip()[:60]}** " if username and username != "QuantEdge" else ""
+    try:
+        _bot_req("POST", f"/channels/{cid}/messages", {"content": (prefix + text)[:2000]})
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"[notify] bot post failed: {str(e)[:80]}")
+        return False
 
 stats = {"slack_ok": 0, "discord_ok": 0, "failed": 0, "discord_skipped": 0}
 _slack_dead: str = ""  # first fatal Slack error; short-circuits later attempts
@@ -38,7 +87,59 @@ def _discord_webhook_for(channel: str) -> str:
 
 
 def discord_post(channel: str, text: str, username: str = "QuantEdge") -> bool:
-    """Deliver one message to Discord. Never raises."""
+    """Deliver one message to Discord, into its REAL channel. Never raises.
+
+    Order of preference:
+      1. Bot token → resolve #channel → post to that channel id (needs the bot
+         in the server with Send Messages; this is what stops the #general dump).
+      2. Per-channel webhook (DISCORD_WEBHOOK_URL_<SLUG>) if one is configured.
+      3. Default webhook → #general with a [#channel] prefix (last resort).
+    """
+    if not text:
+        return False
+    if stats["discord_ok"] >= _DISCORD_CAP:
+        stats["discord_skipped"] += 1
+        return False
+
+    name = str(channel).lower().lstrip("#")
+    # 1) bot-token routing to the actual channel
+    if _BOT_TOKEN:
+        cid = _load_channel_ids().get(name)
+        if cid and _post_to_channel_id(cid, text, username):
+            stats["discord_ok"] += 1
+            time.sleep(0.4)
+            return True
+
+    # 2) / 3) webhook fallback (per-channel override, else default → #general)
+    webhook = _discord_webhook_for(channel)
+    if not webhook:
+        return False
+    # Only prefix with [#channel] when falling back to the shared default webhook.
+    using_default = webhook == _DEFAULT_WEBHOOK
+    content = (f"**[#{name}]** {text}" if using_default else text)[:2000]
+    body = json.dumps({
+        "content": content,
+        "username": (str(username).strip()[:80] or "QuantEdge"),
+    }).encode()
+    req = urllib.request.Request(
+        webhook, data=body,
+        headers={"Content-Type": "application/json", "User-Agent": _UA},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+        stats["discord_ok"] += 1
+        time.sleep(0.5)
+        return True
+    except Exception as e:  # noqa: BLE001
+        stats["failed"] += 1
+        print(f"[notify] discord failed: {str(e)[:80]}")
+        return False
+
+
+def _discord_post_LEGACY(channel: str, text: str, username: str = "QuantEdge") -> bool:
+    """Superseded by the bot-token-routing discord_post above; kept for reference."""
     webhook = _discord_webhook_for(channel)
     if not webhook or not text:
         return False

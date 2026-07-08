@@ -52,3 +52,5 @@ export const AppShell = () => {
     </div>
   )
 }
+
+export default AppShell
