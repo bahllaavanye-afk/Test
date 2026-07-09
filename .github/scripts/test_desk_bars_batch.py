@@ -17,6 +17,10 @@ from pathlib import Path
 
 import pytest
 
+# desk_order_placer builds OHLCV DataFrames; skip cleanly where pandas is absent
+# rather than hard-failing the whole agent-test job.
+pytest.importorskip("pandas")
+
 _MOD_PATH = Path(__file__).parent / "desk_order_placer.py"
 
 
