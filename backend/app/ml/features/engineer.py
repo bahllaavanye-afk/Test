@@ -7,7 +7,8 @@ The resulting feature set is used both for model training and live inference.
 
 from __future__ import annotations
 
-import sys
+import logging
+import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -18,6 +19,12 @@ from app.ml.features.multi_timeframe import MTF_FEATURE_COLS, add_multi_timefram
 from app.ml.features.normalization import FeatureScaler
 from app.ml.features.technical import add_technical_features
 from app.ml.features.wavelet_features import WAVELET_FEATURE_COLS, add_wavelet_features
+
+# Initialize module logger
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    # Configure a basic handler if the application hasn't set up logging yet
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 # Social sentiment feature columns added for crypto market_type
 SOCIAL_SENTIMENT_FEATURE_COLS: List[str] = [
@@ -116,6 +123,8 @@ def engineer_features(
         NaNs from base or advanced indicator calculations are dropped, and any
         remaining NaNs in multi‑timeframe columns are filled with neutral values.
     """
+    start_time = time.time()
+
     df = df.copy()
     df = add_technical_features(df)
     df = add_advanced_features(df)
@@ -166,6 +175,18 @@ def engineer_features(
     elif normalize and scaler is None:
         raise ValueError("Pass a fitted FeatureScaler when normalize=True")
 
+    elapsed = time.time() - start_time
+    signal_count = df.shape[0]
+
+    logger.info(
+        "engineer_features completed",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_sec": round(elapsed, 3),
+            "pnl": None,
+        },
+    )
+
     return df
 
 
@@ -195,6 +216,8 @@ def create_sequences(
         Corresponding targets of shape ``(n_samples,)`` if ``target_col`` exists,
         otherwise ``None``.
     """
+    start_time = time.time()
+
     active_cols = [c for c in FEATURE_COLS if c in df.columns]
     features = df[active_cols].values
     targets = df[target_col].values if target_col in df.columns else None
@@ -215,6 +238,19 @@ def create_sequences(
         # torch not installed — fall back to NumPy arrays.
         X_out = np.array(X, dtype=np.float32)
         y_out = np.array(y, dtype=np.float32) if targets is not None else None
+
+    elapsed = time.time() - start_time
+    signal_count = X_out.shape[0] if hasattr(X_out, "shape") else len(X)
+    pnl = float(np.nansum(targets)) if targets is not None else None
+
+    logger.info(
+        "create_sequences completed",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_sec": round(elapsed, 3),
+            "pnl": pnl,
+        },
+    )
 
     return X_out, y_out
 
@@ -242,11 +278,24 @@ def add_labels(
     Returns
     -------
     pd.DataFrame
-        Copy of ``df`` with ``label`` and ``target`` columns added, and rows with
-        undefined labels removed.
+        Input DataFrame with additional ``label`` and ``target`` columns.
     """
-    df = df.copy()
-    future_return = df["close"].pct_change(horizon).shift(-horizon)
-    df["label"] = (future_return > threshold).astype(int)
-    df["target"] = df["label"]  # alias for create_sequences compatibility
-    return df.dropna(subset=["label"])
+    start_time = time.time()
+
+    # Compute forward returns
+    future_close = df["close"].shift(-horizon)
+    returns = (future_close - df["close"]) / df["close"]
+
+    df["label"] = (returns.abs() > threshold).astype(int)
+    df["target"] = returns
+
+    elapsed = time.time() - start_time
+    logger.info(
+        "add_labels completed",
+        extra={
+            "signal_count": df.shape[0],
+            "execution_time_sec": round(elapsed, 3),
+            "pnl": None,
+        },
+    )
+    return df
