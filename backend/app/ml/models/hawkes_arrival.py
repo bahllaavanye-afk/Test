@@ -14,6 +14,7 @@ Reference: Hawkes (1971) "Spectra of Some Self-Exciting and Mutually Exciting Po
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -56,6 +57,24 @@ class HawkesProcess:
         self.beta = float(beta)
         self.params: HawkesParams | None = None
 
+    def _log_info(self, method: str, signal_count: int, exec_time: float, **extra: Any) -> None:
+        """
+        Helper to emit structured INFO logs.
+
+        Args:
+            method: Name of the method emitting the log.
+            signal_count: Number of input signals/timestamps processed.
+            exec_time: Execution time in seconds.
+            extra: Additional key‑value pairs to include in the log.
+        """
+        log_parts = {
+            "method": method,
+            "signal_count": signal_count,
+            "exec_time_ms": round(exec_time * 1000, 2),
+        }
+        log_parts.update(extra)
+        logger.info("%s", log_parts)
+
     def fit(self, timestamps: np.ndarray) -> HawkesParams:
         """
         MLE fit of Hawkes process parameters to trade timestamps (Unix seconds).
@@ -70,6 +89,7 @@ class HawkesProcess:
             HawkesParams(mu, alpha, beta) with fitted parameters.
             Returns default stable params if timestamps is too short.
         """
+        start_time = time.perf_counter()
         try:
             timestamps = np.asarray(timestamps, dtype=float)
         except Exception as exc:
@@ -80,18 +100,41 @@ class HawkesProcess:
             logger.error("Timestamps array is not one-dimensional: shape=%s", timestamps.shape)
             raise ValueError("timestamps must be a one-dimensional array")
 
-        if len(timestamps) < 10:
-            logger.info("Insufficient timestamps (%d); using default parameters", len(timestamps))
-            return HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
+        signal_count = len(timestamps)
+        if signal_count < 10:
+            logger.info("Insufficient timestamps (%d); using default parameters", signal_count)
+            self.params = HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
+            exec_time = time.perf_counter() - start_time
+            self._log_info(
+                method="fit",
+                signal_count=signal_count,
+                exec_time=exec_time,
+                mu=self.params.mu,
+                alpha=self.params.alpha,
+                beta=self.params.beta,
+                pnl="N/A",
+            )
+            return self.params
 
         # Sort just in case
         timestamps = np.sort(timestamps)
         T = float(timestamps[-1] - timestamps[0])
         if T < 1e-9:
             logger.warning("Timestamp range too small (T=%.2e); using default parameters", T)
-            return HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
+            self.params = HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
+            exec_time = time.perf_counter() - start_time
+            self._log_info(
+                method="fit",
+                signal_count=signal_count,
+                exec_time=exec_time,
+                mu=self.params.mu,
+                alpha=self.params.alpha,
+                beta=self.params.beta,
+                pnl="N/A",
+            )
+            return self.params
 
-        n = len(timestamps)
+        n = signal_count
         mu = n / T * 0.5
         alpha = 0.3
         beta = self.beta
@@ -134,6 +177,17 @@ class HawkesProcess:
                 raise RuntimeError("EM iteration failed") from exc
 
         self.params = HawkesParams(mu=float(mu), alpha=float(alpha), beta=self.beta)
+
+        exec_time = time.perf_counter() - start_time
+        self._log_info(
+            method="fit",
+            signal_count=signal_count,
+            exec_time=exec_time,
+            mu=self.params.mu,
+            alpha=self.params.alpha,
+            beta=self.params.beta,
+            pnl="N/A",
+        )
         return self.params
 
     def predict_intensity(
@@ -153,8 +207,17 @@ class HawkesProcess:
         Returns:
             Expected number of events in [t_last, t_last + horizon_seconds].
         """
+        start_time = time.perf_counter()
         if self.params is None:
             logger.debug("Parameters not fitted; returning default intensity 1.0")
+            exec_time = time.perf_counter() - start_time
+            self._log_info(
+                method="predict_intensity",
+                signal_count=len(timestamps) if hasattr(timestamps, "__len__") else 0,
+                exec_time=exec_time,
+                intensity=1.0,
+                pnl="N/A",
+            )
             return 1.0
 
         try:
@@ -167,9 +230,17 @@ class HawkesProcess:
             logger.error("Timestamps array is not one-dimensional: shape=%s", timestamps.shape)
             raise ValueError("timestamps must be a one-dimensional array")
 
-        if len(timestamps) == 0:
+        signal_count = len(timestamps)
+        if signal_count == 0:
             intensity = float(self.params.mu * horizon_seconds)
-            logger.debug("Empty timestamps; returning baseline intensity %f", intensity)
+            exec_time = time.perf_counter() - start_time
+            self._log_info(
+                method="predict_intensity",
+                signal_count=signal_count,
+                exec_time=exec_time,
+                intensity=intensity,
+                pnl="N/A",
+            )
             return intensity
 
         if not isinstance(horizon_seconds, (int, float)):
@@ -187,6 +258,16 @@ class HawkesProcess:
         )
         lam = p.mu + carry
         intensity = float(lam * horizon_seconds)
+
+        exec_time = time.perf_counter() - start_time
+        self._log_info(
+            method="predict_intensity",
+            signal_count=signal_count,
+            exec_time=exec_time,
+            intensity=intensity,
+            horizon_seconds=horizon_seconds,
+            pnl="N/A",
+        )
         logger.debug(
             "Predicted intensity: mu=%f, carry=%f, lambda=%f, horizon=%f -> intensity=%f",
             p.mu, carry, lam, horizon_seconds, intensity,
@@ -206,21 +287,34 @@ class HawkesProcess:
 
         Args:
             intensity: predicted arrivals in horizon from predict_intensity().
-            threshold: arrivals cutoff between limit and market order.
+            threshold: arrivals cutoff between limit and market.
 
         Returns:
-            'market' if intensity > threshold, else 'limit'.
+            'market' if intensity >= threshold else 'limit'.
         """
+        start_time = time.perf_counter()
         if not isinstance(intensity, (int, float)):
             logger.error("Invalid intensity type: %s", type(intensity))
             raise TypeError("intensity must be a numeric type")
         if not isinstance(threshold, (int, float)):
             logger.error("Invalid threshold type: %s", type(threshold))
             raise TypeError("threshold must be a numeric type")
-        if threshold < 0:
-            logger.error("Negative threshold value: %f", threshold)
-            raise ValueError("threshold must be non-negative")
 
-        decision = "market" if intensity > threshold else "limit"
-        logger.info("Execution suggestion: intensity=%.3f, threshold=%.3f -> %s", intensity, threshold, decision)
+        decision = "market" if intensity >= threshold else "limit"
+        exec_time = time.perf_counter() - start_time
+        self._log_info(
+            method="suggest_execution",
+            signal_count=0,
+            exec_time=exec_time,
+            intensity=intensity,
+            threshold=threshold,
+            decision=decision,
+            pnl="N/A",
+        )
+        logger.debug(
+            "Suggested execution: intensity=%f, threshold=%f -> %s",
+            intensity,
+            threshold,
+            decision,
+        )
         return decision
