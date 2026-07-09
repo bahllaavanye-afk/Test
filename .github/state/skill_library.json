@@ -199,8 +199,11 @@
     "Validate API inputs",
     "Refactor complex code",
     "Implement unit tests",
-    "Monitor model drift"
+    "Monitor model drift",
+    "optimization on brokers/alpaca_orders.py: success \u2014 tests green",
+    "optimization on comparison/engine.py: success \u2014 tests green",
+    "optimization on tasks/strategy_auction.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T15:43:06.631850+00:00",
+  "last_updated": "2026-07-09T17:00:49.359687+00:00",
   "total": 200
 }
