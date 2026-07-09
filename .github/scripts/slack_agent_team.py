@@ -1067,6 +1067,17 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
         emp = emp.split("_")[0]
     persona = _EMPLOYEE_PERSONAS.get(emp, _QUANT_SYSTEM)
     task_type = _EMP_TASK_TYPE.get(emp, _EMP_TASK_TYPE.get(emp.split("_")[0], "default"))
+    # Per-employee brain: prepend this employee's own memory (its recent history,
+    # durable facts, and what teammates just shared) so it recalls context across
+    # runs and can build on peers' work. Fail-open — memory must never break the
+    # employee. Applies to the retry below too, since `persona` is reused there.
+    try:
+        from employee_brain import brain_for
+        _mem_block = brain_for(emp).context_block()
+        if _mem_block:
+            persona = _mem_block + "\n" + persona
+    except Exception:  # noqa: BLE001
+        pass
     result, provider = call_best_agent_for_task(task_type, task, system_prompt=persona)
     if not result:
         return (None, None)
@@ -1135,6 +1146,15 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
     # Also update global map for callers that don't pass state
     if provider:
         _LAST_PROVIDERS_MAP[emp] = provider
+
+    # Persist to this employee's brain: remember the task+output and share a
+    # one-line learning to the team bus so peers can build on it. Fail-open.
+    try:
+        from employee_brain import record_interaction
+        _share = result.split("\n", 1)[0].strip()[:200] if result else None
+        record_interaction(emp, task[:300], result, share_line=_share)
+    except Exception:  # noqa: BLE001
+        pass
 
     return (result, provider)
 
