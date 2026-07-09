@@ -17,7 +17,7 @@ Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -27,21 +27,34 @@ import app.ml.features.pandas_ta_compat as ta
 _logger = logging.getLogger(__name__)
 
 
-def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
+def _safe_apply(
+    func: Callable[..., pd.DataFrame],
+    *args: Any,
+    **kwargs: Any,
+) -> Optional[pd.DataFrame]:
     """
-    Helper to execute a function safely.
+    Execute a technical indicator function safely.
+
+    The function ``func`` is invoked with the supplied ``args`` and ``kwargs``.
+    If the call raises a ``KeyError``, ``ValueError`` or ``TypeError`` the
+    exception is logged and ``None`` is returned. This pattern prevents a
+    single failing indicator from aborting the entire feature generation
+    pipeline.
 
     Parameters
     ----------
-    func : callable
-        The function to execute.
-    *args, **kwargs :
-        Arguments passed to ``func``.
+    func : Callable[..., pd.DataFrame]
+        The technical indicator function to execute (e.g., ``ta.rsi``).
+    *args : Any
+        Positional arguments forwarded to ``func``.
+    **kwargs : Any
+        Keyword arguments forwarded to ``func``.
 
     Returns
     -------
     Optional[pd.DataFrame]
-        The result of ``func`` if successful, otherwise ``None``.
+        The result of ``func`` if it completes without raising the specified
+        exceptions; otherwise ``None``.
     """
     try:
         return func(*args, **kwargs)
@@ -58,8 +71,11 @@ def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
 
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Compute a suite of technical indicators and append them as new columns
-    to a copy of the input DataFrame.
+    Compute a suite of technical indicators and append them as new columns.
+
+    The function works on a copy of the input DataFrame, preserving the original
+    data. It adds a range of commonly used technical features, normalising where
+    appropriate to keep values roughly within comparable scales.
 
     Parameters
     ----------
