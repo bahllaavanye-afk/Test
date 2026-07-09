@@ -23,6 +23,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -54,31 +56,71 @@ def _desk_symbols() -> dict[str, list[str]]:
 
 
 def _get(path: str, params: dict) -> dict:
+    """Alpaca data GET with 429 backoff. The free tier throttles hard, and
+    fetching every symbol one-by-one used to 429 most of them (the 'fetch
+    failed: HTTP Error 429' gaps in the Data Team report)."""
     url = f"{DATA_BASE}{path}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(url, headers={
         "APCA-API-KEY-ID": ALPACA_KEY,
         "APCA-API-SECRET-KEY": ALPACA_SECRET,
         "User-Agent": "QuantEdge-DataTeam/1.0",
     })
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.loads(r.read())
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < 2:
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                try:
+                    delay = float(retry_after) if retry_after else 1.5 * (attempt + 1)
+                except (TypeError, ValueError):
+                    delay = 1.5 * (attempt + 1)
+                time.sleep(min(delay, 5.0))
+                continue
+            raise
+    return {}
 
 
-def check_symbol(symbol: str) -> dict:
-    """Return a quality record for one symbol: rows, freshness, integrity."""
-    is_crypto = "/" in symbol
+def fetch_all_bars(symbols: list[str]) -> dict[str, list | None]:
+    """Fetch bars for every symbol in ONE request per asset class (Alpaca takes
+    comma-separated `symbols=`). Collapses ~31 single-symbol calls into ~2,
+    which is what stops the 429 storm. Value is the bars list, or None when the
+    batch call itself failed (so the symbol is reported as fetch-failed, not
+    silently 'healthy')."""
     start = (datetime.now(timezone.utc) - timedelta(days=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        if is_crypto:
-            data = _get("/v1beta3/crypto/us/bars",
-                        {"symbols": symbol, "timeframe": "1Day", "limit": 250, "start": start})
-            bars = data.get("bars", {}).get(symbol, [])
-        else:
-            data = _get(f"/v2/stocks/{symbol}/bars",
-                        {"timeframe": "1Day", "limit": 250, "adjustment": "split", "start": start})
-            bars = data.get("bars", [])
-    except Exception as exc:  # noqa: BLE001
-        return {"symbol": symbol, "ok": False, "reason": f"fetch failed: {exc}"}
+    out: dict[str, list | None] = {}
+    crypto = [s for s in symbols if "/" in s]
+    stocks = [s for s in symbols if "/" not in s]
+
+    def _batch(path: str, syms: list[str], extra: dict) -> None:
+        for i in range(0, len(syms), 20):
+            chunk = syms[i:i + 20]
+            try:
+                data = _get(path, {"symbols": ",".join(chunk), "timeframe": "1Day",
+                                   "limit": 250, "start": start, **extra})
+                bars_by = data.get("bars") or {}
+                for s in chunk:
+                    out[s] = bars_by.get(s, [])
+            except Exception as exc:  # noqa: BLE001
+                print(f"  batch fetch failed for {chunk}: {exc}")
+                for s in chunk:
+                    out[s] = None
+            time.sleep(0.3)
+
+    if crypto:
+        _batch("/v1beta3/crypto/us/bars", crypto, {})
+    if stocks:
+        _batch("/v2/stocks/bars", stocks, {"adjustment": "split", "feed": "iex"})
+    return out
+
+
+def check_symbol(symbol: str, bars: list | None) -> dict:
+    """Return a quality record for one symbol from PRE-FETCHED bars: rows,
+    freshness, integrity. bars is None when the batched fetch failed."""
+    is_crypto = "/" in symbol
+    if bars is None:
+        return {"symbol": symbol, "ok": False, "reason": "fetch failed (rate-limited)"}
 
     n = len(bars)
     if n < MIN_ROWS:
@@ -111,10 +153,12 @@ def main() -> int:
         return 0
 
     universe = _desk_symbols()
+    all_syms = [s for syms in universe.values() for s in syms]
+    fetched = fetch_all_bars(all_syms)   # one batched request per asset class
     results: list[dict] = []
     for bucket, syms in universe.items():
         for s in syms:
-            r = check_symbol(s)
+            r = check_symbol(s, fetched.get(s))
             r["bucket"] = bucket
             results.append(r)
             print(("✅" if r["ok"] else "❌"), s, r.get("reason", f"{r.get('rows', 0)} bars"))
