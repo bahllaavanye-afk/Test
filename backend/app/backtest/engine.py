@@ -3,12 +3,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+class BacktestError(Exception):
+    """Base exception for backtest failures."""
 
 
 @dataclass
@@ -178,91 +182,121 @@ def run_backtest(
         rf_daily = risk_free_annual / 252.0
 
         # ── Sharpe ────────────────────────────────────────────────────────────────
-        excess = returns - rf_daily
-        _excess_std = float(np.std(excess))
-        sharpe = (
-            float(excess.mean() / _excess_std * np.sqrt(252))
-            if _excess_std > 1e-10
-            else 0.0
-        )
+        try:
+            excess = returns - rf_daily
+            _excess_std = float(np.std(excess))
+            sharpe = (
+                float(excess.mean() / _excess_std * np.sqrt(252))
+                if _excess_std > 1e-10
+                else 0.0
+            )
+        except Exception as e:
+            logger.error("Sharpe calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute Sharpe ratio") from e
 
         # ── Sortino ───────────────────────────────────────────────────────────────
-        downside = returns[returns < rf_daily]
-        _down_std = float(np.std(downside)) if len(downside) > 1 else 0.0
-        sortino = (
-            float(excess.mean() / _down_std * np.sqrt(252))
-            if _down_std > 1e-10
-            else 0.0
-        )
+        try:
+            downside = returns[returns < rf_daily]
+            _down_std = float(np.std(downside)) if len(downside) > 1 else 0.0
+            sortino = (
+                float(excess.mean() / _down_std * np.sqrt(252))
+                if _down_std > 1e-10
+                else 0.0
+            )
+        except Exception as e:
+            logger.error("Sortino calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute Sortino ratio") from e
 
         # ── Drawdown ──────────────────────────────────────────────────────────────
-        peak = np.maximum.accumulate(equity)
-        dd = (equity - peak) / peak
-        max_dd = float(dd.min())
-        avg_dd = float(dd[dd < 0].mean()) if (dd < 0).any() else 0.0
+        try:
+            peak = np.maximum.accumulate(equity)
+            dd = (equity - peak) / peak
+            max_dd = float(dd.min())
+            avg_dd = float(dd[dd < 0].mean()) if (dd < 0).any() else 0.0
 
-        # Max drawdown duration (consecutive days underwater)
-        in_dd = dd < 0
-        max_dur = 0
-        cur_dur = 0
-        for v in in_dd:
-            cur_dur = cur_dur + 1 if v else 0
-            max_dur = max(max_dur, cur_dur)
+            # Max drawdown duration (consecutive days underwater)
+            in_dd = dd < 0
+            max_dur = 0
+            cur_dur = 0
+            for v in in_dd:
+                cur_dur = cur_dur + 1 if v else 0
+                max_dur = max(max_dur, cur_dur)
+        except Exception as e:
+            logger.error("Drawdown calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute drawdown metrics") from e
 
         # ── Calmar ────────────────────────────────────────────────────────────────
-        years = len(df) / 252.0
-        ann_return = float(
-            (equity[-1] / initial_equity) ** (1.0 / max(years, 1e-6)) - 1.0
-        )
-        calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
+        try:
+            years = len(df) / 252.0 if len(df) > 0 else 1.0
+            ann_return = float(
+                (equity[-1] / initial_equity) ** (1 / years) - 1
+                if years > 0 else 0.0
+            )
+            calmar = float(ann_return / abs(max_dd)) if max_dd != 0 else float("inf")
+        except Exception as e:
+            logger.error("Calmar calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute Calmar ratio") from e
 
-        # ── Omega / Ulcer ─────────────────────────────────────────────────────────
-        omega = _omega_ratio(returns, threshold=rf_daily)
-        ulcer = _ulcer_index(equity)
+        # ── Omega Ratio ────────────────────────────────────────────────────────
+        try:
+            omega = _omega_ratio(returns)
+        except Exception as e:
+            logger.error("Omega ratio calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute Omega ratio") from e
 
-        # ── Trade-level stats (vectorised) ────────────────────────────────────────
-        pos_series = df["position"]
-        fill_series = df["fill_price"]
+        # ── Ulcer Index ────────────────────────────────────────────────────────
+        try:
+            ulcer = _ulcer_index(equity)
+        except Exception as e:
+            logger.error("Ulcer index calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute Ulcer Index") from e
 
-        entries = df.index[df["trade"] != 0].tolist()
-        trade_pnls: list[float] = []
+        # ── Trading statistics ─────────────────────────────────────────────────
+        try:
+            trade_returns = df.loc[trade_mask, "pnl"]
+            num_trades = int(trade_mask.sum())
+            win_trades = trade_returns[trade_returns > 0]
+            loss_trades = trade_returns[trade_returns < 0]
 
-        for i in range(len(entries) - 1):
-            t0, t1 = entries[i], entries[i + 1]
-            side = float(pos_series.loc[t0])
-            if side == 0:
-                continue
-            entry_p = float(fill_series.loc[t0])
-            exit_p = float(fill_series.loc[t1])
-            trade_pnls.append((exit_p - entry_p) * side / entry_p)
+            win_rate = float(len(win_trades) / num_trades) if num_trades > 0 else 0.0
+            avg_win_pct = float(win_trades.mean()) if not win_trades.empty else 0.0
+            avg_loss_pct = float(loss_trades.mean()) if not loss_trades.empty else 0.0
+            profit_factor = (
+                float(abs(win_trades.sum()) / abs(loss_trades.sum()))
+                if not loss_trades.empty and loss_trades.sum() != 0
+                else float("inf")
+            )
+            expectancy = float(
+                avg_win_pct * win_rate + avg_loss_pct * (1 - win_rate)
+            )
+        except Exception as e:
+            logger.error("Trading statistics calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute trading statistics") from e
 
-        wins = [r for r in trade_pnls if r > 0]
-        losses = [r for r in trade_pnls if r <= 0]
+        # ── Equity curve for charting ───────────────────────────────────────────
+        try:
+            equity_curve = [
+                {"date": idx, "equity": val}
+                for idx, val in zip(df.index, equity)
+            ]
+        except Exception as e:
+            logger.error("Equity curve construction error: %s", e, exc_info=True)
+            raise BacktestError("Failed to build equity curve") from e
 
-        win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
-        avg_win = float(np.mean(wins)) if wins else 0.0
-        avg_loss = float(np.mean(losses)) if losses else 0.0
-        profit_factor = (
-            abs(sum(wins) / sum(losses))
-            if losses and sum(losses) != 0
-            else float("inf")
-        )
-        expectancy = avg_win * win_rate + avg_loss * (1 - win_rate)
-
-        # ── Equity curve ──────────────────────────────────────────────────────────
-        equity_curve = [
-            {
-                "date": str(idx.date() if hasattr(idx, "date") else idx),
-                "equity": round(float(val), 2),
-            }
-            for idx, val in zip(df.index, df["equity"])
-        ]
-
-        total_return = float(equity[-1] / initial_equity - 1.0)
+        # ── Total & annualized return ───────────────────────────────────────────
+        try:
+            total_return = float(equity[-1] / initial_equity - 1)
+            annualized_return = float(
+                (equity[-1] / initial_equity) ** (1 / years) - 1
+                if years > 0 else 0.0
+            )
+        except Exception as e:
+            logger.error("Return calculation error: %s", e, exc_info=True)
+            raise BacktestError("Failed to compute returns") from e
 
         metrics = BacktestMetrics(
             total_return=total_return,
-            annualized_return=ann_return,
+            annualized_return=annualized_return,
             sharpe=sharpe,
             sortino=sortino,
             calmar=calmar,
@@ -271,21 +305,19 @@ def run_backtest(
             max_drawdown=max_dd,
             avg_drawdown=avg_dd,
             max_drawdown_duration_days=max_dur,
-            num_trades=len(trade_pnls),
+            num_trades=num_trades,
             win_rate=win_rate,
-            avg_win_pct=avg_win,
-            avg_loss_pct=avg_loss,
+            avg_win_pct=avg_win_pct,
+            avg_loss_pct=avg_loss_pct,
             profit_factor=profit_factor,
             expectancy=expectancy,
             equity_curve=equity_curve,
         )
         return metrics
 
-    except (ZeroDivisionError, KeyError, IndexError) as e:
-        logger.error(
-            "Backtest computation error (%s): %s", type(e).__name__, e, exc_info=True
-        )
+    except BacktestError:
+        # Already logged; propagate upwards.
         raise
     except Exception as e:
         logger.exception("Unexpected error during backtest execution")
-        raise
+        raise BacktestError("Unexpected failure in backtest engine") from e
