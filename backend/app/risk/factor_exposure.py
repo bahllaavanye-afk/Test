@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 
 import numpy as np
+from pydantic import BaseModel, Field, validator
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,74 @@ def _interpret(fe: FactorExposure) -> str:
     if fe.alpha_annualized > 0.05:
         parts.append(f"Positive alpha ({fe.alpha_annualized*100:.1f}% ann)")
     return ", ".join(parts) if parts else "Balanced factor exposure"
+
+
+class FactorExposureSchema(BaseModel):
+    """Pydantic schema for exposing factor‑exposure results via APIs.
+
+    Includes field‑level descriptions, example values and basic validation.
+    """
+
+    market_beta: float = Field(
+        ...,
+        description="Sensitivity to the market (SPY). 1.0 = full market exposure, 0.0 = market‑neutral.",
+        example=1.02,
+    )
+    momentum_loading: float = Field(
+        ...,
+        description="Loading on the 12‑1 month momentum factor.",
+        example=0.15,
+    )
+    low_vol_loading: float = Field(
+        ...,
+        description="Loading on the low‑volatility factor.",
+        example=-0.07,
+    )
+    size_loading: float = Field(
+        ...,
+        description="Loading on a size factor (SMB‑like). Not currently computed.",
+        example=0.0,
+    )
+    r_squared: float = Field(
+        ...,
+        description="Proportion of variance explained by the regression model (0‑1).",
+        example=0.85,
+    )
+    alpha_annualized: float = Field(
+        ...,
+        description="Annualized Jensen's alpha (excess return versus the factor model).",
+        example=0.12,
+    )
+    tracking_error: float = Field(
+        ...,
+        description="Daily tracking error (standard deviation of residuals).",
+        example=0.018,
+    )
+
+    @validator("r_squared")
+    def r_squared_bounds(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("r_squared must be between 0 and 1 inclusive")
+        return v
+
+    @validator("tracking_error")
+    def tracking_error_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("tracking_error must be non‑negative")
+        return v
+
+    @classmethod
+    def from_dataclass(cls, fe: FactorExposure) -> "FactorExposureSchema":
+        """Create a schema instance from a ``FactorExposure`` dataclass."""
+        return cls(
+            market_beta=fe.market_beta,
+            momentum_loading=fe.momentum_loading,
+            low_vol_loading=fe.low_vol_loading,
+            size_loading=fe.size_loading,
+            r_squared=fe.r_squared,
+            alpha_annualized=fe.alpha_annualized,
+            tracking_error=fe.tracking_error,
+        )
 
 
 def compute_factor_exposure(
