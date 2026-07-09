@@ -199,8 +199,13 @@
     "Validate API inputs",
     "Refactor complex code",
     "Implement unit tests",
-    "Monitor model drift"
+    "Monitor model drift",
+    "cleanup on api/v1/pipeline.py: success \u2014 tests green",
+    "cleanup on test/unit/test_time_series_momentum.py: success \u2014 tests green",
+    "cleanup on strategies/manual/order_flow_imbalance.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "cleanup on ml/models/gemini_signal.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T19:39:53.478003+00:00",
+  "last_updated": "2026-07-09T21:02:40.313217+00:00",
   "total": 200
 }
