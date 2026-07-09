@@ -6,8 +6,12 @@ These models can forecast without training on your data — huge alpha for rare 
 Install: pip install chronos-forecasting
 """
 from __future__ import annotations
-import numpy as np
+
+import time
 from typing import Literal
+
+import numpy as np
+
 from app.utils.logging import logger
 
 try:
@@ -37,6 +41,7 @@ class FoundationModelSignal:
         self.model_name = model_name
         self._pipeline = None
         self._loaded = False
+        self._signal_count = 0  # tracks number of forecast calls
 
     def _load(self) -> None:
         if self._loaded:
@@ -52,8 +57,10 @@ class FoundationModelSignal:
             logger.info("Chronos loaded.")
         else:
             if self.model_name != "naive":
-                logger.warning(f"chronos not installed. Using naive baseline. pip install chronos-forecasting")
-            self.model_name = "naive"
+                logger.warning(
+                    "chronos not installed. Using naive baseline. pip install chronos-forecasting"
+                )
+                self.model_name = "naive"
         self._loaded = True
 
     def forecast(self, prices: list[float], horizon: int = 5) -> dict:
@@ -65,37 +72,58 @@ class FoundationModelSignal:
         Returns:
             dict with: direction (+1/-1), confidence, quantile forecasts
         """
+        start_time = time.time()
+        self._signal_count += 1
+
         self._load()
         arr = np.array(prices, dtype=np.float32)
 
         if self.model_name == "naive" or not HAS_CHRONOS:
-            return self._naive_forecast(arr, horizon)
+            result = self._naive_forecast(arr, horizon)
+        else:
+            # Chronos forecast
+            try:
+                context = torch.tensor(arr).unsqueeze(0)  # (1, T)
+                forecast = self._pipeline.predict(
+                    context, prediction_length=horizon, num_samples=20
+                )
+                # forecast shape: (num_samples, 1, horizon)
+                samples = forecast[0].numpy()  # (num_samples, horizon)
+                median = np.median(samples, axis=0)
+                q10 = np.percentile(samples, 10, axis=0)
+                q90 = np.percentile(samples, 90, axis=0)
+                last_price = arr[-1]
+                forecast_end = float(np.median(samples[:, -1]))
+                direction = 1 if forecast_end > last_price else -1
+                confidence = min(
+                    abs(forecast_end - last_price) / (last_price * 0.01 + 1e-9), 1.0
+                )
+                result = {
+                    "model": "chronos",
+                    "direction": direction,
+                    "confidence": round(float(confidence), 3),
+                    "forecast_median": median.tolist(),
+                    "forecast_q10": q10.tolist(),
+                    "forecast_q90": q90.tolist(),
+                    "horizon": horizon,
+                }
+            except Exception as e:
+                logger.error(f"Chronos forecast error: {e}")
+                result = self._naive_forecast(arr, horizon)
 
-        # Chronos forecast
-        try:
-            context = torch.tensor(arr).unsqueeze(0)  # (1, T)
-            forecast = self._pipeline.predict(context, prediction_length=horizon, num_samples=20)
-            # forecast shape: (num_samples, 1, horizon)
-            samples = forecast[0].numpy()  # (num_samples, horizon)
-            median = np.median(samples, axis=0)
-            q10 = np.percentile(samples, 10, axis=0)
-            q90 = np.percentile(samples, 90, axis=0)
-            last_price = arr[-1]
-            forecast_end = float(np.median(samples[:, -1]))
-            direction = 1 if forecast_end > last_price else -1
-            confidence = min(abs(forecast_end - last_price) / (last_price * 0.01 + 1e-9), 1.0)
-            return {
-                "model": "chronos",
-                "direction": direction,
-                "confidence": round(float(confidence), 3),
-                "forecast_median": median.tolist(),
-                "forecast_q10": q10.tolist(),
-                "forecast_q90": q90.tolist(),
-                "horizon": horizon,
-            }
-        except Exception as e:
-            logger.error(f"Chronos forecast error: {e}")
-            return self._naive_forecast(arr, horizon)
+        # Structured logging of key metrics
+        exec_time = time.time() - start_time
+        pnl_estimate = (
+            result.get("forecast_median", [0])[-1] - arr[-1]
+            if isinstance(result.get("forecast_median"), list) and result.get("forecast_median")
+            else 0.0
+        )
+        logger.info(
+            f"FoundationModelSignal forecast | count={self._signal_count} | exec_time={exec_time:.4f}s | "
+            f"model={result.get('model')} | direction={result.get('direction')} | "
+            f"confidence={result.get('confidence')} | pnl_estimate={pnl_estimate:.6f}"
+        )
+        return result
 
     def _naive_forecast(self, arr: np.ndarray, horizon: int) -> dict:
         """Simple momentum baseline: 20-day SMA direction."""
@@ -104,7 +132,9 @@ class FoundationModelSignal:
         sma20 = np.mean(arr[-20:])
         direction = 1 if arr[-1] > sma20 else -1
         confidence = min(abs(arr[-1] - sma20) / sma20, 0.8)
-        forecast_prices = [arr[-1] * (1 + direction * 0.001 * i) for i in range(1, horizon + 1)]
+        forecast_prices = [
+            arr[-1] * (1 + direction * 0.001 * i) for i in range(1, horizon + 1)
+        ]
         return {
             "model": "naive_momentum",
             "direction": direction,
