@@ -19,6 +19,10 @@ from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 logger = logging.getLogger(__name__)
 
 
+class ExecutionError(RuntimeError):
+    """Custom exception for execution‑level failures."""
+
+
 class LimitFirstExecution:
     """
     Execute orders using a *limit‑first* approach.
@@ -82,7 +86,6 @@ class LimitFirstExecution:
         ``execution_time_ms``, ``filled_qty``, ``fill_price``, ``status``, and
         ``pnl`` when calculable.
         """
-        # Increment signal counter and capture start time
         LimitFirstExecution._signal_counter += 1
         signal_id = LimitFirstExecution._signal_counter
         start_ts = time.perf_counter()
@@ -100,29 +103,45 @@ class LimitFirstExecution:
         )
 
         try:
-            # Get current quote
-            quote = await self.broker.get_quote(request.symbol)
+            # ---- Quote retrieval -------------------------------------------------
+            try:
+                quote = await self.broker.get_quote(request.symbol)
+            except (ConnectionError, asyncio.TimeoutError) as exc:
+                raise ExecutionError("Failed to retrieve quote") from exc
+
             ref_price = quote.ask if request.side == "buy" else quote.bid
             offset = ref_price * self.offset_bps / 10_000
 
             if request.side == "buy":
-                limit_price = quote.ask - offset  # post below ask to improve fill
+                limit_price = quote.ask - offset
             else:
-                limit_price = quote.bid + offset  # post above bid to improve fill
+                limit_price = quote.bid + offset
 
             limit_req = OrderRequest(
                 **{**asdict(request), "order_type": "limit", "limit_price": round(limit_price, 4)}
             )
-            result = await self.broker.place_order(limit_req)
+
+            # ---- Place limit order ------------------------------------------------
+            try:
+                result = await self.broker.place_order(limit_req)
+            except (ConnectionError, asyncio.TimeoutError) as exc:
+                raise ExecutionError("Failed to place limit order") from exc
 
             if result.status in ("filled", "partially_filled"):
-                # Successful limit fill
                 return self._log_and_return(result, signal_id, start_ts, request, ref_price)
 
-            # Wait for fill, then fallback to market
+            # ---- Wait for fill ----------------------------------------------------
             for _ in range(self.fallback_seconds):
                 await asyncio.sleep(1)
-                order_status = await self.broker.get_order(result.broker_order_id)
+                try:
+                    order_status = await self.broker.get_order(result.broker_order_id)
+                except (ConnectionError, asyncio.TimeoutError) as exc:
+                    logger.warning(
+                        "Failed to poll order status; will continue waiting",
+                        extra={"signal_id": signal_id, "error": str(exc)},
+                    )
+                    continue
+
                 if order_status.get("status") in ("filled", "closed"):
                     result.status = "filled"
                     result.filled_qty = float(
@@ -130,18 +149,45 @@ class LimitFirstExecution:
                     )
                     return self._log_and_return(result, signal_id, start_ts, request, ref_price)
 
-            # Cancel limit and submit market
-            await self.broker.cancel_order(result.broker_order_id)
+            # ---- Cancel limit and fall back to market ----------------------------
+            try:
+                await self.broker.cancel_order(result.broker_order_id)
+            except (ConnectionError, asyncio.TimeoutError) as exc:
+                logger.warning(
+                    "Failed to cancel limit order; proceeding with market fallback",
+                    extra={"signal_id": signal_id, "error": str(exc)},
+                )
+
             market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
-            market_result = await self.broker.place_order(market_req)
+            try:
+                market_result = await self.broker.place_order(market_req)
+            except (ConnectionError, asyncio.TimeoutError) as exc:
+                raise ExecutionError("Failed to place market order after limit fallback") from exc
+
             return self._log_and_return(market_result, signal_id, start_ts, request, ref_price)
 
-        except Exception as exc:
+        except ExecutionError as exec_err:
+            logger.error(
+                "LimitFirstExecution encountered a recoverable error; falling back to market",
+                extra={"signal_id": signal_id, "error": str(exec_err)},
+            )
+            # Fallback to market order on any execution‑level error
+            market_req = OrderRequest(**{**asdict(request), "order_type": "market"})
+            try:
+                market_result = await self.broker.place_order(market_req)
+            except Exception as exc:  # pragma: no cover – last‑ditch failure
+                logger.exception(
+                    "Market fallback also failed",
+                    extra={"signal_id": signal_id, "error": str(exc)},
+                )
+                raise
+            return self._log_and_return(market_result, signal_id, start_ts, request, None)
+
+        except Exception as exc:  # pragma: no cover – unexpected failures
             logger.exception(
-                "LimitFirstExecution encountered an error, falling back to market",
+                "Unexpected error in LimitFirstExecution; attempting market fallback",
                 extra={"signal_id": signal_id, "error": str(exc)},
             )
-            # If anything fails, fall back to direct market order
             market_req = OrderRequest(**{**asdict(request), "order_type": "market"})
             market_result = await self.broker.place_order(market_req)
             return self._log_and_return(market_result, signal_id, start_ts, request, None)
@@ -178,12 +224,10 @@ class LimitFirstExecution:
         end_ts = time.perf_counter()
         exec_time_ms = int((end_ts - start_ts) * 1000)
 
-        # Attempt to extract fill price for P&L calculation
         fill_price = getattr(result, "filled_price", None) or getattr(result, "avg_price", None)
 
         pnl: Optional[float] = None
         if fill_price is not None and reference_price is not None:
-            # Simple P&L: (reference - fill) * quantity for buys, opposite for sells
             qty = getattr(result, "filled_qty", request.quantity)
             if request.side == "buy":
                 pnl = (reference_price - fill_price) * qty
