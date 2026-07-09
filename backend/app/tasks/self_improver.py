@@ -7,12 +7,15 @@ Self-improvement autoloop. Runs forever, looking for ways to improve the platfor
   5. Sleep, then repeat
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import random
 import uuid
 from datetime import datetime, timezone, timedelta
+from json import JSONDecodeError
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from app.utils.logging import logger
 
@@ -20,7 +23,7 @@ RESULTS_FILE = Path(__file__).parents[3] / "experiments" / "results" / "self_imp
 RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # Parameter search spaces per strategy
-PARAM_SPACES = {
+PARAM_SPACES: Dict[str, Dict[str, List[Any]]] = {
     "momentum": {
         "lookback_months": [3, 6, 9, 12],
         "min_score": [0.1, 0.2, 0.3, 0.5],
@@ -46,69 +49,127 @@ PARAM_SPACES = {
 
 
 class SelfImprover:
-    def __init__(self, algo_agent=None, interval_seconds: int = 900):
+    def __init__(self, algo_agent: Any = None, interval_seconds: int = 900) -> None:
         self.algo_agent = algo_agent
         self.interval_seconds = interval_seconds
-        self._best_params: dict[str, dict] = {}    # strategy → best params dict
-        self._best_sharpe: dict[str, float] = {}   # strategy → best Sharpe
+        self._best_params: Dict[str, Dict[str, Any]] = {}    # strategy → best params dict
+        self._best_sharpe: Dict[str, float] = {}   # strategy → best Sharpe
         self._running = False
         self._iteration = 0
 
-    def _sample_params(self, strategy: str) -> dict:
+    def _sample_params(self, strategy: str) -> Dict[str, Any]:
         """Random sample from PARAM_SPACES."""
         space = PARAM_SPACES.get(strategy, {})
         return {k: random.choice(v) for k, v in space.items()}
 
-    async def _evaluate(self, strategy: str, symbol: str, params: dict) -> float:
+    async def _evaluate(self, strategy: str, symbol: str, params: Dict[str, Any]) -> float:
         """Run a quick backtest with the given params. Returns Sharpe."""
         try:
             import pandas as pd
             import yfinance as yf
             from app.backtest.engine import run_backtest
             from app.strategies import STRATEGY_REGISTRY
+        except ImportError as ie:
+            logger.error(
+                "Self-improver import failed",
+                strategy=strategy,
+                symbol=symbol,
+                error=str(ie),
+                exc_info=True,
+            )
+            return 0.0
 
+        try:
             end = datetime.now(timezone.utc)
             start = end - timedelta(days=730)
+
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False,
+                ),
             )
             if hist is None or len(hist) < 60:
+                logger.debug(
+                    "Insufficient historical data",
+                    strategy=strategy,
+                    symbol=symbol,
+                    rows=len(hist) if hist is not None else 0,
+                )
                 return 0.0
 
             close = hist["Close"].squeeze() if hasattr(hist["Close"], "squeeze") else hist["Close"]
 
             cls = STRATEGY_REGISTRY.get(strategy)
             if not cls:
+                logger.warning(
+                    "Strategy not found in registry",
+                    strategy=strategy,
+                )
                 return 0.0
 
             try:
                 strat = cls(**params)
-            except TypeError:
+            except TypeError as te:
+                logger.debug(
+                    "Strategy constructor TypeError, falling back to default init",
+                    strategy=strategy,
+                    error=str(te),
+                )
                 strat = cls()  # ignore params if constructor doesn't accept them
 
             signals = strat.backtest_signals(hist)
             if signals is None or (hasattr(signals, "__len__") and len(signals) < 30):
+                logger.debug(
+                    "Generated signals are insufficient",
+                    strategy=strategy,
+                    symbol=symbol,
+                    signal_len=len(signals) if signals is not None else 0,
+                )
                 return 0.0
 
-            sig_series = signals if hasattr(signals, "values") else pd.Series(signals, index=hist.index)
+            sig_series = (
+                signals
+                if hasattr(signals, "values")
+                else pd.Series(signals, index=hist.index)
+            )
             metrics = run_backtest(sig_series, close)
             return float(metrics.sharpe)
+        except (ValueError, RuntimeError) as ve:
+            logger.error(
+                "Self-improver evaluation runtime error",
+                strategy=strategy,
+                symbol=symbol,
+                error=str(ve),
+                exc_info=True,
+            )
+            return 0.0
         except Exception as e:
-            logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
+            logger.error(
+                "Self-improver unexpected evaluation failure",
+                strategy=strategy,
+                symbol=symbol,
+                error=str(e),
+                exc_info=True,
+            )
             return 0.0
 
-    async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
+    async def _improve_strategy(self, strategy: str, symbol: str) -> Optional[Dict[str, Any]]:
         """Sweep params for one strategy. Returns promoted result or None."""
         space = PARAM_SPACES.get(strategy)
         if not space:
+            logger.debug("No parameter space defined for strategy", strategy=strategy)
             return None
 
         current_best = self._best_sharpe.get(f"{strategy}:{symbol}", 0.0)
         best_iter_sharpe = current_best
-        best_iter_params = None
+        best_iter_params: Optional[Dict[str, Any]] = None
 
         # 5 random configs per iteration
         for _ in range(5):
@@ -123,14 +184,16 @@ class SelfImprover:
             key = f"{strategy}:{symbol}"
             self._best_params[key] = best_iter_params
             self._best_sharpe[key] = best_iter_sharpe
-            promotion = {
+            promotion: Dict[str, Any] = {
                 "id": str(uuid.uuid4()),
                 "strategy": strategy,
                 "symbol": symbol,
                 "params": best_iter_params,
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
+                "improvement_pct": round(
+                    (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
+                ),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
@@ -138,24 +201,59 @@ class SelfImprover:
             return promotion
         return None
 
-    def _persist(self, entry: dict) -> None:
+    def _persist(self, entry: Dict[str, Any]) -> None:
         try:
-            history = json.loads(RESULTS_FILE.read_text()) if RESULTS_FILE.exists() else []
+            if RESULTS_FILE.exists():
+                try:
+                    history = json.loads(RESULTS_FILE.read_text())
+                except JSONDecodeError as jde:
+                    logger.error(
+                        "Failed to decode existing results file; starting fresh",
+                        error=str(jde),
+                        exc_info=True,
+                    )
+                    history = []
+            else:
+                history = []
+
             history.append(entry)
+            # Keep only the latest 300 entries
             history = history[-300:]
             RESULTS_FILE.write_text(json.dumps(history, indent=2))
-        except Exception as exc:
-            logger.debug("self_improver persist failed", error=str(exc))
+        except OSError as ose:
+            logger.error(
+                "Self-improver file I/O error during persist",
+                error=str(ose),
+                exc_info=True,
+            )
+        except Exception as e:
+            logger.error(
+                "Self-improver unexpected error during persist",
+                error=str(e),
+                exc_info=True,
+            )
 
-    def get_best_params(self, strategy: str, symbol: str) -> dict | None:
+    def get_best_params(self, strategy: str, symbol: str) -> Optional[Dict[str, Any]]:
         return self._best_params.get(f"{strategy}:{symbol}")
 
-    def get_history(self) -> list[dict]:
+    def get_history(self) -> List[Dict[str, Any]]:
         if not RESULTS_FILE.exists():
             return []
         try:
             return json.loads(RESULTS_FILE.read_text())
-        except Exception:
+        except JSONDecodeError as jde:
+            logger.error(
+                "Failed to decode results file in get_history",
+                error=str(jde),
+                exc_info=True,
+            )
+            return []
+        except OSError as ose:
+            logger.error(
+                "File I/O error reading results file in get_history",
+                error=str(ose),
+                exc_info=True,
+            )
             return []
 
     async def run(self) -> None:
@@ -163,20 +261,34 @@ class SelfImprover:
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
         # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        TARGETS = [
+            ("momentum", "SPY"),
+            ("momentum", "QQQ"),
+            ("mean_reversion", "AAPL"),
+            ("rsi_macd", "MSFT"),
+            ("breakout", "NVDA"),
+            ("supertrend", "SPY"),
+        ]
 
         while self._running:
             self._iteration += 1
-            logger.info("SelfImprover iteration", n=self._iteration)
+            logger.info("SelfImprover iteration", iteration=self._iteration)
             for strategy, symbol in TARGETS:
                 try:
                     await self._improve_strategy(strategy, symbol)
                 except asyncio.CancelledError:
+                    logger.info("SelfImprover run cancelled")
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                        exc_info=True,
+                    )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
         self._running = False
+        logger.info("SelfImprover stopping")
