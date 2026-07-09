@@ -254,14 +254,16 @@ def _bars_list_to_df(bars_list: list) -> "pd.DataFrame | None":
     return df[["open", "high", "low", "close", "volume"]]
 
 
-# 300 calendar days ≈ 200 trading days, matching the default `limit`. Without an
-# explicit start Alpaca returns only the current partial day, which failed the
+# 420 calendar days ≈ 290 trading days. Was 300d (~200 trading days), which is
+# BELOW the 252-row (1y) minimum that range/premium strategies like iron_condor
+# require — so they returned None on every desk run regardless of setup. Without
+# an explicit start Alpaca returns only the current partial day, which failed the
 # >=50-row minimum and left the bars cache empty on every run.
 def _bars_start() -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (datetime.now(timezone.utc) - timedelta(days=420)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 200) -> "pd.DataFrame | None":
+async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 300) -> "pd.DataFrame | None":
     try:
         is_crypto = "/" in symbol
         if is_crypto:
@@ -281,7 +283,7 @@ async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 200) -> "
 
 
 async def _get_bars_batch(symbols: list[str], timeframe: str = "1Day",
-                          limit: int = 200) -> "dict[str, pd.DataFrame]":
+                          limit: int = 300) -> "dict[str, pd.DataFrame]":
     """Fetch bars for many symbols in as few requests as possible.
 
     Alpaca's data API takes a comma-separated ``symbols=`` for both crypto
