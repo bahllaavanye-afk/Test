@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, List, Dict
 
 import pandas as pd
 
@@ -96,7 +96,7 @@ class RiskManager:
             )
             raise EquityUpdateError("Error updating equity") from exc
 
-    def update_positions(self, positions: list[dict]) -> None:
+    def update_positions(self, positions: List[Dict]) -> None:
         try:
             if not isinstance(positions, list):
                 raise TypeError("Positions must be a list of dicts")
@@ -210,18 +210,43 @@ class RiskManager:
         avg_win_pct: float,
         avg_loss_pct: float,
     ) -> int:
+        """
+        Compute the Kelly optimal position size for a given instrument.
+        Returns the size as an integer number of shares/contracts.
+        """
         try:
-            return size_from_kelly(
+            # Basic type validation
+            if not isinstance(symbol, str):
+                raise TypeError(f"symbol must be a string, got {type(symbol)}")
+            for arg_name, value in {
+                "price": price,
+                "win_rate": win_rate,
+                "avg_win_pct": avg_win_pct,
+                "avg_loss_pct": avg_loss_pct,
+            }.items():
+                if not isinstance(value, (int, float)):
+                    raise TypeError(f"{arg_name} must be numeric, got {type(value)}")
+                if value < 0:
+                    raise ValueError(f"{arg_name} cannot be negative")
+
+            # Delegate to the Kelly sizing utility
+            raw_size = size_from_kelly(
                 equity=self._equity,
                 win_rate=win_rate,
                 avg_win_pct=avg_win_pct,
                 avg_loss_pct=avg_loss_pct,
                 price=price,
-                max_pct=self.max_position_pct,
+                symbol=symbol,
             )
-        except Exception as exc:
+            # Ensure a sensible integer size; zero size is treated as a signal to not trade
+            size_int = int(round(raw_size))
+            if size_int < 0:
+                raise ValueError("Calculated Kelly size is negative")
+            return size_int
+
+        except (TypeError, ValueError) as exc:
             logger.error(
-                "Kelly sizing calculation failed",
+                "Invalid parameters for Kelly sizing",
                 symbol=symbol,
                 price=price,
                 win_rate=win_rate,
@@ -231,4 +256,17 @@ class RiskManager:
                 exc_msg=str(exc),
                 exc_info=True,
             )
-            raise KellySizingError("Error computing Kelly size") from exc
+            raise KellySizingError("Invalid inputs for Kelly sizing") from exc
+        except Exception as exc:
+            logger.error(
+                "Unexpected error during Kelly sizing calculation",
+                symbol=symbol,
+                price=price,
+                win_rate=win_rate,
+                avg_win_pct=avg_win_pct,
+                avg_loss_pct=avg_loss_pct,
+                exc_type=type(exc).__name__,
+                exc_msg=str(exc),
+                exc_info=True,
+            )
+            raise KellySizingError("Error calculating Kelly sizing") from exc
