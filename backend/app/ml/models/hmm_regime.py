@@ -14,13 +14,13 @@ from __future__ import annotations
 import os
 import pickle
 import numpy as np
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 # ── Baum-Welch fallback (pure NumPy) ─────────────────────────────────────────
 
 class _BaumWelchHMM:
-    """Minimal Gaussian HMM via Baum-Welch EM. 2-feature input."""
+    """Minimal Gaussian HMM via Baum-Welch EM. 2‑feature input."""
 
     def __init__(self, n_states: int = 3, n_iter: int = 100, tol: float = 1e-4):
         self.n_states = n_states
@@ -28,7 +28,7 @@ class _BaumWelchHMM:
         self.tol = tol
         self._init_params()
 
-    def _init_params(self):
+    def _init_params(self) -> None:
         K = self.n_states
         self.pi = np.ones(K) / K
         self.A = np.full((K, K), 1.0 / K)
@@ -37,7 +37,7 @@ class _BaumWelchHMM:
         self.sigma2 = np.ones((K, 2)) * 0.0001
 
     def _gaussian_pdf(self, X: np.ndarray) -> np.ndarray:
-        """Returns (T, K) emission probabilities."""
+        """Emission probabilities (T, K)."""
         T = len(X)
         K = self.n_states
         B = np.zeros((T, K))
@@ -118,24 +118,30 @@ class _BaumWelchHMM:
 
 class RegimeDetector:
     """
-    3-state HMM for market regime detection.
+    3‑state HMM for market regime detection.
 
     Fit on a return series; features are [return, abs_return].
     States are automatically labelled as bear/sideways/bull by drift ordering.
     """
     N_STATES = 3
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._model: Optional[_BaumWelchHMM] = None
         self._state_map: dict[int, int] = {0: 0, 1: 1, 2: 2}
         self._use_hmmlearn = False
-        self._hmmlearn_model = None
+        self._hmmlearn_model: Any = None
         self._fitted = False
 
+    # --------------------------------------------------------------------- #
+    # Feature engineering
+    # --------------------------------------------------------------------- #
     def _build_features(self, returns: np.ndarray) -> np.ndarray:
         r = np.asarray(returns, dtype=float)
         return np.column_stack([r, np.abs(r)])
 
+    # --------------------------------------------------------------------- #
+    # Model fitting
+    # --------------------------------------------------------------------- #
     def fit(self, returns: np.ndarray) -> "RegimeDetector":
         X = self._build_features(returns)
         try:
@@ -157,14 +163,18 @@ class RegimeDetector:
 
         # Establish state → regime label by drift ordering
         states = self.predict(returns)
-        means = [float(returns[states == k].mean()) if (states == k).any() else 0.0
-                 for k in range(self.N_STATES)]
-        # Sort states by mean drift: lowest→bear(0), middle→sideways(1), highest→bull(2)
+        means = [
+            float(returns[states == k].mean()) if (states == k).any() else 0.0
+            for k in range(self.N_STATES)
+        ]
         order = sorted(range(self.N_STATES), key=lambda k: means[k])
         self._state_map = {raw: label for label, raw in enumerate(order)}
         self._fitted = True
         return self
 
+    # --------------------------------------------------------------------- #
+    # Prediction helpers
+    # --------------------------------------------------------------------- #
     def predict(self, returns: np.ndarray) -> np.ndarray:
         """Raw Viterbi state sequence (0/1/2, unordered)."""
         X = self._build_features(returns)
@@ -180,22 +190,97 @@ class RegimeDetector:
         return np.array([self._state_map.get(int(s), s) for s in raw])
 
     def current_regime(self, returns: np.ndarray) -> int:
-        """Returns the current regime label for the most recent bar."""
+        """Current regime label for the most recent bar."""
         return int(self.predict_regimes(returns)[-1])
 
     def regime_name(self, regime: int) -> str:
         return {0: "bear", 1: "sideways", 2: "bull"}.get(regime, "unknown")
 
+    # --------------------------------------------------------------------- #
+    # Signal generation – tightened entry/exit logic
+    # --------------------------------------------------------------------- #
+    def generate_signal(
+        self,
+        returns: np.ndarray,
+        min_persistence: int = 3,
+        vol_threshold: float = 0.015,
+    ) -> Dict[str, bool]:
+        """
+        Produce a simple long‑only signal based on regime and volatility.
+
+        Entry conditions (tightened):
+          * Current regime is bull (2) **and**
+          * The bull regime has persisted for at least ``min_persistence`` bars,
+            reducing false‑positive regime flips.
+          * Recent volatility (std of returns over the same window) is below
+            ``vol_threshold`` – i.e., a low‑vol environment which is typical for
+            sustained up‑trends.
+
+        Exit conditions:
+          * Regime switches away from bull, **or**
+          * Volatility spikes above ``vol_threshold``.
+
+        Returns a dict with keys:
+          * ``enter_long`` – True when a new position should be opened.
+          * ``exit_long``  – True when an existing long position should be closed.
+        """
+        if not self._fitted:
+            raise RuntimeError("RegimeDetector must be fitted before generating signals.")
+
+        if len(returns) < min_persistence:
+            return {"enter_long": False, "exit_long": False}
+
+        regimes = self.predict_regimes(returns)
+        recent_regimes = regimes[-min_persistence:]
+
+        # Entry filter: sustained bull regime + low volatility
+        is_bull = recent_regimes[-1] == 2
+        sustained_bull = np.all(recent_regimes == 2)
+        recent_vol = np.std(returns[-min_persistence:])
+        low_vol = recent_vol < vol_threshold
+
+        enter_long = is_bull and sustained_bull and low_vol
+
+        # Exit filter: any regime change away from bull or volatility rise
+        regime_changed = regimes[-1] != 2
+        high_vol = recent_vol >= vol_threshold
+        exit_long = regime_changed or high_vol
+
+        return {"enter_long": bool(enter_long), "exit_long": bool(exit_long)}
+
+    # --------------------------------------------------------------------- #
+    # Persistence utilities
+    # --------------------------------------------------------------------- #
+    def regime_persistence(self, returns: np.ndarray) -> int:
+        """
+        Return the number of consecutive bars the current regime has persisted.
+        """
+        regimes = self.predict_regimes(returns)
+        current = regimes[-1]
+        count = 0
+        for r in reversed(regimes):
+            if r == current:
+                count += 1
+            else:
+                break
+        return count
+
+    # --------------------------------------------------------------------- #
+    # Serialization
+    # --------------------------------------------------------------------- #
     def save(self, path: str) -> None:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "wb") as f:
-            pickle.dump({
-                "model": self._model,
-                "hmmlearn_model": self._hmmlearn_model,
-                "use_hmmlearn": self._use_hmmlearn,
-                "state_map": self._state_map,
-                "fitted": self._fitted,
-            }, f)
+            pickle.dump(
+                {
+                    "model": self._model,
+                    "hmmlearn_model": self._hmmlearn_model,
+                    "use_hmmlearn": self._use_hmmlearn,
+                    "state_map": self._state_map,
+                    "fitted": self._fitted,
+                },
+                f,
+            )
 
     @classmethod
     def load(cls, path: str) -> "RegimeDetector":
@@ -208,8 +293,3 @@ class RegimeDetector:
         det._state_map = data.get("state_map", {0: 0, 1: 1, 2: 2})
         det._fitted = data.get("fitted", False)
         return det
-
-
-# Public alias — the model registry (app/ml/models/__init__.py) imports the HMM
-# regime model as ``HMMRegimeModel``; the implementation class is ``RegimeDetector``.
-HMMRegimeModel = RegimeDetector
