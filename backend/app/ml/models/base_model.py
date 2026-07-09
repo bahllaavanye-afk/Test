@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from pathlib import Path
 import json
 from typing import Any, Dict, Optional, Union
@@ -13,36 +12,68 @@ except ImportError:
     TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
 
+from pydantic import BaseModel, Field, validator
 
-@dataclass
-class EvalMetrics:
+
+class EvalMetrics(BaseModel):
     """
     Container for evaluation metrics produced by a model.
-
-    Attributes
-    ----------
-    accuracy : float
-        Classification accuracy.
-    auc : float
-        Area under the ROC curve.
-    sharpe : float
-        Sharpe ratio of the model's predictions.
-    loss : float | None, default None
-        Optional loss value.
-    f1 : float | None, default None
-        Optional F1 score.
-    precision : float | None, default None
-        Optional precision metric.
-    recall : float | None, default None
-        Optional recall metric.
     """
-    accuracy: float
-    auc: float
-    sharpe: float
-    loss: Optional[float] = None
-    f1: Optional[float] = None
-    precision: Optional[float] = None
-    recall: Optional[float] = None
+
+    accuracy: float = Field(
+        ...,
+        description="Classification accuracy.",
+        example=0.92,
+        ge=0.0,
+        le=1.0,
+    )
+    auc: float = Field(
+        ...,
+        description="Area under the ROC curve.",
+        example=0.95,
+        ge=0.0,
+        le=1.0,
+    )
+    sharpe: float = Field(
+        ...,
+        description="Sharpe ratio of the model's predictions.",
+        example=1.5,
+    )
+    loss: Optional[float] = Field(
+        None,
+        description="Optional loss value.",
+        example=0.123,
+    )
+    f1: Optional[float] = Field(
+        None,
+        description="Optional F1 score.",
+        example=0.88,
+        ge=0.0,
+        le=1.0,
+    )
+    precision: Optional[float] = Field(
+        None,
+        description="Optional precision metric.",
+        example=0.9,
+        ge=0.0,
+        le=1.0,
+    )
+    recall: Optional[float] = Field(
+        None,
+        description="Optional recall metric.",
+        example=0.85,
+        ge=0.0,
+        le=1.0,
+    )
+
+    @validator("accuracy", "auc", "f1", "precision", "recall")
+    def _check_probability_range(cls, v: Optional[float]) -> Optional[float]:
+        """
+        Ensure that probability‑based metrics lie within the inclusive range [0, 1].
+        """
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("Metric values must be between 0 and 1")
+        return v
 
 
 class AbstractModel(ABC):
@@ -127,6 +158,7 @@ class AbstractModel(ABC):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         if TORCH_AVAILABLE:
             import torch as _torch
+
             _torch.save(
                 {
                     "state_dict": self.state_dict() if hasattr(self, "state_dict") else {},  # type: ignore[attr-defined]
@@ -157,6 +189,7 @@ class AbstractModel(ABC):
         if not TORCH_AVAILABLE:
             raise RuntimeError("torch is required to load model checkpoints")
         import torch as _torch
+
         checkpoint = _torch.load(path, map_location="cpu", weights_only=False)
         model = cls(**checkpoint.get("metadata", {}).get("init_kwargs", {}))
         if checkpoint["state_dict"] and hasattr(model, "load_state_dict"):
@@ -180,6 +213,7 @@ class AbstractModel(ABC):
         if not TORCH_AVAILABLE:
             raise RuntimeError("torch is required for inference")
         import torch as _torch
+
         if hasattr(self, "eval"):
             self.eval()  # type: ignore[attr-defined]
         with _torch.no_grad():
