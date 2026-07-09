@@ -1149,10 +1149,13 @@ def employee_provider_prompt(emp_key: str, task: str, state: dict | None = None)
 
     # Persist to this employee's brain: remember the task+output and share a
     # one-line learning to the team bus so peers can build on it. Fail-open.
+    # Skipped under pytest so the test suite never writes the real state file.
     try:
-        from employee_brain import record_interaction
-        _share = result.split("\n", 1)[0].strip()[:200] if result else None
-        record_interaction(emp, task[:300], result, share_line=_share)
+        import os as _os
+        if not _os.environ.get("PYTEST_CURRENT_TEST"):
+            from employee_brain import record_interaction
+            _share = result.split("\n", 1)[0].strip()[:200] if result else None
+            record_interaction(emp, task[:300], result, share_line=_share)
     except Exception:  # noqa: BLE001
         pass
 
