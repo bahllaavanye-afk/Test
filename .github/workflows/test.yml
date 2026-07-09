@@ -33,8 +33,10 @@ jobs:
           pip install uv --quiet
           uv pip install --system pytest pytest-timeout
 
-      - name: Run Slack agent tests
-        run: python -m pytest .github/scripts/test_slack_agent_team.py -v --tb=short -x --timeout=30
+      - name: Run agent script tests
+        # All .github/scripts/test_*.py (slack agents, strategy gate/trimmer, and
+        # the desk bars-batch regression that keeps the desks fed with data).
+        run: python -m pytest .github/scripts/test_*.py -v --tb=short -x --timeout=30
 
   test:
     runs-on: ubuntu-latest

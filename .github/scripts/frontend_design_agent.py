@@ -135,11 +135,57 @@ Output the complete improved file:"""
 
     return result.strip()
 
-def syntax_check_tsx(code: str) -> bool:
-    """Basic validity check: must have import React or 'use client', must have export."""
+def _brackets_balanced(code: str) -> bool:
+    """True if (), [], {} are balanced. Strings/templates/comments are blanked
+    first so their delimiters don't cause false imbalance. A file truncated
+    mid-body (the repeated RegimeIndicator/AppShell breakage) leaves unclosed
+    braces/parens and fails here."""
+    import re
+    cleaned = re.sub(r"//[^\n]*", "", code)
+    cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.S)
+    cleaned = re.sub(r"`(?:\\.|[^`\\])*`", "``", cleaned, flags=re.S)
+    cleaned = re.sub(r'"(?:\\.|[^"\\])*"', '""', cleaned)
+    cleaned = re.sub(r"'(?:\\.|[^'\\])*'", "''", cleaned)
+    pairs = {")": "(", "]": "[", "}": "{"}
+    opens = set(pairs.values())
+    stack: list[str] = []
+    for ch in cleaned:
+        if ch in opens:
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack[-1] != pairs[ch]:
+                return False
+            stack.pop()
+    return not stack
+
+
+def syntax_check_tsx(code: str, original: str | None = None) -> bool:
+    """Reject anything that looks incomplete BEFORE it is written/committed.
+
+    The old check only required export+import+JSX+len>100, which a file
+    truncated at `return (` still satisfies — so the LLM returning a cut-off
+    response (max_tokens) truncated RegimeIndicator.tsx and AppShell.tsx and
+    broke `npm run build` twice, blocking auto-merge fleet-wide. These guards
+    catch the truncation without needing a node toolchain."""
     has_structure = ("export" in code and ("import" in code or "'use client'" in code))
     has_jsx = ("<" in code and ">" in code)
-    return has_structure and has_jsx and len(code) > 100
+    if not (has_structure and has_jsx and len(code) > 100):
+        return False
+    if not _brackets_balanced(code):
+        print("  ✗ unbalanced brackets — output looks truncated")
+        return False
+    # A legit color/style tweak never shrinks a file by >40%; a big drop means
+    # the response was cut off.
+    if original is not None and len(code.strip()) < 0.6 * len(original.strip()):
+        print(f"  ✗ output {len(code)}B << original {len(original)}B — looks truncated")
+        return False
+    # Must end on a plausible closing token or a bare identifier
+    # (`export default Foo`), not on a dangling operator/opener like `: 60_` or `(`.
+    tail = code.rstrip()[-1:]
+    if tail not in "})];>\"'`" and not (tail.isalnum() or tail == "_"):
+        print("  ✗ ends on a dangling token — output looks truncated")
+        return False
+    return True
 
 def git_commit(file_path: str, message: str) -> bool:
     subprocess.run(["git", "add", file_path], check=True)
@@ -183,8 +229,8 @@ def main():
             print(f"  ✗ No LLM response for {target}")
             continue
 
-        if not syntax_check_tsx(result):
-            print(f"  ✗ TSX validation failed for {target}")
+        if not syntax_check_tsx(result, content):
+            print(f"  ✗ TSX validation failed (looks truncated) for {target} — skipped, not committed")
             continue
 
         if result.strip() == content.strip():
