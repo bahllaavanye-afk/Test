@@ -7,12 +7,15 @@ average across calm and turbulent regimes.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -115,6 +118,20 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
+    # Input validation
+    if not isinstance(signals, pd.Series):
+        logger.error("Invalid type for signals: expected pd.Series, got %s", type(signals))
+        raise TypeError("signals must be a pandas Series")
+    if not isinstance(prices, pd.Series):
+        logger.error("Invalid type for prices: expected pd.Series, got %s", type(prices))
+        raise TypeError("prices must be a pandas Series")
+    if opens is not None and not isinstance(opens, pd.Series):
+        logger.error("Invalid type for opens: expected pd.Series or None, got %s", type(opens))
+        raise TypeError("opens must be a pandas Series or None")
+    if volume is not None and not isinstance(volume, pd.Series):
+        logger.error("Invalid type for volume: expected pd.Series or None, got %s", type(volume))
+        raise TypeError("volume must be a pandas Series or None")
+
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
 
@@ -124,11 +141,64 @@ def run_stress_tests(
     price_index = prices.index
 
     for scenario in scenarios:
-        start_ts = pd.Timestamp(scenario.start)
-        end_ts = pd.Timestamp(scenario.end)
+        try:
+            start_ts = pd.Timestamp(scenario.start)
+            end_ts = pd.Timestamp(scenario.end)
 
-        # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+            # Fast check: if the scenario window does not intersect the price index, skip early
+            if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+                results.append(
+                    StressResult(
+                        scenario=scenario,
+                        metrics=None,
+                        period_covered=False,
+                        data_points=0,
+                    )
+                )
+                continue
+
+            s_signals = _slice_series(signals, start_ts, end_ts)
+            s_prices = _slice_series(prices, start_ts, end_ts)
+            s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
+            s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+
+            if s_prices is None or len(s_prices) < 5:
+                results.append(
+                    StressResult(
+                        scenario=scenario,
+                        metrics=None,
+                        period_covered=False,
+                        data_points=len(s_prices) if s_prices is not None else 0,
+                    )
+                )
+                continue
+
+            metrics = run_backtest(
+                signals=s_signals,
+                prices=s_prices,
+                opens=s_opens,
+                volume=s_volume,
+                initial_equity=initial_equity,
+                commission_pct=commission_pct,
+                slippage_pct=slippage_pct,
+            )
+
+            results.append(
+                StressResult(
+                    scenario=scenario,
+                    metrics=metrics,
+                    period_covered=True,
+                    data_points=len(s_prices),
+                )
+            )
+        except (ValueError, TypeError) as e:
+            logger.error(
+                "Error processing scenario %s (%s): %s",
+                scenario.name,
+                scenario.label,
+                str(e),
+                exc_info=True,
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -137,42 +207,20 @@ def run_stress_tests(
                     data_points=0,
                 )
             )
-            continue
-
-        s_signals = _slice_series(signals, start_ts, end_ts)
-        s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
-
-        if s_prices is None or len(s_prices) < 5:
+        except Exception as e:
+            logger.exception(
+                "Unexpected error during stress test for scenario %s (%s)",
+                scenario.name,
+                scenario.label,
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
                     metrics=None,
                     period_covered=False,
-                    data_points=len(s_prices) if s_prices is not None else 0,
+                    data_points=0,
                 )
             )
-            continue
-
-        metrics = run_backtest(
-            signals=s_signals,
-            prices=s_prices,
-            opens=s_opens,
-            volume=s_volume,
-            initial_equity=initial_equity,
-            commission_pct=commission_pct,
-            slippage_pct=slippage_pct,
-        )
-
-        results.append(
-            StressResult(
-                scenario=scenario,
-                metrics=metrics,
-                period_covered=True,
-                data_points=len(s_prices),
-            )
-        )
 
     return results
 
