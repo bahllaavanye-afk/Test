@@ -29,6 +29,8 @@ import numpy as np
 import pandas as pd
 import httpx
 from datetime import date, timedelta
+from typing import Optional, Dict, Any
+
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
@@ -51,8 +53,11 @@ class SkewArbitrageStrategy(AbstractStrategy):
     _ALPACA_BASE = "https://paper-api.alpaca.markets"
     _DATA_BASE = "https://data.alpaca.markets"
 
-    async def _get_skew(self, symbol: str) -> dict | None:
+    async def _get_skew(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get current skew: IV difference between 25Δ put and 25Δ call."""
+        if not symbol:
+            return None
+
         today = date.today()
         exp_min = (today + timedelta(days=self.TARGET_DTE_MIN)).isoformat()
         exp_max = (today + timedelta(days=self.TARGET_DTE_MAX)).isoformat()
@@ -70,7 +75,11 @@ class SkewArbitrageStrategy(AbstractStrategy):
             )
             if contracts_resp.status_code != 200:
                 return None
+
             contracts = contracts_resp.json().get("option_contracts", [])
+            if not isinstance(contracts, list) or not contracts:
+                return None
+
             syms = [c["symbol"] for c in contracts if c.get("symbol")]
             if not syms:
                 return None
@@ -82,7 +91,10 @@ class SkewArbitrageStrategy(AbstractStrategy):
             )
         if snap_resp.status_code != 200:
             return None
+
         snapshots = snap_resp.json().get("snapshots", {})
+        if not isinstance(snapshots, dict):
+            return None
 
         # Find ~25-delta call and ~25-delta put
         put_25 = None
@@ -103,8 +115,12 @@ class SkewArbitrageStrategy(AbstractStrategy):
             if delta is None or iv is None:
                 continue
 
-            delta_abs = abs(float(delta))
-            iv_val = float(iv)
+            try:
+                delta_abs = abs(float(delta))
+                iv_val = float(iv)
+            except (ValueError, TypeError):
+                continue
+
             diff = abs(delta_abs - self.TARGET_DELTA)
 
             if option_type == "put" and diff < 0.05 and diff < put_25_best_diff:
@@ -129,8 +145,9 @@ class SkewArbitrageStrategy(AbstractStrategy):
             "call_symbol": call_25,
         }
 
-    async def analyze(self, data: pd.DataFrame, symbol: str = "SPY") -> Signal | None:
-        if symbol not in self.UNIVERSE:
+    async def analyze(self, data: Optional[pd.DataFrame] = None, symbol: Optional[str] = "SPY") -> Optional[Signal]:
+        # Guard against invalid inputs
+        if not isinstance(symbol, str) or symbol not in self.UNIVERSE:
             return None
 
         skew_data = await self._get_skew(symbol)
@@ -146,7 +163,6 @@ class SkewArbitrageStrategy(AbstractStrategy):
         LOW_SKEW_THRESHOLD = 0.02
 
         if skew > HIGH_SKEW_THRESHOLD:
-            # Puts expensive: sell puts (delta-neutral with calls)
             confidence = min((skew - HIGH_SKEW_THRESHOLD) / 0.04, 1.0)
             return Signal(
                 symbol=symbol,
@@ -167,7 +183,6 @@ class SkewArbitrageStrategy(AbstractStrategy):
                 },
             )
         elif skew < LOW_SKEW_THRESHOLD:
-            # Puts cheap: buy puts (relative to calls)
             confidence = min((LOW_SKEW_THRESHOLD - skew) / 0.03, 1.0)
             return Signal(
                 symbol=symbol,
@@ -185,9 +200,25 @@ class SkewArbitrageStrategy(AbstractStrategy):
             )
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, df: Optional[pd.DataFrame]) -> BacktestSignals:
+        # Defensive handling for None or malformed DataFrames
+        if (
+            df is None
+            or not isinstance(df, pd.DataFrame)
+            or "close" not in df.columns
+            or df["close"].empty
+        ):
+            empty_series = pd.Series(dtype=bool)
+            return BacktestSignals(
+                entries=empty_series,
+                exits=empty_series,
+                short_entries=empty_series,
+                short_exits=empty_series,
+            )
+
         log_ret = np.log(df["close"] / df["close"].shift(1))
         vol_20 = log_ret.rolling(20).std() * np.sqrt(252)
+
         # High vol → high skew historically → sell put-heavy structures (short)
         # Low vol → low skew → buy puts (long)
         vol_pctile = vol_20.rolling(252).rank(pct=True)
