@@ -10,7 +10,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, validator
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -38,14 +38,26 @@ async def list_experiments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Return the most recent experiments (up to 50). Handles empty result sets gracefully."""
     result = await db.execute(
         select(Experiment).order_by(Experiment.started_at.desc()).limit(50)
     )
-    return result.scalars().all()
+    experiments = result.scalars().all()
+    # Ensure we always return a list, even if the query yields None or an empty collection.
+    return experiments if experiments is not None else []
 
 
 class TrainRequest(BaseModel):
     config_name: str  # e.g. "lstm_btc_1h"
+
+    @validator("config_name")
+    def non_empty(cls, v: str) -> str:
+        if v is None:
+            raise ValueError("config_name must not be None")
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("config_name must not be empty")
+        return stripped
 
 
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
@@ -57,8 +69,12 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -78,12 +94,19 @@ async def trigger_training(
     Returns immediately with experiment_id and status='queued'.
     The training runs as a background asyncio task.
     """
+    # Normalise config name, handling possible trailing ".yaml"
     config_name = body.config_name.removesuffix(".yaml")
 
     # Validate config exists
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
-    if not config_path.exists():
+    if not (config_path.is_file() and config_path.exists()):
         available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+        # Guard against empty config directory
+        if not available:
+            raise HTTPException(
+                404,
+                f"No configuration files found in {CONFIGS_DIR}.",
+            )
         raise HTTPException(
             404,
             f"Config '{config_name}' not found. Available: {available[:10]}{'...' if len(available) > 10 else ''}",
@@ -121,7 +144,8 @@ async def list_train_configs(
     if not CONFIGS_DIR.exists():
         return {"configs": []}
     configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
-    return {"configs": configs}
+    # Ensure the result is always a list, even if the directory is empty
+    return {"configs": configs if configs is not None else []}
 
 
 @router.get("/{experiment_id}")
@@ -130,6 +154,9 @@ async def get_experiment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Retrieve a single experiment by its ID, handling missing or empty identifiers."""
+    if not experiment_id or not experiment_id.strip():
+        raise HTTPException(400, "Invalid experiment ID")
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
