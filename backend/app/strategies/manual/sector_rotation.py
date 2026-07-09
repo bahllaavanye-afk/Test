@@ -8,9 +8,13 @@ buy the top 3 sectors, avoid/short the bottom 3.
 Sharpe target: ~0.8 (documented in academic literature)
 Risk bucket: directional
 """
+import logging
+import time
 import pandas as pd
 import numpy as np
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+logger = logging.getLogger(__name__)
 
 
 class SectorRotationStrategy(AbstractStrategy):
@@ -98,6 +102,9 @@ class SectorRotationStrategy(AbstractStrategy):
         For single-symbol mode: use data['close'] and check if the 63-day return
         exceeds a reasonable threshold (acting as if we've already ranked it).
         """
+        start_time = time.time()
+        signal: Signal | None = None
+
         sector_scores = self._get_sector_scores(data)
 
         if sector_scores:
@@ -106,14 +113,12 @@ class SectorRotationStrategy(AbstractStrategy):
             top_symbols = [s for s, _ in ranked[:self.top_n]]
             bottom_symbols = [s for s, _ in ranked[-self.bottom_n:]]
 
-            # Generate signal for the requested symbol (if it's in scope)
             sym_upper = symbol.upper()
             if sym_upper in top_symbols:
                 rank_idx = top_symbols.index(sym_upper)
-                # Higher rank → higher confidence
                 confidence = round(0.70 + (self.top_n - rank_idx) / self.top_n * 0.20, 4)
                 score = sector_scores.get(sym_upper, 0.0)
-                return Signal(
+                signal = Signal(
                     symbol=sym_upper,
                     side="buy",
                     confidence=confidence,
@@ -131,7 +136,7 @@ class SectorRotationStrategy(AbstractStrategy):
                 rank_idx = bottom_symbols.index(sym_upper)
                 confidence = round(0.65 + rank_idx / self.bottom_n * 0.15, 4)
                 score = sector_scores.get(sym_upper, 0.0)
-                return Signal(
+                signal = Signal(
                     symbol=sym_upper,
                     side="sell",
                     confidence=confidence,
@@ -145,19 +150,38 @@ class SectorRotationStrategy(AbstractStrategy):
                         "method": "sector_rotation_bottom3",
                     },
                 )
-            return None
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                "SectorRotation analyze completed (cross-sectional)",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": signal is not None,
+                    "execution_ms": round(elapsed_ms, 2),
+                },
+            )
+            return signal
 
         # Single-symbol fallback: use close column for standalone momentum check
         if "close" not in data.columns or len(data) < self.momentum_period + 1:
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                "SectorRotation analyze completed (insufficient data)",
+                extra={"symbol": symbol, "signal_generated": False, "execution_ms": round(elapsed_ms, 2)},
+            )
             return None
 
         mom = self._compute_momentum(data["close"], self.momentum_period)
         if mom is None:
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                "SectorRotation analyze completed (momentum unavailable)",
+                extra={"symbol": symbol, "signal_generated": False, "execution_ms": round(elapsed_ms, 2)},
+            )
             return None
 
         if mom > 0.05:  # > 5% 3-month return — treat as top-tier
             confidence = min(0.85, 0.65 + mom * 0.80)
-            return Signal(
+            signal = Signal(
                 symbol=symbol.upper(),
                 side="buy",
                 confidence=round(confidence, 4),
@@ -171,7 +195,7 @@ class SectorRotationStrategy(AbstractStrategy):
             )
         elif mom < -0.05:  # < -5% 3-month return — bottom-tier
             confidence = min(0.80, 0.65 + abs(mom) * 0.60)
-            return Signal(
+            signal = Signal(
                 symbol=symbol.upper(),
                 side="sell",
                 confidence=round(confidence, 4),
@@ -184,7 +208,12 @@ class SectorRotationStrategy(AbstractStrategy):
                 },
             )
 
-        return None
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "SectorRotation analyze completed (single-symbol)",
+            extra={"symbol": symbol, "signal_generated": signal is not None, "execution_ms": round(elapsed_ms, 2)},
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -195,28 +224,46 @@ class SectorRotationStrategy(AbstractStrategy):
 
         For multi-sector cross-sectional ranking, use a portfolio-level backtest runner.
         """
+        start_time = time.time()
+
         if "close" not in df.columns:
             false_series = pd.Series(False, index=df.index)
-            return BacktestSignals(
-                entries=false_series,
-                exits=false_series,
-                short_entries=false_series,
-                short_exits=false_series,
+            result = BacktestSignals(entry=false_series, exit=false_series, short=false_series)
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                "SectorRotation backtest_signals completed (missing close column)",
+                extra={"entry_signals": 0, "execution_ms": round(elapsed_ms, 2)},
             )
+            return result
 
-        close = df["close"]
+        # Compute 63‑day momentum series
+        momentum = df["close"].pct_change(periods=self.momentum_period)
 
-        # 63-day momentum (shifted to prevent lookahead)
-        momentum = (close / close.shift(self.momentum_period) - 1).shift(1)
+        # Entry signal: momentum > 5%, shifted by one period to avoid look‑ahead bias
+        entry = (momentum > 0.05).shift(1).fillna(False)
 
-        entries = (momentum > 0.05).fillna(False)
-        exits = (momentum <= 0.0).fillna(False)
-        short_entries = (momentum < -0.05).fillna(False)
-        short_exits = (momentum >= 0.0).fillna(False)
+        # Exit signal: momentum drops below 0 (i.e., non‑positive)
+        exit_signal = (momentum <= 0).fillna(False)
 
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
+        # Short signal: momentum < -5%
+        short = (momentum < -0.05).fillna(False)
+
+        result = BacktestSignals(entry=entry, exit=exit_signal, short=short)
+
+        entry_count = int(entry.sum())
+        exit_count = int(exit_signal.sum())
+        short_count = int(short.sum())
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "SectorRotation backtest_signals completed",
+            extra={
+                "entry_signals": entry_count,
+                "exit_signals": exit_count,
+                "short_signals": short_count,
+                "execution_ms": round(elapsed_ms, 2),
+                # P&L is not computed here; placeholder for future extension
+                "pnl": None,
+            },
         )
+        return result
