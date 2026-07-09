@@ -70,7 +70,7 @@ DESKS: list[DeskConfig] = [
             "realized_vol_asymmetry", "analyst_revision_momentum",
         ],
         notional_usd=500.0,
-        confidence_min=0.68,
+        confidence_min=0.60,
     ),
     DeskConfig(
         name="Crypto",
@@ -95,7 +95,7 @@ DESKS: list[DeskConfig] = [
             "on_chain_exchange_netflow", "vol_of_vol_timing",
         ],
         notional_usd=300.0,
-        confidence_min=0.70,
+        confidence_min=0.60,
         always_open=True,
     ),
     DeskConfig(
@@ -115,7 +115,7 @@ DESKS: list[DeskConfig] = [
             "wheel", "iron_condor", "credit_spread_income",
         ],
         notional_usd=400.0,
-        confidence_min=0.70,
+        confidence_min=0.60,
     ),
     DeskConfig(
         name="Polymarket",
@@ -126,7 +126,7 @@ DESKS: list[DeskConfig] = [
             "poly_calibration_arb", "poly_late_resolution",
         ],
         notional_usd=100.0,
-        confidence_min=0.75,
+        confidence_min=0.60,
     ),
     DeskConfig(
         name="Macro/FX",
@@ -141,7 +141,7 @@ DESKS: list[DeskConfig] = [
             "analyst_revision_momentum",
         ],
         notional_usd=400.0,
-        confidence_min=0.68,
+        confidence_min=0.60,
     ),
     DeskConfig(
         name="StatArb",
@@ -152,7 +152,7 @@ DESKS: list[DeskConfig] = [
             "triangular_arb", "stablecoin_depeg_arb",
         ],
         notional_usd=600.0,
-        confidence_min=0.62,
+        confidence_min=0.60,
     ),
 ]
 
