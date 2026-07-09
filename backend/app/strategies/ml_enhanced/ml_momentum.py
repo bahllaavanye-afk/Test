@@ -69,6 +69,14 @@ class MLMomentumStrategy(AbstractStrategy):
             A populated :class:`app.strategies.base.Signal` if both the base and
             ML models agree, otherwise ``None``.
         """
+        # Edge‑case handling for inputs
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            logger.debug("Analyze called with empty or None data for symbol %s", symbol)
+            return None
+        if not symbol:
+            logger.debug("Analyze called with empty symbol")
+            return None
+
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
             return None
@@ -76,7 +84,14 @@ class MLMomentumStrategy(AbstractStrategy):
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result is None or ml_result["prediction"] == "neutral":
+
+            # Guard against malformed ML results
+            if (
+                ml_result is None
+                or not isinstance(ml_result, dict)
+                or ml_result.get("prediction") in (None, "neutral")
+                or ml_result.get("confidence") is None
+            ):
                 return None
 
             return self._apply_ml_filter(base_signal, ml_result)
@@ -101,22 +116,37 @@ class MLMomentumStrategy(AbstractStrategy):
             Updated signal if directions match and confidence meets the threshold,
             otherwise ``None``.
         """
-        prediction = ml_result["prediction"]
-        ml_conf = ml_result["confidence"]
+        prediction = ml_result.get("prediction")
+        ml_conf = ml_result.get("confidence")
+
+        # Defensive checks
+        if prediction not in {"up", "down"} or ml_conf is None:
+            return None
 
         side_match = (
-            (prediction == "up" and base_signal.side == "buy")
-            or (prediction == "down" and base_signal.side == "sell")
+            (prediction == "up" and getattr(base_signal, "side", None) == "buy")
+            or (prediction == "down" and getattr(base_signal, "side", None) == "sell")
         )
         if not side_match:
             return None
 
         # Combine confidences, respecting the configured maximum.
-        combined_confidence = min(0.95, (base_signal.confidence + ml_conf) / 2)
+        # Ensure base_signal.confidence is numeric
+        base_conf = getattr(base_signal, "confidence", 0.0) or 0.0
+        try:
+            combined_confidence = min(0.95, (base_conf + float(ml_conf)) / 2)
+        except (TypeError, ValueError):
+            return None
+
         base_signal.confidence = combined_confidence
         base_signal.strategy_name = self.name
         base_signal.strategy_type = self.strategy_type
+
+        # Ensure metadata dict exists
+        if not hasattr(base_signal, "metadata") or not isinstance(base_signal.metadata, dict):
+            base_signal.metadata = {}
         base_signal.metadata["ml_confidence"] = ml_conf
+
         return base_signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
@@ -135,4 +165,7 @@ class MLMomentumStrategy(AbstractStrategy):
         BacktestSignals
             Signals suitable for back‑testing consumption.
         """
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            logger.debug("Backtest called with empty or None dataframe")
+            return BacktestSignals()
         return self._base.backtest_signals(df)
