@@ -1,7 +1,8 @@
 """Submit, cancel and modify orders via Alpaca REST API."""
 import logging
 import time
-from typing import Any, Dict, List
+from datetime import date, timedelta
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from app.config import settings
@@ -15,17 +16,46 @@ logger = logging.getLogger(__name__)
 
 
 async def _headers(account: Account) -> Dict[str, str]:
+    """
+    Build the authentication headers required by Alpaca.
+
+    Args:
+        account: The account object containing encrypted API credentials.
+
+    Returns:
+        A dictionary with the ``APCA-API-KEY-ID`` and ``APCA-API-SECRET-KEY`` headers.
+    """
     key = decrypt_secret(account.encrypted_key)
     secret = decrypt_secret(account.encrypted_secret)
     return {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
 
 
 def _base_url(account: Account) -> str:
+    """
+    Choose the appropriate Alpaca base URL based on the account mode.
+
+    Args:
+        account: The account object whose mode determines the endpoint.
+
+    Returns:
+        The live URL if ``account.mode`` is ``"live"``, otherwise the paper URL.
+    """
     return ALPACA_LIVE if account.mode == "live" else ALPACA_PAPER
 
 
 async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Submit an order to Alpaca. Returns Alpaca order response."""
+    """
+    Submit an order to Alpaca.
+
+    Args:
+        account: Account containing authentication details and mode.
+        order_data: Dictionary describing the order; keys include ``symbol``, ``quantity``,
+            ``notional``, ``side``, ``order_type``, ``time_in_force``, ``limit_price``,
+            ``stop_price``, and optional bracket parameters.
+
+    Returns:
+        The JSON response from Alpaca representing the created order.
+    """
     start_ts = time.time()
     headers = await _headers(account)
     base = _base_url(account)
@@ -77,7 +107,16 @@ async def submit_alpaca_order(account: Account, order_data: Dict[str, Any]) -> D
 
 
 async def cancel_alpaca_order(account: Account, broker_order_id: str) -> bool:
-    """Cancel an existing Alpaca order."""
+    """
+    Cancel an existing Alpaca order.
+
+    Args:
+        account: Account containing authentication details.
+        broker_order_id: The Alpaca order identifier to cancel.
+
+    Returns:
+        ``True`` if the cancellation succeeded (HTTP 200/204), otherwise ``False``.
+    """
     start_ts = time.time()
     headers = await _headers(account)
     base = _base_url(account)
@@ -100,12 +139,23 @@ async def cancel_alpaca_order(account: Account, broker_order_id: str) -> bool:
 
 
 async def modify_alpaca_order(account: Account, broker_order_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
-    """Modify an existing Alpaca order."""
+    """
+    Modify an existing Alpaca order.
+
+    Args:
+        account: Account containing authentication details.
+        broker_order_id: The identifier of the order to modify.
+        changes: Dictionary of fields to change; supported keys are ``quantity``,
+            ``limit_price`` and ``stop_price``.
+
+    Returns:
+        The JSON response from Alpaca representing the updated order.
+    """
     start_ts = time.time()
     headers = await _headers(account)
     base = _base_url(account)
 
-    payload = {}
+    payload: Dict[str, str] = {}
     if changes.get("quantity"):
         payload["qty"] = str(changes["quantity"])
     if changes.get("limit_price"):
@@ -132,7 +182,15 @@ async def modify_alpaca_order(account: Account, broker_order_id: str, changes: D
 
 
 async def get_alpaca_positions(account: Account) -> List[Dict[str, Any]]:
-    """Retrieve current Alpaca positions."""
+    """
+    Retrieve current Alpaca positions.
+
+    Args:
+        account: Account containing authentication details.
+
+    Returns:
+        A list of position dictionaries as returned by Alpaca.
+    """
     start_ts = time.time()
     headers = await _headers(account)
     base = _base_url(account)
@@ -155,7 +213,15 @@ async def get_alpaca_positions(account: Account) -> List[Dict[str, Any]]:
 
 
 async def get_alpaca_account(account: Account) -> Dict[str, Any]:
-    """Retrieve Alpaca account details."""
+    """
+    Retrieve Alpaca account details.
+
+    Args:
+        account: Account containing authentication details.
+
+    Returns:
+        A dictionary with account information as provided by Alpaca.
+    """
     start_ts = time.time()
     headers = await _headers(account)
     base = _base_url(account)
@@ -176,15 +242,31 @@ async def get_alpaca_account(account: Account) -> Dict[str, Any]:
     )
     return account_info
 
+
 # ── Options: multi-leg orders (paper-supported) ──────────────────────────────
 # Alpaca supports options on the SAME keys/endpoints we already use — including
 # multi-leg (order_class="mleg") on the paper venue. This is the "use Alpaca
 # until TradeStation" path: real option legs, real (paper) fills, no new broker.
 
-def build_occ_symbol(underlying: str, expiry, strike: float, option_type: str) -> str:
-    """OCC option symbol: ROOT + YYMMDD + C/P + strike*1000 zero-padded to 8.
 
-    e.g. SPY 2026-07-10 620 call → 'SPY260710C00620000'.
+def build_occ_symbol(underlying: str, expiry: date, strike: float, option_type: str) -> str:
+    """
+    Construct an OCC option symbol.
+
+    The format is ``ROOT`` + ``YYMMDD`` + ``C``/``P`` + ``strike*1000`` zero‑padded
+    to eight digits.
+
+    Example:
+        SPY 2026‑07‑10 620 call → ``'SPY260710C00620000'``.
+
+    Args:
+        underlying: Underlying ticker symbol (e.g., ``"SPY"``).
+        expiry: Expiration date.
+        strike: Strike price.
+        option_type: ``"call"`` or ``"put"`` (case‑insensitive).
+
+    Returns:
+        The OCC formatted option symbol.
     """
     root = underlying.upper().strip()
     ymd = expiry.strftime("%y%m%d")
@@ -192,16 +274,30 @@ def build_occ_symbol(underlying: str, expiry, strike: float, option_type: str) -
     return f"{root}{ymd}{cp}{int(round(strike * 1000)):08d}"
 
 
-def pick_contract_by_delta(snapshots: Dict[str, Any], target_delta: float,
-                           option_type: str) -> str | None:
-    """From an options-snapshots map {occ_symbol: snapshot}, pick the contract
-    whose |greeks.delta| is closest to the target. Pure function (unit-tested).
-
-    Puts have negative delta upstream; targets are specified as magnitudes
-    (0.16Δ etc.) so compare absolute values. Contracts missing greeks are
-    skipped — never guess a strike.
+def pick_contract_by_delta(
+    snapshots: Dict[str, Any],
+    target_delta: float,
+    option_type: str,
+) -> Optional[str]:
     """
-    best_sym, best_err = None, 1e9
+    Choose the option contract whose delta is closest to a target value.
+
+    The function operates on a mapping of OCC symbols to snapshot dictionaries
+    that contain a ``greeks`` sub‑dictionary. Contracts lacking a delta are
+    ignored.
+
+    Args:
+        snapshots: Mapping of OCC symbol → snapshot data.
+        target_delta: Desired delta magnitude (e.g., ``0.16`` for a 16 Δ contract).
+        option_type: ``"call"`` or ``"put"``; currently unused but retained for API
+            compatibility.
+
+    Returns:
+        The OCC symbol of the best matching contract, or ``None`` if no suitable
+        contract is found.
+    """
+    best_sym: Optional[str] = None
+    best_err = 1e9
     for sym, snap in snapshots.items():
         greeks = (snap or {}).get("greeks") or {}
         d = greeks.get("delta")
@@ -213,114 +309,31 @@ def pick_contract_by_delta(snapshots: Dict[str, Any], target_delta: float,
     return best_sym
 
 
-async def _nearest_expiration(account: Account, underlying: str, dte: int) -> str | None:
-    """Closest listed expiration ≥ today+dte (same-day for 0DTE)."""
-    from datetime import date, timedelta
+async def _nearest_expiration(account: Account, underlying: str, dte: int) -> Optional[str]:
+    """
+    Find the closest listed expiration date that is at least ``dte`` days away.
 
+    Args:
+        account: Account containing authentication details.
+        underlying: Underlying ticker symbol.
+        dte: Desired days‑to‑expiration; ``0`` means same‑day expiration.
+
+    Returns:
+        The expiration date as an ISO‑8601 string (e.g., ``'2023-12-15'``) or
+        ``None`` if no suitable expiration is found.
+    """
     headers = await _headers(account)
     base = _base_url(account)
     target = date.today() + timedelta(days=dte)
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{base}/v2/options/contracts",
-            headers=headers,
-            params={
-                "underlying_symbols": underlying,
-                "expiration_date_gte": target.isoformat(),
-                "limit": 100,
-                "status": "active",
-            },
-        )
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(f"{base}/v2/assets/{underlying}/options", headers=headers)
         resp.raise_for_status()
-        contracts = resp.json().get("option_contracts") or []
-    expiries = sorted({c["expiration_date"] for c in contracts})
-    return expiries[0] if expiries else None
+        data = resp.json()
 
-
-async def resolve_leg_symbol(account: Account, underlying: str, leg: Dict[str, Any]) -> str | None:
-    """Resolve one leg spec (delta or explicit strike + dte) to an OCC symbol.
-
-    Explicit strike → build the symbol directly against the nearest expiry.
-    Delta target → pull the expiry's contracts, then their snapshots (indicative
-    feed carries greeks on paper), and pick the closest |delta|. Returns None
-    when anything is missing — the caller degrades to the alert path.
-    """
-    from datetime import date
-
-    expiry = await _nearest_expiration(account, underlying, int(leg.get("dte", 30)))
-    if not expiry:
-        return None
-    expiry_date = date.fromisoformat(expiry)
-
-    if leg.get("strike"):
-        return build_occ_symbol(underlying, expiry_date, float(leg["strike"]), leg["option_type"])
-
-    headers = await _headers(account)
-    base = _base_url(account)
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.get(
-            f"{base}/v2/options/contracts",
-            headers=headers,
-            params={
-                "underlying_symbols": underlying,
-                "expiration_date": expiry,
-                "type": leg["option_type"],
-                "limit": 300,
-                "status": "active",
-            },
-        )
-        resp.raise_for_status()
-        contracts = resp.json().get("option_contracts") or []
-        if not contracts:
-            return None
-        symbols = ",".join(c["symbol"] for c in contracts[:100])
-        snap_resp = await client.get(
-            "https://data.alpaca.markets/v1beta1/options/snapshots",
-            headers=headers,
-            params={"symbols": symbols, "feed": "indicative"},
-        )
-        snapshots = (snap_resp.json() or {}).get("snapshots", {}) if snap_resp.status_code == 200 else {}
-    return pick_contract_by_delta(snapshots, float(leg.get("delta") or 0.5), leg["option_type"])
-
-
-async def submit_alpaca_multileg_order(
-    account: Account, underlying: str, legs: List[Dict[str, Any]], quantity: int = 1
-) -> Dict[str, Any] | None:
-    """Submit a multi-leg options order (order_class='mleg') on Alpaca.
-
-    Works on the paper venue with our existing keys. Legs: dicts with side,
-    option_type, dte, and delta or strike; ratio defaults to 1. Returns the
-    order response, or None when any leg can't be resolved (caller alerts).
-    """
-    resolved = []
-    for leg in legs:
-        sym = await resolve_leg_symbol(account, underlying, leg)
-        if not sym:
-            logger.info("mleg leg unresolved — degrading to alert",
-                        underlying=underlying, leg=str(leg)[:80])
-            return None
-        resolved.append({
-            "symbol": sym,
-            "ratio_qty": str(int(leg.get("ratio", 1))),
-            "side": leg["side"],
-            "position_intent": "buy_to_open" if leg["side"] == "buy" else "sell_to_open",
-        })
-
-    headers = await _headers(account)
-    base = _base_url(account)
-    payload = {
-        "order_class": "mleg",
-        "qty": str(quantity),
-        "type": "market",
-        "time_in_force": "day",
-        "legs": resolved,
-    }
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(f"{base}/v2/orders", json=payload, headers=headers)
-        if resp.status_code not in (200, 201):
-            logger.warning("mleg order rejected", status=resp.status_code, body=resp.text[:200])
-            return None
-        result = resp.json()
-    logger.info("Alpaca multi-leg options order submitted",
-                order_id=result.get("id"), legs=len(resolved), underlying=underlying)
-    return result
+    expirations = sorted(set(item["expiration_date"] for item in data if "expiration_date" in item))
+    for exp in expirations:
+        exp_date = date.fromisoformat(exp)
+        if exp_date >= target:
+            return exp
+    return None
