@@ -4,6 +4,7 @@ Supports spot trading, real-time order book, and triangular arb scanning.
 """
 import asyncio
 import time
+from functools import wraps
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -27,6 +28,24 @@ INTERVAL_MAP = {
 }
 
 
+def _monitor_async(func):
+    """Decorator to log execution time and signal count for async broker methods."""
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        start = time.perf_counter()
+        try:
+            result = await func(self, *args, **kwargs)
+            return result
+        finally:
+            elapsed = time.perf_counter() - start
+            logger.info(
+                f"Binance {func.__name__} completed",
+                execution_time=elapsed,
+                signal_count=1,
+            )
+    return wrapper
+
+
 class BinanceBroker(AbstractBroker):
     def __init__(self, api_key: str, secret: str, testnet: bool = True):
         self.exchange = ccxt.binance(
@@ -48,6 +67,7 @@ class BinanceBroker(AbstractBroker):
     async def close(self):
         await self.exchange.close()
 
+    @_monitor_async
     async def place_order(self, request: OrderRequest) -> OrderResult:
         try:
             if request.order_type == "market":
@@ -66,7 +86,7 @@ class BinanceBroker(AbstractBroker):
                     request.symbol, request.side, request.quantity
                 )
 
-            return OrderResult(
+            result = OrderResult(
                 broker_order_id=str(order["id"]),
                 status=order["status"],
                 filled_qty=float(order.get("filled", 0)),
@@ -75,20 +95,42 @@ class BinanceBroker(AbstractBroker):
                 else None,
                 raw_payload=order,
             )
+
+            # Structured logging for order execution
+            logger.info(
+                "Binance order placed",
+                symbol=request.symbol,
+                side=request.side,
+                quantity=request.quantity,
+                order_type=request.order_type,
+                filled_qty=result.filled_qty,
+                avg_fill_price=result.avg_fill_price,
+                broker_order_id=result.broker_order_id,
+                signal_count=1,
+            )
+            return result
         except Exception as e:
             raise BrokerError(f"Binance: {e}")
 
+    @_monitor_async
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
+    @_monitor_async
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
         return await self.exchange.fetch_order(broker_order_id, symbol)
 
+    @_monitor_async
     async def get_positions(self) -> list[dict]:
         balance = await self.exchange.fetch_balance()
         positions = []
@@ -97,6 +139,7 @@ class BinanceBroker(AbstractBroker):
                 positions.append({"symbol": f"{asset}/USDT", "qty": info, "side": "long"})
         return positions
 
+    @_monitor_async
     async def get_account(self) -> dict:
         balance = await self.exchange.fetch_balance()
         usdt = balance["total"].get("USDT", 0)
@@ -107,6 +150,7 @@ class BinanceBroker(AbstractBroker):
             "portfolio_value": usdt,
         }
 
+    @_monitor_async
     async def get_quote(self, symbol: str) -> QuoteResult:
         try:
             ticker = await asyncio.wait_for(
@@ -123,6 +167,7 @@ class BinanceBroker(AbstractBroker):
             volume=float(ticker.get("baseVolume", 0)),
         )
 
+    @_monitor_async
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
     ) -> list[dict]:
@@ -140,9 +185,11 @@ class BinanceBroker(AbstractBroker):
             for bar in ohlcv
         ]
 
+    @_monitor_async
     async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
         return await self.exchange.fetch_order_book(symbol, limit)
 
+    @_monitor_async
     async def get_all_tickers(self, cache_ttl: int = 30) -> dict:
         """Fetch all tickers for triangular arb scanning with simple TTL caching."""
         async with self._ticker_lock:
