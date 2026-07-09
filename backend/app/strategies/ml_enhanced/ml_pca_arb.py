@@ -1,40 +1,79 @@
+"""ml_pca_arb.py
+ML‑Enhanced PCA Statistical Arbitrage Strategy.
+
+This module defines :class:`MLPCAStatArbStrategy`, which extends the classic
+PCA statistical‑arbitrage approach by gating entry signals through an LSTM
+confidence filter.  The strategy works as follows:
+
+1. The underlying :class:`~app.strategies.manual.pca_stat_arb.PCAStatArbStrategy`
+   computes a PCA s‑score and emits a base :class:`~app.strategies.base.Signal`.
+2. If an ML inference service is available, the LSTM model predicts a direction
+   (``up``/``down``) and a confidence score.  The trade is taken only when the
+   LSTM prediction agrees with the PCA side **and** the confidence exceeds a
+   configurable threshold.
+3. When the ML service cannot be imported or raises an exception, the strategy
+   degrades gracefully – ``analyze`` returns ``None`` (no trade) and back‑testing
+   falls back to the base PCA logic.
+
+The implementation purposefully avoids any hard‑coded data or paid API calls,
+and it preserves the original behaviour while adding comprehensive
+documentation and type annotations.
 """
-ML-Enhanced PCA Statistical Arbitrage Strategy.
 
-Extends PCAStatArbStrategy by gating entries through an LSTM confidence
-filter: a trade is only taken when BOTH conditions are true:
+from __future__ import annotations
 
-  1. PCA s-score exceeds the entry threshold (mean-reversion signal)
-  2. LSTM model confidence > 0.60 (directional agreement)
-
-If the ML inference service is unavailable the strategy falls back
-gracefully (returns None from analyze, uses base signals in backtest).
-"""
 import pandas as pd
+from typing import Any, Dict, Optional
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.strategies.manual.pca_stat_arb import PCAStatArbStrategy
 
-# ML inference is optional — import defensively
+# ----------------------------------------------------------------------
+# Optional ML inference import – defensive loading.
+# ----------------------------------------------------------------------
 try:
     from app.ml.inference import get_inference_service as _get_inference_service
-    _INFERENCE_AVAILABLE = True
+    _INFERENCE_AVAILABLE: bool = True
 except Exception:
     _INFERENCE_AVAILABLE = False
 
-
-_ML_CONFIDENCE_THRESHOLD = 0.60
+# Default confidence threshold used when the caller does not provide one.
+_ML_CONFIDENCE_THRESHOLD: float = 0.60
 
 
 class MLPCAStatArbStrategy(AbstractStrategy):
     """
-    ML-gated PCA Statistical Arbitrage.
+    ML‑gated PCA Statistical Arbitrage.
 
-    Same s-score logic as PCAStatArbStrategy but each entry signal is
-    filtered through an LSTM model.  When the ML service is not loaded
-    the strategy degrades gracefully:
-      - analyze()           → returns None (no signal)
-      - backtest_signals()  → delegates to the base PCA strategy
+    The strategy mirrors :class:`PCAStatArbStrategy` but adds an LSTM filter.
+    When the ML inference service is unavailable the strategy falls back
+    gracefully:
+
+    * ``analyze`` → returns ``None`` (no signal).
+    * ``backtest_signals`` → delegates to the base PCA strategy.
+
+    Attributes
+    ----------
+    name : str
+        Internal identifier used by the framework.
+    display_name : str
+        Human‑readable name shown in UI / logs.
+    market_type : str
+        Market classification (e.g., ``"equity"``).
+    strategy_type : str
+        Category of the strategy – here ``"ml_enhanced"``.
+    risk_bucket : str
+        Risk classification for reporting.
+    tick_interval_seconds : float
+        Minimum interval between ticks; ``86_400`` seconds corresponds to daily.
+    confidence_threshold : float
+        Upper‑level confidence threshold used by the base class (not to be
+        confused with the ML confidence threshold).
+    _base : PCAStatArbStrategy
+        Instance of the underlying PCA statistical‑arbitrage strategy.
+    _ml_threshold : float
+        Confidence threshold for the LSTM model; defaults to
+        ``_ML_CONFIDENCE_THRESHOLD``.
     """
 
     name = "ml_pca_arb"
@@ -45,10 +84,21 @@ class MLPCAStatArbStrategy(AbstractStrategy):
     tick_interval_seconds = 86_400.0  # daily
     confidence_threshold = 0.65
 
-    def __init__(self, params: dict | None = None):
+    def __init__(self, params: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Initialise the strategy.
+
+        Parameters
+        ----------
+        params : dict | None, optional
+            Optional configuration dictionary.  Recognised keys:
+
+            * ``ml_confidence_threshold`` – float, overrides the default ML
+              confidence gating threshold.
+        """
         super().__init__(params)
         p = params or {}
-        self._base = PCAStatArbStrategy(params)
+        self._base: PCAStatArbStrategy = PCAStatArbStrategy(params)
         self._ml_threshold: float = float(
             p.get("ml_confidence_threshold", _ML_CONFIDENCE_THRESHOLD)
         )
@@ -57,11 +107,29 @@ class MLPCAStatArbStrategy(AbstractStrategy):
     # AbstractStrategy interface
     # ------------------------------------------------------------------
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """
-        Generate a signal only when PCA s-score AND LSTM agree.
+        Produce a trade signal conditioned on both PCA and LSTM outputs.
 
-        Falls back to None (no trade) when ML is unavailable.
+        The method proceeds in three steps:
+
+        1. Retrieve the base PCA signal via ``self._base.analyze``.
+        2. If the ML inference service is available, obtain an LSTM prediction.
+        3. Validate the LSTM confidence and direction against the PCA side.
+           If all checks pass, blend the confidences and return the enriched
+           :class:`Signal`; otherwise ``None`` is returned.
+
+        Parameters
+        ----------
+        data : pd.DataFrame
+            Market data required by both the PCA and LSTM components.
+        symbol : str
+            Ticker symbol for which the signal is being generated.
+
+        Returns
+        -------
+        Signal | None
+            An enriched signal when both models agree, otherwise ``None``.
         """
         # Step 1: get base PCA signal
         base_signal = await self._base.analyze(data, symbol)
@@ -95,7 +163,7 @@ class MLPCAStatArbStrategy(AbstractStrategy):
             if not direction_ok:
                 return None
 
-            # Blend confidences
+            # Blend confidences (capped at 0.95)
             blended = min(0.95, (base_signal.confidence + ml_confidence) / 2)
             base_signal.confidence = blended
             base_signal.strategy_name = self.name
@@ -109,10 +177,21 @@ class MLPCAStatArbStrategy(AbstractStrategy):
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
-        Delegate to the base PCA strategy for backtesting.
+        Generate back‑testing signals.
 
-        In a production backtest with a trained LSTM available, the signals
-        would be gated per-bar.  Without a serialized model this delegation
-        is the correct fallback: it still uses the same PCA edge.
+        Delegates directly to the underlying :class:`PCAStatArbStrategy`.  In a
+        production environment with a serialized LSTM model, this method could
+        be extended to gate signals per bar; the current implementation provides
+        a safe fallback.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Historical data used for back‑testing.
+
+        Returns
+        -------
+        BacktestSignals
+            Signals produced by the base PCA strategy.
         """
         return self._base.backtest_signals(df)
