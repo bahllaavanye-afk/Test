@@ -199,8 +199,12 @@
     "Test edge cases daily",
     "Refactor for cyclomatic complexity",
     "Monitor queue sizes regularly",
-    "Optimize agent memory usage"
+    "Optimize agent memory usage",
+    "docstrings on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "docstrings on ml/features/macro_signals.py: success \u2014 tests green",
+    "docstrings on execution/slippage_tracker.py: success \u2014 tests green",
+    "docstrings on risk/var.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T09:36:36.433478+00:00",
+  "last_updated": "2026-07-09T12:17:47.908017+00:00",
   "total": 200
 }
