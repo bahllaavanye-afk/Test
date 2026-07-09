@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783634949.516885,
+    "last_updated": 1783640182.2236824,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1783634949.516606
+    "last_brain_update": 1783640182.2233868
   },
   "episodic": [
     {
@@ -423,6 +423,27 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1783614123.7549894
+    },
+    {
+      "lesson": "Repeated auto-fix failures indicate a systemic issue in the patch application pipeline, likely due to incompatible code patterns or tool misconfiguration.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783640158.7081091
+    },
+    {
+      "lesson": "Lack of specific error details in the issue titles hinders debugging; improve logging in the auto-fix process to capture file names and patch context.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783640158.7096097
+    },
+    {
+      "lesson": "Consider temporarily disabling the auto-fix feature until root cause is resolved to prevent false positives and wasted CI cycles.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783640158.7111142
     }
   ],
   "github_insights": [
@@ -555,6 +576,11 @@
       "summary": "The auto-fix bot failed three times to apply a patch to a file, each time reporting the same error.",
       "item_count": 20,
       "ts": 1783634949.5116296
+    },
+    {
+      "summary": "The auto-fix repeatedly failed because it could not apply the patch to the file, as indicated by three identical error messages.",
+      "item_count": 20,
+      "ts": 1783640182.2203329
     }
   ],
   "experiment_results": [
