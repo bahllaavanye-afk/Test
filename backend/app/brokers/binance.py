@@ -29,6 +29,13 @@ INTERVAL_MAP = {
 
 class BinanceBroker(AbstractBroker):
     def __init__(self, api_key: str, secret: str, testnet: bool = True):
+        if not isinstance(api_key, str) or not api_key:
+            raise ValueError("api_key must be a non‑empty string")
+        if not isinstance(secret, str) or not secret:
+            raise ValueError("secret must be a non‑empty string")
+        if not isinstance(testnet, bool):
+            raise ValueError("testnet must be a boolean")
+
         self.exchange = ccxt.binance(
             {
                 "apiKey": api_key,
@@ -49,6 +56,19 @@ class BinanceBroker(AbstractBroker):
         await self.exchange.close()
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        if not isinstance(request, OrderRequest):
+            raise ValueError("request must be an instance of OrderRequest")
+        if not isinstance(request.symbol, str) or not request.symbol:
+            raise ValueError("request.symbol must be a non‑empty string")
+        if request.side not in {"buy", "sell"}:
+            raise ValueError("request.side must be either 'buy' or 'sell'")
+        if request.quantity <= 0:
+            raise ValueError("request.quantity must be a positive number")
+        if request.order_type not in {"market", "limit"}:
+            raise ValueError("request.order_type must be 'market' or 'limit'")
+        if request.order_type == "limit" and (request.limit_price is None or request.limit_price <= 0):
+            raise ValueError("limit_price must be a positive number for limit orders")
+
         try:
             if request.order_type == "market":
                 order = await self.exchange.create_market_order(
@@ -79,14 +99,27 @@ class BinanceBroker(AbstractBroker):
             raise BrokerError(f"Binance: {e}")
 
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
+        if not isinstance(broker_order_id, str) or not broker_order_id:
+            raise ValueError("broker_order_id must be a non‑empty string")
+        if not isinstance(symbol, str):
+            raise ValueError("symbol must be a string")
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
+        if not isinstance(broker_order_id, str) or not broker_order_id:
+            raise ValueError("broker_order_id must be a non‑empty string")
+        if not isinstance(symbol, str):
+            raise ValueError("symbol must be a string")
         return await self.exchange.fetch_order(broker_order_id, symbol)
 
     async def get_positions(self) -> list[dict]:
@@ -108,6 +141,8 @@ class BinanceBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
+        if not isinstance(symbol, str) or not symbol:
+            raise ValueError("symbol must be a non‑empty string")
         try:
             ticker = await asyncio.wait_for(
                 self.exchange.fetch_ticker(symbol), timeout=10.0
@@ -126,6 +161,12 @@ class BinanceBroker(AbstractBroker):
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
     ) -> list[dict]:
+        if not isinstance(symbol, str) or not symbol:
+            raise ValueError("symbol must be a non‑empty string")
+        if interval not in INTERVAL_MAP:
+            raise ValueError(f"interval must be one of {list(INTERVAL_MAP.keys())}")
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
         tf = INTERVAL_MAP.get(interval, "1d")
         ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
         return [
@@ -141,10 +182,16 @@ class BinanceBroker(AbstractBroker):
         ]
 
     async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
+        if not isinstance(symbol, str) or not symbol:
+            raise ValueError("symbol must be a non‑empty string")
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
         return await self.exchange.fetch_order_book(symbol, limit)
 
     async def get_all_tickers(self, cache_ttl: int = 30) -> dict:
         """Fetch all tickers for triangular arb scanning with simple TTL caching."""
+        if not isinstance(cache_ttl, int) or cache_ttl < 0:
+            raise ValueError("cache_ttl must be a non‑negative integer")
         async with self._ticker_lock:
             now = time.monotonic()
             if (
