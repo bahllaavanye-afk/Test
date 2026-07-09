@@ -1,9 +1,5 @@
 {
   "skills": [
-    "strategy_logic on strategies/manual/commodity_trend.py: success \u2014 tests green",
-    "schemas on api/v1/trades.py: success \u2014 tests green",
-    "Files > 8000 chars cause LLM truncation \u2014 always truncate before sending to LLM",
-    "Use rate limiting",
     "Here are the 3 most important, actionable points from the recent agent learnings:",
     "Here are 3 concise bullet points of the most important, actionable knowledge:",
     "error_handling on comparison/benchmarks.py: success \u2014 tests green",
@@ -199,8 +195,12 @@
     "Check API rate limits",
     "Handle DNS failures",
     "Use retry mechanisms",
-    "Validate trade IDs"
+    "Validate trade IDs",
+    "Check clock sync",
+    "Verify cert expiration",
+    "Track API payload size",
+    "Bind to static IPs"
   ],
-  "last_updated": "2026-07-09T21:20:18.262066+00:00",
+  "last_updated": "2026-07-09T22:48:54.371997+00:00",
   "total": 200
 }
