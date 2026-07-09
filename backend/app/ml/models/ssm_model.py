@@ -14,20 +14,26 @@ Architecture:
 """
 from __future__ import annotations
 
+import logging
 import math
+from typing import Any
+
+import numpy as np
+from app.ml.models.base_model import AbstractModel, EvalMetrics
+
+logger = logging.getLogger(__name__)
+
 try:
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError as exc:
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
-    F = None      # type: ignore[assignment]
-
-import numpy as np
-from app.ml.models.base_model import AbstractModel, EvalMetrics
+    nn = None  # type: ignore[assignment]
+    F = None  # type: ignore[assignment]
+    logger.error("PyTorch import failed", exc_info=exc)
 
 
 class _SSMLayer(nn.Module):
@@ -67,34 +73,45 @@ class _SSMLayer(nn.Module):
 
     def _ssm_scan(self, x: torch.Tensor) -> torch.Tensor:
         """Sequential scan over time steps. x: (B, T, D)."""
-        B, T, D = x.shape
-        N = self.d_state
+        try:
+            B, T, D = x.shape
+            N = self.d_state
 
-        # Compute step size: (B, T, D) → (B, T, D) positive via softplus
-        dt = F.softplus(self.dt_proj(x))                # (B, T, D)
+            # Compute step size: (B, T, D) → (B, T, D) positive via softplus
+            dt = F.softplus(self.dt_proj(x))  # (B, T, D)
 
-        # Discretize A: exp(A * dt), A is (D, N), dt is (B, T, D)
-        A = -torch.exp(self.log_A)                       # (D, N), negative ensures stability
-        # A_bar: (B, T, D, N)
-        A_bar = torch.exp(dt.unsqueeze(-1) * A.unsqueeze(0).unsqueeze(0))
+            # Discretize A: exp(A * dt), A is (D, N), dt is (B, T, D)
+            A = -torch.exp(self.log_A)  # (D, N), negative ensures stability
+            # A_bar: (B, T, D, N)
+            A_bar = torch.exp(dt.unsqueeze(-1) * A.unsqueeze(0).unsqueeze(0))
 
-        # B_bar: (B, T, D, N) = dt * B (simplified ZOH)
-        B_bar = dt.unsqueeze(-1) * self.B.unsqueeze(0).unsqueeze(0)  # (B, T, D, N)
+            # B_bar: (B, T, D, N) = dt * B (simplified ZOH)
+            B_bar = dt.unsqueeze(-1) * self.B.unsqueeze(0).unsqueeze(0)  # (B, T, D, N)
 
-        # Sequential scan
-        h = torch.zeros(B, D, N, device=x.device, dtype=x.dtype)
-        outs = []
-        for t in range(T):
-            # h: (B, D, N), A_bar[t]: (B, D, N), B_bar[t]: (B, D, N)
-            h = A_bar[:, t] * h + B_bar[:, t] * x[:, t].unsqueeze(-1)
-            # y_t = C * h summed over state + D * x_t
-            y_t = (self.C.unsqueeze(0) * h).sum(-1) + self.D * x[:, t]  # (B, D)
-            outs.append(y_t.unsqueeze(1))
+            # Sequential scan
+            h = torch.zeros(B, D, N, device=x.device, dtype=x.dtype)
+            outs = []
+            for t in range(T):
+                # h: (B, D, N), A_bar[t]: (B, D, N), B_bar[t]: (B, D, N)
+                h = A_bar[:, t] * h + B_bar[:, t] * x[:, t].unsqueeze(-1)
+                # y_t = C * h summed over state + D * x_t
+                y_t = (self.C.unsqueeze(0) * h).sum(-1) + self.D * x[:, t]  # (B, D)
+                outs.append(y_t.unsqueeze(1))
 
-        return torch.cat(outs, dim=1)  # (B, T, D)
+            return torch.cat(outs, dim=1)  # (B, T, D)
+        except RuntimeError as exc:
+            logger.error("Runtime error during _ssm_scan", exc_info=exc, extra={"shape": x.shape})
+            raise
+        except Exception as exc:
+            logger.error("Unexpected error in _ssm_scan", exc_info=exc, extra={"shape": x.shape})
+            raise
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """x: (B, T, D) → (B, T, D)"""
+        if x.dim() != 3:
+            msg = f"Input tensor must be 3D (B, T, D), got shape {x.shape}"
+            logger.error(msg, extra={"shape": x.shape})
+            raise ValueError(msg)
         # SSM sub-layer with residual
         x = x + self.drop(self._ssm_scan(self.norm1(x)))
         # Feed-forward sub-layer with residual
@@ -122,10 +139,9 @@ class SSMPredictor(AbstractModel, nn.Module):
         self.d_model = d_model
 
         self.embedding = nn.Linear(n_features, d_model)
-        self.layers = nn.ModuleList([
-            _SSMLayer(d_model, d_state=d_state, dropout=dropout)
-            for _ in range(n_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [_SSMLayer(d_model, d_state=d_state, dropout=dropout) for _ in range(n_layers)]
+        )
         self.norm = nn.LayerNorm(d_model)
         self.head = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
@@ -137,12 +153,19 @@ class SSMPredictor(AbstractModel, nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """x: (batch, seq_len, n_features) → (batch, 1)"""
-        x = self.embedding(x)            # (B, T, d_model)
+        if x.dim() != 3 or x.size(-1) != self.n_features:
+            msg = (
+                f"Expected input shape (B, T, {self.n_features}), "
+                f"got {list(x.shape)}"
+            )
+            logger.error(msg, extra={"shape": x.shape})
+            raise ValueError(msg)
+        x = self.embedding(x)  # (B, T, d_model)
         for layer in self.layers:
             x = layer(x)
         x = self.norm(x)
-        x = x.mean(dim=1)               # (B, d_model) — mean pool over time
-        return self.head(x)              # (B, 1)
+        x = x.mean(dim=1)  # (B, d_model) — mean pool over time
+        return self.head(x)  # (B, 1)
 
     # ── AbstractModel interface ───────────────────────────────────────────────
 
@@ -152,61 +175,115 @@ class SSMPredictor(AbstractModel, nn.Module):
         self.train()
         total_loss, n = 0.0, 0
         for xb, yb in loader:
-            optimizer.zero_grad()
-            pred = self(xb).squeeze(-1)
-            loss = criterion(pred, yb.float())
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-            optimizer.step()
-            total_loss += loss.item() * len(xb)
-            n += len(xb)
+            try:
+                optimizer.zero_grad()
+                pred = self(xb).squeeze(-1)
+                loss = criterion(pred, yb.float())
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+                optimizer.step()
+                total_loss += loss.item() * len(xb)
+                n += len(xb)
+            except RuntimeError as exc:
+                logger.error(
+                    "Runtime error during training step",
+                    exc_info=exc,
+                    extra={"batch_size": xb.shape[0]},
+                )
+                raise
+            except Exception as exc:
+                logger.error("Unexpected error during training step", exc_info=exc)
+                raise
         return {"loss": total_loss / max(n, 1)}
 
     def evaluate(self, loader) -> EvalMetrics:
         if not _TORCH_AVAILABLE:
             return EvalMetrics(accuracy=0.5, auc=0.5, sharpe=0.0)
         from sklearn.metrics import roc_auc_score
+
         self.eval()
         preds, labels = [], []
         with torch.no_grad():
             for xb, yb in loader:
-                p = self(xb).squeeze(-1).cpu().numpy()
-                preds.extend(p.tolist())
-                labels.extend(yb.cpu().numpy().tolist())
+                try:
+                    p = self(xb).squeeze(-1).cpu().numpy()
+                    preds.extend(p.tolist())
+                    labels.extend(yb.cpu().numpy().tolist())
+                except RuntimeError as exc:
+                    logger.error(
+                        "Runtime error during evaluation step",
+                        exc_info=exc,
+                        extra={"batch_size": xb.shape[0]},
+                    )
+                    raise
+                except Exception as exc:
+                    logger.error("Unexpected error during evaluation step", exc_info=exc)
+                    raise
         preds_arr = np.array(preds)
         labels_arr = np.array(labels)
         acc = float(((preds_arr > 0.5) == labels_arr).mean())
         try:
             auc = float(roc_auc_score(labels_arr, preds_arr))
-        except Exception:
+        except ValueError as exc:
+            logger.warning("AUC calculation failed due to insufficient class variety", exc_info=exc)
+            auc = 0.5
+        except Exception as exc:
+            logger.error("Unexpected error during AUC calculation", exc_info=exc)
             auc = 0.5
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def save(self, path: str, metadata: dict | None = None) -> None:
         if not _TORCH_AVAILABLE:
             return
-        import os, pickle
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        torch.save({
-            "state_dict": self.state_dict(),
-            "config": {
-                "n_features": self.n_features,
-                "d_model": self.d_model,
-                "n_layers": len(self.layers),
-            },
-            "metadata": metadata or {},
-        }, path)
+        import os
+        import pickle
+
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            torch.save(
+                {
+                    "state_dict": self.state_dict(),
+                    "config": {
+                        "n_features": self.n_features,
+                        "d_model": self.d_model,
+                        "n_layers": len(self.layers),
+                    },
+                    "metadata": metadata or {},
+                },
+                path,
+            )
+        except OSError as exc:
+            logger.error("Failed to save model checkpoint", exc_info=exc, extra={"path": path})
+            raise
+        except Exception as exc:
+            logger.error("Unexpected error during model save", exc_info=exc, extra={"path": path})
+            raise
 
     @classmethod
     def load(cls, path: str) -> "SSMPredictor":
         if not _TORCH_AVAILABLE:
             return cls()
-        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        try:
+            checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        except FileNotFoundError as exc:
+            logger.error("Model checkpoint file not found", exc_info=exc, extra={"path": path})
+            raise
+        except RuntimeError as exc:
+            logger.error("Failed to load checkpoint (runtime error)", exc_info=exc, extra={"path": path})
+            raise
+        except Exception as exc:
+            logger.error("Unexpected error loading model checkpoint", exc_info=exc, extra={"path": path})
+            raise
+
         cfg = checkpoint.get("config", {})
         model = cls(
             n_features=cfg.get("n_features", 27),
             d_model=cfg.get("d_model", 64),
             n_layers=cfg.get("n_layers", 4),
         )
-        model.load_state_dict(checkpoint["state_dict"])
+        try:
+            model.load_state_dict(checkpoint["state_dict"])
+        except RuntimeError as exc:
+            logger.error("State dict loading failed", exc_info=exc)
+            raise
         return model

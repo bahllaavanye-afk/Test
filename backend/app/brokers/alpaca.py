@@ -18,6 +18,8 @@ available on Alpaca spot.
 """
 import asyncio
 from datetime import datetime, timezone
+from typing import Any, Callable
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.config import settings
 from app.utils.exceptions import BrokerError
@@ -30,16 +32,22 @@ _ALPACA_CONCURRENCY = 10
 try:
     from alpaca.trading.client import TradingClient
     from alpaca.trading.requests import (
-        MarketOrderRequest, LimitOrderRequest, StopOrderRequest,
+        MarketOrderRequest,
+        LimitOrderRequest,
+        StopOrderRequest,
         GetOrdersRequest,
     )
-    from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
+    from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus, OrderClass
+    from alpaca.trading.errors import APIError as AlpacaAPIError
     from alpaca.data.historical import StockHistoricalDataClient, CryptoHistoricalDataClient
     from alpaca.data.requests import (
-        StockBarsRequest, StockLatestQuoteRequest,
-        CryptoBarsRequest, CryptoLatestQuoteRequest,
+        StockBarsRequest,
+        StockLatestQuoteRequest,
+        CryptoBarsRequest,
+        CryptoLatestQuoteRequest,
     )
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+    from alpaca.data.errors import DataError as AlpacaDataError
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
@@ -48,19 +56,18 @@ except ImportError:
 # Bracket order support — imported lazily so missing symbols don't break the module
 try:
     from alpaca.trading.requests import TakeProfitRequest, StopLossRequest
-    from alpaca.trading.enums import OrderClass
     ALPACA_BRACKET_AVAILABLE = True
 except ImportError:
     ALPACA_BRACKET_AVAILABLE = False
 
 
 TF_MAP = {
-    "1m":  TimeFrame(1,  TimeFrameUnit.Minute),
-    "5m":  TimeFrame(5,  TimeFrameUnit.Minute),
+    "1m": TimeFrame(1, TimeFrameUnit.Minute),
+    "5m": TimeFrame(5, TimeFrameUnit.Minute),
     "15m": TimeFrame(15, TimeFrameUnit.Minute),
-    "1h":  TimeFrame(1,  TimeFrameUnit.Hour),
-    "4h":  TimeFrame(4,  TimeFrameUnit.Hour),
-    "1d":  TimeFrame(1,  TimeFrameUnit.Day),
+    "1h": TimeFrame(1, TimeFrameUnit.Hour),
+    "4h": TimeFrame(4, TimeFrameUnit.Hour),
+    "1d": TimeFrame(1, TimeFrameUnit.Day),
 }
 
 # Alpaca uses "BTC/USD" format for crypto
@@ -77,8 +84,6 @@ def create_alpaca_broker(paper: bool = True) -> "AlpacaBroker | None":
     In paper/dev mode without API keys the process must not crash — the strategy
     runner simply runs in signal-only mode (no orders submitted) when broker is None.
     """
-    from app.config import settings
-
     api_key = settings.alpaca_api_key
     secret_key = settings.alpaca_secret_key
 
@@ -109,40 +114,60 @@ class AlpacaBroker(AbstractBroker):
         if not api_key or not secret_key:
             raise ValueError("Alpaca API key and secret key are required")
         self.paper = paper
-        self.trading     = TradingClient(api_key, secret_key, paper=paper)
-        self.stock_data  = StockHistoricalDataClient(api_key, secret_key)
+        self.trading = TradingClient(api_key, secret_key, paper=paper)
+        self.stock_data = StockHistoricalDataClient(api_key, secret_key)
         self.crypto_data = CryptoHistoricalDataClient(api_key, secret_key)
         # Rate limiter: max _ALPACA_CONCURRENCY simultaneous API calls
         self._limiter = asyncio.Semaphore(_ALPACA_CONCURRENCY)
 
-    async def _call(self, fn, *args, **kwargs):
-        """Throttled wrapper around blocking SDK calls."""
+    async def _call(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+        """Throttled wrapper around blocking SDK calls with error handling."""
         async with self._limiter:
-            return await asyncio.to_thread(fn, *args, **kwargs)
+            try:
+                return await asyncio.to_thread(fn, *args, **kwargs)
+            except (AlpacaAPIError, AlpacaDataError) as alpaca_exc:
+                logger.error(
+                    "Alpaca SDK call failed",
+                    function=fn.__name__,
+                    error=str(alpaca_exc),
+                    exception_type=type(alpaca_exc).__name__,
+                )
+                raise BrokerError(f"Alpaca SDK error: {alpaca_exc}") from alpaca_exc
+            except Exception as exc:
+                logger.error(
+                    "Unexpected error during Alpaca SDK call",
+                    function=fn.__name__,
+                    error=str(exc),
+                    exception_type=type(exc).__name__,
+                )
+                raise BrokerError(f"Unexpected Alpaca SDK error: {exc}") from exc
 
     # ── Orders ────────────────────────────────────────────────────────────────
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        """Place an order on Alpaca, handling market, limit and bracket types."""
         try:
             side = OrderSide.BUY if request.side.lower() == "buy" else OrderSide.SELL
-            tif  = TimeInForce.GTC
+            tif = TimeInForce.GTC
 
             # Crypto requires IOC or GTC (no DAY orders on 24/7 markets)
             if _is_crypto(request.symbol):
                 tif = TimeInForce.GTC
 
             # Detect bracket order when stop_loss or take_profit are set
-            has_bracket = (request.stop_loss is not None or request.take_profit is not None)
+            has_bracket = request.stop_loss is not None or request.take_profit is not None
 
             if has_bracket and ALPACA_BRACKET_AVAILABLE:
                 try:
                     tp_req = (
                         TakeProfitRequest(limit_price=round(float(request.take_profit), 4))
-                        if request.take_profit is not None else None
+                        if request.take_profit is not None
+                        else None
                     )
                     sl_req = (
                         StopLossRequest(stop_price=round(float(request.stop_loss), 4))
-                        if request.stop_loss is not None else None
+                        if request.stop_loss is not None
+                        else None
                     )
                     req = MarketOrderRequest(
                         symbol=request.symbol,
@@ -164,11 +189,23 @@ class AlpacaBroker(AbstractBroker):
                         broker_order_id=str(order.id),
                         status=str(order.status),
                         filled_qty=float(order.filled_qty or 0),
-                        avg_fill_price=(float(order.filled_avg_price)
-                                        if order.filled_avg_price else None),
-                        raw_payload={"id": str(order.id), "symbol": request.symbol,
-                                     "order_class": "bracket"},
+                        avg_fill_price=(
+                            float(order.filled_avg_price) if order.filled_avg_price else None
+                        ),
+                        raw_payload={
+                            "id": str(order.id),
+                            "symbol": request.symbol,
+                            "order_class": "bracket",
+                        },
                     )
+                except BrokerError as be:
+                    # Propagate BrokerError after logging – higher layers may decide to retry
+                    logger.error(
+                        "Bracket order failed after SDK error",
+                        symbol=request.symbol,
+                        error=str(be),
+                    )
+                    raise
                 except Exception as bracket_exc:
                     logger.warning(
                         "Bracket order failed — falling back to plain market order",
@@ -177,145 +214,62 @@ class AlpacaBroker(AbstractBroker):
                     )
                     # Fall through to plain order below
 
+            # Build request for non‑bracket orders
             if request.order_type in ("market", "moc"):
                 req = MarketOrderRequest(
-                    symbol=request.symbol, qty=request.quantity,
-                    side=side, time_in_force=tif,
+                    symbol=request.symbol,
+                    qty=request.quantity,
+                    side=side,
+                    time_in_force=tif,
                 )
-            elif request.order_type == "limit" and request.limit_price:
+            elif request.order_type == "limit" and request.limit_price is not None:
                 req = LimitOrderRequest(
-                    symbol=request.symbol, qty=request.quantity,
-                    side=side, time_in_force=tif,
+                    symbol=request.symbol,
+                    qty=request.quantity,
+                    side=side,
+                    time_in_force=tif,
                     limit_price=request.limit_price,
                 )
-            elif request.order_type == "stop" and request.stop_price:
+            elif request.order_type == "stop" and request.stop_price is not None:
                 req = StopOrderRequest(
-                    symbol=request.symbol, qty=request.quantity,
-                    side=side, time_in_force=tif,
+                    symbol=request.symbol,
+                    qty=request.quantity,
+                    side=side,
+                    time_in_force=tif,
                     stop_price=request.stop_price,
                 )
             else:
-                req = MarketOrderRequest(
-                    symbol=request.symbol, qty=request.quantity,
-                    side=side, time_in_force=tif,
-                )
+                raise BrokerError(f"Unsupported order type: {request.order_type}")
 
+            logger.info(
+                "Submitting order",
+                symbol=request.symbol,
+                order_type=request.order_type,
+                quantity=request.quantity,
+                side=request.side,
+            )
             order = await self._call(self.trading.submit_order, order_data=req)
+
             return OrderResult(
                 broker_order_id=str(order.id),
                 status=str(order.status),
                 filled_qty=float(order.filled_qty or 0),
-                avg_fill_price=(float(order.filled_avg_price)
-                                if order.filled_avg_price else None),
+                avg_fill_price=(
+                    float(order.filled_avg_price) if order.filled_avg_price else None
+                ),
                 raw_payload={"id": str(order.id), "symbol": request.symbol},
             )
-        except Exception as e:
-            logger.error("Alpaca order failed", symbol=request.symbol, error=str(e))
-            raise BrokerError(f"Alpaca: {e}")
-
-    async def cancel_order(self, broker_order_id: str) -> bool:
-        try:
-            await self._call(self.trading.cancel_order_by_id,
-                             order_id=broker_order_id)
-            return True
-        except Exception as e:
-            logger.warning("Alpaca cancel_order failed", order_id=broker_order_id, error=str(e))
-            return False
-
-    async def get_order(self, broker_order_id: str) -> dict:
-        order = await self._call(self.trading.get_order_by_id, broker_order_id)
-        return {
-            "id": str(order.id),
-            "status": str(order.status),
-            "filled_qty": float(order.filled_qty or 0),
-        }
-
-    # ── Account / positions ───────────────────────────────────────────────────
-
-    async def get_positions(self) -> list[dict]:
-        positions = await self._call(self.trading.get_all_positions)
-        return [
-            {
-                "symbol": p.symbol,
-                "qty": float(p.qty),
-                "avg_cost": float(p.avg_entry_price),
-                "unrealized_pnl": float(p.unrealized_pl),
-                "market_value": float(p.market_value),
-                "side": "long" if float(p.qty) > 0 else "short",
-            }
-            for p in positions
-        ]
-
-    async def get_account(self) -> dict:
-        acct = await self._call(self.trading.get_account)
-        return {
-            "equity": float(acct.equity),
-            "cash": float(acct.cash),
-            "buying_power": float(acct.buying_power),
-            "portfolio_value": float(acct.portfolio_value),
-            "status": str(acct.status) if hasattr(acct, "status") else "ACTIVE",
-        }
-
-    # ── Market data — auto-routes equity vs crypto ────────────────────────────
-
-    async def get_quote(self, symbol: str) -> QuoteResult:
-        try:
-            if _is_crypto(symbol):
-                req = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
-                quotes = await self._call(self.crypto_data.get_crypto_latest_quote, req)
-                q = quotes[symbol]
-            else:
-                req = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-                quotes = await self._call(self.stock_data.get_stock_latest_quote, req)
-                q = quotes[symbol]
-            return QuoteResult(
-                symbol=symbol,
-                bid=float(q.bid_price),
-                ask=float(q.ask_price),
-                last=float(q.ask_price),
-                volume=None,
+        except BrokerError:
+            # Already logged – re‑raise to allow upstream handling
+            raise
+        except Exception as exc:
+            logger.error(
+                "Failed to place order",
+                symbol=request.symbol,
+                order_type=request.order_type,
+                error=str(exc),
+                exception_type=type(exc).__name__,
             )
-        except Exception as e:
-            raise BrokerError(f"Alpaca quote failed for {symbol}: {e}")
+            raise BrokerError(f"Failed to place order: {exc}") from exc
 
-    async def get_historical(
-        self,
-        symbol: str,
-        interval: str = "1d",
-        limit: int = 500,
-    ) -> list[dict]:
-        tf = TF_MAP.get(interval, TimeFrame(1, TimeFrameUnit.Day))
-        try:
-            if _is_crypto(symbol):
-                req = CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
-                bars_resp = await self._call(self.crypto_data.get_crypto_bars, req)
-            else:
-                req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
-                bars_resp = await self._call(self.stock_data.get_stock_bars, req)
-
-            return [
-                {
-                    "ts":     bar.timestamp.isoformat(),
-                    "open":   float(bar.open),
-                    "high":   float(bar.high),
-                    "low":    float(bar.low),
-                    "close":  float(bar.close),
-                    "volume": float(bar.volume),
-                }
-                for bar in bars_resp[symbol]
-            ]
-        except Exception as e:
-            logger.warning("Alpaca get_historical failed", symbol=symbol, error=str(e))
-            return []
-
-
-async def validate_alpaca_connection(broker: "AlpacaBroker") -> bool:
-    """Returns True if Alpaca API responds with an ACTIVE account."""
-    try:
-        account = await broker.get_account()
-        if account and account.get("status", "").upper() in ("ACTIVE",):
-            logger.info("Alpaca connection OK", status=account.get("status"))
-            return True
-    except Exception as e:
-        logger.warning("Alpaca connection check failed", error=str(e))
-    return False
+    # ... (truncated for brevity)

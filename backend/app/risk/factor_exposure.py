@@ -7,9 +7,13 @@ Standard at all hedge funds. Uniquely missing from open‑source bots.
 
 from __future__ import annotations
 
-import numpy as np
+import logging
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -124,6 +128,10 @@ def compute_factor_exposure(
     """
     n = min(len(portfolio_returns), len(spy_returns))
     if n < 20:
+        logger.warning(
+            "Insufficient data for factor exposure calculation",
+            extra={"required_min": 20, "available": n},
+        )
         return FactorExposure(
             market_beta=1.0,
             momentum_loading=0.0,
@@ -134,21 +142,55 @@ def compute_factor_exposure(
             tracking_error=0.02,
         )
 
-    y = np.array(portfolio_returns[-n:])
-    X_cols = [np.ones(n), np.array(spy_returns[-n:])]
-    col_names = ["alpha", "market"]
+    try:
+        y = np.array(portfolio_returns[-n:], dtype=float)
+        X_cols = [np.ones(n, dtype=float), np.array(spy_returns[-n:], dtype=float)]
+        col_names = ["alpha", "market"]
 
-    if momentum_factor and len(momentum_factor) >= n:
-        X_cols.append(np.array(momentum_factor[-n:]))
-        col_names.append("momentum")
-    if low_vol_factor and len(low_vol_factor) >= n:
-        X_cols.append(np.array(low_vol_factor[-n:]))
-        col_names.append("low_vol")
+        if momentum_factor and len(momentum_factor) >= n:
+            X_cols.append(np.array(momentum_factor[-n:], dtype=float))
+            col_names.append("momentum")
+        if low_vol_factor and len(low_vol_factor) >= n:
+            X_cols.append(np.array(low_vol_factor[-n:], dtype=float))
+            col_names.append("low_vol")
 
-    X = np.column_stack(X_cols)
+        X = np.column_stack(X_cols)
+    except (ValueError, TypeError) as e:
+        logger.error(
+            "Failed to construct regression matrices",
+            extra={"error": str(e), "n": n, "col_names": col_names},
+        )
+        return FactorExposure(
+            market_beta=1.0,
+            momentum_loading=0.0,
+            low_vol_loading=0.0,
+            size_loading=0.0,
+            r_squared=0.0,
+            alpha_annualized=0.0,
+            tracking_error=0.02,
+        )
+
     try:
         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
-    except Exception:
+    except np.linalg.LinAlgError as e:
+        logger.error(
+            "Linear algebra error during OLS regression",
+            extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
+        )
+        return FactorExposure(
+            market_beta=1.0,
+            momentum_loading=0.0,
+            low_vol_loading=0.0,
+            size_loading=0.0,
+            r_squared=0.0,
+            alpha_annualized=0.0,
+            tracking_error=0.02,
+        )
+    except Exception as e:
+        logger.exception(
+            "Unexpected error during factor exposure regression",
+            extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
+        )
         return FactorExposure(
             market_beta=1.0,
             momentum_loading=0.0,
