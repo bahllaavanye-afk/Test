@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1783598932,
+  "last_run_ts": 1783599560,
   "last_commit_sha": "8019230",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -202,7 +202,8 @@
     "c34511aecb13",
     "5ef14689177b",
     "0606e3b09e7d",
-    "f80d54e2b4a9"
+    "f80d54e2b4a9",
+    "883c4a89bdce"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -217,7 +218,8 @@
     "risk-alerts:silent_risk_eng": 1783596416.800302,
     "squad-backend:silent_backend_lead": 1783596425.7183192,
     "engineering:silent_rl_trader": 1783596465.8315866,
-    "engineering:silent_senior_quant": 1783596473.9651904
+    "engineering:silent_senior_quant": 1783596473.9651904,
+    "squad-qa:silent_qa_dir": 1783599561.036596
   },
   "response_cache": {},
   "posted_today": [
@@ -274,7 +276,7 @@
     "ml_lead": 1783596403.476445,
     "risk_eng": 1783596403.476445,
     "backend_lead": 1783596403.476445,
-    "qa_dir": 1783396957.4967377,
+    "qa_dir": 1783599561.0363615,
     "devops_dir": 1783345721.50888,
     "exec_eng": 1783431338.979135,
     "poly_desk": 1783431868.6464648,
@@ -1301,17 +1303,16 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-07-09 11:28:00"
+    },
+    {
+      "emp": "qa_dir",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-09 12:19:26"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "ml_lead",
-      "channel": "unknown",
-      "text": "*BTC/ETH funding rates* are showing a slight *deleveraging bias* with Binance BTC \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1781148831.0185878,
-      "score": 4
-    },
     {
       "emp": "ml_lead",
       "channel": "unknown",
@@ -1703,6 +1704,14 @@
       "provider": "Gemini(GEMINI_API_KEY)",
       "ts": 1783596480.2672825,
       "score": 5
+    },
+    {
+      "emp": "qa_dir",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the pytest suite in `/src/tests/integration`*, where I've identified  **127** failing tests, with the highest failure rate in `test_portfolio_management.py`. The **75.6%** pass rate indicates a significant test gap, which I'm prioritizing for triage. I'm focusing on `/src/te",
+      "provider": "litellm:groq",
+      "ts": 1783599566.1770232,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -1712,7 +1721,7 @@
     "ml_lead": "GitHub Models",
     "risk_eng": "Gemini(GEMINI_API_KEY)",
     "backend_lead": "litellm:groq",
-    "qa_dir": "GitHub Models",
+    "qa_dir": "litellm:groq",
     "exec_eng": "litellm:groq",
     "poly_desk": "Gemini(GEMINI_API_KEY_3)",
     "ml_researcher": "litellm:groq",
