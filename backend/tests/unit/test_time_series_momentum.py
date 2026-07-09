@@ -15,13 +15,17 @@ def _df_trending(direction: int = 1, n: int = 300) -> pd.DataFrame:
     rets = rng.normal(drift, 0.008, n)
     close = 100 * np.exp(np.cumsum(rets))
     return pd.DataFrame({
-        "open": close, "high": close * 1.01, "low": close * 0.99,
-        "close": close, "volume": np.full(n, 1_000_000.0),
+        "open": close,
+        "high": close * 1.01,
+        "low": close * 0.99,
+        "close": close,
+        "volume": np.full(n, 1_000_000.0),
     })
 
 
 def test_registered():
     from app.strategies import STRATEGY_REGISTRY
+
     assert "time_series_momentum" in STRATEGY_REGISTRY
 
 
@@ -56,8 +60,8 @@ def test_no_lookahead_in_warmup():
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=1, n=300)
     out = s.backtest_signals(df)
-    assert not out.entries.iloc[:s.lookback].any()
-    assert not out.short_entries.iloc[:s.lookback].any()
+    assert not out.entries.iloc[: s.lookback].any()
+    assert not out.short_entries.iloc[: s.lookback].any()
 
 
 def test_short_data_returns_empty():
