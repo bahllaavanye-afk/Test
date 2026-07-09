@@ -36,6 +36,7 @@ jobs:
         env:
           OA_SESSION_COOKIE: ${{ secrets.OA_SESSION_COOKIE }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python .github/scripts/oa_scout.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Persist library state

@@ -36,6 +36,7 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           SECRET_KEY: "ci-only-not-a-real-secret-0000000000000000"
           DATABASE_URL: "sqlite+aiosqlite:///./ci.db"
         run: python .github/scripts/oa_backtest_runner.py | tee -a "$GITHUB_STEP_SUMMARY"
