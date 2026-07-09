@@ -22,9 +22,15 @@ import urllib.request
 _SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "").strip()
 _DEFAULT_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
 _BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "").strip()
 _DISCORD_CAP = int(os.environ.get("DISCORD_MAX_POSTS_PER_RUN", "20"))
 _DISCORD_API = "https://discord.com/api/v10"
 _UA = "Mozilla/5.0 (X11; Linux x86_64) QuantEdge-Notify/1.0"
+# Discord's REST API REQUIRES a User-Agent of the form "DiscordBot (url, version)".
+# A browser UA gets 403 Forbidden on bot endpoints — that is exactly why the
+# channel-map load 403'd (while webhooks, which are lenient, accepted the browser
+# UA). Bot API calls use this UA; webhook posts keep the browser UA above.
+_BOT_UA = "DiscordBot (https://github.com/quantedge/quantedge, 1.0)"
 
 # Bot-token channel routing: resolve #channel-name → channel id ONCE, so every
 # message lands in its real channel instead of dumping into #general via a single
@@ -37,10 +43,23 @@ def _bot_req(method: str, path: str, body: dict | None = None):
     req = urllib.request.Request(
         _DISCORD_API + path, data=data, method=method,
         headers={"Authorization": f"Bot {_BOT_TOKEN}", "Content-Type": "application/json",
-                 "User-Agent": _UA},
+                 "User-Agent": _BOT_UA},
     )
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read() or "{}")
+
+
+def _guild_ids() -> list[str]:
+    """Guild ids to scan. A pinned DISCORD_GUILD_ID skips /users/@me/guilds
+    (which some bot installs can't call); otherwise enumerate the bot's guilds."""
+    if _GUILD_ID:
+        return [_GUILD_ID]
+    try:
+        return [g["id"] for g in _bot_req("GET", "/users/@me/guilds")]
+    except Exception as e:  # noqa: BLE001
+        print(f"[notify] guild list failed ({str(e)[:70]}); "
+              f"set DISCORD_GUILD_ID to skip /users/@me/guilds")
+        return []
 
 
 def _load_channel_ids() -> dict[str, str]:
@@ -51,13 +70,13 @@ def _load_channel_ids() -> dict[str, str]:
     _channel_ids = {}
     if not _BOT_TOKEN:
         return _channel_ids
-    try:
-        for g in _bot_req("GET", "/users/@me/guilds"):
-            for c in _bot_req("GET", f"/guilds/{g['id']}/channels"):
+    for gid in _guild_ids():
+        try:
+            for c in _bot_req("GET", f"/guilds/{gid}/channels"):
                 if c.get("type") == 0:  # text channel
                     _channel_ids.setdefault(c["name"].lower().lstrip("#"), c["id"])
-    except Exception as e:  # noqa: BLE001
-        print(f"[notify] channel map load failed: {str(e)[:80]}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[notify] channels for guild {gid} failed: {str(e)[:80]}")
     return _channel_ids
 
 
