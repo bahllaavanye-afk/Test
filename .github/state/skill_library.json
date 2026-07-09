@@ -1,17 +1,5 @@
 {
   "skills": [
-    "optimization on brokers/binance.py: success \u2014 tests green",
-    "Review model configs",
-    "1. **Improve Code Quality**: Continuously review and refactor code to adhere to platform standards and ensure high quality.",
-    "Here are the 3 concise bullet points of the most important, actionable knowledge:",
-    "Validate config files",
-    "docstrings on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
-    "error_handling on ml/models/hawkes_arrival.py: success \u2014 tests green",
-    "Test algo inputs",
-    "schemas on test/unit/test_btc_eth_stat_arb.py: success \u2014 tests green",
-    "monitoring on execution/limit_first.py: success \u2014 tests green",
-    "Implement retry logic",
-    "docstrings on ml/features/engineer.py: success \u2014 tests green",
     "Log trade rejections",
     "optimization on brokers/base.py: success \u2014 tests green",
     "Test dependency versions",
@@ -204,8 +192,15 @@
     "error_handling on ml/features/wavelet_features.py: success \u2014 tests green",
     "error_handling on risk/factor_exposure.py: success \u2014 tests green",
     "error_handling on brokers/alpaca.py: success \u2014 tests green",
-    "error_handling on backtest/engine.py: success \u2014 tests green"
+    "error_handling on backtest/engine.py: success \u2014 tests green",
+    "Implement circuit breakers",
+    "Use load balancing",
+    "Log broker responses",
+    "Validate API inputs",
+    "Refactor complex code",
+    "Implement unit tests",
+    "Monitor model drift"
   ],
-  "last_updated": "2026-07-09T13:02:05.311545+00:00",
+  "last_updated": "2026-07-09T15:43:06.631850+00:00",
   "total": 200
 }
