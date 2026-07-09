@@ -12,11 +12,20 @@ import asyncio
 import logging
 import time
 from dataclasses import asdict
-from typing import Optional
+from typing import Optional, Tuple
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 
 logger = logging.getLogger(__name__)
+
+# Attempt to import a generic broker exception; fall back to Exception if not present.
+try:
+    from app.brokers.base import BrokerError  # type: ignore
+except Exception:  # pragma: no cover
+    BrokerError = Exception  # noqa: N801
+
+# Specific exceptions we anticipate from broker operations.
+_BROKER_EXCEPTIONS: Tuple[type, ...] = (BrokerError, ConnectionError, TimeoutError)
 
 
 class LimitFirstExecution:
@@ -99,30 +108,57 @@ class LimitFirstExecution:
             },
         )
 
+        # Helper to perform a broker call with detailed error handling.
+        async def _call_broker(coro, action: str):
+            try:
+                return await coro
+            except _BROKER_EXCEPTIONS as exc:
+                logger.error(
+                    f"Broker {action} failed",
+                    extra={
+                        "signal_id": signal_id,
+                        "action": action,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
+                raise
+            except Exception as exc:  # pragma: no cover
+                # Unexpected exception – log and re‑raise to be caught by outer handler.
+                logger.exception(
+                    f"Unexpected error during broker {action}",
+                    extra={"signal_id": signal_id, "action": action},
+                )
+                raise
+
         try:
-            # Get current quote
-            quote = await self.broker.get_quote(request.symbol)
+            # 1. Get current quote
+            quote = await _call_broker(self.broker.get_quote(request.symbol), "get_quote")
             ref_price = quote.ask if request.side == "buy" else quote.bid
             offset = ref_price * self.offset_bps / 10_000
 
+            # 2. Compute limit price
             if request.side == "buy":
                 limit_price = quote.ask - offset  # post below ask to improve fill
             else:
                 limit_price = quote.bid + offset  # post above bid to improve fill
 
+            # 3. Submit limit order
             limit_req = OrderRequest(
                 **{**asdict(request), "order_type": "limit", "limit_price": round(limit_price, 4)}
             )
-            result = await self.broker.place_order(limit_req)
+            result = await _call_broker(self.broker.place_order(limit_req), "place_limit_order")
 
+            # 4. Check immediate fill
             if result.status in ("filled", "partially_filled"):
-                # Successful limit fill
                 return self._log_and_return(result, signal_id, start_ts, request, ref_price)
 
-            # Wait for fill, then fallback to market
+            # 5. Wait for fill within fallback window
             for _ in range(self.fallback_seconds):
                 await asyncio.sleep(1)
-                order_status = await self.broker.get_order(result.broker_order_id)
+                order_status = await _call_broker(
+                    self.broker.get_order(result.broker_order_id), "get_order_status"
+                )
                 if order_status.get("status") in ("filled", "closed"):
                     result.status = "filled"
                     result.filled_qty = float(
@@ -130,18 +166,34 @@ class LimitFirstExecution:
                     )
                     return self._log_and_return(result, signal_id, start_ts, request, ref_price)
 
-            # Cancel limit and submit market
-            await self.broker.cancel_order(result.broker_order_id)
+            # 6. Cancel limit and submit market order
+            await _call_broker(
+                self.broker.cancel_order(result.broker_order_id), "cancel_limit_order"
+            )
             market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
-            market_result = await self.broker.place_order(market_req)
+            market_result = await _call_broker(self.broker.place_order(market_req), "place_market_order")
             return self._log_and_return(market_result, signal_id, start_ts, request, ref_price)
 
-        except Exception as exc:
+        except _BROKER_EXCEPTIONS as exc:
+            # Any broker‑related failure triggers a direct market order fallback.
+            logger.warning(
+                "Falling back to market order due to broker error",
+                extra={
+                    "signal_id": signal_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
+            market_req = OrderRequest(**{**asdict(request), "order_type": "market"})
+            market_result = await self.broker.place_order(market_req)
+            return self._log_and_return(market_result, signal_id, start_ts, request, None)
+
+        except Exception as exc:  # pragma: no cover
+            # Catch‑all for unexpected errors; ensure they are logged.
             logger.exception(
-                "LimitFirstExecution encountered an error, falling back to market",
+                "Unexpected error in LimitFirstExecution; attempting market fallback",
                 extra={"signal_id": signal_id, "error": str(exc)},
             )
-            # If anything fails, fall back to direct market order
             market_req = OrderRequest(**{**asdict(request), "order_type": "market"})
             market_result = await self.broker.place_order(market_req)
             return self._log_and_return(market_result, signal_id, start_ts, request, None)
@@ -183,7 +235,6 @@ class LimitFirstExecution:
 
         pnl: Optional[float] = None
         if fill_price is not None and reference_price is not None:
-            # Simple P&L: (reference - fill) * quantity for buys, opposite for sells
             qty = getattr(result, "filled_qty", request.quantity)
             if request.side == "buy":
                 pnl = (reference_price - fill_price) * qty
