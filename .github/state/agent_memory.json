@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-09T02:58:33.359990+00:00",
+  "last_updated": "2026-07-09T04:29:24.584111+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -729,11 +729,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[continuous_improver @ 2026-06-29T10:07] strategy_logic on execution/advanced_orders.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T17:34] optimization on brokers/base.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T17:34] optimization on backtest/stress_test.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T17:34] optimization on comparison/benchmarks.py: tests=pass",
-    "[continuous_improver @ 2026-06-29T17:34] optimization on api/v1/options.py: tests=pass",
     "[continuous_improver @ 2026-06-29T17:34] optimization on test/unit/test_bot_market_types.py: tests=pass",
     "[continuous_improver @ 2026-06-29T19:53] schemas on tasks/scheduler.py: tests=pass",
     "[continuous_improver @ 2026-06-29T19:53] schemas on api/v1/trades.py: tests=pass",
@@ -928,7 +923,12 @@
     "[algo_agent @ 2026-07-09T02:58] We need to respond as the algo_agent, with a concise 2 sentence max status update, referencing real file paths. Should say we are exploring UCB1 bandi",
     "[self_improver @ 2026-07-09T02:58] I\u2019m currently refactoring the memory handling logic in\u202f`src/agent_memory",
     "[research_scientist @ 2026-07-09T02:58] We need to respond as research_scientist agent, giving a one-sentence status update, first person, concise (2 sentences max). Must reference real file",
-    "[modeling_engineer @ 2026-07-09T02:58] We need to give a one-sentence status update about what the modeling_engineer is actively working on right now. Based on the context, the agent monito"
+    "[modeling_engineer @ 2026-07-09T02:58] We need to give a one-sentence status update about what the modeling_engineer is actively working on right now. Based on the context, the agent monito",
+    "[continuous_improver @ 2026-07-09T04:29] validation on risk/circuit_breaker.py: tests=pass",
+    "[continuous_improver @ 2026-07-09T04:29] validation on brokers/binance.py: tests=pass",
+    "[continuous_improver @ 2026-07-09T04:29] validation on backtest/cpcv.py: tests=pass",
+    "[continuous_improver @ 2026-07-09T04:29] validation on comparison/benchmarks.py: tests=pass",
+    "[continuous_improver @ 2026-07-09T04:29] validation on tasks/regime_monitor.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1210,6 +1210,11 @@
       "test_pass": 5
     },
     "error_handling": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
+    },
+    "validation": {
       "successes": 5,
       "failures": 0,
       "test_pass": 5

@@ -191,8 +191,13 @@
     "Use timeout retries",
     "Refactor agent_memory",
     "Explore UCB1 bandit",
-    "Deploy TFT architecture"
+    "Deploy TFT architecture",
+    "validation on risk/circuit_breaker.py: success \u2014 tests green",
+    "validation on brokers/binance.py: success \u2014 tests green",
+    "validation on backtest/cpcv.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on tasks/regime_monitor.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T01:08:35.222548+00:00",
+  "last_updated": "2026-07-09T04:29:24.583763+00:00",
   "total": 192
 }
