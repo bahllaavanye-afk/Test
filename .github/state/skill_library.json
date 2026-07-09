@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Here are 3 concise bullet points of the most important knowledge derived from the latest 10 agent learnings:",
-    "Check data feeds",
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Check RAM usage",
-    "Check disk space",
     "optimization on brokers/binance.py: success \u2014 tests green",
     "Review model configs",
     "1. **Improve Code Quality**: Continuously review and refactor code to adhere to platform standards and ensure high quality.",
@@ -196,8 +191,16 @@
     "Never add mock data or hardcoded test values to production files",
     "Handle timeout errors",
     "schemas on ml/models/ensemble_model.py: success \u2014 tests green",
-    "strategy_logic on risk/circuit_breaker.py: success \u2014 tests green"
+    "strategy_logic on risk/circuit_breaker.py: success \u2014 tests green",
+    "Log exceptions in ml/models",
+    "Check NaN in technical.py",
+    "Validate input types",
+    "Use retry on timeouts",
+    "Test edge cases daily",
+    "Refactor for cyclomatic complexity",
+    "Monitor queue sizes regularly",
+    "Optimize agent memory usage"
   ],
-  "last_updated": "2026-07-09T06:08:50.346415+00:00",
-  "total": 197
+  "last_updated": "2026-07-09T09:36:36.433478+00:00",
+  "total": 200
 }
