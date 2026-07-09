@@ -204,8 +204,13 @@
     "error_handling on ml/features/wavelet_features.py: success \u2014 tests green",
     "error_handling on risk/factor_exposure.py: success \u2014 tests green",
     "error_handling on brokers/alpaca.py: success \u2014 tests green",
-    "error_handling on backtest/engine.py: success \u2014 tests green"
+    "error_handling on backtest/engine.py: success \u2014 tests green",
+    "test_cases on execution/rl_exec.py: success \u2014 tests green",
+    "test_cases on risk/kelly.py: success \u2014 tests green",
+    "test_cases on brokers/base.py: success \u2014 tests green",
+    "test_cases on backtest/walk_forward.py: success \u2014 tests green",
+    "test_cases on comparison/benchmarks.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T13:02:05.311545+00:00",
+  "last_updated": "2026-07-09T14:05:18.111469+00:00",
   "total": 200
 }
