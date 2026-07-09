@@ -199,8 +199,13 @@
     "Check API rate limits",
     "Handle DNS failures",
     "Use retry mechanisms",
-    "Validate trade IDs"
+    "Validate trade IDs",
+    "strategy_logic on test/unit/test_bot_lifecycle.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/vrp_systematic.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "strategy_logic on ml/models/hmm_regime.py: success \u2014 tests green",
+    "strategy_logic on ml/features/normalization.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T21:20:18.262066+00:00",
+  "last_updated": "2026-07-09T22:49:21.285983+00:00",
   "total": 200
 }
