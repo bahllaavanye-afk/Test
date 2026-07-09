@@ -204,8 +204,12 @@
     "error_handling on ml/features/wavelet_features.py: success \u2014 tests green",
     "error_handling on risk/factor_exposure.py: success \u2014 tests green",
     "error_handling on brokers/alpaca.py: success \u2014 tests green",
-    "error_handling on backtest/engine.py: success \u2014 tests green"
+    "error_handling on backtest/engine.py: success \u2014 tests green",
+    "error_handling on ml/models/transformer.py: success \u2014 tests green",
+    "error_handling on ml/features/alternative.py: success \u2014 tests green",
+    "error_handling on execution/limit_first.py: success \u2014 tests green",
+    "error_handling on brokers/polymarket.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T13:02:05.311545+00:00",
+  "last_updated": "2026-07-09T13:26:57.002635+00:00",
   "total": 200
 }
