@@ -199,8 +199,13 @@
     "Validate API inputs",
     "Refactor complex code",
     "Implement unit tests",
-    "Monitor model drift"
+    "Monitor model drift",
+    "schemas on tasks/ml_retrain.py: success \u2014 tests green",
+    "schemas on strategies/manual/mvrv_zscore_timing.py: success \u2014 tests green",
+    "schemas on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "schemas on ml/models/base_model.py: success \u2014 tests green",
+    "schemas on risk/factor_exposure.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T17:51:58.327220+00:00",
+  "last_updated": "2026-07-09T19:09:58.718635+00:00",
   "total": 200
 }
