@@ -80,8 +80,10 @@ class SlackClient:
         if getattr(self, "_discord_channel_ids", None) is None:
             self._discord_channel_ids = {}
             api = "https://discord.com/api/v10"
+            # Discord's REST API rejects a browser UA with 403 on bot endpoints;
+            # it requires the "DiscordBot (url, version)" form.
             hdr = {"Authorization": f"Bot {token}",
-                   "User-Agent": "Mozilla/5.0 QuantEdge-Notify/1.0"}
+                   "User-Agent": "DiscordBot (https://github.com/quantedge/quantedge, 1.0)"}
             try:
                 async with httpx.AsyncClient(timeout=10.0, headers=hdr) as client:
                     guilds = (await client.get(f"{api}/users/@me/guilds")).json()
@@ -114,7 +116,7 @@ class SlackClient:
                     resp = await client.post(
                         f"https://discord.com/api/v10/channels/{cid}/messages",
                         headers={"Authorization": f"Bot {token}",
-                                 "User-Agent": "Mozilla/5.0 QuantEdge-Notify/1.0"},
+                                 "User-Agent": "DiscordBot (https://github.com/quantedge/quantedge, 1.0)"},
                         json={"content": body[:2000]},
                     )
                     if resp.status_code in (200, 201):
