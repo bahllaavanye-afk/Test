@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783548159.075645,
+    "last_updated": 1783559507.7030592,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1783548159.0753665
+    "last_brain_update": 1783559507.7028048
   },
   "episodic": [
     {
@@ -383,6 +383,34 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1783526237.9095035
+    },
+    {
+      "lesson": "Deployment hitting daily free tier limit of 100 deployments; consider upgrading to Pro plan or reducing deployment frequency.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783559493.185591
+    },
+    {
+      "lesson": "Auto-fix failed to apply patch to file; investigate patch compatibility or file state at time of application.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783559493.1869648
+    },
+    {
+      "lesson": "Auto-fix aborted because changes exceeded 88 lines (limit 50); split fixes into smaller chunks or increase limit.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783559493.1881995
+    },
+    {
+      "lesson": "Multiple auto-fix failures indicate systematic issue with patch generation or validation; review auto-fix pipeline and error handling.",
+      "category": "code",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783559493.189416
     }
   ],
   "github_insights": [
@@ -480,6 +508,11 @@
       "summary": "We need to summarize three separate GitHub PR/issue discussion snippets. Each is a status message from an auto-fix robot. The user wants a 1-2 sentence summary of these discussions. The snippets are:\n\n1. \"Auto-fix aborted \u2014 validation failed: Fix changes ~72 lines (limit 50)\"\n2. \"Auto-fix failed \u2014 could not apply patch to file.\"\n3. \"Auto-fix skipped \u2014 too complex for automated resolution.\"\n\nPlus a trailing \"Reason:",
       "item_count": 20,
       "ts": 1783548159.0703187
+    },
+    {
+      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input shows three lines separated by \" | \". The first is an error message about resource limitation, the second is an auto-fix failure (could not apply patch), and the third is an auto-fix aborted due to validation failure with fix changes exceeding limit. So the summary should capture that deployment failed due to resource limits, and auto-fix attempts also failed because of patch application issues and excessive line",
+      "item_count": 20,
+      "ts": 1783559507.700048
     }
   ],
   "experiment_results": [
