@@ -37,24 +37,24 @@ class SelfAttention(nn.Module):
     """
     Simple self‑attention layer.
 
+    The layer learns a linear projection from the hidden dimension to a scalar
+    attention score for each time step, then computes a weighted sum of the
+    input sequence.
+
     Parameters
     ----------
     hidden_size : int
         Dimensionality of the input feature vectors (typically ``hidden *
         directions`` from the LSTM).
-
-    The layer learns a linear projection from the hidden dimension to a scalar
-    attention score for each time step, then computes a weighted sum of the
-    input sequence.
     """
 
-    def __init__(self, hidden_size: int):
+    def __init__(self, hidden_size: int) -> None:
         super().__init__()
         self.attention = nn.Linear(hidden_size, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Compute attention‑weighted representation of the sequence.
+        Compute an attention‑weighted representation of the sequence.
 
         Parameters
         ----------
@@ -168,7 +168,8 @@ class LSTMPredictor(AbstractModel, nn.Module):
         Returns
         -------
         dict
-            Dictionary containing average ``loss`` and ``accuracy`` for the epoch.
+            Dictionary containing average ``loss`` and ``accuracy`` for the
+            epoch.
         """
         self.train()
         total_loss, correct, total = 0.0, 0, 0
