@@ -44,6 +44,7 @@ jobs:
           DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
           SLACK_BOT_TOKEN:    ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           ALLOW_PAID_APIS:    "False"
         run: python .github/scripts/collective_learner.py
 

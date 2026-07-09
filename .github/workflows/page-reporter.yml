@@ -44,6 +44,7 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
           python .github/scripts/page_screenshot_runner.py \
             --base-url "$SCREENSHOT_BASE_URL" \
@@ -81,6 +82,7 @@ jobs:
         env:
           SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY }}
           GROQ_API_KEY_1:       ${{ secrets.GROQ_API_KEY_1 }}
           GROQ_API_KEY_2:       ${{ secrets.GROQ_API_KEY_2 }}
