@@ -173,3 +173,78 @@ def get_benchmark_stats() -> dict:
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case handling
+# ----------------------------------------------------------------------
+import pytest
+from unittest.mock import AsyncMock, patch
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_invalid_range():
+    """When start date is on or after end date, an empty dict should be returned."""
+    from backend.app.comparison import benchmarks as bm
+
+    start = date(2023, 1, 1)
+    end = date(2023, 1, 1)  # equal to start
+    result = await bm.fetch_benchmark_curves(start, end)
+    assert result == {}
+
+    # also test start > end
+    result = await bm.fetch_benchmark_curves(date(2023, 2, 1), date(2023, 1, 1))
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_all_empty(monkeypatch):
+    """
+    If the underlying fetch returns empty series for every ticker,
+    the function should return an empty result (no benchmark keys).
+    """
+    from backend.app.comparison import benchmarks as bm
+
+    async def empty_series(*args, **kwargs):
+        return pd.Series(dtype=float)
+
+    monkeypatch.setattr(bm, "_fetch_ticker_bars", empty_series)
+
+    start = date(2023, 1, 1)
+    end = date(2023, 1, 10)
+    result = await bm.fetch_benchmark_curves(start, end)
+    # No keys should be present because all series are empty
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_cache_immutability(monkeypatch):
+    """
+    Ensure that the cached result is not mutated by callers.
+    The second call should return a copy; modifying the returned dict must not affect the cache.
+    """
+    from backend.app.comparison import benchmarks as bm
+
+    # Mock fetch to return a deterministic small series for SPY only
+    dates = pd.date_range(start="2023-01-01", periods=3, freq="D", tz=timezone.utc)
+    series = pd.Series([100.0, 101.0, 102.0], index=dates, name="SPY")
+
+    async def mock_fetch(client, ticker, start, end):
+        return series if ticker == "SPY" else pd.Series(dtype=float)
+
+    monkeypatch.setattr(bm, "_fetch_ticker_bars", mock_fetch)
+
+    start = date(2023, 1, 1)
+    end = date(2023, 1, 3)
+
+    # First call populates the cache
+    result1 = await bm.fetch_benchmark_curves(start, end)
+    assert "SPY" in result1
+    original_spy_data = result1["SPY"].copy()
+
+    # Mutate the returned data
+    result1["SPY"][0]["value"] = 9999.0
+
+    # Second call should retrieve a fresh copy from cache
+    result2 = await bm.fetch_benchmark_curves(start, end)
+    assert result2["SPY"] == original_spy_data  # unchanged by previous mutation
