@@ -191,8 +191,13 @@
     "Use timeout retries",
     "Refactor agent_memory",
     "Explore UCB1 bandit",
-    "Deploy TFT architecture"
+    "Deploy TFT architecture",
+    "docstrings on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "docstrings on ml/models/xgboost_model.py: success \u2014 tests green",
+    "docstrings on ml/features/alpha_decay.py: success \u2014 tests green",
+    "docstrings on execution/almgren_chriss.py: success \u2014 tests green",
+    "docstrings on risk/kelly.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-08T23:02:25.306561+00:00",
+  "last_updated": "2026-07-09T00:07:19.045886+00:00",
   "total": 192
 }
