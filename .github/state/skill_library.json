@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Log trade rejections",
-    "optimization on brokers/base.py: success \u2014 tests green",
-    "Test dependency versions",
-    "Log query params",
     "strategy_logic on strategies/manual/commodity_trend.py: success \u2014 tests green",
     "schemas on api/v1/trades.py: success \u2014 tests green",
     "Files > 8000 chars cause LLM truncation \u2014 always truncate before sending to LLM",
@@ -199,8 +195,12 @@
     "Validate API inputs",
     "Refactor complex code",
     "Implement unit tests",
-    "Monitor model drift"
+    "Monitor model drift",
+    "Check API rate limits",
+    "Handle DNS failures",
+    "Use retry mechanisms",
+    "Validate trade IDs"
   ],
-  "last_updated": "2026-07-09T19:39:53.478003+00:00",
+  "last_updated": "2026-07-09T21:20:18.262066+00:00",
   "total": 200
 }
