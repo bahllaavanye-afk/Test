@@ -2,8 +2,13 @@ name: Frontend Design Agent — Continuous UI/UX Improvements
 
 on:
   schedule:
-    # Every 6 hours — Priya Iyer (VP Frontend) is always improving the dashboard
-    - cron: "0 */2 * * *"
+    # Once daily (06:00 UTC). Was every 2h, which committed ~12 direct-to-main
+    # frontend changes/day — the dominant source of Vercel deploy churn (it
+    # exhausted the free-tier build quota) and the repeat cause of build breaks
+    # (it truncated RegimeIndicator/AppShell/OptionsPCRPanel). The truncation
+    # guard in frontend_design_agent.py now blocks broken output; daily cadence
+    # keeps the agent working without swamping deploys.
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       component:
