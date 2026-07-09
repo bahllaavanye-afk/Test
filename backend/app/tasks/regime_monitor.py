@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -88,6 +89,8 @@ def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     offline dev container). Keeps the regime monitor functional 24/7.
     Deterministic per-day seed so the regime is stable within a session.
     """
+    if not isinstance(n, int) or n <= 0:
+        raise ValueError(f"`n` must be a positive integer, got {n!r}")
     seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
     rng = np.random.default_rng(seed)
     # Mild positive drift, ~16% annualised vol — a neutral "sideways/bull" market
@@ -102,8 +105,25 @@ async def _fetch_spy_returns() -> np.ndarray | None:
     return await loop.run_in_executor(None, _fetch_spy_returns_sync)
 
 
-async def run_once(redis_client) -> int | None:
-    """Fit regime, write to Redis, return regime int or None on failure."""
+async def run_once(redis_client: Any) -> int | None:
+    """
+    Fit regime, write to Redis, return regime int or None on failure.
+
+    Parameters
+    ----------
+    redis_client : Any
+        Redis client instance supporting a ``set`` method.
+
+    Raises
+    ------
+    ValueError
+        If ``redis_client`` is ``None`` or does not provide a callable ``set``.
+    """
+    if redis_client is None:
+        raise ValueError("redis_client must not be None")
+    if not hasattr(redis_client, "set") or not callable(getattr(redis_client, "set")):
+        raise ValueError("redis_client must have a callable 'set' method")
+
     returns = await _fetch_spy_returns()
     if returns is None:
         # Network blocked / offline — fall back to synthetic returns so the
@@ -133,11 +153,22 @@ class RegimeMonitor:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        """Start the background monitor loop.
+
+        Raises
+        ------
+        ValueError
+            If the monitor has already been started and is still running.
+        """
+        if self._task is not None and not self._task.done():
+            raise ValueError("RegimeMonitor is already running")
         self._task = asyncio.create_task(self._loop(), name="regime_monitor")
 
     def stop(self) -> None:
-        if self._task:
+        """Stop the background monitor loop if it is running."""
+        if self._task is not None:
             self._task.cancel()
+            self._task = None
 
     async def _loop(self) -> None:
         from app.redis_client import get_redis
