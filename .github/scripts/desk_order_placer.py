@@ -176,8 +176,14 @@ ALPACA_DATA_BASE     = "https://data.alpaca.markets"
 
 
 def _alpaca_get_sync(path: str, params: dict | None = None, data_api: bool = False) -> dict:
-    """Blocking urllib call — run via asyncio.to_thread to avoid blocking event loop."""
-    import urllib.request, urllib.parse
+    """Blocking urllib call — run via asyncio.to_thread to avoid blocking event loop.
+
+    Retries HTTP 429 with backoff. The free data tier throttles aggressively, and
+    firing every symbol's bars request at once used to 429 nearly all of them
+    (bars_fetched=2/12 → signals_generated=0 → no trades). Callers now batch
+    symbols into one request each, and this handles any residual rate-limiting."""
+    import urllib.request, urllib.parse, urllib.error
+    import time as _time
     base = ALPACA_DATA_BASE if data_api else ALPACA_PAPER_BASE
     url  = base + path
     if params:
@@ -186,8 +192,21 @@ def _alpaca_get_sync(path: str, params: dict | None = None, data_api: bool = Fal
         "APCA-API-KEY-ID":     ALPACA_API_KEY,
         "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY,
     })
-    with urllib.request.urlopen(req, timeout=8) as resp:   # 8s per call
-        return json.loads(resp.read())
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:   # 8s per call
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < 2:
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                try:
+                    delay = float(retry_after) if retry_after else 1.5 * (attempt + 1)
+                except (TypeError, ValueError):
+                    delay = 1.5 * (attempt + 1)
+                _time.sleep(min(delay, 5.0))
+                continue
+            raise
+    raise RuntimeError("unreachable")  # loop either returns or raises
 
 
 async def _alpaca_get(path: str, params: dict | None = None, data_api: bool = False) -> dict:
@@ -219,46 +238,95 @@ async def _get_account() -> dict | None:
         return None
 
 
-async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 200) -> "pd.DataFrame | None":
+def _bars_list_to_df(bars_list: list) -> "pd.DataFrame | None":
+    """Alpaca bar dicts → normalized OHLCV DataFrame (None if empty)."""
     import pandas as pd
+    if not bars_list:
+        return None
+    df = pd.DataFrame(bars_list)
+    df = df.rename(columns={"t": "time", "o": "open", "h": "high",
+                             "l": "low",  "c": "close", "v": "volume"})
+    df["time"] = pd.to_datetime(df["time"])
+    df = df.set_index("time").sort_index()
+    for col in ("open", "high", "low", "close", "volume"):
+        if col in df.columns:
+            df[col] = df[col].astype(float)
+    return df[["open", "high", "low", "close", "volume"]]
+
+
+# 300 calendar days ≈ 200 trading days, matching the default `limit`. Without an
+# explicit start Alpaca returns only the current partial day, which failed the
+# >=50-row minimum and left the bars cache empty on every run.
+def _bars_start() -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 200) -> "pd.DataFrame | None":
     try:
-        # Without an explicit start, Alpaca defaults to the CURRENT DAY — one
-        # partial daily bar — so every symbol failed the >=50-row minimum and
-        # the whole pipeline ran signal generation on an empty bars cache
-        # (bars_fetched=0 on every run since inception). 300 calendar days
-        # ≈ 200 trading days, matching `limit`.
-        start = (datetime.now(timezone.utc) - timedelta(days=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
         is_crypto = "/" in symbol
         if is_crypto:
-            path   = f"/v1beta3/crypto/us/bars"
-            params = {"symbols": symbol, "timeframe": timeframe, "limit": limit, "start": start}
+            path   = "/v1beta3/crypto/us/bars"
+            params = {"symbols": symbol, "timeframe": timeframe, "limit": limit, "start": _bars_start()}
         else:
             path   = f"/v2/stocks/{symbol}/bars"
-            params = {"timeframe": timeframe, "limit": limit, "adjustment": "split", "start": start}
+            params = {"timeframe": timeframe, "limit": limit, "adjustment": "split", "start": _bars_start()}
 
         data = await _alpaca_get(path, params, data_api=True)
-
-        if is_crypto:
-            bars_list = data.get("bars", {}).get(symbol, [])
-        else:
-            bars_list = data.get("bars", [])
-
-        if not bars_list:
-            return None
-
-        df = pd.DataFrame(bars_list)
-        df = df.rename(columns={"t": "time", "o": "open", "h": "high",
-                                 "l": "low",  "c": "close", "v": "volume"})
-        df["time"] = pd.to_datetime(df["time"])
-        df = df.set_index("time").sort_index()
-        for col in ("open", "high", "low", "close", "volume"):
-            if col in df.columns:
-                df[col] = df[col].astype(float)
-        return df[["open", "high", "low", "close", "volume"]]
+        bars_list = data.get("bars", {}).get(symbol, []) if is_crypto else data.get("bars", [])
+        return _bars_list_to_df(bars_list)
 
     except Exception as exc:
         print(f"    ⚠ bars fetch failed for {symbol}: {exc}", flush=True)
         return None
+
+
+async def _get_bars_batch(symbols: list[str], timeframe: str = "1Day",
+                          limit: int = 200) -> "dict[str, pd.DataFrame]":
+    """Fetch bars for many symbols in as few requests as possible.
+
+    Alpaca's data API takes a comma-separated ``symbols=`` for both crypto
+    (/v1beta3/crypto/us/bars) and stocks (/v2/stocks/bars), returning
+    ``{"bars": {symbol: [...]}}``. Collapsing ~12 concurrent single-symbol
+    calls into one request per asset class is what stops the free-tier 429s
+    that were zeroing out bars_fetched — and therefore signals and trades —
+    on every run. Paginates on next_page_token and chunks to keep URLs sane."""
+    import pandas as pd
+    out: dict[str, pd.DataFrame] = {}
+    crypto = [s for s in symbols if "/" in s]
+    stocks = [s for s in symbols if "/" not in s]
+
+    async def _fetch(path: str, syms: list[str], extra: dict) -> None:
+        CHUNK = 20
+        for i in range(0, len(syms), CHUNK):
+            chunk = syms[i:i + CHUNK]
+            page_token: str | None = None
+            while True:
+                params = {"symbols": ",".join(chunk), "timeframe": timeframe,
+                          "limit": limit, "start": _bars_start(), **extra}
+                if page_token:
+                    params["page_token"] = page_token
+                try:
+                    data = await _alpaca_get(path, params, data_api=True)
+                except Exception as exc:
+                    print(f"    ⚠ batch bars fetch failed for {chunk}: {exc}", flush=True)
+                    break
+                for sym, blist in (data.get("bars") or {}).items():
+                    df = _bars_list_to_df(blist)
+                    if df is None:
+                        continue
+                    out[sym] = pd.concat([out[sym], df]).sort_index() if sym in out else df
+                page_token = data.get("next_page_token")
+                if not page_token:
+                    break
+            await asyncio.sleep(0.3)  # gentle spacing between chunks
+
+    if crypto:
+        await _fetch("/v1beta3/crypto/us/bars", crypto, {})
+    if stocks:
+        # feed=iex is the free-tier default; explicit keeps it working without a
+        # paid SIP subscription.
+        await _fetch("/v2/stocks/bars", stocks, {"adjustment": "split", "feed": "iex"})
+    return out
 
 
 def _kelly_notional(equity: float, confidence: float, max_pct: float = 0.03) -> float:
@@ -651,15 +719,15 @@ async def main() -> None:
             if DESK_FILTER and not active_desks:
                 raise RuntimeError(f"no desk matches filter '{DESK_FILTER}'")
 
-            # Pre-fetch bars for all unique symbols concurrently
+            # Pre-fetch bars for all unique symbols in ONE request per asset
+            # class (crypto + stocks). Firing every symbol concurrently used to
+            # 429 nearly all of them on the free data tier.
             all_symbols = list({s for desk in active_desks for s in desk.symbols})
             bars_cache: dict[str, object] = {}
-            results = await asyncio.gather(
-                *[_get_bars(sym) for sym in all_symbols],
-                return_exceptions=True,
-            )
-            for sym, df in zip(all_symbols, results):
-                if isinstance(df, Exception) or df is None:
+            fetched = await _get_bars_batch(all_symbols)
+            for sym in all_symbols:
+                df = fetched.get(sym)
+                if df is None:
                     print(f"    ⚠ {sym}: no bars returned", flush=True)
                     continue
                 if len(df) >= 50:
