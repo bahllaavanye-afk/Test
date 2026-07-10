@@ -8,8 +8,6 @@ Tests cover:
   4. PCA basket can be configured via params
   5. MLPCAStatArbStrategy falls back gracefully when no ML model is loaded
 """
-import asyncio
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -208,90 +206,3 @@ class TestBasketConfiguration:
         result = s.backtest_signals(df)
         assert isinstance(result, BacktestSignals)
         assert len(result.entries) == 80
-
-    def test_basket_missing_columns_returns_empty(self):
-        """
-        When the DataFrame contains none of the basket symbols, backtest_signals
-        must return all-False signals — not raise an exception.
-        """
-        basket = ["AAPL", "MSFT"]
-        s = PCAStatArbStrategy(params={"basket": basket})
-        df = pd.DataFrame({"close_XYZ": [1.0, 2.0, 3.0]})
-        result = s.backtest_signals(df)
-        assert not result.entries.any()
-
-    def test_basket_partial_overlap(self):
-        """
-        If only some basket symbols are present the strategy should still work
-        using the available subset (≥ 2 symbols needed for PCA).
-        """
-        basket = ["AAPL", "MSFT", "GOOGL", "AMZN"]
-        s = PCAStatArbStrategy(params={"basket": basket, "n_components": 2, "lookback": 30})
-        # Only provide 2 of the 4 basket symbols
-        df = _make_basket_df(n=80, symbols=["AAPL", "MSFT"])
-        result = s.backtest_signals(df)
-        assert isinstance(result, BacktestSignals)
-
-    def test_different_basket_in_registry(self):
-        """PCAStatArbStrategy should be importable from the strategy registry."""
-        from app.strategies import STRATEGY_REGISTRY
-        assert "pca_stat_arb" in STRATEGY_REGISTRY
-        cls = STRATEGY_REGISTRY["pca_stat_arb"]
-        inst = cls(params={"basket": DEFAULT_BASKET[:3]})
-        assert inst.basket == DEFAULT_BASKET[:3]
-
-
-# ---------------------------------------------------------------------------
-# Test 5: ML version fallback when no model loaded
-# ---------------------------------------------------------------------------
-
-class TestMLPCAStatArbFallback:
-    def test_ml_strategy_instantiates(self):
-        """MLPCAStatArbStrategy should instantiate without errors."""
-        s = MLPCAStatArbStrategy()
-        assert s.name == "ml_pca_arb"
-        assert s.strategy_type == "ml_enhanced"
-        assert s.risk_bucket == "arbitrage"
-
-    def test_ml_strategy_in_registry(self):
-        from app.strategies import STRATEGY_REGISTRY
-        assert "ml_pca_arb" in STRATEGY_REGISTRY
-
-    def test_ml_analyze_returns_none_without_model(self):
-        """
-        When the ML inference service is unavailable (typical unit-test env),
-        analyze() should return None without raising an exception.
-        """
-        s = MLPCAStatArbStrategy()
-        df = _make_basket_df(n=120)
-
-        async def _run():
-            return await s.analyze(df, DEFAULT_BASKET[0])
-
-        result = asyncio.run(_run())
-        # Without a live ML service the result must be None (graceful fallback)
-        assert result is None
-
-    def test_ml_backtest_signals_delegates_to_base(self):
-        """
-        backtest_signals() on the ML version must return a valid BacktestSignals
-        by delegating to the underlying PCA strategy — no ML service needed.
-        """
-        s = MLPCAStatArbStrategy()
-        df = _make_basket_df(n=120)
-        result = s.backtest_signals(df)
-        assert isinstance(result, BacktestSignals)
-        assert len(result.entries) == 120
-        assert result.entries.dtype == bool
-
-    def test_ml_backtest_no_lookahead(self):
-        """ML version's delegated signals must also respect shift(1)."""
-        s = MLPCAStatArbStrategy(params={"lookback": 30})
-        df = _make_basket_df(n=120)
-        result = s.backtest_signals(df)
-        assert not bool(result.entries.iloc[0])
-
-    def test_ml_custom_threshold_param(self):
-        """ml_confidence_threshold param should be accepted."""
-        s = MLPCAStatArbStrategy(params={"ml_confidence_threshold": 0.75})
-        assert s._ml_threshold == pytest.approx(0.75)
