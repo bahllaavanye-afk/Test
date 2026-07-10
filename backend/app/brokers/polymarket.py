@@ -30,7 +30,10 @@ class PolymarketBroker(AbstractBroker):
         try:
             import asyncio
             markets = await asyncio.to_thread(self.client.get_markets)
-            return [m for m in markets if float(m.get("openInterest", 0)) >= min_open_interest]
+            return [
+                m for m in markets
+                if float(m.get("openInterest", 0)) >= min_open_interest
+            ]
         except Exception as e:
             logger.error("Polymarket market fetch failed", error=str(e))
             return []
@@ -40,20 +43,11 @@ class PolymarketBroker(AbstractBroker):
         return await asyncio.to_thread(self.client.get_order_book, token_id)
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        """Create and post an order, returning a standardized result."""
         try:
-            import asyncio
-            args = OrderArgs(
-                token_id=request.symbol,
-                price=request.limit_price or 0.5,
-                size=request.quantity,
-                side=request.side.upper(),
-            )
-            order = await asyncio.to_thread(self.client.create_and_post_order, args)
-            return OrderResult(
-                broker_order_id=str(order.get("orderID", "")),
-                status=order.get("status", "pending"),
-                raw_payload=order,
-            )
+            args = self._build_order_args(request)
+            order = await self._run_async_thread(self.client.create_and_post_order, args)
+            return self._parse_order_result(order)
         except Exception as e:
             raise BrokerError(f"Polymarket: {e}")
 
@@ -63,7 +57,11 @@ class PolymarketBroker(AbstractBroker):
             await asyncio.to_thread(self.client.cancel, broker_order_id)
             return True
         except Exception as e:
-            logger.warning("Polymarket cancel_order failed", order_id=broker_order_id, error=str(e))
+            logger.warning(
+                "Polymarket cancel_order failed",
+                order_id=broker_order_id,
+                error=str(e)
+            )
             return False
 
     async def get_order(self, broker_order_id: str) -> dict:
@@ -82,7 +80,37 @@ class PolymarketBroker(AbstractBroker):
         asks = ob.get("asks", [])
         best_bid = float(bids[0]["price"]) if bids else 0.0
         best_ask = float(asks[0]["price"]) if asks else 1.0
-        return QuoteResult(symbol=symbol, bid=best_bid, ask=best_ask, last=(best_bid + best_ask) / 2)
+        return QuoteResult(
+            symbol=symbol,
+            bid=best_bid,
+            ask=best_ask,
+            last=(best_bid + best_ask) / 2,
+        )
 
     async def get_historical(self, symbol: str, interval: str = "1d", limit: int = 500) -> list[dict]:
         return []  # Polymarket doesn't have traditional OHLCV
+
+    # --------------------------------------------------------------------- #
+    # Helper methods
+    # --------------------------------------------------------------------- #
+    def _build_order_args(self, request: OrderRequest) -> OrderArgs:
+        """Construct OrderArgs from a generic OrderRequest."""
+        return OrderArgs(
+            token_id=request.symbol,
+            price=request.limit_price or 0.5,
+            size=request.quantity,
+            side=request.side.upper(),
+        )
+
+    async def _run_async_thread(self, func, *args, **kwargs):
+        """Execute a blocking client call in an asyncio thread."""
+        import asyncio
+        return await asyncio.to_thread(func, *args, **kwargs)
+
+    def _parse_order_result(self, order: dict) -> OrderResult:
+        """Translate raw order dict into an OrderResult."""
+        return OrderResult(
+            broker_order_id=str(order.get("orderID", "")),
+            status=order.get("status", "pending"),
+            raw_payload=order,
+        )
