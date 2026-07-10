@@ -91,12 +91,26 @@ class TradeOut(BaseModel):
 
 @router.get("/", response_model=list[TradeOut])
 async def list_trades(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int | None = Query(50, ge=1, le=500),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Retrieve a list of trades for the current user.
+
+    Edge‑case handling:
+    * `limit` may be `None` or out of bounds – we coerce it to a safe default.
+    * Empty result sets are returned as an empty list.
+    * Trades with missing critical fields (`side` or `quantity`) are skipped.
+    """
+    # Guard against unexpected None or out‑of‑range values.
+    if limit is None or limit < 1:
+        limit = 1
+    if limit > 500:
+        limit = 500
+
     query = (
         select(Trade)
         .join(Account, Trade.account_id == Account.id)
@@ -108,13 +122,21 @@ async def list_trades(
         query = query.where(Trade.account_id == account_id)
     if symbol:
         query = query.where(Trade.symbol == symbol)
+
     result = await db.execute(query)
     trades = result.scalars().all()
 
-    # Build response manually so we can compute avg_fill_price from existing columns
+    # Return early for an empty collection.
+    if not trades:
+        return []
+
     out: list[TradeOut] = []
     for t in trades:
-        fill_price: float | None
+        # Skip records that lack essential data required by the schema.
+        if t.side not in {"buy", "sell"} or t.quantity is None:
+            continue
+
+        # Determine fill price safely.
         if t.side == "buy":
             fill_price = float(t.entry_price) if t.entry_price is not None else None
         else:
