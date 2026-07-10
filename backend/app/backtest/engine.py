@@ -107,10 +107,11 @@ def run_backtest(
     # Input validation
     # --------------------------------------------------------------------- #
     try:
+        # Series type checks
         if not isinstance(signals, pd.Series):
-            raise TypeError("signals must be a pandas Series")
+            raise ValueError("signals must be a pandas Series")
         if not isinstance(prices, pd.Series):
-            raise TypeError("prices must be a pandas Series")
+            raise ValueError("prices must be a pandas Series")
         if signals.empty:
             raise ValueError("signals series is empty")
         if prices.empty:
@@ -118,17 +119,46 @@ def run_backtest(
         if not signals.index.equals(prices.index):
             raise ValueError("signals and prices must share the same index")
 
+        # Optional series checks
         if opens is not None:
             if not isinstance(opens, pd.Series):
-                raise TypeError("opens must be a pandas Series when provided")
+                raise ValueError("opens must be a pandas Series when provided")
             if not opens.index.equals(prices.index):
                 raise ValueError("opens must share the same index as prices")
         if volume is not None:
             if not isinstance(volume, pd.Series):
-                raise TypeError("volume must be a pandas Series when provided")
+                raise ValueError("volume must be a pandas Series when provided")
             if not volume.index.equals(prices.index):
                 raise ValueError("volume must share the same index as prices")
-    except (TypeError, ValueError) as e:
+
+        # Numeric parameter checks
+        if not isinstance(initial_equity, (int, float)):
+            raise ValueError("initial_equity must be a numeric type")
+        if initial_equity <= 0:
+            raise ValueError("initial_equity must be greater than zero")
+        if not isinstance(commission_pct, (int, float)):
+            raise ValueError("commission_pct must be a numeric type")
+        if commission_pct < 0:
+            raise ValueError("commission_pct cannot be negative")
+        if not isinstance(slippage_pct, (int, float)):
+            raise ValueError("slippage_pct must be a numeric type")
+        if slippage_pct < 0:
+            raise ValueError("slippage_pct cannot be negative")
+        if not isinstance(risk_free_annual, (int, float)):
+            raise ValueError("risk_free_annual must be a numeric type")
+        if risk_free_annual < 0:
+            raise ValueError("risk_free_annual cannot be negative")
+        if not isinstance(fill_at_open, bool):
+            raise ValueError("fill_at_open must be a boolean")
+
+        # Signal value validation
+        allowed_signals = {-1, 0, 1}
+        invalid_signals = set(signals.dropna().unique()) - allowed_signals
+        if invalid_signals:
+            raise ValueError(
+                f"signals contain invalid values {invalid_signals}; allowed values are -1, 0, 1"
+            )
+    except ValueError as e:
         logger.error("Input validation error: %s", e, exc_info=True)
         raise
 
@@ -212,56 +242,29 @@ def run_backtest(
         # ── Calmar ────────────────────────────────────────────────────────────────
         years = len(df) / 252.0
         ann_return = float(
-            (equity[-1] / initial_equity) ** (1.0 / max(years, 1e-6)) - 1.0
+            (equity[-1] / initial_equity) ** (1 / years) - 1
+            if years > 0
+            else 0.0
         )
-        calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
+        calmar = float(ann_return / -max_dd) if max_dd != 0 else float("inf")
 
-        # ── Omega / Ulcer ─────────────────────────────────────────────────────────
-        omega = _omega_ratio(returns, threshold=rf_daily)
+        # ── Omega Ratio & Ulcer Index ─────────────────────────────────────────────
+        omega = _omega_ratio(returns)
         ulcer = _ulcer_index(equity)
 
-        # ── Trade-level stats (vectorised) ────────────────────────────────────────
-        pos_series = df["position"]
-        fill_series = df["fill_price"]
+        # ── Trading stats ───────────────────────────────────────────────────────
+        trades = df["trade"].abs().sum()
+        wins = df.loc[df["pnl"] > 0, "pnl"]
+        losses = df.loc[df["pnl"] < 0, "pnl"]
+        win_rate = float(wins.count() / trades) if trades > 0 else 0.0
+        avg_win = float(wins.mean()) if not wins.empty else 0.0
+        avg_loss = float(losses.mean()) if not losses.empty else 0.0
+        profit_factor = float(-avg_win / avg_loss) if avg_loss != 0 else float("inf")
+        expectancy = float(avg_win * win_rate + avg_loss * (1 - win_rate))
 
-        entries = df.index[df["trade"] != 0].tolist()
-        trade_pnls: list[float] = []
-
-        for i in range(len(entries) - 1):
-            t0, t1 = entries[i], entries[i + 1]
-            side = float(pos_series.loc[t0])
-            if side == 0:
-                continue
-            entry_p = float(fill_series.loc[t0])
-            exit_p = float(fill_series.loc[t1])
-            trade_pnls.append((exit_p - entry_p) * side / entry_p)
-
-        wins = [r for r in trade_pnls if r > 0]
-        losses = [r for r in trade_pnls if r <= 0]
-
-        win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
-        avg_win = float(np.mean(wins)) if wins else 0.0
-        avg_loss = float(np.mean(losses)) if losses else 0.0
-        profit_factor = (
-            abs(sum(wins) / sum(losses))
-            if losses and sum(losses) != 0
-            else float("inf")
-        )
-        expectancy = avg_win * win_rate + avg_loss * (1 - win_rate)
-
-        # ── Equity curve ──────────────────────────────────────────────────────────
-        equity_curve = [
-            {
-                "date": str(idx.date() if hasattr(idx, "date") else idx),
-                "equity": round(float(val), 2),
-            }
-            for idx, val in zip(df.index, df["equity"])
-        ]
-
-        total_return = float(equity[-1] / initial_equity - 1.0)
-
+        # ── Assemble metrics ─────────────────────────────────────────────────────
         metrics = BacktestMetrics(
-            total_return=total_return,
+            total_return=float(equity[-1] / initial_equity - 1),
             annualized_return=ann_return,
             sharpe=sharpe,
             sortino=sortino,
@@ -270,22 +273,19 @@ def run_backtest(
             ulcer_index=ulcer,
             max_drawdown=max_dd,
             avg_drawdown=avg_dd,
-            max_drawdown_duration_days=max_dur,
-            num_trades=len(trade_pnls),
+            max_drawdown_duration_days=int(max_dur),
+            num_trades=int(trades),
             win_rate=win_rate,
             avg_win_pct=avg_win,
             avg_loss_pct=avg_loss,
             profit_factor=profit_factor,
             expectancy=expectancy,
-            equity_curve=equity_curve,
+            equity_curve=[
+                {"date": str(idx.date()) if isinstance(idx, (pd.Timestamp, date)) else str(idx), "equity": eq}
+                for idx, eq in zip(df.index, equity)
+            ],
         )
         return metrics
-
-    except (ZeroDivisionError, KeyError, IndexError) as e:
-        logger.error(
-            "Backtest computation error (%s): %s", type(e).__name__, e, exc_info=True
-        )
-        raise
     except Exception as e:
-        logger.exception("Unexpected error during backtest execution")
+        logger.error("Unexpected error during backtest execution: %s", e, exc_info=True)
         raise
