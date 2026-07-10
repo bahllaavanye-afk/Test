@@ -6,7 +6,11 @@ Used for orders $5k-$100k. Returns optimal slice schedule.
 
 Reference: Almgren & Chriss (2000) "Optimal execution of portfolio transactions"
 """
+import logging
+import time
 import numpy as np
+
+_logger = logging.getLogger(__name__)
 
 
 class AlmgrenChriss:
@@ -58,6 +62,8 @@ class AlmgrenChriss:
         if T <= 0:
             raise ValueError(f"T must be positive, got {T}")
 
+        start_time = time.perf_counter()
+
         kappa_sq = (self.lam * self.sigma ** 2) / self.eta
         kappa = np.sqrt(max(kappa_sq, 1e-12))
         t = np.linspace(0, T, n_slices + 1)
@@ -72,6 +78,18 @@ class AlmgrenChriss:
 
         # Trade amounts = negative difference between consecutive holdings
         trades = -np.diff(holdings)
+
+        elapsed = time.perf_counter() - start_time
+        _logger.info(
+            "Optimal trajectory computed",
+            extra={
+                "shares": shares,
+                "T_minutes": T,
+                "n_slices": n_slices,
+                "signal_count": int(len(trades)),
+                "execution_time_seconds": elapsed,
+            },
+        )
         return trades
 
     def expected_cost(self, shares: float, T: float, n_slices: int) -> dict:
@@ -84,6 +102,8 @@ class AlmgrenChriss:
             timing_risk: variance cost from price uncertainty over execution
             total: sum of all three components
         """
+        start_time = time.perf_counter()
+
         trades = self.optimal_trajectory(shares, T, n_slices)
         tau = T / n_slices
 
@@ -92,9 +112,25 @@ class AlmgrenChriss:
         timing_risk = 0.5 * self.lam * self.sigma ** 2 * np.sum(
             np.cumsum(trades[::-1])[::-1] ** 2 * tau
         )
+        total_cost = float(temp_impact + perm_impact + timing_risk)
+
+        elapsed = time.perf_counter() - start_time
+        _logger.info(
+            "Expected cost computed",
+            extra={
+                "shares": shares,
+                "T_minutes": T,
+                "n_slices": n_slices,
+                "temporary_impact": float(temp_impact),
+                "permanent_impact": float(perm_impact),
+                "timing_risk": float(timing_risk),
+                "total_cost": total_cost,
+                "execution_time_seconds": elapsed,
+            },
+        )
         return {
             "temporary_impact": float(temp_impact),
             "permanent_impact": float(perm_impact),
             "timing_risk": float(timing_risk),
-            "total": float(temp_impact + perm_impact + timing_risk),
+            "total": total_cost,
         }
