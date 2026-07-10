@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -70,3 +74,33 @@ class AbstractBroker(ABC):
         self, symbol: str, interval: str, limit: int = 500
     ) -> list[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+
+    def _log_metrics(
+        self,
+        *,
+        signal_count: int,
+        execution_time: float,
+        pnl: float,
+        **extra: Any,
+    ) -> None:
+        """
+        Log key broker metrics in a structured format.
+
+        Parameters
+        ----------
+        signal_count: int
+            Number of signals processed in the current batch/cycle.
+        execution_time: float
+            Time taken (seconds) for the broker operation.
+        pnl: float
+            Profit and loss realized from the operation.
+        extra: Any
+            Additional key/value pairs to include in the log.
+        """
+        log_data = {
+            "signal_count": signal_count,
+            "execution_time_sec": execution_time,
+            "pnl": pnl,
+            **extra,
+        }
+        logger.info("Broker metrics", extra=log_data)
