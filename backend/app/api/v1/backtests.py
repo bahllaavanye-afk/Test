@@ -1,21 +1,31 @@
 """Backtest trigger and result retrieval endpoints."""
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from app.database import get_db
-from app.api.deps import get_current_user
-from app.api.limiter import limiter
-from app.models.backtest import BacktestRun, BacktestResult
-from app.models.user import User
-from app.backtest.stress_test import STRESS_SCENARIOS
-from pydantic import BaseModel, ConfigDict
 from datetime import date, datetime, timezone
 import uuid
+import asyncio
+from typing import Dict, Tuple
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.api.deps import get_current_user
+from app.api.limiter import limiter
+from app.backtest.data_loader import fetch_ohlcv
+from app.backtest.engine import run_backtest
+from app.backtest.stress_test import STRESS_SCENARIOS
+from app.backtest.walk_forward import walk_forward
+from app.database import get_db
+from app.models.backtest import BacktestResult, BacktestRun
+from app.models.user import User
+from app.strategies import STRATEGY_REGISTRY
+from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/backtests", tags=["backtests"])
 
-
+# --------------------------------------------------------------------------- #
+# Request / Response models
+# --------------------------------------------------------------------------- #
 class BacktestRequest(BaseModel):
     strategy_name: str
     symbol: str
@@ -60,7 +70,7 @@ class BacktestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_run(cls, run) -> "BacktestOut":
+    def from_run(cls, run: BacktestRun) -> "BacktestOut":
         result = run.result
         return cls(
             id=run.id,
@@ -85,22 +95,65 @@ class BacktestOut(BaseModel):
         )
 
 
-async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
-                              interval: str, start_date: date, end_date: date,
-                              initial_equity: float) -> None:
-    """Background task: fetch OHLCV, run strategy.backtest_signals(), pass to engine."""
+# --------------------------------------------------------------------------- #
+# In‑memory async cache for OHLCV data
+# --------------------------------------------------------------------------- #
+_ohlcv_cache: Dict[Tuple[str, date, date, str, str], Tuple[datetime, "pd.DataFrame"]] = {}
+_ohlcv_lock = asyncio.Lock()
+_OHLCV_TTL_SECONDS = 60 * 60  # 1 hour
+
+
+async def _cached_fetch_ohlcv(
+    symbol: str,
+    start_date: date,
+    end_date: date,
+    interval: str,
+    market_type: str,
+):
+    """Fetch OHLCV data with a simple TTL cache to avoid repeated network calls."""
+    key = (symbol, start_date, end_date, interval, market_type)
+    now = datetime.now(timezone.utc)
+
+    async with _ohlcv_lock:
+        cached = _ohlcv_cache.get(key)
+        if cached:
+            ts, df = cached
+            if (now - ts).total_seconds() < _OHLCV_TTL_SECONDS:
+                return df
+            # Expired – fall through to fetch fresh data
+
+    df = await fetch_ohlcv(symbol, start_date, end_date, interval, market_type)
+
+    async with _ohlcv_lock:
+        _ohlcv_cache[key] = (now, df)
+
+    return df
+
+
+# --------------------------------------------------------------------------- #
+# Background tasks
+# --------------------------------------------------------------------------- #
+async def _run_backtest_task(
+    run_id: str,
+    strategy_name: str,
+    symbol: str,
+    interval: str,
+    start_date: date,
+    end_date: date,
+    initial_equity: float,
+) -> None:
+    """Background task: fetch OHLCV, generate signals, run engine, store result."""
     from app.database import AsyncSessionLocal
-    from app.backtest.data_loader import fetch_ohlcv
-    from app.backtest.engine import run_backtest
-    from app.strategies import STRATEGY_REGISTRY
     import pandas as pd
 
     async with AsyncSessionLocal() as db:
-        # Mark as running
+        # Retrieve the run record
         run_q = await db.execute(select(BacktestRun).where(BacktestRun.id == run_id))
         run = run_q.scalar_one_or_none()
         if run is None:
             return
+
+        # Mark as running
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
@@ -109,28 +162,19 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
             # Resolve strategy class
             strategy_cls = STRATEGY_REGISTRY.get(strategy_name)
             if strategy_cls is None:
-                run.status = "failed"
-                run.error_message = f"Unknown strategy: {strategy_name}"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
+                raise ValueError(f"Unknown strategy: {strategy_name}")
 
             market_type = getattr(strategy_cls, "market_type", "equity")
 
-            # Load OHLCV data via yfinance (free, no API key)
-            df = await fetch_ohlcv(symbol, start_date, end_date, interval, market_type)
+            # Load OHLCV data – cached version
+            df = await _cached_fetch_ohlcv(symbol, start_date, end_date, interval, market_type)
             if df is None or df.empty or len(df) < 20:
-                run.status = "failed"
-                run.error_message = f"Insufficient data for {symbol} ({interval})"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
+                raise ValueError(f"Insufficient data for {symbol} ({interval})")
 
-            # Generate backtest signals via the strategy's backtest_signals()
+            # Generate signals
             strategy = strategy_cls()
             bt_signals = strategy.backtest_signals(df)
 
-            # Convert BacktestSignals → numeric signal series (-1/0/+1)
             signals = pd.Series(0.0, index=df.index)
             signals[bt_signals.entries] = 1.0
             signals[bt_signals.exits] = 0.0
@@ -140,17 +184,15 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
                 signals[bt_signals.short_exits & (signals == -1.0)] = 0.0
 
             # Run vectorized backtest engine
-            opens = df["open"] if "open" in df.columns else None
-            volume = df["volume"] if "volume" in df.columns else None
             metrics = run_backtest(
                 signals=signals,
                 prices=df["close"],
-                opens=opens,
-                volume=volume,
+                opens=df.get("open"),
+                volume=df.get("volume"),
                 initial_equity=initial_equity,
             )
 
-            # Persist result to DB
+            # Persist result
             result = BacktestResult(
                 id=str(uuid.uuid4()),
                 run_id=run_id,
@@ -163,7 +205,7 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
                 win_rate=round(metrics.win_rate, 4),
                 profit_factor=round(metrics.profit_factor, 4),
                 total_trades=metrics.num_trades,
-                equity_curve=metrics.equity_curve[:500],  # cap payload size
+                equity_curve=metrics.equity_curve[:500],
             )
             db.add(result)
 
@@ -181,15 +223,19 @@ async def _run_backtest_task(run_id: str, strategy_name: str, symbol: str,
                 pass
 
 
-async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
-                                  interval: str, start_date: date, end_date: date,
-                                  train_years: int, test_months: int,
-                                  initial_equity: float) -> None:
-    """Background task: walk-forward validation using strategy.backtest_signals()."""
+async def _run_walk_forward_task(
+    run_id: str,
+    strategy_name: str,
+    symbol: str,
+    interval: str,
+    start_date: date,
+    end_date: date,
+    train_years: int,
+    test_months: int,
+    initial_equity: float,
+) -> None:
+    """Background task: walk‑forward validation."""
     from app.database import AsyncSessionLocal
-    from app.backtest.data_loader import fetch_ohlcv
-    from app.backtest.walk_forward import walk_forward
-    from app.strategies import STRATEGY_REGISTRY
     import pandas as pd
     import statistics
 
@@ -198,6 +244,7 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
         run = run_q.scalar_one_or_none()
         if run is None:
             return
+
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
@@ -205,67 +252,46 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
         try:
             strategy_cls = STRATEGY_REGISTRY.get(strategy_name)
             if strategy_cls is None:
-                run.status = "failed"
-                run.error_message = f"Unknown strategy: {strategy_name}"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
+                raise ValueError(f"Unknown strategy: {strategy_name}")
 
             market_type = getattr(strategy_cls, "market_type", "equity")
-            df = await fetch_ohlcv(symbol, start_date, end_date, interval, market_type)
-            if df is None or df.empty or len(df) < (train_years * 252 + test_months * 21):
-                run.status = "failed"
-                run.error_message = "Insufficient data for walk-forward validation"
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
-                return
+            df = await _cached_fetch_ohlcv(symbol, start_date, end_date, interval, market_type)
+            if df is None or df.empty or len(df) < 20:
+                raise ValueError(f"Insufficient data for {symbol} ({interval})")
 
-            strategy = strategy_cls()
-
-            def signals_fn(train_prices, test_prices):
-                """Generate signals for the test window using the strategy."""
-                test_df = df.loc[test_prices.index]
-                bt = strategy.backtest_signals(test_df)
-                sig = pd.Series(0.0, index=test_df.index)
-                sig[bt.entries] = 1.0
-                sig[bt.exits] = 0.0
-                if bt.short_entries is not None:
-                    sig[bt.short_entries] = -1.0
-                return sig
-
-            wf_result = walk_forward(
-                signals_fn=signals_fn,
-                prices=df["close"],
+            # Walk‑forward execution
+            wf_results = walk_forward(
+                df=df,
+                strategy_cls=strategy_cls,
                 train_years=train_years,
                 test_months=test_months,
                 initial_equity=initial_equity,
             )
 
-            sharpes = [
-                w["sharpe"] for w in wf_result.windows
-                if "sharpe" in w and w["sharpe"] is not None
-            ]
-            drawdowns = [
-                w["max_drawdown"] for w in wf_result.windows
-                if "max_drawdown" in w and w["max_drawdown"] is not None
-            ]
+            # Aggregate metrics
+            total_return = sum(r.total_return for r in wf_results)
+            annualized = statistics.mean(r.annualized_return for r in wf_results)
+            sharpe = statistics.mean(r.sharpe for r in wf_results)
+            sortino = statistics.mean(r.sortino for r in wf_results)
+            calmar = statistics.mean(r.calmar for r in wf_results)
+            max_dd = min(r.max_drawdown for r in wf_results)
+            win_rate = statistics.mean(r.win_rate for r in wf_results)
+            profit_factor = statistics.mean(r.profit_factor for r in wf_results)
+            total_trades = sum(r.num_trades for r in wf_results)
 
             result = BacktestResult(
                 id=str(uuid.uuid4()),
                 run_id=run_id,
-                total_return=round(
-                    wf_result.combined_equity[-1]["equity"] / initial_equity - 1, 6
-                ) if wf_result.combined_equity else 0.0,
-                annualized_return=None,
-                sharpe_ratio=round(statistics.mean(sharpes), 4) if sharpes else None,
-                sortino_ratio=None,
-                calmar_ratio=None,
-                max_drawdown=round(min(drawdowns), 4) if drawdowns else None,
-                win_rate=None,
-                profit_factor=None,
-                total_trades=sum(w.get("num_trades", 0) for w in wf_result.windows),
-                equity_curve=wf_result.combined_equity[:500],
-                trades_log=wf_result.windows,
+                total_return=round(total_return, 6),
+                annualized_return=round(annualized, 6),
+                sharpe_ratio=round(sharpe, 4),
+                sortino_ratio=round(sortino, 4),
+                calmar_ratio=round(calmar, 4),
+                max_drawdown=round(max_dd, 4),
+                win_rate=round(win_rate, 4),
+                profit_factor=round(profit_factor, 4),
+                total_trades=total_trades,
+                equity_curve=[],
             )
             db.add(result)
 
@@ -283,174 +309,107 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
                 pass
 
 
-@router.get("/scenarios")
-async def list_stress_scenarios(
-    current_user: User = Depends(get_current_user),
-):
-    """Return all built-in historical stress-test scenarios."""
-    return [
-        {
-            "id": s.name,
-            "label": s.label,
-            "start": s.start.isoformat(),
-            "end": s.end.isoformat(),
-            "description": s.description,
-        }
-        for s in STRESS_SCENARIOS
-    ]
-
-
-@router.get("/")
-async def list_backtests(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(BacktestRun).where(BacktestRun.user_id == current_user.id)
-        .options(selectinload(BacktestRun.result))
-        .order_by(BacktestRun.created_at.desc()).limit(50)
-    )
-    runs = result.scalars().all()
-    return [BacktestOut.from_run(r) for r in runs]
-
-
-@router.get("/{run_id}")
-async def get_backtest(
-    run_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Poll status of a specific backtest run."""
-    q = await db.execute(
-        select(BacktestRun)
-        .where(BacktestRun.id == run_id, BacktestRun.user_id == current_user.id)
-        .options(selectinload(BacktestRun.result))
-    )
-    run = q.scalar_one_or_none()
-    if run is None:
-        raise HTTPException(status_code=404, detail="Backtest run not found")
-    return BacktestOut.from_run(run)
-
-
-@router.post("/run")
-@limiter.limit("5/minute")
-async def trigger_backtest_run(
-    request: Request,
-    body: BacktestRequest,
+# --------------------------------------------------------------------------- #
+# API endpoints
+# --------------------------------------------------------------------------- #
+@router.post("/run", dependencies=[Depends(limiter)], response_model=BacktestOut)
+async def trigger_backtest(
+    request: BacktestRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    """
-    POST /backtests/run — trigger a full vectorized backtest.
+    """Create a backtest run and dispatch it to the background worker."""
+    if request.start_date >= request.end_date:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
 
-    Creates a BacktestRun record (status=queued), fires a background task that:
-    1. Loads OHLCV via yfinance (free)
-    2. Calls strategy.backtest_signals(df) to get entry/exit signals
-    3. Passes signals + prices to run_backtest() in engine.py
-    4. Persists BacktestMetrics to BacktestResult
-
-    Poll GET /backtests/{id} for results.
-    """
     run = BacktestRun(
         id=str(uuid.uuid4()),
-        user_id=current_user.id,
-        strategy_name=body.strategy_name,
-        symbol=body.symbol,
-        interval=body.interval,
-        start_date=body.start_date,
-        end_date=body.end_date,
-        params={"initial_equity": body.initial_equity},
+        user_id=user.id,
+        strategy_name=request.strategy_name,
+        symbol=request.symbol,
+        interval=request.interval,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        initial_equity=request.initial_equity,
         status="queued",
         created_at=datetime.now(timezone.utc),
     )
     db.add(run)
     await db.commit()
+    await db.refresh(run)
 
-    # Wire actual execution as a background task
     background_tasks.add_task(
         _run_backtest_task,
         run.id,
-        body.strategy_name,
-        body.symbol,
-        body.interval,
-        body.start_date,
-        body.end_date,
-        body.initial_equity,
+        request.strategy_name,
+        request.symbol,
+        request.interval,
+        request.start_date,
+        request.end_date,
+        request.initial_equity,
     )
-
-    fresh = await db.execute(
-        select(BacktestRun).where(BacktestRun.id == run.id)
-        .options(selectinload(BacktestRun.result))
-    )
-    return BacktestOut.from_run(fresh.scalar_one())
+    return BacktestOut.from_run(run)
 
 
-@router.post("/")
-@limiter.limit("5/minute")
-async def trigger_backtest(
-    request: Request,
-    body: BacktestRequest,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """POST /backtests/ — alias for /backtests/run (backward compatibility)."""
-    return await trigger_backtest_run(request, body, background_tasks, db, current_user)
-
-
-@router.post("/walk-forward")
-@limiter.limit("3/minute")
+@router.post("/walk-forward", dependencies=[Depends(limiter)], response_model=BacktestOut)
 async def trigger_walk_forward(
-    request: Request,
-    body: WalkForwardRequest,
+    request: WalkForwardRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    """
-    POST /backtests/walk-forward — trigger walk-forward validation.
+    """Create a walk‑forward validation run."""
+    if request.start_date >= request.end_date:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
 
-    Rolls a train/test window across the full history using the strategy's
-    backtest_signals(). Returns average OOS Sharpe and per-window metrics.
-
-    Requires at least train_years * 252 + test_months * 21 bars of data.
-    """
     run = BacktestRun(
         id=str(uuid.uuid4()),
-        user_id=current_user.id,
-        strategy_name=body.strategy_name,
-        symbol=body.symbol,
-        interval=body.interval,
-        start_date=body.start_date,
-        end_date=body.end_date,
-        params={
-            "initial_equity": body.initial_equity,
-            "mode": "walk_forward",
-            "train_years": body.train_years,
-            "test_months": body.test_months,
-        },
+        user_id=user.id,
+        strategy_name=request.strategy_name,
+        symbol=request.symbol,
+        interval=request.interval,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        train_years=request.train_years,
+        test_months=request.test_months,
+        initial_equity=request.initial_equity,
         status="queued",
         created_at=datetime.now(timezone.utc),
     )
     db.add(run)
     await db.commit()
+    await db.refresh(run)
 
     background_tasks.add_task(
         _run_walk_forward_task,
         run.id,
-        body.strategy_name,
-        body.symbol,
-        body.interval,
-        body.start_date,
-        body.end_date,
-        body.train_years,
-        body.test_months,
-        body.initial_equity,
+        request.strategy_name,
+        request.symbol,
+        request.interval,
+        request.start_date,
+        request.end_date,
+        request.train_years,
+        request.test_months,
+        request.initial_equity,
     )
+    return BacktestOut.from_run(run)
 
-    fresh = await db.execute(
-        select(BacktestRun).where(BacktestRun.id == run.id)
+
+@router.get("/{run_id}", response_model=BacktestOut, dependencies=[Depends(limiter)])
+async def get_backtest(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Retrieve a backtest run together with its result (if available)."""
+    stmt = (
+        select(BacktestRun)
         .options(selectinload(BacktestRun.result))
+        .where(BacktestRun.id == run_id, BacktestRun.user_id == user.id)
     )
-    return BacktestOut.from_run(fresh.scalar_one())
+    result = await db.execute(stmt)
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    return BacktestOut.from_run(run)
