@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Validate trade IDs",
-    "Validate date formats",
-    "* `Signal_runner` agent requires status updates to be provided, referencing the specific file paths required for its tasks.",
     "error_handling on execution/twap.py: success \u2014 tests green",
     "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Refactor agent_memory",
@@ -199,8 +196,11 @@
     "Analyze signal strengths",
     "Parse agent memory files",
     "Implement early-stopping callbacks",
-    "Track OKR metrics daily"
+    "Track OKR metrics daily",
+    "Log API calls",
+    "Check RAM usage",
+    "Monitor thread counts"
   ],
-  "last_updated": "2026-07-10T13:25:32.751108+00:00",
+  "last_updated": "2026-07-10T15:52:50.223355+00:00",
   "total": 200
 }
