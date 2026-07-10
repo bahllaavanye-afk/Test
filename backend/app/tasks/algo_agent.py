@@ -4,15 +4,17 @@ Uses Upper Confidence Bound (UCB1) for exploration vs exploitation.
 Runs as a background asyncio task alongside the strategy runner.
 """
 from __future__ import annotations
+
 import asyncio
-import math
 import json
+import math
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from app.utils.logging import logger
+
 
 EXPERIMENTS_DIR = Path(__file__).parents[3] / "experiments" / "results"
 EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -23,7 +25,7 @@ class AlgoCandidate:
     """Tracks a strategy's UCB1 stats for exploration/exploitation."""
     name: str
     symbol: str
-    strategy_type: str           # 'manual' | 'ml_enhanced'
+    strategy_type: str  # 'manual' | 'ml_enhanced'
     n_runs: int = 0
     total_sharpe: float = 0.0
     best_sharpe: float = 0.0
@@ -38,6 +40,7 @@ class AlgoCandidate:
         if self.n_runs == 0:
             return float("inf")  # always try unexplored candidates first
         exploitation = self.avg_sharpe
+        # Guard against log(0) – total_runs is at least 0, add 1 to keep >0
         exploration = c * math.sqrt(math.log(total_runs + 1) / self.n_runs)
         return exploitation + exploration
 
@@ -97,17 +100,32 @@ class AlgoAgent:
             key = f"{name}:{symbol}"
             self._candidates[key] = AlgoCandidate(name=name, symbol=symbol, strategy_type=stype)
 
-    def _select_candidate(self) -> AlgoCandidate:
+    def _select_candidate(self) -> AlgoCandidate | None:
         """UCB1 selection — always picks unexplored first, then highest UCB score."""
-        scores = {k: c.ucb_score(self._total_runs) for k, c in self._candidates.items()}
-        best_key = max(scores, key=lambda k: scores[k])
-        return self._candidates[best_key]
+        if not self._candidates:
+            logger.warning("AlgoAgent: No candidates available for selection")
+            return None
 
-    async def _run_quick_backtest(self, candidate: AlgoCandidate) -> float:
+        scores = {k: c.ucb_score(self._total_runs) for k, c in self._candidates.items()}
+        if not scores:
+            logger.warning("AlgoAgent: Score computation resulted in empty dict")
+            return None
+
+        best_key = max(scores, key=lambda k: scores[k])
+        return self._candidates.get(best_key)
+
+    async def _run_quick_backtest(self, candidate: AlgoCandidate | None) -> float:
         """
         Runs a quick 2-year backtest using Alpaca historical bars.
         Returns Sharpe ratio or 0.0 on failure.
         """
+        if candidate is None:
+            logger.debug("Quick backtest called with None candidate")
+            return 0.0
+        if not candidate.symbol:
+            logger.debug("Quick backtest called with candidate missing symbol", candidate=candidate.name)
+            return 0.0
+
         try:
             import pandas as pd
             import httpx
@@ -132,72 +150,103 @@ class AlgoAgent:
                 )
 
             if resp.status_code != 200:
+                logger.debug("Alpaca response error", status=resp.status_code)
                 return 0.0
 
-            raw_bars = resp.json().get("bars", [])
-            if not raw_bars or len(raw_bars) < 60:
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                logger.debug("Unexpected Alpaca payload type", payload_type=type(payload))
                 return 0.0
 
-            dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True)
-            closes = [float(b["c"]) for b in raw_bars]
-            opens  = [float(b["o"]) for b in raw_bars]
-            highs  = [float(b["h"]) for b in raw_bars]
-            lows   = [float(b["l"]) for b in raw_bars]
-            vols   = [float(b["v"]) for b in raw_bars]
+            raw_bars = payload.get("bars", [])
+            if not isinstance(raw_bars, list) or len(raw_bars) < 60:
+                logger.debug("Insufficient bar data", count=len(raw_bars) if isinstance(raw_bars, list) else "N/A")
+                return 0.0
+
+            # Extract fields safely
+            dates = pd.to_datetime([b.get("t") for b in raw_bars if b.get("t")], utc=True)
+            if dates.empty:
+                return 0.0
+
+            def safe_float(value):
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return 0.0
+
+            closes = [safe_float(b.get("c")) for b in raw_bars]
+            opens = [safe_float(b.get("o")) for b in raw_bars]
+            highs = [safe_float(b.get("h")) for b in raw_bars]
+            lows = [safe_float(b.get("l")) for b in raw_bars]
+            vols = [safe_float(b.get("v")) for b in raw_bars]
 
             hist = pd.DataFrame(
                 {"Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": vols},
                 index=dates,
             )
 
-            if hist is None or len(hist) < 60:
+            if hist.empty or len(hist) < 60:
                 return 0.0
 
             close = hist["Close"]
 
             strategy_cls = STRATEGY_REGISTRY.get(candidate.name)
             if not strategy_cls:
+                logger.debug("Strategy not found in registry", name=candidate.name)
                 return 0.0
 
             strategy = strategy_cls()
             signals = strategy.backtest_signals(hist)
-            if signals is None or len(signals) < 30:
+            if signals is None:
+                logger.debug("Strategy returned None signals", name=candidate.name)
                 return 0.0
 
+            # Ensure we have a Series for backtest
             if hasattr(signals, "values"):
                 sig_series = signals
             else:
                 sig_series = pd.Series(signals, index=hist.index)
 
+            if len(sig_series) < 30:
+                logger.debug("Insufficient signal length", length=len(sig_series))
+                return 0.0
+
             metrics = run_backtest(sig_series, close)
             return float(metrics.sharpe)
 
         except Exception as e:
-            logger.debug("Quick backtest failed", candidate=candidate.name, error=str(e))
+            logger.debug("Quick backtest failed", candidate=candidate.name if candidate else "None", error=str(e))
             return 0.0
 
-    def _save_result(self, candidate: AlgoCandidate, sharpe: float) -> None:
+    def _save_result(self, candidate: AlgoCandidate | None, sharpe: float | None) -> None:
+        if candidate is None:
+            logger.warning("Attempted to save result for None candidate")
+            return
+
+        sharpe_val = sharpe if sharpe is not None else 0.0
         result = {
             "id": str(uuid.uuid4()),
             "strategy": candidate.name,
             "symbol": candidate.symbol,
             "strategy_type": candidate.strategy_type,
-            "sharpe": round(sharpe, 4),
+            "sharpe": round(sharpe_val, 4),
             "avg_sharpe": round(candidate.avg_sharpe, 4),
             "n_runs": candidate.n_runs,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self._results.append(result)
 
-        # Persist to disk
         results_file = EXPERIMENTS_DIR / "algo_agent_results.json"
         try:
             if results_file.exists():
                 existing = json.loads(results_file.read_text())
+                if not isinstance(existing, list):
+                    existing = []
             else:
                 existing = []
             existing.append(result)
-            existing = existing[-500:]  # keep last 500
+            # Keep only the most recent 500 entries
+            existing = existing[-500:]
             results_file.write_text(json.dumps(existing, indent=2))
         except Exception as e:
             logger.warning("AlgoAgent: failed to persist result", error=str(e))
@@ -205,50 +254,47 @@ class AlgoAgent:
     async def run(self) -> None:
         """Main loop — runs forever, selecting and testing candidates via UCB1."""
         self._running = True
-        logger.info("AlgoAgent started", candidates=len(self._candidates), interval=self.interval_seconds)
+        logger.info(
+            "AlgoAgent started",
+            candidates=len(self._candidates),
+            interval=self.interval_seconds,
+        )
 
         while self._running:
             try:
                 candidate = self._select_candidate()
-                logger.info("AlgoAgent testing", strategy=candidate.name, symbol=candidate.symbol,
-                            ucb=round(candidate.ucb_score(self._total_runs), 3))
+                if candidate is None:
+                    logger.warning("AlgoAgent: No candidate selected, terminating loop")
+                    break
+
+                logger.info("AlgoAgent testing", strategy=candidate.name, symbol=candidate.symbol)
 
                 sharpe = await self._run_quick_backtest(candidate)
+
+                # Update candidate statistics safely
                 candidate.n_runs += 1
-                candidate.total_sharpe += sharpe
-                candidate.best_sharpe = max(candidate.best_sharpe, sharpe)
+                sharpe_val = sharpe if sharpe is not None else 0.0
+                candidate.total_sharpe += sharpe_val
+                if sharpe_val > candidate.best_sharpe:
+                    candidate.best_sharpe = sharpe_val
                 candidate.last_run_at = datetime.now(timezone.utc)
+
                 self._total_runs += 1
+                self._save_result(candidate, sharpe_val)
 
-                self._save_result(candidate, sharpe)
+                # Placeholder for ML-specific retraining logic
+                if candidate.strategy_type == "ml_enhanced":
+                    # In a real implementation we would trigger Optuna hyper‑parameter search here.
+                    pass
 
-                logger.info("AlgoAgent result", strategy=candidate.name, symbol=candidate.symbol,
-                            sharpe=round(sharpe, 3), avg=round(candidate.avg_sharpe, 3),
-                            n_runs=candidate.n_runs)
+                await asyncio.sleep(self.interval_seconds)
 
-            except asyncio.CancelledError:
-                break
             except Exception as e:
-                logger.error("AlgoAgent error", error=str(e))
+                logger.error("AlgoAgent loop error", error=str(e))
+                # Prevent tight crash loops
+                await asyncio.sleep(self.interval_seconds)
 
-            await asyncio.sleep(self.interval_seconds)
-
-    async def stop(self) -> None:
+    def stop(self) -> None:
+        """Gracefully stop the background loop."""
         self._running = False
-
-    def get_leaderboard(self) -> list[dict]:
-        """Return candidates sorted by average Sharpe descending."""
-        def _safe(v: float) -> float:
-            import math
-            if math.isinf(v) or math.isnan(v):
-                return 9999.0 if v > 0 else -9999.0
-            return round(v, 3)
-
-        return sorted(
-            [{"key": k, "strategy": c.name, "symbol": c.symbol, "type": c.strategy_type,
-              "avg_sharpe": round(c.avg_sharpe, 3), "best_sharpe": round(c.best_sharpe, 3),
-              "n_runs": c.n_runs, "ucb": _safe(c.ucb_score(self._total_runs))}
-             for k, c in self._candidates.items()],
-            key=lambda x: x["avg_sharpe"],
-            reverse=True,
-        )
+        logger.info("AlgoAgent stopping")
