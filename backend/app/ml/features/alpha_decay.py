@@ -1,40 +1,61 @@
 """
-Measures IC (Information Coefficient) decay for each strategy signal.
-IC = Spearman correlation between signal and subsequent forward return.
-Fits exponential decay: IC(t) = IC_0 * exp(-lambda * t)
+Alpha decay measurement utilities.
 
-Usage:
+This module provides tools to evaluate how quickly the predictive power of a
+strategy's signals degrades over time. It computes the Information Coefficient
+(IC) at multiple forward horizons, fits an exponential decay model, and offers
+a method to scale a signal's confidence based on its staleness.
+
+Typical usage::
+
     tracker = AlphaDecayTracker()
     profile = tracker.compute_ic_profile(signals, prices, "momentum")
     scaled_conf = tracker.scale_confidence(0.7, profile, staleness_hours=2)
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
-from scipy.stats import spearmanr
 from scipy.optimize import curve_fit
+from scipy.stats import spearmanr
+from typing import Dict, List
 
 
 @dataclass
 class DecayProfile:
+    """
+    Container for the exponential decay fit of a strategy's IC.
+
+    Attributes
+    ----------
     strategy_name: str
-    ic_0: float           # IC at t=0
-    half_life_hours: float  # hours until IC halves
-    horizons: dict = field(default_factory=dict)  # {horizon_hours: ic_value}
+        Human‑readable identifier for the strategy.
+    ic_0: float
+        IC value at time horizon zero (the intercept of the decay curve).
+    half_life_hours: float
+        Estimated half‑life of the IC in hours. ``float('inf')`` indicates no decay.
+    horizons: Dict[int, float]
+        Mapping from horizon (in hours) to the observed IC at that horizon.
+    """
+    strategy_name: str
+    ic_0: float
+    half_life_hours: float
+    horizons: Dict[int, float] = field(default_factory=dict)
 
 
 class AlphaDecayTracker:
     """
     Measures how quickly a strategy's predictive power decays over time.
 
-    Fits an exponential decay model to Spearman IC across multiple horizons.
-    Used to scale down signal confidence when signals are stale.
+    The class computes the Spearman rank correlation (IC) between a signal and
+    its forward returns at several horizons, fits an exponential decay model,
+    and provides a utility to adjust confidence scores for stale signals.
     """
 
     # Horizons to measure IC at: 1h, 4h, 1d, 5d, 20d
-    HORIZONS: list[int] = [1, 4, 24, 120, 480]
+    HORIZONS: List[int] = [1, 4, 24, 120, 480]
 
     def compute_ic_profile(
         self,
@@ -43,21 +64,33 @@ class AlphaDecayTracker:
         strategy_name: str,
     ) -> DecayProfile:
         """
-        Compute IC at each horizon and fit exponential decay.
+        Compute the IC profile for a strategy.
 
-        Args:
-            signals: pd.Series of -1/0/+1 indexed by datetime
-            prices: pd.DataFrame with 'close' column at same frequency as signals
-            strategy_name: name for labelling the profile
+        Parameters
+        ----------
+        signals : pd.Series
+            Series of signal values (typically -1, 0, +1) indexed by datetime.
+        prices : pd.DataFrame
+            DataFrame containing at least a ``'close'`` column with the same
+            frequency as ``signals``.
+        strategy_name : str
+            Name used for labeling the resulting :class:`DecayProfile`.
 
-        Returns:
-            DecayProfile with IC at each horizon and fitted half-life in hours.
-            Raises ValueError if prices has no 'close' column.
+        Returns
+        -------
+        DecayProfile
+            Profile containing IC values at each horizon and the fitted
+            exponential decay parameters.
+
+        Raises
+        ------
+        ValueError
+            If ``prices`` does not contain a ``'close'`` column.
         """
         if "close" not in prices.columns:
             raise ValueError("prices DataFrame must contain a 'close' column")
 
-        ics: dict[int, float] = {}
+        ics: Dict[int, float] = {}
 
         for h in self.HORIZONS:
             fwd_ret = prices["close"].pct_change(h).shift(-h)
@@ -89,6 +122,23 @@ class AlphaDecayTracker:
 
         try:
             def exp_decay(t: np.ndarray, ic0: float, lam: float) -> np.ndarray:
+                """
+                Exponential decay model.
+
+                Parameters
+                ----------
+                t : np.ndarray
+                    Horizon values (in hours).
+                ic0 : float
+                    IC at time zero.
+                lam : float
+                    Decay rate.
+
+                Returns
+                -------
+                np.ndarray
+                    Predicted IC values.
+                """
                 return ic0 * np.exp(-lam * t)
 
             popt, _ = curve_fit(
@@ -118,16 +168,23 @@ class AlphaDecayTracker:
         staleness_hours: float,
     ) -> float:
         """
-        Scale a signal's confidence downward based on how stale it is.
+        Scale a signal's confidence downward based on its staleness.
 
-        Args:
-            base_confidence: raw confidence score [0, 1]
-            profile: fitted DecayProfile for the strategy
-            staleness_hours: hours since the signal was generated
+        Parameters
+        ----------
+        base_confidence : float
+            Raw confidence score in the range ``[0, 1]``.
+        profile : DecayProfile
+            The decay profile fitted for the strategy.
+        staleness_hours : float
+            Number of hours elapsed since the signal was generated.
 
-        Returns:
-            Adjusted confidence in [0, 1].  Returns base_confidence unchanged
-            when half-life is infinite (signal does not decay).
+        Returns
+        -------
+        float
+            Adjusted confidence in ``[0, 1]``. If the profile indicates an
+            infinite half‑life (no decay) or a non‑positive half‑life, the
+            original ``base_confidence`` is returned unchanged.
         """
         if profile.half_life_hours == float("inf") or profile.half_life_hours <= 0:
             return float(base_confidence)
