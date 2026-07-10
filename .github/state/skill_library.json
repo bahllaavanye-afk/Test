@@ -199,8 +199,12 @@
     "Analyze signal strengths",
     "Parse agent memory files",
     "Implement early-stopping callbacks",
-    "Track OKR metrics daily"
+    "Track OKR metrics daily",
+    "error_handling on ml/models/gemini_signal.py: success \u2014 tests green",
+    "error_handling on execution/rl_exec.py: success \u2014 tests green",
+    "error_handling on risk/var.py: success \u2014 tests green",
+    "error_handling on brokers/polymarket.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T13:25:32.751108+00:00",
+  "last_updated": "2026-07-10T13:26:15.452630+00:00",
   "total": 200
 }
