@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -30,7 +31,29 @@ def _fit_regime(returns: np.ndarray) -> int:
     """
     Fit Gaussian HMM and return the current regime (0/1/2).
     Falls back to vol-rank heuristic if hmmlearn is unavailable.
+
+    Parameters
+    ----------
+    returns : np.ndarray
+        1‑D array of daily returns. Must contain at least one element.
+
+    Returns
+    -------
+    int
+        Regime index (0, 1, or 2).
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` is not a 1‑D NumPy array with at least one element.
     """
+    if not isinstance(returns, np.ndarray):
+        raise ValueError("returns must be a NumPy ndarray")
+    if returns.ndim != 1:
+        raise ValueError("returns must be a 1‑dimensional array")
+    if returns.size == 0:
+        raise ValueError("returns array cannot be empty")
+
     n = len(returns)
     if n < 60:
         return 1  # insufficient data → sideways
@@ -87,7 +110,25 @@ def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     GBM synthetic SPY returns when yfinance is unreachable (network policy,
     offline dev container). Keeps the regime monitor functional 24/7.
     Deterministic per-day seed so the regime is stable within a session.
+
+    Parameters
+    ----------
+    n : int, optional
+        Number of synthetic return points to generate. Must be a positive integer.
+        Default is 300.
+
+    Returns
+    -------
+    np.ndarray
+        Array of synthetic daily returns.
+
+    Raises
+    ------
+    ValueError
+        If ``n`` is not a positive integer.
     """
+    if not isinstance(n, int) or n <= 0:
+        raise ValueError("n must be a positive integer")
     seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
     rng = np.random.default_rng(seed)
     # Mild positive drift, ~16% annualised vol — a neutral "sideways/bull" market
@@ -102,8 +143,30 @@ async def _fetch_spy_returns() -> np.ndarray | None:
     return await loop.run_in_executor(None, _fetch_spy_returns_sync)
 
 
-async def run_once(redis_client) -> int | None:
-    """Fit regime, write to Redis, return regime int or None on failure."""
+async def run_once(redis_client: Any) -> int | None:
+    """
+    Fit regime, write to Redis, return regime int or None on failure.
+
+    Parameters
+    ----------
+    redis_client : Any
+        Redis client with a callable ``set`` method.
+
+    Returns
+    -------
+    int | None
+        The detected regime, or ``None`` if an error occurs.
+
+    Raises
+    ------
+    ValueError
+        If ``redis_client`` is ``None`` or lacks a callable ``set`` attribute.
+    """
+    if redis_client is None:
+        raise ValueError("redis_client cannot be None")
+    if not callable(getattr(redis_client, "set", None)):
+        raise ValueError("redis_client must have a callable 'set' method")
+
     returns = await _fetch_spy_returns()
     if returns is None:
         # Network blocked / offline — fall back to synthetic returns so the
@@ -133,9 +196,11 @@ class RegimeMonitor:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        """Start the background regime monitoring loop."""
         self._task = asyncio.create_task(self._loop(), name="regime_monitor")
 
     def stop(self) -> None:
+        """Stop the background regime monitoring loop if it is running."""
         if self._task:
             self._task.cancel()
 
