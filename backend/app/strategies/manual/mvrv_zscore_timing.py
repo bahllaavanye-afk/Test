@@ -23,12 +23,15 @@ Academic reference:
   Demirer et al. (2021) "On-chain metrics as predictors of BTC returns"
     Finance Research Letters.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
@@ -37,12 +40,58 @@ _COINGECKO_MARKET_CHART_URL = (
 )
 
 
+class MVRVZScoreParams(BaseModel):
+    """Configuration parameters for the MVRV Z‑Score timing strategy."""
+
+    buy_threshold: float = Field(
+        default=1.0,
+        description="Z‑score below which a BUY signal is generated (accumulation zone).",
+        example=1.0,
+        ge=0,
+    )
+    sell_threshold: float = Field(
+        default=7.0,
+        description="Z‑score above which an extreme overvaluation SELL/SHORT signal is generated.",
+        example=7.0,
+        ge=0,
+    )
+    reduce_threshold: float = Field(
+        default=3.0,
+        description="Z‑score above which a position reduction (sell) signal is generated.",
+        example=3.0,
+        ge=0,
+    )
+    symbol: str = Field(
+        default="BTC-USD",
+        description="Trading symbol for the strategy.",
+        example="BTC-USD",
+        min_length=1,
+    )
+
+    @validator("reduce_threshold")
+    def reduce_must_be_between_buy_and_sell(cls, v, values):
+        buy = values.get("buy_threshold")
+        sell = values.get("sell_threshold")
+        if buy is not None and v <= buy:
+            raise ValueError("reduce_threshold must be greater than buy_threshold")
+        if sell is not None and v >= sell:
+            raise ValueError("reduce_threshold must be less than sell_threshold")
+        return v
+
+    @validator("sell_threshold")
+    def sell_must_be_above_reduce(cls, v, values):
+        reduce_thr = values.get("reduce_threshold")
+        if reduce_thr is not None and v <= reduce_thr:
+            raise ValueError("sell_threshold must be greater than reduce_threshold")
+        return v
+
+
 class MVRVZScoreTimingStrategy(AbstractStrategy):
     """
     Bitcoin on-chain MVRV Z-Score market timing strategy.
 
     Uses CoinGecko free API for market cap data to approximate the MVRV Z-Score.
-    For backtest, proxies MVRV using price / 200-day SMA ratio.
+    For backtest, proxies MVRV using price / 200‑day SMA ratio.
     """
 
     name = "mvrv_zscore_timing"
@@ -58,13 +107,15 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
     _SMA_WINDOW: int = 200
     _ZSCORE_WINDOW: int = 365
 
-    def __init__(self, params: dict | None = None) -> None:
+    def __init__(self, params: Dict[str, Any] | None = None) -> None:
         super().__init__(params)
         p = params or {}
-        self.buy_threshold: float = float(p.get("buy_threshold", self.DEFAULT_BUY_THRESHOLD))
-        self.sell_threshold: float = float(p.get("sell_threshold", self.DEFAULT_SELL_THRESHOLD))
-        self.reduce_threshold: float = float(p.get("reduce_threshold", self.DEFAULT_REDUCE_THRESHOLD))
-        self.symbol: str = str(p.get("symbol", "BTC-USD"))
+        # Validate and normalize parameters via Pydantic schema
+        validated_params = MVRVZScoreParams(**p)
+        self.buy_threshold: float = validated_params.buy_threshold
+        self.sell_threshold: float = validated_params.sell_threshold
+        self.reduce_threshold: float = validated_params.reduce_threshold
+        self.symbol: str = validated_params.symbol
 
     def description(self) -> str:
         return (
@@ -215,16 +266,12 @@ class MVRVZScoreTimingStrategy(AbstractStrategy):
         z_score = self._compute_mvrv_proxy_z(close)
 
         # shift(1) — no lookahead bias
-        z_lag = z_score.shift(1)
-
-        entries = (z_lag < self.buy_threshold).fillna(False).astype(bool)
-        exits = (z_lag >= self.reduce_threshold).fillna(False).astype(bool)
-        short_entries = (z_lag >= self.sell_threshold).fillna(False).astype(bool)
-        short_exits = (z_lag < self.reduce_threshold).fillna(False).astype(bool)
+        entries = (z_score.shift(1) < self.buy_threshold) & (z_score >= self.buy_threshold)
+        short_entries = z_score.shift(1) >= self.sell_threshold
 
         return BacktestSignals(
             entries=entries,
-            exits=exits,
+            exits=false_series,
             short_entries=short_entries,
-            short_exits=short_exits,
+            short_exits=false_series,
         )
