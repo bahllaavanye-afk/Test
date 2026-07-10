@@ -37,7 +37,7 @@ class MLMomentumStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.65
 
-    def __init__(self, params: Optional[Dict[str, Any]] = None):
+    def __init__(self, params: Optional[Dict[str, Any]] = None) -> None:
         """Create a new ``MLMomentumStrategy`` instance.
 
         Parameters
