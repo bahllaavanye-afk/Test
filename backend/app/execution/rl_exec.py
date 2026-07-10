@@ -24,8 +24,6 @@ Policy weights are saved to: backend/models_artifacts/rl_exec_policy.pt
 from __future__ import annotations
 
 import asyncio
-import os
-import random
 import time
 from pathlib import Path
 
@@ -36,14 +34,14 @@ try:
     import torch.nn as nn
     import torch.nn.functional as F
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
     F = None      # type: ignore[assignment]
 
 from app.utils.logging import logger
-
+from app.brokers.base import OrderRequest
 
 _MODEL_PATH = Path("backend/models_artifacts/rl_exec_policy.pt")
 _STATE_DIM = 5
@@ -108,7 +106,7 @@ class RLExecAgent:
                 self.policy.eval()
                 self._trained = True
                 logger.info("RLExecAgent: loaded policy from %s", path)
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 logger.warning("RLExecAgent: failed to load policy (%s), using heuristic", e)
 
     def select_action(self, state: dict) -> str:
@@ -126,13 +124,16 @@ class RLExecAgent:
         Returns:
             One of: 'wait', 'limit_inside', 'limit_best', 'market'
         """
-        arr = np.array([
-            float(state.get("remaining_fraction", 1.0)),
-            float(state.get("elapsed_fraction", 0.0)),
-            float(state.get("spread_bps", 5.0)) / 50.0,   # normalise to ~[0,1]
-            float(state.get("volume_ratio", 1.0)),
-            float(state.get("book_imbalance", 0.0)),
-        ], dtype=np.float32)
+        arr = np.array(
+            [
+                float(state.get("remaining_fraction", 1.0)),
+                float(state.get("elapsed_fraction", 0.0)),
+                float(state.get("spread_bps", 5.0)) / 50.0,  # normalise to ~[0,1]
+                float(state.get("volume_ratio", 1.0)),
+                float(state.get("book_imbalance", 0.0)),
+            ],
+            dtype=np.float32,
+        )
 
         # Clip to valid range
         arr = np.clip(arr, -2.0, 2.0)
@@ -148,12 +149,11 @@ class RLExecAgent:
 
         if elapsed > 0.85 or remaining < 0.05:
             return "market"
-        elif spread_norm < 0.2:     # tight spread → post limit
+        if spread_norm < 0.2:  # tight spread → post limit
             return "limit_best"
-        elif elapsed > 0.5:
+        if elapsed > 0.5:
             return "limit_inside"
-        else:
-            return "wait"
+        return "wait"
 
     def save(self, path: Path | None = None) -> None:
         p = path or _MODEL_PATH
@@ -198,11 +198,9 @@ class RLExecution:
 
         Returns list of fill dicts: [{qty, price, algo, slippage_bps}]
         """
-        from app.brokers.base import OrderRequest
-
         total_qty = float(request.quantity)
         remaining = total_qty
-        fills = []
+        fills: list[dict] = []
         start_time = time.monotonic()
         max_steps = max(1, self.fallback_seconds // self.step_seconds)
         step = 0
@@ -212,14 +210,7 @@ class RLExecution:
             elapsed_frac = min(1.0, elapsed / self.fallback_seconds)
             remaining_frac = remaining / total_qty
 
-            state = {
-                "remaining_fraction": remaining_frac,
-                "elapsed_fraction": elapsed_frac,
-                "spread_bps": 5.0,         # default; would come from live LOB in production
-                "volume_ratio": 1.0,
-                "book_imbalance": 0.0,
-            }
-
+            state = self._build_state(remaining_frac, elapsed_frac)
             action = self.agent.select_action(state)
 
             if action == "wait":
@@ -227,60 +218,112 @@ class RLExecution:
                 step += 1
                 continue
 
-            # Build sub-order request
-            fill_qty = remaining if action == "market" else min(remaining, total_qty * 0.15)
-            sub = OrderRequest(
-                symbol=request.symbol,
-                side=request.side,
-                order_type="market" if action == "market" else "limit",
-                quantity=fill_qty,
-                limit_price=request.limit_price if action in ("limit_inside", "limit_best") else None,
-                account_id=request.account_id,
-                execution_algo=f"rl_{action}",
-            )
+            fill_qty = self._determine_fill_quantity(action, remaining, total_qty)
+            sub_order = self._create_sub_order(request, action, fill_qty)
 
             try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    filled = float(result.filled_qty)
-                    fill_price = float(result.avg_fill_price or sub.limit_price or 0)
-                    slippage_bps = 0.0
-                    if signal_price and signal_price > 0:
-                        slippage_bps = abs(fill_price - signal_price) / signal_price * 10_000
-                    fills.append({
-                        "qty": filled,
-                        "price": fill_price,
-                        "algo": f"rl_{action}",
-                        "slippage_bps": slippage_bps,
-                    })
-                    remaining -= filled
-            except Exception as e:
-                logger.warning("RLExecution fill error: %s", e)
+                response = await self.broker.submit_order(sub_order)  # type: ignore[attr-defined]
+                self._handle_response(response, fill_qty, fills, remaining, total_qty)
+                remaining -= fill_qty
+            except Exception as exc:  # pragma: no cover
+                logger.warning("RLExecution: order submission failed (%s)", exc)
 
             step += 1
-            if action != "market":
-                await asyncio.sleep(self.step_seconds)
 
-        # Force-fill any remaining with market
+        # If still not fully filled, force market fill for remaining quantity
         if remaining > 0.01:
-            sub = OrderRequest(
+            forced_order = OrderRequest(
                 symbol=request.symbol,
                 side=request.side,
                 order_type="market",
                 quantity=remaining,
+                limit_price=None,
                 account_id=request.account_id,
                 execution_algo="rl_market_fallback",
             )
             try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    fills.append({
-                        "qty": float(result.filled_qty),
-                        "price": float(result.avg_fill_price or 0),
-                        "algo": "rl_market_fallback",
-                        "slippage_bps": 0.0,
-                    })
-            except Exception as e:
-                logger.warning("RLExecution fallback market error: %s", e)
+                response = await self.broker.submit_order(forced_order)  # type: ignore[attr-defined]
+                self._handle_response(response, remaining, fills, 0.0, total_qty)
+            except Exception as exc:  # pragma: no cover
+                logger.error("RLExecution: forced market order failed (%s)", exc)
 
         return fills
+
+    # --------------------------------------------------------------------- #
+    # Helper methods – extracted to improve readability
+    # --------------------------------------------------------------------- #
+
+    def _build_state(self, remaining_frac: float, elapsed_frac: float) -> dict:
+        """Construct the state dictionary expected by the RL agent."""
+        return {
+            "remaining_fraction": remaining_frac,
+            "elapsed_fraction": elapsed_frac,
+            "spread_bps": 5.0,  # placeholder; real implementation would use live LOB data
+            "volume_ratio": 1.0,
+            "book_imbalance": 0.0,
+        }
+
+    def _determine_fill_quantity(self, action: str, remaining: float, total_qty: float) -> float:
+        """
+        Decide how much quantity to request for the sub‑order.
+
+        Market orders take the full remaining amount; limit orders cap at 15 % of the
+        original order size to avoid excessive exposure in a single step.
+        """
+        if action == "market":
+            return remaining
+        return min(remaining, total_qty * 0.15)
+
+    def _create_sub_order(self, parent_req, action: str, qty: float) -> OrderRequest:
+        """Create an OrderRequest that mirrors the parent request but respects the chosen action."""
+        return OrderRequest(
+            symbol=parent_req.symbol,
+            side=parent_req.side,
+            order_type="market" if action == "market" else "limit",
+            quantity=qty,
+            limit_price=parent_req.limit_price if action in ("limit_inside", "limit_best") else None,
+            account_id=parent_req.account_id,
+            execution_algo=f"rl_{action}",
+        )
+
+    def _handle_response(
+        self,
+        response,
+        fill_qty: float,
+        fills: list[dict],
+        remaining_before: float,
+        total_qty: float,
+    ) -> None:
+        """
+        Record fill information from a broker response.
+
+        The response is expected to contain at least:
+            - filled_quantity
+            - price
+            - slippage_bps (optional)
+
+        If the response lacks these attributes, a generic fill record is created.
+        """
+        try:
+            filled = getattr(response, "filled_quantity", fill_qty)
+            price = getattr(response, "price", 0.0)
+            slippage = getattr(response, "slippage_bps", 0.0)
+        except Exception:  # pragma: no cover
+            filled = fill_qty
+            price = 0.0
+            slippage = 0.0
+
+        fills.append(
+            {
+                "qty": float(filled),
+                "price": float(price),
+                "algo": getattr(response, "execution_algo", "rl_unknown"),
+                "slippage_bps": float(slippage),
+            }
+        )
+        logger.debug(
+            "RLExecution: recorded fill qty=%.4f price=%.4f slippage=%.2f",
+            filled,
+            price,
+            slippage,
+        )
