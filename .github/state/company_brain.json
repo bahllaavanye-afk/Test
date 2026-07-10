@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783640182.2236824,
+    "last_updated": 1783646158.4959383,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,8 +152,8 @@
       "ABBV"
     ],
     "risk_flags": [],
-    "risk_status": "normal",
-    "last_brain_update": 1783640182.2233868
+    "risk_status": "alert",
+    "last_brain_update": 1783646158.495637
   },
   "episodic": [
     {
@@ -444,6 +444,34 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1783640158.7111142
+    },
+    {
+      "lesson": "Upgrade Vercel deployment plan from Free to Pro to eliminate the 100 deployments per day limit, which is blocking deployments.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783646153.5148695
+    },
+    {
+      "lesson": "Investigate and fix the auto-fix patch failures by reviewing the patch generation logic and ensuring it applies correctly to the current codebase.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783646153.5164475
+    },
+    {
+      "lesson": "Reduce deployment frequency by triggering deployments only on merges to main or manual releases, not on every push or PR, to conserve free-tier quota if upgrade is delayed.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783646153.5178444
+    },
+    {
+      "lesson": "Implement a monitoring alert for approaching the daily deployment limit to proactively manage capacity and avoid unexpected failures.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783646153.5192902
     }
   ],
   "github_insights": [
@@ -581,6 +609,11 @@
       "summary": "The auto-fix repeatedly failed because it could not apply the patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1783640182.2203329
+    },
+    {
+      "summary": "The deployment failed due to resource limits, with a suggestion to retry in 24 hours, and automated attempts to fix the issue were unsuccessful.",
+      "item_count": 20,
+      "ts": 1783646158.4924853
     }
   ],
   "experiment_results": [
