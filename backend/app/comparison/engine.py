@@ -3,9 +3,11 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -47,6 +49,71 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        """
+        Run a comparison between a manual and an ML‑enhanced strategy.
+
+        Parameters
+        ----------
+        manual_signals, ml_signals, prices : pd.Series
+            Time‑aligned series of signals and price data. Must be non‑empty.
+        strategy_name, symbol, interval : str
+            Descriptive identifiers; cannot be empty.
+        start_date, end_date : date
+            Comparison period; start_date must be on or before end_date.
+        initial_equity : float
+            Starting capital; must be positive.
+
+        Returns
+        -------
+        ComparisonResult
+            Dataclass containing metrics and statistical test results.
+
+        Raises
+        ------
+        ValueError
+            If any input fails validation.
+        """
+        # ---- Input validation ----
+        if not isinstance(manual_signals, pd.Series):
+            raise ValueError("manual_signals must be a pandas Series.")
+        if not isinstance(ml_signals, pd.Series):
+            raise ValueError("ml_signals must be a pandas Series.")
+        if not isinstance(prices, pd.Series):
+            raise ValueError("prices must be a pandas Series.")
+
+        if manual_signals.empty:
+            raise ValueError("manual_signals series cannot be empty.")
+        if ml_signals.empty:
+            raise ValueError("ml_signals series cannot be empty.")
+        if prices.empty:
+            raise ValueError("prices series cannot be empty.")
+
+        # Ensure the series are aligned on the same index
+        if not manual_signals.index.equals(ml_signals.index):
+            raise ValueError("manual_signals and ml_signals must share the same index.")
+        if not manual_signals.index.equals(prices.index):
+            raise ValueError("manual_signals and prices must share the same index.")
+
+        if not isinstance(strategy_name, str) or not strategy_name.strip():
+            raise ValueError("strategy_name must be a non‑empty string.")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a non‑empty string.")
+        if not isinstance(interval, str) or not interval.strip():
+            raise ValueError("interval must be a non‑empty string.")
+
+        if not isinstance(start_date, date):
+            raise ValueError("start_date must be a datetime.date instance.")
+        if not isinstance(end_date, date):
+            raise ValueError("end_date must be a datetime.date instance.")
+        if start_date > end_date:
+            raise ValueError("start_date must be on or before end_date.")
+
+        if not isinstance(initial_equity, (int, float)):
+            raise ValueError("initial_equity must be a numeric type.")
+        if initial_equity <= 0:
+            raise ValueError("initial_equity must be a positive number.")
+
+        # ---- Core comparison logic ----
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
@@ -70,11 +137,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
