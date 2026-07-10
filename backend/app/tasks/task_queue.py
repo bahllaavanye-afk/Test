@@ -85,6 +85,8 @@ class TaskQueue:
 
     def register(self, task_type: str, handler: TaskFn) -> None:
         """Register an async handler for a task type."""
+        if not task_type:
+            raise ValueError("task_type must be a non-empty string")
         self._handlers[task_type] = handler
 
     # ── Enqueuing ─────────────────────────────────────────────────────────────
@@ -92,11 +94,32 @@ class TaskQueue:
     async def enqueue(
         self,
         task_type: str,
-        payload: dict,
+        payload: dict | None = None,
         priority: int = PRIORITY_NORMAL,
         max_retries: int = 3,
         delay_seconds: float = 0,
     ) -> str:
+        """Add a task to the queue, handling None/invalid inputs gracefully."""
+        if not task_type:
+            raise ValueError("task_type must be a non-empty string")
+
+        # Normalize inputs
+        payload = payload or {}
+        if not isinstance(payload, dict):
+            raise TypeError("payload must be a dict")
+        priority = int(priority) if priority is not None else PRIORITY_NORMAL
+        if priority < PRIORITY_CRITICAL or priority > PRIORITY_LOW:
+            logger.warning("Invalid priority %s; clamping to %s", priority, PRIORITY_NORMAL)
+            priority = PRIORITY_NORMAL
+        max_retries = int(max_retries) if max_retries is not None else 3
+        if max_retries < 1:
+            logger.warning("max_retries %s is less than 1; setting to 1", max_retries)
+            max_retries = 1
+        delay_seconds = float(delay_seconds) if delay_seconds is not None else 0.0
+        if delay_seconds < 0:
+            logger.warning("Negative delay_seconds %s; treating as 0", delay_seconds)
+            delay_seconds = 0.0
+
         task_id = str(uuid.uuid4())
         task = Task(
             task_id=task_id,
@@ -125,6 +148,8 @@ class TaskQueue:
                 if not results:
                     continue
                 for _, messages in results:
+                    if not messages:
+                        continue
                     for msg_id, fields in messages:
                         task = Task.from_redis(fields)
                         # Delete from queue before processing (at-most-once delivery)
@@ -161,8 +186,14 @@ class TaskQueue:
             logger.warning("TaskQueue: no handler for task_type=%s", task.task_type)
             return
 
+        # Ensure payload is a dict to avoid TypeError when unpacking
+        payload = task.payload or {}
+        if not isinstance(payload, dict):
+            logger.warning("TaskQueue: payload for task_id=%s is not a dict; ignoring", task.task_id)
+            payload = {}
+
         try:
-            await handler(**task.payload)
+            await handler(**payload)
         except Exception as exc:
             task.attempt += 1
             task.error = str(exc)
@@ -177,6 +208,8 @@ class TaskQueue:
                 await self._dead_letter(task)
 
     async def _requeue(self, task: Task, delay: float = 0) -> None:
+        """Re‑enqueue a task, ensuring delay is non‑negative."""
+        delay = max(0.0, float(delay))
         task.scheduled_at = time.time() + delay
         key = f"{_QUEUE_PREFIX}{task.priority}"
         try:
@@ -185,7 +218,12 @@ class TaskQueue:
             logger.debug("TaskQueue._requeue failed: %s", e)
 
     async def _dead_letter(self, task: Task) -> None:
-        logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
+        logger.error(
+            "TaskQueue: task permanently failed type=%s id=%s error=%s",
+            task.task_type,
+            task.task_id,
+            task.error,
+        )
         try:
             await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
         except Exception:
@@ -218,6 +256,7 @@ def get_task_queue(redis_client: Any | None = None) -> TaskQueue:
     if _queue is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _queue = TaskQueue(redis_client)
     return _queue
