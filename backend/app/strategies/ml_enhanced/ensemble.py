@@ -1,7 +1,10 @@
 """Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+import logging
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
+
+logger = logging.getLogger(__name__)
 
 
 class EnsembleStrategy(AbstractStrategy):
@@ -74,8 +77,8 @@ class EnsembleStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata=ml_result,
             )
-        except Exception:
-            # In production we would log the exception; for now we silently ignore.
+        except Exception as e:
+            logger.exception("Error in EnsembleStrategy.analyze for symbol %s: %s", symbol, e)
             return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
@@ -92,7 +95,6 @@ class EnsembleStrategy(AbstractStrategy):
         """
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
-            # If required columns are missing, return empty signals to avoid crashes.
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
@@ -119,7 +121,6 @@ class EnsembleStrategy(AbstractStrategy):
         exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
         exits = exit_long | exit_short
 
-        # Align boolean Series with BacktestSignals expectations
         entries = entries.astype(bool)
         exits = exits.astype(bool)
 
