@@ -31,12 +31,13 @@ _SPY = "SPY"
 _TLT = "TLT"
 _GLD = "GLD"
 
-_MA_WINDOW       = 200
-_VOL_WINDOW      = 20
-_VOL_THRESHOLD   = 0.20   # annualised vol threshold — above this = stressed
+_MA_WINDOW = 200
+_VOL_WINDOW = 20
+_VOL_THRESHOLD = 0.20  # annualised vol threshold — above this = stressed
 
 
 def _fetch_yf(symbol: str, period: str = "3y") -> pd.Series | None:
+    """Fetch adjusted close series from yfinance; return None on failure or empty data."""
     try:
         import yfinance as yf
         hist = yf.Ticker(symbol).history(period=period, auto_adjust=True)
@@ -66,26 +67,54 @@ class TLTSPYRotationStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
         p = params or {}
-        self.ma_window     = int(p.get("ma_window",     _MA_WINDOW))
-        self.vol_window    = int(p.get("vol_window",    _VOL_WINDOW))
+        self.ma_window = int(p.get("ma_window", _MA_WINDOW))
+        self.vol_window = int(p.get("vol_window", _VOL_WINDOW))
         self.vol_threshold = float(p.get("vol_threshold", _VOL_THRESHOLD))
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str | None) -> Signal | None:
+        """Generate a trading signal based on latest SPY/TLT data."""
+        # Defensive checks for inputs
+        if not symbol:
+            symbol = _SPY
+
         spy = _fetch_yf(_SPY)
         tlt = _fetch_yf(_TLT)
-        if spy is None or tlt is None or len(spy) < self.ma_window:
+
+        # Validate fetched series
+        if (
+            spy is None
+            or tlt is None
+            or len(spy) < self.ma_window
+            or len(tlt) < self.ma_window
+        ):
             return None
 
-        spy_ma = float(spy.rolling(self.ma_window).mean().iloc[-1])
-        tlt_ma = float(tlt.rolling(self.ma_window).mean().iloc[-1])
-        spy_now = float(spy.iloc[-1])
-        tlt_now = float(tlt.iloc[-1])
+        # Compute rolling means safely
+        spy_ma_series = spy.rolling(self.ma_window).mean()
+        tlt_ma_series = tlt.rolling(self.ma_window).mean()
+        spy_ma = float(spy_ma_series.iloc[-1]) if not np.isnan(spy_ma_series.iloc[-1]) else None
+        tlt_ma = float(tlt_ma_series.iloc[-1]) if not np.isnan(tlt_ma_series.iloc[-1]) else None
 
-        spy_rvol = float(spy.pct_change().rolling(self.vol_window).std().iloc[-1]) * np.sqrt(252)
+        if spy_ma is None or tlt_ma is None:
+            return None
+
+        spy_now = float(spy.iloc[-1]) if not np.isnan(spy.iloc[-1]) else None
+        tlt_now = float(tlt.iloc[-1]) if not np.isnan(tlt.iloc[-1]) else None
+
+        if spy_now is None or tlt_now is None:
+            return None
+
+        # Realized volatility
+        spy_rvol_series = spy.pct_change().rolling(self.vol_window).std() * np.sqrt(252)
+        spy_rvol = float(spy_rvol_series.iloc[-1]) if not np.isnan(spy_rvol_series.iloc[-1]) else None
+        if spy_rvol is None:
+            return None
         high_vol = spy_rvol > self.vol_threshold
 
+        # Ensure trade symbol is one of the supported assets
         trade_sym = symbol if symbol in (_SPY, _TLT, _GLD) else _SPY
 
+        # Equity allocation logic
         if spy_now > spy_ma and not high_vol:
             confidence = min(0.85, 0.65 + (spy_now / spy_ma - 1) * 3.0)
             return Signal(
@@ -103,9 +132,13 @@ class TLTSPYRotationStrategy(AbstractStrategy):
                 },
             )
 
+        # Bond or stressed regime allocation logic
         if tlt_now > tlt_ma or high_vol:
             trade = _TLT if not high_vol else (_GLD if trade_sym == _GLD else _TLT)
-            confidence = min(0.82, 0.62 + (spy_rvol - self.vol_threshold) * 1.5 if high_vol else 0.72)
+            if high_vol:
+                confidence = min(0.82, 0.62 + (spy_rvol - self.vol_threshold) * 1.5)
+            else:
+                confidence = 0.72
             return Signal(
                 symbol=trade,
                 side="buy",
@@ -125,19 +158,26 @@ class TLTSPYRotationStrategy(AbstractStrategy):
 
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        if "close" not in df.columns or len(df) < self.ma_window + 5:
+    def backtest_signals(self, df: pd.DataFrame | None) -> BacktestSignals:
+        """Generate backtest entry/exit signals from a dataframe of price data."""
+        # Defensive handling for None or insufficient data
+        if df is None or df.empty or "close" not in df.columns:
+            empty = pd.Series(False, index=pd.Index([]))
+            return BacktestSignals(entries=empty, exits=empty)
+
+        if len(df) < self.ma_window + 5:
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
-        close   = df["close"].astype(float)
-        ma      = close.rolling(self.ma_window).mean()
-        rvol    = close.pct_change().rolling(self.vol_window).std() * np.sqrt(252)
+        close = df["close"].astype(float)
+        ma = close.rolling(self.ma_window).mean()
+        rvol = close.pct_change().rolling(self.vol_window).std() * np.sqrt(252)
 
-        spy_above = close.shift(1) > ma.shift(1)
-        low_vol   = rvol.shift(1) < self.vol_threshold
+        # Shift by one to avoid look‑ahead bias; fill missing with False
+        spy_above = (close.shift(1) > ma.shift(1)).fillna(False)
+        low_vol = (rvol.shift(1) < self.vol_threshold).fillna(False)
 
-        entries = (spy_above & low_vol).fillna(False)
-        exits   = (~spy_above | ~low_vol).fillna(False)
+        entries = (spy_above & low_vol)
+        exits = (~spy_above | ~low_vol)
 
         return BacktestSignals(entries=entries, exits=exits)
