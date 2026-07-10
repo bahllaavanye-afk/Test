@@ -199,8 +199,13 @@
     "Log API responses",
     "Check SSL versions",
     "Validate JSON schema",
-    "Check dependency updates"
+    "Check dependency updates",
+    "validation on risk/hrp.py: success \u2014 tests green",
+    "validation on backtest/engine.py: success \u2014 tests green",
+    "validation on comparison/engine.py: success \u2014 tests green",
+    "validation on tasks/regime_monitor.py: success \u2014 tests green",
+    "validation on test/unit/test_risk.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T00:01:22.703077+00:00",
+  "last_updated": "2026-07-10T04:33:55.824372+00:00",
   "total": 200
 }
