@@ -17,7 +17,7 @@ Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -25,6 +25,15 @@ import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
 
 _logger = logging.getLogger(__name__)
+
+# Common exception types expected from pandas-ta and pandas operations
+_INDICATOR_EXCEPTIONS: Tuple[type, ...] = (
+    KeyError,
+    ValueError,
+    TypeError,
+    ZeroDivisionError,
+    IndexError,
+)
 
 
 def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
@@ -45,13 +54,12 @@ def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
     """
     try:
         return func(*args, **kwargs)
-    except (KeyError, ValueError, TypeError) as exc:
+    except _INDICATOR_EXCEPTIONS as exc:
         _logger.error(
-            "Technical feature computation failed in %s with args=%s, kwargs=%s",
+            "Technical feature computation failed in %s",
             func.__name__,
-            args,
-            kwargs,
             exc_info=exc,
+            extra={"function": func.__name__, "args": args, "kwargs": kwargs},
         )
         return None
 
@@ -89,24 +97,38 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     for n in [1, 5, 10, 21]:
         try:
             df[f"returns_{n}"] = close.pct_change(n)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute returns_%d", n, exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to compute returns_%d",
+                n,
+                exc_info=exc,
+                extra={"period": n, "exception": repr(exc)},
+            )
 
     # --- Volatility (rolling std of log returns) ---
     try:
         log_ret = np.log(close / close.shift(1))
         for n in [5, 21, 63]:
             df[f"vol_{n}"] = log_ret.rolling(n).std() * np.sqrt(252)
-    except Exception as exc:  # pragma: no cover
-        _logger.error("Failed to compute volatility features", exc_info=exc)
+    except _INDICATOR_EXCEPTIONS as exc:
+        _logger.error(
+            "Failed to compute volatility features",
+            exc_info=exc,
+            extra={"exception": repr(exc)},
+        )
 
     # --- EMA distance (normalized) ---
     for span in [9, 21, 50]:
         try:
             ema = close.ewm(span=span).mean()
             df[f"ema_{span}_diff"] = (close - ema) / (ema + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute EMA distance for span %d", span, exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to compute EMA distance for span %d",
+                span,
+                exc_info=exc,
+                extra={"span": span, "exception": repr(exc)},
+            )
 
     # --- RSI ---
     rsi14 = _safe_apply(ta.rsi, close, length=14)
@@ -123,8 +145,12 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["macd"] = macd_df["MACD_12_26_9"] / (close + 1e-9)
             df["macd_signal"] = macd_df["MACDs_12_26_9"] / (close + 1e-9)
             df["macd_hist"] = macd_df["MACDh_12_26_9"] / (close + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to normalize MACD components", exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to normalize MACD components",
+                exc_info=exc,
+                extra={"exception": repr(exc)},
+            )
 
     # --- Bollinger Bands ---
     bb = _safe_apply(ta.bbands, close, length=20, std=2.0)
@@ -136,23 +162,35 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["bb_upper_dist"] = (upper - close) / (close + 1e-9)
             df["bb_lower_dist"] = (close - lower) / (close + 1e-9)
             df["bb_width"] = (upper - lower) / (mid + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute Bollinger Band features", exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to compute Bollinger Band features",
+                exc_info=exc,
+                extra={"exception": repr(exc)},
+            )
 
     # --- OBV change (normalized) ---
     obv = _safe_apply(ta.obv, close, volume)
     if obv is not None:
         try:
             df["obv_change"] = obv.pct_change(5).fillna(0)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute OBV change", exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to compute OBV change",
+                exc_info=exc,
+                extra={"exception": repr(exc)},
+            )
 
     # --- Volume ratio ---
     try:
         vol_ma = volume.rolling(20).mean()
         df["volume_ratio"] = volume / (vol_ma + 1e-9)
-    except Exception as exc:  # pragma: no cover
-        _logger.error("Failed to compute volume ratio", exc_info=exc)
+    except _INDICATOR_EXCEPTIONS as exc:
+        _logger.error(
+            "Failed to compute volume ratio",
+            exc_info=exc,
+            extra={"exception": repr(exc)},
+        )
 
     # --- ATR ---
     atr = _safe_apply(ta.atr, high, low, close, length=14)
@@ -160,8 +198,12 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         try:
             df["atr_14"] = atr
             df["atr_pct"] = atr / (close + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute ATR related features", exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to compute ATR related features",
+                exc_info=exc,
+                extra={"exception": repr(exc)},
+            )
 
     # --- Stochastic ---
     stoch = _safe_apply(ta.stoch, high, low, close, k=14, d=3)
@@ -169,15 +211,23 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         try:
             df["stoch_k"] = stoch["STOCHk_14_3_3"] / 100.0
             df["stoch_d"] = stoch["STOCHd_14_3_3"] / 100.0
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute Stochastic Oscillator features", exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to compute Stochastic Oscillator features",
+                exc_info=exc,
+                extra={"exception": repr(exc)},
+            )
 
     # --- ADX ---
     adx_df = _safe_apply(ta.adx, high, low, close, length=14)
     if adx_df is not None:
         try:
             df["adx"] = adx_df["ADX_14"] / 100.0
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute ADX feature", exc_info=exc)
+        except _INDICATOR_EXCEPTIONS as exc:
+            _logger.error(
+                "Failed to compute ADX feature",
+                exc_info=exc,
+                extra={"exception": repr(exc)},
+            )
 
     return df
