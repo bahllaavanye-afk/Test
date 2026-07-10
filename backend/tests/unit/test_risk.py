@@ -18,9 +18,48 @@ def test_kelly_fraction_capped_at_20pct():
     assert f <= 0.20
 
 
+def test_kelly_fraction_invalid_win_rate():
+    with pytest.raises(ValueError, match="win_rate must be between 0 and 1"):
+        kelly_fraction(win_rate=-0.1, avg_win=1.0, avg_loss=1.0)
+    with pytest.raises(ValueError, match="win_rate must be between 0 and 1"):
+        kelly_fraction(win_rate=1.5, avg_win=1.0, avg_loss=1.0)
+
+
+def test_kelly_fraction_invalid_avg_win():
+    with pytest.raises(ValueError, match="avg_win must be non‑negative"):
+        kelly_fraction(win_rate=0.5, avg_win=-1.0, avg_loss=1.0)
+
+
+def test_kelly_fraction_invalid_avg_loss():
+    with pytest.raises(ValueError, match="avg_loss must be non‑negative"):
+        kelly_fraction(win_rate=0.5, avg_win=1.0, avg_loss=-1.0)
+
+
 def test_size_from_kelly():
     shares = size_from_kelly(equity=100_000, win_rate=0.6, avg_win_pct=0.02, avg_loss_pct=0.01, price=100)
     assert shares >= 1
+
+
+def test_size_from_kelly_invalid_equity():
+    with pytest.raises(ValueError, match="equity must be positive"):
+        size_from_kelly(equity=0, win_rate=0.6, avg_win_pct=0.02, avg_loss_pct=0.01, price=100)
+    with pytest.raises(ValueError, match="equity must be positive"):
+        size_from_kelly(equity=-1000, win_rate=0.6, avg_win_pct=0.02, avg_loss_pct=0.01, price=100)
+
+
+def test_size_from_kelly_invalid_win_rate():
+    with pytest.raises(ValueError, match="win_rate must be between 0 and 1"):
+        size_from_kelly(equity=100_000, win_rate=1.2, avg_win_pct=0.02, avg_loss_pct=0.01, price=100)
+
+
+def test_size_from_kelly_invalid_avg_win_pct():
+    with pytest.raises(ValueError, match="avg_win_pct must be non‑negative"):
+        size_from_kelly(equity=100_000, win_rate=0.6, avg_win_pct=-0.01, avg_loss_pct=0.01, price=100)
+
+
+def test_size_from_kelly_invalid_avg_loss_pct():
+    with pytest.raises(ValueError, match="avg_loss_pct must be non‑negative"):
+        size_from_kelly(equity=100_000, win_rate=0.6, avg_win_pct=0.02, avg_loss_pct=-0.01, price=100)
 
 
 def test_circuit_breaker_normal():
@@ -43,3 +82,17 @@ def test_circuit_breaker_reset():
     assert cb.is_halted
     cb.reset(90_000)
     assert not cb.is_halted
+
+
+def test_circuit_breaker_invalid_max_drawdown():
+    with pytest.raises(ValueError, match="max_drawdown_pct must be between 0 and 1"):
+        CircuitBreaker(name="test", max_drawdown_pct=-0.1)
+    with pytest.raises(ValueError, match="max_drawdown_pct must be between 0 and 1"):
+        CircuitBreaker(name="test", max_drawdown_pct=1.5)
+
+
+def test_circuit_breaker_invalid_name():
+    with pytest.raises(ValueError, match="name must be a non‑empty string"):
+        CircuitBreaker(name="", max_drawdown_pct=0.10)
+    with pytest.raises(ValueError, match="name must be a non‑empty string"):
+        CircuitBreaker(name=None, max_drawdown_pct=0.10)
