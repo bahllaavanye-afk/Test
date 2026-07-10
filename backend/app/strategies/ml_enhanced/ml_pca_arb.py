@@ -1,15 +1,5 @@
-"""
-ML-Enhanced PCA Statistical Arbitrage Strategy.
-
-Extends PCAStatArbStrategy by gating entries through an LSTM confidence
-filter: a trade is only taken when BOTH conditions are true:
-
-  1. PCA s-score exceeds the entry threshold (mean-reversion signal)
-  2. LSTM model confidence > 0.60 (directional agreement)
-
-If the ML inference service is unavailable the strategy falls back
-gracefully (returns None from analyze, uses base signals in backtest).
-"""
+import logging
+import time
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -24,6 +14,8 @@ except Exception:
 
 
 _ML_CONFIDENCE_THRESHOLD = 0.60
+
+_logger = logging.getLogger(__name__)
 
 
 class MLPCAStatArbStrategy(AbstractStrategy):
@@ -45,6 +37,8 @@ class MLPCAStatArbStrategy(AbstractStrategy):
     tick_interval_seconds = 86_400.0  # daily
     confidence_threshold = 0.65
 
+    _signal_counter: int = 0
+
     def __init__(self, params: dict | None = None):
         super().__init__(params)
         p = params or {}
@@ -63,17 +57,18 @@ class MLPCAStatArbStrategy(AbstractStrategy):
 
         Falls back to None (no trade) when ML is unavailable.
         """
-        # Step 1: get base PCA signal
-        base_signal = await self._base.analyze(data, symbol)
-        if base_signal is None:
-            return None
-
-        # Step 2: apply ML filter
-        if not _INFERENCE_AVAILABLE:
-            # ML service not installed — skip silently
-            return None
-
+        start_time = time.monotonic()
         try:
+            # Step 1: get base PCA signal
+            base_signal = await self._base.analyze(data, symbol)
+            if base_signal is None:
+                return None
+
+            # Step 2: apply ML filter
+            if not _INFERENCE_AVAILABLE:
+                # ML service not installed — skip silently
+                return None
+
             inference = _get_inference_service()
             ml_result = await inference.predict(data, symbol)
             if ml_result is None:
@@ -101,11 +96,37 @@ class MLPCAStatArbStrategy(AbstractStrategy):
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
             base_signal.metadata["ml_confidence"] = ml_confidence
-            return base_signal
 
+            # Monitoring: increment counter and log key metrics
+            self.__class__._signal_counter += 1
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            _logger.info(
+                "ml_pca_signal_generated",
+                extra={
+                    "symbol": symbol,
+                    "signal_side": base_signal.side,
+                    "ml_confidence": ml_confidence,
+                    "blended_confidence": blended,
+                    "signal_count": self.__class__._signal_counter,
+                    "execution_time_ms": round(elapsed_ms, 2),
+                },
+            )
+            return base_signal
         except Exception:
             # ML service raised an error — degrade gracefully
             return None
+        finally:
+            # Ensure execution time is logged even when no signal is emitted
+            if _logger.isEnabledFor(logging.INFO):
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                _logger.info(
+                    "ml_pca_analyze_complete",
+                    extra={
+                        "symbol": symbol,
+                        "signal_generated": base_signal is not None,
+                        "execution_time_ms": round(elapsed_ms, 2),
+                    },
+                )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -115,4 +136,9 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         would be gated per-bar.  Without a serialized model this delegation
         is the correct fallback: it still uses the same PCA edge.
         """
-        return self._base.backtest_signals(df)
+        signals = self._base.backtest_signals(df)
+        _logger.info(
+            "ml_pca_backtest_completed",
+            extra={"signal_count": len(signals.signals) if hasattr(signals, "signals") else 0},
+        )
+        return signals
