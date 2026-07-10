@@ -199,8 +199,12 @@
     "Check clock sync",
     "Verify cert expiration",
     "Track API payload size",
-    "Bind to static IPs"
+    "Bind to static IPs",
+    "docstrings on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "docstrings on ml/features/alpha_decay.py: success \u2014 tests green",
+    "docstrings on execution/position_exit.py: success \u2014 tests green",
+    "docstrings on risk/drawdown_recovery.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-09T22:48:54.371997+00:00",
+  "last_updated": "2026-07-10T00:02:11.046075+00:00",
   "total": 200
 }
