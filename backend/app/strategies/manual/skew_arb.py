@@ -53,6 +53,9 @@ class SkewArbitrageStrategy(AbstractStrategy):
 
     async def _get_skew(self, symbol: str) -> dict | None:
         """Get current skew: IV difference between 25Δ put and 25Δ call."""
+        if not symbol:
+            return None
+
         today = date.today()
         exp_min = (today + timedelta(days=self.TARGET_DTE_MIN)).isoformat()
         exp_max = (today + timedelta(days=self.TARGET_DTE_MAX)).isoformat()
@@ -70,8 +73,12 @@ class SkewArbitrageStrategy(AbstractStrategy):
             )
             if contracts_resp.status_code != 200:
                 return None
-            contracts = contracts_resp.json().get("option_contracts", [])
-            syms = [c["symbol"] for c in contracts if c.get("symbol")]
+
+            contracts = contracts_resp.json().get("option_contracts") or []
+            if not isinstance(contracts, list) or not contracts:
+                return None
+
+            syms = [c.get("symbol") for c in contracts if c.get("symbol")]
             if not syms:
                 return None
 
@@ -82,7 +89,8 @@ class SkewArbitrageStrategy(AbstractStrategy):
             )
         if snap_resp.status_code != 200:
             return None
-        snapshots = snap_resp.json().get("snapshots", {})
+
+        snapshots = snap_resp.json().get("snapshots") or {}
 
         # Find ~25-delta call and ~25-delta put
         put_25 = None
@@ -103,8 +111,12 @@ class SkewArbitrageStrategy(AbstractStrategy):
             if delta is None or iv is None:
                 continue
 
-            delta_abs = abs(float(delta))
-            iv_val = float(iv)
+            try:
+                delta_abs = abs(float(delta))
+                iv_val = float(iv)
+            except (ValueError, TypeError):
+                continue
+
             diff = abs(delta_abs - self.TARGET_DELTA)
 
             if option_type == "put" and diff < 0.05 and diff < put_25_best_diff:
@@ -129,15 +141,22 @@ class SkewArbitrageStrategy(AbstractStrategy):
             "call_symbol": call_25,
         }
 
-    async def analyze(self, data: pd.DataFrame, symbol: str = "SPY") -> Signal | None:
-        if symbol not in self.UNIVERSE:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str = "SPY") -> Signal | None:
+        """Generate a trading signal based on current skew."""
+        if not symbol or symbol not in self.UNIVERSE:
+            return None
+
+        # Guard against None or empty DataFrames; currently not used directly
+        if data is not None and (not isinstance(data, pd.DataFrame) or data.empty):
             return None
 
         skew_data = await self._get_skew(symbol)
         if not skew_data:
             return None
 
-        skew = skew_data["skew"]
+        skew = skew_data.get("skew")
+        if skew is None:
+            return None
 
         # Historical skew estimate: normal SPY skew ≈ 0.04-0.07 (4-7% IV difference)
         # High skew (> 0.10) = puts expensive relative to calls → sell puts, buy calls
@@ -146,7 +165,6 @@ class SkewArbitrageStrategy(AbstractStrategy):
         LOW_SKEW_THRESHOLD = 0.02
 
         if skew > HIGH_SKEW_THRESHOLD:
-            # Puts expensive: sell puts (delta-neutral with calls)
             confidence = min((skew - HIGH_SKEW_THRESHOLD) / 0.04, 1.0)
             return Signal(
                 symbol=symbol,
@@ -159,15 +177,14 @@ class SkewArbitrageStrategy(AbstractStrategy):
                     "strategy": "skew_arb",
                     "skew": round(skew, 4),
                     "regime": "high_skew_sell_puts",
-                    "put_25d_iv": round(skew_data["put_25d_iv"], 4),
-                    "call_25d_iv": round(skew_data["call_25d_iv"], 4),
+                    "put_25d_iv": round(skew_data.get("put_25d_iv", 0), 4),
+                    "call_25d_iv": round(skew_data.get("call_25d_iv", 0), 4),
                     "trade": "Sell 25-delta puts, buy 25-delta calls (delta neutral)",
-                    "put_symbol": skew_data["put_symbol"],
-                    "call_symbol": skew_data["call_symbol"],
+                    "put_symbol": skew_data.get("put_symbol"),
+                    "call_symbol": skew_data.get("call_symbol"),
                 },
             )
-        elif skew < LOW_SKEW_THRESHOLD:
-            # Puts cheap: buy puts (relative to calls)
+        if skew < LOW_SKEW_THRESHOLD:
             confidence = min((LOW_SKEW_THRESHOLD - skew) / 0.03, 1.0)
             return Signal(
                 symbol=symbol,
@@ -185,12 +202,25 @@ class SkewArbitrageStrategy(AbstractStrategy):
             )
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, df: pd.DataFrame | None) -> BacktestSignals:
+        """Generate backtest signals based on historical volatility."""
+        if not isinstance(df, pd.DataFrame) or df.empty or "close" not in df.columns:
+            # Return empty signals to avoid downstream errors
+            empty_series = pd.Series(dtype=bool)
+            return BacktestSignals(
+                entries=empty_series,
+                exits=empty_series,
+                short_entries=empty_series,
+                short_exits=empty_series,
+            )
+
         log_ret = np.log(df["close"] / df["close"].shift(1))
         vol_20 = log_ret.rolling(20).std() * np.sqrt(252)
+
         # High vol → high skew historically → sell put-heavy structures (short)
         # Low vol → low skew → buy puts (long)
         vol_pctile = vol_20.rolling(252).rank(pct=True)
+
         high_skew = (vol_pctile.shift(1) > 0.8).fillna(False)
         low_skew = (vol_pctile.shift(1) < 0.2).fillna(False)
         neutral = (~high_skew & ~low_skew)
