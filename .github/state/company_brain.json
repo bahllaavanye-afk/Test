@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783694698.3329687,
+    "last_updated": 1783700028.818137,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,25 +62,25 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-09T16:21:27.536240+00:00",
+      "generated_at": "2026-07-10T16:13:11.863144+00:00",
       "signals": {
         "vix": {
-          "value": 16.04,
+          "value": 15.4,
           "trend": "flat"
         },
         "spy": {
-          "price": 750.55,
-          "sma50": 738.98,
-          "sma200": 690.62,
+          "price": 753.21,
+          "sma50": 739.87,
+          "sma200": 691.09,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0314,
+          "ratio": 1.0319,
           "median": 1.0527,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 0.842,
+          "hyg_lqd_momentum_20d": 1.024,
           "signal": "tightening"
         },
         "breadth": {
@@ -89,8 +89,8 @@
           "breadth_pct": 72.7
         },
         "btc": {
-          "price": 62765,
-          "24h_pct": 1.45
+          "price": 63992,
+          "24h_pct": 1.88
         }
       },
       "score": 4,
@@ -471,6 +471,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1783646153.5192902
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 4,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1783700028.819595
     }
   ],
   "github_insights": [
