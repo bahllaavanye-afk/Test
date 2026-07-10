@@ -199,8 +199,13 @@
     "Check disk space",
     "Verify clock sync",
     "Parse agent_memory.json",
-    "Refactor training pipelines"
+    "Refactor training pipelines",
+    "edge_cases on tasks/algo_agent.py: success \u2014 tests green",
+    "edge_cases on api/v1/trades.py: success \u2014 tests green",
+    "edge_cases on test/unit/test_slippage.py: success \u2014 tests green",
+    "edge_cases on strategies/manual/skew_arb.py: success \u2014 tests green",
+    "edge_cases on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T08:18:52.572484+00:00",
+  "last_updated": "2026-07-10T08:20:02.101838+00:00",
   "total": 200
 }
