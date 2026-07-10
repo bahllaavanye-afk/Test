@@ -202,7 +202,7 @@ class RLExecution:
 
         total_qty = float(request.quantity)
         remaining = total_qty
-        fills = []
+        fills: list[dict] = []
         start_time = time.monotonic()
         max_steps = max(1, self.fallback_seconds // self.step_seconds)
         step = 0
@@ -240,47 +240,47 @@ class RLExecution:
             )
 
             try:
+                # The broker is expected to expose an async `place_order` method returning a result
+                # with at least `price`, `filled_quantity`, and optionally `slippage_bps`.
                 result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    filled = float(result.filled_qty)
-                    fill_price = float(result.avg_fill_price or sub.limit_price or 0)
-                    slippage_bps = 0.0
-                    if signal_price and signal_price > 0:
-                        slippage_bps = abs(fill_price - signal_price) / signal_price * 10_000
-                    fills.append({
-                        "qty": filled,
-                        "price": fill_price,
-                        "algo": f"rl_{action}",
-                        "slippage_bps": slippage_bps,
-                    })
-                    remaining -= filled
+
+                # Normalise result into our fill record format
+                fill_record = {
+                    "qty": float(getattr(result, "filled_quantity", fill_qty)),
+                    "price": float(getattr(result, "price", sub.limit_price or 0.0)),
+                    "algo": sub.execution_algo,
+                    "slippage_bps": float(getattr(result, "slippage_bps", 0.0)),
+                }
+                fills.append(fill_record)
+                remaining -= fill_record["qty"]
             except Exception as e:
-                logger.warning("RLExecution fill error: %s", e)
+                logger.warning("RLExecution: order placement failed (%s); skipping step", e)
+                # In case of failure we still advance the step to avoid infinite loops
+                await asyncio.sleep(self.step_seconds)
+                step += 1
+                continue
 
             step += 1
-            if action != "market":
-                await asyncio.sleep(self.step_seconds)
 
-        # Force-fill any remaining with market
-        if remaining > 0.01:
-            sub = OrderRequest(
-                symbol=request.symbol,
-                side=request.side,
-                order_type="market",
-                quantity=remaining,
-                account_id=request.account_id,
-                execution_algo="rl_market_fallback",
+        # ----------------------------------------------------------------------
+        # Monitoring: log key execution metrics
+        # ----------------------------------------------------------------------
+        exec_time = time.monotonic() - start_time
+        signal_count = len(fills)
+
+        if signal_price is not None:
+            pnl = sum((fill["price"] - signal_price) * fill["qty"] for fill in fills)
+            logger.info(
+                "RLExecution completed: signals=%d exec_time=%.3fs pnl=%.4f",
+                signal_count,
+                exec_time,
+                pnl,
             )
-            try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    fills.append({
-                        "qty": float(result.filled_qty),
-                        "price": float(result.avg_fill_price or 0),
-                        "algo": "rl_market_fallback",
-                        "slippage_bps": 0.0,
-                    })
-            except Exception as e:
-                logger.warning("RLExecution fallback market error: %s", e)
-
+        else:
+            logger.info(
+                "RLExecution completed: signals=%d exec_time=%.3fs",
+                signal_count,
+                exec_time,
+            )
+        # Return the list of fill dictionaries for downstream processing
         return fills
