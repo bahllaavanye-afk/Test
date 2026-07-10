@@ -1,8 +1,5 @@
 {
   "skills": [
-    "**Config Validation and Compatibility**: The `peer_reviewer` agent is validating the `config.json` file in `/QuantEdge/algo_agent` to ensure compatibility and correct settings for the algo_agent.",
-    "Check dependency updates",
-    "Track API timeouts",
     "Validate trade IDs",
     "Validate date formats",
     "* `Signal_runner` agent requires status updates to be provided, referencing the specific file paths required for its tasks.",
@@ -199,8 +196,11 @@
     "Test SSL certs",
     "Review LSTM models",
     "Optimize database connections",
-    "Analyze signal strengths"
+    "Analyze signal strengths",
+    "Parse agent memory files",
+    "Implement early-stopping callbacks",
+    "Track OKR metrics daily"
   ],
-  "last_updated": "2026-07-10T11:23:57.342509+00:00",
+  "last_updated": "2026-07-10T13:25:32.751108+00:00",
   "total": 200
 }
