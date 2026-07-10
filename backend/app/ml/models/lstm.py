@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
-from typing import Iterable, Tuple, Dict
+from typing import Iterable, Tuple, Dict, List
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
@@ -48,7 +48,7 @@ class SelfAttention(nn.Module):
     input sequence.
     """
 
-    def __init__(self, hidden_size: int):
+    def __init__(self, hidden_size: int) -> None:
         super().__init__()
         self.attention = nn.Linear(hidden_size, 1)
 
@@ -201,7 +201,8 @@ class LSTMPredictor(AbstractModel, nn.Module):
             and average loss.
         """
         self.eval()
-        all_logits, all_labels = [], []
+        all_logits: List[torch.Tensor] = []
+        all_labels: List[torch.Tensor] = []
         total_loss, total = 0.0, 0
         criterion = nn.BCEWithLogitsLoss()
         with torch.no_grad():
