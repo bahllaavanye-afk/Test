@@ -199,8 +199,13 @@
     "Check clock sync",
     "Test DNS resolve",
     "Verify file perms",
-    "Track API call durations"
+    "Track API call durations",
+    "cleanup on api/v1/releases.py: success \u2014 tests green",
+    "cleanup on test/unit/test_pca_stat_arb.py: success \u2014 tests green",
+    "cleanup on strategies/manual/sector_rotation.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "cleanup on ml/models/mamba_trader.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T21:58:12.607711+00:00",
+  "last_updated": "2026-07-10T21:59:36.899423+00:00",
   "total": 200
 }
