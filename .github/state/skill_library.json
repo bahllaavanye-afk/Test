@@ -1,9 +1,5 @@
 {
   "skills": [
-    "error_handling on execution/twap.py: success \u2014 tests green",
-    "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Refactor agent_memory",
-    "Verify algo_agent updates",
     "optimization on tasks/modeling_engineer.py: success \u2014 tests green",
     "Validate JSON schema",
     "Monitor queue sizes regularly",
@@ -199,8 +195,12 @@
     "Track OKR metrics daily",
     "Log API calls",
     "Check RAM usage",
-    "Monitor thread counts"
+    "Monitor thread counts",
+    "Check clock sync",
+    "Test DNS resolve",
+    "Verify file perms",
+    "Track API call durations"
   ],
-  "last_updated": "2026-07-10T19:22:09.058332+00:00",
+  "last_updated": "2026-07-10T21:58:12.607711+00:00",
   "total": 200
 }
