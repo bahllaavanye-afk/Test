@@ -102,13 +102,31 @@ class LorentzianStrategy(AbstractStrategy):
         -------
         LorentzianKNN
             A fully‑trained KNN model ready for inference.
+
+        Raises
+        ------
+        ValueError
+            If ``df`` is ``None``, empty, or missing the required ``"close"`` column.
         """
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            raise ValueError("Input DataFrame for model building is None or empty.")
+        if "close" not in df.columns:
+            raise ValueError("Input DataFrame must contain a 'close' column.")
+
         if self._model is None:
-            self._model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
+            # Compute features; guard against empty result
             feat_df = compute_lorentzian_features(df)
+            if feat_df.empty:
+                raise ValueError("Feature computation returned an empty DataFrame.")
             features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
-            # Label: 1 if price goes up next bar
+            # Labels: 1 if price goes up next bar
             labels = (df["close"].shift(-1) > df["close"]).astype(int).values
+
+            # Ensure there is at least one training sample after dropping the last row
+            if features.shape[0] <= 1 or labels.shape[0] <= 1:
+                raise ValueError("Not enough data to train LorentzianKNN model.")
+
+            self._model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
             self._model.fit_library(features[:-1], labels[:-1])
         return self._model
 
@@ -134,6 +152,30 @@ class LorentzianStrategy(AbstractStrategy):
             A populated :class:`Signal` if a trade signal is generated; otherwise ``None``.
         """
         start_time = time.perf_counter()
+
+        # Guard against None or non‑DataFrame input
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            logger.info(
+                "analyze_skipped",
+                extra={
+                    "symbol": symbol,
+                    "reason": "invalid_input",
+                    "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                },
+            )
+            return None
+
+        if "close" not in data.columns:
+            logger.info(
+                "analyze_skipped",
+                extra={
+                    "symbol": symbol,
+                    "reason": "missing_close_column",
+                    "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                },
+            )
+            return None
+
         if len(data) < 50:
             logger.info(
                 "analyze_skipped",
@@ -145,14 +187,49 @@ class LorentzianStrategy(AbstractStrategy):
             )
             return None
 
-        model = self._get_or_build_model(data)
+        try:
+            model = self._get_or_build_model(data)
+        except ValueError as e:
+            logger.info(
+                "analyze_skipped",
+                extra={
+                    "symbol": symbol,
+                    "reason": str(e),
+                    "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                },
+            )
+            return None
+
         feat_df = compute_lorentzian_features(data)
+        if feat_df.empty:
+            logger.info(
+                "analyze_skipped",
+                extra={
+                    "symbol": symbol,
+                    "reason": "feature_generation_failed",
+                    "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                },
+            )
+            return None
+
         features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
+
+        # Ensure we have at least one feature vector
+        if features.shape[0] == 0:
+            logger.info(
+                "analyze_skipped",
+                extra={
+                    "symbol": symbol,
+                    "reason": "no_features_available",
+                    "execution_time_ms": (time.perf_counter() - start_time) * 1000,
+                },
+            )
+            return None
 
         # Latest feature vector
         latest_features = features[-1:].astype(np.float32)
         # Previous feature vector for confirmation (if available)
-        prev_features = features[-2:-1].astype(np.float32) if len(features) >= 2 else None
+        prev_features = features[-2:-1].astype(np.float32) if features.shape[0] >= 2 else None
 
         import torch
 
@@ -210,131 +287,99 @@ class LorentzianStrategy(AbstractStrategy):
                     "analyze_no_signal",
                     extra={
                         "symbol": symbol,
-                        "reason": "price_below_sma",
+                        "reason": "price_below_sma20",
                         "execution_time_ms": (time.perf_counter() - start_time) * 1000,
                     },
                 )
                 return None
+            direction = "buy"
         else:
             if price >= sma20:
                 logger.info(
                     "analyze_no_signal",
                     extra={
                         "symbol": symbol,
-                        "reason": "price_above_sma",
+                        "reason": "price_above_sma20",
                         "execution_time_ms": (time.perf_counter() - start_time) * 1000,
                     },
                 )
                 return None
+            direction = "sell"
 
-        side = "buy" if prob > 0.5 else "sell"
+        self._signal_counter += 1
         signal = Signal(
             symbol=symbol,
-            side=side,
+            direction=direction,
             confidence=confidence,
-            strategy_name=self.name,
-            strategy_type=self.strategy_type,
-            risk_bucket=self.risk_bucket,
-            metadata={"lorentzian_prob": round(prob, 4), "k": self.k},
+            probability=prob,
+            timestamp=pd.Timestamp.utcnow(),
+            metadata={"signal_id": f"{symbol}_{self._signal_counter}"},
         )
-        self._signal_counter += 1
         logger.info(
-            "signal_generated",
+            "analyze_signal",
             extra={
                 "symbol": symbol,
-                "side": side,
+                "direction": direction,
                 "confidence": confidence,
-                "lorentzian_prob": round(prob, 4),
-                "signal_count": self._signal_counter,
+                "probability": prob,
                 "execution_time_ms": (time.perf_counter() - start_time) * 1000,
             },
         )
         return signal
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, data: pd.DataFrame) -> BacktestSignals:
         """
-        Run a full back‑test on historical data and return signal information.
-
-        The method performs a walk‑forward split, incrementally updates the KNN library,
-        and applies the same confidence and SMA filters used in live trading. The result
-        is a :class:`BacktestSignals` object containing entry/exit timestamps,
-        positions, and a simple P&L approximation.
+        Generate signals for back‑testing using the entire historical dataset.
 
         Parameters
         ----------
-        df : pd.DataFrame
-            Historical OHLCV data for back‑testing. Must contain a ``"close"`` column.
+        data : pd.DataFrame
+            Historical market data.
 
         Returns
         -------
         BacktestSignals
-            Container with back‑test results (positions, returns, etc.).
+            Collection of signals with timestamps and metadata for evaluation.
         """
-        start_time = time.perf_counter()
-        model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
-        feat_df = compute_lorentzian_features(df)
-        features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
-        labels = (df["close"].shift(-1) > df["close"]).astype(int).fillna(0).values
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            raise ValueError("Backtest data must be a non‑empty DataFrame.")
 
-        # Walk‑forward split
-        split = len(features) // 2
-        model.fit_library(features[:split], labels[:split])
+        model = self._get_or_build_model(data)
+        feat_df = compute_lorentzian_features(data)
+        if feat_df.empty:
+            raise ValueError("Feature generation failed for backtest data.")
+        features = feat_df[LORENTZIAN_FEATURES].fillna(0).values
 
         import torch
 
-        probs = np.zeros(len(df))
-        for i in range(split, len(features)):
-            x = torch.tensor(features[i : i + 1], dtype=torch.float32)
-            probs[i] = float(model.forward(x).item())
+        signals = []
+        for idx in range(1, len(features)):
+            x_curr = torch.tensor(features[idx : idx + 1].astype(np.float32), dtype=torch.float32)
+            prob = float(model.forward(x_curr).item())
+            confidence = abs(prob - 0.5) * 2
+            if confidence < self.confidence_threshold:
+                continue
 
-            # Incrementally update library
-            if i % self.subsample == 0 and i + 1 < len(features):
-                model._library_X = torch.cat(
-                    [model._library_X, torch.tensor(features[i : i + 1], dtype=torch.float32)]
-                )
-                model._library_y = torch.cat(
-                    [model._library_y, torch.tensor([labels[i]], dtype=torch.float32)]
-                )
+            price = data["close"].iloc[idx]
+            sma20 = data["close"].rolling(window=20).mean().iloc[idx]
+            if np.isnan(sma20):
+                continue
 
-        prob_series = pd.Series(probs, index=df.index).shift(1)
+            if prob > 0.5 and price > sma20:
+                direction = "buy"
+            elif prob < 0.5 and price < sma20:
+                direction = "sell"
+            else:
+                continue
 
-        # SMA20 filter
-        sma20 = df["close"].rolling(window=20).mean()
-        price = df["close"]
+            signal = Signal(
+                symbol=data["symbol"].iloc[idx] if "symbol" in data.columns else "UNKNOWN",
+                direction=direction,
+                confidence=confidence,
+                probability=prob,
+                timestamp=data.index[idx],
+                metadata={"index": idx},
+            )
+            signals.append(signal)
 
-        # Tightened entry conditions
-        long_entries = (
-            (prob_series > 0.5 + self.confidence_threshold)
-            & (price > sma20)
-            & (prob_series.shift(1) > 0.5)
-        )
-        short_entries = (
-            (prob_series < 0.5 - self.confidence_threshold)
-            & (price < sma20)
-            & (prob_series.shift(1) < 0.5)
-        )
-
-        # Exit conditions: probability reverts to neutral or price crosses SMA opposite direction
-        long_exits = (prob_series < 0.5) | (price < sma20)
-        short_exits = (prob_series > 0.5) | (price > sma20)
-
-        # Simple P&L approximation
-        returns = df["close"].pct_change().fillna(0)
-        position = pd.Series(0, index=df.index)
-        position[long_entries] = 1
-        position[short_entries] = -1
-        position = position.ffill().fillna(0)
-
-        # Apply exits by resetting position when exit signals occur
-        position[long_exits] = 0
-        position[short_exits] = 0
-        position = position.ffill().fillna(0)
-
-        # Assemble BacktestSignals (the concrete fields depend on the dataclass definition)
-        backtest = BacktestSignals(
-            positions=position,
-            returns=returns,
-            probabilities=pd.Series(probs, index=df.index),
-            execution_time_ms=(time.perf_counter() - start_time) * 1000,
-        )
-        return backtest
+        return BacktestSignals(signals=signals)
