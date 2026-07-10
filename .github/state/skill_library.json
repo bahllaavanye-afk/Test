@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Here are the 3 most important, actionable points from the recent agent learnings:",
-    "Here are 3 concise bullet points of the most important, actionable knowledge:",
-    "error_handling on comparison/benchmarks.py: success \u2014 tests green",
-    "Use transactions",
     "Handle async errors",
     "Verify thread counts",
     "Enhance code documentation",
@@ -199,8 +195,12 @@
     "Check clock sync",
     "Verify cert expiration",
     "Track API payload size",
-    "Bind to static IPs"
+    "Bind to static IPs",
+    "Log API responses",
+    "Check SSL versions",
+    "Validate JSON schema",
+    "Check dependency updates"
   ],
-  "last_updated": "2026-07-09T22:48:54.371997+00:00",
+  "last_updated": "2026-07-10T00:01:22.703077+00:00",
   "total": 200
 }
