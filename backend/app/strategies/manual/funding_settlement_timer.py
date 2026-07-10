@@ -21,6 +21,8 @@ Academic reference:
 """
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timezone
 
 import numpy as np
@@ -35,6 +37,8 @@ _SETTLEMENT_HOURS = (0, 8, 16)
 # Entry/exit offsets in minutes
 _ENTRY_MINUTES_BEFORE = 30
 _EXIT_MINUTES_AFTER = 10
+
+logger = logging.getLogger(__name__)
 
 
 class FundingSettlementTimer(AbstractStrategy):
@@ -70,6 +74,7 @@ class FundingSettlementTimer(AbstractStrategy):
             p.get("exit_minutes_after", self.DEFAULT_EXIT_MINUTES_AFTER)
         )
         self.symbol: str = str(p.get("symbol", "BTCUSDT"))
+        self._signal_counter: int = 0
 
     def description(self) -> str:
         return (
@@ -127,6 +132,7 @@ class FundingSettlementTimer(AbstractStrategy):
         Check timing windows and current funding rate.
         Enter trade 30 min before settlement if rate exceeds threshold.
         """
+        start_time = time.monotonic()
         now_utc = datetime.now(timezone.utc)
         minutes_to_next = self._minutes_to_next_settlement(now_utc)
         minutes_since_last = self._minutes_since_last_settlement(now_utc)
@@ -138,6 +144,17 @@ class FundingSettlementTimer(AbstractStrategy):
         in_entry_window = minutes_to_next <= self.entry_minutes_before
 
         if not in_entry_window and not in_exit_window:
+            exec_time = time.monotonic() - start_time
+            logger.info(
+                "FundingSettlementTimer analyze - no action",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": False,
+                    "execution_time_ms": int(exec_time * 1000),
+                    "minutes_to_next_settlement": minutes_to_next,
+                    "minutes_since_last_settlement": minutes_since_last,
+                },
+            )
             return None
 
         if "close" not in data.columns or len(data) == 0:
@@ -158,11 +175,21 @@ class FundingSettlementTimer(AbstractStrategy):
         abs_rate = abs(funding_rate)
 
         if abs_rate < self.min_funding_rate:
+            exec_time = time.monotonic() - start_time
+            logger.info(
+                "FundingSettlementTimer analyze - funding rate below threshold",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": False,
+                    "execution_time_ms": int(exec_time * 1000),
+                    "funding_rate": round(funding_rate, 6),
+                    "threshold": self.min_funding_rate,
+                },
+            )
             return None
 
         if in_exit_window:
-            # Close position after settlement
-            return Signal(
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -177,9 +204,24 @@ class FundingSettlementTimer(AbstractStrategy):
                     "order_type": "market",
                 },
             )
+            self._signal_counter += 1
+            exec_time = time.monotonic() - start_time
+            logger.info(
+                "FundingSettlementTimer signal generated - exit",
+                extra={
+                    "symbol": symbol,
+                    "signal_id": self._signal_counter,
+                    "signal_generated": True,
+                    "execution_time_ms": int(exec_time * 1000),
+                    "side": "sell",
+                    "funding_rate": round(funding_rate, 6),
+                    "action": "exit_after_settlement",
+                    "price": current_price,
+                },
+            )
+            return signal
 
         if in_entry_window:
-            # Enter opposing position to collect funding
             if funding_rate > self.min_funding_rate:
                 # Positive rate: longs pay shorts → go SHORT
                 side = "sell"
@@ -190,7 +232,7 @@ class FundingSettlementTimer(AbstractStrategy):
                 action = "long_before_settlement_negative_funding"
 
             confidence = min(0.90, 0.65 + abs_rate / 0.001)
-            return Signal(
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -202,57 +244,35 @@ class FundingSettlementTimer(AbstractStrategy):
                     "funding_rate": round(funding_rate, 6),
                     "funding_rate_pct": round(funding_rate * 100, 4),
                     "action": action,
-                    "minutes_to_settlement": minutes_to_next,
                     "order_type": "market",
                 },
             )
+            self._signal_counter += 1
+            exec_time = time.monotonic() - start_time
+            logger.info(
+                "FundingSettlementTimer signal generated - entry",
+                extra={
+                    "symbol": symbol,
+                    "signal_id": self._signal_counter,
+                    "signal_generated": True,
+                    "execution_time_ms": int(exec_time * 1000),
+                    "side": side,
+                    "confidence": confidence,
+                    "funding_rate": round(funding_rate, 6),
+                    "action": action,
+                    "price": current_price,
+                },
+            )
+            return signal
 
+        # Fallback (should not reach here)
+        exec_time = time.monotonic() - start_time
+        logger.info(
+            "FundingSettlementTimer analyze - no signal after checks",
+            extra={
+                "symbol": symbol,
+                "signal_generated": False,
+                "execution_time_ms": int(exec_time * 1000),
+            },
+        )
         return None
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Proxy backtest: use 8-hour return reversal as funding rate surrogate.
-
-        When the 8-hour return is strongly positive (longs crowded, positive
-        funding), enter short. When strongly negative, enter long.
-        Shift(1) to prevent lookahead.
-        """
-        false_series = pd.Series(False, index=df.index)
-        default = BacktestSignals(
-            entries=false_series,
-            exits=false_series,
-            short_entries=false_series,
-            short_exits=false_series,
-        )
-
-        if "close" not in df.columns or len(df) < 20:
-            return default
-
-        close = df["close"].astype(float)
-
-        # 3-bar return as funding proxy (roughly 1 settlement period on hourly bars)
-        ret3 = close.pct_change(3)
-        roll_mean = ret3.rolling(30, min_periods=15).mean()
-        roll_std = ret3.rolling(30, min_periods=15).std().clip(lower=1e-8)
-        proxy_z = (ret3 - roll_mean) / roll_std
-
-        # shift(1) — no lookahead
-        z_lag = proxy_z.shift(1)
-
-        # Entry thresholds corresponding to roughly 0.01% funding rate signal
-        entry_threshold = 1.5
-
-        # Long: negative funding (shorts crowded) → price likely to squeeze up
-        entries = (z_lag < -entry_threshold).fillna(False).astype(bool)
-        exits = (z_lag.abs() < 0.3).fillna(False).astype(bool)
-
-        # Short: positive funding (longs crowded) → price likely to drop
-        short_entries = (z_lag > entry_threshold).fillna(False).astype(bool)
-        short_exits = exits.copy()
-
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
