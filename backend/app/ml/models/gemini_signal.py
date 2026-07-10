@@ -12,9 +12,9 @@ The signal is computed by:
 """
 from __future__ import annotations
 
+import json
 import os
 import re
-import json
 import asyncio
 from datetime import datetime, timezone
 from typing import Any
@@ -71,11 +71,14 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     if "high" in df.columns and "low" in df.columns:
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        tr = pd.concat([
-            high - low,
-            (high - close.shift()).abs(),
-            (low - close.shift()).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
     else:
         atr = float(close.rolling(14).std().iloc[-1]) if n >= 14 else 0.0
@@ -84,27 +87,65 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     vol_ratio = 1.0
     if "volume" in df.columns:
         vol = df["volume"].astype(float)
-        avg_vol = float(vol.rolling(20).mean().iloc[-1]) if n >= 20 else float(vol.mean())
+        avg_vol = (
+            float(vol.rolling(20).mean().iloc[-1])
+            if n >= 20
+            else float(vol.mean())
+        )
         vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9)
 
-    high_20 = float(df["high"].astype(float).rolling(20).max().iloc[-1]) if "high" in df.columns and n >= 20 else price
-    low_20 = float(df["low"].astype(float).rolling(20).min().iloc[-1]) if "low" in df.columns and n >= 20 else price
+    high_20 = (
+        float(df["high"].astype(float).rolling(20).max().iloc[-1])
+        if "high" in df.columns and n >= 20
+        else price
+    )
+    low_20 = (
+        float(df["low"].astype(float).rolling(20).min().iloc[-1])
+        if "low" in df.columns and n >= 20
+        else price
+    )
     range_pct = (high_20 - low_20) / (low_20 + 1e-9)
 
     ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if n >= 50 else price
-    trend = "uptrend" if price > ema50 else "downtrend" if price < ema50 * 0.98 else "neutral"
+    trend = (
+        "uptrend"
+        if price > ema50
+        else "downtrend"
+        if price < ema50 * 0.98
+        else "neutral"
+    )
 
     return _ANALYSIS_TEMPLATE.format(
-        symbol=symbol, interval=interval, n=n, price=price,
-        ret5=ret5, ret20=ret20, rsi=rsi, vs_sma=vs_sma,
-        atr_pct=atr_pct, vol_ratio=vol_ratio, range_pct=range_pct, trend=trend,
+        symbol=symbol,
+        interval=interval,
+        n=n,
+        price=price,
+        ret5=ret5,
+        ret20=ret20,
+        rsi=rsi,
+        vs_sma=vs_sma,
+        atr_pct=atr_pct,
+        vol_ratio=vol_ratio,
+        range_pct=range_pct,
+        trend=trend,
     )
 
 
 def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
-    """Synchronous Gemini call returning parsed JSON dict."""
+    """Synchronous Gemini call returning parsed JSON dict with robust error handling."""
+    # Import the Gemini SDK
     try:
         import google.generativeai as genai
+    except ImportError as exc:
+        logger.error(
+            "Gemini SDK not installed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return {}
+
+    # Configure and invoke the model
+    try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
@@ -112,17 +153,42 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
             system_instruction=_SYSTEM_PROMPT,
         )
         response = model.generate_content(prompt)
-        text = response.text.strip() if response.text else ""
+    except Exception as exc:  # Catch Gemini-specific request errors as well
+        logger.error(
+            "Gemini API request failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            prompt_length=len(prompt),
+        )
+        return {}
 
-        # Extract JSON
-        m = re.search(r'\{.*?"direction_prob_up".*?\}', text, re.DOTALL)
-        if m:
-            return json.loads(m.group(0))
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.debug("Gemini signal call failed", error=str(e))
-    return {}
+    # Extract and parse the JSON payload
+    try:
+        text = response.text.strip() if getattr(response, "text", None) else ""
+        json_match = re.search(r'\{.*?"direction_prob_up".*?\}', text, re.DOTALL)
+        if not json_match:
+            logger.error(
+                "Gemini response missing expected JSON structure",
+                response_text=text,
+                prompt_length=len(prompt),
+            )
+            return {}
+        return json.loads(json_match.group(0))
+    except json.JSONDecodeError as exc:
+        logger.error(
+            "Failed to decode Gemini JSON response",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            response_text=text,
+        )
+        return {}
+    except Exception as exc:
+        logger.exception(
+            "Unexpected error while processing Gemini response",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return {}
 
 
 class GeminiSignalEngine:
@@ -153,9 +219,19 @@ class GeminiSignalEngine:
         if not self._available or df is None or len(df) < 20:
             return None
 
-        prompt = _compute_summary(df, symbol, interval)
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _call_gemini_json, prompt, self._key)
+        try:
+            prompt = _compute_summary(df, symbol, interval)
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, _call_gemini_json, prompt, self._key)
+        except Exception as exc:
+            logger.error(
+                "Async Gemini prediction failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                symbol=symbol,
+                interval=interval,
+            )
+            return None
 
         prob = result.get("direction_prob_up")
         if prob is not None:
@@ -166,8 +242,19 @@ class GeminiSignalEngine:
         """Synchronous version for use outside async context."""
         if not self._available or df is None or len(df) < 20:
             return None
-        prompt = _compute_summary(df, symbol, interval)
-        result = _call_gemini_json(prompt, self._key)
+        try:
+            prompt = _compute_summary(df, symbol, interval)
+            result = _call_gemini_json(prompt, self._key)
+        except Exception as exc:
+            logger.error(
+                "Sync Gemini prediction failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                symbol=symbol,
+                interval=interval,
+            )
+            return None
+
         prob = result.get("direction_prob_up")
         return float(np.clip(prob, 0.0, 1.0)) if prob is not None else None
 
