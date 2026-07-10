@@ -199,8 +199,13 @@
     "Check clock sync",
     "Test DNS resolve",
     "Verify file perms",
-    "Track API call durations"
+    "Track API call durations",
+    "monitoring on strategies/manual/dispersion_trading.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "monitoring on ml/models/a3c_lstm.py: success \u2014 tests green",
+    "monitoring on execution/rl_exec.py: success \u2014 tests green",
+    "monitoring on brokers/base.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T23:01:45.755847+00:00",
+  "last_updated": "2026-07-10T23:07:59.843781+00:00",
   "total": 200
 }
