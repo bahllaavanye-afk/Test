@@ -1,9 +1,16 @@
 """
 Binance broker integration via CCXT async.
-Supports spot trading, real-time order book, and triangular arb scanning.
+
+Provides spot trading capabilities, real‑time order book access, and utilities for
+triangular arbitrage scanning. All interactions are asynchronous and rely on the
+CCXT library's async support. The broker adheres to the :class:`AbstractBroker`
+interface used throughout the QuantEdge platform.
 """
+
 import asyncio
 import time
+from typing import Any, Dict, List, Optional
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -11,13 +18,12 @@ from app.utils.logging import logger
 try:
     import ccxt.async_support as ccxt
     CCXT_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     ccxt = None  # type: ignore
     CCXT_AVAILABLE = False
     logger.info("ccxt not installed — Binance broker disabled")
 
-
-INTERVAL_MAP = {
+INTERVAL_MAP: Dict[str, str] = {
     "1m": "1m",
     "5m": "5m",
     "15m": "15m",
@@ -28,7 +34,20 @@ INTERVAL_MAP = {
 
 
 class BinanceBroker(AbstractBroker):
-    def __init__(self, api_key: str, secret: str, testnet: bool = True):
+    """Concrete implementation of :class:`AbstractBroker` for Binance spot markets.
+
+    Parameters
+    ----------
+    api_key: str
+        API key for Binance.
+    secret: str
+        Secret for Binance.
+    testnet: bool, optional
+        When ``True`` (default), the broker operates against Binance's sandbox
+        environment. Set to ``False`` to trade on the live market.
+    """
+
+    def __init__(self, api_key: str, secret: str, testnet: bool = True) -> None:
         self.exchange = ccxt.binance(
             {
                 "apiKey": api_key,
@@ -42,13 +61,27 @@ class BinanceBroker(AbstractBroker):
             self.exchange.set_sandbox_mode(True)
 
         # Cache for expensive calls
-        self._ticker_cache = {"data": None, "timestamp": 0.0}
+        self._ticker_cache: Dict[str, Any] = {"data": None, "timestamp": 0.0}
         self._ticker_lock = asyncio.Lock()
 
-    async def close(self):
+    async def close(self) -> None:
+        """Close the underlying CCXT exchange session."""
         await self.exchange.close()
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        """Place a market or limit order on Binance.
+
+        Parameters
+        ----------
+        request: OrderRequest
+            The order details, including symbol, side, quantity, and optional limit price.
+
+        Returns
+        -------
+        OrderResult
+            Normalised result containing the broker order ID, status, filled quantity,
+            average fill price (if available), and the raw payload from Binance.
+        """
         try:
             if request.order_type == "market":
                 order = await self.exchange.create_market_order(
@@ -79,25 +112,72 @@ class BinanceBroker(AbstractBroker):
             raise BrokerError(f"Binance: {e}")
 
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
+        """Cancel an existing order.
+
+        Parameters
+        ----------
+        broker_order_id: str
+            Identifier of the order to cancel.
+        symbol: str, optional
+            Trading pair associated with the order. Empty string lets Binance infer it.
+
+        Returns
+        -------
+        bool
+            ``True`` if cancellation succeeded, otherwise ``False``.
+        """
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
-    async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
+    async def get_order(self, broker_order_id: str, symbol: str = "") -> Dict[str, Any]:
+        """Fetch details of a specific order.
+
+        Parameters
+        ----------
+        broker_order_id: str
+            Binance order identifier.
+        symbol: str, optional
+            Trading pair for the order.
+
+        Returns
+        -------
+        dict
+            Raw order information as returned by CCXT.
+        """
         return await self.exchange.fetch_order(broker_order_id, symbol)
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[Dict[str, Any]]:
+        """Retrieve current non‑USDT asset positions.
+
+        Returns
+        -------
+        list[dict]
+            Each dict contains ``symbol``, ``qty`` and ``side`` (always ``"long"``).
+        """
         balance = await self.exchange.fetch_balance()
-        positions = []
+        positions: List[Dict[str, Any]] = []
         for asset, info in balance["total"].items():
             if info > 0 and asset != "USDT":
                 positions.append({"symbol": f"{asset}/USDT", "qty": info, "side": "long"})
         return positions
 
-    async def get_account(self) -> dict:
+    async def get_account(self) -> Dict[str, float]:
+        """Fetch high‑level account metrics.
+
+        Returns
+        -------
+        dict
+            Keys: ``equity``, ``cash``, ``buying_power``, ``portfolio_value`` – all expressed in USDT.
+        """
         balance = await self.exchange.fetch_balance()
         usdt = balance["total"].get("USDT", 0)
         return {
@@ -108,6 +188,18 @@ class BinanceBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
+        """Obtain the latest market quote for a symbol.
+
+        Parameters
+        ----------
+        symbol: str
+            Trading pair, e.g., ``"BTC/USDT"``.
+
+        Returns
+        -------
+        QuoteResult
+            Normalised quote containing bid, ask, last price and volume.
+        """
         try:
             ticker = await asyncio.wait_for(
                 self.exchange.fetch_ticker(symbol), timeout=10.0
@@ -125,7 +217,24 @@ class BinanceBroker(AbstractBroker):
 
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
-    ) -> list[dict]:
+    ) -> List[Dict[str, Any]]:
+        """Retrieve historical OHLCV data.
+
+        Parameters
+        ----------
+        symbol: str
+            Trading pair.
+        interval: str, optional
+            Timeframe identifier (e.g., ``"1m"``, ``"1h"``, ``"1d"``). Defaults to ``"1d"``.
+        limit: int, optional
+            Maximum number of bars to fetch. Defaults to ``500``.
+
+        Returns
+        -------
+        list[dict]
+            Each entry contains timestamp ``ts`` (ISO 8601), ``open``, ``high``, ``low``,
+            ``close`` and ``volume``.
+        """
         tf = INTERVAL_MAP.get(interval, "1d")
         ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
         return [
@@ -140,11 +249,36 @@ class BinanceBroker(AbstractBroker):
             for bar in ohlcv
         ]
 
-    async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
+    async def get_order_book(self, symbol: str, limit: int = 20) -> Dict[str, Any]:
+        """Fetch the current order book for a symbol.
+
+        Parameters
+        ----------
+        symbol: str
+            Trading pair.
+        limit: int, optional
+            Number of price levels to retrieve. Defaults to ``20``.
+
+        Returns
+        -------
+        dict
+            Order book structure as returned by CCXT.
+        """
         return await self.exchange.fetch_order_book(symbol, limit)
 
-    async def get_all_tickers(self, cache_ttl: int = 30) -> dict:
-        """Fetch all tickers for triangular arb scanning with simple TTL caching."""
+    async def get_all_tickers(self, cache_ttl: int = 30) -> Dict[str, Any]:
+        """Fetch all tickers for triangular arbitrage scanning with simple TTL caching.
+
+        Parameters
+        ----------
+        cache_ttl: int, optional
+            Time‑to‑live for the cached ticker data in seconds. Defaults to ``30``.
+
+        Returns
+        -------
+        dict
+            Mapping of symbol to ticker information.
+        """
         async with self._ticker_lock:
             now = time.monotonic()
             if (
