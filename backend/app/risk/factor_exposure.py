@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 import numpy as np
 
@@ -95,6 +95,116 @@ def _interpret(fe: FactorExposure) -> str:
     return ", ".join(parts) if parts else "Balanced factor exposure"
 
 
+def _default_exposure() -> FactorExposure:
+    """Return a fallback FactorExposure used when computation cannot proceed."""
+    return FactorExposure(
+        market_beta=1.0,
+        momentum_loading=0.0,
+        low_vol_loading=0.0,
+        size_loading=0.0,
+        r_squared=0.0,
+        alpha_annualized=0.0,
+        tracking_error=0.02,
+    )
+
+
+def _validate_input_lengths(
+    portfolio_returns: List[float],
+    spy_returns: List[float],
+) -> int:
+    """Determine the usable sample size and warn if it is too small."""
+    n = min(len(portfolio_returns), len(spy_returns))
+    if n < 20:
+        logger.warning(
+            "Insufficient data for factor exposure calculation",
+            extra={"required_min": 20, "available": n},
+        )
+    return n
+
+
+def _build_design_matrix(
+    n: int,
+    spy_returns: List[float],
+    momentum_factor: Optional[List[float]],
+    low_vol_factor: Optional[List[float]],
+) -> Tuple[np.ndarray, List[str]]:
+    """Construct the regression matrix X and column labels.
+
+    Parameters
+    ----------
+    n : int
+        Number of observations to use (aligned to the shortest series).
+    spy_returns : List[float]
+        Market factor returns.
+    momentum_factor : Optional[List[float]]
+        Momentum factor returns.
+    low_vol_factor : Optional[List[float]]
+        Low‑volatility factor returns.
+
+    Returns
+    -------
+    X : np.ndarray
+        Design matrix with intercept and selected factor columns.
+    col_names : List[str]
+        Human‑readable names for each column (used only for logging).
+    """
+    try:
+        X_cols = [
+            np.ones(n, dtype=float),                     # intercept (alpha)
+            np.array(spy_returns[-n:], dtype=float),    # market factor
+        ]
+        col_names = ["alpha", "market"]
+
+        if momentum_factor and len(momentum_factor) >= n:
+            X_cols.append(np.array(momentum_factor[-n:], dtype=float))
+            col_names.append("momentum")
+        if low_vol_factor and len(low_vol_factor) >= n:
+            X_cols.append(np.array(low_vol_factor[-n:], dtype=float))
+            col_names.append("low_vol")
+
+        X = np.column_stack(X_cols)
+        return X, col_names
+    except (ValueError, TypeError) as e:
+        logger.error(
+            "Failed to construct regression matrices",
+            extra={"error": str(e), "n": n},
+        )
+        raise
+
+
+def _fit_ols(X: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Run ordinary least‑squares regression and return coefficients."""
+    try:
+        coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
+        return coeffs
+    except np.linalg.LinAlgError as e:
+        logger.error(
+            "Linear algebra error during OLS regression",
+            extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
+        )
+        raise
+    except Exception as e:
+        logger.exception(
+            "Unexpected error during factor exposure regression",
+            extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
+        )
+        raise
+
+
+def _compute_metrics(
+    y: np.ndarray,
+    X: np.ndarray,
+    coeffs: np.ndarray,
+) -> Tuple[float, float]:
+    """Calculate R‑squared and tracking error from regression results."""
+    y_hat = X @ coeffs
+    ss_res = np.sum((y - y_hat) ** 2)
+    ss_tot = np.sum((y - np.mean(y)) ** 2)
+    r_squared = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+    tracking_error = float(np.std(y - y_hat, ddof=1))
+    return max(0, r_squared), tracking_error
+
+
 def compute_factor_exposure(
     portfolio_returns: List[float],
     spy_returns: List[float],
@@ -126,99 +236,35 @@ def compute_factor_exposure(
     FactorExposure
         The regression coefficients and diagnostics wrapped in a ``FactorExposure`` instance.
     """
-    n = min(len(portfolio_returns), len(spy_returns))
+    n = _validate_input_lengths(portfolio_returns, spy_returns)
     if n < 20:
-        logger.warning(
-            "Insufficient data for factor exposure calculation",
-            extra={"required_min": 20, "available": n},
-        )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        return _default_exposure()
 
     try:
         y = np.array(portfolio_returns[-n:], dtype=float)
-        X_cols = [np.ones(n, dtype=float), np.array(spy_returns[-n:], dtype=float)]
-        col_names = ["alpha", "market"]
-
-        if momentum_factor and len(momentum_factor) >= n:
-            X_cols.append(np.array(momentum_factor[-n:], dtype=float))
-            col_names.append("momentum")
-        if low_vol_factor and len(low_vol_factor) >= n:
-            X_cols.append(np.array(low_vol_factor[-n:], dtype=float))
-            col_names.append("low_vol")
-
-        X = np.column_stack(X_cols)
-    except (ValueError, TypeError) as e:
-        logger.error(
-            "Failed to construct regression matrices",
-            extra={"error": str(e), "n": n, "col_names": col_names},
-        )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        X, _ = _build_design_matrix(n, spy_returns, momentum_factor, low_vol_factor)
+    except Exception:
+        return _default_exposure()
 
     try:
-        coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
-    except np.linalg.LinAlgError as e:
-        logger.error(
-            "Linear algebra error during OLS regression",
-            extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
-        )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
-    except Exception as e:
-        logger.exception(
-            "Unexpected error during factor exposure regression",
-            extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
-        )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        coeffs = _fit_ols(X, y)
+    except Exception:
+        return _default_exposure()
 
+    # Extract coefficients safely
     alpha_daily = float(coeffs[0])
     market_beta = float(coeffs[1])
     momentum_loading = float(coeffs[2]) if len(coeffs) > 2 else 0.0
     low_vol_loading = float(coeffs[3]) if len(coeffs) > 3 else 0.0
 
-    # Goodness of fit
-    y_hat = X @ coeffs
-    ss_res = np.sum((y - y_hat) ** 2)
-    ss_tot = np.sum((y - np.mean(y)) ** 2)
-    r_squared = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
-    tracking_error = float(np.std(y - y_hat, ddof=1))
+    r_squared, tracking_error = _compute_metrics(y, X, coeffs)
 
     return FactorExposure(
         market_beta=market_beta,
         momentum_loading=momentum_loading,
         low_vol_loading=low_vol_loading,
         size_loading=0.0,   # would need SMB factor data
-        r_squared=max(0, r_squared),
+        r_squared=r_squared,
         alpha_annualized=alpha_daily * 252,
         tracking_error=tracking_error,
     )
