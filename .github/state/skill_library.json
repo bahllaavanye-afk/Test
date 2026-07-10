@@ -199,8 +199,13 @@
     "Track OKR metrics daily",
     "Log API calls",
     "Check RAM usage",
-    "Monitor thread counts"
+    "Monitor thread counts",
+    "refactor on execution/rl_exec.py: success \u2014 tests green",
+    "refactor on risk/factor_exposure.py: success \u2014 tests green",
+    "refactor on brokers/polymarket.py: success \u2014 tests green",
+    "refactor on backtest/metrics.py: success \u2014 tests green",
+    "refactor on comparison/report_builder.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T15:52:50.223355+00:00",
+  "last_updated": "2026-07-10T15:54:31.969221+00:00",
   "total": 200
 }
