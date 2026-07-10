@@ -49,16 +49,16 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783701277.2183166,
+    "last_updated": 1783712649.6346724,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "mean_rev_20_1.5"
     ],
-    "last_autopilot_run": 1783694698.3254728,
+    "last_autopilot_run": 1783712649.62805,
     "autopilot_best_sharpe": 0.3626,
-    "autopilot_best_oos_sharpe": 1.1786,
-    "autopilot_best_blended": 0.445,
+    "autopilot_best_oos_sharpe": 1.2038,
+    "autopilot_best_blended": 0.4483,
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
@@ -691,6 +691,33 @@
       },
       "status": "promoted",
       "ts": 1783694698.3222413
+    },
+    {
+      "source": "strategy_autopilot",
+      "name": "mean_rev_20_1.5",
+      "blended_composite": 0.251,
+      "is_composite": 0.3942,
+      "oos_composite": 0.1739,
+      "is_sharpe": 1.0058,
+      "oos_sharpe": 0.291,
+      "is_sortino": 0.723,
+      "oos_sortino": 0.247,
+      "calmar": 2.6662,
+      "profit_factor": 6.1276,
+      "oos_profit_factor": 6.151,
+      "expectancy_pct": 1.9642,
+      "omega_ratio": 6.1276,
+      "max_drawdown": 3.438,
+      "is_win_rate": 83.5,
+      "oos_win_rate": 83.34,
+      "win_loss_ratio": 1.0432,
+      "config": {
+        "type": "mean_reversion",
+        "window": 20,
+        "threshold": 1.5
+      },
+      "status": "promoted",
+      "ts": 1783712649.6249943
     }
   ]
 }
