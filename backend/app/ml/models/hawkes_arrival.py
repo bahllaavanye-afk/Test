@@ -14,6 +14,7 @@ Reference: Hawkes (1971) "Spectra of Some Self-Exciting and Mutually Exciting Po
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -70,6 +71,7 @@ class HawkesProcess:
             HawkesParams(mu, alpha, beta) with fitted parameters.
             Returns default stable params if timestamps is too short.
         """
+        start_time = time.perf_counter()
         try:
             timestamps = np.asarray(timestamps, dtype=float)
         except Exception as exc:
@@ -80,18 +82,26 @@ class HawkesProcess:
             logger.error("Timestamps array is not one-dimensional: shape=%s", timestamps.shape)
             raise ValueError("timestamps must be a one-dimensional array")
 
-        if len(timestamps) < 10:
-            logger.info("Insufficient timestamps (%d); using default parameters", len(timestamps))
+        signal_count = len(timestamps)
+
+        if signal_count < 10:
+            logger.info(
+                "Insufficient timestamps; using default parameters",
+                extra={"signal_count": signal_count, "execution_time": time.perf_counter() - start_time, "pnl": None},
+            )
             return HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
 
         # Sort just in case
         timestamps = np.sort(timestamps)
         T = float(timestamps[-1] - timestamps[0])
         if T < 1e-9:
-            logger.warning("Timestamp range too small (T=%.2e); using default parameters", T)
+            logger.warning(
+                "Timestamp range too small; using default parameters",
+                extra={"signal_count": signal_count, "execution_time": time.perf_counter() - start_time, "pnl": None},
+            )
             return HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
 
-        n = len(timestamps)
+        n = signal_count
         mu = n / T * 0.5
         alpha = 0.3
         beta = self.beta
@@ -134,6 +144,18 @@ class HawkesProcess:
                 raise RuntimeError("EM iteration failed") from exc
 
         self.params = HawkesParams(mu=float(mu), alpha=float(alpha), beta=self.beta)
+
+        logger.info(
+            "Fit completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_time": time.perf_counter() - start_time,
+                "pnl": None,
+                "mu": self.params.mu,
+                "alpha": self.params.alpha,
+                "beta": self.params.beta,
+            },
+        )
         return self.params
 
     def predict_intensity(
@@ -153,6 +175,8 @@ class HawkesProcess:
         Returns:
             Expected number of events in [t_last, t_last + horizon_seconds].
         """
+        start_time = time.perf_counter()
+
         if self.params is None:
             logger.debug("Parameters not fitted; returning default intensity 1.0")
             return 1.0
@@ -167,9 +191,15 @@ class HawkesProcess:
             logger.error("Timestamps array is not one-dimensional: shape=%s", timestamps.shape)
             raise ValueError("timestamps must be a one-dimensional array")
 
-        if len(timestamps) == 0:
+        signal_count = len(timestamps)
+
+        if signal_count == 0:
             intensity = float(self.params.mu * horizon_seconds)
             logger.debug("Empty timestamps; returning baseline intensity %f", intensity)
+            logger.info(
+                "Predicted intensity (baseline)",
+                extra={"signal_count": signal_count, "execution_time": time.perf_counter() - start_time, "pnl": None, "intensity": intensity},
+            )
             return intensity
 
         if not isinstance(horizon_seconds, (int, float)):
@@ -187,9 +217,23 @@ class HawkesProcess:
         )
         lam = p.mu + carry
         intensity = float(lam * horizon_seconds)
+
         logger.debug(
             "Predicted intensity: mu=%f, carry=%f, lambda=%f, horizon=%f -> intensity=%f",
             p.mu, carry, lam, horizon_seconds, intensity,
+        )
+        logger.info(
+            "Predicted intensity",
+            extra={
+                "signal_count": signal_count,
+                "execution_time": time.perf_counter() - start_time,
+                "pnl": None,
+                "intensity": intensity,
+                "mu": p.mu,
+                "carry": carry,
+                "lambda": lam,
+                "horizon_seconds": horizon_seconds,
+            },
         )
         return intensity
 
@@ -206,21 +250,24 @@ class HawkesProcess:
 
         Args:
             intensity: predicted arrivals in horizon from predict_intensity().
-            threshold: arrivals cutoff between limit and market order.
-
-        Returns:
-            'market' if intensity > threshold, else 'limit'.
+            threshold: arrivals cutoff between limit and market
         """
-        if not isinstance(intensity, (int, float)):
-            logger.error("Invalid intensity type: %s", type(intensity))
-            raise TypeError("intensity must be a numeric type")
-        if not isinstance(threshold, (int, float)):
-            logger.error("Invalid threshold type: %s", type(threshold))
-            raise TypeError("threshold must be a numeric type")
-        if threshold < 0:
-            logger.error("Negative threshold value: %f", threshold)
-            raise ValueError("threshold must be non-negative")
+        start_time = time.perf_counter()
+        if intensity >= threshold:
+            decision = "market"
+        else:
+            decision = "limit"
 
-        decision = "market" if intensity > threshold else "limit"
-        logger.info("Execution suggestion: intensity=%.3f, threshold=%.3f -> %s", intensity, threshold, decision)
+        logger.info(
+            "Execution suggestion",
+            extra={
+                "intensity": intensity,
+                "threshold": threshold,
+                "decision": decision,
+                "execution_time": time.perf_counter() - start_time,
+                "pnl": None,
+            },
+        )
         return decision
+
+# End of file
