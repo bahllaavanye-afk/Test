@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Verify market hours",
-    "Log API calls",
-    "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
-    "Refactor code for readability",
-    "Use timeouts",
     "cleanup on strategies/manual/liquidation_cascade_fade.py: success \u2014 tests green",
     "Check clock sync",
     "docstrings on risk/factor_exposure.py: success \u2014 tests green",
@@ -199,8 +194,13 @@
     "Use timeout retries",
     "docstrings on ml/models/base_model.py: success \u2014 tests green",
     "strategy_logic on execution/advanced_orders.py: success \u2014 tests green",
-    "Check DB connections"
+    "Check DB connections",
+    "Log trade volumes",
+    "Check disk space",
+    "Verify clock sync",
+    "Parse agent_memory.json",
+    "Refactor training pipelines"
   ],
-  "last_updated": "2026-07-10T06:07:52.094708+00:00",
+  "last_updated": "2026-07-10T08:18:52.572484+00:00",
   "total": 200
 }
