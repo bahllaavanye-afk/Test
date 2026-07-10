@@ -199,8 +199,13 @@
     "Track OKR metrics daily",
     "Log API calls",
     "Check RAM usage",
-    "Monitor thread counts"
+    "Monitor thread counts",
+    "optimization on brokers/polymarket.py: success \u2014 tests green",
+    "optimization on backtest/cpcv.py: success \u2014 tests green",
+    "optimization on comparison/engine.py: success \u2014 tests green",
+    "optimization on tasks/backtest_worker.py: success \u2014 tests green",
+    "optimization on api/v1/backtests.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T15:52:50.223355+00:00",
+  "last_updated": "2026-07-10T17:45:41.420416+00:00",
   "total": 200
 }
