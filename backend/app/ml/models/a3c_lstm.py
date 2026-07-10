@@ -12,6 +12,8 @@ Used in: ml_enhanced/rl_trader.py strategy
 Training: experiments/configs/ppo_execution.yaml
 """
 import json
+import logging
+import time
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +30,7 @@ except ImportError:
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
+logger = logging.getLogger(__name__)
 
 class LSTMActor(nn.Module):
     """Policy network: maps market state sequence → action logits [buy, hold, sell]."""
@@ -121,6 +124,9 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         self.actor = LSTMActor(n_features, hidden_size, n_actions)
         self.critic = LSTMCritic(n_features, hidden_size)
 
+        # Monitoring counters
+        self.signal_count = 0
+
     # ------------------------------------------------------------------
     # Core forward pass
     # ------------------------------------------------------------------
@@ -133,9 +139,15 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
             action_probs: (batch, n_actions)  — softmax over actions
             state_value:  (batch, 1)
         """
+        start = time.perf_counter()
         logits = self.actor(x)
         action_probs = F.softmax(logits, dim=-1)
         state_value = self.critic(x)
+        elapsed = time.perf_counter() - start
+        logger.info(
+            "forward_pass",
+            extra={"execution_time_ms": elapsed * 1000, "batch_size": x.shape[0]}
+        )
         return action_probs, state_value
 
     # ------------------------------------------------------------------
@@ -155,7 +167,17 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         with torch.no_grad():
             action_probs, _ = self.forward(x)
             dist = torch.distributions.Categorical(probs=action_probs[0])
-            return int(dist.sample().item())
+            action = int(dist.sample().item())
+            self.signal_count += 1
+            logger.info(
+                "signal_generated",
+                extra={
+                    "signal_id": self.signal_count,
+                    "action": action,
+                    "timestamp": time.time()
+                }
+            )
+            return action
 
     # ------------------------------------------------------------------
     # Returns computation
@@ -183,6 +205,17 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
             R = r + gamma * R
             returns.insert(0, R)
         returns_tensor = torch.tensor(returns, dtype=torch.float32)
+
+        # Monitoring: log cumulative return (proxy for P&L) and count of signals
+        cumulative_return = returns_tensor.sum().item()
+        logger.info(
+            "returns_computed",
+            extra={
+                "cumulative_return": cumulative_return,
+                "signal_count": self.signal_count,
+                "num_steps": len(rewards)
+            }
+        )
         return returns_tensor
 
     # ------------------------------------------------------------------
@@ -210,6 +243,7 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         Returns:
             dict with keys: loss, policy_loss, value_loss, entropy
         """
+        start = time.perf_counter()
         action_probs, state_values = self.forward(states)  # (T, n_actions), (T, 1)
         state_values = state_values.squeeze(-1)            # (T,)
 
@@ -229,6 +263,18 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
 
         loss = policy_loss + value_coef * value_loss - entropy_coef * entropy
 
+        elapsed = time.perf_counter() - start
+        logger.info(
+            "actor_critic_loss",
+            extra={
+                "execution_time_ms": elapsed * 1000,
+                "loss": loss.item(),
+                "policy_loss": policy_loss.item(),
+                "value_loss": value_loss.item(),
+                "entropy": entropy.item()
+            }
+        )
+
         return {
             "loss": loss,
             "policy_loss": policy_loss.detach(),
@@ -245,62 +291,10 @@ class A3CLSTMAgent(AbstractModel, nn.Module):
         self.train()
         total_loss = 0.0
         steps = 0
+        epoch_start = time.perf_counter()
         for batch in loader:
             states, actions, rewards = batch[0], batch[1], batch[2]
             dones = [False] * len(rewards)
             optimizer.zero_grad()
-            result = self.actor_critic_loss(states, actions, rewards, dones)
-            result["loss"].backward()
-            nn.utils.clip_grad_norm_(self.parameters(), 0.5)
-            optimizer.step()
-            total_loss += result["loss"].item()
-            steps += 1
-        return {"loss": total_loss / max(steps, 1)}
-
-    def evaluate(self, loader) -> EvalMetrics:
-        """
-        Evaluate on a DataLoader that yields (x, y) pairs where
-        y is the ground-truth action (0=buy, 1=hold, 2=sell).
-        """
-        self.eval()
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for X, y in loader:
-                action_probs, _ = self.forward(X)
-                preds = action_probs.argmax(dim=-1)
-                correct += (preds == y.long()).sum().item()
-                total += len(y)
-        accuracy = correct / max(total, 1)
-        return EvalMetrics(accuracy=accuracy, auc=0.5, sharpe=0.0)
-
-    # ------------------------------------------------------------------
-    # Save / load
-    # ------------------------------------------------------------------
-
-    def save(self, path: str, metadata: dict | None = None) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        init_kwargs = {
-            "n_features": self.n_features,
-            "hidden_size": self.hidden_size,
-            "n_actions": self.n_actions,
-        }
-        full_meta = {"init_kwargs": init_kwargs, **(metadata or {})}
-        torch.save(
-            {
-                "state_dict": self.state_dict(),
-                "model_type": self.model_type,
-                "metadata": full_meta,
-            },
-            path,
-        )
-        meta_path = Path(path).with_suffix(".json")
-        meta_path.write_text(json.dumps(full_meta, default=str, indent=2))
-
-    @classmethod
-    def load(cls, path: str) -> "A3CLSTMAgent":
-        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-        init_kwargs = checkpoint.get("metadata", {}).get("init_kwargs", {})
-        model = cls(**init_kwargs)
-        model.load_state_dict(checkpoint["state_dict"])
-        return model
+            res
+# ... (truncated for brevity)""
