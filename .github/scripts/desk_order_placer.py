@@ -68,6 +68,12 @@ DESKS: list[DeskConfig] = [
             "cross_sectional_momentum", "opening_range_breakout", "vwap_reversion",
             "residual_momentum", "idio_vol_anomaly",
             "realized_vol_asymmetry", "analyst_revision_momentum",
+            # Advanced strategies that already exist in the library but were never
+            # deployed (verified to run on Alpaca daily bars): HMM regime detection,
+            # Larry Connors RSI-2 pullback, Donchian breakout, low-vol anomaly,
+            # overnight-drift anomaly.
+            "hmm_regime", "rsi2_pullback", "donchian_breakout",
+            "low_volatility", "overnight_return",
         ],
         notional_usd=500.0,
         confidence_min=0.60,
@@ -93,6 +99,9 @@ DESKS: list[DeskConfig] = [
             "crypto_adaptive_trend", "mean_reversion", "breakout",
             "btc_eth_stat_arb", "intraday_seasonality",
             "on_chain_exchange_netflow", "vol_of_vol_timing",
+            # Advanced additions verified to run on Alpaca daily bars:
+            # Avellaneda-Stoikov market-making, Donchian breakout, RSI-2 pullback.
+            "avellaneda_stoikov_mm", "donchian_breakout", "rsi2_pullback",
         ],
         notional_usd=300.0,
         confidence_min=0.60,
@@ -113,6 +122,10 @@ DESKS: list[DeskConfig] = [
             "vrp_systematic", "dispersion_trading", "vol_term_structure",
             "vol_of_vol_timing",
             "wheel", "iron_condor", "credit_spread_income",
+            # Short-vol carry — a genuine "profit from no movement" income
+            # strategy (verified to fire on daily bars), complementing the
+            # premium-selling income structures above.
+            "vol_carry_short",
         ],
         notional_usd=400.0,
         confidence_min=0.60,
@@ -150,6 +163,9 @@ DESKS: list[DeskConfig] = [
         strategy_names=[
             "pairs_trading", "pca_stat_arb", "kalman_pairs",
             "triangular_arb", "stablecoin_depeg_arb",
+            # ETF statistical-arbitrage (verified to run) — market-neutral,
+            # fits the stat-arb desk directly.
+            "stat_arb_etf",
         ],
         notional_usd=600.0,
         confidence_min=0.60,
@@ -419,6 +435,15 @@ _STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "crypto_adaptive_trend":     [1, 2],   # trend strategy
     "mvrv_zscore_timing":        [0, 1, 2],
     "intraday_seasonality":      [0, 1, 2],
+    # Newly-deployed advanced strategies
+    "donchian_breakout":         [2],         # breakout — trending only
+    "rsi2_pullback":             [1],         # Connors RSI-2 — mean-revert / range
+    "vol_carry_short":           [1],         # short vol — profits from calm
+    "hmm_regime":                [0, 1, 2],   # adapts to regime internally
+    "stat_arb_etf":              [0, 1, 2],   # market-neutral
+    "avellaneda_stoikov_mm":     [0, 1, 2],   # market-making
+    "low_volatility":            [0, 1, 2],   # defensive factor
+    "overnight_return":          [0, 1, 2],   # overnight-drift anomaly
     # Options / vol strategies (run in all regimes; vol strategies especially useful in bear)
     "gamma_exposure":            [0, 1, 2],
     "skew_arb":                  [0, 1, 2],

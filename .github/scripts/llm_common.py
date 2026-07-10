@@ -236,6 +236,51 @@ _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 # only on tier="hard" or when the free cascade + OpenRouter are exhausted.
 _CLAUDE_BACKSTOP_MODEL = os.environ.get("CLAUDE_BACKSTOP_MODEL", "claude-haiku-4-5")
 
+# ── Claude daily budget cap ───────────────────────────────────────────────────
+# Guarantees Claude is USED (it's on the ladder) but can NEVER exhaust the prepaid
+# balance: spend is metered against a hard per-UTC-day dollar cap. When the cap is
+# hit, Claude is skipped and callers fall back to the free/OpenRouter tiers. The
+# ledger lives in state/claude_budget.json (committed by the state-persisting
+# workflows, so the cap accumulates across runs; worst case it degrades to a
+# per-run cap, which is still bounded).
+_CLAUDE_DAILY_BUDGET_USD = float(os.environ.get("CLAUDE_DAILY_BUDGET_USD", "1.00"))
+_CLAUDE_BUDGET_FILE = Path(__file__).resolve().parent.parent / "state" / "claude_budget.json"
+# $ per 1M tokens (input, output). Conservative defaults; Sonnet priced higher.
+_CLAUDE_PRICING = {
+    "claude-haiku-4-5":  (1.0, 5.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-sonnet-4-5": (3.0, 15.0),
+}
+
+
+def _claude_spent_today() -> float:
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        d = json.loads(_CLAUDE_BUDGET_FILE.read_text())
+        return float(d.get("spent_usd", 0.0)) if d.get("date") == today else 0.0
+    except Exception:  # noqa: BLE001 — missing/corrupt ledger = spent nothing today
+        return 0.0
+
+
+def _claude_budget_ok() -> bool:
+    return _claude_spent_today() < _CLAUDE_DAILY_BUDGET_USD
+
+
+def _record_claude_spend(model: str, usage: dict) -> None:
+    from datetime import datetime, timezone
+    inp = int(usage.get("input_tokens", 0)); out = int(usage.get("output_tokens", 0))
+    pin, pout = _CLAUDE_PRICING.get(model, (3.0, 15.0))
+    cost = inp / 1e6 * pin + out / 1e6 * pout
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        _CLAUDE_BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        spent = _claude_spent_today() + cost
+        _CLAUDE_BUDGET_FILE.write_text(json.dumps({"date": today, "spent_usd": round(spent, 6)}))
+    except Exception as exc:  # noqa: BLE001 — never let accounting break a call
+        logger.debug("claude budget write failed: %s", exc)
+
+
 # ── Response cache ────────────────────────────────────────────────────────────
 
 _CACHE_TTL = 86400  # 24 hours
@@ -444,6 +489,11 @@ def _call_claude(system: str, prompt: str, max_tokens: int, temperature: float) 
     keys = _env_keys("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_2")
     if not keys:
         return None
+    # Hard daily budget: never drain the prepaid balance. Over cap → skip Claude,
+    # caller falls back to the free/OpenRouter tiers.
+    if not _claude_budget_ok():
+        logger.info("Claude skipped — daily budget $%.2f reached", _CLAUDE_DAILY_BUDGET_USD)
+        return None
     body = json.dumps({
         "model": _CLAUDE_BACKSTOP_MODEL,
         "system": system,
@@ -466,6 +516,7 @@ def _call_claude(system: str, prompt: str, max_tokens: int, temperature: float) 
                 result = json.loads(resp.read())
             text = "".join(blk.get("text", "") for blk in result.get("content", [])).strip()
             _record_metric(f"claude:{_CLAUDE_BACKSTOP_MODEL}", bool(text), int((time.time() - t0) * 1000))
+            _record_claude_spend(_CLAUDE_BACKSTOP_MODEL, result.get("usage", {}))
             if text:
                 return text
         except Exception as exc:  # noqa: BLE001 — try the next key
