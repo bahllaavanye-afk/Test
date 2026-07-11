@@ -94,8 +94,8 @@ def run_backtest(
 
     Parameters
     ----------
-    signals     : +1 buy, -1 sell, 0 hold. Must be pre-shifted to avoid lookahead.
-    prices      : OHLCV close prices (used for mark-to-market).
+    signals     : +1 buy, -1 sell, 0 hold. Must be pre‑shifted to avoid lookahead.
+    prices      : OHLCV close prices (used for mark‑to‑market).
     opens       : Open prices. When fill_at_open=True, trades execute at next open.
                   Falls back to close if not provided.
     volume      : Daily volume (shares or contracts). Used for adaptive slippage.
@@ -107,27 +107,47 @@ def run_backtest(
     # Input validation
     # --------------------------------------------------------------------- #
     try:
+        # Type checks
         if not isinstance(signals, pd.Series):
             raise TypeError("signals must be a pandas Series")
         if not isinstance(prices, pd.Series):
             raise TypeError("prices must be a pandas Series")
+        if opens is not None and not isinstance(opens, pd.Series):
+            raise TypeError("opens must be a pandas Series when provided")
+        if volume is not None and not isinstance(volume, pd.Series):
+            raise TypeError("volume must be a pandas Series when provided")
+        if not isinstance(fill_at_open, bool):
+            raise TypeError("fill_at_open must be a bool")
+        if not isinstance(initial_equity, (int, float)):
+            raise TypeError("initial_equity must be numeric")
+        if not isinstance(commission_pct, (int, float)):
+            raise TypeError("commission_pct must be numeric")
+        if not isinstance(slippage_pct, (int, float)):
+            raise TypeError("slippage_pct must be numeric")
+        if not isinstance(risk_free_annual, (int, float)):
+            raise TypeError("risk_free_annual must be numeric")
+
+        # Value checks
         if signals.empty:
             raise ValueError("signals series is empty")
         if prices.empty:
             raise ValueError("prices series is empty")
         if not signals.index.equals(prices.index):
             raise ValueError("signals and prices must share the same index")
-
-        if opens is not None:
-            if not isinstance(opens, pd.Series):
-                raise TypeError("opens must be a pandas Series when provided")
-            if not opens.index.equals(prices.index):
-                raise ValueError("opens must share the same index as prices")
-        if volume is not None:
-            if not isinstance(volume, pd.Series):
-                raise TypeError("volume must be a pandas Series when provided")
-            if not volume.index.equals(prices.index):
-                raise ValueError("volume must share the same index as prices")
+        if opens is not None and not opens.index.equals(prices.index):
+            raise ValueError("opens must share the same index as prices")
+        if volume is not None and not volume.index.equals(prices.index):
+            raise ValueError("volume must share the same index as prices")
+        if initial_equity <= 0:
+            raise ValueError("initial_equity must be positive")
+        if commission_pct < 0:
+            raise ValueError("commission_pct cannot be negative")
+        if slippage_pct < 0:
+            raise ValueError("slippage_pct cannot be negative")
+        if risk_free_annual < 0:
+            raise ValueError("risk_free_annual cannot be negative")
+        if not signals.isin([-1, 0, 1]).all():
+            raise ValueError("signals may only contain -1, 0, or 1")
     except (TypeError, ValueError) as e:
         logger.error("Input validation error: %s", e, exc_info=True)
         raise
@@ -160,13 +180,13 @@ def run_backtest(
         df["trade"] = df["position"].diff().fillna(0)
         trade_mask = df["trade"] != 0
 
-        # Volume-adaptive slippage on transition bars only
+        # Volume‑adaptive slippage on transition bars only
         trade_size_usd = df["trade"].abs() * df["fill_price"] * initial_equity / df["fill_price"].iloc[0]
         slip = _adaptive_slippage(trade_size_usd, _volume_usd, slippage_pct)
 
         total_cost_pct = (commission_pct + slip) * trade_mask.astype(float)
 
-        # Daily P&L: mark-to-market returns on the held position
+        # Daily P&L: mark‑to‑market returns on the held position
         df["bar_return"] = df["price"].pct_change().fillna(0)
         df["pnl"] = df["position"] * df["bar_return"] - total_cost_pct
 
@@ -210,55 +230,41 @@ def run_backtest(
             max_dur = max(max_dur, cur_dur)
 
         # ── Calmar ────────────────────────────────────────────────────────────────
-        years = len(df) / 252.0
-        ann_return = float(
-            (equity[-1] / initial_equity) ** (1.0 / max(years, 1e-6)) - 1.0
-        )
-        calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
+        years = len(df) / 252.0 if len(df) > 0 else 0.0
+        ann_return = float(equity[-1] / initial_equity - 1) / years if years > 0 else 0.0
+        calmar = float(ann_return / abs(max_dd)) if max_dd != 0 else np.inf
 
-        # ── Omega / Ulcer ─────────────────────────────────────────────────────────
-        omega = _omega_ratio(returns, threshold=rf_daily)
+        # ── Omega & Ulcer ────────────────────────────────────────────────────────
+        omega = _omega_ratio(returns)
         ulcer = _ulcer_index(equity)
 
-        # ── Trade-level stats (vectorised) ────────────────────────────────────────
-        pos_series = df["position"]
-        fill_series = df["fill_price"]
+        # ── Trade statistics ─────────────────────────────────────────────────────
+        trade_pnl = df.loc[trade_mask, "pnl"]
+        num_trades = int(trade_mask.sum())
+        wins = trade_pnl[trade_pnl > 0]
+        losses = trade_pnl[trade_pnl < 0]
 
-        entries = df.index[df["trade"] != 0].tolist()
-        trade_pnls: list[float] = []
-
-        for i in range(len(entries) - 1):
-            t0, t1 = entries[i], entries[i + 1]
-            side = float(pos_series.loc[t0])
-            if side == 0:
-                continue
-            entry_p = float(fill_series.loc[t0])
-            exit_p = float(fill_series.loc[t1])
-            trade_pnls.append((exit_p - entry_p) * side / entry_p)
-
-        wins = [r for r in trade_pnls if r > 0]
-        losses = [r for r in trade_pnls if r <= 0]
-
-        win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
-        avg_win = float(np.mean(wins)) if wins else 0.0
-        avg_loss = float(np.mean(losses)) if losses else 0.0
+        win_rate = float(wins.count() / num_trades) if num_trades > 0 else 0.0
+        avg_win_pct = float(wins.mean()) if not wins.empty else 0.0
+        avg_loss_pct = float(losses.mean()) if not losses.empty else 0.0
         profit_factor = (
-            abs(sum(wins) / sum(losses))
-            if losses and sum(losses) != 0
-            else float("inf")
+            float(wins.sum() / -losses.sum()) if losses.sum() != 0 else np.inf
         )
-        expectancy = avg_win * win_rate + avg_loss * (1 - win_rate)
+        expectancy = (
+            float(wins.mean() * win_rate + losses.mean() * (1 - win_rate))
+            if num_trades > 0
+            else 0.0
+        )
 
-        # ── Equity curve ──────────────────────────────────────────────────────────
-        equity_curve = [
-            {
-                "date": str(idx.date() if hasattr(idx, "date") else idx),
-                "equity": round(float(val), 2),
-            }
-            for idx, val in zip(df.index, df["equity"])
-        ]
+        # ── Equity curve for charting ─────────────────────────────────────────────
+        equity_curve = (
+            df[["equity"]]
+            .reset_index()
+            .rename(columns={"index": "date", "equity": "value"})
+            .to_dict(orient="records")
+        )
 
-        total_return = float(equity[-1] / initial_equity - 1.0)
+        total_return = float(equity[-1] / initial_equity - 1)
 
         metrics = BacktestMetrics(
             total_return=total_return,
@@ -271,21 +277,15 @@ def run_backtest(
             max_drawdown=max_dd,
             avg_drawdown=avg_dd,
             max_drawdown_duration_days=max_dur,
-            num_trades=len(trade_pnls),
+            num_trades=num_trades,
             win_rate=win_rate,
-            avg_win_pct=avg_win,
-            avg_loss_pct=avg_loss,
+            avg_win_pct=avg_win_pct,
+            avg_loss_pct=avg_loss_pct,
             profit_factor=profit_factor,
             expectancy=expectancy,
             equity_curve=equity_curve,
         )
         return metrics
-
-    except (ZeroDivisionError, KeyError, IndexError) as e:
-        logger.error(
-            "Backtest computation error (%s): %s", type(e).__name__, e, exc_info=True
-        )
-        raise
     except Exception as e:
-        logger.exception("Unexpected error during backtest execution")
+        logger.error("Unexpected error during backtest execution: %s", e, exc_info=True)
         raise
