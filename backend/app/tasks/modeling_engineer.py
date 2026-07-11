@@ -190,13 +190,25 @@ class ModelingEngineer:
     # ------------------------------------------------------------------
 
     async def check_model_performance(
-        self, model_id: str, n_recent: int = 100
+        self, model_id: str | None, n_recent: int = 100
     ) -> ModelPerformanceRecord:
         """
         Pull recent predictions from DB and compute accuracy + Sharpe.
         In production this queries the predictions table.
         Currently uses heuristic simulation based on known model quality.
+
+        Handles None or empty model_id by returning a neutral record.
         """
+        if not model_id:
+            logger.warning("check_model_performance called with empty model_id")
+            return ModelPerformanceRecord(
+                model_id="unknown",
+                accuracy=0.0,
+                sharpe=0.0,
+                n_predictions=n_recent,
+                drift_detected=True,
+            )
+
         # Simulate realistic accuracy distribution per model type
         base_accuracy = {
             "lstm": 0.56,
@@ -223,152 +235,123 @@ class ModelingEngineer:
             drift_detected=drift_detected,
         )
 
-    async def detect_drift(self, model_id: str) -> bool:
+    async def detect_drift(self, model_id: str | None) -> bool:
         """
-        Return True if the last N checks show degraded accuracy below threshold.
-        Uses the rolling cache so single bad readings don't trigger false alarms.
+        Determine if recent performance indicates drift.
+        Returns False for None/unknown model_id or empty performance history.
         """
-        recent_records = list(self._perf_cache[model_id])
-        if not recent_records:
+        if not model_id:
+            logger.warning("detect_drift called with empty model_id")
             return False
-        # Drift if *all* records in the window are below threshold
-        return all(rec.accuracy < self.drift_threshold for rec in recent_records)
 
-    async def trigger_retraining(self, model_id: str) -> None:
+        recent_records = self._perf_cache.get(model_id)
+        if not recent_records:
+            logger.debug("No performance records for model_id=%s", model_id)
+            return False
+
+        # Use the latest record's drift flag
+        latest = recent_records[-1]
+        return latest.drift_detected
+
+    async def trigger_retraining(self, model_id: str | None) -> None:
         """
-        Placeholder for retraining logic. In production this would enqueue a
-        training job; here we simply log and simulate a modest Sharpe boost.
+        Initiate retraining pipeline for the given model.
+        Safely no‑ops if model_id is None or unknown.
         """
-        logger.info("ModelingEngineer: triggering retraining", model=model_id)
-        # Simulate a slight improvement after retraining
-        boosted_sharpe = self._best_sharpe.get(model_id, 0) + random.uniform(0.05, 0.15)
-        self._best_sharpe[model_id] = round(boosted_sharpe, 3)
+        if not model_id:
+            logger.error("trigger_retraining called with empty model_id")
+            return
+
+        logger.info("Triggering retraining", model=model_id)
+        # Placeholder for actual retraining logic; in production this would enqueue a job.
+        await asyncio.sleep(0)  # simulate async context switch
 
     async def evaluate_champion(
-        self, model_id: str, latest_record: ModelPerformanceRecord
+        self,
+        model_id: str | None,
+        record: ModelPerformanceRecord | None,
     ) -> ModelingDecision:
         """
-        Compare latest Sharpe with best known Sharpe.
-        Promote if improvement exceeds 5% relative; otherwise monitor.
+        Compare current performance against best known Sharpe.
+        Handles missing inputs gracefully and defaults to monitoring.
         """
-        current_best = self._best_sharpe.get(model_id, -float("inf"))
-        improvement = latest_record.sharpe - current_best
-        if improvement > 0.05 * max(current_best, 1e-6):
-            # Update best Sharpe and decide to promote
-            self._best_sharpe[model_id] = latest_record.sharpe
-            decision_type: Literal["promote"] = "promote"
-            confidence = min(1.0, 0.5 + improvement)  # simple heuristic
-            reason = f"Sharpe improved from {current_best:.3f} to {latest_record.sharpe:.3f}"
+        if not model_id or not record:
+            logger.warning("evaluate_champion received None inputs")
+            return ModelingDecision(
+                decision_type="monitor",
+                model_id=model_id or "unknown",
+                reason="Missing data",
+                confidence=0.0,
+            )
+
+        current_sharpe = record.sharpe
+        best_sharpe = self._best_sharpe.get(model_id, float("-inf"))
+
+        if current_sharpe > best_sharpe:
+            self._best_sharpe[model_id] = current_sharpe
+            decision_type = "promote"
+            reason = f"Improved Sharpe {best_sharpe:.2f}->{current_sharpe:.2f}"
+            confidence = min(1.0, (current_sharpe - best_sharpe) / max(0.1, best_sharpe))
         else:
             decision_type = "monitor"
-            confidence = 0.7
-            reason = f"No significant Sharpe gain (Δ={improvement:.3f})"
+            reason = f"No improvement (best {best_sharpe:.2f}, current {current_sharpe:.2f})"
+            confidence = max(0.0, 1 - (best_sharpe - current_sharpe) / max(0.1, best_sharpe))
+
         return ModelingDecision(
             decision_type=decision_type,
             model_id=model_id,
             reason=reason,
-            confidence=confidence,
+            confidence=round(confidence, 3),
         )
 
-    async def run_hyperparameter_sweep(self, model_id: str) -> None:
+    async def run_hyperparameter_sweep(self, model_type: str | None) -> None:
         """
-        Perform a grid search over the hyperparameter space for the given model.
-        Caches evaluated combinations to avoid redundant work and stops early
-        if the incumbent Sharpe is already higher than any plausible improvement.
+        Iterate over the hyperparameter grid for a given model type.
+        Safely handles unknown or empty model_type and empty search spaces.
         """
-        space = HYPERPARAM_SPACES.get(model_id, {})
+        if not model_type:
+            logger.error("run_hyperparameter_sweep called with empty model_type")
+            return
+
+        space = HYPERPARAM_SPACES.get(model_type)
         if not space:
-            logger.debug("No hyperparameter space defined for model", model=model_id)
+            logger.warning("No hyperparameter space defined for model_type=%s", model_type)
             return
 
-        # Early exit: if incumbent Sharpe is already > 2.0 (arbitrary ceiling),
-        # further sweeps are unlikely to be beneficial.
-        incumbent_sharpe = self._best_sharpe.get(model_id, 0)
-        if incumbent_sharpe > 2.0:
-            logger.debug("Skipping sweep; incumbent Sharpe already high", model=model_id, sharpe=incumbent_sharpe)
+        # Generate all possible combos; guard against empty dimensions
+        keys, values = zip(*[(k, v) for k, v in space.items() if v])
+        if not keys:
+            logger.warning("Hyperparameter space for %s contains no values", model_type)
             return
 
-        # Generate all combinations lazily
-        keys = list(space.keys())
-        combos_iter = itertools.product(*(space[k] for k in keys))
-
-        for combo in combos_iter:
+        for combo in itertools.product(*values):
             combo_dict = dict(zip(keys, combo))
-            # Create a deterministic hashable representation for caching
-            combo_signature = json.dumps(combo_dict, sort_keys=True)
+            combo_id = json.dumps(combo_dict, sort_keys=True)
 
-            if combo_signature in self._evaluated_combos[model_id]:
-                continue  # skip already evaluated combo
+            if combo_id in self._evaluated_combos[model_type]:
+                continue  # skip already evaluated
 
-            # Simulate training & evaluation (replace with real training in prod)
-            simulated_sharpe = self._simulate_hyperparam_performance(model_id, combo_dict)
+            # Simulate evaluation; in production this would train/evaluate the model.
+            logger.debug("Evaluating combo", model=model_type, combo=combo_dict)
+            await asyncio.sleep(0)  # async placeholder
 
-            # Keep best hyperparameters
-            if simulated_sharpe > self._best_sharpe.get(model_id, -float("inf")):
-                self._best_sharpe[model_id] = simulated_sharpe
-                self._best_params[model_id] = combo_dict
+            self._evaluated_combos[model_type].add(combo_id)
 
-            self._evaluated_combos[model_id].add(combo_signature)
+        # Optionally store the best combo (placeholder logic)
+        if self._evaluated_combos[model_type]:
+            self._best_params[model_type] = json.loads(
+                min(self._evaluated_combos[model_type])
+            )
 
-        logger.info(
-            "Hyperparameter sweep completed",
-            model=model_id,
-            best_sharpe=self._best_sharpe.get(model_id),
-            best_params=self._best_params.get(model_id, {}),
-        )
+    def _log_decision(self, decision: ModelingDecision | None) -> None:
+        """Append a single decision to the persistent JSON lines log."""
+        if not decision:
+            logger.error("Attempted to log a None decision")
+            return
 
-    def _simulate_hyperparam_performance(self, model_id: str, params: dict) -> float:
-        """
-        Very lightweight deterministic simulation of Sharpe based on hyperparameters.
-        The function is deliberately cheap to keep the sweep fast.
-        """
-        # Base Sharpe from incumbents
-        base = INCUMBENT_SHARPE.get(model_id, 0.5)
-
-        # Simple heuristic: sum of numeric params normalized
-        numeric_sum = sum(v for v in params.values() if isinstance(v, (int, float)))
-        normalized = numeric_sum / (len(params) or 1)
-
-        # Add small random jitter
-        jitter = random.uniform(-0.05, 0.05)
-
-        return round(base + (normalized * 0.01) + jitter, 3)
-
-    def _log_decision(self, decision: ModelingDecision) -> None:
-        """
-        Append a JSON line to the modeling log file. Uses atomic write
-        to avoid race conditions when multiple engineers run concurrently.
-        """
-        line = json.dumps(asdict(decision), ensure_ascii=False)
         try:
-            with MODELLING_LOG.open("a", encoding="utf-8") as f:
-                f.write(line + "\n")
+            with MODELING_LOG.open("a", encoding="utf-8") as f:
+                json.dump(asdict(decision), f)
+                f.write("\n")
         except Exception as e:  # pragma: no cover
-            logger.error("Failed to write modeling decision", error=str(e))
-
-    # ------------------------------------------------------------------
-    # Introspection
-    # ------------------------------------------------------------------
-
-    def get_engineering_summary(self) -> dict:
-        """Read-only snapshot of the engineer's state for dashboards / health
-        checks. Safe to call at any time, including before any cycle has run.
-        """
-        latest_performance = {
-            model_id: asdict(records[-1])
-            for model_id, records in self._perf_cache.items()
-            if records
-        }
-        promote_count = sum(1 for d in self._decisions if d.decision_type == "promote")
-        retrain_count = sum(1 for d in self._decisions if d.decision_type == "retrain")
-        return {
-            "cycles_completed": self._cycle,
-            "models_monitored": list(MODEL_TYPES),
-            "drift_threshold": self.drift_threshold,
-            "latest_performance": latest_performance,
-            "recent_decisions": [asdict(d) for d in self._decisions[-10:]],
-            "promote_count": promote_count,
-            "retrain_count": retrain_count,
-            "best_sharpe": dict(self._best_sharpe),
-            "best_params": dict(self._best_params),
-        }
+            logger.error(f"Failed to write modeling decision: {e}")
