@@ -65,6 +65,7 @@ class PolyTimeValueFadeStrategy(AbstractStrategy):
         )
 
     async def _fetch_markets(self) -> list[dict]:
+        """Fetch active markets from the Gamma API, returning an empty list on any failure."""
         if not _HTTPX:
             return []
         try:
@@ -76,32 +77,56 @@ class PolyTimeValueFadeStrategy(AbstractStrategy):
                 r.raise_for_status()
                 data = r.json()
                 # Gamma API returns list directly or wrapped
-                return data if isinstance(data, list) else data.get("markets", [])
+                return data if isinstance(data, list) else data.get("markets", []) or []
         except Exception:
             return []
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         """
         Scan Gamma API for near-certain markets with adequate liquidity.
-        data is not used directly — strategy fetches live Gamma data.
+        `data` is not used directly — strategy fetches live Gamma data.
         """
         markets = await self._fetch_markets()
+        if not markets:
+            return None
 
         for market in markets:
+            # Guard against malformed market dicts
+            if not isinstance(market, dict):
+                continue
+
             # Filter by open interest
-            open_interest = float(market.get("volumeNum", market.get("volume", 0)) or 0)
+            raw_oi = market.get("volumeNum", market.get("volume", 0)) or 0
+            try:
+                open_interest = float(raw_oi)
+            except (TypeError, ValueError):
+                open_interest = 0.0
             if open_interest < self.min_open_interest:
                 continue
 
-            tokens = market.get("tokens", [])
+            tokens = market.get("tokens") or []
+            if not isinstance(tokens, list):
+                tokens = []
+
+            # Determine YES price
             if not tokens:
-                # Some Gamma responses embed yes/no directly
-                yes_price = float(market.get("bestAsk", market.get("lastTradePrice", 0.5)) or 0.5)
+                # Fallback to bestAsk / lastTradePrice when token data missing
+                raw_price = market.get("bestAsk", market.get("lastTradePrice", 0.5)) or 0.5
+                try:
+                    yes_price = float(raw_price)
+                except (TypeError, ValueError):
+                    yes_price = 0.5
             else:
-                yes_token = next((t for t in tokens if t.get("outcome", "").upper() == "YES"), None)
+                yes_token = next(
+                    (t for t in tokens if t.get("outcome", "").upper() == "YES"), None
+                )
                 if not yes_token:
                     continue
-                yes_price = float(yes_token.get("price", 0.5) or 0.5)
+                raw_price = yes_token.get("price", 0.5) or 0.5
+                try:
+                    yes_price = float(raw_price)
+                except (TypeError, ValueError):
+                    yes_price = 0.5
 
             # Only trade near-certain outcomes
             near_yes = yes_price >= self.yes_threshold
@@ -114,13 +139,19 @@ class PolyTimeValueFadeStrategy(AbstractStrategy):
                 side = "buy"
                 trade_price = yes_price
                 outcome_label = "YES"
-                # Expected profit: (1.0 - price) / price
-                expected_return = (1.0 - yes_price) / yes_price if yes_price < 1.0 else 0.0
+                # Expected profit: (1.0 - price) / price, guard division by zero
+                expected_return = (
+                    (1.0 - yes_price) / yes_price if yes_price > 0 and yes_price < 1.0 else 0.0
+                )
             else:
                 side = "buy"
                 trade_price = 1.0 - yes_price  # NO price
                 outcome_label = "NO"
-                expected_return = (1.0 - trade_price) / trade_price if trade_price < 1.0 else 0.0
+                expected_return = (
+                    (1.0 - trade_price) / trade_price
+                    if trade_price > 0 and trade_price < 1.0
+                    else 0.0
+                )
 
             # Confidence scales with distance from 50%
             certainty = abs(yes_price - 0.5) * 2  # 0→1 as price moves 50%→100%
@@ -153,11 +184,13 @@ class PolyTimeValueFadeStrategy(AbstractStrategy):
         In real use this strategy is live-only (open interest check requires API).
         Uses shift(1) to prevent lookahead bias.
         """
-        false_series = pd.Series(False, index=df.index)
-        if "close" not in df.columns or len(df) < 2:
+        false_series = pd.Series(False, index=getattr(df, "index", []))
+        if not isinstance(df, pd.DataFrame) or "close" not in df.columns or len(df) < 2:
             return BacktestSignals(entries=false_series, exits=false_series)
 
+        # Shift by one to avoid lookahead bias
         close = df["close"].astype(float).shift(1)
+
         entries = ((close >= self.yes_threshold) | (close <= self.no_threshold)).fillna(False)
         exits = ((close >= 0.99) | (close <= 0.01)).fillna(False)
 
