@@ -170,6 +170,20 @@ DESKS: list[DeskConfig] = [
         notional_usd=600.0,
         confidence_min=0.60,
     ),
+    DeskConfig(
+        name="International",
+        slack_channel="#desk-equities",
+        # Country-ETF rotation (docs/research/COUNTRY_DESKS_2026.md): documented
+        # country momentum/reversal premia, tradable on Alpaca US-listed ETFs.
+        symbols=["EWJ", "FXI", "EWY", "EWT", "EWZ", "EWW", "EWC",
+                 "EWU", "EWG", "EWQ", "EZA", "EIDO", "VNM"],
+        strategy_names=[
+            "cross_sectional_momentum", "time_series_momentum",
+            "mean_reversion", "low_volatility", "sector_rotation",
+        ],
+        notional_usd=400.0,
+        confidence_min=0.60,
+    ),
 ]
 
 # ── Auto-tuned thresholds (written nightly by strategy_auto_tuner.py) ─────────
