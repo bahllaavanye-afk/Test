@@ -240,47 +240,59 @@ class RLExecution:
             )
 
             try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    filled = float(result.filled_qty)
-                    fill_price = float(result.avg_fill_price or sub.limit_price or 0)
-                    slippage_bps = 0.0
-                    if signal_price and signal_price > 0:
-                        slippage_bps = abs(fill_price - signal_price) / signal_price * 10_000
-                    fills.append({
-                        "qty": filled,
-                        "price": fill_price,
-                        "algo": f"rl_{action}",
-                        "slippage_bps": slippage_bps,
-                    })
-                    remaining -= filled
+                result = await self.broker.submit_order(sub)
+                fills.append({
+                    "qty": result.get("filled_quantity", fill_qty),
+                    "price": result.get("price", signal_price or 0.0),
+                    "algo": f"rl_{action}",
+                    "slippage_bps": result.get("slippage_bps", 0.0),
+                })
+                remaining -= fill_qty
             except Exception as e:
-                logger.warning("RLExecution fill error: %s", e)
+                logger.error("RLExecution: order submission failed (%s)", e)
+                await asyncio.sleep(self.step_seconds)
+                step += 1
+                continue
 
             step += 1
-            if action != "market":
-                await asyncio.sleep(self.step_seconds)
-
-        # Force-fill any remaining with market
-        if remaining > 0.01:
-            sub = OrderRequest(
-                symbol=request.symbol,
-                side=request.side,
-                order_type="market",
-                quantity=remaining,
-                account_id=request.account_id,
-                execution_algo="rl_market_fallback",
-            )
-            try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    fills.append({
-                        "qty": float(result.filled_qty),
-                        "price": float(result.avg_fill_price or 0),
-                        "algo": "rl_market_fallback",
-                        "slippage_bps": 0.0,
-                    })
-            except Exception as e:
-                logger.warning("RLExecution fallback market error: %s", e)
 
         return fills
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases
+# --------------------------------------------------------------------------- #
+
+import unittest
+
+
+class TestRLExecAgent(unittest.TestCase):
+    def setUp(self):
+        self.agent = RLExecAgent()
+        # Force heuristic path regardless of any loaded model
+        self.agent._trained = False
+
+    def test_market_when_remaining_low(self):
+        state = {"remaining_fraction": 0.03, "elapsed_fraction": 0.0, "spread_bps": 10}
+        self.assertEqual(self.agent.select_action(state), "market")
+
+    def test_market_when_elapsed_high(self):
+        state = {"remaining_fraction": 0.5, "elapsed_fraction": 0.9, "spread_bps": 10}
+        self.assertEqual(self.agent.select_action(state), "market")
+
+    def test_limit_best_when_spread_tight(self):
+        state = {"remaining_fraction": 0.5, "elapsed_fraction": 0.4, "spread_bps": 5}
+        self.assertEqual(self.agent.select_action(state), "limit_best")
+
+    def test_wait_default(self):
+        state = {"remaining_fraction": 0.5, "elapsed_fraction": 0.3, "spread_bps": 30}
+        self.assertEqual(self.agent.select_action(state), "wait")
+
+    def test_clip_extreme_values(self):
+        # Values far outside the expected range should be clipped and lead to 'wait'
+        state = {"remaining_fraction": 10, "elapsed_fraction": -5, "spread_bps": 2000}
+        self.assertEqual(self.agent.select_action(state), "wait")
+
+
+if __name__ == "__main__":
+    unittest.main()
