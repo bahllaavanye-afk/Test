@@ -134,58 +134,30 @@ class RiskManager:
     async def check_order(self, request: OrderRequest) -> RiskDecision:
         """Gate every order through risk checks. Returns RiskDecision."""
         try:
-            if self.global_breaker.is_halted:
-                reason = (
-                    self.global_breaker.halt_reasons[-1]
-                    if self.global_breaker.halt_reasons
-                    else "unknown"
-                )
-                return RiskDecision(False, f"Global circuit breaker halted: {reason}")
+            # 1. Global circuit breaker
+            breaker_decision = self._check_global_breaker()
+            if breaker_decision:
+                return breaker_decision
 
-            if request.risk_bucket == "arbitrage" and self.arb_breaker.is_halted:
-                reason = (
-                    self.arb_breaker.halt_reasons[-1]
-                    if self.arb_breaker.halt_reasons
-                    else "unknown"
-                )
-                return RiskDecision(False, f"Arb circuit breaker halted: {reason}")
+            # 2. Arbitrage circuit breaker (if applicable)
+            arb_decision = self._check_arb_breaker(request)
+            if arb_decision:
+                return arb_decision
 
-            if not self._equity_confirmed:
-                logger.warning(
-                    "risk.manager: using estimated equity — broker snapshot not yet received",
-                    estimated_equity=self._equity,
-                )
-            if self._equity <= 0:
-                return RiskDecision(False, "equity is zero or negative — orders halted")
+            # 3. Equity verification
+            equity_decision = self._verify_equity()
+            if equity_decision:
+                return equity_decision
 
-            # Position size cap
-            price = request.limit_price if request.limit_price is not None else 100.0
-            if price == 0:
-                raise ZeroDivisionError("limit_price is zero, cannot compute position size")
-            estimated_value = request.quantity * price
-            max_allowed = self._equity * self.max_position_pct
-            if estimated_value > max_allowed:
-                adj_qty = max_allowed / price
-                logger.warning(
-                    "Position size capped",
-                    symbol=request.symbol,
-                    original=request.quantity,
-                    adjusted=adj_qty,
-                )
-                return RiskDecision(True, "size capped", adj_qty)
+            # 4. Position size cap
+            size_decision = self._cap_position_size(request)
+            if size_decision:
+                return size_decision
 
-            # Correlation cluster check
-            if self._clusters:
-                allowed, reason = check_cluster_limits(
-                    request.symbol,
-                    estimated_value,
-                    self._positions,
-                    self._clusters,
-                    self.max_cluster_pct,
-                    self._equity,
-                )
-                if not allowed:
-                    return RiskDecision(False, reason)
+            # 5. Correlation cluster limits
+            cluster_decision = self._check_correlation_cluster(request)
+            if cluster_decision:
+                return cluster_decision
 
             return RiskDecision(True, "ok", request.quantity)
         except RiskManagerError:
@@ -202,6 +174,75 @@ class RiskManager:
             )
             raise OrderCheckError("Error checking order risk") from exc
 
+    def _check_global_breaker(self) -> RiskDecision | None:
+        """Return a RiskDecision if the global breaker halts trading, otherwise None."""
+        if self.global_breaker.is_halted:
+            reason = (
+                self.global_breaker.halt_reasons[-1]
+                if self.global_breaker.halt_reasons
+                else "unknown"
+            )
+            return RiskDecision(False, f"Global circuit breaker halted: {reason}")
+        return None
+
+    def _check_arb_breaker(self, request: OrderRequest) -> RiskDecision | None:
+        """Return a RiskDecision if the arbitrage breaker halts trading for the request."""
+        if request.risk_bucket == "arbitrage" and self.arb_breaker.is_halted:
+            reason = (
+                self.arb_breaker.halt_reasons[-1]
+                if self.arb_breaker.halt_reasons
+                else "unknown"
+            )
+            return RiskDecision(False, f"Arb circuit breaker halted: {reason}")
+        return None
+
+    def _verify_equity(self) -> RiskDecision | None:
+        """Check equity readiness and positivity."""
+        if not self._equity_confirmed:
+            logger.warning(
+                "risk.manager: using estimated equity — broker snapshot not yet received",
+                estimated_equity=self._equity,
+            )
+        if self._equity <= 0:
+            return RiskDecision(False, "equity is zero or negative — orders halted")
+        return None
+
+    def _cap_position_size(self, request: OrderRequest) -> RiskDecision | None:
+        """Enforce max position percentage; return adjusted decision if capped."""
+        price = request.limit_price if request.limit_price is not None else 100.0
+        if price == 0:
+            raise ZeroDivisionError("limit_price is zero, cannot compute position size")
+        estimated_value = request.quantity * price
+        max_allowed = self._equity * self.max_position_pct
+        if estimated_value > max_allowed:
+            adj_qty = max_allowed / price
+            logger.warning(
+                "Position size capped",
+                symbol=request.symbol,
+                original=request.quantity,
+                adjusted=adj_qty,
+            )
+            return RiskDecision(True, "size capped", adj_qty)
+        return None
+
+    def _check_correlation_cluster(self, request: OrderRequest) -> RiskDecision | None:
+        """Validate that the order does not exceed cluster exposure limits."""
+        if not self._clusters:
+            return None
+        price = request.limit_price if request.limit_price is not None else 100.0
+        estimated_value = request.quantity * price
+        allowed, reason = check_cluster_limits(
+            request.symbol,
+            estimated_value,
+            self._positions,
+            self._clusters,
+            self.max_cluster_pct,
+            self._equity,
+        )
+        if not allowed:
+            return RiskDecision(False, reason)
+        return None
+
     def kelly_size(
         self,
         symbol: str,
@@ -210,6 +251,7 @@ class RiskManager:
         avg_win_pct: float,
         avg_loss_pct: float,
     ) -> int:
+        """Calculate position size using the Kelly criterion."""
         try:
             return size_from_kelly(
                 equity=self._equity,
@@ -217,11 +259,11 @@ class RiskManager:
                 avg_win_pct=avg_win_pct,
                 avg_loss_pct=avg_loss_pct,
                 price=price,
-                max_pct=self.max_position_pct,
+                symbol=symbol,
             )
         except Exception as exc:
             logger.error(
-                "Kelly sizing calculation failed",
+                "Kelly sizing failed",
                 symbol=symbol,
                 price=price,
                 win_rate=win_rate,
@@ -231,4 +273,6 @@ class RiskManager:
                 exc_msg=str(exc),
                 exc_info=True,
             )
-            raise KellySizingError("Error computing Kelly size") from exc
+            raise KellySizingError("Error calculating Kelly size") from exc
+
+    # Additional methods and logic may follow...
