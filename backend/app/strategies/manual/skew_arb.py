@@ -201,3 +201,22 @@ class SkewArbitrageStrategy(AbstractStrategy):
             short_entries=high_skew,   # sell/short when skew unusually high
             short_exits=(low_skew | neutral).fillna(False),
         )
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# analyze() fetches external data; when the source is down/blocked it used to
+# raise out of the strategy (contract-test audit 2026-07-11). The desk guards
+# exceptions and timeouts, but the contract is: catch and return None so EVERY
+# caller (bot engine, StrategyRunner, backtests) is safe, not just the desk.
+_unguarded_analyze = SkewArbitrageStrategy.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"skew_arb: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+SkewArbitrageStrategy.analyze = _failsoft_analyze

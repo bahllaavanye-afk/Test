@@ -35,9 +35,10 @@ from app.strategies import STRATEGY_REGISTRY  # noqa: E402
 # Adding a name in a PR is a red flag; this list may only shrink.
 QUARANTINED: set[str] = {
     "basis_carry",            # raises RuntimeError when Binance blocked
-    "gamma_exposure", "kalman_pairs", "lorentzian_knn", "credit_spread_income",
-    "breakeven_inflation", "dollar_carry", "macro_risk_barometer", "pead_sue",
-    "skew_arb", "multi_factor_equity", "mvrv_zscore_timing", "vrp_systematic",
+    "credit_spread_income",   # fail-soft guarded, but yfinance retry sleeps >5s offline
+    "lorentzian_knn", 
+    "breakeven_inflation", "dollar_carry", "macro_risk_barometer", 
+    "multi_factor_equity", "mvrv_zscore_timing", 
     "duration_momentum", "yield_curve_momentum", "pmi_sector_rotation",
     "tlt_spy_rotation", "yield_spread_reversion",
 }
