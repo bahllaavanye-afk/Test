@@ -199,8 +199,13 @@
     "Check DB connections",
     "Test market data",
     "Verify config files",
-    "Check system clocks"
+    "Check system clocks",
+    "monitoring on strategies/manual/poly_late_resolution.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "monitoring on ml/models/gemini_signal.py: success \u2014 tests green",
+    "monitoring on ml/features/macro_signals.py: success \u2014 tests green",
+    "monitoring on brokers/base.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T21:13:41.557778+00:00",
+  "last_updated": "2026-07-11T23:27:12.721361+00:00",
   "total": 200
 }
