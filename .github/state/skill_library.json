@@ -199,8 +199,12 @@
     "Check clock sync",
     "Test DNS resolve",
     "Verify file perms",
-    "Track API call durations"
+    "Track API call durations",
+    "docstrings on ml/models/lorentzian_knn.py: success \u2014 tests green",
+    "docstrings on ml/features/microstructure.py: success \u2014 tests green",
+    "docstrings on execution/slippage_tracker.py: success \u2014 tests green",
+    "docstrings on risk/hrp.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-10T23:01:45.755847+00:00",
+  "last_updated": "2026-07-11T00:55:55.357513+00:00",
   "total": 200
 }
