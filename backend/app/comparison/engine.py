@@ -3,9 +3,11 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -47,13 +49,57 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        # ---- Input validation ----
+        if not isinstance(manual_signals, pd.Series):
+            raise ValueError("manual_signals must be a pandas Series.")
+        if not isinstance(ml_signals, pd.Series):
+            raise ValueError("ml_signals must be a pandas Series.")
+        if not isinstance(prices, pd.Series):
+            raise ValueError("prices must be a pandas Series.")
+
+        if manual_signals.empty:
+            raise ValueError("manual_signals Series is empty.")
+        if ml_signals.empty:
+            raise ValueError("ml_signals Series is empty.")
+        if prices.empty:
+            raise ValueError("prices Series is empty.")
+
+        # Ensure indices align (common dates)
+        common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
+        if common_index.empty:
+            raise ValueError("No overlapping dates among manual_signals, ml_signals, and prices.")
+        # Align data to common index
+        manual_signals = manual_signals.loc[common_index]
+        ml_signals = ml_signals.loc[common_index]
+        prices = prices.loc[common_index]
+
+        if not isinstance(strategy_name, str) or not strategy_name.strip():
+            raise ValueError("strategy_name must be a non‑empty string.")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a non‑empty string.")
+        if not isinstance(interval, str) or not interval.strip():
+            raise ValueError("interval must be a non‑empty string.")
+
+        if not isinstance(start_date, date):
+            raise ValueError("start_date must be a datetime.date instance.")
+        if not isinstance(end_date, date):
+            raise ValueError("end_date must be a datetime.date instance.")
+        if start_date > end_date:
+            raise ValueError("start_date cannot be after end_date.")
+
+        if not isinstance(initial_equity, (int, float)):
+            raise ValueError("initial_equity must be a numeric type.")
+        if initial_equity <= 0:
+            raise ValueError("initial_equity must be a positive number.")
+        # -------------------------
+
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
         benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
-        # Extract daily return series for t-test
+        # Extract equity series for t-test
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
@@ -70,11 +116,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
