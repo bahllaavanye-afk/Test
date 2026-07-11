@@ -199,8 +199,13 @@
     "Check DB connections",
     "Test market data",
     "Verify config files",
-    "Check system clocks"
+    "Check system clocks",
+    "cleanup on api/v1/notifications.py: success \u2014 tests green",
+    "cleanup on test/unit/test_advanced_metrics.py: success \u2014 tests green",
+    "cleanup on strategies/manual/btc_eth_stat_arb.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
+    "cleanup on ml/models/ensemble_model.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T21:13:41.557778+00:00",
+  "last_updated": "2026-07-11T21:21:19.355288+00:00",
   "total": 200
 }
