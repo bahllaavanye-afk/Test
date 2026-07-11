@@ -3,9 +3,11 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -47,6 +49,53 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        """
+        Run a side‑by‑side comparison between a manual and an ML‑enhanced strategy.
+
+        Raises:
+            ValueError: If any input is invalid.
+        """
+        # ---- Input validation ----
+        if not isinstance(manual_signals, pd.Series):
+            raise ValueError("manual_signals must be a pandas Series.")
+        if not isinstance(ml_signals, pd.Series):
+            raise ValueError("ml_signals must be a pandas Series.")
+        if not isinstance(prices, pd.Series):
+            raise ValueError("prices must be a pandas Series.")
+
+        if manual_signals.empty:
+            raise ValueError("manual_signals cannot be empty.")
+        if ml_signals.empty:
+            raise ValueError("ml_signals cannot be empty.")
+        if prices.empty:
+            raise ValueError("prices cannot be empty.")
+
+        # Ensure signals align with price index
+        if not manual_signals.index.equals(prices.index):
+            raise ValueError("manual_signals index must match prices index.")
+        if not ml_signals.index.equals(prices.index):
+            raise ValueError("ml_signals index must match prices index.")
+
+        if not isinstance(strategy_name, str) or not strategy_name.strip():
+            raise ValueError("strategy_name must be a non‑empty string.")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a non‑empty string.")
+        if not isinstance(interval, str) or not interval.strip():
+            raise ValueError("interval must be a non‑empty string.")
+
+        if not isinstance(start_date, date):
+            raise ValueError("start_date must be a datetime.date instance.")
+        if not isinstance(end_date, date):
+            raise ValueError("end_date must be a datetime.date instance.")
+        if start_date > end_date:
+            raise ValueError("start_date cannot be later than end_date.")
+
+        if not isinstance(initial_equity, (int, float)):
+            raise ValueError("initial_equity must be a numeric type.")
+        if initial_equity <= 0:
+            raise ValueError("initial_equity must be greater than zero.")
+        # -------------------------
+
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
@@ -70,11 +119,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
