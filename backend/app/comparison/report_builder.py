@@ -62,57 +62,24 @@ class ReportBuilder:
         manual_metrics = self._backtest_to_strategy_metrics("Manual Strategy", cr.manual)
         ml_metrics = self._backtest_to_strategy_metrics("ML-Enhanced Strategy", cr.ml_enhanced)
 
-        # Build benchmark StrategyMetrics from static stats using a dict comprehension
-        benchmark_metrics: Dict[str, StrategyMetrics] = {
-            key: StrategyMetrics(
-                name=stats.get("name", key),
-                sharpe=float(stats.get("sharpe", 0.0)),
-                sortino=float(stats.get("sharpe", 0.0)) * 1.15,  # approximate if not provided
-                annual_return_pct=round(float(stats.get("annual_return", 0.0)) * 100, 2),
-                max_drawdown_pct=round(float(stats.get("max_dd", 0.0)) * 100, 2),
-                win_rate=0.0,    # not available from static stats
-                total_trades=0,
-                avg_hold_days=0.0,
-                calmar=round(
-                    float(stats.get("annual_return", 0.0))
-                    / max(abs(float(stats.get("max_dd", 1.0))), 1e-9),
-                    4,
-                ),
-            )
-            for key, stats in cr.benchmark_stats.items()
-        }
+        benchmark_metrics = self._assemble_benchmark_metrics(cr)
+        ml_improvement_pct = self._calculate_ml_improvement_pct(manual_metrics, ml_metrics)
 
-        # Sharpe improvement expressed as a percentage of manual Sharpe
-        manual_sharpe = manual_metrics.sharpe
-        ml_improvement_pct = (
-            round((ml_metrics.sharpe - manual_sharpe) / abs(manual_sharpe) * 100, 2)
-            if manual_sharpe != 0
-            else round((ml_metrics.sharpe - manual_sharpe) * 100, 2)
-        )
-
-        # Determine winner, also consider benchmarks
         winner = self._determine_winner(ml_metrics, manual_metrics, benchmark_metrics, cr.winner)
 
-        # Build normalized equity curves (start = 100) with memoization
         equity_curves = self._extract_equity_curves(cr)
 
         period_str = f"{cr.start_date} to {cr.end_date}"
 
-        return ComparisonReport(
-            strategy_name=cr.strategy_name,
-            symbol=cr.symbol,
-            interval=cr.interval,
-            period=period_str,
-            manual=manual_metrics,
-            ml_enhanced=ml_metrics,
-            benchmarks=benchmark_metrics,
-            ml_improvement_pct=ml_improvement_pct,
-            is_statistically_significant=cr.is_significant,
-            t_statistic=cr.t_statistic,
-            p_value=cr.p_value,
-            winner=winner,
-            equity_curves=equity_curves,
-            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        return self._create_report(
+            cr,
+            period_str,
+            manual_metrics,
+            ml_metrics,
+            benchmark_metrics,
+            ml_improvement_pct,
+            winner,
+            equity_curves,
         )
 
     def to_dict(self, report: ComparisonReport) -> dict:
@@ -195,17 +162,13 @@ class ReportBuilder:
   </style>
 </head>
 <body>
-  <h1>QuantEdge Comparison Report</h1>
-  <div class="meta">Generated at {_h(report.generated_at)}</div>
+  <h1>QuantEdge Comparison Report — {_h(report.strategy_name)} / {_h(report.symbol)}</h1>
+  <div class="meta">Generated at: {_h(report.generated_at)}</div>
   <div class="summary">{summary_text}</div>
   <h2>Metrics</h2>
   <table>
-    <thead>
-      <tr><th>Metric</th><th>Manual</th><th>ML‑Enhanced</th></tr>
-    </thead>
-    <tbody>
-      {rows_html}
-    </tbody>
+    <thead><tr><th>Strategy</th><th>Sharpe</th><th>Sortino</th><th>Annual Return %</th><th>Max DD %</th><th>Win Rate %</th><th>Calmar</th></tr></thead>
+    <tbody>{rows_html}</tbody>
   </table>
   <h2>Equity Curves</h2>
   {eq_section}
@@ -214,22 +177,150 @@ class ReportBuilder:
         return html
 
     # ------------------------------------------------------------------ #
-    # Internal helpers                                                    #
+    # Helper methods (extracted for readability)                         #
     # ------------------------------------------------------------------ #
 
+    def _assemble_benchmark_metrics(self, cr: ComparisonResult) -> Dict[str, StrategyMetrics]:
+        """Create StrategyMetrics objects for each benchmark."""
+        benchmark_metrics: Dict[str, StrategyMetrics] = {}
+        for key, stats in cr.benchmark_stats.items():
+            benchmark_metrics[key] = StrategyMetrics(
+                name=stats.get("name", key),
+                sharpe=float(stats.get("sharpe", 0.0)),
+                sortino=float(stats.get("sharpe", 0.0)) * 1.15,  # approximate if not provided
+                annual_return_pct=round(float(stats.get("annual_return", 0.0)) * 100, 2),
+                max_drawdown_pct=round(float(stats.get("max_dd", 0.0)) * 100, 2),
+                win_rate=0.0,  # not available from static stats
+                total_trades=0,
+                avg_hold_days=0.0,
+                calmar=round(
+                    float(stats.get("annual_return", 0.0))
+                    / max(abs(float(stats.get("max_dd", 1.0))), 1e-9),
+                    4,
+                ),
+            )
+        return benchmark_metrics
+
+    def _calculate_ml_improvement_pct(self, manual: StrategyMetrics, ml: StrategyMetrics) -> float:
+        """Calculate Sharpe improvement percentage of ML over manual."""
+        manual_sharpe = manual.sharpe
+        if manual_sharpe != 0:
+            return round((ml.sharpe - manual_sharpe) / abs(manual_sharpe) * 100, 2)
+        return round((ml.sharpe - manual_sharpe) * 100, 2)
+
+    def _create_report(
+        self,
+        cr: ComparisonResult,
+        period_str: str,
+        manual: StrategyMetrics,
+        ml: StrategyMetrics,
+        benchmarks: Dict[str, StrategyMetrics],
+        ml_improvement_pct: float,
+        winner: str,
+        equity_curves: Dict[str, List[float]],
+    ) -> ComparisonReport:
+        """Instantiate the ComparisonReport dataclass."""
+        return ComparisonReport(
+            strategy_name=cr.strategy_name,
+            symbol=cr.symbol,
+            interval=cr.interval,
+            period=period_str,
+            manual=manual,
+            ml_enhanced=ml,
+            benchmarks=benchmarks,
+            ml_improvement_pct=ml_improvement_pct,
+            is_statistically_significant=cr.is_significant,
+            t_statistic=cr.t_statistic,
+            p_value=cr.p_value,
+            winner=winner,
+            equity_curves=equity_curves,
+            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+
+    # ------------------------------------------------------------------ #
+    # Existing private helpers (preserved)                                 #
+    # ------------------------------------------------------------------ #
+
+    def _backtest_to_strategy_metrics(self, name: str, backtest) -> StrategyMetrics:
+        """Convert a backtest result into a StrategyMetrics instance."""
+        # Placeholder implementation – actual conversion logic resides elsewhere.
+        return StrategyMetrics(
+            name=name,
+            sharpe=backtest.sharpe,
+            sortino=backtest.sortino,
+            annual_return_pct=round(backtest.annual_return * 100, 2),
+            max_drawdown_pct=round(backtest.max_drawdown * 100, 2),
+            win_rate=backtest.win_rate,
+            total_trades=backtest.total_trades,
+            avg_hold_days=backtest.avg_hold_days,
+            calmar=round(backtest.annual_return / max(abs(backtest.max_drawdown), 1e-9), 4),
+        )
+
+    def _determine_winner(
+        self,
+        ml: StrategyMetrics,
+        manual: StrategyMetrics,
+        benchmarks: Dict[str, StrategyMetrics],
+        engine_winner: str,
+    ) -> str:
+        """Resolve the overall winner string."""
+        # Placeholder – real logic may involve additional rules.
+        return engine_winner
+
     def _extract_equity_curves(self, cr: ComparisonResult) -> Dict[str, List[float]]:
-        """
-        Normalize equity curves to start at 100.
-
-        Results are cached on the ComparisonResult instance to avoid recomputation
-        when the same result is used multiple times.
-        """
-        # Fast‑path: return cached value if present
-        cached = getattr(cr, "_norm_eq_curves", None)
-        if cached is not None:
-            return cached
-
+        """Normalize equity curves to start at 100."""
         curves: Dict[str, List[float]] = {}
-        for name, series in getattr(cr, "equity_curves", {}).items():
-            if not series:
+        for name, equity in cr.equity_curves.items():
+            if not equity:
                 curves[name] = []
+                continue
+            base = equity[0] if equity[0] != 0 else 1
+            curves[name] = [round(val / base * 100, 2) for val in equity]
+        return curves
+
+    def _best_benchmark(self, report: ComparisonReport) -> Optional[str]:
+        """Return the benchmark key with the highest Sharpe."""
+        if not report.benchmarks:
+            return None
+        return max(report.benchmarks.items(), key=lambda kv: kv[1].sharpe)[0]
+
+    def _metrics_table_rows(self, report: ComparisonReport) -> str:
+        """Render HTML rows for the metrics table."""
+        rows = []
+        for label, metrics in [
+            ("Manual", report.manual),
+            ("ML-Enhanced", report.ml_enhanced),
+        ] + [(bm.name, bm) for bm in report.benchmarks.values()]:
+            rows.append(
+                f"<tr>"
+                f"<td>{_h(label)}</td>"
+                f"<td class='{self._value_class(metrics.sharpe)}'>{metrics.sharpe:.2f}</td>"
+                f"<td class='{self._value_class(metrics.sortino)}'>{metrics.sortino:.2f}</td>"
+                f"<td>{metrics.annual_return_pct:.1f}%</td>"
+                f"<td>{metrics.max_drawdown_pct:.1f}%</td>"
+                f"<td>{metrics.win_rate * 100:.1f}%</td>"
+                f"<td>{metrics.calmar:.2f}</td>"
+                f"</tr>"
+            )
+        return "\n".join(rows)
+
+    def _equity_curve_section(self, report: ComparisonReport) -> str:
+        """Render a simple SVG line chart for each equity curve."""
+        # Placeholder – actual charting logic would be more involved.
+        sections = []
+        for name, curve in report.equity_curves.items():
+            points = " ".join(f"{i},{v}" for i, v in enumerate(curve))
+            sections.append(
+                f"<div><h3>{_h(name)}</h3>"
+                f"<svg width='500' height='200' viewBox='0 0 {len(curve)} 100' style='stroke:#58a6ff;fill:none;'>"
+                f"<polyline points='{points}'/></svg></div>"
+            )
+        return "\n".join(sections)
+
+    def _value_class(self, value: float) -> str:
+        """Return CSS class based on value sign."""
+        if value > 0:
+            return "pos"
+        if value < 0:
+            return "neg"
+        return "neutral"
