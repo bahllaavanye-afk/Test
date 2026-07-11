@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Verify file perms",
-    "cleanup on ml/models/itransformer.py: success \u2014 tests green",
-    "Check DB connections",
-    "strategy_logic on test/unit/test_execution.py: success \u2014 tests green",
     "docstrings on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
     "Implement unit tests",
     "**Implement retry mechanisms**: Review `quantedge/backend/trading.py` to identify and implement retry mechanisms to handle errors and improve trading script reliability.",
@@ -199,8 +195,12 @@
     "Monitor disk space",
     "Test network connectivity",
     "Validate user credentials",
-    "Track thread timeouts"
+    "Track thread timeouts",
+    "Scan for malware",
+    "Refactor nested logic",
+    "Improve code readability",
+    "Enhance memory logging"
   ],
-  "last_updated": "2026-07-11T17:30:40.095771+00:00",
+  "last_updated": "2026-07-11T18:57:04.059289+00:00",
   "total": 200
 }
