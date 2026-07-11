@@ -168,3 +168,22 @@ class VRPSystematicStrategy(AbstractStrategy):
         exits = (ratio.shift(1) < 1.0).fillna(False)  # buy back when premium normalizes
 
         return BacktestSignals(entries=entries, exits=exits)
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# analyze() fetches external data; when the source is down/blocked it used to
+# raise out of the strategy (contract-test audit 2026-07-11). The desk guards
+# exceptions and timeouts, but the contract is: catch and return None so EVERY
+# caller (bot engine, StrategyRunner, backtests) is safe, not just the desk.
+_unguarded_analyze = VRPSystematicStrategy.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"vrp_systematic: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+VRPSystematicStrategy.analyze = _failsoft_analyze
