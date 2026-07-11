@@ -1,8 +1,5 @@
 {
   "skills": [
-    "* **Algorithm implementation testing**: The `ucb1.py` implementation in `backend/algorithms/` should be tested thoroughly, exploring strategies for the QuantEdge platform.",
-    "Implement circuit breaker",
-    "* **Algorithm Exploration**: The `algo_agent` is exploring the UCB1 bandit experiment (./experiments/ucb1_bandit) for optimization opportunities.",
     "Enhance code documentation",
     "Verify file perms",
     "cleanup on ml/models/itransformer.py: success \u2014 tests green",
@@ -199,8 +196,11 @@
     "Prioritize model reviews",
     "Optimize data ingestion",
     "Verify trade limits",
-    "Log system memory"
+    "Log system memory",
+    "Monitor disk space",
+    "Test network connectivity",
+    "Validate user credentials"
   ],
-  "last_updated": "2026-07-11T10:11:50.456530+00:00",
+  "last_updated": "2026-07-11T11:28:51.369371+00:00",
   "total": 200
 }
