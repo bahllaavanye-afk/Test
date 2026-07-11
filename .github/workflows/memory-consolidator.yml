@@ -1,9 +1,16 @@
 name: Memory Consolidator — Nightly Knowledge Distillation
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "0 2 * * *"    # 2 AM UTC daily
   workflow_dispatch:
+
+concurrency:
+  group: memory-consolidator
+  cancel-in-progress: false
 
 jobs:
   consolidate:

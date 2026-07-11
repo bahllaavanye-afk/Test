@@ -1,6 +1,9 @@
 name: Research → Trade Pipeline (24/7)
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "*/30 * * * *"   # every 30 minutes, all day
   workflow_dispatch:

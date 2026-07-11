@@ -1,9 +1,16 @@
 name: "Employee Conversations (hourly)"
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: '5 * * * *'
   workflow_dispatch:
+
+concurrency:
+  group: employee-conversations
+  cancel-in-progress: false
 
 jobs:
   employee-conversations:

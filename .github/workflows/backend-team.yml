@@ -4,6 +4,9 @@ name: Backend AI Engineering Team
 # Auto-fixes safe configuration files and reports to Slack.
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "0 */4 * * *"    # every 4 hours (aligned with 4h cooldown on "all clean" messages)
   push:

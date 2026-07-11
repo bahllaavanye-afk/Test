@@ -4,6 +4,9 @@ name: Frontend Team — AI-Driven UI Improvements
 # and applies them. Runs daily and on manual trigger.
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "0 3 * * 1,3,5"   # Mon/Wed/Fri 3am UTC
   workflow_dispatch:

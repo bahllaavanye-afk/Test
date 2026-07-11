@@ -1,9 +1,16 @@
 name: Collective Learning Aggregator — Every 30 Minutes
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+
+concurrency:
+  group: collective-learning
+  cancel-in-progress: false
 
 jobs:
   learn:
