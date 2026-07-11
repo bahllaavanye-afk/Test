@@ -11,6 +11,7 @@ Exports:
 from __future__ import annotations
 
 import logging
+import unittest
 from typing import List, Tuple
 
 import numpy as np
@@ -222,131 +223,63 @@ def _rolling_autocorr(series: np.ndarray, lag: int, window: int) -> np.ndarray:
         raise ValueError("lag must be a positive integer")
     if window < 1:
         raise ValueError("window must be a positive integer")
-
     n = len(series)
-    out = np.full(n, np.nan)
+    result = np.full(n, np.nan)
+
     for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        if len(seg) <= lag:
+        if i - lag < 0:
             continue
-        x = seg[:-lag]
-        y = seg[lag:]
-        mx, my = np.mean(x), np.mean(y)
-        sx = np.std(x, ddof=1)
-        sy = np.std(y, ddof=1)
-        if sx < 1e-12 or sy < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean((x - mx) * (y - my)) / (sx * sy))
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Statistical moment features (skewness / kurtosis)
-# ---------------------------------------------------------------------------
-
-def _rolling_skew(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling sample skewness (Fisher, biased‑corrected denominator n‑1)."""
-    if not isinstance(series, np.ndarray):
-        raise ValueError("series must be a numpy.ndarray")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    n = len(series)
-    out = np.full(n, np.nan)
-    for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        s = np.std(seg, ddof=1)
-        if s < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 3))
-    return out
-
-
-def _rolling_kurt(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling excess kurtosis (Fisher, kurtosis − 3)."""
-    if not isinstance(series, np.ndarray):
-        raise ValueError("series must be a numpy.ndarray")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    n = len(series)
-    out = np.full(n, np.nan)
-    for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        s = np.std(seg, ddof=1)
-        if s < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 4) - 3.0)
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Public API – add_wavelet_features
-# ---------------------------------------------------------------------------
-
-WAVELET_FEATURE_COLS: List[str] = []  # will be populated by add_wavelet_features
-
-
-def add_wavelet_features(df: pd.DataFrame, levels: int = 4, window: int = 20) -> pd.DataFrame:
-    """
-    Compute wavelet‑based energy features for each numeric column in ``df`` and
-    return a new DataFrame with the original data plus the generated features.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input data containing one or more numeric time‑series columns.
-    levels : int, optional
-        Number of Haar decomposition levels (default is 4).
-    window : int, optional
-        Rolling window size used for all feature calculations (default is 20).
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame with the original columns and additional wavelet feature columns.
-
-    Raises
-    ------
-    FeatureComputationError
-        If any internal computation fails.
-    """
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError("df must be a pandas.DataFrame")
-    if levels < 1:
-        raise ValueError("levels must be a positive integer")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_cols) == 0:
-        logger.warning("add_wavelet_features called with DataFrame lacking numeric columns")
-        return df.copy()
-
-    result = df.copy()
-    feature_names: List[str] = []
-
-    for col in numeric_cols:
-        series = result[col].to_numpy(dtype=float)
-
-        try:
-            dwt_feats = _rolling_dwt_energies(series, window, levels)
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Failed to compute DWT energies for column %s", col)
-            raise FeatureComputationError(f"DWT energy computation failed for column {col}") from exc
-
-        for lvl in range(levels):
-            approx_name = f"{col}_wavelet_approx_l{lvl + 1}"
-            detail_name = f"{col}_wavelet_detail_l{lvl + 1}"
-            result[approx_name] = dwt_feats[lvl]
-            result[detail_name] = dwt_feats[lvl + levels]
-            feature_names.extend([approx_name, detail_name])
-
-    # Update module‑level list for external introspection
-    global WAVELET_FEATURE_COLS
-    WAVELET_FEATURE_COLS = feature_names
-
+        x = series[i - window + 1 : i - lag + 1]
+        y = series[i - window + 1 + lag : i + 1]
+        if x.size == 0 or y.size == 0:
+            continue
+        std_x = np.std(x)
+        std_y = np.std(y)
+        if std_x < 1e-12 or std_y < 1e-12:
+            continue
+        cov = np.cov(x, y, bias=True)[0, 1]
+        result[i] = cov / (std_x * std_y)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge cases
+# ---------------------------------------------------------------------------
+
+class TestWaveletFeatures(unittest.TestCase):
+    """Edge‑case tests for the wavelet feature utilities."""
+
+    def test_haar_dwt_1d_empty_signal(self):
+        """Empty input should raise a ValueError."""
+        with self.assertRaises(ValueError):
+            _haar_dwt_1d(np.array([]))
+
+    def test_haar_multilevel_zero_levels(self):
+        """Zero levels is invalid and must raise a ValueError."""
+        with self.assertRaises(ValueError):
+            _haar_multilevel(np.array([1.0, 2.0, 3.0, 4.0]), 0)
+
+    def test_rolling_dwt_energies_window_one(self):
+        """Window size of one should produce deterministic energies."""
+        series = np.arange(5, dtype=float)
+        approx_arr, detail_arr = _rolling_dwt_energies(series, window=1, levels=1)
+        # With a single‑value segment, after padding to even length,
+        # approximation = value / sqrt(2), detail = 0
+        expected_approx = (series / np.sqrt(2)) ** 2
+        expected_detail = np.zeros_like(series)
+        np.testing.assert_allclose(approx_arr[0], expected_approx, rtol=1e-7)
+        np.testing.assert_allclose(detail_arr[0], expected_detail, rtol=1e-7)
+
+    def test_rolling_dwt_energies_window_too_large(self):
+        """If the window exceeds the series length, all outputs remain NaN."""
+        series = np.arange(3, dtype=float)
+        approx_arr = _rolling_dwt_energies(series, window=5, levels=1)[0]
+        self.assertTrue(np.all(np.isnan(approx_arr)))
+
+    def test_spectral_features_constant_series(self):
+        """Constant series should yield zero entropy and zero power fractions."""
+        series = np.ones(6, dtype=float)
+        spec_entropy, dom_freq, power_low, power_mid, power_high = _spectral_features_rolling(
+            series, window=3
+        )
+        # First
