@@ -15,7 +15,22 @@ from app.utils.logging import logger
 
 
 async def run_backtest_job(run_id: str) -> None:
-    """Fetch one queued BacktestRun, execute it, write results back to DB."""
+    """Fetch one queued BacktestRun, execute it, write results back to DB.
+
+    Args:
+        run_id: UUID string identifying the BacktestRun.
+
+    Raises:
+        ValueError: If `run_id` is not a non‑empty string or not a valid UUID.
+    """
+    # Input validation
+    if not isinstance(run_id, str) or not run_id:
+        raise ValueError("run_id must be a non‑empty string")
+    try:
+        uuid.UUID(run_id)
+    except ValueError as exc:
+        raise ValueError("run_id must be a valid UUID string") from exc
+
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun, BacktestResult
     from app.backtest.engine import run_backtest
