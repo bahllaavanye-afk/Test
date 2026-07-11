@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
+from pandas.api.types import is_datetime64_any_dtype
 
 from app.backtest.engine import BacktestMetrics, run_backtest
 
@@ -115,8 +116,42 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
-    if scenarios is None:
+    # ---- Input validation ----
+    if not isinstance(signals, pd.Series):
+        raise ValueError("signals must be a pandas Series")
+    if not isinstance(prices, pd.Series):
+        raise ValueError("prices must be a pandas Series")
+    if opens is not None and not isinstance(opens, pd.Series):
+        raise ValueError("opens must be a pandas Series if provided")
+    if volume is not None and not isinstance(volume, pd.Series):
+        raise ValueError("volume must be a pandas Series if provided")
+    if not isinstance(initial_equity, (int, float)):
+        raise ValueError("initial_equity must be a numeric type")
+    if initial_equity <= 0:
+        raise ValueError("initial_equity must be positive")
+    if not isinstance(commission_pct, (int, float)):
+        raise ValueError("commission_pct must be a numeric type")
+    if not (0 <= commission_pct <= 1):
+        raise ValueError("commission_pct must be between 0 and 1")
+    if not isinstance(slippage_pct, (int, float)):
+        raise ValueError("slippage_pct must be a numeric type")
+    if not (0 <= slippage_pct <= 1):
+        raise ValueError("slippage_pct must be between 0 and 1")
+    if scenarios is not None:
+        if not isinstance(scenarios, list):
+            raise ValueError("scenarios must be a list of StressScenario instances")
+        for s in scenarios:
+            if not isinstance(s, StressScenario):
+                raise ValueError("each item in scenarios must be a StressScenario")
+    else:
         scenarios = STRESS_SCENARIOS
+
+    # Ensure datetime-like indices for signals and prices
+    if not is_datetime64_any_dtype(signals.index):
+        raise ValueError("signals index must be datetime-like")
+    if not is_datetime64_any_dtype(prices.index):
+        raise ValueError("prices index must be datetime-like")
+    # ---- End validation ----
 
     results: list[StressResult] = []
 
@@ -184,6 +219,16 @@ def stress_summary(results: list[StressResult]) -> dict:
     Returns per-scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
+    # ---- Input validation ----
+    if not isinstance(results, list):
+        raise ValueError("results must be a list of StressResult instances")
+    for r in results:
+        if not isinstance(r, StressResult):
+            raise ValueError("each item in results must be a StressResult")
+        if r.metrics is not None and not isinstance(r.metrics, BacktestMetrics):
+            raise ValueError("metrics in StressResult must be a BacktestMetrics instance or None")
+    # ---- End validation ----
+
     out: dict = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
