@@ -1,17 +1,24 @@
 """
-Backtest worker — polls for queued BacktestRun rows every 30 s and executes them.
+Backtest worker — polls for queued BacktestRun rows every 30 s and executes them.
 
 Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
+from typing import Dict, Tuple
+
+import pandas as pd
 
 from sqlalchemy import select
 from app.utils.logging import logger
+
+# Simple in‑memory cache for OHLCV data to avoid repeated network calls.
+# Key: (symbol, start_date, end_date, interval) → DataFrame
+_ohlcv_cache: Dict[Tuple[str, str, str, str], pd.DataFrame] = {}
 
 
 async def run_backtest_job(run_id: str) -> None:
@@ -29,7 +36,8 @@ async def run_backtest_job(run_id: str) -> None:
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
-        # capture fields before session closes
+
+        # Capture fields before session closes
         symbol = run.symbol
         start_date = run.start_date
         end_date = run.end_date
@@ -38,9 +46,17 @@ async def run_backtest_job(run_id: str) -> None:
         initial_equity = (run.params or {}).get("initial_equity", 100_000.0)
 
     try:
-        df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
-        if df.empty:
-            raise ValueError(f"No OHLCV data for {symbol} ({start_date}–{end_date})")
+        cache_key = (symbol, str(start_date), str(end_date), interval)
+        df = _ohlcv_cache.get(cache_key)
+
+        if df is None or df.empty:
+            df = await fetch_ohlcv(
+                symbol=symbol, start=start_date, end=end_date, interval=interval
+            )
+            if df.empty:
+                raise ValueError(f"No OHLCV data for {symbol} ({start_date}–{end_date})")
+            # Store a shallow copy to prevent accidental mutation downstream
+            _ohlcv_cache[cache_key] = df.copy()
 
         StratClass = STRATEGY_REGISTRY.get(strategy_name)
         if StratClass is None:
@@ -50,12 +66,13 @@ async def run_backtest_job(run_id: str) -> None:
         # backtest_signals may be sync or async depending on the strategy
         import inspect
         from app.strategies.base import BacktestSignals as _BSig
+
         _result = strategy.backtest_signals(df)
-        raw_signals = (await _result) if inspect.isawaitable(_result) else _result
+        raw_signals = await _result if inspect.isawaitable(_result) else _result
 
         # Convert BacktestSignals → pd.Series[int] expected by run_backtest
         if isinstance(raw_signals, _BSig):
-            import numpy as np
+            # Vectorized construction of the signal series
             sig = pd.Series(0, index=df.index, dtype=int)
             sig[raw_signals.entries.astype(bool)] = 1
             sig[raw_signals.exits.astype(bool)] = 0
@@ -94,6 +111,7 @@ async def run_backtest_job(run_id: str) -> None:
                 )
                 db.add(result)
                 await db.commit()
+
         logger.info(
             f"Backtest {run_id} complete",
             sharpe=round(metrics.sharpe, 2),
@@ -112,7 +130,7 @@ async def run_backtest_job(run_id: str) -> None:
 
 
 async def backtest_worker_loop() -> None:
-    """Poll for queued BacktestRun rows every 30 s and run them concurrently."""
+    """Poll for queued BacktestRun rows every 30 s and run them concurrently."""
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun
 
