@@ -70,11 +70,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
@@ -92,3 +94,106 @@ class StrategyComparisonEngine:
             is_significant=(p_val < 0.05),
             winner=winner,
         )
+
+
+# ==================== Unit Tests ====================
+
+import unittest
+from unittest.mock import patch, MagicMock
+
+
+class DummyMetrics:
+    """Simple stand‑in for BacktestMetrics used in tests."""
+    def __init__(self, equity_curve, sharpe):
+        self.equity_curve = equity_curve
+        self.sharpe = sharpe
+
+
+class TestStrategyComparisonEngine(unittest.IsolatedAsyncioTestCase):
+    async def _run_engine(
+        self,
+        manual_eq,
+        ml_eq,
+        manual_sharpe,
+        ml_sharpe,
+        mock_ttest=None,
+    ):
+        manual_signals = pd.Series([1, 0, 1])
+        ml_signals = pd.Series([1, 1, 0])
+        prices = pd.Series([100, 101, 102])
+
+        manual_metrics = DummyMetrics(
+            equity_curve=[{"equity": v} for v in manual_eq],
+            sharpe=manual_sharpe,
+        )
+        ml_metrics = DummyMetrics(
+            equity_curve=[{"equity": v} for v in ml_eq],
+            sharpe=ml_sharpe,
+        )
+
+        patches = [
+            patch("backend.app.comparison.engine.run_backtest", side_effect=[manual_metrics, ml_metrics]),
+            patch("backend.app.comparison.engine.fetch_benchmark_curves", return_value={}),
+            patch("backend.app.comparison.engine.get_benchmark_stats", return_value={}),
+        ]
+
+        if mock_ttest is not None:
+            patches.append(patch("backend.app.comparison.engine.stats.ttest_ind", mock_ttest))
+
+        async with asyncio.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+
+            engine = StrategyComparisonEngine()
+            result = await engine.run_comparison(
+                manual_signals,
+                ml_signals,
+                prices,
+                strategy_name="test_strategy",
+                symbol="TEST",
+                interval="1d",
+                start_date=date(2023, 1, 1),
+                end_date=date(2023, 1, 10),
+            )
+        return result
+
+    async def test_t_stat_boundary_short_series(self):
+        """When return series length <= 10, t‑stat should be 0 and p‑value 1."""
+        result = await self._run_engine(
+            manual_eq=[100, 101, 102, 103, 104, 105],
+            ml_eq=[100, 102, 104, 106, 108, 110],
+            manual_sharpe=1.0,
+            ml_sharpe=1.2,
+        )
+        self.assertEqual(result.t_statistic, 0.0)
+        self.assertEqual(result.p_value, 1.0)
+        self.assertFalse(result.is_significant)
+
+    async def test_winner_neither_due_to_small_improvement(self):
+        """If Sharpe improvement is below 0.1, winner should be 'neither'."""
+        result = await self._run_engine(
+            manual_eq=[100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150],
+            ml_eq=[100, 106, 112, 118, 124, 130, 136, 142, 148, 154, 160],
+            manual_sharpe=1.00,
+            ml_sharpe=1.05,  # improvement = 0.05 < 0.1
+        )
+        self.assertEqual(result.winner, "neither")
+        self.assertAlmostEqual(result.ml_improvement_sharpe, 0.05, places=4)
+
+    async def test_significance_flag_true(self):
+        """When the mocked p‑value is below 0.05, is_significant should be True."""
+        mock_ttest = MagicMock(return_value=(2.5, 0.03))
+        result = await self._run_engine(
+            manual_eq=[100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
+            ml_eq=[100, 102, 104, 106, 108, 110, 112, 114, 116, 118, 120, 122],
+            manual_sharpe=0.8,
+            ml_sharpe=1.0,
+            mock_ttest=mock_ttest,
+        )
+        self.assertTrue(result.is_significant)
+        self.assertAlmostEqual(result.p_value, 0.03, places=6)
+        self.assertAlmostEqual(result.t_statistic, 2.5, places=4)
+
+
+if __name__ == "__main__":
+    unittest.main()
