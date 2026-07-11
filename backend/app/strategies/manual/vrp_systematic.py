@@ -28,6 +28,8 @@ Academic:
 - Bollerslev, Tauchen, Zhou (2009) "Expected Stock Returns and Variance Risk Premia"
 - Ilmanen (2011) "Expected Returns" Chapter on volatility risk premium
 """
+import logging
+import time
 import numpy as np
 import pandas as pd
 import httpx
@@ -36,6 +38,7 @@ from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 
+logger = logging.getLogger(__name__)
 
 class VRPSystematicStrategy(AbstractStrategy):
     name = "vrp_systematic"
@@ -58,6 +61,7 @@ class VRPSystematicStrategy(AbstractStrategy):
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        self._signal_counter = 0
 
     async def _get_realized_vol(self, symbol: str) -> float | None:
         """Compute 20-day annualized realized volatility from daily closes."""
@@ -116,9 +120,12 @@ class VRPSystematicStrategy(AbstractStrategy):
         return float(iv) if iv is not None else None
 
     async def analyze(self, data: pd.DataFrame, symbol: str = "SPY") -> Signal | None:
+        start_time = time.perf_counter()
         if symbol not in self.UNIVERSE:
+            logger.info("VRP analyze skipped: symbol not in universe", extra={"symbol": symbol})
             return None
         if data.empty or "close" not in data.columns:
+            logger.info("VRP analyze skipped: insufficient data", extra={"symbol": symbol})
             return None
         spot = float(data["close"].iloc[-1])
 
@@ -126,17 +133,25 @@ class VRPSystematicStrategy(AbstractStrategy):
         iv = await self._get_implied_vol(symbol, spot)
 
         if rv is None or iv is None or rv < 0.001:
+            logger.info(
+                "VRP analyze unable to compute IV/RV",
+                extra={"symbol": symbol, "realized_vol": rv, "implied_vol": iv},
+            )
             return None
 
         iv_rv_ratio = iv / rv
         vrp = iv - rv  # volatility risk premium in annualized vol points
 
         if iv_rv_ratio < self.IV_RV_THRESHOLD:
+            logger.info(
+                "VRP analyze: ratio below threshold, no signal",
+                extra={"symbol": symbol, "iv_rv_ratio": iv_rv_ratio},
+            )
             return None  # Options not rich enough
 
         confidence = min((iv_rv_ratio - self.IV_RV_THRESHOLD) / 0.3, 1.0)
 
-        return Signal(
+        signal = Signal(
             symbol=symbol,
             side="sell",  # Sell the straddle
             confidence=confidence,
@@ -156,6 +171,23 @@ class VRPSystematicStrategy(AbstractStrategy):
             },
         )
 
+        self._signal_counter += 1
+        elapsed = time.perf_counter() - start_time
+        logger.info(
+            "VRP signal generated",
+            extra={
+                "symbol": symbol,
+                "signal_count": self._signal_counter,
+                "execution_time_ms": int(elapsed * 1000),
+                "confidence": confidence,
+                "iv_rv_ratio": iv_rv_ratio,
+                "vrp": vrp,
+                # P&L placeholder; actual P&L will be calculated downstream
+                "pnl_estimate": None,
+            },
+        )
+        return signal
+
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """Proxy: IV/RV ratio using HV20 vs HV60 (HV60 as IV proxy in absence of option data)."""
         log_ret = np.log(df["close"] / df["close"].shift(1))
@@ -163,8 +195,17 @@ class VRPSystematicStrategy(AbstractStrategy):
         hv60 = log_ret.rolling(60).std() * np.sqrt(252)
         ratio = hv60 / hv20.clip(lower=0.01)
 
-        # Sell straddle when HV60 (IV proxy) >> HV20 (recent realized vol)
         entries = (ratio.shift(1) > self.IV_RV_THRESHOLD).fillna(False)
         exits = (ratio.shift(1) < 1.0).fillna(False)  # buy back when premium normalizes
 
+        entry_count = int(entries.sum())
+        exit_count = int(exits.sum())
+        logger.info(
+            "VRP backtest signal generation",
+            extra={
+                "entry_count": entry_count,
+                "exit_count": exit_count,
+                "iv_rv_threshold": self.IV_RV_THRESHOLD,
+            },
+        )
         return BacktestSignals(entries=entries, exits=exits)
