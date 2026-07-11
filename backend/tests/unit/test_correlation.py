@@ -1,6 +1,7 @@
 """Correlation cluster tests."""
 import pandas as pd
 import numpy as np
+import pytest
 from app.risk.correlation import compute_correlation_clusters, check_cluster_limits
 
 
@@ -32,6 +33,30 @@ def test_compute_clusters_perfect_correlation():
     assert any(len(members) >= 2 for members in clusters.values())
 
 
+def test_compute_clusters_none_input():
+    """Pass None as returns; function should raise a clear exception."""
+    with pytest.raises((TypeError, ValueError)):
+        compute_correlation_clusters(None, threshold=0.70)
+
+
+def test_compute_clusters_empty_dataframe():
+    """Empty DataFrame should result in an empty cluster mapping."""
+    empty_df = pd.DataFrame()
+    clusters = compute_correlation_clusters(empty_df, threshold=0.70)
+    assert isinstance(clusters, dict)
+    assert len(clusters) == 0
+
+
+def test_compute_clusters_boundary_threshold():
+    """Correlation exactly at the threshold should be considered clustered."""
+    corr = np.array([[1.0, 0.70],
+                    [0.70, 1.0]])
+    returns = _make_returns(corr, n=200)
+    clusters = compute_correlation_clusters(returns, threshold=0.70)
+    # Both assets should be placed in the same cluster
+    assert any(len(members) == 2 for members in clusters.values())
+
+
 def test_check_cluster_limits_blocks():
     clusters = {"cluster_0": ["AAPL", "MSFT", "GOOGL"]}
     positions = {"AAPL": 20_000, "MSFT": 15_000}
@@ -52,6 +77,24 @@ def test_check_cluster_limits_allows():
         clusters=clusters, max_cluster_pct=0.30, total_equity=100_000,
     )
     # 5k + 5k = 10k = 10% < 30%
+    assert allowed
+
+
+def test_check_cluster_limits_none_inputs():
+    """Passing None for optional parameters should be handled gracefully."""
+    # None for positions should be treated as empty dict
+    clusters = {"cluster_0": ["AAPL"]}
+    allowed, _ = check_cluster_limits(
+        "AAPL", new_value_usd=10_000, current_positions=None,
+        clusters=clusters, max_cluster_pct=0.30, total_equity=100_000,
+    )
+    assert allowed
+
+    # None for clusters should be treated as empty dict, allowing any symbol
+    allowed, _ = check_cluster_limits(
+        "NVDA", new_value_usd=10_000, current_positions={},
+        clusters=None, max_cluster_pct=0.30, total_equity=100_000,
+    )
     assert allowed
 
 
