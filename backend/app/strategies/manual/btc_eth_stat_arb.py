@@ -79,7 +79,11 @@ class BTCETHStatArb(AbstractStrategy):
 
         spread = log_btc - hedge_ratios * log_eth
         roll_mean = spread.rolling(self.window, min_periods=self.window // 2).mean()
-        roll_std = spread.rolling(self.window, min_periods=self.window // 2).std().clip(lower=1e-8)
+        roll_std = (
+            spread.rolling(self.window, min_periods=self.window // 2)
+            .std()
+            .clip(lower=1e-8)
+        )
         z_score = (spread - roll_mean) / roll_std
         return z_score
 
@@ -109,7 +113,6 @@ class BTCETHStatArb(AbstractStrategy):
         current_price = float(data[btc_col].iloc[-1])
 
         if current_z < -self.entry_z:
-            # Spread too low: long BTC, short ETH
             confidence = min(0.90, 0.65 + abs(current_z) / 10.0)
             return Signal(
                 strategy_name=self.name,
@@ -127,7 +130,6 @@ class BTCETHStatArb(AbstractStrategy):
             )
 
         if current_z > self.entry_z:
-            # Spread too high: short BTC, long ETH
             confidence = min(0.90, 0.65 + abs(current_z) / 10.0)
             return Signal(
                 strategy_name=self.name,
@@ -164,7 +166,6 @@ class BTCETHStatArb(AbstractStrategy):
         if "btc_close" in df.columns and "eth_close" in df.columns:
             btc_col, eth_col = "btc_close", "eth_close"
         elif "close" in df.columns and "open" in df.columns:
-            # Proxy: use close as BTC, open as ETH (imperfect but avoids crash)
             btc_col, eth_col = "close", "open"
         else:
             return default
@@ -176,12 +177,11 @@ class BTCETHStatArb(AbstractStrategy):
         log_eth = np.log(df[eth_col].astype(float).clip(lower=1e-8))
         z_score = self._compute_spread_zscore(log_btc, log_eth)
 
-        # shift(1) — no lookahead
         z_lag = z_score.shift(1)
 
-        entries = (z_lag < -self.entry_z).fillna(False).astype(bool)       # long BTC
+        entries = (z_lag < -self.entry_z).fillna(False).astype(bool)
         exits = (z_lag.abs() < self.exit_z).fillna(False).astype(bool)
-        short_entries = (z_lag > self.entry_z).fillna(False).astype(bool)  # short BTC
+        short_entries = (z_lag > self.entry_z).fillna(False).astype(bool)
         short_exits = exits.copy()
 
         return BacktestSignals(
