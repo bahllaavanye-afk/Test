@@ -1,5 +1,9 @@
 # QuantEdge — Improvements & Task Tracker
 
+- [ ] **[P0] scripts/import_oa_bots.py** + scrape OA PUBLIC leaderboard (docs/playbooks/OA_BOT_COPY.md; public pages return 200)
+- [ ] **[P0] OANDA FX desk**; **[P1]** WORKFLOW_PAT fallback wiring; ADRs; EM cap 30%
+
+
 > **How tasks are tracked (the answer to "where do tasks live"):**
 > - **Canonical queue:** GitHub Issues labeled `agent-fix-needed` (the agents already
 >   create/work these via `team_lead_issues.py` → `free_agent_engineer.py`).

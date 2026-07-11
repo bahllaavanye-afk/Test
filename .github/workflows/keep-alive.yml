@@ -14,6 +14,9 @@ name: Keep-Alive — stop the Render backend from sleeping
 # See docs/DEPLOYMENT.md §4.
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch: {}

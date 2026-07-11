@@ -6,7 +6,18 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-06._
+_Last updated: 2026-07-11._
+
+## ⚡ STATE AS OF 2026-07-11 (read this first)
+**Everything runs event-driven 24x7** — 21 team/research workflows + keep-alive chained to CI completions (cron starved; that was THE autonomy bug). 7 desks (incl. new International, 13 country ETFs). Signal ensembling live (agree→boost, conflict→stand aside). 8 advanced strategies deployed. Claude backstop capped $1/day (state/claude_budget.json). Per-employee brains in agent_memory.json employee_context.
+
+**FIRST-TRADE BLOCKER:** crypto desk signals fire (conf 0.90) but Alpaca order POST → 403. Order errors now print the response body — read latest desk-trading-crypto log for the exact reason; playbook: docs/playbooks/ALPACA_CRYPTO_CHECK.md.
+
+**USER UNLOCKS (only manual steps left):** WORKFLOW_PAT secret (playbook exists) · OA_SESSION_COOKIE · Alpaca crypto check.
+
+**TOP QUEUE (IMPROVEMENTS.md):** import_oa_bots.py · public-leaderboard scout · vol-targeted sizing · money-path tests · 887 broad-except sweep · OANDA FX desk.
+**Playbooks:** docs/playbooks/ (OA copy, bookmarklet, PAT, Alpaca). Verify a desk log + live-stats before claiming anything works.
+
 
 ## Mission
 QuantEdge is an AI-first quant-trading company that must run **24/7**, cheaply, and
