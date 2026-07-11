@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Monitor thread count",
-    "Verify thread counts",
-    "Test algo_agent init",
-    "cleanup on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
-    "Log API calls",
-    "Cache frequent queries",
     "All React components must be const arrow functions \u2014 no class components",
     "optimization on backtest/metrics.py: success \u2014 tests green",
     "* **Algorithm implementation testing**: The `ucb1.py` implementation in `backend/algorithms/` should be tested thoroughly, exploring strategies for the QuantEdge platform.",
@@ -199,8 +193,14 @@
     "Check NaN in inputs",
     "Review LSTM models",
     "Improve error handling logic",
-    "Validate inputs"
+    "Validate inputs",
+    "Validate date formats",
+    "Log API response codes",
+    "Verify dependency updates",
+    "Extract config files",
+    "Prioritize model reviews",
+    "Optimize data ingestion"
   ],
-  "last_updated": "2026-07-11T06:33:48.329281+00:00",
+  "last_updated": "2026-07-11T08:44:27.836228+00:00",
   "total": 200
 }
