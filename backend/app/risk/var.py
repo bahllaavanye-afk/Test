@@ -132,3 +132,64 @@ def historical_var(
         },
     )
     return result
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import pytest
+
+
+def _make_returns(value: float, count: int) -> list[float]:
+    """Utility to generate a list of identical returns."""
+    return [value] * count
+
+
+def test_insufficient_data_boundary():
+    """When the number of observations is just below the threshold,
+    the function should return the default conservative estimates."""
+    returns = _make_returns(0.01, 9)  # 9 < 10
+    portfolio = 1_000_000.0
+    result = historical_var(returns, portfolio)
+
+    assert result.method == "default_insufficient_data"
+    assert result.n_observations == 9
+    # Default conservative VaR values
+    assert result.var_95 == pytest.approx(0.02)
+    assert result.var_99 == pytest.approx(0.03)
+    assert result.var_95_usd == pytest.approx(portfolio * 0.02)
+    assert result.var_99_usd == pytest.approx(portfolio * 0.03)
+
+
+def test_all_positive_returns_yield_zero_var():
+    """If all returns are positive, VaR (as a loss) should be zero."""
+    returns = _make_returns(0.01, 12)  # >=10 observations
+    portfolio = 500_000.0
+    result = historical_var(returns, portfolio, method="historical")
+
+    assert result.var_95 == 0.0
+    assert result.var_99 == 0.0
+    assert result.cvar_95 == 0.0
+    assert result.cvar_99 == 0.0
+    assert result.var_95_usd == 0.0
+    assert result.var_99_usd == 0.0
+    assert result.method == "historical"
+
+
+def test_extreme_negative_return_affects_cvar():
+    """A single extreme loss should be reflected in the CVaR calculations."""
+    # Mix of modest returns with one extreme negative return
+    returns = [0.02, 0.01, -0.05, -0.07, -0.12, 0.00, 0.01, 0.03, -0.20, 0.02]
+    portfolio = 2_000_000.0
+    result = historical_var(returns, portfolio, method="historical")
+
+    # VaR should be positive (as a loss) but less than the extreme loss magnitude
+    assert 0 < result.var_95 < 0.20
+    assert 0 < result.var_99 < 0.20
+    # CVaR should be at least as large as VaR because it averages the tail losses
+    assert result.cvar_95 >= result.var_95
+    assert result.cvar_99 >= result.var_99
+    # Ensure that the extreme -0.20 return influences the tail calculations
+    # The tail for 99% (1% worst) should include the -0.20 loss
+    assert any(r < -result.var_99 for r in returns)
+    assert any(r < -result.var_95 for r in returns)
