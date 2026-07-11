@@ -376,15 +376,42 @@ async def _get_bars_batch(symbols: list[str], timeframe: str = "1Day",
     return out
 
 
-def _kelly_notional(equity: float, confidence: float, max_pct: float = 0.03) -> float:
-    """Half-Kelly sizing: confidence score → win probability → Kelly fraction, capped at max_pct."""
+# Vol targeting (Moreira-Muir 2017): scale size toward a constant risk budget.
+# High realized vol → smaller size, calm markets → larger, clamped so it can
+# only halve or double the Kelly base. The single most robust documented
+# Sharpe improvement across asset classes.
+_TARGET_ANNUAL_VOL = 0.20
+
+
+def _vol_scalar(bars) -> float:
+    """target/realized annualized vol from 20d closes, clamped [0.5, 2.0].
+    1.0 when bars are absent/short/degenerate — sizing then falls back to
+    pure Kelly, never crashes."""
+    try:
+        import numpy as np
+        closes = bars["close"].astype(float)
+        if len(closes) < 21:
+            return 1.0
+        rets = np.log(closes / closes.shift(1)).dropna().tail(20)
+        realized = float(rets.std() * np.sqrt(252))
+        if not (realized > 0):
+            return 1.0
+        return float(min(max(_TARGET_ANNUAL_VOL / realized, 0.5), 2.0))
+    except Exception:  # noqa: BLE001 — sizing must never take the desk down
+        return 1.0
+
+
+def _kelly_notional(equity: float, confidence: float, max_pct: float = 0.03,
+                    bars=None) -> float:
+    """Half-Kelly sizing scaled to a constant vol target, capped at max_pct."""
     p = min(max(0.50 + (confidence - 0.60) * 1.25, 0.35), 0.75)
     b = 1.25  # avg_win / avg_loss
     q = 1.0 - p
     kelly_f   = max((p * b - q) / b, 0.0)
     half_kelly = kelly_f * 0.5
     capped     = min(half_kelly, max_pct)
-    return max(equity * capped, 50.0)
+    scalar     = _vol_scalar(bars) if bars is not None else 1.0
+    return max(equity * capped * scalar, 50.0)
 
 
 async def _place_order(
@@ -942,7 +969,7 @@ async def main() -> None:
                         flush=True,
                     )
                     continue
-                kelly_notional = _kelly_notional(equity, conf)
+                kelly_notional = _kelly_notional(equity, conf, bars=bars_cache.get(symbol))
                 # Self-scaling: winners (by live realized P&L) size up, losers down.
                 perf_w = _perf_weights.get(strategy.name, 1.0)
                 if perf_w != 1.0:
