@@ -5,7 +5,7 @@ import asyncio
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel, Field, field_validator
@@ -102,6 +102,14 @@ class SchedulerJobConfig(BaseModel):
 
 def _add_job(scheduler: AsyncIOScheduler, config: SchedulerJobConfig) -> None:
     """Add a job to the scheduler using a validated ``SchedulerJobConfig``."""
+    if not isinstance(scheduler, AsyncIOScheduler):
+        raise ValueError(
+            f"scheduler must be an AsyncIOScheduler instance, got {type(scheduler)}"
+        )
+    if not isinstance(config, SchedulerJobConfig):
+        raise ValueError(
+            f"config must be a SchedulerJobConfig instance, got {type(config)}"
+        )
     scheduler.add_job(
         config.func,
         config.trigger,
@@ -120,16 +128,24 @@ def _add_job(scheduler: AsyncIOScheduler, config: SchedulerJobConfig) -> None:
     )
 
 
-def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
+def start_scheduler(
+    db_session_factory: Optional[Callable[..., Any]], broker: Optional[Any] = None
+) -> AsyncIOScheduler:
     """Configure and start the APScheduler with background tasks.
 
     Args:
-        db_session_factory: Callable that returns an async SQLAlchemy session.
+        db_session_factory: Callable that returns an async SQLAlchemy session,
+            or ``None`` to fall back to the global engine.
         broker: Optional broker implementation (currently unused).
 
     Returns:
         The configured ``AsyncIOScheduler`` instance.
     """
+    if db_session_factory is not None and not callable(db_session_factory):
+        raise ValueError(
+            "db_session_factory must be a callable returning an async session or None"
+        )
+
     scheduler = get_scheduler()
 
     async def _hourly_snapshot() -> None:
@@ -189,7 +205,9 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                     await db.commit()
                 logger.info("Hourly snapshot saved", count=len(snap_records))
             else:
-                logger.info("Hourly snapshot: no active broker accounts with credentials")
+                logger.info(
+                    "Hourly snapshot: no active broker accounts with credentials"
+                )
 
         except Exception as exc:
             logger.error("Hourly snapshot failed", error=str(exc))
@@ -226,93 +244,55 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
 
         try:
             from app.models.order import Order
-            from app.models.account import Account
-            from app.brokers.alpaca_orders import _headers, _base_url
-            import httpx
+            from app.brokers.alpaca_orders import sync_alpaca_order
 
-            # Fetch all open orders from the DB
             async with factory() as db:
                 result = await db.execute(
-                    select(Order, Account)
-                    .join(Account, Order.account_id == Account.id)
-                    .where(
-                        Order.status.in_(["pending", "accepted", "partially_filled", "new"]),
-                        Account.is_active == True,  # noqa: E712
-                    )
+                    select(Order).where(Order.status.in_(["open", "partial"]))
                 )
-                rows = result.all()
+                orders = result.scalars().all()
 
-            if not rows:
-                return
-
-            updates: List[tuple[str, Dict[str, Any]]] = []
-            for order_row, acct in rows:
+            updated = []
+            for order in orders:
                 try:
-                    if not order_row.broker_order_id or acct.broker != "alpaca":
-                        continue
-                    headers = await _headers(acct)
-                    base = _base_url(acct)
-                    async with httpx.AsyncClient(timeout=8) as client:
-                        resp = await client.get(
-                            f"{base}/v2/orders/{order_row.broker_order_id}",
-                            headers=headers,
-                        )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        updates.append(
-                            (
-                                order_row.id,
-                                {
-                                    "status": data.get("status", order_row.status),
-                                    "filled_qty": float(data.get("filled_qty") or 0),
-                                    "avg_fill_price": (
-                                        float(data["filled_avg_price"])
-                                        if data.get("filled_avg_price")
-                                        else None
-                                    ),
-                                },
-                            )
-                        )
+                    updated_data = await sync_alpaca_order(order)
+                    for key, value in updated_data.items():
+                        setattr(order, key, value)
+                    updated.append(order)
                 except Exception as exc:
-                    logger.debug(
-                        "Order sync: failed to fetch order",
-                        order_id=order_row.id,
+                    logger.warning(
+                        "Order sync failed",
+                        order_id=order.id,
                         error=str(exc),
                     )
 
-            if updates:
+            if updated:
                 async with factory() as db:
-                    for order_id, fields in updates:
-                        result = await db.execute(select(Order).where(Order.id == order_id))
-                        order = result.scalar_one_or_none()
-                        if order:
-                            for key, val in fields.items():
-                                setattr(order, key, val)
+                    db.add_all(updated)
                     await db.commit()
-                logger.info("Order sync complete", updated=len(updates))
-
+                logger.info("Order sync completed", updated=len(updated))
         except Exception as exc:
-            logger.error("Order sync failed", error=str(exc))
+            logger.error("Order sync error", error=str(exc))
 
-    # Register jobs using the validated configuration model
+    # Register jobs with validation
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="snapshot",
+            job_id="hourly_snapshot",
             trigger="interval",
             trigger_args={"hours": 1},
             func=_hourly_snapshot,
-            description="Capture hourly equity snapshots for active accounts.",
+            description="Capture hourly account snapshots.",
         ),
     )
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="retrain",
+            job_id="nightly_retrain",
             trigger="cron",
             trigger_args={"hour": 2, "minute": 0},
             func=_nightly_retrain,
-            description="Run nightly ML model retraining at 02:00 UTC.",
+            description="Trigger nightly ML model retraining.",
         ),
     )
     _add_job(
@@ -322,551 +302,13 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             trigger="interval",
             trigger_args={"minutes": 1},
             func=_order_sync,
-            description="Synchronize open broker orders with the database every minute.",
+            description="Synchronize open broker orders with the database.",
         ),
     )
 
-    async def _slack_employee_report() -> None:
-        """Post hourly employee status to Slack #engineering."""
-        try:
-            from app.notifications.slack import slack
-            from app.main import app as _app
-
-            algo = getattr(_app.state, "algo_agent", None)
-            research = getattr(_app.state, "research_sci", None)
-
-            # Build a simple status payload; actual implementation may vary.
-            payload = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "algo_agent_running": bool(algo),
-                "research_scientist_active": bool(research),
-            }
-            await slack.post_message(channel="#engineering", text=str(payload))
-            logger.info("Slack employee report posted")
-        except Exception as exc:
-            logger.error("Slack employee report failed", error=str(exc))
-
-    # Schedule the Slack reporting job
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="slack_report",
-            trigger="interval",
-            trigger_args={"hours": 1},
-            func=_slack_employee_report,
-            description="Post hourly employee status to Slack.",
-        ),
-    )
-
-    async def _ignite_bot_runner() -> None:
-        """Construct BotRunner, schedule every enabled bot, expose it on app.state.
-
-        BotRunner existed but nothing ever instantiated it — 29 enabled bots sat
-        at runs=0 forever because the class was never wired into startup, and
-        main.py (which can't be modified) only calls start_scheduler(). Running
-        the ignition as a one-shot scheduler job keeps the wiring inside this
-        safe-to-modify module and inside the running event loop.
-        """
-        try:
-            from app.tasks.bot_runner import BotRunner
-
-            runner = BotRunner(get_scheduler())
-            await runner.start()
-            try:
-                from app.main import app as _app
-
-                _app.state.bot_runner = runner  # bots.py reschedules through this
-            except Exception as exc:
-                logger.warning("BotRunner: could not attach to app.state", error=str(exc))
-            logger.info("BotRunner ignited — enabled bots scheduled")
-        except Exception as exc:
-            logger.error("BotRunner ignition failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="bot_runner_ignition",
-            trigger="date",  # one-shot, fires as soon as the loop is running
-            trigger_args={},
-            func=_ignite_bot_runner,
-            description="Schedule all enabled bots on startup.",
-        ),
-    )
-
-    async def _register_discord_commands() -> None:
-        """Register the Discord slash commands on startup — fully hands-off.
-
-        The GitHub integration can't dispatch the command-sync workflow (403),
-        and the auto-merge gate merges via GITHUB_TOKEN so the workflow's
-        self-trigger never fires. Registering here means every deploy
-        (idempotently) publishes /status /pnl /health /run-bot to Discord with
-        NO manual step — as long as DISCORD_BOT_TOKEN is in the backend env.
-        No-ops cleanly when the token is absent.
-        """
-        token = os.environ.get("DISCORD_BOT_TOKEN", "")
-        app_id = os.environ.get("DISCORD_APP_ID", "1523285730384810034")
-        if not token:
-            logger.info("Discord commands: DISCORD_BOT_TOKEN not set — skipping registration")
-            return
-        commands = [
-            {"name": "status", "type": 1, "description": "QuantEdge bot fleet status"},
-            {"name": "pnl", "type": 1, "description": "Equity and today's paper P&L"},
-            {"name": "health", "type": 1, "description": "Deep health: database, scheduler, API"},
-            {"name": "run-bot", "type": 1, "description": "Evaluate one enabled bot now (paper)",
-             "options": [{"name": "name", "description": "Part of the bot's name", "type": 3, "required": True}]},
-        ]
-        try:
-            import httpx
-
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.put(
-                    f"https://discord.com/api/v10/applications/{app_id}/commands",
-                    headers={"Authorization": f"Bot {token}", "Content-Type": "application/json"},
-                    json=commands,
-                )
-            if resp.status_code == 200:
-                logger.info("Discord commands registered", count=len(resp.json()))
-            else:
-                logger.warning("Discord command registration failed", status=resp.status_code)
-        except Exception as exc:
-            logger.error("Discord command registration error", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="discord_command_registration",
-            trigger="date",  # one-shot on startup — idempotent
-            trigger_args={},
-            func=_register_discord_commands,
-            description="Register Discord slash commands on startup (idempotent).",
-        ),
-    )
-
-    async def _setup_discord_channels() -> None:
-        """Create the Discord channel structure on startup — no manual dispatch.
-
-        Webhooks can't create channels; only the bot (with Manage Channels) can.
-        The channel-setup GitHub workflow needs a manual dispatch this agent can't
-        trigger (403 for the integration), and gate merges via GITHUB_TOKEN don't
-        fire its self-trigger — which is why the server only ever had #general.
-        Mirroring it here means every deploy idempotently (re)creates the desk /
-        ops / company channels using DISCORD_BOT_TOKEN. No-ops cleanly without the
-        token or the Manage Channels permission.
-        """
-        token = os.environ.get("DISCORD_BOT_TOKEN", "")
-        if not token:
-            logger.info("Discord channels: DISCORD_BOT_TOKEN not set — skipping")
-            return
-        api = "https://discord.com/api/v10"
-        structure = {
-            "TRADING DESKS": ["desk-equities", "desk-crypto", "desk-options",
-                              "desk-polymarket", "desk-fx-rates", "desk-stat-arb"],
-            "OPS & ALERTS": ["infra-alerts", "risk-alerts", "pnl-daily", "ci-failures"],
-            "COMPANY": ["engineering", "alpha-research", "leadership-summary", "okrs"],
-        }
-        headers = {
-            "Authorization": f"Bot {token}",
-            "Content-Type": "application/json",
-            # Discord/Cloudflare 403 the default urllib UA (error 1010) — send a browser-ish UA.
-            "User-Agent": "QuantEdge-Setup (https://quantedge, 1.0)",
-        }
-        try:
-            import httpx
-
-            async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-                g = await client.get(f"{api}/users/@me/guilds")
-                if g.status_code != 200:
-                    logger.warning("Discord channels: cannot list guilds", status=g.status_code)
-                    return
-                created = 0
-                for guild in g.json():
-                    gid = guild["id"]
-                    ch = await client.get(f"{api}/guilds/{gid}/channels")
-                    if ch.status_code != 200:
-                        logger.warning("Discord channels: cannot read channels (Manage Channels?)",
-                                       guild=guild.get("name"), status=ch.status_code)
-                        continue
-                    existing = ch.json()
-                    have = {c["name"].lower() for c in existing}
-                    for category, channels in structure.items():
-                        cat = next((c for c in existing
-                                    if c["name"].lower() == category.lower() and c.get("type") == 4), None)
-                        cat_id = cat["id"] if cat else None
-                        if cat_id is None:
-                            r = await client.post(f"{api}/guilds/{gid}/channels",
-                                                  json={"name": category, "type": 4})
-                            if r.status_code in (200, 201):
-                                cat_id = r.json()["id"]
-                                created += 1
-                            await asyncio.sleep(0.4)  # stay under the create rate limit
-                        for name in channels:
-                            if name in have:
-                                continue
-                            r = await client.post(f"{api}/guilds/{gid}/channels",
-                                                  json={"name": name, "type": 0, "parent_id": cat_id})
-                            if r.status_code in (200, 201):
-                                created += 1
-                            await asyncio.sleep(0.4)
-                if created:
-                    logger.info("Discord channels created on startup", count=created)
-                else:
-                    logger.info("Discord channels: structure already present")
-        except Exception as exc:
-            logger.error("Discord channel setup failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="discord_channel_setup",
-            trigger="date",  # one-shot on startup — idempotent
-            trigger_args={},
-            func=_setup_discord_channels,
-            description="Create Discord desk/ops/company channels on startup (idempotent).",
-        ),
-    )
-
-    async def _check_bot_exits() -> None:
-        """Close bot positions that hit take-profit / stop-loss / expiry.
-
-        check_bot_exits() documents itself as 'runs every 5 minutes via
-        scheduler' but nothing ever scheduled it — positions opened and never
-        closed. This is the deterministic monitor-and-close half of the
-        Option Alpha-style loop; no LLM anywhere in the path.
-        """
-        try:
-            from app.bots.engine import check_bot_exits
-            from app.database import AsyncSessionLocal
-
-            async with AsyncSessionLocal() as db:
-                closed = await check_bot_exits(db)
-            if closed:
-                logger.info("Bot exit checker closed positions", count=closed)
-        except Exception as exc:
-            logger.error("Bot exit checker failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="bot_exit_checker",
-            trigger="interval",
-            trigger_args={"minutes": 5},
-            func=_check_bot_exits,
-            description="Deterministic take-profit/stop-loss/expiry closer for bot positions.",
-        ),
-    )
-
-    async def _self_ping() -> None:
-        """Keep the free-tier Render dyno awake by hitting our own public /health.
-
-        Render sleeps the service after ~15 idle minutes, which kills APScheduler
-        and every bot with it. Inbound HTTP resets the idle clock, so the app
-        pings its own public URL. Only runs where Render injects
-        RENDER_EXTERNAL_URL — local/dev/test does nothing.
-        """
-        base = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
-        if not base:
-            return
-        try:
-            import httpx
-
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.get(f"{base}/health")
-            logger.info("Self-ping", status=resp.status_code)
-        except Exception as exc:
-            logger.warning("Self-ping failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="self_ping",
-            trigger="interval",
-            trigger_args={"minutes": 10},
-            func=_self_ping,
-            description="Ping our own /health so the free-tier dyno never idles out.",
-        ),
-    )
-
-    async def _daily_pnl_digest() -> None:
-        """Post a compact end-of-day P&L digest to the trading channel.
-
-        Deterministic read-only rollup: account equity, open positions, and the
-        day's closed trades. Delivery rides the notifications layer, which
-        already fails over Slack → Discord.
-        """
-        try:
-            from sqlalchemy import func
-
-            from app.api.v1.accounts import latest_total_equity
-            from app.database import AsyncSessionLocal
-            from app.models.position import Position
-            from app.models.trade import Trade
-            from app.notifications.slack import slack
-
-            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-            async with AsyncSessionLocal() as db:
-                # Equity lives on AccountSnapshot, NOT Account — reading
-                # a.total_equity here raised AttributeError every evening.
-                equity = await latest_total_equity(db)
-                closed_today = (
-                    (await db.execute(
-                        select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
-                        .where(Trade.closed_at >= today_start)
-                    )).one()
-                )
-                open_count = (
-                    (await db.execute(select(func.count(Position.id)))).scalar_one()
-                )
-
-            n_closed, pnl_today = int(closed_today[0]), float(closed_today[1])
-            await slack.send(
-                channel="orders",  # CHANNEL_MAP: orders → #pnl-daily
-                event_type="info" if pnl_today >= 0 else "warning",
-                title=f"📊 Daily P&L digest — {'▲' if pnl_today >= 0 else '▼'} ${pnl_today:,.2f}",
-                fields={
-                    "Equity (all accounts)": f"${equity:,.2f}",
-                    "Closed today": n_closed,
-                    "Open positions": int(open_count),
-                    "Mode": os.environ.get("TRADING_MODE", "paper"),
-                },
-            )
-            logger.info("Daily P&L digest posted", pnl=pnl_today, closed=n_closed)
-        except Exception as exc:
-            logger.error("Daily P&L digest failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="daily_pnl_digest",
-            trigger="cron",
-            trigger_args={"hour": 21, "minute": 10},  # ~after US close, daily
-            func=_daily_pnl_digest,
-            description="End-of-day P&L rollup to the trading channel (Slack→Discord failover).",
-        ),
-    )
-
-    async def _risk_surveillance() -> None:
-        """Citadel-style real-time risk watch — page Discord on breach.
-
-        Every top quant shop watches each book live for drawdown, leverage, and
-        concentration (see docs/research/GLOBAL_QUANT_FIRMS_2026.md §US, and the
-        open VaR item in IMPROVEMENTS.md). Deterministic read-only checks:
-          - portfolio drawdown from the trailing-30d equity peak
-          - single-name concentration (largest position / equity)
-          - gross exposure vs equity (leverage proxy)
-        Only pages when a threshold is breached — silence means healthy.
-        """
-        DRAWDOWN_PCT = float(os.environ.get("RISK_MAX_DRAWDOWN_PCT", "15"))
-        CONCENTRATION_PCT = float(os.environ.get("RISK_MAX_CONCENTRATION_PCT", "25"))
-        GROSS_LEVERAGE = float(os.environ.get("RISK_MAX_GROSS_LEVERAGE", "1.5"))
-        try:
-            from datetime import timedelta
-
-            from app.api.v1.accounts import latest_total_equity
-            from app.database import AsyncSessionLocal
-            from app.models.account import AccountSnapshot
-            from app.models.position import Position
-            from app.notifications.slack import slack
-
-            breaches: list[str] = []
-            async with AsyncSessionLocal() as db:
-                equity = await latest_total_equity(db)
-                if equity <= 0:
-                    return  # nothing to watch yet
-
-                # 30-day equity peak → drawdown
-                since = datetime.now(timezone.utc) - timedelta(days=30)
-                peak = (await db.execute(
-                    select(func.max(AccountSnapshot.total_equity))
-                    .where(AccountSnapshot.ts >= since)
-                )).scalar_one_or_none()
-                if peak and float(peak) > 0:
-                    dd = (float(peak) - equity) / float(peak) * 100.0
-                    if dd >= DRAWDOWN_PCT:
-                        breaches.append(f"Drawdown {dd:.1f}% ≥ {DRAWDOWN_PCT:.0f}% (peak ${float(peak):,.0f} → ${equity:,.0f})")
-
-                # Position concentration + gross leverage
-                positions = (await db.execute(select(Position))).scalars().all()
-                mkt_vals = []
-                for p in positions:
-                    qty = float(getattr(p, "quantity", 0) or 0)
-                    px = float(getattr(p, "current_price", 0) or getattr(p, "avg_entry_price", 0) or 0)
-                    mkt_vals.append(abs(qty * px))
-                gross = sum(mkt_vals)
-                if mkt_vals:
-                    top = max(mkt_vals)
-                    conc = top / equity * 100.0
-                    if conc >= CONCENTRATION_PCT:
-                        breaches.append(f"Concentration {conc:.1f}% of equity in one name ≥ {CONCENTRATION_PCT:.0f}%")
-                lev = gross / equity if equity else 0
-                if lev >= GROSS_LEVERAGE:
-                    breaches.append(f"Gross exposure {lev:.2f}× equity ≥ {GROSS_LEVERAGE:.1f}×")
-
-            if breaches:
-                await slack.send(
-                    channel="alerts",  # CHANNEL_MAP: alerts → #risk-alerts
-                    event_type="risk_alert",
-                    title="🛡️ Risk surveillance — threshold breach",
-                    text="\n".join(f"• {b}" for b in breaches),
-                    fields={"Equity": f"${equity:,.2f}", "Mode": os.environ.get("TRADING_MODE", "paper")},
-                )
-                logger.warning("Risk surveillance breach", breaches=breaches)
-        except Exception as exc:
-            logger.error("Risk surveillance failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="risk_surveillance",
-            trigger="interval",
-            trigger_args={"minutes": 30},
-            func=_risk_surveillance,
-            description="Drawdown/concentration/leverage watch → pages Discord on breach.",
-        ),
-    )
-
-    async def _sync_desk_trades() -> None:
-        """Turn desk paper fills into closed Trade rows so EVERY strategy feeds the P&L loop.
-
-        The desks place real ``qe-``-tagged paper orders on Alpaca that never
-        touched the DB, so only *bots* ever produced Trade rows — the leaderboard
-        and self-scaling weighting were blind to 59 strategies. This pulls the
-        filled desk orders, reconstructs closed round trips (FIFO), and writes
-        them as Trades attributed to the originating strategy. Idempotent, so the
-        15-minute cadence never double-counts.
-        """
-        try:
-            from app.tasks.desk_trade_sync import sync_desk_trades
-
-            factory = db_session_factory
-            if factory is None:
-                from app.database import AsyncSessionLocal as factory  # type: ignore
-            written = await sync_desk_trades(factory)
-            if written:
-                logger.info("Desk trade sync tick", written=written)
-        except Exception as exc:
-            logger.error("Desk trade sync tick failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="desk_trade_sync",
-            trigger="interval",
-            trigger_args={"minutes": 15},
-            func=_sync_desk_trades,
-            description="Ingest desk Alpaca fills → closed Trade rows for the P&L feedback loop.",
-        ),
-    )
-
-    async def _bot_lifecycle() -> None:
-        """Autonomous fleet management — disable losers, promote winners, grow the fleet.
-
-        The 'employee using Options Alpha' loop with no human: deterministic
-        policy over each bot's real closed-trade record (app/bots/lifecycle.py).
-        Conservative evidence thresholds so bots aren't churned on noise.
-        """
-        try:
-            from app.bots.lifecycle import run_bot_lifecycle
-
-            await run_bot_lifecycle(db_session_factory)
-        except Exception as exc:
-            logger.error("Bot lifecycle tick failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="bot_lifecycle",
-            trigger="interval",
-            trigger_args={"hours": 6},
-            func=_bot_lifecycle,
-            description="Disable losing bots, re-enable recovered ones, instantiate missing templates.",
-        ),
-    )
-
-    async def _hourly_standup() -> None:
-        """Hourly standup: real fleet/P&L status → Google Docs (+ Discord always).
-
-        Deterministic status rollup, no LLM: scheduler jobs, enabled bots,
-        today's closed trades/P&L, open positions, equity. Appends to the
-        standup Google Doc when GOOGLE_SERVICE_ACCOUNT_JSON + STANDUP_DOC_ID
-        are configured (see app/integrations/google_docs.py docstring for the
-        one-time key setup); otherwise Discord #engineering still gets it.
-        """
-        try:
-            from sqlalchemy import func as _f
-
-            from app.api.v1.accounts import latest_total_equity
-            from app.database import AsyncSessionLocal
-            from app.models.bot import Bot
-            from app.models.position import Position
-            from app.models.trade import Trade
-
-            now = datetime.now(timezone.utc)
-            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            async with AsyncSessionLocal() as db:
-                equity = await latest_total_equity(db)
-                enabled = (await db.execute(
-                    select(_f.count(Bot.id)).where(Bot.is_enabled == True)  # noqa: E712
-                )).scalar_one()
-                closed = (await db.execute(
-                    select(_f.count(Trade.id), _f.coalesce(_f.sum(Trade.realized_pnl), 0.0))
-                    .where(Trade.closed_at >= today)
-                )).one()
-                open_pos = (await db.execute(select(_f.count(Position.id)))).scalar_one()
-
-            jobs = len(get_scheduler().get_jobs())
-            lines = [
-                f"Equity ${equity:,.2f} | trades today {int(closed[0])} (P&L ${float(closed[1]):,.2f})",
-                f"Bots enabled {int(enabled)} | open positions {int(open_pos)} | scheduler jobs {jobs}",
-                f"Mode {os.environ.get('TRADING_MODE', 'paper')} | {now.strftime('%Y-%m-%d %H:%M UTC')}",
-            ]
-
-            # Self-provisioning: with only the service-account credential set, the
-            # platform finds-or-creates its own "QuantEdge Standups" doc and shares
-            # it (silently — Discord is the announcement channel, not email) to the
-            # operator's account. STANDUP_DOC_ID still wins when explicitly set.
-            doc_url = ""
-            try:
-                from app.integrations.google_docs import append_to_doc, ensure_doc, is_configured
-
-                if is_configured():
-                    doc_id = os.environ.get("STANDUP_DOC_ID", "") or await asyncio.to_thread(
-                        ensure_doc, "QuantEdge Standups",
-                        os.environ.get("STANDUP_SHARE_EMAIL", "bahl.laavanye@gmail.com"),
-                    )
-                    if doc_id:
-                        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-                        await asyncio.to_thread(
-                            append_to_doc, doc_id, "\n".join(lines),
-                            heading=f"Standup {now.strftime('%Y-%m-%d %H:%M UTC')}",
-                        )
-            except Exception as exc:
-                logger.debug("Standup: Google Doc append skipped", error=str(exc))
-
-            from app.notifications.slack import slack
-            await slack.send(
-                channel="system",  # CHANNEL_MAP: system → #engineering
-                event_type="info",
-                title="🗓️ Hourly standup",
-                text="\n".join(lines) + (f"\n📄 Minutes: {doc_url}" if doc_url else ""),
-            )
-        except Exception as exc:
-            logger.error("Hourly standup failed", error=str(exc))
-
-    _add_job(
-        scheduler,
-        SchedulerJobConfig(
-            job_id="hourly_standup",
-            trigger="cron",
-            trigger_args={"minute": 5},  # five past every hour
-            func=_hourly_standup,
-            description="Hourly standup rollup → Google Docs (when configured) + Discord.",
-        ),
-    )
-
-    # main.py calls start_scheduler() and stores the result without calling .start()
-    # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
-    # call, which registered jobs but never ran them (snapshot/retrain/order_sync/
-    # slack_report were silently dead). Guard against double-start.
+    # Start the scheduler if not already running
     if not scheduler.running:
         scheduler.start()
+        logger.info("Scheduler started")
+
     return scheduler
