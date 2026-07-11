@@ -1,7 +1,5 @@
 {
   "skills": [
-    "All React components must be const arrow functions \u2014 no class components",
-    "optimization on backtest/metrics.py: success \u2014 tests green",
     "* **Algorithm implementation testing**: The `ucb1.py` implementation in `backend/algorithms/` should be tested thoroughly, exploring strategies for the QuantEdge platform.",
     "Implement circuit breaker",
     "* **Algorithm Exploration**: The `algo_agent` is exploring the UCB1 bandit experiment (./experiments/ucb1_bandit) for optimization opportunities.",
@@ -199,8 +197,10 @@
     "Verify dependency updates",
     "Extract config files",
     "Prioritize model reviews",
-    "Optimize data ingestion"
+    "Optimize data ingestion",
+    "Verify trade limits",
+    "Log system memory"
   ],
-  "last_updated": "2026-07-11T08:44:27.836228+00:00",
+  "last_updated": "2026-07-11T10:11:50.456530+00:00",
   "total": 200
 }
