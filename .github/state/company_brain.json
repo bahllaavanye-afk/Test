@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783763400.5833995,
+    "last_updated": 1783771182.342664,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783763400.5830066
+    "last_brain_update": 1783771182.3423798
   },
   "episodic": [
     {
@@ -693,6 +693,11 @@
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of automated messages: \"Auto-fix failed \u2014 could not apply patch to file.\" and \"Auto-fix skipped \u2014 too complex for automated resolution.\" Plus a partial sentence \"Reason: The issue refers to a\". The user likely wants a concise summary of these automated comments. I'll produce a one-sentence summary capturing that auto-fix attempts failed or were skipped due to",
       "item_count": 20,
       "ts": 1783763400.5794423
+    },
+    {
+      "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts also failed to apply patches to the file.",
+      "item_count": 20,
+      "ts": 1783771182.339502
     }
   ],
   "experiment_results": [
