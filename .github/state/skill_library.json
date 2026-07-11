@@ -199,8 +199,13 @@
     "Check DB connections",
     "Test market data",
     "Verify config files",
-    "Check system clocks"
+    "Check system clocks",
+    "strategy_logic on test/unit/test_data_loader_crypto.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/stat_arb_etf.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "strategy_logic on ml/models/base_model.py: success \u2014 tests green",
+    "strategy_logic on risk/drawdown_recovery.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T21:13:41.557778+00:00",
+  "last_updated": "2026-07-11T22:14:04.489542+00:00",
   "total": 200
 }
