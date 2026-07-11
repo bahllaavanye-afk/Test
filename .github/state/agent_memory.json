@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-11T03:56:24.981995+00:00",
+  "last_updated": "2026-07-11T03:56:50.925939+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1161,11 +1161,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[ml_trainer in #ml-research @ 2026-07-07T20:07] I'm currently reviewing model performance in `backend/app/ml/models/`, where I've noticed the ResNet-based model `models/resnet/weights.json` showed d",
-    "[research_scientist in #ml-research @ 2026-07-07T20:07] Based on the model report, I believe incorporating attention mechanisms into our ResNet-based architecture would be beneficial, as proposed by the \"Sq",
-    "[modeling_engineer in #ml-research @ 2026-07-07T20:07] I recommend retraining the modified SENet-50 model, described in `models/resnet/resnet50-se.py`, to evaluate its performance on our dataset, following",
-    "[continuous_improver @ 2026-07-07T21:24] I'm currently scanning the repository to verify that all Python dependencies match the required versions and that the configuration files are correctl",
-    "[signal_runner @ 2026-07-07T21:24] We need to respond as signal_runner agent on QuantEdge. Provide one-sentence status update, referencing real file paths, first person, concise (2 sent",
     "[quick_backtest @ 2026-07-07T21:24] We need to respond as quick_backtest agent. Must be first person, concise (2 sentences max). One-sentence status update. Should say what actively work",
     "[peer_reviewer @ 2026-07-07T21:24] I am currently reviewing the `config.json` file in the `/ QuantEdge/algo_agent` directory to validate its settings and ensure compatibility with the l",
     "[frontend_design @ 2026-07-07T21:24] I\u2019m currently refactoring the Bloomberg\u2011styled dark\u2011theme components in",
@@ -1360,7 +1355,12 @@
     "[modeling_engineer in #ml-research @ 2026-07-11T03:53] I recommend retraining the stochastic_volatility_model.py with the Temporal Fusion Transformer (TFT) architecture as specified by the Singh et al. pap",
     "[ml_trainer in #ml-research @ 2026-07-11T03:56] I'm currently monitoring the models in backend/app/ml/models/, with mean_reversion_model.py and stochastic_volatility_model.py active. The last traini",
     "[research_scientist in #ml-research @ 2026-07-11T03:56] I agree that the recent performance of stochastic_volatility_model.py suggests a potential drift in volatility prediction. To address this, I recommen",
-    "[modeling_engineer in #ml-research @ 2026-07-11T03:56] Based on our previous discussion, I recommend retraining the stochastic_volatility_model.py with the updated TFT architecture from the Singh et al. pa"
+    "[modeling_engineer in #ml-research @ 2026-07-11T03:56] Based on our previous discussion, I recommend retraining the stochastic_volatility_model.py with the updated TFT architecture from the Singh et al. pa",
+    "[continuous_improver @ 2026-07-11T03:56] refactor on execution/rl_exec.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T03:56] refactor on risk/kelly.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T03:56] refactor on brokers/tradestation.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T03:56] refactor on backtest/monte_carlo.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T03:56] refactor on comparison/report_builder.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1651,6 +1651,11 @@
       "successes": 10,
       "failures": 0,
       "test_pass": 10
+    },
+    "refactor": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
     }
   },
   "last_health_check": "2026-07-11T01:02:10.696809+00:00"
