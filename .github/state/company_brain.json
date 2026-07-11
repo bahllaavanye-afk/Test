@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783721730.7943609,
+    "last_updated": 1783728738.5453699,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783721730.7940028
+    "last_brain_update": 1783728738.5451617
   },
   "episodic": [
     {
@@ -678,6 +678,11 @@
       "summary": "The deployment failed due to resource limits, requiring a 24-hour wait, and two automated attempts to fix the issue also failed.",
       "item_count": 20,
       "ts": 1783721730.7904632
+    },
+    {
+      "summary": "Multiple failures occurred: a Slack agent run failed due to message limit quota exhaustion, a deployment was blocked by a resource limit (retry in 24 hours), and an auto-fix attempt could not apply a patch to a file.",
+      "item_count": 20,
+      "ts": 1783728738.5429888
     }
   ],
   "experiment_results": [
