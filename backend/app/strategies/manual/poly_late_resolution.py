@@ -1,7 +1,10 @@
 """Polymarket late-resolution arbitrage strategy."""
 from __future__ import annotations
+
+import logging
 from datetime import datetime, timezone
 import pandas as pd
+
 try:
     import httpx
     _HTTPX = True
@@ -11,6 +14,8 @@ except ImportError:
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 CLOB_BASE = "https://clob.polymarket.com"
+
+logger = logging.getLogger(__name__)
 
 
 class PolymarketLateResolution(AbstractStrategy):
@@ -37,6 +42,7 @@ class PolymarketLateResolution(AbstractStrategy):
         self.min_price: float = float(p.get("min_price", 0.80))
         self.max_hours: int = int(p.get("max_hours_to_resolution", 48))
         self.min_trend: float = float(p.get("min_price_trend", 0.02))
+        self._signal_count: int = 0
 
     def description(self) -> str:
         return (
@@ -86,6 +92,8 @@ class PolymarketLateResolution(AbstractStrategy):
         Scan Polymarket markets for near-certain contracts close to resolution.
         data is not used directly — strategy fetches live CLOB data.
         """
+        start_time = datetime.now(timezone.utc)
+
         markets = await self._fetch_markets()
         for market in markets:
             end_date = market.get("end_date_iso") or market.get("end_date", "")
@@ -112,7 +120,7 @@ class PolymarketLateResolution(AbstractStrategy):
                         continue
 
                 expected_return = (1.0 - price) / price
-                return Signal(
+                signal = Signal(
                     strategy_name=self.name,
                     strategy_type=self.strategy_type,
                     risk_bucket=self.risk_bucket,
@@ -128,6 +136,19 @@ class PolymarketLateResolution(AbstractStrategy):
                         "order_type": "limit",
                     },
                 )
+                self._signal_count += 1
+                exec_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+                logger.info(
+                    f"PolymarketLateResolution signal generated: count={self._signal_count}, "
+                    f"exec_time={exec_time:.3f}s, expected_return_pct={expected_return * 100:.2f}"
+                )
+                return signal
+
+        exec_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+        logger.info(
+            f"PolymarketLateResolution analysis completed with no signal: "
+            f"count={self._signal_count}, exec_time={exec_time:.3f}s"
+        )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
