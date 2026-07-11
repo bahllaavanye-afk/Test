@@ -19,6 +19,39 @@ import pandas as pd
 
 from app.utils.logging import logger
 
+# -----------------------------
+# Constants
+# -----------------------------
+MIN_DATA_LENGTH = 60
+VOL_WINDOW = 20
+
+HMM_COMPONENTS = 3
+HMM_COV_TYPE = "diag"
+HMM_ITER = 200
+HMM_RANDOM_STATE = 42
+
+VOL_RANK_BEAR_THRESHOLD = 1.5
+RETURN_BEAR_THRESHOLD = -0.002
+RETURN_BULL_THRESHOLD = 0.001
+VOL_RANK_BULL_MAX = 0.9
+
+FETCH_DAYS = 400
+SYMBOL_SPY = "SPY"
+
+SYNTHETIC_DAYS = 300
+SYNTHETIC_DAILY_MU = 0.0003
+SYNTHETIC_DAILY_SIGMA = 0.01
+
+REDIS_KEY = "market:regime"
+REDIS_TTL = 600  # seconds
+
+LABELS = {0: "bear", 1: "sideways", 2: "bull"}
+
+MONITOR_INTERVAL = 300  # seconds
+
+# -----------------------------
+# Optional dependency
+# -----------------------------
 try:
     from hmmlearn.hmm import GaussianHMM
     _HMM_AVAILABLE = True
@@ -32,20 +65,24 @@ def _fit_regime(returns: np.ndarray) -> int:
     Falls back to vol-rank heuristic if hmmlearn is unavailable.
     """
     n = len(returns)
-    if n < 60:
+    if n < MIN_DATA_LENGTH:
         return 1  # insufficient data → sideways
 
-    vol_20 = pd.Series(returns).rolling(20).std().bfill().values
+    vol_20 = pd.Series(returns).rolling(VOL_WINDOW).std().bfill().values
     features = np.column_stack([returns, vol_20])
 
     if _HMM_AVAILABLE:
         try:
-            model = GaussianHMM(n_components=3, covariance_type="diag",
-                                n_iter=200, random_state=42)
+            model = GaussianHMM(
+                n_components=HMM_COMPONENTS,
+                covariance_type=HMM_COV_TYPE,
+                n_iter=HMM_ITER,
+                random_state=HMM_RANDOM_STATE,
+            )
             model.fit(features)
             states = model.predict(features)
             # Label states by mean return: highest → bull(2), lowest → bear(0)
-            means = [features[states == s, 0].mean() for s in range(3)]
+            means = [features[states == s, 0].mean() for s in range(HMM_COMPONENTS)]
             order = np.argsort(means)  # indices sorted by mean return ascending
             label = {int(order[0]): 0, int(order[1]): 1, int(order[2]): 2}
             return int(label[int(states[-1])])
@@ -53,14 +90,14 @@ def _fit_regime(returns: np.ndarray) -> int:
             logger.warning("HMM fit failed, using heuristic", error=str(exc))
 
     # Heuristic: vol rank + recent momentum
-    recent_vol = float(np.std(returns[-20:]))
+    recent_vol = float(np.std(returns[-VOL_WINDOW:]))
     long_vol = float(np.std(returns[-252:]))
     vol_rank = recent_vol / max(long_vol, 1e-8)
-    recent_return = float(np.mean(returns[-20:]))
+    recent_return = float(np.mean(returns[-VOL_WINDOW:]))
 
-    if vol_rank > 1.5 or recent_return < -0.002:
+    if vol_rank > VOL_RANK_BEAR_THRESHOLD or recent_return < RETURN_BEAR_THRESHOLD:
         return 0  # bear / crisis
-    if recent_return > 0.001 and vol_rank < 0.9:
+    if recent_return > RETURN_BULL_THRESHOLD and vol_rank < VOL_RANK_BULL_MAX:
         return 2  # bull
     return 1  # sideways
 
@@ -70,10 +107,15 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
     try:
         import yfinance as yf  # type: ignore
         end = datetime.now(timezone.utc).date()
-        start = end - timedelta(days=400)
-        df = yf.download("SPY", start=str(start), end=str(end),
-                          progress=False, auto_adjust=True)
-        if df is None or len(df) < 60:
+        start = end - timedelta(days=FETCH_DAYS)
+        df = yf.download(
+            SYMBOL_SPY,
+            start=str(start),
+            end=str(end),
+            progress=False,
+            auto_adjust=True,
+        )
+        if df is None or len(df) < MIN_DATA_LENGTH:
             return None
         closes = df["Close"].dropna()
         return closes.pct_change().dropna().values.astype(float)
@@ -82,7 +124,7 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
         return None
 
 
-def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
+def _synthetic_spy_returns(n: int = SYNTHETIC_DAYS) -> np.ndarray:
     """
     GBM synthetic SPY returns when yfinance is unreachable (network policy,
     offline dev container). Keeps the regime monitor functional 24/7.
@@ -90,10 +132,7 @@ def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     """
     seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
     rng = np.random.default_rng(seed)
-    # Mild positive drift, ~16% annualised vol — a neutral "sideways/bull" market
-    daily_mu = 0.0003
-    daily_sigma = 0.01
-    return rng.normal(daily_mu, daily_sigma, n).astype(float)
+    return rng.normal(SYNTHETIC_DAILY_MU, SYNTHETIC_DAILY_SIGMA, n).astype(float)
 
 
 async def _fetch_spy_returns() -> np.ndarray | None:
@@ -112,11 +151,10 @@ async def run_once(redis_client) -> int | None:
         returns = _synthetic_spy_returns()
 
     regime = _fit_regime(returns)
-    labels = {0: "bear", 1: "sideways", 2: "bull"}
 
     try:
-        await redis_client.set("market:regime", str(regime), ex=600)  # TTL 10 min
-        logger.info("Regime updated", regime=regime, label=labels[regime])
+        await redis_client.set(REDIS_KEY, str(regime), ex=REDIS_TTL)
+        logger.info("Regime updated", regime=regime, label=LABELS[regime])
     except Exception as exc:
         logger.warning("Regime monitor: Redis write failed", error=str(exc))
         return None
@@ -127,7 +165,7 @@ async def run_once(redis_client) -> int | None:
 class RegimeMonitor:
     """Background asyncio task — call start() in app lifespan."""
 
-    INTERVAL_SECONDS = 300  # 5 minutes
+    INTERVAL_SECONDS = MONITOR_INTERVAL  # 5 minutes
 
     def __init__(self):
         self._task: asyncio.Task | None = None
@@ -141,6 +179,7 @@ class RegimeMonitor:
 
     async def _loop(self) -> None:
         from app.redis_client import get_redis
+
         redis = get_redis()
         while True:
             try:
