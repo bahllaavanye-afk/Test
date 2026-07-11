@@ -9,11 +9,39 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Sequence
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_numeric_sequence(name: str, seq: Sequence) -> None:
+    """Validate that *seq* is a non‑empty sequence of numeric values.
+
+    Parameters
+    ----------
+    name : str
+        Parameter name used in error messages.
+    seq : Sequence
+        The sequence to validate.
+
+    Raises
+    ------
+    ValueError
+        If *seq* is not a sequence, is empty, or contains non‑numeric items.
+    """
+    if not isinstance(seq, (list, tuple, np.ndarray)):
+        raise ValueError(f"{name} must be a list, tuple, or numpy array, got {type(seq).__name__}")
+
+    if len(seq) == 0:
+        raise ValueError(f"{name} cannot be empty")
+
+    for i, v in enumerate(seq):
+        try:
+            float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"All elements of {name} must be numeric; element at index {i} is {v!r}")
 
 
 @dataclass
@@ -126,6 +154,17 @@ def compute_factor_exposure(
     FactorExposure
         The regression coefficients and diagnostics wrapped in a ``FactorExposure`` instance.
     """
+    # ----- Input validation -----
+    _validate_numeric_sequence("portfolio_returns", portfolio_returns)
+    _validate_numeric_sequence("spy_returns", spy_returns)
+
+    if momentum_factor is not None:
+        _validate_numeric_sequence("momentum_factor", momentum_factor)
+
+    if low_vol_factor is not None:
+        _validate_numeric_sequence("low_vol_factor", low_vol_factor)
+    # ----------------------------
+
     n = min(len(portfolio_returns), len(spy_returns))
     if n < 20:
         logger.warning(
