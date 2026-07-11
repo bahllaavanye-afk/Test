@@ -8,6 +8,7 @@ Standard at all hedge funds. Uniquely missing from open‑source bots.
 from __future__ import annotations
 
 import logging
+import unittest
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 
@@ -222,3 +223,47 @@ def compute_factor_exposure(
         alpha_annualized=alpha_daily * 252,
         tracking_error=tracking_error,
     )
+
+
+class TestFactorExposure(unittest.TestCase):
+    """Edge‑case unit tests for ``compute_factor_exposure``."""
+
+    def test_insufficient_data_returns_default(self):
+        """When fewer than 20 observations are provided, defaults are returned."""
+        portfolio = [0.0] * 10
+        spy = [0.0] * 10
+        fe = compute_factor_exposure(portfolio, spy)
+        self.assertEqual(fe.market_beta, 1.0)
+        self.assertEqual(fe.r_squared, 0.0)
+        self.assertEqual(fe.alpha_annualized, 0.0)
+
+    def test_exact_boundary_data(self):
+        """Exactly 20 observations should be processed without fallback."""
+        n = 20
+        spy = np.arange(n) / 100.0
+        portfolio = 0.02 + 1.2 * spy  # perfect linear relationship
+        fe = compute_factor_exposure(portfolio.tolist(), spy.tolist())
+        self.assertAlmostEqual(fe.market_beta, 1.2, places=4)
+        self.assertAlmostEqual(fe.r_squared, 1.0, places=4)
+        # Alpha daily should be ~0.02, annualized ~5.04 (0.02*252)
+        self.assertAlmostEqual(fe.alpha_annualized, 0.02 * 252, places=4)
+
+    def test_momentum_factor_too_short_ignored(self):
+        """A momentum factor shorter than the effective window should be ignored."""
+        n = 25
+        spy = np.arange(n) / 100.0
+        momentum = np.arange(10) / 100.0  # intentionally too short
+        portfolio = 0.01 + 0.8 * spy
+        fe = compute_factor_exposure(
+            portfolio.tolist(),
+            spy.tolist(),
+            momentum_factor=momentum.tolist(),
+        )
+        self.assertEqual(fe.momentum_loading, 0.0)
+        self.assertAlmostEqual(fe.market_beta, 0.8, places=4)
+        # With perfect linear data, r_squared should be 1
+        self.assertAlmostEqual(fe.r_squared, 1.0, places=4)
+
+
+if __name__ == "__main__":
+    unittest.main()
