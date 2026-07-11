@@ -1,7 +1,11 @@
 """Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+import logging
+import time
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
+
+logger = logging.getLogger(__name__)
 
 
 class EnsembleStrategy(AbstractStrategy):
@@ -13,6 +17,7 @@ class EnsembleStrategy(AbstractStrategy):
     tick_interval_seconds = 300.0
     confidence_threshold = 0.70  # higher bar for pure ML
     sma_window = 20  # simple moving average window for confirmation
+    _signal_count = 0
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         """
@@ -30,6 +35,7 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        start_time = time.time()
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -65,7 +71,7 @@ class EnsembleStrategy(AbstractStrategy):
             if latest_vol < median_vol:
                 return None
 
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="buy" if ml_result["prediction"] == "up" else "sell",
                 confidence=ml_result["confidence"],
@@ -74,8 +80,25 @@ class EnsembleStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata=ml_result,
             )
-        except Exception:
-            # In production we would log the exception; for now we silently ignore.
+
+            # Update metrics and log
+            self.__class__._signal_count += 1
+            exec_time_ms = int((time.time() - start_time) * 1000)
+            pnl = ml_result.get("pnl")  # optional P&L info from model metadata
+            logger.info(
+                "EnsembleStrategy signal generated",
+                extra={
+                    "symbol": symbol,
+                    "side": signal.side,
+                    "confidence": signal.confidence,
+                    "signal_count": self.__class__._signal_count,
+                    "execution_time_ms": exec_time_ms,
+                    "pnl": pnl,
+                },
+            )
+            return signal
+        except Exception as e:
+            logger.exception("Error in EnsembleStrategy analyze: %s", e)
             return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
@@ -90,6 +113,7 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
+        start_time = time.time()
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
@@ -122,5 +146,16 @@ class EnsembleStrategy(AbstractStrategy):
         # Align boolean Series with BacktestSignals expectations
         entries = entries.astype(bool)
         exits = exits.astype(bool)
+
+        # Logging metrics
+        signal_count = int(entries.sum())
+        exec_time_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "EnsembleStrategy backtest completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_ms": exec_time_ms,
+            },
+        )
 
         return BacktestSignals(entries=entries, exits=exits)
