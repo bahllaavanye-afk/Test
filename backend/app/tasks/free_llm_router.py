@@ -23,7 +23,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, List
 
 import httpx
 
@@ -42,7 +42,7 @@ class LLMProvider:
     headers_extra: dict = field(default_factory=dict)
 
 
-PROVIDERS: list[LLMProvider] = [
+PROVIDERS: List[LLMProvider] = [
     LLMProvider(
         name="gemini",
         env_key="GEMINI_API_KEY",
@@ -103,11 +103,43 @@ class LLMResponse:
     tokens_used: int = 0
 
 
+# ── Validation helpers ──────────────────────────────────────────────────────
+
+def _validate_messages(messages: Any) -> None:
+    if not isinstance(messages, list):
+        raise ValueError("messages must be a list of dictionaries")
+    if not all(isinstance(m, dict) for m in messages):
+        raise ValueError("each message must be a dictionary")
+    if not messages:
+        raise ValueError("messages list cannot be empty")
+
+
+def _validate_temperature(temperature: Any) -> None:
+    if not isinstance(temperature, (int, float)):
+        raise ValueError("temperature must be a numeric type")
+    if not (0.0 <= temperature <= 2.0):
+        raise ValueError("temperature must be between 0.0 and 2.0")
+
+
+def _validate_max_tokens(max_tokens: Any) -> None:
+    if not isinstance(max_tokens, int):
+        raise ValueError("max_tokens must be an integer")
+    if max_tokens <= 0:
+        raise ValueError("max_tokens must be a positive integer")
+
+
+def _validate_timeout(timeout: Any) -> None:
+    if not isinstance(timeout, (int, float)):
+        raise ValueError("timeout must be a numeric type")
+    if timeout <= 0:
+        raise ValueError("timeout must be a positive number")
+
+
 # ── Core caller ───────────────────────────────────────────────────────────────
 
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
@@ -144,12 +176,17 @@ async def _call_provider(
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 async def call_race(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
 ) -> LLMResponse | None:
     """Call all available providers in parallel; return the first successful response."""
+    _validate_messages(messages)
+    _validate_temperature(temperature)
+    _validate_max_tokens(max_tokens)
+    _validate_timeout(timeout)
+
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
@@ -176,12 +213,17 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
-) -> list[LLMResponse]:
+) -> List[LLMResponse]:
     """Call all providers and return all successful responses for consensus analysis."""
+    _validate_messages(messages)
+    _validate_temperature(temperature)
+    _validate_max_tokens(max_tokens)
+    _validate_timeout(timeout)
+
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
@@ -193,6 +235,6 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
+def available_providers() -> List[str]:
     """Return names of providers with configured API keys."""
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
