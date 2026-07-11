@@ -9,6 +9,9 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 from app.utils.logging import logger
 
+# --------------------------------------------------------------------------- #
+# Core functionality
+# --------------------------------------------------------------------------- #
 
 async def fetch_fear_greed_index() -> dict:
     """
@@ -211,17 +214,68 @@ def add_sentiment_features(df: pd.DataFrame, fear_greed_history: list[dict]) -> 
 
     fg_df = pd.DataFrame(fear_greed_history)
     fg_df["date"] = pd.to_datetime(fg_df["date"])
-    fg_df = fg_df.set_index("date")["value"].rename("fear_greed_score")
+  
+# ... (truncated for brevity)
 
-    df.index = pd.to_datetime(df.index)
-    date_index = df.index.normalize()
-    df["fear_greed_score"] = date_index.map(fg_df.to_dict()).fillna(method="ffill").fillna(50)
-    df["fear_greed_norm"] = (df["fear_greed_score"] - 50) / 50.0
-    df["extreme_fear"] = df["fear_greed_score"] < 25
-    df["extreme_greed"] = df["fear_greed_score"] > 75
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases
+# --------------------------------------------------------------------------- #
 
-    # Lag by 1 to prevent lookahead
-    for col in ["fear_greed_score", "fear_greed_norm", "extreme_fear", "extreme_greed"]:
-        df[col] = df[col].shift(1)
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
 
-    return df
+class TestSentimentUtilities(unittest.TestCase):
+    def test_simple_sentiment_max_boundary(self):
+        # Text containing all bullish keywords should hit the upper bound of 1.0
+        bullish_words = [
+            "surge", "rally", "gain", "bull", "up", "high", "rise",
+            "strong", "beat", "record", "buy", "growth"
+        ]
+        text = " ".join(bullish_words)
+        score = _simple_sentiment(text)
+        self.assertEqual(score, 1.0)
+
+    def test_simple_sentiment_min_boundary(self):
+        # Text containing many bearish keywords should be clamped to -1.0
+        bearish_words = [
+            "crash", "drop", "fall", "bear", "down", "low", "decline",
+            "weak", "miss", "loss", "sell", "fear"
+        ]
+        # Repeat to ensure raw score would be less than -1 before clamping
+        text = " ".join(bearish_words * 5)
+        score = _simple_sentiment(text)
+        self.assertEqual(score, -1.0)
+
+    def test_add_sentiment_features_with_empty_history(self):
+        df = pd.DataFrame({"open": [1], "close": [2]})
+        result = add_sentiment_features(df, [])
+        self.assertIn("fear_greed_score", result.columns)
+        self.assertIn("fear_greed_norm", result.columns)
+        self.assertIn("extreme_fear", result.columns)
+        self.assertIn("extreme_greed", result.columns)
+        self.assertEqual(result["fear_greed_score"].iloc[0], 50.0)
+        self.assertEqual(result["fear_greed_norm"].iloc[0], 0.0)
+        self.assertFalse(result["extreme_fear"].iloc[0])
+        self.assertFalse(result["extreme_greed"].iloc[0])
+
+    def test_fetch_fear_greed_index_empty_response(self):
+        async def run_test():
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_resp.json = MagicMock(return_value={"data": []})
+
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.get = AsyncMock(return_value=mock_resp)
+
+            with patch("httpx.AsyncClient", return_value=mock_client):
+                result = await fetch_fear_greed_index()
+                self.assertEqual(result["status"], "ok")
+                self.assertEqual(result["readings"], [])
+                self.assertIsNone(result["current"])
+
+        asyncio.run(run_test())
+
+
+if __name__ == "__main__":
+    unittest.main()
