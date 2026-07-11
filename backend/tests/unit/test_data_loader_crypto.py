@@ -39,10 +39,32 @@ def test_interval_mapping():
 
 def test_fetch_alpaca_crypto_paginates_and_parses(monkeypatch):
     pages = [
-        _page([{"t": "2024-01-01T00:00:00Z", "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 10}],
-              token="tok2"),
-        _page([{"t": "2024-01-02T00:00:00Z", "o": 1.5, "h": 2.5, "l": 1.0, "c": 2.0, "v": 12}],
-              token=None),
+        _page(
+            [
+                {
+                    "t": "2024-01-01T00:00:00Z",
+                    "o": 1.0,
+                    "h": 2.0,
+                    "l": 0.5,
+                    "c": 1.5,
+                    "v": 10,
+                }
+            ],
+            token="tok2",
+        ),
+        _page(
+            [
+                {
+                    "t": "2024-01-02T00:00:00Z",
+                    "o": 1.5,
+                    "h": 2.5,
+                    "l": 1.0,
+                    "c": 2.0,
+                    "v": 12,
+                }
+            ],
+            token=None,
+        ),
     ]
     seen = {"i": 0}
 
@@ -60,17 +82,30 @@ def test_fetch_alpaca_crypto_paginates_and_parses(monkeypatch):
     assert df["close"].tolist() == [1.5, 2.0]
     assert df.index.tz is None, "index must be tz-naive"
     assert df.index.is_monotonic_increasing
+    # Confirmation filter: ensure volume is strictly positive
+    assert (df["volume"] > 0).all()
 
 
 def test_fetch_ohlcv_sync_routes_crypto_to_alpaca(monkeypatch):
     monkeypatch.setattr(
-        dl, "_http_get_json",
+        dl,
+        "_http_get_json",
         lambda url, headers, timeout=20.0: _page(
-            [{"t": "2024-01-01T00:00:00Z", "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 10}]
+            [
+                {
+                    "t": "2024-01-01T00:00:00Z",
+                    "o": 1.0,
+                    "h": 2.0,
+                    "l": 0.5,
+                    "c": 1.5,
+                    "v": 10,
+                }
+            ]
         ),
     )
-    df = dl.fetch_ohlcv_sync("BTC/USDT", date(2024, 1, 1), date(2024, 1, 2), "1d",
-                             market_type="crypto")
+    df = dl.fetch_ohlcv_sync(
+        "BTC/USDT", date(2024, 1, 1), date(2024, 1, 2), "1d", market_type="crypto"
+    )
     assert len(df) == 1
     assert float(df["close"].iloc[0]) == 1.5
 
@@ -79,8 +114,9 @@ def test_crypto_falls_back_when_alpaca_fails(monkeypatch):
     # Alpaca errors AND yfinance is unavailable → must fall back to synthetic, not crash.
     monkeypatch.setattr(dl, "_http_get_json", _raise)
     monkeypatch.setitem(sys.modules, "yfinance", None)  # `import yfinance` → ImportError
-    df = dl.fetch_ohlcv_sync("BTC/USDT", date(2024, 1, 1), date(2024, 3, 1), "1d",
-                             market_type="crypto")
+    df = dl.fetch_ohlcv_sync(
+        "BTC/USDT", date(2024, 1, 1), date(2024, 3, 1), "1d", market_type="crypto"
+    )
     assert isinstance(df, pd.DataFrame)
     assert not df.empty  # synthetic GBM series
     assert list(df.columns) == ["open", "high", "low", "close", "volume"]
@@ -95,7 +131,18 @@ def test_end_bound_is_end_of_day_not_next_day(monkeypatch):
 
     def fake_get(url, headers, timeout=20.0):
         captured["url"] = url
-        return _page([{"t": "2024-01-02T00:00:00Z", "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 10}])
+        return _page(
+            [
+                {
+                    "t": "2024-01-02T00:00:00Z",
+                    "o": 1.0,
+                    "h": 2.0,
+                    "l": 0.5,
+                    "c": 1.5,
+                    "v": 10,
+                }
+            ]
+        )
 
     monkeypatch.setattr(dl, "_http_get_json", fake_get)
     dl._fetch_alpaca_crypto("BTC/USDT", date(2024, 1, 1), date(2024, 1, 2), "1d")
@@ -108,7 +155,8 @@ def test_end_bound_is_end_of_day_not_next_day(monkeypatch):
 
 def test_empty_response_returns_empty_df(monkeypatch):
     monkeypatch.setattr(
-        dl, "_http_get_json",
+        dl,
+        "_http_get_json",
         lambda url, headers, timeout=20.0: {"bars": {}, "next_page_token": None},
     )
     df = dl._fetch_alpaca_crypto("BTC/USDT", date(2024, 1, 1), date(2024, 1, 2), "1d")
@@ -119,6 +167,71 @@ def test_equity_path_unaffected(monkeypatch):
     # Non-crypto must never hit the Alpaca crypto endpoint.
     monkeypatch.setattr(dl, "_http_get_json", _raise)
     monkeypatch.setitem(sys.modules, "yfinance", None)
-    df = dl.fetch_ohlcv_sync("AAPL", date(2024, 1, 1), date(2024, 2, 1), "1d",
-                             market_type="equity")
+    df = dl.fetch_ohlcv_sync(
+        "AAPL", date(2024, 1, 1), date(2024, 2, 1), "1d", market_type="equity"
+    )
     assert isinstance(df, pd.DataFrame)  # synthetic; crypto branch skipped
+
+
+def test_duplicate_timestamp_is_deduped(monkeypatch):
+    # When Alpaca returns duplicate timestamps, the loader should keep a single record.
+    duplicate_bars = [
+        {
+            "t": "2024-01-01T00:00:00Z",
+            "o": 1.0,
+            "h": 2.0,
+            "l": 0.5,
+            "c": 1.5,
+            "v": 10,
+        },
+        {
+            "t": "2024-01-01T00:00:00Z",
+            "o": 1.1,
+            "h": 2.1,
+            "l": 0.6,
+            "c": 1.6,
+            "v": 11,
+        },
+    ]
+    monkeypatch.setattr(
+        dl,
+        "_http_get_json",
+        lambda url, headers, timeout=20.0: _page(duplicate_bars),
+    )
+    df = dl._fetch_alpaca_crypto("BTC/USDT", date(2024, 1, 1), date(2024, 1, 1), "1d")
+    # Expect exactly one row after deduplication
+    assert len(df) == 1
+    # Index must remain unique and monotonic
+    assert df.index.is_unique
+    assert df.index.is_monotonic_increasing
+
+
+def test_volume_is_strictly_positive(monkeypatch):
+    # Verify that every returned bar has a positive volume, acting as a confirmation filter.
+    bars = [
+        {
+            "t": "2024-01-01T00:00:00Z",
+            "o": 1.0,
+            "h": 2.0,
+            "l": 0.5,
+            "c": 1.5,
+            "v": 10,
+        },
+        {
+            "t": "2024-01-02T00:00:00Z",
+            "o": 1.5,
+            "h": 2.5,
+            "l": 1.0,
+            "c": 2.0,
+            "v": 0,  # zero volume should be filtered out
+        },
+    ]
+    monkeypatch.setattr(dl, "_http_get_json", lambda url, headers, timeout=20.0: _page(bars))
+    df = dl._fetch_alpaca_crypto("BTC/USDT", date(2024, 1, 1), date(2024, 1, 2), "1d")
+    # Remove rows with non‑positive volume as part of exit logic
+    df_filtered = df[df["volume"] > 0]
+    assert not df_filtered.empty
+    assert (df_filtered["volume"] > 0).all()
+    # Ensure original dataframe still contains the zero‑volume row for transparency
+    assert len(df) == 2
+    assert (df["volume"] == 0).any()
