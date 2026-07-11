@@ -199,8 +199,13 @@
     "Monitor disk space",
     "Test network connectivity",
     "Validate user credentials",
-    "Track thread timeouts"
+    "Track thread timeouts",
+    "refactor on execution/advanced_orders.py: success \u2014 tests green",
+    "refactor on risk/kelly.py: success \u2014 tests green",
+    "refactor on brokers/polymarket.py: success \u2014 tests green",
+    "refactor on backtest/options_synth.py: success \u2014 tests green",
+    "refactor on comparison/engine.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T14:20:20.845565+00:00",
+  "last_updated": "2026-07-11T15:29:32.722352+00:00",
   "total": 200
 }
