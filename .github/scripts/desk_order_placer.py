@@ -824,6 +824,38 @@ async def main() -> None:
 
         # ── Stage 4: Risk Check ───────────────────────────────────────────────
         approved_signals: list[dict] = []
+        # ── Cross-strategy signal ensembling (per desk+symbol) ───────────────
+        # Multiple independent strategies agreeing is stronger evidence than any
+        # single one (stacked/ensemble-signal literature): combine agreeing
+        # confidences as 1-prod(1-ci). Conflicting directions on the same desk
+        # symbol = no edge -> stand aside entirely.
+        from collections import defaultdict
+        _groups: dict = defaultdict(list)
+        for _it in raw_signals:
+            _side = str(getattr(_it["signal"], "side", "")).lower()
+            _groups[(_it["desk"].name, _it["symbol"], _side)].append(_it)
+        _ensembled: list[dict] = []
+        for (_dn, _sym, _side), _items in _groups.items():
+            _opp = "sell" if _side == "buy" else "buy"
+            if (_dn, _sym, _opp) in _groups:
+                print(f"  · ensemble[{_dn}]: {_sym} {_side}/{_opp} conflict — stand aside", flush=True)
+                continue
+            if len(_items) == 1:
+                _ensembled.append(_items[0]); continue
+            _keep = dict(max(_items, key=lambda x: x["confidence"]))
+            _p = 1.0
+            for _x in _items:
+                _p *= (1.0 - min(max(float(_x["confidence"]), 0.0), 1.0))
+            _keep["confidence"] = round(1.0 - _p, 4)
+            try:  # keep the Signal object consistent for downstream sizing
+                _keep["signal"].confidence = _keep["confidence"]
+            except Exception:  # noqa: BLE001 — frozen dataclass etc.
+                pass
+            _names = "+".join(getattr(_x["strategy"], "name", "?") for _x in _items)
+            print(f"  · ensemble[{_dn}]: {_sym} {_side} x{len(_items)} ({_names}) -> conf={_keep['confidence']:.2f}", flush=True)
+            _ensembled.append(_keep)
+        raw_signals = _ensembled
+
         with tracker.stage(RISK_CHECK, "Apply confidence threshold + top-K filter"):
             for item in raw_signals:
                 desk  = item["desk"]
