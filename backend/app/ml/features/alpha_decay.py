@@ -1,17 +1,8 @@
-"""
-Measures IC (Information Coefficient) decay for each strategy signal.
-IC = Spearman correlation between signal and subsequent forward return.
-Fits exponential decay: IC(t) = IC_0 * exp(-lambda * t)
-
-Usage:
-    tracker = AlphaDecayTracker()
-    profile = tracker.compute_ic_profile(signals, prices, "momentum")
-    scaled_conf = tracker.scale_confidence(0.7, profile, staleness_hours=2)
-"""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import unittest
 from dataclasses import dataclass, field
 from scipy.stats import spearmanr
 from scipy.optimize import curve_fit
@@ -136,3 +127,51 @@ class AlphaDecayTracker:
             -staleness_hours * np.log(2) / profile.half_life_hours
         )
         return float(base_confidence * max(float(decay), 0.0))
+
+
+class TestAlphaDecayTracker(unittest.TestCase):
+    def setUp(self):
+        self.tracker = AlphaDecayTracker()
+
+    def test_compute_ic_profile_insufficient_data(self):
+        # Very short series, fewer than required common points
+        dates = pd.date_range('2023-01-01', periods=10, freq='H')
+        signals = pd.Series(np.random.choice([-1, 0, 1], size=10), index=dates)
+        prices = pd.DataFrame({'close': np.random.rand(10)}, index=dates)
+
+        profile = self.tracker.compute_ic_profile(signals, prices, "test_strategy")
+        self.assertEqual(profile.ic_0, 0.0)
+        self.assertTrue(np.isinf(profile.half_life_hours))
+        self.assertEqual(profile.horizons, {})
+
+    def test_compute_ic_profile_missing_close_column(self):
+        dates = pd.date_range('2023-01-01', periods=40, freq='H')
+        signals = pd.Series(np.random.choice([-1, 0, 1], size=40), index=dates)
+        prices = pd.DataFrame({'open': np.random.rand(40)}, index=dates)
+
+        with self.assertRaises(ValueError):
+            self.tracker.compute_ic_profile(signals, prices, "test_strategy")
+
+    def test_scale_confidence_infinite_half_life(self):
+        profile = DecayProfile(
+            strategy_name="test_strategy",
+            ic_0=0.5,
+            half_life_hours=float('inf'),
+            horizons={}
+        )
+        result = self.tracker.scale_confidence(0.8, profile, staleness_hours=5)
+        self.assertAlmostEqual(result, 0.8)
+
+    def test_scale_confidence_zero_staleness(self):
+        profile = DecayProfile(
+            strategy_name="test_strategy",
+            ic_0=0.5,
+            half_life_hours=10,
+            horizons={}
+        )
+        result = self.tracker.scale_confidence(0.6, profile, staleness_hours=0)
+        self.assertAlmostEqual(result, 0.6)
+
+
+if __name__ == "__main__":
+    unittest.main()
