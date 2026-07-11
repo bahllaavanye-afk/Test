@@ -24,8 +24,6 @@ Policy weights are saved to: backend/models_artifacts/rl_exec_policy.pt
 from __future__ import annotations
 
 import asyncio
-import os
-import random
 import time
 from pathlib import Path
 
@@ -39,11 +37,10 @@ try:
 except ImportError:
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
-    nn = None     # type: ignore[assignment]
-    F = None      # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+    F = None  # type: ignore[assignment]
 
 from app.utils.logging import logger
-
 
 _MODEL_PATH = Path("backend/models_artifacts/rl_exec_policy.pt")
 _STATE_DIM = 5
@@ -126,13 +123,16 @@ class RLExecAgent:
         Returns:
             One of: 'wait', 'limit_inside', 'limit_best', 'market'
         """
-        arr = np.array([
-            float(state.get("remaining_fraction", 1.0)),
-            float(state.get("elapsed_fraction", 0.0)),
-            float(state.get("spread_bps", 5.0)) / 50.0,   # normalise to ~[0,1]
-            float(state.get("volume_ratio", 1.0)),
-            float(state.get("book_imbalance", 0.0)),
-        ], dtype=np.float32)
+        arr = np.array(
+            [
+                float(state.get("remaining_fraction", 1.0)),
+                float(state.get("elapsed_fraction", 0.0)),
+                float(state.get("spread_bps", 5.0)) / 50.0,  # normalise to ~[0,1]
+                float(state.get("volume_ratio", 1.0)),
+                float(state.get("book_imbalance", 0.0)),
+            ],
+            dtype=np.float32,
+        )
 
         # Clip to valid range
         arr = np.clip(arr, -2.0, 2.0)
@@ -148,7 +148,7 @@ class RLExecAgent:
 
         if elapsed > 0.85 or remaining < 0.05:
             return "market"
-        elif spread_norm < 0.2:     # tight spread → post limit
+        elif spread_norm < 0.2:  # tight spread → post limit
             return "limit_best"
         elif elapsed > 0.5:
             return "limit_inside"
@@ -202,7 +202,7 @@ class RLExecution:
 
         total_qty = float(request.quantity)
         remaining = total_qty
-        fills = []
+        fills: list[dict] = []
         start_time = time.monotonic()
         max_steps = max(1, self.fallback_seconds // self.step_seconds)
         step = 0
@@ -212,14 +212,7 @@ class RLExecution:
             elapsed_frac = min(1.0, elapsed / self.fallback_seconds)
             remaining_frac = remaining / total_qty
 
-            state = {
-                "remaining_fraction": remaining_frac,
-                "elapsed_fraction": elapsed_frac,
-                "spread_bps": 5.0,         # default; would come from live LOB in production
-                "volume_ratio": 1.0,
-                "book_imbalance": 0.0,
-            }
-
+            state = self._build_state(remaining_frac, elapsed_frac)
             action = self.agent.select_action(state)
 
             if action == "wait":
@@ -227,60 +220,105 @@ class RLExecution:
                 step += 1
                 continue
 
-            # Build sub-order request
-            fill_qty = remaining if action == "market" else min(remaining, total_qty * 0.15)
-            sub = OrderRequest(
-                symbol=request.symbol,
-                side=request.side,
-                order_type="market" if action == "market" else "limit",
-                quantity=fill_qty,
-                limit_price=request.limit_price if action in ("limit_inside", "limit_best") else None,
-                account_id=request.account_id,
-                execution_algo=f"rl_{action}",
-            )
+            fill_qty = self._determine_fill_qty(action, remaining, total_qty)
+            sub_order = self._create_sub_order(request, action, fill_qty)
 
             try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    filled = float(result.filled_qty)
-                    fill_price = float(result.avg_fill_price or sub.limit_price or 0)
-                    slippage_bps = 0.0
-                    if signal_price and signal_price > 0:
-                        slippage_bps = abs(fill_price - signal_price) / signal_price * 10_000
-                    fills.append({
-                        "qty": filled,
-                        "price": fill_price,
-                        "algo": f"rl_{action}",
-                        "slippage_bps": slippage_bps,
-                    })
-                    remaining -= filled
+                fill = await self.broker.send_order(sub_order)
+                # Expected fill dict format: {"quantity": ..., "price": ..., "algo": ...}
+                slippage_bps = self._calculate_slippage(fill, signal_price, request.side)
+                fill_record = {
+                    "qty": float(fill.get("quantity", fill_qty)),
+                    "price": float(fill.get("price", 0.0)),
+                    "algo": f"rl_{action}",
+                    "slippage_bps": slippage_bps,
+                }
+                fills.append(fill_record)
+                remaining = max(0.0, remaining - fill_record["qty"])
             except Exception as e:
-                logger.warning("RLExecution fill error: %s", e)
+                logger.warning("RLExecution: order failed for action %s (%s)", action, e)
+                # If an order fails, we treat it as a wait and retry in the next step
+                await asyncio.sleep(self.step_seconds)
+                step += 1
+                continue
 
             step += 1
-            if action != "market":
-                await asyncio.sleep(self.step_seconds)
 
-        # Force-fill any remaining with market
+        # If still unfilled after loop, aggressively market the remainder
         if remaining > 0.01:
-            sub = OrderRequest(
-                symbol=request.symbol,
-                side=request.side,
-                order_type="market",
-                quantity=remaining,
-                account_id=request.account_id,
-                execution_algo="rl_market_fallback",
-            )
-            try:
-                result = await self.broker.place_order(sub)
-                if result and result.filled_qty:
-                    fills.append({
-                        "qty": float(result.filled_qty),
-                        "price": float(result.avg_fill_price or 0),
-                        "algo": "rl_market_fallback",
-                        "slippage_bps": 0.0,
-                    })
-            except Exception as e:
-                logger.warning("RLExecution fallback market error: %s", e)
+            await self._fallback_market(request, remaining, fills)
 
         return fills
+
+    def _build_state(self, remaining_frac: float, elapsed_frac: float) -> dict:
+        """Construct the state dictionary expected by the RL agent."""
+        return {
+            "remaining_fraction": remaining_frac,
+            "elapsed_fraction": elapsed_frac,
+            "spread_bps": 5.0,  # placeholder; would be populated from live LOB in production
+            "volume_ratio": 1.0,
+            "book_imbalance": 0.0,
+        }
+
+    def _determine_fill_qty(self, action: str, remaining: float, total_qty: float) -> float:
+        """Determine how much quantity to request for the given action."""
+        if action == "market":
+            return remaining
+        # For limit orders we cap the slice to 15% of the original order size
+        return min(remaining, total_qty * 0.15)
+
+    def _create_sub_order(self, request, action: str, fill_qty: float):
+        """Create an OrderRequest compatible with the broker."""
+        from app.brokers.base import OrderRequest
+
+        return OrderRequest(
+            symbol=request.symbol,
+            side=request.side,
+            order_type="market" if action == "market" else "limit",
+            quantity=fill_qty,
+            limit_price=request.limit_price if action in ("limit_inside", "limit_best") else None,
+            account_id=request.account_id,
+            execution_algo=f"rl_{action}",
+        )
+
+    def _calculate_slippage(
+        self, fill: dict, signal_price: float | None, side: str
+    ) -> float:
+        """
+        Compute slippage in basis points relative to a reference price.
+        If signal_price is not provided, slippage is reported as 0.
+        """
+        if signal_price is None:
+            return 0.0
+        fill_price = float(fill.get("price", signal_price))
+        if side.lower() == "buy":
+            diff = fill_price - signal_price
+        else:
+            diff = signal_price - fill_price
+        return (diff / signal_price) * 10_000  # bps
+
+    async def _fallback_market(self, request, remaining_qty: float, fills: list[dict]) -> None:
+        """Send a final market order for any leftover quantity."""
+        from app.brokers.base import OrderRequest
+
+        fallback_order = OrderRequest(
+            symbol=request.symbol,
+            side=request.side,
+            order_type="market",
+            quantity=remaining_qty,
+            account_id=request.account_id,
+            execution_algo="rl_fallback_market",
+        )
+        try:
+            fill = await self.broker.send_order(fallback_order)
+            slippage_bps = self._calculate_slippage(fill, None, request.side)
+            fills.append(
+                {
+                    "qty": float(fill.get("quantity", remaining_qty)),
+                    "price": float(fill.get("price", 0.0)),
+                    "algo": "rl_fallback_market",
+                    "slippage_bps": slippage_bps,
+                }
+            )
+        except Exception as e:
+            logger.error("RLExecution: fallback market order failed (%s)", e)
