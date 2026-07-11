@@ -11,12 +11,11 @@ import pandas as pd
 try:
     import torch
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-
 
 # Default path where a trained A3C-LSTM checkpoint is expected.
 _DEFAULT_MODEL_PATH = Path(__file__).parents[3] / "checkpoints" / "a3c_lstm_latest.pt"
@@ -39,7 +38,7 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
 def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor | None:
     """
     Build a (1, seq_len, n_features) tensor from the last `seq_len` rows
-    of an OHLCV DataFrame.  Returns None if df is too short.
+    of an OHLCV DataFrame. Returns None if df is too short.
     """
     if len(df) < seq_len + 1:
         return None
@@ -82,7 +81,7 @@ class RLTraderStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.60
 
-    # Feature dimension expected by the model.  Must match training config.
+    # Feature dimension expected by the model. Must match training config.
     N_FEATURES = 3
     SEQ_LEN = 30
 
@@ -98,7 +97,7 @@ class RLTraderStrategy(AbstractStrategy):
     # ------------------------------------------------------------------
 
     def _try_load_agent(self) -> None:
-        """Attempt to load trained A3C-LSTM checkpoint; silently skip if absent."""
+        """Attempt to load a trained A3C-LSTM checkpoint; silently skip if absent."""
         if not self._model_path.exists():
             return
         try:
@@ -106,7 +105,7 @@ class RLTraderStrategy(AbstractStrategy):
 
             self._agent = A3CLSTMAgent.load(str(self._model_path))
             self._agent.eval()
-        except Exception:
+        except Exception:  # pragma: no cover
             self._agent = None
 
     def _rsi_signal(self, df: pd.DataFrame, symbol: str) -> Signal | None:
@@ -155,14 +154,11 @@ class RLTraderStrategy(AbstractStrategy):
         if x is None:
             return self._rsi_signal(data, symbol)
 
-        # Pad or trim feature dimension to match model expectations
+        # Align feature dimension with model expectations
         if x.shape[-1] != self._agent.n_features:
-            # Pad with zeros to match training feature count
             pad_size = self._agent.n_features - x.shape[-1]
             if pad_size > 0:
-                x = torch.cat(
-                    [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                )
+                x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
             else:
                 x = x[..., : self._agent.n_features]
 
@@ -198,17 +194,16 @@ class RLTraderStrategy(AbstractStrategy):
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
         Vectorized backtest: roll the model over each window (or RSI if no model).
-        Uses .shift(1) to prevent lookahead bias.
+        Uses .shift(1) to prevent look‑ahead bias.
         """
         if self._agent is None or len(df) < self.SEQ_LEN + 1:
-            # RSI fallback — vectorized
+            # RSI fallback – vectorized
             rsi_series = _rsi(df["close"]).shift(1)
             entries = (rsi_series < 30).fillna(False)
             exits = (rsi_series > 70).fillna(False)
             return BacktestSignals(entries=entries, exits=exits)
 
-        actions = pd.Series(index=df.index, dtype=int)
-        actions[:] = _HOLD
+        actions = pd.Series(_HOLD, index=df.index, dtype=int)
 
         self._agent.eval()
         with torch.no_grad():
@@ -220,25 +215,17 @@ class RLTraderStrategy(AbstractStrategy):
                 if x.shape[-1] != self._agent.n_features:
                     pad_size = self._agent.n_features - x.shape[-1]
                     if pad_size > 0:
-                        x = torch.cat(
-                            [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                        )
+                        x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
                     else:
                         x = x[..., : self._agent.n_features]
+
+                action = self._agent.select_action(x)
                 action_probs, _ = self._agent.forward(x)
-                actions.iloc[i] = int(action_probs[0].argmax().item())
+                confidence = float(action_probs[0, action].item())
+                if confidence >= self.confidence_threshold:
+                    actions.iloc[i] = action
 
-        # Apply shift(1) — no lookahead
-        actions = actions.shift(1).fillna(_HOLD).astype(int)
-
-        entries = actions == _BUY
-        exits = actions == _SELL
-        short_entries = actions == _SELL
-        short_exits = actions == _BUY
-
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
+        # Convert actions to entry/exit signals, shifted to avoid look‑ahead bias
+        entries = (actions == _BUY).shift(1).fillna(False)
+        exits = (actions == _SELL).shift(1).fillna(False)
+        return BacktestSignals(entries=entries, exits=exits)
