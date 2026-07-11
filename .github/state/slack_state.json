@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1783776580,
+  "last_run_ts": 1783776836,
   "last_commit_sha": "47973d6",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -326,7 +326,8 @@
     "5b726c4e854b",
     "db278bdc32ae",
     "f61ad19a8634",
-    "b274193203ff"
+    "b274193203ff",
+    "013bdd365213"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -341,7 +342,18 @@
     "risk-alerts:silent_risk_eng": 1783776597.8689346,
     "squad-backend:silent_backend_lead": 1783776601.3857455,
     "squad-qa:silent_qa_dir": 1783776605.9591453,
-    "infra-alerts:silent_devops_dir": 1783776608.7877207
+    "infra-alerts:silent_devops_dir": 1783776608.7877207,
+    "squad-execution:silent_exec_eng": 1783776836.6454794,
+    "desk-polymarket:silent_poly_desk": 1783776840.5514615,
+    "ml-experiments:silent_ml_researcher": 1783776844.2912219,
+    "desk-fx-rates:silent_vp_research": 1783776847.6997516,
+    "alpha-research:silent_quant_researcher": 1783776850.9401777,
+    "leadership-summary:silent_cro": 1783776857.117201,
+    "squad-frontend:silent_frontend": 1783776860.5673,
+    "engineering:silent_macro_researcher": 1783776867.3634126,
+    "engineering:silent_momentum_quant": 1783776875.622204,
+    "engineering:silent_research_ops": 1783776897.4450557,
+    "engineering:silent_senior_quant": 1783776900.9501271
   },
   "response_cache": {},
   "posted_today": [
@@ -400,16 +412,16 @@
     "backend_lead": 1783776583.7679741,
     "qa_dir": 1783776583.7679741,
     "devops_dir": 1783776583.7679741,
-    "exec_eng": 1783431338.979135,
-    "poly_desk": 1783431868.6464648,
-    "ml_researcher": 1781144509.093116,
-    "vp_research": 1783620339.999584,
-    "quant_researcher": 1783598861.7858727,
-    "cro": 1781144509.093116,
-    "frontend": 1781144509.093116,
+    "exec_eng": 1783776836.645194,
+    "poly_desk": 1783776836.645194,
+    "ml_researcher": 1783776836.645194,
+    "vp_research": 1783776836.645194,
+    "quant_researcher": 1783776836.645194,
+    "cro": 1783776836.645194,
+    "frontend": 1783776836.645194,
     "equity_lead": 1781144509.093116,
     "fixed_income_desk": 1781024089.1695297,
-    "macro_researcher": 1781144509.093116,
+    "macro_researcher": 1783776836.645194,
     "stat_arb_desk": 1781144509.093116,
     "vol_trader": 1781024089.1695297,
     "alt_data_lead": 1781144509.093116,
@@ -420,7 +432,7 @@
     "portfolio_manager": 1781024089.1695297,
     "market_maker": 1781024089.1695297,
     "rl_trader": 1783596403.476445,
-    "momentum_quant": 1781144509.093116,
+    "momentum_quant": 1783776836.645194,
     "graph_ml_researcher": 1781144509.093116,
     "crypto_desk_bot": 1783751425.6737072,
     "rates_desk_bot": 1783751430.132586,
@@ -471,12 +483,13 @@
     "tomas": 1783732892.2284265,
     "kenji": 1783564228.6755908,
     "yuki": 1783564228.6755908,
-    "senior_quant": 1783596403.476445,
+    "senior_quant": 1783776836.645194,
     "vp_engineering_(cr)": 1783709418.9652169,
     "karl": 1783640550.6224751,
     "feature_engineering_lead": 1783695967.7557874,
     "compliance_engineer": 1783750697.6807413,
-    "research_scientist": 1783770958.236518
+    "research_scientist": 1783770958.236518,
+    "research_ops": 1783776836.645194
   },
   "daily_usage": {
     "2026-06-10": {
@@ -1596,137 +1609,121 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-07-11 13:31:21"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "qa_dir",
-      "channel": "unknown",
-      "text": "I'm currently analyzing the pytest suite located at `tests/test_coverage.py`. Our latest run shows a **pass rate of 85%**, indicating a **15% failure rate**, which needs immediate attention. I'm triaging the top failing test case, specifically **test_login_failure**, which failed 4 times in the last",
-      "provider": "GitHub Models",
-      "ts": 1783396991.7439435,
-      "score": 7
-    },
-    {
-      "emp": "devops_dir",
-      "channel": "unknown",
-      "text": "Currently analyzing the build times for our **CI/CD pipelines**, focusing on the **/pipeline/builds/main.yml** file. The average build time has increased to **12 minutes**, which is a **30% rise** from last week. This slowdown appears to be caused by the recent addition of tests in the **/tests/unit",
-      "provider": "GitHub Models",
-      "ts": 1783396997.9897797,
-      "score": 8
     },
     {
       "emp": "exec_eng",
+      "score": 7,
+      "reason": "While it provides specific data on slippage and identifies the need for optimization, it lacks concrete actionable steps or a detailed analysis plan.",
       "channel": "unknown",
-      "text": "*I'm currently analyzing the `order_execution_latency.csv` file, which shows an average latency of **34.72ms** for the past hour, with a **23.15%** increase in latency for orders routed through the **NY4** exchange. I'm investigating the cause of this spike, focusing on the `async_order_manager.py` ",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1783397007.667032,
-      "score": 9
+      "ts": "2026-07-11 13:34:00"
     },
     {
       "emp": "poly_desk",
+      "score": 7,
+      "reason": "Identifies a specific prediction market, quantifies the probability gap, and mentions slippage but lacks further actionable insights or strategies for execution.",
       "channel": "unknown",
-      "text": "*I'm analyzing the `data/prediction_markets/btc_price.csv` file to identify calibration gaps between Polymarket and Metaculus*. The current odds for **BTC >$100k by Dec 2025** are 0.62 YES on Polymarket vs 0.71 on Metaculus, indicating a **9pp gap**. I'm calculating the *Kelly fraction* to determine",
-      "provider": "litellm:groq",
-      "ts": 1783397010.0086524,
-      "score": 8
+      "ts": "2026-07-11 13:34:03"
     },
     {
-      "emp": "quant_researcher",
+      "emp": "ml_researcher",
+      "score": 7,
+      "reason": "Provides specific performance metrics for model comparison but lacks actionable next steps and deeper insight into the implications of the results.",
       "channel": "unknown",
-      "text": "Currently analyzing initial backtest results for the *Short-Interest Velocity (SIV)* signal from \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1783397017.3986182,
-      "score": 2
-    },
-    {
-      "emp": "frontend",
-      "channel": "unknown",
-      "text": "*I'm currently refining the **MarketDepthChart.tsx** component to enhance real-time depth visualizations. I'm integrating a WebSocket feed from the **/api/market-depth** endpoint, aiming for an update frequency of 100ms to ensure smooth data transitions.* *This refinement has yielded a notable impro",
-      "provider": "GitHub Models",
-      "ts": 1783397021.5586236,
-      "score": 7
-    },
-    {
-      "emp": "equity_lead",
-      "channel": "unknown",
-      "text": "*Currently analyzing the equity signal from our latest strategy, focusing on the factor exposure report from the file path `\\\\QuantEdge\\Equities\\Factor_Analysis\\October2023.xlsx`. The leading alpha opportunity is identified in small-cap momentum stocks, yielding a projected alpha of 3.5% over the ne",
-      "provider": "GitHub Models",
-      "ts": 1783397025.466314,
-      "score": 7
-    },
-    {
-      "emp": "fixed_income_desk",
-      "channel": "unknown",
-      "text": "Currently analyzing the *QuantEdge_Fixed_Income_Analysis.xlsx*, focusing on the *Duration Risk* of our holdings. The 10Y UST is yielding 4.10%, while 30Y bonds are at 4.25%, indicating a steepening yield curve. I identified an opportunity to increase exposure in the *TBT 15% YTM* bond with a duratio",
-      "provider": "GitHub Models",
-      "ts": 1783397033.3620994,
-      "score": 9
-    },
-    {
-      "emp": "macro_researcher",
-      "channel": "unknown",
-      "text": "Currently analyzing the latest U.S. CPI data from *CPI_Report_September2023.xlsx*. The year-over-year inflation rate increased to *3.7%*, up from *3.5%* the previous month, indicating potential upward pressure on interest rates. Additionally, the Fed's balance sheet has contracted by *$45 billion* i",
-      "provider": "GitHub Models",
-      "ts": 1783397040.0105138,
-      "score": 7
-    },
-    {
-      "emp": "stat_arb_desk",
-      "channel": "unknown",
-      "text": "Currently analyzing the spread between AAPL and MSFT. The Z-score for the pair has reached *2.15*, indicating a potential entry point for mean-reversion. I've updated the Kalman filter model outputs and saved them in the directory */QuantEdge/Models/Kalman_AAPL_MSFT*. Monitoring for any cointegratio",
-      "provider": "GitHub Models",
-      "ts": 1783397043.6881473,
-      "score": 9
-    },
-    {
-      "emp": "vol_trader",
-      "channel": "unknown",
-      "text": "*Currently analyzing the realized vs implied volatility spread for SPY options. The 30-day implied volatility is at 18.5% (source: /data/IV_SPY_2023.csv), while the realized volatility over the past month stands at 14.2%. This indicates a potential mispricing; I suggest a vol-harvesting trade by sel",
-      "provider": "GitHub Models",
-      "ts": 1783397048.0331721,
-      "score": 5
-    },
-    {
-      "emp": "poly_desk",
-      "channel": "unknown",
-      "text": "Monitoring *BTC >$70k by Dec 31, 202 \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1783431308.0814722,
-      "score": 2
-    },
-    {
-      "emp": "vp_eng",
-      "channel": "unknown",
-      "text": "INSUFFICIENT DATA** to identify the single biggest reliability risk from commit subjects and test results \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1783431348.7300174,
-      "score": 2
-    },
-    {
-      "emp": "alpha_dir",
-      "channel": "unknown",
-      "text": "\u26a0\ufe0f [hallucination-flagged] *I'm currently reviewing the backtest results for our momentum strategy in the /Users/alpha/documents/QuantEdge/momentum_strategy.ipynb file*, which shows a **Sharpe ratio of 1.23** for the S&P 500 index over the past 6 months. The **mean-reversion analysis** in /data/reve",
-      "provider": "litellm:groq",
-      "ts": 1783431353.6849315,
-      "score": 5
-    },
-    {
-      "emp": "exec_eng",
-      "channel": "unknown",
-      "text": "*I'm currently analyzing the `execution_latency.csv` file in `/logs/orders/2023-02-15`*, which shows an average execution-path latency of **12.5ms** for the past hour. I'm focusing on optimizing the smart execution algorithm to reduce slippage risk, aiming to decrease the **slippage_metric** by **3.",
-      "provider": "litellm:groq",
-      "ts": 1783431368.7049892,
-      "score": 5
+      "ts": "2026-07-11 13:34:07"
     },
     {
       "emp": "vp_research",
+      "score": 7,
+      "reason": "While it identifies specific correlations and a targeted carry return, it lacks depth in actionable insights and potential implications for trading strategy.",
       "channel": "unknown",
-      "text": "Currently analyzing the *HMM regime probabilities* for G10 FX, specifically noting the shift in \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1783431377.5442297,
-      "score": 5
+      "ts": "2026-07-11 13:34:10"
     },
+    {
+      "emp": "quant_researcher",
+      "score": 7,
+      "reason": "While it provides specific analysis goals and general findings, it lacks detailed methodology and actionable steps for further research.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:34:16"
+    },
+    {
+      "emp": "cro",
+      "score": 7,
+      "reason": "While it mentions specific metrics and the plan to adjust leverage, it lacks a detailed actionable strategy beyond monitoring drawdown limits and does not address how to effectively implement these adjustments.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:34:20"
+    },
+    {
+      "emp": "frontend",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:34:25"
+    },
+    {
+      "emp": "macro_researcher",
+      "score": 2,
+      "reason": "Output is overly vague and lacks concrete, actionable points, merely stating a general area of focus without providing any meaningful insights or specifics.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:34:33"
+    },
+    {
+      "emp": "momentum_quant",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:34:40"
+    },
+    {
+      "emp": "research_ops",
+      "score": 7,
+      "reason": "Identifies specific issues and metrics but lacks actionable recommendations to address the bottlenecks.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:35:00"
+    },
+    {
+      "emp": "senior_quant",
+      "score": 7,
+      "reason": "While it identifies the Sharpe ratio and indicates areas for improvement, it lacks specific actionable adjustments or proposed metrics for the evaluation of momentum thresholds.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:35:04"
+    },
+    {
+      "emp": "latency_engineer",
+      "score": 7,
+      "reason": "Identifies a specific file and issue while proposing a batching solution, but lacks detailed implementation steps and a clearer baseline for the 12ms latency.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:35:07"
+    },
+    {
+      "emp": "frontend_lead",
+      "score": 7,
+      "reason": "Identifies a specific file and performance issue, but lacks detail on the methods for optimization and misses additional actionable points.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:35:10"
+    },
+    {
+      "emp": "data_lead",
+      "score": 9,
+      "reason": "Identifies specific issues in the OHLCV warehouse with quantifiable metrics and actionable steps to optimize performance.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:35:13"
+    },
+    {
+      "emp": "alpha_researcher",
+      "score": 7,
+      "reason": "While it provides specific metrics and a clear focus on validating the Sharpe ratio, it lacks sufficient detail on the sensitivity analyses and does not suggest actionable steps based on the findings.",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:35:19"
+    },
+    {
+      "emp": "exec_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-11 13:35:23"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "ml_lead",
       "channel": "unknown",
@@ -1998,6 +1995,134 @@
       "provider": "Gemini(GEMINI_API_KEY)",
       "ts": 1783776681.6442473,
       "score": 5
+    },
+    {
+      "emp": "exec_eng",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the fill-quality metrics for our recent trades, focusing on transactions from *order_management/logs/*, specifically the last 100 fills. I've identified a slippage average of 0.12% against the benchmark, which is *0.03% higher* than our target, indicating we need to optimize ",
+      "provider": "GitHub Models",
+      "ts": 1783776840.4049096,
+      "score": 7
+    },
+    {
+      "emp": "poly_desk",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the *prediction_market/data/okbet-insights* for the upcoming US midterms, focusing on the contract for which party will control the House. The current market probability for the Republicans is at 0.65, compared to a Metaculus estimate of 0.55, revealing a 10pp gap that sugges",
+      "provider": "GitHub Models",
+      "ts": 1783776843.987342,
+      "score": 7
+    },
+    {
+      "emp": "ml_researcher",
+      "channel": "unknown",
+      "text": "I'm currently conducting a detailed model comparison between LSTM and XGBoost on the *prediction_market/data/contract_metrics*. I'm analyzing their performance with a focus on the RMSE metric, where the LSTM model is currently achieving an RMSE of 0.25 on the validation set, while XGBoost is at 0.30",
+      "provider": "GitHub Models",
+      "ts": 1783776847.3828568,
+      "score": 7
+    },
+    {
+      "emp": "vp_research",
+      "channel": "unknown",
+      "text": "I'm currently analyzing cross-asset correlations between FX rates and macroeconomic indicators, focusing on data from *markets/fx-correlation-analysis/*. Preliminary findings indicate a significant positive correlation between the USD and 10-year Treasury yields, peaking at 0.75 over the past month.",
+      "provider": "GitHub Models",
+      "ts": 1783776850.654819,
+      "score": 7
+    },
+    {
+      "emp": "quant_researcher",
+      "channel": "unknown",
+      "text": "I'm currently focused on stress-testing the *equities/research/financial_ratios.csv* dataset, analyzing the impact of price-to-earnings (P/E) ratios on stock performance over the last 5 years. Preliminary findings indicate that stocks with a P/E ratio below 15 outperformed the market by 12% during t",
+      "provider": "GitHub Models",
+      "ts": 1783776856.832272,
+      "score": 7
+    },
+    {
+      "emp": "cro",
+      "channel": "unknown",
+      "text": "*Currently focused on analyzing the potential VaR for our portfolio based on recent market volatility. Specifically, I'm evaluating the *prediction_market/data/contract_metrics* with a target VaR threshold of 1.5% over a 10-day horizon, which shows a spike in risk due to fluctuations in equities. I ",
+      "provider": "GitHub Models",
+      "ts": 1783776860.4144247,
+      "score": 7
+    },
+    {
+      "emp": "frontend",
+      "channel": "unknown",
+      "text": "*I'm currently enhancing the component at /src/components/MarketDataVisualization.tsx to improve the rendering of real-time stock price updates via WebSocket. I'm integrating a new feature to display a rolling 5-minute average on the TradingView Lightweight Charts, which will help users identify sho",
+      "provider": "GitHub Models",
+      "ts": 1783776865.1103587,
+      "score": 5
+    },
+    {
+      "emp": "macro_researcher",
+      "channel": "unknown",
+      "text": "Currently focusing on the *cross-asset correlations* between FX rates and macroeconomic indicators, specifically \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1783776873.3832471,
+      "score": 2
+    },
+    {
+      "emp": "momentum_quant",
+      "channel": "unknown",
+      "text": "I'm analyzing the *walk-forward Sharpe ratio* of our 12-month \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1783776880.9037333,
+      "score": 5
+    },
+    {
+      "emp": "research_ops",
+      "channel": "unknown",
+      "text": "I'm currently monitoring the research pipeline for bottlenecks, particularly focusing on the experiment tracking system at *src/experiment_tracker*. There are **3 pending model promotions** that haven't been addressed in over 48 hours, impacting our ability to deploy timely updates to our trading mo",
+      "provider": "GitHub Models",
+      "ts": 1783776900.683246,
+      "score": 7
+    },
+    {
+      "emp": "senior_quant",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the **walk-forward Sharpe ratio** from our 12-month strategy simulations in *src/strategies/momentum_strategy.py*. Preliminary results indicate a **0.85 Sharpe ratio**, which is below our target of 1.0, suggesting that the current momentum models may be underperforming during",
+      "provider": "GitHub Models",
+      "ts": 1783776904.1873126,
+      "score": 7
+    },
+    {
+      "emp": "latency_engineer",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the *p99 latency metrics* for order book processing within *src/order_processing.py*. We've observed a spike in latency, reaching **12ms,** primarily due to inefficient message handling in the order path. To address this, I'll implement a more efficient batching algorithm whi",
+      "provider": "GitHub Models",
+      "ts": 1783776907.6725976,
+      "score": 7
+    },
+    {
+      "emp": "frontend_lead",
+      "channel": "unknown",
+      "text": "I'm currently focusing on improving the rendering performance of our trading dashboard, specifically in *src/dashboard/rendering.js*. I've identified that certain components exceed *200ms render times,* which could impact user experience. To address this, I'm optimizing the component lifecycle metho",
+      "provider": "GitHub Models",
+      "ts": 1783776910.149781,
+      "score": 7
+    },
+    {
+      "emp": "data_lead",
+      "channel": "unknown",
+      "text": "I'm currently focused on optimizing the **historical OHLCV warehouse** in *src/data_warehouse/ohlcv.py* to enhance data retrieval speed. I've identified that the average query time has increased to **35ms**, and I'm implementing indexing on frequently accessed fields to bring it down below **20ms**.",
+      "provider": "GitHub Models",
+      "ts": 1783776913.4344256,
+      "score": 9
+    },
+    {
+      "emp": "alpha_researcher",
+      "channel": "unknown",
+      "text": "I'm currently validating the **walk-forward Sharpe ratio** from simulations in *src/strategies/momentum_strategy.py*. The preliminary results indicate a **0.85 Sharpe ratio** over a 12-month period, and I am rigorously checking for stability across different market conditions to validate the robustn",
+      "provider": "GitHub Models",
+      "ts": 1783776919.862456,
+      "score": 7
+    },
+    {
+      "emp": "exec_lead",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the execution strategies of our **TWAP agent** implemented in *src/execution/twap_agent.py*. Preliminary results show that, under current market conditions, the slippage has averaged **5 basis points**, which is above our target of 3 basis points. I'm investigating ways to op",
+      "provider": "GitHub Models",
+      "ts": 1783776923.4204385,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -2008,16 +2133,16 @@
     "risk_eng": "GitHub Models",
     "backend_lead": "GitHub Models",
     "qa_dir": "GitHub Models",
-    "exec_eng": "Gemini(GEMINI_API_KEY)",
-    "poly_desk": "Gemini(GEMINI_API_KEY)",
-    "ml_researcher": "litellm:groq",
+    "exec_eng": "GitHub Models",
+    "poly_desk": "GitHub Models",
+    "ml_researcher": "GitHub Models",
     "vp_research": "GitHub Models",
-    "quant_researcher": "Gemini(GEMINI_API_KEY_2)",
-    "cro": "litellm:groq",
+    "quant_researcher": "GitHub Models",
+    "cro": "GitHub Models",
     "frontend": "GitHub Models",
     "equity_lead": "GitHub Models",
     "fixed_income_desk": "GitHub Models",
-    "macro_researcher": "GitHub Models",
+    "macro_researcher": "Gemini(GEMINI_API_KEY)",
     "stat_arb_desk": "Gemini(GEMINI_API_KEY_2)",
     "vol_trader": "GitHub Models",
     "alt_data_lead": "litellm:groq",
@@ -2028,18 +2153,23 @@
     "portfolio_manager": "GitHub Models",
     "market_maker": "GitHub Models",
     "rl_trader": "litellm:groq",
-    "momentum_quant": "litellm:groq",
+    "momentum_quant": "Gemini(GEMINI_API_KEY_2)",
     "graph_ml_researcher": "Gemini(GEMINI_API_KEY)",
     "exec_lead": "GitHub Models",
     "security_lead": "GitHub Models",
     "product_lead": "GitHub Models",
     "ml_infra": "GitHub Models",
-    "senior_quant": "Gemini(GEMINI_API_KEY)",
+    "senior_quant": "GitHub Models",
     "regime_analyst": "GitHub Models",
     "backtest_engineer": "GitHub Models",
     "data_engineer_2": "GitHub Models",
     "infra_lead": "GitHub Models",
-    "nlp_researcher": "GitHub Models"
+    "nlp_researcher": "GitHub Models",
+    "research_ops": "GitHub Models",
+    "latency_engineer": "GitHub Models",
+    "frontend_lead": "GitHub Models",
+    "data_lead": "GitHub Models",
+    "alpha_researcher": "GitHub Models"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781095580.7191632,
