@@ -28,6 +28,8 @@ class BotRunner:
     """Loads all enabled bots from DB and schedules them on APScheduler."""
 
     def __init__(self, scheduler: AsyncIOScheduler):
+        if not isinstance(scheduler, AsyncIOScheduler):
+            raise ValueError("scheduler must be an instance of AsyncIOScheduler")
         self._scheduler = scheduler
 
     async def start(self) -> None:
@@ -53,6 +55,13 @@ class BotRunner:
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        if not isinstance(bot_id, str) or not bot_id:
+            raise ValueError("bot_id must be a non-empty string")
+        try:
+            # Validate UUID format if applicable
+            uuid.UUID(bot_id)
+        except Exception:
+            raise ValueError(f"bot_id '{bot_id}' is not a valid UUID")
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -78,6 +87,13 @@ class BotRunner:
 
     async def reschedule(self, bot: "Bot") -> None:
         """Add or update a bot job in the scheduler."""
+        if bot is None:
+            raise ValueError("bot cannot be None")
+        # Runtime check for expected attributes
+        if not hasattr(bot, "id") or not isinstance(bot.id, str) or not bot.id:
+            raise ValueError("bot must have a non-empty string 'id' attribute")
+        if not hasattr(bot, "trigger"):
+            raise ValueError("bot must have a 'trigger' attribute")
         try:
             trigger_cfg: dict = bot.trigger or {}
             trigger_type = trigger_cfg.get("type", "schedule")
@@ -116,6 +132,8 @@ class BotRunner:
 
     async def unschedule(self, bot_id: str) -> None:
         """Remove a bot job from the scheduler."""
+        if not isinstance(bot_id, str) or not bot_id:
+            raise ValueError("bot_id must be a non-empty string")
         job_id = f"bot_{bot_id}"
         try:
             self._scheduler.remove_job(job_id)
