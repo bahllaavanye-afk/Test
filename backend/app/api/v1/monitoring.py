@@ -1,5 +1,6 @@
 """Monitoring and health check endpoints for the QA subsystem."""
 from __future__ import annotations
+
 import asyncio
 import json
 from pathlib import Path
@@ -38,7 +39,16 @@ async def get_fix_log(
     """Recent auto-fixes applied by the QA monitor (requires auth).
 
     Returns the last *limit* entries from the fix log (newest last).
+
+    Raises:
+        ValueError: If *limit* is not a positive integer.
     """
+    # Input validation
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
+    if limit <= 0:
+        raise ValueError("limit must be a positive integer")
+
     if not FIX_LOG_PATH.exists():
         return []
     try:
@@ -60,5 +70,6 @@ async def trigger_qa_cycle(
     The cycle runs asynchronously; poll GET /monitoring/health to see the result.
     """
     from app.tasks.qa_monitor import run_one_cycle
+
     asyncio.create_task(run_one_cycle())
     return {"message": "QA cycle started — poll /monitoring/health for results"}
