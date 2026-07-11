@@ -199,8 +199,13 @@
     "Test DB connections",
     "Implement early-stopping",
     "Monitor thread activity",
-    "Optimize log tracking"
+    "Optimize log tracking",
+    "test_cases on ml/features/alpha_decay.py: success \u2014 tests green",
+    "test_cases on execution/advanced_orders.py: success \u2014 tests green",
+    "test_cases on risk/factor_exposure.py: success \u2014 tests green",
+    "test_cases on brokers/binance.py: success \u2014 tests green",
+    "test_cases on backtest/engine.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T00:55:23.736328+00:00",
+  "last_updated": "2026-07-11T02:33:42.666955+00:00",
   "total": 200
 }
