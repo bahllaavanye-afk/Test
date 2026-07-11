@@ -57,6 +57,13 @@ class ReportBuilder:
 
     def build(self, comparison_result: ComparisonResult) -> ComparisonReport:
         """Build investor report from ComparisonEngine result."""
+        if comparison_result is None:
+            raise ValueError("comparison_result cannot be None")
+        if not isinstance(comparison_result, ComparisonResult):
+            raise ValueError(
+                f"comparison_result must be an instance of ComparisonResult, got {type(comparison_result)}"
+            )
+
         cr = comparison_result
 
         manual_metrics = self._backtest_to_strategy_metrics("Manual Strategy", cr.manual)
@@ -117,10 +124,23 @@ class ReportBuilder:
 
     def to_dict(self, report: ComparisonReport) -> dict:
         """Serialize for API response / JSON storage."""
+        if report is None:
+            raise ValueError("report cannot be None")
+        if not isinstance(report, ComparisonReport):
+            raise ValueError(
+                f"report must be an instance of ComparisonReport, got {type(report)}"
+            )
         return asdict(report)
 
     def executive_summary(self, report: ComparisonReport) -> str:
         """Plain English summary: 'ML Momentum outperforms manual by 34% Sharpe...'"""
+        if report is None:
+            raise ValueError("report cannot be None")
+        if not isinstance(report, ComparisonReport):
+            raise ValueError(
+                f"report must be an instance of ComparisonReport, got {type(report)}"
+            )
+
         direction = "outperforms" if report.ml_improvement_pct > 0 else "underperforms"
         abs_improvement = abs(report.ml_improvement_pct)
 
@@ -164,6 +184,13 @@ class ReportBuilder:
 
         Bloomberg dark theme — dark background, green for positive, red for negative.
         """
+        if report is None:
+            raise ValueError("report cannot be None")
+        if not isinstance(report, ComparisonReport):
+            raise ValueError(
+                f"report must be an instance of ComparisonReport, got {type(report)}"
+            )
+
         rows_html = self._metrics_table_rows(report)
         eq_section = self._equity_curve_section(report)
         summary_text = self.executive_summary(report).replace("\n", "<br>")
@@ -195,16 +222,21 @@ class ReportBuilder:
   </style>
 </head>
 <body>
-  <h1>QuantEdge Comparison Report</h1>
-  <div class="meta">Generated at {_h(report.generated_at)}</div>
+  <h1>QuantEdge Comparison Report — {_h(report.strategy_name)} / {_h(report.symbol)}</h1>
+  <div class="meta">Generated at: {_h(report.generated_at)}</div>
   <div class="summary">{summary_text}</div>
   <h2>Metrics</h2>
   <table>
-    <thead>
-      <tr><th>Metric</th><th>Manual</th><th>ML‑Enhanced</th></tr>
-    </thead>
+    <thead><tr><th>Metric</th><th>Manual</th><th>ML-Enhanced</th></tr></thead>
     <tbody>
-      {rows_html}
+{rows_html}
+    </tbody>
+  </table>
+  <h2>Benchmarks</h2>
+  <table>
+    <thead><tr><th>Benchmark</th><th>Sharpe</th><th>Annual Return %</th></tr></thead>
+    <tbody>
+{self._benchmarks_table_rows(report)}
     </tbody>
   </table>
   <h2>Equity Curves</h2>
@@ -214,22 +246,88 @@ class ReportBuilder:
         return html
 
     # ------------------------------------------------------------------ #
-    # Internal helpers                                                    #
+    # Private helpers                                                       #
     # ------------------------------------------------------------------ #
 
+    def _backtest_to_strategy_metrics(self, name: str, backtest) -> StrategyMetrics:
+        """Convert backtest result dict to StrategyMetrics."""
+        # Assume backtest is a dict-like object with required keys
+        return StrategyMetrics(
+            name=name,
+            sharpe=float(backtest.get("sharpe", 0.0)),
+            sortino=float(backtest.get("sortino", 0.0)),
+            annual_return_pct=round(float(backtest.get("annual_return", 0.0)) * 100, 2),
+            max_drawdown_pct=round(float(backtest.get("max_drawdown", 0.0)) * 100, 2),
+            win_rate=float(backtest.get("win_rate", 0.0)),
+            total_trades=int(backtest.get("total_trades", 0)),
+            avg_hold_days=float(backtest.get("avg_hold_days", 0.0)),
+            calmar=round(
+                float(backtest.get("annual_return", 0.0))
+                / max(abs(float(backtest.get("max_drawdown", 1.0))), 1e-9),
+                4,
+            ),
+        )
+
+    def _determine_winner(
+        self,
+        ml_metrics: StrategyMetrics,
+        manual_metrics: StrategyMetrics,
+        benchmarks: Dict[str, StrategyMetrics],
+        engine_winner: Optional[str],
+    ) -> str:
+        """Resolve winner string based on Sharpe and optional engine hint."""
+        # Simple logic: choose highest Sharpe among all candidates
+        candidates = {
+            "manual": manual_metrics.sharpe,
+            "ml": ml_metrics.sharpe,
+            **{f"benchmark:{k}": v.sharpe for k, v in benchmarks.items()},
+        }
+        best = max(candidates, key=candidates.get)
+        return best if engine_winner is None else engine_winner
+
     def _extract_equity_curves(self, cr: ComparisonResult) -> Dict[str, List[float]]:
-        """
-        Normalize equity curves to start at 100.
-
-        Results are cached on the ComparisonResult instance to avoid recomputation
-        when the same result is used multiple times.
-        """
-        # Fast‑path: return cached value if present
-        cached = getattr(cr, "_norm_eq_curves", None)
-        if cached is not None:
-            return cached
-
-        curves: Dict[str, List[float]] = {}
-        for name, series in getattr(cr, "equity_curves", {}).items():
+        """Normalize equity curves to start at 100."""
+        curves = {}
+        for name, series in cr.equity_curves.items():
             if not series:
                 curves[name] = []
+                continue
+            start = series[0] if series[0] != 0 else 1e-9
+            curves[name] = [value / start * 100 for value in series]
+        return curves
+
+    def _metrics_table_rows(self, report: ComparisonReport) -> str:
+        """Render HTML rows for manual vs ML metrics."""
+        def fmt(val: float) -> str:
+            return f"{val:.2f}"
+
+        rows = [
+            f"<tr><td>Sharpe</td><td>{fmt(report.manual.sharpe)}</td><td>{fmt(report.ml_enhanced.sharpe)}</td></tr>",
+            f"<tr><td>Sortino</td><td>{fmt(report.manual.sortino)}</td><td>{fmt(report.ml_enhanced.sortino)}</td></tr>",
+            f"<tr><td>Annual Return %</td><td>{fmt(report.manual.annual_return_pct)}</td><td>{fmt(report.ml_enhanced.annual_return_pct)}</td></tr>",
+            f"<tr><td>Max Drawdown %</td><td>{fmt(report.manual.max_drawdown_pct)}</td><td>{fmt(report.ml_enhanced.max_drawdown_pct)}</td></tr>",
+            f"<tr><td>Win Rate %</td><td>{fmt(report.manual.win_rate * 100)}</td><td>{fmt(report.ml_enhanced.win_rate * 100)}</td></tr>",
+            f"<tr><td>Calmar</td><td>{fmt(report.manual.calmar)}</td><td>{fmt(report.ml_enhanced.calmar)}</td></tr>",
+        ]
+        return "\n".join(rows)
+
+    def _benchmarks_table_rows(self, report: ComparisonReport) -> str:
+        """Render HTML rows for benchmark metrics."""
+        rows = []
+        for key, bm in report.benchmarks.items():
+            rows.append(
+                f"<tr><td>{_h(bm.name)}</td><td>{bm.sharpe:.2f}</td><td>{bm.annual_return_pct:.1f}</td></tr>"
+            )
+        return "\n".join(rows)
+
+    def _equity_curve_section(self, report: ComparisonReport) -> str:
+        """Generate simple SVG line chart for equity curves."""
+        # Placeholder implementation: returns a div with JSON data for downstream rendering
+        data_json = self._h(str(report.equity_curves))
+        return f'<div class="equity-curves" data-curves="{data_json}">Equity curves data</div>'
+
+    def _best_benchmark(self, report: ComparisonReport) -> Optional[str]:
+        """Return the benchmark key with highest Sharpe, or None if empty."""
+        if not report.benchmarks:
+            return None
+        return max(report.benchmarks, key=lambda k: report.benchmarks[k].sharpe)
