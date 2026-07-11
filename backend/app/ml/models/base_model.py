@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
 
@@ -53,6 +53,13 @@ class AbstractModel(ABC):
     The class provides generic ``save`` and ``load`` utilities that handle
     PyTorch state dictionaries when the library is available.
     """
+
+    # Default signal parameters – can be overridden by subclasses
+    ENTRY_THRESHOLD: float = 0.60          # probability above which an entry is considered
+    CONFIRMATION_WINDOW: int = 5           # number of recent predictions to smooth
+    CONFIRMATION_STD_MAX: float = 0.10     # max std dev allowed for confirmation
+    EXIT_PROFIT_TARGET: float = 0.02       # 2% profit target
+    EXIT_STOP_LOSS: float = 0.01           # 1% stop‑loss
 
     model_type: str = "base"
 
@@ -113,6 +120,9 @@ class AbstractModel(ABC):
             Aggregated evaluation metrics.
         """
 
+    # ------------------------------------------------------------------
+    # Persistence utilities
+    # ------------------------------------------------------------------
     def save(self, path: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """
         Serialize the model to disk.
@@ -163,6 +173,9 @@ class AbstractModel(ABC):
             model.load_state_dict(checkpoint["state_dict"])  # type: ignore[attr-defined]
         return model
 
+    # ------------------------------------------------------------------
+    # Inference helpers
+    # ------------------------------------------------------------------
     def predict_proba(self, x: Any) -> np.ndarray:
         """
         Generate class‑1 probabilities for the provided inputs.
@@ -187,3 +200,151 @@ class AbstractModel(ABC):
             if logits.shape[-1] == 1 or logits.dim() == 1:
                 return _torch.sigmoid(logits).numpy().flatten()
             return _torch.softmax(logits, dim=-1)[:, 1].numpy()
+
+    # ------------------------------------------------------------------
+    # Strategy signal logic
+    # ------------------------------------------------------------------
+    def _smooth_predictions(self, probs: np.ndarray) -> np.ndarray:
+        """
+        Apply a simple moving‑average smoothing to a probability series.
+
+        Parameters
+        ----------
+        probs : np.ndarray
+            Raw probability predictions.
+
+        Returns
+        -------
+        np.ndarray
+            Smoothed probabilities.
+        """
+        if self.CONFIRMATION_WINDOW <= 1:
+            return probs
+        cumsum = np.cumsum(np.insert(probs, 0, 0))
+        smoothed = (cumsum[self.CONFIRMATION_WINDOW:] -
+                    cumsum[:-self.CONFIRMATION_WINDOW]) / self.CONFIRMATION_WINDOW
+        # Pad to original length
+        pad = np.full(self.CONFIRMATION_WINDOW - 1, smoothed[0])
+        return np.concatenate([pad, smoothed])
+
+    def _passes_confirmation(self, probs: np.ndarray) -> bool:
+        """
+        Determine whether the recent probability window is stable enough
+        to trust an entry signal.
+
+        Parameters
+        ----------
+        probs : np.ndarray
+            Probability series for the confirmation window.
+
+        Returns
+        -------
+        bool
+            True if standard deviation is below the configured maximum.
+        """
+        if len(probs) < self.CONFIRMATION_WINDOW:
+            return False
+        recent = probs[-self.CONFIRMATION_WINDOW :]
+        return float(np.std(recent)) <= self.CONFIRMATION_STD_MAX
+
+    def generate_signal(
+        self,
+        x: Any,
+        price_series: Optional[np.ndarray] = None,
+        *,
+        entry_threshold: Optional[float] = None,
+        exit_profit_target: Optional[float] = None,
+        exit_stop_loss: Optional[float] = None,
+        confirmation_filter: Optional[Callable[[np.ndarray], bool]] = None,
+    ) -> int:
+        """
+        Produce a trading signal based on model probabilities and optional
+        confirmation filters.
+
+        The method implements a tightened entry condition:
+        * Probability must exceed ``entry_threshold`` (default ``ENTRY_THRESHOLD``).
+        * Recent predictions must be stable (low standard deviation).
+        * An optional user‑provided ``confirmation_filter`` can impose
+          additional domain‑specific checks.
+
+        Exit logic is based on simple profit‑target and stop‑loss thresholds
+        applied to the supplied ``price_series`` when a position is open.
+
+        Parameters
+        ----------
+        x : Any
+            Input features for the model.
+        price_series : np.ndarray | None, optional
+            Historical price series aligned with ``x``. Required for exit
+            evaluation; if omitted, only entry logic is applied.
+        entry_threshold : float | None, optional
+            Override for the entry probability threshold.
+        exit_profit_target : float | None, optional
+            Override for the profit‑target percentage.
+        exit_stop_loss : float | None, optional
+            Override for the stop‑loss percentage.
+        confirmation_filter : Callable[[np.ndarray], bool] | None, optional
+            Custom callable receiving the recent probability window and
+            returning ``True`` if the signal passes additional checks.
+
+        Returns
+        -------
+        int
+            ``1`` for a long entry, ``-1`` for a short entry, ``0`` for no signal
+            or an exit condition.
+        """
+        # Resolve thresholds
+        thr = entry_threshold if entry_threshold is not None else self.ENTRY_THRESHOLD
+        profit_target = (
+            exit_profit_target
+            if exit_profit_target is not None
+            else self.EXIT_PROFIT_TARGET
+        )
+        stop_loss = (
+            exit_stop_loss if exit_stop_loss is not None else self.EXIT_STOP_LOSS
+        )
+
+        # Predict probabilities
+        probs = self.predict_proba(x)
+
+        # ------------------------------------------------------------------
+        # Entry evaluation
+        # ------------------------------------------------------------------
+        if probs[-1] >= thr:
+            # Apply smoothing for confirmation
+            smoothed = self._smooth_predictions(probs)
+            if self._passes_confirmation(smoothed):
+                # Custom user filter
+                if confirmation_filter is None or confirmation_filter(smoothed):
+                    return 1  # long entry (short logic can be added by subclass)
+
+        # ------------------------------------------------------------------
+        # Exit evaluation (only if a position is presumed open)
+        # ------------------------------------------------------------------
+        if price_series is not None and len(price_series) >= 2:
+            # Simple exit based on last entry price assumption:
+            # Assume entry price was the price at the time of the last signal.
+            entry_price = price_series[-2]
+            current_price = price_series[-1]
+            ret = (current_price - entry_price) / entry_price
+
+            if ret >= profit_target or ret <= -stop_loss:
+                return 0  # signal to exit position
+
+        return 0  # default: no action
+
+    # ------------------------------------------------------------------
+    # Optional hooks for subclasses
+    # ------------------------------------------------------------------
+    def get_entry_threshold(self) -> float:
+        """
+        Return the current entry probability threshold.
+        Sub‑classes may override to provide dynamic thresholds.
+        """
+        return self.ENTRY_THRESHOLD
+
+    def get_exit_parameters(self) -> tuple[float, float]:
+        """
+        Return the profit‑target and stop‑loss percentages.
+        """
+        return self.EXIT_PROFIT_TARGET, self.EXIT_STOP_LOSS
