@@ -11,6 +11,7 @@ from collections import deque, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+import numbers
 import numpy as np
 
 from app.utils.logging import logger
@@ -50,6 +51,18 @@ class CrossStrategyCorrelationMonitor:
         resume_threshold: float = 0.50,
         scan_interval: int = 60,
     ):
+        # Validation
+        if not isinstance(window, int) or window <= 0:
+            raise ValueError("window must be a positive integer")
+        if not isinstance(kill_threshold, numbers.Real) or not (0 <= kill_threshold <= 1):
+            raise ValueError("kill_threshold must be a float between 0 and 1")
+        if not isinstance(resume_threshold, numbers.Real) or not (0 <= resume_threshold <= 1):
+            raise ValueError("resume_threshold must be a float between 0 and 1")
+        if kill_threshold <= resume_threshold:
+            raise ValueError("kill_threshold must be greater than resume_threshold")
+        if not isinstance(scan_interval, int) or scan_interval <= 0:
+            raise ValueError("scan_interval must be a positive integer")
+
         self.window = window
         self.kill_threshold = kill_threshold
         self.resume_threshold = resume_threshold
@@ -60,13 +73,17 @@ class CrossStrategyCorrelationMonitor:
         self._running = False
 
     def record_return(self, strategy: str, ret: float) -> None:
-        self._returns[strategy].append(ret)
+        if not isinstance(strategy, str) or not strategy:
+            raise ValueError("strategy must be a non-empty string")
+        if not isinstance(ret, numbers.Real):
+            raise ValueError("ret must be a numeric type")
+        self._returns[strategy].append(float(ret))
 
     def correlation_matrix(self) -> dict[tuple[str, str], float]:
         strategies = [s for s, r in self._returns.items() if len(r) >= 3]
         result: dict[tuple[str, str], float] = {}
         for i, s_a in enumerate(strategies):
-            for s_b in strategies[i+1:]:
+            for s_b in strategies[i + 1 :]:
                 r_a = list(self._returns[s_a])
                 r_b = list(self._returns[s_b])
                 min_len = min(len(r_a), len(r_b))
@@ -89,7 +106,9 @@ class CrossStrategyCorrelationMonitor:
                 if smaller not in self._reduced:
                     self._reduced.add(smaller)
                     alert = CorrelationAlert(
-                        strategy_a=s_a, strategy_b=s_b, correlation=corr,
+                        strategy_a=s_a,
+                        strategy_b=s_b,
+                        correlation=corr,
                         action=f"reduce_{smaller.split('_')[0]}",
                         reduced_strategy=smaller,
                         timestamp=datetime.now(timezone.utc),
@@ -103,18 +122,24 @@ class CrossStrategyCorrelationMonitor:
             elif corr < self.resume_threshold:
                 # re-enable if corr dropped
                 for s in (s_a, s_b):
-                    if s in self._reduced:
+                    if s in _reduced:
                         self._reduced.discard(s)
                         logger.info(f"CORR RESUME: {s} correlation normalized (corr={corr:.2f})")
         return new_alerts
 
     def is_reduced(self, strategy: str) -> bool:
+        if not isinstance(strategy, str) or not strategy:
+            raise ValueError("strategy must be a non-empty string")
         return strategy in self._reduced
 
     def sizing_multiplier(self, strategy: str) -> float:
+        if not isinstance(strategy, str) or not strategy:
+            raise ValueError("strategy must be a non-empty string")
         return 0.5 if strategy in self._reduced else 1.0
 
     def recent_alerts(self, limit: int = 20) -> list[dict]:
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
         return [a.to_dict() for a in list(self._alerts)[-limit:]]
 
     def matrix_as_list(self) -> list[dict]:
@@ -132,7 +157,8 @@ class CrossStrategyCorrelationMonitor:
                     from app.notifications.tracker import tracker
                     for a in alerts:
                         tracker.record(
-                            "correlation_kill_switch", "risk",
+                            "correlation_kill_switch",
+                            "risk",
                             f"Halved {a.reduced_strategy}: corr {a.correlation:.2f} with {a.strategy_a}↔{a.strategy_b}",
                         )
             except Exception as e:
