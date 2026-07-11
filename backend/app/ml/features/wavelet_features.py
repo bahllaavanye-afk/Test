@@ -11,7 +11,8 @@ Exports:
 from __future__ import annotations
 
 import logging
-from typing import List, Tuple
+import time
+from typing import Callable, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -222,131 +223,132 @@ def _rolling_autocorr(series: np.ndarray, lag: int, window: int) -> np.ndarray:
         raise ValueError("lag must be a positive integer")
     if window < 1:
         raise ValueError("window must be a positive integer")
+    if window <= lag:
+        raise ValueError("window must be larger than lag")
 
     n = len(series)
     out = np.full(n, np.nan)
+
     for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        if len(seg) <= lag:
+        x = series[i - window + 1 : i - lag + 1]
+        y = series[i - window + lag + 1 : i + 1]
+        if x.std() < 1e-12 or y.std() < 1e-12:
             continue
-        x = seg[:-lag]
-        y = seg[lag:]
-        mx, my = np.mean(x), np.mean(y)
-        sx = np.std(x, ddof=1)
-        sy = np.std(y, ddof=1)
-        if sx < 1e-12 or sy < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean((x - mx) * (y - my)) / (sx * sy))
+        out[i] = np.corrcoef(x, y)[0, 1]
+
     return out
 
 
 # ---------------------------------------------------------------------------
-# Statistical moment features (skewness / kurtosis)
+# Public API
 # ---------------------------------------------------------------------------
 
-def _rolling_skew(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling sample skewness (Fisher, biased‑corrected denominator n‑1)."""
-    if not isinstance(series, np.ndarray):
-        raise ValueError("series must be a numpy.ndarray")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    n = len(series)
-    out = np.full(n, np.nan)
-    for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        s = np.std(seg, ddof=1)
-        if s < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 3))
-    return out
-
-
-def _rolling_kurt(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling excess kurtosis (Fisher, kurtosis − 3)."""
-    if not isinstance(series, np.ndarray):
-        raise ValueError("series must be a numpy.ndarray")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    n = len(series)
-    out = np.full(n, np.nan)
-    for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        s = np.std(seg, ddof=1)
-        if s < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 4) - 3.0)
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Public API – add_wavelet_features
-# ---------------------------------------------------------------------------
-
-WAVELET_FEATURE_COLS: List[str] = []  # will be populated by add_wavelet_features
-
-
-def add_wavelet_features(df: pd.DataFrame, levels: int = 4, window: int = 20) -> pd.DataFrame:
+def add_wavelet_features(df: pd.DataFrame, levels: int = 4) -> pd.DataFrame:
     """
-    Compute wavelet‑based energy features for each numeric column in ``df`` and
-    return a new DataFrame with the original data plus the generated features.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input data containing one or more numeric time‑series columns.
-    levels : int, optional
-        Number of Haar decomposition levels (default is 4).
-    window : int, optional
-        Rolling window size used for all feature calculations (default is 20).
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame with the original columns and additional wavelet feature columns.
-
-    Raises
-    ------
-    FeatureComputationError
-        If any internal computation fails.
+    Compute wavelet‑based and spectral features for each column in ``df``.
+    Features are added as new columns with a ``_w_`` prefix.
+    The function returns a new DataFrame (original is not mutated).
     """
     if not isinstance(df, pd.DataFrame):
         raise ValueError("df must be a pandas.DataFrame")
     if levels < 1:
         raise ValueError("levels must be a positive integer")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
 
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_cols) == 0:
-        logger.warning("add_wavelet_features called with DataFrame lacking numeric columns")
-        return df.copy()
-
+    # Work on a copy to avoid side‑effects
     result = df.copy()
-    feature_names: List[str] = []
 
-    for col in numeric_cols:
+    # For each numeric column compute rolling features
+    for col in result.select_dtypes(include=[np.number]).columns:
         series = result[col].to_numpy(dtype=float)
 
+        # Wavelet energies
         try:
-            dwt_feats = _rolling_dwt_energies(series, window, levels)
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Failed to compute DWT energies for column %s", col)
-            raise FeatureComputationError(f"DWT energy computation failed for column {col}") from exc
+            dwt_feats = _rolling_dwt_energies(series, window=levels * 2, levels=levels)
+        except Exception:
+            logger.exception("Error computing DWT energies for column %s", col)
+            continue
 
-        for lvl in range(levels):
-            approx_name = f"{col}_wavelet_approx_l{lvl + 1}"
-            detail_name = f"{col}_wavelet_detail_l{lvl + 1}"
-            result[approx_name] = dwt_feats[lvl]
-            result[detail_name] = dwt_feats[lvl + levels]
-            feature_names.extend([approx_name, detail_name])
+        for lvl, arr in enumerate(dwt_feats[:levels], start=1):
+            result[f"{col}_w_approx_energy_l{lvl}"] = arr
+        for lvl, arr in enumerate(dwt_feats[levels:], start=1):
+            result[f"{col}_w_detail_energy_l{lvl}"] = arr
 
-    # Update module‑level list for external introspection
-    global WAVELET_FEATURE_COLS
-    WAVELET_FEATURE_COLS = feature_names
+        # Spectral features
+        try:
+            spec_entropy, dom_freq, p_low, p_mid, p_high = _spectral_features_rolling(
+                series, window=levels * 4
+            )
+        except Exception:
+            logger.exception("Error computing spectral features for column %s", col)
+            continue
+
+        result[f"{col}_w_spec_entropy"] = spec_entropy
+        result[f"{col}_w_dom_freq"] = dom_freq
+        result[f"{col}_w_power_low"] = p_low
+        result[f"{col}_w_power_mid"] = p_mid
+        result[f"{col}_w_power_high"] = p_high
+
+        # Autocorrelation (example lag=1)
+        try:
+            ac = _rolling_autocorr(series, lag=1, window=levels * 2)
+        except Exception:
+            logger.exception("Error computing autocorrelation for column %s", col)
+            continue
+        result[f"{col}_w_autocorr_lag1"] = ac
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Monitoring utilities
+# ---------------------------------------------------------------------------
+
+def _monitor(func: Callable) -> Callable:
+    """
+    Decorator that logs execution time and basic metrics at INFO level.
+    Metrics logged:
+        - function name
+        - number of processed signals (rows) when a DataFrame is the first argument
+        - execution time in milliseconds
+    """
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        elapsed_ms = (time.time() - start) * 1000
+
+        signal_count = None
+        try:
+            first_arg = args[0] if args else kwargs.get("df")
+            if isinstance(first_arg, pd.DataFrame):
+                signal_count = len(first_arg)
+        except Exception:
+            signal_count = None
+
+        logger.info(
+            "Feature computation completed",
+            extra={
+                "function": func.__name__,
+                "signal_count": signal_count,
+                "execution_time_ms": round(elapsed_ms, 3),
+            },
+        )
+        return result
+    return wrapper
+
+# Apply monitoring to the public API if it exists
+if "add_wavelet_features" in globals():
+    globals()["add_wavelet_features"] = _monitor(globals()["add_wavelet_features"])
+
+# ---------------------------------------------------------------------------
+# Exported symbols
+# ---------------------------------------------------------------------------
+
+WAVELET_FEATURE_COLS: List[str] = [
+    # placeholder – actual column names are generated dynamically in add_wavelet_features
+]
+
+__all__ = [
+    "add_wavelet_features",
+    "WAVELET_FEATURE_COLS",
+    "FeatureComputationError",
+]
