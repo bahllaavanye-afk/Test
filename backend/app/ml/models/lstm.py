@@ -48,7 +48,7 @@ class SelfAttention(nn.Module):
     input sequence.
     """
 
-    def __init__(self, hidden_size: int):
+    def __init__(self, hidden_size: int) -> None:
         super().__init__()
         self.attention = nn.Linear(hidden_size, 1)
 
