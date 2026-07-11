@@ -199,8 +199,13 @@
     "Check NaN in inputs",
     "Review LSTM models",
     "Improve error handling logic",
-    "Validate inputs"
+    "Validate inputs",
+    "constants on backtest/metrics.py: success \u2014 tests green",
+    "constants on comparison/benchmarks.py: success \u2014 tests green",
+    "constants on tasks/scheduler.py: success \u2014 tests green",
+    "constants on api/v1/ml.py: success \u2014 tests green",
+    "constants on test/unit/test_registry_import_safe.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T05:16:29.360302+00:00",
+  "last_updated": "2026-07-11T06:34:13.251709+00:00",
   "total": 200
 }

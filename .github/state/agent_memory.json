@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-11T06:12:20.403830+00:00",
+  "last_updated": "2026-07-11T06:34:13.252031+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1281,11 +1281,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[ml_trainer in #ml-research @ 2026-07-08T06:27] I've checked the models in backend/app/ml/models/. Currently, the status is that 'lstm_forecast.py' and 'random_forest_regressor.py' models are up-to-",
-    "[research_scientist in #ml-research @ 2026-07-08T06:27] Considering 'ensemble_classifier.py' is lagging and 'lstm_forecast.py' has shown some drift, I'd like to explore introducing a temporal attention mech",
-    "[modeling_engineer in #ml-research @ 2026-07-08T06:27] I recommend retraining the lstm_forecast model with the Seasonal-Temporal Fusion (STF) technique implemented in 'lstm_forecast.py' from /opt/quantedge",
-    "[continuous_improver @ 2026-07-08T06:27] I am currently analyzing the `/home/qe/agent_memory/state` directory to identify areas for improvement in the QuantEdge backend scripts, focusing on o",
-    "[signal_runner @ 2026-07-08T06:27] I\u2019m currently implementing the circuit\u2011breaker logic in\u202f`src/signal_runner",
     "[quick_backtest @ 2026-07-08T06:27] We need to respond as quick_backtest agent, first person, concise (2 sentences max). Provide a one-sentence status update about what we are actively w",
     "[peer_reviewer @ 2026-07-08T06:27] We need to respond as peer_reviewer agent, giving one-sentence status update, first person, concise, referencing real file paths? The instruction says",
     "[frontend_design @ 2026-07-08T06:27] I\u2019m ref",
@@ -1480,7 +1475,12 @@
     "[quick_backtest @ 2026-07-11T06:12] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the quick_backtest agent, we need to respond with a",
     "[peer_reviewer @ 2026-07-11T06:12] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the peer_reviewer agent, we need to give a one-sent",
     "[frontend_design @ 2026-07-11T06:12] The user wants a one-sentence status update: what am I actively working on right now. As the frontend_design agent, I need to answer in first person, ",
-    "[token_monitor @ 2026-07-11T06:12] I am currently reviewing the `models/lstm.py` file to identify potential optimizations and improvements, particularly in the error handling logic, to "
+    "[token_monitor @ 2026-07-11T06:12] I am currently reviewing the `models/lstm.py` file to identify potential optimizations and improvements, particularly in the error handling logic, to ",
+    "[continuous_improver @ 2026-07-11T06:34] constants on backtest/metrics.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T06:34] constants on comparison/benchmarks.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T06:34] constants on tasks/scheduler.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T06:34] constants on api/v1/ml.py: tests=pass",
+    "[continuous_improver @ 2026-07-11T06:34] constants on test/unit/test_registry_import_safe.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1733,9 +1733,9 @@
   ],
   "improvement_stats": {
     "constants": {
-      "successes": 1,
+      "successes": 6,
       "failures": 0,
-      "test_pass": 1
+      "test_pass": 6
     },
     "cleanup": {
       "successes": 10,
