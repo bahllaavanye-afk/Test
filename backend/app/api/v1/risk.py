@@ -1,5 +1,5 @@
 """Risk management endpoints."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -67,12 +67,16 @@ async def create_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if not body.rule_type:
+        raise HTTPException(status_code=400, detail="rule_type must be provided")
+    if body.threshold is None:
+        raise HTTPException(status_code=400, detail="threshold must be provided")
     rule = RiskRule(
         id=str(uuid.uuid4()),
         account_id="system",
         rule_type=body.rule_type,
         threshold=body.threshold,
-        action=body.action,
+        action=body.action or "alert",
         is_active=True,
         created_at=datetime.now(timezone.utc),
     )
@@ -88,7 +92,8 @@ async def delete_risk_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from fastapi import HTTPException
+    if not rule_id:
+        raise HTTPException(status_code=400, detail="rule_id must be provided")
     rule = await db.get(RiskRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -99,11 +104,15 @@ async def delete_risk_rule(
 
 @router.get("/events")
 async def list_events(
-    limit: int = 20,
+    limit: int = Query(20, description="Maximum number of events to return"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Guard against None or non-positive limits
+    if limit is None or limit <= 0:
+        limit = 20
     from sqlalchemy.orm import selectinload
+
     result = await db.execute(
         select(RiskEvent)
         .options(selectinload(RiskEvent.rule))
@@ -130,13 +139,18 @@ async def get_circuit_breaker_status(
     """Return current circuit breaker state for the dashboard."""
     # Check if any halt_all rules have been triggered recently
     from sqlalchemy import desc
+
     result = await db.execute(
         select(RiskEvent)
         .order_by(desc(RiskEvent.triggered_at))
         .limit(1)
     )
     latest = result.scalar_one_or_none()
-    is_tripped = latest is not None and latest.resolved_at is None and latest.action_taken in ("halt_all", "halt_bucket")
+    is_tripped = (
+        latest is not None
+        and latest.resolved_at is None
+        and latest.action_taken in ("halt_all", "halt_bucket")
+    )
     return {
         "status": "tripped" if is_tripped else "normal",
         "tripped": is_tripped,
@@ -152,7 +166,10 @@ async def get_var(
     current_user: User = Depends(get_current_user),
 ):
     """Compute portfolio VaR and CVaR from recent trade returns."""
+    if portfolio_value is None or portfolio_value <= 0:
+        raise HTTPException(status_code=400, detail="portfolio_value must be positive")
     from app.risk.var import historical_var
+
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
     )
@@ -160,6 +177,7 @@ async def get_var(
     if not pnl_list:
         # Use synthetic returns for demo
         import numpy as np
+
         np.random.seed(42)
         pnl_list = list(np.random.normal(0.001, 0.015, 252))
     returns = [p / portfolio_value for p in pnl_list]
@@ -174,6 +192,8 @@ async def get_factor_exposure(
     current_user: User = Depends(get_current_user),
 ):
     """Factor exposure analysis: market beta, momentum, low-vol."""
+    if portfolio_value is None or portfolio_value <= 0:
+        raise HTTPException(status_code=400, detail="portfolio_value must be positive")
     from app.risk.factor_exposure import compute_factor_exposure
     import numpy as np
 
@@ -190,7 +210,9 @@ async def get_factor_exposure(
     np.random.seed(99)
     spy_returns = list(np.random.normal(0.0004, 0.012, len(port_returns)))
 
-    exposure = compute_factor_exposure(port_returns, spy_returns)
+    # Ensure both series have the same length; truncate if necessary
+    min_len = min(len(port_returns), len(spy_returns))
+    exposure = compute_factor_exposure(port_returns[:min_len], spy_returns[:min_len])
     return exposure.to_dict()
 
 
@@ -202,8 +224,13 @@ async def get_drawdown_recovery(
     current_user: User = Depends(get_current_user),
 ):
     """Estimate drawdown recovery time via Monte Carlo."""
+    if portfolio_value is None or portfolio_value <= 0:
+        raise HTTPException(status_code=400, detail="portfolio_value must be positive")
+    if current_drawdown_pct is None or current_drawdown_pct < 0:
+        raise HTTPException(status_code=400, detail="current_drawdown_pct must be non‑negative")
     from app.risk.drawdown_recovery import estimate_recovery
     import numpy as np
+
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
     )
