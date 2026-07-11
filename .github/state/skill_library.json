@@ -199,8 +199,13 @@
     "Scan for malware",
     "Refactor nested logic",
     "Improve code readability",
-    "Enhance memory logging"
+    "Enhance memory logging",
+    "constants on backtest/stress_test.py: success \u2014 tests green",
+    "constants on comparison/report_builder.py: success \u2014 tests green",
+    "constants on tasks/regime_monitor.py: success \u2014 tests green",
+    "constants on api/v1/archive.py: success \u2014 tests green",
+    "constants on test/unit/test_llm_common.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T18:57:04.059289+00:00",
+  "last_updated": "2026-07-11T18:58:33.726277+00:00",
   "total": 200
 }
