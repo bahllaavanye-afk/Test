@@ -28,7 +28,7 @@ class GatedLinearUnit(_NNModule):
 
     def forward(self, x):
         h = self.fc(x)
-        return h[..., :h.shape[-1]//2] * torch.sigmoid(h[..., h.shape[-1]//2:])
+        return h[..., :h.shape[-1] // 2] * torch.sigmoid(h[..., h.shape[-1] // 2:])
 
 
 class GatedResidualNetwork(_NNModule):
@@ -58,7 +58,12 @@ class VariableSelectionNetwork(_NNModule):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # x: (batch, seq, n_vars * d_model) — pre-embedded features
-        processed = [self.grns[i](x[..., i*x.shape[-1]//len(self.grns):(i+1)*x.shape[-1]//len(self.grns)]) for i in range(len(self.grns))]
+        processed = [
+            self.grns[i](
+                x[..., i * x.shape[-1] // len(self.grns) : (i + 1) * x.shape[-1] // len(self.grns)]
+            )
+            for i in range(len(self.grns))
+        ]
         stacked = torch.stack(processed, dim=-1)   # (batch, seq, d, n_vars)
         flat = x.reshape(x.shape[0], x.shape[1], -1)
         weights = torch.softmax(self.softmax_grn(flat), dim=-1).unsqueeze(-2)  # (batch, seq, 1, n_vars)
@@ -123,6 +128,82 @@ class TFTModel(AbstractModel, _NNModule):
         if hasattr(self, "_last_attn_weights") and self._last_attn_weights is not None:
             return self._last_attn_weights.detach().cpu().numpy()
         return None
+
+    # ----------------------------------------------------------------------
+    # Signal generation utilities – tightened entry/exit logic with confirmation
+    # ----------------------------------------------------------------------
+    def _attention_confidence(self, attn_weights: torch.Tensor) -> torch.Tensor:
+        """
+        Compute a simple confidence metric from attention weights.
+        Lower entropy (more peaked distribution) indicates higher confidence.
+        Returns a scalar per batch element.
+        """
+        # attn_weights: (batch, seq, seq) – softmax already applied inside MultiheadAttention
+        # Sum over key dimension to get distribution per query, then average across queries.
+        eps = 1e-12
+        probs = attn_weights / (attn_weights.sum(dim=-1, keepdim=True) + eps)
+        entropy = -torch.sum(probs * torch.log(probs + eps), dim=-1)  # (batch, seq)
+        # Normalize entropy to [0, 1] by dividing by log(seq_len)
+        max_entropy = torch.log(torch.tensor(probs.shape[-1], dtype=torch.float32))
+        norm_entropy = entropy / max_entropy
+        # Confidence is inverse of normalized entropy
+        return 1.0 - norm_entropy.mean(dim=1)  # (batch,)
+
+    def generate_signal(
+        self,
+        x: torch.Tensor,
+        entry_thresh: float = 0.6,
+        exit_thresh: float = 0.4,
+        attn_conf_thresh: float = 0.2,
+    ) -> dict[str, torch.Tensor]:
+        """
+        Produce entry/exit signals with confirmation filters.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch, seq_len, n_features).
+        entry_thresh : float, default 0.6
+            Minimum predicted probability to consider an entry.
+        exit_thresh : float, default 0.4
+            Maximum predicted probability to consider an exit.
+        attn_conf_thresh : float, default 0.2
+            Maximum allowed confidence metric (lower is stricter) for entry.
+
+        Returns
+        -------
+        dict
+            {
+                "prob": Tensor(batch, 1) – raw probability,
+                "entry": Tensor(batch, 1) – 1 for entry signal, 0 otherwise,
+                "exit": Tensor(batch, 1) – 1 for exit signal, 0 otherwise,
+                "conf": Tensor(batch, 1) – confidence metric
+            }
+        """
+        prob = self(x).squeeze(-1)  # (batch,)
+        # Ensure attention weights are available; forward already stored them.
+        attn_weights = getattr(self, "_last_attn_weights", None)
+        if attn_weights is None:
+            # Run a dummy forward to capture weights
+            _ = self(x)
+            attn_weights = getattr(self, "_last_attn_weights", None)
+
+        if attn_weights is not None:
+            conf = self._attention_confidence(attn_weights)  # (batch,)
+        else:
+            conf = torch.zeros_like(prob)
+
+        # Entry: probability high AND confidence low (i.e., confidence metric below threshold)
+        entry_signal = ((prob > entry_thresh) & (conf < attn_conf_thresh)).float()
+        # Exit: probability falls below exit threshold (regardless of confidence)
+        exit_signal = (prob < exit_thresh).float()
+
+        return {
+            "prob": prob.unsqueeze(-1),
+            "entry": entry_signal.unsqueeze(-1),
+            "exit": exit_signal.unsqueeze(-1),
+            "conf": conf.unsqueeze(-1),
+        }
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
         self.train()
