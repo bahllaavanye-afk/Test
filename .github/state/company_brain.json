@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783805629.1542704,
+    "last_updated": 1783809143.4196458,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783805629.1538923
+    "last_brain_update": 1783809143.4192328
   },
   "episodic": [
     {
@@ -741,6 +741,11 @@
       "summary": "The deployment failed due to resource limits, with messages advising to retry after 24 hours or 1 day, and an automated patch attempt also failed.",
       "item_count": 20,
       "ts": 1783805629.1501637
+    },
+    {
+      "summary": "We need to summarize the given GitHub PR/issue discussions. The input shows repeated errors: \"Deployment failed with the following error: Resource is limited - try again in 24 hours (more th\" (appears truncated). It seems to be a single issue or multiple similar comments about deployment failing due to resource limits. The user wants a 1-2 sentence summary.\n\nThe summary should capture that deployment is failing due to resource limitations, with a suggestion to retry after 24 hours.",
+      "item_count": 20,
+      "ts": 1783809143.415538
     }
   ],
   "experiment_results": [
