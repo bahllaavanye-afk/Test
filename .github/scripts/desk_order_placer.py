@@ -689,7 +689,10 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
 
         for strategy in strategies:
             try:
-                signal = await strategy.analyze(df, symbol)
+                signal = await asyncio.wait_for(strategy.analyze(df, symbol), timeout=10.0)
+            except asyncio.TimeoutError:
+                print(f"  ⚠ {strategy.name}/{symbol} analyze() timed out (>10s) — skipped", flush=True)
+                continue
             except Exception as exc:
                 print(f"  ⚠ {strategy.name}/{symbol} analyze() error: {exc}", flush=True)
                 continue
@@ -848,7 +851,14 @@ async def main() -> None:
                         continue
                     for strategy in strategies:
                         try:
-                            signal = await strategy.analyze(df, symbol)
+                            # Hard per-strategy timeout: 18 registry strategies
+                            # do network I/O in analyze() (contract-test audit);
+                            # an unbounded await let one slow fetch stall the
+                            # WHOLE desk run for minutes. 10s bounds them all.
+                            signal = await asyncio.wait_for(strategy.analyze(df, symbol), timeout=10.0)
+                        except asyncio.TimeoutError:
+                            print(f"  ⚠ {strategy.name}/{symbol} analyze() timed out (>10s) — skipped", flush=True)
+                            continue
                         except Exception as exc:
                             print(f"  ⚠ {strategy.name}/{symbol} analyze() error: {exc}", flush=True)
                             continue
