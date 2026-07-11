@@ -70,3 +70,41 @@ class AbstractBroker(ABC):
         self, symbol: str, interval: str, limit: int = 500
     ) -> list[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case validation of the data classes defined above.
+# ---------------------------------------------------------------------------
+import unittest
+
+
+class TestBrokerBaseDataclasses(unittest.TestCase):
+    def test_order_request_slots_enforce_attribute_error(self):
+        """Attempting to set an undefined attribute should raise AttributeError."""
+        req = OrderRequest(
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=10.0,
+        )
+        with self.assertRaises(AttributeError):
+            req.undefined_attribute = "should fail"
+
+    def test_order_result_default_values(self):
+        """Default fields of OrderResult must match the specification."""
+        result = OrderResult(broker_order_id="12345", status="filled")
+        self.assertEqual(result.filled_qty, 0.0)
+        self.assertIsNone(result.avg_fill_price)
+        self.assertIsNone(result.raw_payload)
+
+    def test_quote_result_volume_optional(self):
+        """QuoteResult should allow volume to be None without error."""
+        quote = QuoteResult(symbol="MSFT", bid=250.0, ask=251.0, last=250.5)
+        self.assertIsNone(quote.volume)
+        # Explicitly set volume to a numeric value
+        quote_with_vol = QuoteResult(symbol="MSFT", bid=250.0, ask=251.0, last=250.5, volume=1_000_000)
+        self.assertEqual(quote_with_vol.volume, 1_000_000)
+
+
+if __name__ == "__main__":
+    unittest.main()
