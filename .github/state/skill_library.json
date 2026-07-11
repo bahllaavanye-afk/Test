@@ -199,8 +199,13 @@
     "Test DB connections",
     "Implement early-stopping",
     "Monitor thread activity",
-    "Optimize log tracking"
+    "Optimize log tracking",
+    "validation on risk/kelly.py: success \u2014 tests green",
+    "validation on brokers/polymarket.py: success \u2014 tests green",
+    "validation on backtest/engine.py: success \u2014 tests green",
+    "validation on comparison/engine.py: success \u2014 tests green",
+    "validation on tasks/free_llm_router.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-11T00:55:23.736328+00:00",
+  "last_updated": "2026-07-11T04:01:20.375860+00:00",
   "total": 200
 }
