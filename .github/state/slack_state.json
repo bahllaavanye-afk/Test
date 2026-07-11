@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1783721341,
+  "last_run_ts": 1783743007,
   "last_commit_sha": "99e17b8",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -300,24 +300,16 @@
     "0a68f03ec674",
     "9580c830e0fb",
     "9b44a0331a83",
-    "d18583871d01"
+    "d18583871d01",
+    "9a18aa27c0a6"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1783602145.8740122,
-    "agent-api-usage:api_usage_report": 1783596400.1235561,
-    "agent-api-usage:throughput_report": 1783602173.2895415,
-    "engineering:silent_vp_eng": 1783596403.4764965,
-    "alpha-research:silent_alpha_dir": 1783596407.7945094,
-    "engineering:agent_reminder": 1783596488.9503794,
-    "help:agent_reminder": 1783596489.1220548,
-    "desk-crypto:silent_ml_lead": 1783596412.0713644,
-    "risk-alerts:silent_risk_eng": 1783596416.800302,
-    "squad-backend:silent_backend_lead": 1783596425.7183192,
-    "engineering:silent_rl_trader": 1783596465.8315866,
-    "engineering:silent_senior_quant": 1783596473.9651904,
-    "squad-qa:silent_qa_dir": 1783599561.036596,
-    "infra-alerts:silent_devops_dir": 1783602759.5600336
+    "standup-channel:standup": 1783742919.8045673,
+    "agent-api-usage:api_usage_report": 1783743007.036927,
+    "agent-api-usage:throughput_report": 1783743008.2407038,
+    "engineering:agent_reminder": 1783743074.9724314,
+    "help:agent_reminder": 1783743075.8962748
   },
   "response_cache": {},
   "posted_today": [
@@ -1873,12 +1865,12 @@
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
-      "date": "2026-07-09",
+      "date": "2026-07-11",
       "used": 0
     },
     "GEMINI_API_KEY_3": {
-      "date": "2026-07-09",
-      "used": 300
+      "date": "2026-07-11",
+      "used": 0
     }
   },
   "bot_handle_announced": true,
