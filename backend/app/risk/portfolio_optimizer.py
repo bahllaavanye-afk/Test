@@ -183,3 +183,72 @@ def optimize_portfolio(
     if method != "hrp":
         raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
     return HRPOptimizer().compute_weights(returns)
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case behaviour                                            #
+# --------------------------------------------------------------------------- #
+
+import pytest
+
+
+def test_cvar_confidence_boundary_rejection():
+    """Confidence values at the exact bounds must raise ValueError."""
+    with pytest.raises(ValueError):
+        CVaROptimizer(confidence=0.5)
+    with pytest.raises(ValueError):
+        CVaROptimizer(confidence=1.0)
+
+
+def test_cvar_confidence_boundary_acceptance():
+    """Values just inside the allowed interval should construct the optimizer."""
+    # Slightly above 0.5
+    opt_low = CVaROptimizer(confidence=0.5001)
+    assert 0.5 < opt_low.confidence < 1.0
+    # Slightly below 1.0
+    opt_high = CVaROptimizer(confidence=0.9999)
+    assert 0.5 < opt_high.confidence < 1.0
+
+
+def test_cvar_insufficient_data_fallback():
+    """When data are sparse (fewer than 20 rows or fewer than 2 assets) the optimizer
+    should return an equal‑weight series without error."""
+    # Case 1: single asset, sufficient rows
+    df_single = pd.DataFrame(np.random.randn(30, 1), columns=["A"])
+    weights = CVaROptimizer().compute_weights(df_single)
+    assert isinstance(weights, pd.Series)
+    assert weights.index.tolist() == ["A"]
+    assert pytest.approx(weights.sum(), rel=1e-9) == 1.0
+    assert weights["A"] == pytest.approx(1.0)
+
+    # Case 2: two assets but insufficient rows (<20)
+    df_few_rows = pd.DataFrame(np.random.randn(10, 2), columns=["X", "Y"])
+    weights = CVaROptimizer().compute_weights(df_few_rows)
+    assert set(weights.index) == {"X", "Y"}
+    assert pytest.approx(weights.sum(), rel=1e-9) == 1.0
+    assert weights["X"] == pytest.approx(0.5)
+    assert weights["Y"] == pytest.approx(0.5)
+
+
+def test_cvar_nan_and_empty_column_handling():
+    """Columns that are entirely NaN should be dropped; remaining NaNs are filled with zero.
+    The returned weights must align with the original column order, inserting zeros for dropped
+    columns."""
+    data = {
+        "A": np.random.randn(25),
+        "B": np.full(25, np.nan),          # fully NaN -> should be dropped
+        "C": np.concatenate([np.random.randn(20), np.full(5, np.nan)]),  # partial NaNs -> filled with 0
+    }
+    df = pd.DataFrame(data)
+    optimizer = CVaROptimizer(confidence=0.9)
+    weights = optimizer.compute_weights(df)
+
+    # Verify resulting series has the original three symbols
+    assert list(weights.index) == ["A", "B", "C"]
+    # B should have weight zero because it was removed from the optimisation
+    assert weights["B"] == pytest.approx(0.0, abs=1e-12)
+    # Weights must be non‑negative and sum to 1
+    assert (weights >= 0).all()
+    assert pytest.approx(weights.sum(), rel=1e-9) == 1.0
+
+# End of file.
