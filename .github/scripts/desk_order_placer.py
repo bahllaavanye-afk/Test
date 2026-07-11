@@ -230,6 +230,7 @@ async def _alpaca_get(path: str, params: dict | None = None, data_api: bool = Fa
 
 
 def _alpaca_post_sync(path: str, body: dict) -> dict:
+    import urllib.error
     import urllib.request
     url     = ALPACA_PAPER_BASE + path
     payload = json.dumps(body).encode()
@@ -237,9 +238,23 @@ def _alpaca_post_sync(path: str, body: dict) -> dict:
         "APCA-API-KEY-ID":     ALPACA_API_KEY,
         "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY,
         "Content-Type":        "application/json",
+        # No UA = Python-urllib default, which Cloudflare-fronted APIs 403.
+        # Same bug class already hit the LLM cascade (error 1010) and Discord.
+        "User-Agent":          "Mozilla/5.0 (X11; Linux x86_64) QuantEdge-Desk/1.0",
     })
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        # Surface Alpaca's actual refusal reason — a bare "HTTP Error 403"
+        # hid whether it was Cloudflare, account permissions, or the payload.
+        detail = ""
+        try:
+            detail = exc.read().decode(errors="replace")[:300]
+        except Exception:  # noqa: BLE001
+            pass
+        print(f"    ⚠ alpaca POST {path} → {exc.code}: {detail}", flush=True)
+        raise
 
 
 async def _alpaca_post(path: str, body: dict) -> dict:
