@@ -8,9 +8,18 @@ These lock in two production-down bugs the agent company hit:
 
 Network is fully mocked — no keys or connectivity required.
 """
+
 import json
 import sys
 from pathlib import Path
+
+# Constants
+DEFAULT_TIMEOUT = 30
+USER_AGENT_HEADER = "User-agent"
+AUTHORIZATION_HEADER = "Authorization"
+USER_AGENT_SUBSTRING = "Mozilla"
+BEARER_PREFIX = "Bearer "
+DISABLED_VALUE = "disabled"
 
 SCRIPTS = Path(__file__).resolve().parents[3] / ".github" / "scripts"
 if str(SCRIPTS) not in sys.path:
@@ -35,8 +44,11 @@ class _FakeResp:
 
 _OK = {"choices": [{"message": {"content": "OK"}}]}
 _PROVIDER = {
-    "name": "test", "url": "https://example.test/v1/chat", "fmt": "openai",
-    "key_env": "TEST_LLM_KEY", "model": "m",
+    "name": "test",
+    "url": "https://example.test/v1/chat",
+    "fmt": "openai",
+    "key_env": "TEST_LLM_KEY",
+    "model": "m",
 }
 
 
@@ -45,13 +57,13 @@ def test_request_sends_browser_user_agent(monkeypatch):
     monkeypatch.setenv("TEST_LLM_KEY", "k1")
     seen = {}
 
-    def fake_urlopen(req, timeout=30):
-        seen["ua"] = req.get_header("User-agent")
+    def fake_urlopen(req, timeout=DEFAULT_TIMEOUT):
+        seen["ua"] = req.get_header(USER_AGENT_HEADER)
         return _FakeResp(_OK)
 
     monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
     assert L._call_provider(_PROVIDER, "sys", "hi", 16, 0.0) == "OK"
-    assert seen["ua"] and "Mozilla" in seen["ua"]  # not the default Python-urllib UA
+    assert seen["ua"] and USER_AGENT_SUBSTRING in seen["ua"]  # not the default Python-urllib UA
 
 
 def test_provider_keys_collects_numbered_variants(monkeypatch):
@@ -67,20 +79,20 @@ def test_call_provider_rotates_to_next_key_on_failure(monkeypatch):
     monkeypatch.setenv("TEST_LLM_KEY_1", "good")
     calls = []
 
-    def fake_urlopen(req, timeout=30):
-        auth = req.get_header("Authorization")
+    def fake_urlopen(req, timeout=DEFAULT_TIMEOUT):
+        auth = req.get_header(AUTHORIZATION_HEADER)
         calls.append(auth)
-        if auth == "Bearer bad":
+        if auth == f"{BEARER_PREFIX}bad":
             raise RuntimeError("simulated 429")
         return _FakeResp(_OK)
 
     monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
     assert L._call_provider(_PROVIDER, "s", "p", 16, 0.0) == "OK"
-    assert calls == ["Bearer bad", "Bearer good"]  # rotated past the bad key
+    assert calls == [f"{BEARER_PREFIX}bad", f"{BEARER_PREFIX}good"]  # rotated past the bad key
 
 
 def test_has_key_treats_disabled_as_absent(monkeypatch):
-    monkeypatch.setenv("TEST_LLM_KEY", "disabled")
+    monkeypatch.setenv("TEST_LLM_KEY", DISABLED_VALUE)
     assert L._has_key(_PROVIDER) is False
     monkeypatch.setenv("TEST_LLM_KEY", "real")
     assert L._has_key(_PROVIDER) is True
@@ -116,6 +128,7 @@ def test_extract_content_falls_back_to_reasoning():
 
 def test_extract_content_empty_raises():
     import pytest
+
     with pytest.raises(ValueError):
         L._extract_openai_content({"choices": [{"message": {"content": "  "}}]})
 
@@ -124,7 +137,7 @@ def test_call_provider_handles_reasoning_model(monkeypatch):
     """Full path: a reasoning model (content=None) must not be dropped."""
     monkeypatch.setenv("TEST_LLM_KEY", "k1")
 
-    def fake_urlopen(req, timeout=30):
+    def fake_urlopen(req, timeout=DEFAULT_TIMEOUT):
         return _FakeResp({"choices": [{"message": {"content": None, "reasoning_content": "RM"}}]})
 
     monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
