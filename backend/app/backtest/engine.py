@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Any
 
 import numpy as np
@@ -78,6 +77,21 @@ def _adaptive_slippage(
     return scaled.clip(upper=base_slippage_pct * 5)
 
 
+def _max_drawdown_duration(dd: np.ndarray) -> int:
+    """
+    Vectorized calculation of the longest consecutive period where drawdown is negative.
+    """
+    # Convert boolean mask to int (1 where in drawdown, 0 otherwise)
+    mask = (dd < 0).astype(int)
+    # Compute lengths of consecutive ones using cumulative sum resetting at zeros
+    # Where mask == 0, reset cumulative count to 0
+    cum = np.cumsum(mask)
+    reset = np.where(mask == 0, cum, 0)
+    # The length of each run is cum - previous reset point
+    run_lengths = cum - np.maximum.accumulate(reset)
+    return int(run_lengths.max()) if run_lengths.size else 0
+
+
 def run_backtest(
     signals: pd.Series,
     prices: pd.Series,
@@ -151,7 +165,7 @@ def run_backtest(
         if volume is not None:
             _volume_usd = volume.reindex(df.index).fillna(0) * df["price"]
 
-        # Carry forward last signal to maintain position
+        # Carry forward last non‑zero signal to maintain position
         df["position"] = df["signal"].replace(0, np.nan).ffill().fillna(0)
         # Shift so position change takes effect at *next* bar's open
         df["position"] = df["position"].shift(1).fillna(0)
@@ -160,13 +174,13 @@ def run_backtest(
         df["trade"] = df["position"].diff().fillna(0)
         trade_mask = df["trade"] != 0
 
-        # Volume-adaptive slippage on transition bars only
+        # Volume‑adaptive slippage on transition bars only
         trade_size_usd = df["trade"].abs() * df["fill_price"] * initial_equity / df["fill_price"].iloc[0]
         slip = _adaptive_slippage(trade_size_usd, _volume_usd, slippage_pct)
 
         total_cost_pct = (commission_pct + slip) * trade_mask.astype(float)
 
-        # Daily P&L: mark-to-market returns on the held position
+        # Daily P&L: mark‑to‑market returns on the held position
         df["bar_return"] = df["price"].pct_change().fillna(0)
         df["pnl"] = df["position"] * df["bar_return"] - total_cost_pct
 
@@ -179,7 +193,7 @@ def run_backtest(
 
         # ── Sharpe ────────────────────────────────────────────────────────────────
         excess = returns - rf_daily
-        _excess_std = float(np.std(excess))
+        _excess_std = float(np.std(excess, ddof=1))
         sharpe = (
             float(excess.mean() / _excess_std * np.sqrt(252))
             if _excess_std > 1e-10
@@ -188,7 +202,7 @@ def run_backtest(
 
         # ── Sortino ───────────────────────────────────────────────────────────────
         downside = returns[returns < rf_daily]
-        _down_std = float(np.std(downside)) if len(downside) > 1 else 0.0
+        _down_std = float(np.std(downside, ddof=1)) if downside.size > 1 else 0.0
         sortino = (
             float(excess.mean() / _down_std * np.sqrt(252))
             if _down_std > 1e-10
@@ -200,69 +214,42 @@ def run_backtest(
         dd = (equity - peak) / peak
         max_dd = float(dd.min())
         avg_dd = float(dd[dd < 0].mean()) if (dd < 0).any() else 0.0
-
-        # Max drawdown duration (consecutive days underwater)
-        in_dd = dd < 0
-        max_dur = 0
-        cur_dur = 0
-        for v in in_dd:
-            cur_dur = cur_dur + 1 if v else 0
-            max_dur = max(max_dur, cur_dur)
+        max_dd_duration = _max_drawdown_duration(dd)
 
         # ── Calmar ────────────────────────────────────────────────────────────────
-        years = len(df) / 252.0
-        ann_return = float(
-            (equity[-1] / initial_equity) ** (1.0 / max(years, 1e-6)) - 1.0
-        )
-        calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
+        years = len(df) / 252.0 if len(df) >= 252 else len(df) / 252.0
+        total_return = float(equity[-1] / initial_equity - 1)
+        annualized_return = float((1 + total_return) ** (1 / years) - 1) if years > 0 else 0.0
+        calmar = annualized_return / abs(max_dd) if max_dd != 0 else np.inf
 
-        # ── Omega / Ulcer ─────────────────────────────────────────────────────────
-        omega = _omega_ratio(returns, threshold=rf_daily)
+        # ── Omega & Ulcer Index ───────────────────────────────────────────────────
+        omega = _omega_ratio(returns)
         ulcer = _ulcer_index(equity)
 
-        # ── Trade-level stats (vectorised) ────────────────────────────────────────
-        pos_series = df["position"]
-        fill_series = df["fill_price"]
+        # ── Trade statistics ─────────────────────────────────────────────────────
+        trades = df.loc[trade_mask, "trade"]
+        num_trades = int(trades.abs().sum())
+        if num_trades > 0:
+            pnl_trades = df.loc[trade_mask, "pnl"]
+            wins = pnl_trades[pnl_trades > 0]
+            losses = pnl_trades[pnl_trades < 0]
+            win_rate = float(wins.count() / num_trades)
+            avg_win = float(wins.mean()) if not wins.empty else 0.0
+            avg_loss = float(losses.mean()) if not losses.empty else 0.0
+            profit_factor = float(wins.sum() / -losses.sum()) if losses.sum() != 0 else np.inf
+            expectancy = avg_win * win_rate + avg_loss * (1 - win_rate)
+        else:
+            win_rate = avg_win = avg_loss = profit_factor = expectancy = 0.0
 
-        entries = df.index[df["trade"] != 0].tolist()
-        trade_pnls: list[float] = []
-
-        for i in range(len(entries) - 1):
-            t0, t1 = entries[i], entries[i + 1]
-            side = float(pos_series.loc[t0])
-            if side == 0:
-                continue
-            entry_p = float(fill_series.loc[t0])
-            exit_p = float(fill_series.loc[t1])
-            trade_pnls.append((exit_p - entry_p) * side / entry_p)
-
-        wins = [r for r in trade_pnls if r > 0]
-        losses = [r for r in trade_pnls if r <= 0]
-
-        win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
-        avg_win = float(np.mean(wins)) if wins else 0.0
-        avg_loss = float(np.mean(losses)) if losses else 0.0
-        profit_factor = (
-            abs(sum(wins) / sum(losses))
-            if losses and sum(losses) != 0
-            else float("inf")
-        )
-        expectancy = avg_win * win_rate + avg_loss * (1 - win_rate)
-
-        # ── Equity curve ──────────────────────────────────────────────────────────
+        # ── Equity curve for charting ─────────────────────────────────────────────
         equity_curve = [
-            {
-                "date": str(idx.date() if hasattr(idx, "date") else idx),
-                "equity": round(float(val), 2),
-            }
-            for idx, val in zip(df.index, df["equity"])
+            {"date": str(idx.date()), "equity": val}
+            for idx, val in zip(df.index, equity)
         ]
 
-        total_return = float(equity[-1] / initial_equity - 1.0)
-
-        metrics = BacktestMetrics(
+        return BacktestMetrics(
             total_return=total_return,
-            annualized_return=ann_return,
+            annualized_return=annualized_return,
             sharpe=sharpe,
             sortino=sortino,
             calmar=calmar,
@@ -270,8 +257,8 @@ def run_backtest(
             ulcer_index=ulcer,
             max_drawdown=max_dd,
             avg_drawdown=avg_dd,
-            max_drawdown_duration_days=max_dur,
-            num_trades=len(trade_pnls),
+            max_drawdown_duration_days=max_dd_duration,
+            num_trades=num_trades,
             win_rate=win_rate,
             avg_win_pct=avg_win,
             avg_loss_pct=avg_loss,
@@ -279,13 +266,6 @@ def run_backtest(
             expectancy=expectancy,
             equity_curve=equity_curve,
         )
-        return metrics
-
-    except (ZeroDivisionError, KeyError, IndexError) as e:
-        logger.error(
-            "Backtest computation error (%s): %s", type(e).__name__, e, exc_info=True
-        )
-        raise
     except Exception as e:
-        logger.exception("Unexpected error during backtest execution")
+        logger.error("Backtest execution failed: %s", e, exc_info=True)
         raise
