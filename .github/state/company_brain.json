@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783802569.9509957,
+    "last_updated": 1783805629.1542704,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783802569.9505825
+    "last_brain_update": 1783805629.1538923
   },
   "episodic": [
     {
@@ -736,6 +736,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1783802569.9468045
+    },
+    {
+      "summary": "The deployment failed due to resource limits, with messages advising to retry after 24 hours or 1 day, and an automated patch attempt also failed.",
+      "item_count": 20,
+      "ts": 1783805629.1501637
     }
   ],
   "experiment_results": [
