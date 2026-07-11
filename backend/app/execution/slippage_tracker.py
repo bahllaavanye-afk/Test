@@ -1,33 +1,72 @@
-"""Tracks realized slippage vs expected fill price per order.
+"""slippage_tracker module.
 
-Item 5: Extended with Implementation Shortfall (IS) measurement.
-IS = (fill_price - arrival_price) / arrival_price * 10000
-where arrival_price is the mid-price when the order was first submitted.
+Tracks realized slippage versus expected fill price per order and provides
+execution quality metrics such as implementation shortfall (IS),
+VWAP shortfall, and execution duration.
+
+The module is deliberately lightweight: it only records metrics and
+persists them via the provided asynchronous SQLAlchemy session. No
+external APIs are called.
 """
+
 import uuid
-import numpy as np
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+import numpy as np
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+
 from app.brokers.base import OrderRequest, OrderResult
 from app.models.slippage import SlippageRecord
 from app.utils.logging import logger
 
 
 class SlippageTracker:
-    def __init__(self, db: AsyncSession | None = None):
+    """Collect and persist slippage‑related metrics for order executions.
+
+    The tracker keeps temporary mappings keyed by ``account_id:symbol`` for
+    signal, arrival, and submission timestamps. When a fill is recorded it
+    calculates slippage, implementation shortfall, VWAP shortfall and
+    execution duration, logs the information, notifies Slack, and stores a
+    :class:`~app.models.slippage.SlippageRecord` if a database session is
+    supplied.
+    """
+
+    def __init__(self, db: Optional[AsyncSession] = None) -> None:
+        """Create a new :class:`SlippageTracker`.
+
+        Args:
+            db: Optional asynchronous SQLAlchemy session used for persisting
+                :class:`SlippageRecord` instances. If ``None`` the tracker
+                operates in‑memory only.
+        """
         self.db = db
         self._signal_prices: dict[str, float] = {}
-        # Item 5: track arrival prices (mid-price at order submission) and submit times
+        # Track arrival (mid) price at order submission and the submission time.
         self._arrival_prices: dict[str, float] = {}
         self._submit_times: dict[str, datetime] = {}
 
     async def record_signal_price(self, request: OrderRequest, signal_price: float) -> None:
+        """Store the expected signal price for a given order.
+
+        Args:
+            request: The original order request containing ``account_id`` and
+                ``symbol``.
+            signal_price: The price that the algorithm expects when the order
+                is filled.
+        """
         key = f"{request.account_id}:{request.symbol}"
         self._signal_prices[key] = signal_price
 
     async def record_arrival_price(self, request: OrderRequest, arrival_price: float) -> None:
-        """Record mid-price at order submission time (for IS calculation)."""
+        """Record the mid‑price at order submission time for IS calculation.
+
+        Args:
+            request: The original order request.
+            arrival_price: The mid‑price observed when the order was first
+                submitted.
+        """
         key = f"{request.account_id}:{request.symbol}"
         self._arrival_prices[key] = arrival_price
         self._submit_times[key] = datetime.now(timezone.utc)
@@ -36,29 +75,46 @@ class SlippageTracker:
         self,
         request: OrderRequest,
         result: OrderResult,
-        period_vwap: float | None = None,
+        period_vwap: Optional[float] = None,
     ) -> None:
+        """Persist a filled order and compute related execution metrics.
+
+        The method calculates:
+        * Slippage relative to the original signal price.
+        * Implementation shortfall (IS) relative to the arrival price.
+        * VWAP shortfall if a period VWAP is supplied.
+        * Execution duration from submission to fill.
+
+        It logs the computed metrics, sends Slack notifications, and writes a
+        :class:`SlippageRecord` to the database when a session is available.
+
+        Args:
+            request: The original order request.
+            result: The order result containing fill information.
+            period_vwap: Optional VWAP price for the period over which the
+                order was active.
+        """
         if not result.avg_fill_price:
             return
         key = f"{request.account_id}:{request.symbol}"
         signal_price = self._signal_prices.pop(key, None)
 
-        # Item 5: IS metrics
+        # Implementation shortfall (IS) metrics
         arrival_price = self._arrival_prices.pop(key, None)
         submit_time = self._submit_times.pop(key, None)
         fill_time = datetime.now(timezone.utc)
-        execution_duration_seconds: float | None = None
+        execution_duration_seconds: Optional[float] = None
         if submit_time is not None:
             execution_duration_seconds = (fill_time - submit_time).total_seconds()
 
-        is_cost_bps: float | None = None
+        is_cost_bps: Optional[float] = None
         if arrival_price and arrival_price > 0:
             if request.side == "buy":
                 is_cost_bps = (result.avg_fill_price - arrival_price) / arrival_price * 10_000
             else:
                 is_cost_bps = (arrival_price - result.avg_fill_price) / arrival_price * 10_000
 
-        vwap_shortfall_bps: float | None = None
+        vwap_shortfall_bps: Optional[float] = None
         if period_vwap and period_vwap > 0:
             if request.side == "buy":
                 vwap_shortfall_bps = (result.avg_fill_price - period_vwap) / period_vwap * 10_000
@@ -67,9 +123,9 @@ class SlippageTracker:
 
         if signal_price and result.avg_fill_price:
             if request.side == "buy":
-                slippage_bps = (result.avg_fill_price - signal_price) / signal_price * 10000
+                slippage_bps = (result.avg_fill_price - signal_price) / signal_price * 10_000
             else:
-                slippage_bps = (signal_price - result.avg_fill_price) / signal_price * 10000
+                slippage_bps = (signal_price - result.avg_fill_price) / signal_price * 10_000
 
             logger.info(
                 "Slippage recorded",
@@ -85,23 +141,20 @@ class SlippageTracker:
 
             from app.notifications.slack import slack
             from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
-            await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+
+            tracker.record(
+                "order_filled",
+                "order",
+                f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
+                slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
-
-            from app.notifications.slack import slack
-            from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
             await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+                request.symbol,
+                request.side,
+                request.quantity,
+                result.avg_fill_price,
+                slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
 
@@ -115,7 +168,7 @@ class SlippageTracker:
                     slippage_bps=slippage_bps,
                     execution_algo=request.execution_algo,
                     created_at=datetime.now(timezone.utc),
-                    # Item 5: IS fields
+                    # IS related fields
                     arrival_price=arrival_price,
                     is_cost_bps=is_cost_bps,
                     vwap_shortfall_bps=vwap_shortfall_bps,
@@ -125,19 +178,36 @@ class SlippageTracker:
                 self.db.add(record)
                 await self.db.commit()
 
-    async def get_execution_quality_stats(self, algo: str, days: int = 30) -> dict:
-        """
-        Item 5: Returns aggregated execution quality metrics for a given algo.
+    async def get_execution_quality_stats(self, algo: str, days: int = 30) -> Dict[str, Any]:
+        """Return aggregated execution quality statistics for a given algorithm.
+
+        The statistics cover the most recent ``days`` days and include average
+        implementation shortfall, slippage, VWAP shortfall, execution duration,
+        fill count and the 95th percentile of IS.
+
+        Args:
+            algo: The execution algorithm identifier to filter records.
+            days: Number of days in the past to consider (default: 30).
 
         Returns:
-            dict with avg_is_bps, avg_slippage_bps, avg_vwap_shortfall_bps,
-            avg_duration_seconds, num_fills, p95_is_bps.
-        Raises RuntimeError if DB is not available.
+            A dictionary containing:
+                * ``algo`` – the algorithm name.
+                * ``avg_is_bps`` – mean implementation shortfall (bps).
+                * ``avg_slippage_bps`` – mean slippage (bps).
+                * ``avg_vwap_shortfall_bps`` – mean VWAP shortfall (bps).
+                * ``avg_duration_seconds`` – mean execution duration.
+                * ``num_fills`` – total number of filled orders.
+                * ``p95_is_bps`` – 95th percentile of IS (bps).
+
+        Raises:
+            RuntimeError: If the tracker was instantiated without a database
+                session.
         """
         if self.db is None:
             raise RuntimeError("DB session required for execution quality stats")
 
         from datetime import timedelta
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         stmt = (
