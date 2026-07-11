@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import unittest
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -212,56 +213,31 @@ def run_backtest(
         # ── Calmar ────────────────────────────────────────────────────────────────
         years = len(df) / 252.0
         ann_return = float(
-            (equity[-1] / initial_equity) ** (1.0 / max(years, 1e-6)) - 1.0
+            (equity[-1] / equity[0]) ** (1 / years) - 1
+            if years > 0
+            else 0.0
         )
-        calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
+        calmar = float(ann_return / abs(max_dd) if max_dd != 0 else 0.0)
 
-        # ── Omega / Ulcer ─────────────────────────────────────────────────────────
-        omega = _omega_ratio(returns, threshold=rf_daily)
+        # ── Omega Ratio & Ulcer Index ─────────────────────────────────────────────
+        omega = _omega_ratio(returns)
         ulcer = _ulcer_index(equity)
 
-        # ── Trade-level stats (vectorised) ────────────────────────────────────────
-        pos_series = df["position"]
-        fill_series = df["fill_price"]
-
-        entries = df.index[df["trade"] != 0].tolist()
-        trade_pnls: list[float] = []
-
-        for i in range(len(entries) - 1):
-            t0, t1 = entries[i], entries[i + 1]
-            side = float(pos_series.loc[t0])
-            if side == 0:
-                continue
-            entry_p = float(fill_series.loc[t0])
-            exit_p = float(fill_series.loc[t1])
-            trade_pnls.append((exit_p - entry_p) * side / entry_p)
-
-        wins = [r for r in trade_pnls if r > 0]
-        losses = [r for r in trade_pnls if r <= 0]
-
-        win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
-        avg_win = float(np.mean(wins)) if wins else 0.0
-        avg_loss = float(np.mean(losses)) if losses else 0.0
-        profit_factor = (
-            abs(sum(wins) / sum(losses))
-            if losses and sum(losses) != 0
-            else float("inf")
+        # ── Trading statistics ───────────────────────────────────────────────────
+        trades_executed = trade_mask.sum()
+        wins = df["pnl"][df["pnl"] > 0]
+        losses = df["pnl"][df["pnl"] < 0]
+        win_rate = float(wins.count() / trades_executed) if trades_executed > 0 else 0.0
+        avg_win = float(wins.mean()) if not wins.empty else 0.0
+        avg_loss = float(losses.mean()) if not losses.empty else 0.0
+        profit_factor = float(
+            (wins.sum() / -losses.sum()) if losses.sum() != 0 else np.inf
         )
-        expectancy = avg_win * win_rate + avg_loss * (1 - win_rate)
+        expectancy = float(avg_win * win_rate - avg_loss * (1 - win_rate))
 
-        # ── Equity curve ──────────────────────────────────────────────────────────
-        equity_curve = [
-            {
-                "date": str(idx.date() if hasattr(idx, "date") else idx),
-                "equity": round(float(val), 2),
-            }
-            for idx, val in zip(df.index, df["equity"])
-        ]
-
-        total_return = float(equity[-1] / initial_equity - 1.0)
-
+        # Compile metrics
         metrics = BacktestMetrics(
-            total_return=total_return,
+            total_return=equity[-1] / initial_equity - 1,
             annualized_return=ann_return,
             sharpe=sharpe,
             sortino=sortino,
@@ -271,21 +247,58 @@ def run_backtest(
             max_drawdown=max_dd,
             avg_drawdown=avg_dd,
             max_drawdown_duration_days=max_dur,
-            num_trades=len(trade_pnls),
+            num_trades=int(trades_executed),
             win_rate=win_rate,
             avg_win_pct=avg_win,
             avg_loss_pct=avg_loss,
             profit_factor=profit_factor,
             expectancy=expectancy,
-            equity_curve=equity_curve,
+            equity_curve=df[["equity"]].reset_index().to_dict(orient="records"),
         )
         return metrics
-
-    except (ZeroDivisionError, KeyError, IndexError) as e:
-        logger.error(
-            "Backtest computation error (%s): %s", type(e).__name__, e, exc_info=True
-        )
-        raise
     except Exception as e:
-        logger.exception("Unexpected error during backtest execution")
+        logger.error("Backtest execution error: %s", e, exc_info=True)
         raise
+
+
+class TestBacktestEngine(unittest.TestCase):
+    """Edge‑case unit tests for the backtest engine."""
+
+    def setUp(self) -> None:
+        self.dates = pd.date_range(start="2022-01-03", periods=5, freq="B")
+        self.prices = pd.Series([100, 101, 102, 101, 100], index=self.dates)
+        self.signals = pd.Series([0, 1, 0, -1, 0], index=self.dates)
+        self.opens = pd.Series([99, 100, 101, 100, 99], index=self.dates)
+        self.volume = pd.Series([1_000_000, 1_200_000, 800_000, 900_000, 1_100_000], index=self.dates)
+
+    def test_empty_signals_raises(self) -> None:
+        empty_signals = pd.Series([], dtype=float)
+        with self.assertRaises(ValueError) as cm:
+            run_backtest(empty_signals, self.prices)
+        self.assertIn("signals series is empty", str(cm.exception))
+
+    def test_mismatched_index_raises(self) -> None:
+        mismatched_signals = pd.Series([1, -1, 0], index=pd.date_range("2022-01-01", periods=3))
+        with self.assertRaises(ValueError) as cm:
+            run_backtest(mismatched_signals, self.prices)
+        self.assertIn("signals and prices must share the same index", str(cm.exception))
+
+    def test_adaptive_slippage_flat_when_volume_none(self) -> None:
+        trade_size = pd.Series([10_000, 20_000], index=[0, 1])
+        slip_series = _adaptive_slippage(trade_size, None, base_slippage_pct=0.001)
+        self.assertTrue((slip_series == 0.001).all())
+        self.assertEqual(slip_series.index.tolist(), [0, 1])
+
+    def test_omega_ratio_infinite_when_no_losses(self) -> None:
+        returns = np.array([0.02, 0.03, 0.01])  # all positive
+        omega = _omega_ratio(returns, threshold=0.0)
+        self.assertTrue(np.isinf(omega))
+
+    def test_ulcer_index_zero_when_no_drawdown(self) -> None:
+        equity = np.array([100_000, 100_000, 100_000])
+        ulcer = _ulcer_index(equity)
+        self.assertAlmostEqual(ulcer, 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
