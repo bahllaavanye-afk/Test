@@ -195,17 +195,13 @@ class ReportBuilder:
   </style>
 </head>
 <body>
-  <h1>QuantEdge Comparison Report</h1>
-  <div class="meta">Generated at {_h(report.generated_at)}</div>
+  <h1>QuantEdge Comparison Report — {_h(report.strategy_name)} / {_h(report.symbol)}</h1>
+  <div class="meta">{_h(report.interval)} | {_h(report.period)} | Generated at {report.generated_at}</div>
   <div class="summary">{summary_text}</div>
   <h2>Metrics</h2>
   <table>
-    <thead>
-      <tr><th>Metric</th><th>Manual</th><th>ML‑Enhanced</th></tr>
-    </thead>
-    <tbody>
-      {rows_html}
-    </tbody>
+    <thead><tr><th>Metric</th><th>Manual</th><th>ML-Enhanced</th></tr></thead>
+    <tbody>{rows_html}</tbody>
   </table>
   <h2>Equity Curves</h2>
   {eq_section}
@@ -213,23 +209,72 @@ class ReportBuilder:
 </html>"""
         return html
 
-    # ------------------------------------------------------------------ #
-    # Internal helpers                                                    #
-    # ------------------------------------------------------------------ #
+# ---------------------------------------------------------------------- #
+# Unit Tests for Edge Cases
+# ---------------------------------------------------------------------- #
 
-    def _extract_equity_curves(self, cr: ComparisonResult) -> Dict[str, List[float]]:
-        """
-        Normalize equity curves to start at 100.
+import unittest
+from types import SimpleNamespace
 
-        Results are cached on the ComparisonResult instance to avoid recomputation
-        when the same result is used multiple times.
-        """
-        # Fast‑path: return cached value if present
-        cached = getattr(cr, "_norm_eq_curves", None)
-        if cached is not None:
-            return cached
+class TestReportBuilderEdgeCases(unittest.TestCase):
+    """Test edge‑case handling in ReportBuilder."""
 
-        curves: Dict[str, List[float]] = {}
-        for name, series in getattr(cr, "equity_curves", {}).items():
-            if not series:
-                curves[name] = []
+    def setUp(self):
+        self.builder = ReportBuilder()
+
+        # Stub out heavy internal helpers to focus on boundary logic
+        self.builder._backtest_to_strategy_metrics = lambda name, bt: StrategyMetrics(
+            name=name,
+            sharpe=bt.get('sharpe', 0.0),
+            sortino=0.0,
+            annual_return_pct=0.0,
+            max_drawdown_pct=0.0,
+            win_rate=0.0,
+            total_trades=0,
+            avg_hold_days=0.0,
+            calmar=0.0,
+        )
+        self.builder._determine_winner = lambda ml, manual, benchmarks, winner: "ml"
+        self.builder._extract_equity_curves = lambda cr: {}
+        self.builder._best_benchmark = lambda report: None
+        self.builder._metrics_table_rows = lambda report: ""
+        self.builder._equity_curve_section = lambda report: ""
+
+    def test_manual_sharpe_zero(self):
+        """When manual Sharpe is zero, improvement is calculated without division."""
+        cr = SimpleNamespace(
+            strategy_name="EdgeStrategy",
+            symbol="EDG",
+            interval="1D",
+            start_date="2023-01-01",
+            end_date="2023-12-31",
+            manual={'sharpe': 0.0},
+            ml_enhanced={'sharpe': 2.5},
+            benchmark_stats={},          # empty benchmarks
+            is_significant=False,
+            t_statistic=0.0,
+            p_value=0.5,
+            winner="ml"
+        )
+        report = self.builder.build(cr)
+        # Expected: (2.5 - 0) * 100 = 250.0
+        self.assertEqual(report.ml_improvement_pct, 250.0)
+
+    def test_empty_benchmarks(self):
+        """Report should handle an empty benchmark dictionary gracefully."""
+        cr = SimpleNamespace(
+            strategy_name="NoBench",
+            symbol="NB",
+            interval="1D",
+            start_date="2023-01-01",
+            end_date="2023-12-31",
+            manual={'sharpe': 1.0},
+            ml_enhanced={'sharpe': 1.2},
+            benchmark_stats={},          # no benchmarks provided
+            is_significant=False,
+            t_statistic=0.0,
+            p_value=0.5,
+            winner="ml"
+        )
+        report = self.builder.build(cr)
+        self
