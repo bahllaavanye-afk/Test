@@ -7,6 +7,9 @@ name: Model Audit — weekly LLM model-ID drift check
 # (list calls only, no inference).
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "41 5 * * 6"   # Saturdays 05:41 UTC — issue ready for Monday's worker
   workflow_dispatch: {}

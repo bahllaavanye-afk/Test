@@ -6,6 +6,9 @@ name: ML Experiments — weekly walk-forward training (CPU, free)
 # durable and diffable week over week. Zero LLM spend — this is pure sklearn.
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "17 4 * * 0"   # Sundays 04:17 UTC — results ready before Monday open
   workflow_dispatch: {}

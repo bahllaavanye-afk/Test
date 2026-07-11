@@ -1,6 +1,9 @@
 name: Multi-Agent Discussion — Every 2 Hours
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "0 */2 * * *"
   workflow_dispatch:
@@ -9,6 +12,10 @@ on:
         description: "Force a specific channel (engineering/desk-equities/ml-research/risk)"
         required: false
         default: ""
+
+concurrency:
+  group: multi-agent-discussion
+  cancel-in-progress: false
 
 jobs:
   discuss:

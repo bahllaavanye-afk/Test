@@ -4,6 +4,9 @@ name: Daily Employee Review — strict daily scoring
 # domain quality, and codebase contributions. Posts scores to #leadership-summary.
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "0 7 * * *"   # every day at 07:00 UTC
   workflow_dispatch:

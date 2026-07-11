@@ -1,6 +1,9 @@
 name: Market Scanner — Intraday Regime + Sector + Breakout Analysis
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     # Market open: 14:00 UTC (9:00 ET), 15:00, 16:00, 17:00, 18:00, 19:00, 20:00 UTC
     - cron: "0 14 * * 1-5"
@@ -11,6 +14,10 @@ on:
     - cron: "0 19 * * 1-5"
     - cron: "0 20 * * 1-5"
   workflow_dispatch:
+
+concurrency:
+  group: market-scanner
+  cancel-in-progress: false
 
 jobs:
   scan:
