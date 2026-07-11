@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import uuid
+import re
 from pathlib import Path
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,8 +58,12 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -78,7 +83,14 @@ async def trigger_training(
     Returns immediately with experiment_id and status='queued'.
     The training runs as a background asyncio task.
     """
-    config_name = body.config_name.removesuffix(".yaml")
+    # Validate config name format
+    config_name_raw = body.config_name
+    if not isinstance(config_name_raw, str) or not config_name_raw.strip():
+        raise ValueError("config_name must be a non-empty string")
+    # Remove .yaml suffix and ensure safe characters
+    config_name = config_name_raw.removesuffix(".yaml")
+    if not re.fullmatch(r"[A-Za-z0-9_]+", config_name):
+        raise ValueError(f"Invalid config_name '{config_name_raw}'. Allowed characters: letters, numbers, underscore")
 
     # Validate config exists
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
@@ -130,6 +142,12 @@ async def get_experiment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Validate experiment_id format (must be a valid UUID)
+    try:
+        uuid.UUID(experiment_id)
+    except (ValueError, AttributeError):
+        raise ValueError(f"Invalid experiment_id '{experiment_id}'. Must be a valid UUID string")
+
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
