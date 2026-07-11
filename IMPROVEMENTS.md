@@ -1,6 +1,6 @@
 # QuantEdge — Improvements & Task Tracker
 
-- [ ] **[P0] scripts/import_oa_bots.py** + scrape OA PUBLIC leaderboard (docs/playbooks/OA_BOT_COPY.md; public pages return 200)
+- [x] **[P0] scripts/import_oa_bots.py** + scrape OA PUBLIC leaderboard (docs/playbooks/OA_BOT_COPY.md; public pages return 200)
 - [ ] **[P0] OANDA FX desk**; **[P1]** WORKFLOW_PAT fallback wiring; ADRs; EM cap 30%
 
 
