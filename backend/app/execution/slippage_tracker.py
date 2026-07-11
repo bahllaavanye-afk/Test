@@ -173,3 +173,141 @@ class SlippageTracker:
             "num_fills": len(records),
             "p95_is_bps": float(np.percentile(is_costs, 95)) if is_costs else 0.0,
         }
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import pytest
+import asyncio
+from unittest.mock import AsyncMock, patch, MagicMock
+from dataclasses import dataclass
+
+
+@dataclass
+class DummyOrderRequest:
+    account_id: str
+    symbol: str
+    side: str  # "buy" or "sell"
+    execution_algo: str
+    quantity: float
+
+
+@dataclass
+class DummyOrderResult:
+    avg_fill_price: float | None
+    broker_order_id: str
+
+
+class MockAsyncSession:
+    """Minimal async session mock that records added objects."""
+    def __init__(self):
+        self.added = []
+
+    async def add(self, obj):
+        self.added.append(obj)
+
+    async def commit(self):
+        pass
+
+    async def execute(self, stmt):
+        # Return empty result for stats queries in these tests
+        mock = MagicMock()
+        mock.scalars.return_value.all.return_value = []
+        return mock
+
+
+@pytest.mark.asyncio
+async def test_record_fill_zero_signal_price():
+    """When signal_price is zero, slippage should not be logged or persisted."""
+    session = MockAsyncSession()
+    tracker = SlippageTracker(db=session)
+
+    request = DummyOrderRequest(
+        account_id="A1",
+        symbol="TEST",
+        side="buy",
+        execution_algo="algo1",
+        quantity=10,
+    )
+    # Record a zero signal price
+    await tracker.record_signal_price(request, 0.0)
+    # Record arrival price to ensure other fields are populated
+    await tracker.record_arrival_price(request, 100.0)
+
+    result = DummyOrderResult(avg_fill_price=101.0, broker_order_id="B123")
+
+    with patch.object(logger, "info") as mock_logger:
+        await tracker.record_fill(request, result, period_vwap=99.0)
+
+    # logger.info should not be called because signal_price is falsy (zero)
+    mock_logger.assert_not_called()
+    # No SlippageRecord should be added to the session
+    assert len(session.added) == 0
+
+
+@pytest.mark.asyncio
+async def test_record_fill_zero_arrival_price():
+    """Arrival price of zero should skip IS calculation but still record slippage."""
+    session = MockAsyncSession()
+    tracker = SlippageTracker(db=session)
+
+    request = DummyOrderRequest(
+        account_id="A2",
+        symbol="ZEROARR",
+        side="buy",
+        execution_algo="algo2",
+        quantity=5,
+    )
+    await tracker.record_signal_price(request, 100.0)
+    # Arrival price is zero; IS should be None
+    await tracker.record_arrival_price(request, 0.0)
+
+    result = DummyOrderResult(avg_fill_price=101.0, broker_order_id="B124")
+
+    with patch.object(logger, "info") as mock_logger:
+        await tracker.record_fill(request, result, period_vwap=99.0)
+
+    # logger should be called once
+    mock_logger.assert_called_once()
+    # Verify that the stored record has is_cost_bps as None
+    assert len(session.added) == 1
+    record = session.added[0]
+    assert record.is_cost_bps is None
+    # Slippage should be calculated correctly
+    expected_slippage = (101.0 - 100.0) / 100.0 * 10000
+    assert pytest.approx(record.slippage_bps, rel=1e-6) == expected_slippage
+
+
+@pytest.mark.asyncio
+async def test_record_fill_zero_period_vwap():
+    """Period VWAP of zero should skip vwap_shortfall calculation while keeping other metrics."""
+    session = MockAsyncSession()
+    tracker = SlippageTracker(db=session)
+
+    request = DummyOrderRequest(
+        account_id="A3",
+        symbol="ZEROVWAP",
+        side="sell",
+        execution_algo="algo3",
+        quantity=8,
+    )
+    await tracker.record_signal_price(request, 200.0)
+    await tracker.record_arrival_price(request, 198.0)
+
+    result = DummyOrderResult(avg_fill_price=197.0, broker_order_id="B125")
+
+    with patch.object(logger, "info") as mock_logger:
+        await tracker.record_fill(request, result, period_vwap=0.0)
+
+    mock_logger.assert_called_once()
+    assert len(session.added) == 1
+    record = session.added[0]
+    # vwap_shortfall_bps should be None because period_vwap is zero
+    assert record.vwap_shortfall_bps is None
+    # IS cost should be calculated for a sell side
+    expected_is = (198.0 - 197.0) / 198.0 * 10000
+    assert pytest.approx(record.is_cost_bps, rel=1e-6) == expected_is
+    # Slippage for sell side: (signal - fill) / signal * 10000
+    expected_slippage = (200.0 - 197.0) / 200.0 * 10000
+    assert pytest.approx(record.slippage_bps, rel=1e-6) == expected_slippage
