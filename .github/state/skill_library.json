@@ -1,9 +1,5 @@
 {
   "skills": [
-    "docstrings on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
-    "Implement unit tests",
-    "**Implement retry mechanisms**: Review `quantedge/backend/trading.py` to identify and implement retry mechanisms to handle errors and improve trading script reliability.",
-    "optimization on api/v1/options.py: success \u2014 tests green",
     "Review code for optimization",
     "monitoring on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
     "Log exception details",
@@ -199,8 +195,12 @@
     "Scan for malware",
     "Refactor nested logic",
     "Improve code readability",
-    "Enhance memory logging"
+    "Enhance memory logging",
+    "Check DB connections",
+    "Test market data",
+    "Verify config files",
+    "Check system clocks"
   ],
-  "last_updated": "2026-07-11T18:57:04.059289+00:00",
+  "last_updated": "2026-07-11T20:05:56.853734+00:00",
   "total": 200
 }
