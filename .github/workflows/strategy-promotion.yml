@@ -1,6 +1,9 @@
 name: Strategy Promotion Pipeline
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "0 9 * * *"   # 9 AM UTC daily
   workflow_dispatch:

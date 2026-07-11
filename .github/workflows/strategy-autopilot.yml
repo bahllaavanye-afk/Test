@@ -1,10 +1,17 @@
 name: Strategy Autopilot — Auto-Explore, Backtest, Promote
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     # Every 6 hours — explore, backtest, promote top variants
     - cron: "0 */6 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: strategy-autopilot
+  cancel-in-progress: false
 
 jobs:
   autopilot:

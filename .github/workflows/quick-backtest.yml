@@ -1,9 +1,16 @@
 name: Quick Backtest Runner — Every 15 Minutes
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
+
+concurrency:
+  group: quick-backtest
+  cancel-in-progress: false
 
 jobs:
   backtest:
