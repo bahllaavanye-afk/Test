@@ -2,18 +2,19 @@
 
 We have years of underlying OHLCV but no historical option chains, so spreads
 are repriced with Black-Scholes using realized vol as the IV proxy (HV20 ×
-IV_PREMIUM, the variance-risk-premium markup). This is the standard research
+IV_PREMIUM, the variance‑risk‑premium markup). This is the standard research
 approximation; it captures theta/delta/vega mechanics and regime behavior but
 NOT skew dynamics or bid/ask — results are for RANKING templates against each
 other, not for promising returns. Every consumer must carry that caveat.
 
 Pure numpy/math (no scipy): norm CDF via math.erf, inverse CDF via the
-Acklam approximation. Deterministic; fully unit-testable.
+Acklam approximation. Deterministic; fully unit‑testable.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import List, Tuple, Optional
 
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
@@ -87,66 +88,59 @@ class _Leg:
     ratio: int
 
 
-def _net_value(legs: list[_Leg], S: float, T: float, sigma: float) -> float:
+def _net_value(legs: List[_Leg], S: float, T: float, sigma: float) -> float:
     return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
 
 
-def backtest_template(template: dict, closes: list[float],
-                      trading_days_per_entry: int = 1) -> dict:
-    """Walk daily closes; open the template's spread whenever flat, manage exits.
+def _compute_hv_sigma(closes: List[float], idx: int) -> Tuple[float, float]:
+    """Calculate historical volatility (HV20) and implied sigma for the given day."""
+    # 20‑day log returns (including current day)
+    rets = [math.log(closes[j] / closes[j - 1]) for j in range(idx - 19, idx + 1)]
+    mean = sum(rets) / len(rets)
+    hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
+    sigma = max(hv * IV_PREMIUM, 0.05)
+    return hv, sigma
 
-    Entry uses HV20×IV_PREMIUM as sigma and resolves strikes from leg deltas.
-    Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
-    plus expiry settlement. Returns ranking metrics — see module caveat.
-    """
-    action = template["action"]
-    tp_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "take_profit"), 50) or 50
-    sl_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "stop_loss"), None)
 
-    trades: list[float] = []
-    pos: list[_Leg] | None = None
-    entry_net = 0.0
-    days_held = 0
-    dte = max(int(action["legs"][0].get("dte", 30)), 0)
+def _initialize_position(action: dict, S: float, T0: float, sigma: float) -> List[_Leg]:
+    """Create leg objects for a new spread based on the template."""
+    legs: List[_Leg] = []
+    for lg in action["legs"]:
+        if lg.get("strike"):
+            K = float(lg["strike"])
+        else:
+            K = strike_from_delta(
+                S,
+                float(lg.get("delta") or 0.5),
+                T0,
+                sigma,
+                lg["option_type"],
+            )
+        legs.append(
+            _Leg(
+                +1 if lg["side"] == "buy" else -1,
+                lg["option_type"],
+                K,
+                int(lg.get("ratio", 1)),
+            )
+        )
+    return legs
 
-    for i in range(21, len(closes)):
-        S = closes[i]
-        rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
-        mean = sum(rets) / len(rets)
-        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
-        sigma = max(hv * IV_PREMIUM, 0.05)
 
-        if pos is None:
-            T0 = max(dte, 1) / 365.0
-            pos = []
-            for lg in action["legs"]:
-                if lg.get("strike"):
-                    K = float(lg["strike"])
-                else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
-                                int(lg.get("ratio", 1))))
-            entry_net = _net_value(pos, S, T0, sigma)
-            days_held = 0
-            continue
+def _current_position_value(pos: List[_Leg], S: float, T_rem: float, sigma: float) -> float:
+    """Value the position using Black‑Scholes while time remains, otherwise use intrinsic value."""
+    if T_rem > 0:
+        return _net_value(pos, S, T_rem, sigma)
+    # Intrinsic value at expiry
+    return sum(
+        l.sign * l.ratio *
+        max((S - l.strike) if l.option_type.startswith("c") else (l.strike - S), 0.0)
+        for l in pos
+    )
 
-        days_held += 1
-        T_rem = max(dte - days_held, 0) / 365.0
-        cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
-                                   else (l.strike - S), 0.0) for l in pos)
-        pnl = (cur - entry_net) * MULTIPLIER
-        base = max(abs(entry_net) * MULTIPLIER, 1.0)
 
-        expired = days_held >= max(dte, 1)
-        hit_tp = pnl >= (tp_pct / 100.0) * base
-        hit_sl = sl_pct is not None and pnl <= -(sl_pct / 100.0) * base
-        if hit_tp or hit_sl or expired:
-            trades.append(pnl)
-            pos = None
-
+def _aggregate_metrics(trades: List[float]) -> dict:
+    """Calculate trade‑level statistics from the list of PnL values."""
     n = len(trades)
     wins = sum(1 for t in trades if t > 0)
     total = sum(trades)
@@ -163,3 +157,57 @@ def backtest_template(template: dict, closes: list[float],
         "max_drawdown": round(mdd, 2),
         "method": "synthetic-BS (HV20×1.1 IV proxy) — ranking signal, not a return promise",
     }
+
+
+def backtest_template(template: dict, closes: List[float],
+                      trading_days_per_entry: int = 1) -> dict:
+    """Walk daily closes; open the template's spread whenever flat, manage exits.
+
+    Entry uses HV20×IV_PREMIUM as sigma and resolves strikes from leg deltas.
+    Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
+    plus expiry settlement. Returns ranking metrics — see module caveat.
+    """
+    action = template["action"]
+    tp_pct = next(
+        (r["value"] for r in template.get("exit_rules", []) if r["type"] == "take_profit"),
+        50,
+    ) or 50
+    sl_pct = next(
+        (r["value"] for r in template.get("exit_rules", []) if r["type"] == "stop_loss"),
+        None,
+    )
+
+    trades: List[float] = []
+    pos: Optional[List[_Leg]] = None
+    entry_net = 0.0
+    days_held = 0
+    dte = max(int(action["legs"][0].get("dte", 30)), 0)
+
+    for i in range(21, len(closes)):
+        S = closes[i]
+
+        # Compute volatility‑derived sigma for the current day
+        _, sigma = _compute_hv_sigma(closes, i)
+
+        if pos is None:
+            T0 = max(dte, 1) / 365.0
+            pos = _initialize_position(action, S, T0, sigma)
+            entry_net = _net_value(pos, S, T0, sigma)
+            days_held = 0
+            continue
+
+        days_held += 1
+        T_rem = max(dte - days_held, 0) / 365.0
+        cur = _current_position_value(pos, S, T_rem, sigma)
+        pnl = (cur - entry_net) * MULTIPLIER
+        base = max(abs(entry_net) * MULTIPLIER, 1.0)
+
+        expired = days_held >= max(dte, 1)
+        hit_tp = pnl >= (tp_pct / 100.0) * base
+        hit_sl = sl_pct is not None and pnl <= -(sl_pct / 100.0) * base
+
+        if hit_tp or hit_sl or expired:
+            trades.append(pnl)
+            pos = None
+
+    return _aggregate_metrics(trades)
