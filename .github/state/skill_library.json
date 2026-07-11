@@ -1,10 +1,5 @@
 {
   "skills": [
-    "optimization on tasks/modeling_engineer.py: success \u2014 tests green",
-    "Validate JSON schema",
-    "Monitor queue sizes regularly",
-    "error_handling on ml/features/technical.py: success \u2014 tests green",
-    "strategy_logic on strategies/manual/order_flow_imbalance.py: success \u2014 tests green",
     "Use thread pooling",
     "Use circuit breaker",
     "* Monitor model drift pipeline for the `LSTM` model, triggered by a recommendation to retrain it after referencing `LSTM_model_retraining.ipynb`.",
@@ -199,8 +194,13 @@
     "Check clock sync",
     "Test DNS resolve",
     "Verify file perms",
-    "Track API call durations"
+    "Track API call durations",
+    "Validate config files",
+    "Test DB connections",
+    "Implement early-stopping",
+    "Monitor thread activity",
+    "Optimize log tracking"
   ],
-  "last_updated": "2026-07-10T23:01:45.755847+00:00",
+  "last_updated": "2026-07-11T00:55:23.736328+00:00",
   "total": 200
 }
