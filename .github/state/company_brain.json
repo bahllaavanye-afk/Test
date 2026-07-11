@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783797350.158984,
+    "last_updated": 1783802569.9509957,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783784212.246684
+    "last_brain_update": 1783802569.9505825
   },
   "episodic": [
     {
@@ -511,6 +511,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1783717389.1067696
+    },
+    {
+      "lesson": "Multiple auto-fix failures indicate a systemic issue with patch application; investigate root cause and consider manual intervention or improved error handling.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783802537.9376578
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free-tier daily limit (100 deployments). Upgrade to Pro plan or implement deployment batching to avoid interruptions.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783802537.9402807
+    },
+    {
+      "lesson": "The deployment rate limit introduces operational risk for continuous delivery. Evaluate cost-benefit of upgrading vs. reducing deployment frequency.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783802537.9420168
+    },
+    {
+      "lesson": "Auto-fix reliability should be monitored as a metric; persistent failures could indicate model drift or codebase changes that require retraining.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783802537.9436853
     }
   ],
   "github_insights": [
@@ -703,6 +731,11 @@
       "summary": "The deployment failed due to resource limits,",
       "item_count": 20,
       "ts": 1783784212.2430017
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1783802569.9468045
     }
   ],
   "experiment_results": [
