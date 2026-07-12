@@ -15,8 +15,9 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, List
 
+from pydantic import BaseModel, Field, validator, root_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,70 @@ from app.tasks.free_llm_router import call_race
 from app.tasks.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
+
+
+class StrategyMetric(BaseModel):
+    """Performance metrics for a single strategy over the last 30 days."""
+
+    strategy: str = Field(..., description="Name of the strategy", example="mean_rev_20_1.5")
+    num_trades: int = Field(
+        ..., ge=0, description="Number of trades executed in the period", example=125
+    )
+    total_pnl: float = Field(..., description="Total profit and loss", example=3425.67)
+    avg_pnl: float = Field(..., description="Average profit and loss per trade", example=27.4)
+    win_rate: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of winning trades (0‑1)",
+        example=0.58,
+    )
+    sharpe: float = Field(..., description="Annualized Sharpe ratio", example=1.23)
+
+    @validator("strategy")
+    def non_empty_strategy(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("strategy name must not be empty")
+        return v
+
+
+class LlmSuggestion(BaseModel):
+    """Suggestion returned by the LLM."""
+
+    provider: str = Field(..., description="LLM provider identifier", example="openai")
+    suggestion: str = Field(..., description="Raw suggestion content", example="Adjust look‑back period to 30")
+
+    @validator("provider", "suggestion")
+    def non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("field must not be empty")
+        return v
+
+
+class RegimeInfo(BaseModel):
+    """Current market regime and health metrics."""
+
+    regime: str = Field(
+        ...,
+        description="Overall market regime",
+        example="bull",
+        regex="^(bull|bear|sideways)$",
+    )
+    health_ratio: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of profitable strategies",
+        example=0.72,
+    )
+    profitable_strategies: int = Field(..., ge=0, description="Count of strategies with Sharpe > 0.5", example=14)
+    total_strategies: int = Field(..., ge=1, description="Total number of evaluated strategies", example=20)
+
+    @root_validator
+    def check_consistency(cls, values):
+        if values["profitable_strategies"] > values["total_strategies"]:
+            raise ValueError("profitable_strategies cannot exceed total_strategies")
+        return values
 
 
 class SelfImprovingLoop:
@@ -39,17 +104,21 @@ class SelfImprovingLoop:
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
-            logger.info("SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics))
+            logger.info(
+                "SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics)
+            )
         except Exception as e:
             logger.exception("SelfImprovingLoop cycle error: %s", e)
 
     # ── Metric collection ─────────────────────────────────────────────────────
 
-    async def _collect_strategy_metrics(self) -> list[dict]:
-        """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
+    async def _collect_strategy_metrics(self) -> List[StrategyMetric]:
+        """Pull per-strategy Sharpe + win‑rate from trade history (last 30d)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         async with self._factory() as session:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text(
+                    """
                 SELECT
                     strategy_name,
                     COUNT(*) AS num_trades,
@@ -60,62 +129,73 @@ class SelfImprovingLoop:
                 FROM trades
                 WHERE closed_at >= :cutoff AND strategy_name IS NOT NULL
                 GROUP BY strategy_name
-            """), {"cutoff": cutoff})
+                """
+                ),
+                {"cutoff": cutoff},
+            )
             rows = result.fetchall()
 
-        metrics = []
+        metrics: List[StrategyMetric] = []
         for row in rows:
             std = row.std_pnl or 1e-9
             sharpe = (row.avg_pnl / std) * (252 ** 0.5) if std > 0 else 0
-            metrics.append({
-                "strategy": row.strategy_name,
-                "num_trades": row.num_trades,
-                "total_pnl": float(row.total_pnl or 0),
-                "avg_pnl": float(row.avg_pnl or 0),
-                "win_rate": float(row.win_rate or 0),
-                "sharpe": round(sharpe, 3),
-            })
+            metric = StrategyMetric(
+                strategy=row.strategy_name,
+                num_trades=row.num_trades,
+                total_pnl=float(row.total_pnl or 0),
+                avg_pnl=float(row.avg_pnl or 0),
+                win_rate=float(row.win_rate or 0),
+                sharpe=round(sharpe, 3),
+            )
+            metrics.append(metric)
         return metrics
 
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
-    async def _auto_disable_underperformers(self, metrics: list[dict]) -> None:
+    async def _auto_disable_underperformers(self, metrics: List[StrategyMetric]) -> None:
         """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        underperformers = [
+            m for m in metrics if m.sharpe < 0 and m.num_trades >= 10
+        ]
         if not underperformers:
             return
 
         async with self._factory() as session:
             for m in underperformers:
-                await session.execute(text("""
+                await session.execute(
+                    text(
+                        """
                     UPDATE strategies SET is_active = false, disabled_reason = :reason
                     WHERE name = :name AND is_active = true
-                """), {
-                    "name": m["strategy"],
-                    "reason": f"auto-disabled: Sharpe={m['sharpe']:.2f} (30d)",
-                })
+                    """
+                    ),
+                    {
+                        "name": m.strategy,
+                        "reason": f"auto-disabled: Sharpe={m.sharpe:.2f} (30d)",
+                    },
+                )
             await session.commit()
 
-        names = [m["strategy"] for m in underperformers]
+        names = [m.strategy for m in underperformers]
         logger.info("SelfImprovingLoop: auto-disabled %s", names)
         await self._memory.write("auto_disabled", {"strategies": names})
 
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
-    async def _llm_improvement_pass(self, metrics: list[dict]) -> None:
+    async def _llm_improvement_pass(self, metrics: List[StrategyMetric]) -> None:
         if not metrics:
             return
 
-        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
-        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
+        top = sorted(metrics, key=lambda m: m.sharpe, reverse=True)[:5]
+        bottom = sorted(metrics, key=lambda m: m.sharpe)[:3]
 
         prompt = f"""You are a quantitative trading researcher.
 
 Top performing strategies (last 30d):
-{json.dumps(top, indent=2)}
+{json.dumps([t.dict() for t in top], indent=2)}
 
 Underperforming strategies:
-{json.dumps(bottom, indent=2)}
+{json.dumps([b.dict() for b in bottom], indent=2)}
 
 Suggest 3 specific, actionable improvements:
 1. Parameter tuning for the worst performer
@@ -130,28 +210,39 @@ Be concise. Each suggestion under 2 sentences."""
             max_tokens=512,
         )
         if response:
-            await self._memory.write("llm_suggestions", {
-                "provider": response.provider,
-                "suggestion": response.content,
-            })
-            logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
+            suggestion = LlmSuggestion(
+                provider=response.provider,
+                suggestion=response.content,
+            )
+            await self._memory.write("llm_suggestions", suggestion.dict())
+            logger.info(
+                "SelfImprovingLoop: LLM suggestion from %s stored", suggestion.provider
+            )
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
-    async def _broadcast_regime(self, metrics: list[dict]) -> None:
-        profitable = sum(1 for m in metrics if m["sharpe"] > 0.5)
+    async def _broadcast_regime(self, metrics: List[StrategyMetric]) -> None:
+        profitable = sum(1 for m in metrics if m.sharpe > 0.5)
         total = len(metrics) or 1
         health = profitable / total
 
-        regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
-        await self._memory.set_latest("platform_health", {
-            "regime": regime,
-            "health_ratio": round(health, 3),
-            "profitable_strategies": profitable,
-            "total_strategies": total,
-        })
+        regime = (
+            "bull"
+            if health > 0.6
+            else ("bear" if health < 0.3 else "sideways")
+        )
+        regime_info = RegimeInfo(
+            regime=regime,
+            health_ratio=round(health, 3),
+            profitable_strategies=profitable,
+            total_strategies=total,
+        )
+        await self._memory.set_latest("platform_health", regime_info.dict())
 
         try:
-            await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
+            await self._redis.publish(
+                "platform:regime",
+                json.dumps({"regime": regime_info.regime, "health": regime_info.health_ratio}),
+            )
         except Exception:
             pass
