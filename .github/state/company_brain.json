@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783857392.5698204,
+    "last_updated": 1783862118.0629816,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783857392.569519
+    "last_brain_update": 1783862118.0625827
   },
   "episodic": [
     {
@@ -756,6 +756,11 @@
       "summary": "The auto-fix bot repeatedly failed to apply patches to the file, with three identical error messages indicating it could not apply the patch.",
       "item_count": 20,
       "ts": 1783857392.5664952
+    },
+    {
+      "summary": "The deployment failed due to a resource limitation error, and two consecutive auto-fix attempts also failed to apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1783862118.0586894
     }
   ],
   "experiment_results": [
