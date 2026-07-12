@@ -45,9 +45,11 @@ class CVaROptimizer:
         confidence: float, default 0.95
             Confidence level for CVaR (must be between 0.5 and 1.0 exclusive).
         """
+        if not isinstance(confidence, (int, float)):
+            raise ValueError("confidence must be a numeric type")
         if not (0.5 < confidence < 1.0):
             raise ValueError("confidence must be in (0.5, 1.0)")
-        self.confidence = confidence
+        self.confidence = float(confidence)
 
     def compute_weights(
         self,
@@ -73,6 +75,16 @@ class CVaROptimizer:
             one.  If the optimisation fails or the input data are insufficient, equal
             weighting is returned as a safe fallback.
         """
+        # Input validation
+        if not isinstance(returns, pd.DataFrame):
+            raise ValueError("returns must be a pandas DataFrame")
+        if returns.empty:
+            raise ValueError("returns DataFrame is empty")
+        if not all(isinstance(col, str) for col in returns.columns):
+            raise ValueError("returns DataFrame columns must be strings representing asset symbols")
+        if target_return is not None and not isinstance(target_return, (int, float)):
+            raise ValueError("target_return must be a numeric type")
+
         symbols = list(returns.columns)
         n = len(symbols)
 
@@ -175,11 +187,27 @@ def optimize_portfolio(
     pd.Series
         Portfolio weights indexed by symbol and summing to one.
     """
+    # Input validation
+    if not isinstance(returns, pd.DataFrame):
+        raise ValueError("returns must be a pandas DataFrame")
+    if returns.empty:
+        raise ValueError("returns DataFrame is empty")
+    if not isinstance(method, str):
+        raise ValueError("method must be a string")
+    method = method.lower()
+    if method not in {"hrp", "cvar", "equal"}:
+        raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
+    if not isinstance(confidence, (int, float)):
+        raise ValueError("confidence must be a numeric type")
+    if not (0.5 < confidence < 1.0):
+        raise ValueError("confidence must be in (0.5, 1.0)")
+
     if method == "cvar":
         return CVaROptimizer(confidence=confidence).compute_weights(returns)
     if method == "equal":
         n = len(returns.columns)
+        if n == 0:
+            raise ValueError("cannot compute equal weights for an empty set of assets")
         return pd.Series(1.0 / n, index=returns.columns)
-    if method != "hrp":
-        raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
+    # method == "hrp" at this point
     return HRPOptimizer().compute_weights(returns)
