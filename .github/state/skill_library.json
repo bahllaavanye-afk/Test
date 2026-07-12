@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Test network connectivity",
-    "* **Experiment Environment**: The `run_experiments` agent is currently initializing the experiment environment, checking the `/experiments` directory for any pending tasks.",
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "optimization on backtest/stress_test.py: success \u2014 tests green",
     "Check RAM usage",
     "Based on the agent learnings, the following are the most important and actionable takeaways:",
@@ -199,8 +196,11 @@
     "Log API calls",
     "Monitor memory leaks",
     "Verify API keys",
-    "Scan for deadlocks"
+    "Scan for deadlocks",
+    "Test DB connections",
+    "Verify thread counts",
+    "Scan for timeouts"
   ],
-  "last_updated": "2026-07-12T16:58:08.818265+00:00",
+  "last_updated": "2026-07-12T18:01:42.436373+00:00",
   "total": 200
 }
