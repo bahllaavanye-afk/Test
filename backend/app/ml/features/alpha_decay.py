@@ -10,19 +10,25 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass, field
+from typing import Dict
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
-from scipy.stats import spearmanr
 from scipy.optimize import curve_fit
+from scipy.stats import spearmanr
+
+# Configure module‑level logger
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class DecayProfile:
     strategy_name: str
-    ic_0: float           # IC at t=0
+    ic_0: float  # IC at t=0
     half_life_hours: float  # hours until IC halves
-    horizons: dict = field(default_factory=dict)  # {horizon_hours: ic_value}
+    horizons: Dict[int, float] = field(default_factory=dict)  # {horizon_hours: ic_value}
 
 
 class AlphaDecayTracker:
@@ -35,6 +41,26 @@ class AlphaDecayTracker:
 
     # Horizons to measure IC at: 1h, 4h, 1d, 5d, 20d
     HORIZONS: list[int] = [1, 4, 24, 120, 480]
+
+    def _validate_inputs(
+        self,
+        signals: pd.Series,
+        prices: pd.DataFrame,
+        strategy_name: str,
+    ) -> None:
+        """Validate input types and required columns."""
+        if not isinstance(signals, pd.Series):
+            logger.error("Invalid type for signals: %s", type(signals))
+            raise TypeError("signals must be a pandas Series")
+        if not isinstance(prices, pd.DataFrame):
+            logger.error("Invalid type for prices: %s", type(prices))
+            raise TypeError("prices must be a pandas DataFrame")
+        if not isinstance(strategy_name, str):
+            logger.error("Invalid type for strategy_name: %s", type(strategy_name))
+            raise TypeError("strategy_name must be a string")
+        if "close" not in prices.columns:
+            logger.error("prices DataFrame missing required 'close' column")
+            raise ValueError("prices DataFrame must contain a 'close' column")
 
     def compute_ic_profile(
         self,
@@ -52,15 +78,26 @@ class AlphaDecayTracker:
 
         Returns:
             DecayProfile with IC at each horizon and fitted half-life in hours.
-            Raises ValueError if prices has no 'close' column.
+
+        Raises:
+            TypeError: if input types are incorrect.
+            ValueError: if required columns are missing.
         """
-        if "close" not in prices.columns:
-            raise ValueError("prices DataFrame must contain a 'close' column")
+        try:
+            self._validate_inputs(signals, prices, strategy_name)
+        except Exception as exc:
+            logger.exception("Input validation failed")
+            raise
 
         ics: dict[int, float] = {}
 
         for h in self.HORIZONS:
-            fwd_ret = prices["close"].pct_change(h).shift(-h)
+            try:
+                fwd_ret = prices["close"].pct_change(h).shift(-h)
+            except Exception as exc:
+                logger.exception("Failed to compute forward returns for horizon %s", h)
+                continue
+
             common = signals.index.intersection(fwd_ret.index)
             if len(common) < 30:
                 continue
@@ -72,7 +109,16 @@ class AlphaDecayTracker:
             if len(s) < 20:
                 continue
 
-            ic_val, _ = spearmanr(s, r)
+            try:
+                ic_val, _ = spearmanr(s, r)
+            except Exception as exc:
+                logger.exception(
+                    "Spearman correlation failed for horizon %s (strategy %s)",
+                    h,
+                    strategy_name,
+                )
+                continue
+
             if not np.isnan(ic_val):
                 ics[h] = float(ic_val)
 
@@ -100,8 +146,17 @@ class AlphaDecayTracker:
             )
             ic_0, lam = float(popt[0]), float(popt[1])
             half_life = np.log(2) / lam if lam > 0 else float("inf")
-        except Exception:
-            ic_0 = float(ic_arr[0]) if len(ic_arr) > 0 else 0.0
+        except (RuntimeError, ValueError) as exc:
+            logger.exception(
+                "Curve fitting failed for strategy %s; using fallback values", strategy_name
+            )
+            ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
+            half_life = float("inf")
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error during curve fitting for strategy %s", strategy_name
+            )
+            ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
             half_life = float("inf")
 
         return DecayProfile(
@@ -126,13 +181,23 @@ class AlphaDecayTracker:
             staleness_hours: hours since the signal was generated
 
         Returns:
-            Adjusted confidence in [0, 1].  Returns base_confidence unchanged
+            Adjusted confidence in [0, 1]. Returns base_confidence unchanged
             when half-life is infinite (signal does not decay).
+
+        Raises:
+            ValueError: if base_confidence is outside [0, 1] or staleness_hours is negative.
         """
+        if not (0.0 <= base_confidence <= 1.0):
+            logger.error(
+                "Invalid base_confidence %s; must be within [0, 1]", base_confidence
+            )
+            raise ValueError("base_confidence must be between 0 and 1")
+        if staleness_hours < 0:
+            logger.error("Negative staleness_hours %s supplied", staleness_hours)
+            raise ValueError("staleness_hours cannot be negative")
+
         if profile.half_life_hours == float("inf") or profile.half_life_hours <= 0:
             return float(base_confidence)
 
-        decay = np.exp(
-            -staleness_hours * np.log(2) / profile.half_life_hours
-        )
-        return float(base_confidence * max(float(decay), 0.0))
+        decay = np.exp(-staleness_hours * np.log(2) / profile.half_life_hours)
+        return float(base_confidence * max(decay, 0.0))
