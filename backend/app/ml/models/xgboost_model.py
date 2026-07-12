@@ -2,18 +2,25 @@
 XGBoost binary classifier with Optuna hyperparameter optimization.
 SHAP-based explainability built in.
 """
-import numpy as np
 import json
+import logging
+import time
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+
+import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 try:
-    import xgboost as xgb
     import shap
+    import xgboost as xgb
+
     XGB_AVAILABLE = True
 except ImportError:
     XGB_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class XGBoostClassifier(AbstractModel):
@@ -39,21 +46,56 @@ class XGBoostClassifier(AbstractModel):
         self._explainer = None
         self.feature_names: list[str] = []
 
+    def _log_metrics(
+        self,
+        operation: str,
+        signal_count: int,
+        exec_time: float,
+        pnl: float | None = None,
+    ) -> None:
+        log_record = {
+            "operation": operation,
+            "signal_count": signal_count,
+            "execution_time_ms": round(exec_time * 1000, 2),
+            "pnl": pnl,
+        }
+        logger.info("ModelMetrics: %s", json.dumps(log_record))
+
     def forward(self, x) -> np.ndarray:
+        start = time.perf_counter()
         if hasattr(x, "numpy"):
             x = x.numpy()
-        return self.model.predict_proba(x)[:, 1]
+        probs = self.model.predict_proba(x)[:, 1]
+        exec_time = time.perf_counter() - start
+        self._log_metrics("forward", signal_count=len(probs), exec_time=exec_time, pnl=None)
+        return probs
 
-    def fit(self, X_train, y_train, X_val, y_val, feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        feature_names: list[str] | None = None,
+    ) -> dict:
+        start = time.perf_counter()
         if feature_names:
             self.feature_names = feature_names
         self.model.fit(
-            X_train, y_train,
+            X_train,
+            y_train,
             eval_set=[(X_val, y_val)],
             verbose=False,
         )
         val_probs = self.model.predict_proba(X_val)[:, 1]
         val_preds = (val_probs > 0.5).astype(int)
+        exec_time = time.perf_counter() - start
+        self._log_metrics(
+            "fit",
+            signal_count=int(X_train.shape[0]),
+            exec_time=exec_time,
+            pnl=None,
+        )
         return {
             "val_accuracy": float(accuracy_score(y_val, val_preds)),
             "val_auc": float(roc_auc_score(y_val, val_probs)),
@@ -64,6 +106,7 @@ class XGBoostClassifier(AbstractModel):
         return {"loss": 0.0, "accuracy": 0.0}
 
     def evaluate(self, loader) -> EvalMetrics:
+        start = time.perf_counter()
         all_probs, all_labels = [], []
         for X, y in loader:
             probs = self.forward(X.numpy() if hasattr(X, "numpy") else X)
@@ -77,16 +120,26 @@ class XGBoostClassifier(AbstractModel):
             auc = float(roc_auc_score(labels_cat, probs_cat))
         except ValueError:
             auc = 0.5
+        exec_time = time.perf_counter() - start
+        self._log_metrics(
+            "evaluate",
+            signal_count=len(probs_cat),
+            exec_time=exec_time,
+            pnl=None,
+        )
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def get_feature_importance(self) -> dict[str, float]:
         """Return SHAP-based feature importance."""
         if self._explainer is None:
             self._explainer = shap.TreeExplainer(self.model)
-        importance = dict(zip(
-            self.feature_names or [f"f{i}" for i in range(len(self.model.feature_importances_))],
-            self.model.feature_importances_.tolist()
-        ))
+        importance = dict(
+            zip(
+                self.feature_names
+                or [f"f{i}" for i in range(len(self.model.feature_importances_))],
+                self.model.feature_importances_.tolist(),
+            )
+        )
         return dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
 
     def predict_proba(self, X) -> np.ndarray:
