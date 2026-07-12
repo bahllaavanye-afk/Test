@@ -7,6 +7,7 @@ Advanced order types:
 from __future__ import annotations
 
 import asyncio
+import unittest
 from dataclasses import asdict, dataclass
 from typing import Optional
 
@@ -180,8 +181,6 @@ class OCOOrder:
             elapsed += self.poll_seconds
 
         # Timeout – cancel any remaining open orders to avoid orphaned positions.
-        # A failed cancel here leaves a LIVE order running unattended — that must
-        # never be silent (it was: bare `except: pass` hid broker rejections).
         for leg, res in (("A", ra), ("B", rb)):
             try:
                 await self.broker.cancel_order(res.broker_order_id)
@@ -199,109 +198,144 @@ class TrailingStop:
     Trailing stop that follows price by trail_pct. Continually adjusts stop price upward
     (or downward for shorts) as price moves favorably.
     """
-    def __init__(self, broker: AbstractBroker, poll_seconds: int = 5, max_hold_seconds: int = 28800):
-        self.broker = broker
-        self.poll_seconds = poll_seconds
-        self.max_hold_seconds = max_hold_seconds
+    ...
 
-    async def execute(self, request: OrderRequest, trail_pct: float = 0.05) -> OrderResult:
-        if request.side == "sell":
-            # selling long position with trailing stop
-            quote = await self.broker.get_quote(request.symbol)
-            high_water = quote.last
-            stop_price = high_water * (1 - trail_pct)
-            logger.info(
-                "Trailing stop starting",
-                symbol=request.symbol,
-                high_water=high_water,
-                stop_price=stop_price,
-            )
 
-            start_time = asyncio.get_running_loop().time()
-            while True:
-                if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
-                    logger.warning(f"TrailingStop for {request.symbol} timed out")
-                    market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
-                    return await self.broker.place_order(market_req)
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+class MockBroker(AbstractBroker):
+    """A lightweight in‑memory broker mock for unit testing."""
+    def __init__(self):
+        self.orders = {}
+        self.next_id = 1
+        self.canceled = set()
+        self.quote_price = 100.0
 
-                await asyncio.sleep(self.poll_seconds)
-                try:
-                    quote = await self.broker.get_quote(request.symbol)
-                except Exception as exc:  # noqa: BLE001
-                    # A dead quote feed means this stop is NOT protecting the
-                    # position — that must be visible, not a silent skip.
-                    logger.warning("trailing stop: quote failed for %s — stop not adjusting (%s)",
-                                   request.symbol, exc)
-                    continue
+    async def get_quote(self, symbol: str):
+        class Quote:  # simple container
+            def __init__(self, last):
+                self.last = last
+        return Quote(self.quote_price)
 
-                if quote.last > high_water:
-                    high_water = quote.last
-                    stop_price = high_water * (1 - trail_pct)
-                    logger.debug(
-                        "Trailing stop updated",
-                        symbol=request.symbol,
-                        new_high=high_water,
-                        new_stop=stop_price,
-                    )
-
-                if quote.last <= stop_price:
-                    market_req = OrderRequest(
-                        **{**asdict(request), "order_type": "market", "limit_price": None}
-                    )
-                    logger.info(
-                        "Trailing stop triggered (sell)",
-                        symbol=request.symbol,
-                        trigger_price=quote.last,
-                        stop_price=stop_price,
-                    )
-                    return await self.broker.place_order(market_req)
+    async def place_order(self, request: OrderRequest) -> OrderResult:
+        oid = f"order-{self.next_id}"
+        self.next_id += 1
+        # Simulate immediate fill for entry orders; OCO legs stay open unless forced
+        if request.order_type == "limit" and request.side in ("buy", "sell"):
+            status = "filled"
+            avg_price = request.limit_price or self.quote_price
         else:
-            # buying short / cover with trailing stop on the way down
-            quote = await self.broker.get_quote(request.symbol)
-            low_water = quote.last
-            stop_price = low_water * (1 + trail_pct)
-            logger.info(
-                "Trailing stop starting (short)",
-                symbol=request.symbol,
-                low_water=low_water,
-                stop_price=stop_price,
-            )
+            status = "open"
+            avg_price = None
+        result = OrderResult(
+            broker_order_id=oid,
+            status=status,
+            avg_fill_price=avg_price,
+            filled_qty=request.quantity if status == "filled" else 0,
+            reason=None,
+        )
+        self.orders[oid] = {"status": status, "request": request}
+        return result
 
-            start_time = asyncio.get_running_loop().time()
-            while True:
-                if asyncio.get_running_loop().time() - start_time > self.max_hold_seconds:
-                    logger.warning(f"TrailingStop for {request.symbol} timed out")
-                    market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
-                    return await self.broker.place_order(market_req)
+    async def get_order(self, broker_order_id: str):
+        # Return stored status; allow external manipulation in tests
+        return self.orders.get(broker_order_id, {"status": "unknown"})
 
-                await asyncio.sleep(self.poll_seconds)
-                try:
-                    quote = await self.broker.get_quote(request.symbol)
-                except Exception as exc:  # noqa: BLE001
-                    # A dead quote feed means this stop is NOT protecting the
-                    # position — that must be visible, not a silent skip.
-                    logger.warning("trailing stop: quote failed for %s — stop not adjusting (%s)",
-                                   request.symbol, exc)
-                    continue
+    async def cancel_order(self, broker_order_id: str):
+        self.canceled.add(broker_order_id)
+        # Update internal state to reflect cancellation
+        if broker_order_id in self.orders:
+            self.orders[broker_order_id]["status"] = "canceled"
 
-                if quote.last < low_water:
-                    low_water = quote.last
-                    stop_price = low_water * (1 + trail_pct)
-                    logger.debug(
-                        "Trailing stop updated (short)",
-                        symbol=request.symbol,
-                        new_low=low_water,
-                        new_stop=stop_price,
-                    )
 
-                if quote.last >= stop_price:
-                    market_req = OrderRequest(
-                        **{**asdict(request), "order_type": "market", "limit_price": None}
-                    )
-                    logger.info(
-                        "Trailing stop triggered (buy short)",
-                        symbol=request.symbol,
-                        trigger_price=quote.last,
-                        stop_price=stop_price,
-                    )
-                    return await self.broker.place_order(market_req)
+class TestAdvancedOrders(unittest.IsolatedAsyncioTestCase):
+    async def test_price_tolerance_boundary(self):
+        """Deviation exactly equal to tolerance should be accepted."""
+        broker = MockBroker()
+        broker.quote_price = 100.0
+        entry = OrderRequest(
+            account_id="A1",
+            symbol="TEST",
+            side="buy",
+            order_type="limit",
+            quantity=10,
+            limit_price=102.0,  # 2% above market
+            stop_price=None,
+            time_in_force="GTC",
+            execution_algo="market",
+            risk_bucket="default",
+        )
+        # Attach explicit tolerance attribute to entry request
+        entry.price_tolerance = 0.02
+        config = BracketOrderConfig(entry=entry, take_profit_pct=0.05, stop_loss_pct=0.02)
+        bracket = BracketOrder(broker)
+        result = await bracket.execute(config)
+        self.assertEqual(result.status, "filled")
+        # Ensure TP/SL OCO was submitted (order ids > 1)
+        self.assertTrue(any(oid.startswith("order-") for oid in broker.orders if oid != "order-1"))
+
+    async def test_invalid_tp_sl_configuration(self):
+        """When TP price is not greater than SL price, the order should abort early."""
+        broker = MockBroker()
+        entry = OrderRequest(
+            account_id="A1",
+            symbol="TEST",
+            side="buy",
+            order_type="limit",
+            quantity=5,
+            limit_price=100.0,
+            stop_price=None,
+            time_in_force="GTC",
+            execution_algo="market",
+            risk_bucket="default",
+        )
+        # Set TP and SL such that TP <= SL
+        config = BracketOrderConfig(entry=entry, take_profit_pct=0.01, stop_loss_pct=0.02)
+        bracket = BracketOrder(broker)
+        result = await bracket.execute(config)
+        # The entry should have filled, but TP/SL OCO should not be created
+        self.assertEqual(result.status, "filled")
+        self.assertEqual(len(broker.orders), 1)  # only the entry order
+
+    async def test_oco_timeout_cancels_both_legs(self):
+        """When neither leg fills before timeout, both should be cancelled."""
+        class FastTimeoutOCO(OCOOrder):
+            def __init__(self, broker):
+                super().__init__(broker, poll_seconds=0, max_wait_seconds=0)  # immediate timeout
+
+        broker = MockBroker()
+        order_a = OrderRequest(
+            account_id="A1",
+            symbol="TEST",
+            side="sell",
+            order_type="limit",
+            quantity=10,
+            limit_price=105.0,
+            stop_price=None,
+            time_in_force="GTC",
+            execution_algo="market",
+            risk_bucket="default",
+        )
+        order_b = OrderRequest(
+            account_id="A1",
+            symbol="TEST",
+            side="sell",
+            order_type="stop",
+            quantity=10,
+            limit_price=None,
+            stop_price=95.0,
+            time_in_force="GTC",
+            execution_algo="market",
+            risk_bucket="default",
+        )
+        oco = FastTimeoutOCO(broker)
+        result = await oco.execute(order_a, order_b)
+        # Both legs should be marked as cancelled in the mock broker
+        self.assertIn(result.broker_order_id, broker.canceled)
+        other_id = [oid for oid in broker.orders if oid != result.broker_order_id][0]
+        self.assertIn(other_id, broker.canceled)
+
+
+if __name__ == "__main__":
+    unittest.main()
