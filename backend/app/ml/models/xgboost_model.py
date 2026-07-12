@@ -2,21 +2,24 @@
 XGBoost binary classifier with Optuna hyperparameter optimization.
 SHAP-based explainability built in.
 """
-import numpy as np
 import json
+import numpy as np
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 try:
-    import xgboost as xgb
     import shap
+    import xgboost as xgb
     XGB_AVAILABLE = True
 except ImportError:
     XGB_AVAILABLE = False
 
 
 class XGBoostClassifier(AbstractModel):
+    """XGBoost binary classifier with built‑in SHAP explainability."""
+
     model_type = "xgboost"
 
     def __init__(self, **kwargs):
@@ -40,15 +43,25 @@ class XGBoostClassifier(AbstractModel):
         self.feature_names: list[str] = []
 
     def forward(self, x) -> np.ndarray:
+        """Return probability predictions for the positive class."""
         if hasattr(x, "numpy"):
             x = x.numpy()
         return self.model.predict_proba(x)[:, 1]
 
-    def fit(self, X_train, y_train, X_val, y_val, feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        feature_names: list[str] | None = None,
+    ) -> dict:
+        """Fit the model and return validation metrics."""
         if feature_names:
             self.feature_names = feature_names
         self.model.fit(
-            X_train, y_train,
+            X_train,
+            y_train,
             eval_set=[(X_val, y_val)],
             verbose=False,
         )
@@ -59,11 +72,8 @@ class XGBoostClassifier(AbstractModel):
             "val_auc": float(roc_auc_score(y_val, val_probs)),
         }
 
-    def train_epoch(self, loader, optimizer=None, criterion=None) -> dict:
-        # XGBoost uses fit() directly, not epoch-based training
-        return {"loss": 0.0, "accuracy": 0.0}
-
     def evaluate(self, loader) -> EvalMetrics:
+        """Compute accuracy and AUC over a data loader."""
         all_probs, all_labels = [], []
         for X, y in loader:
             probs = self.forward(X.numpy() if hasattr(X, "numpy") else X)
@@ -80,29 +90,39 @@ class XGBoostClassifier(AbstractModel):
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def get_feature_importance(self) -> dict[str, float]:
-        """Return SHAP-based feature importance."""
+        """Return SHAP‑based feature importance sorted descending."""
         if self._explainer is None:
             self._explainer = shap.TreeExplainer(self.model)
-        importance = dict(zip(
-            self.feature_names or [f"f{i}" for i in range(len(self.model.feature_importances_))],
-            self.model.feature_importances_.tolist()
-        ))
+        importance = dict(
+            zip(
+                self.feature_names
+                or [f"f{i}" for i in range(len(self.model.feature_importances_))],
+                self.model.feature_importances_.tolist(),
+            )
+        )
         return dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
 
     def predict_proba(self, X) -> np.ndarray:
+        """Convenient wrapper for probability prediction."""
         if hasattr(X, "numpy"):
             X = X.numpy()
         return self.model.predict_proba(X)[:, 1]
 
     def save(self, path: str, metadata: dict | None = None) -> None:
+        """Persist the model and its metadata."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         model_path = path.replace(".pt", ".ubj")
         self.model.save_model(model_path)
-        meta = {"feature_names": self.feature_names, "params": self.params, **(metadata or {})}
+        meta = {
+            "feature_names": self.feature_names,
+            "params": self.params,
+            **(metadata or {}),
+        }
         Path(path).with_suffix(".json").write_text(json.dumps(meta, indent=2))
 
     @classmethod
     def load(cls, path: str) -> "XGBoostClassifier":
+        """Load a model from disk."""
         model_path = path.replace(".pt", ".ubj")
         meta_path = Path(path).with_suffix(".json")
         instance = cls()
