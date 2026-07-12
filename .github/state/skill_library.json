@@ -199,8 +199,13 @@
     "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
     "optimization on api/v1/strategies.py: success \u2014 tests green",
     "Check disk space",
-    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:"
+    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
+    "error_handling on ml/models/hmm_regime.py: success \u2014 tests green",
+    "error_handling on ml/features/alpha_decay.py: success \u2014 tests green",
+    "error_handling on execution/rl_exec.py: success \u2014 tests green",
+    "error_handling on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "error_handling on brokers/alpaca_headers.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T10:53:03.965203+00:00",
+  "last_updated": "2026-07-12T13:25:57.715411+00:00",
   "total": 200
 }
