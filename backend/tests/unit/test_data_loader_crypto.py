@@ -30,11 +30,21 @@ def test_symbol_normalization():
     assert dl._symbol_to_alpaca_crypto("btc") == "BTC/USD"
 
 
+def test_symbol_none_returns_none():
+    # Gracefully handle None input – should return None rather than raise.
+    assert dl._symbol_to_alpaca_crypto(None) is None
+
+
 def test_interval_mapping():
     assert dl._interval_to_alpaca("1d") == "1Day"
     assert dl._interval_to_alpaca("1h") == "1Hour"
     assert dl._interval_to_alpaca("4h") == "4Hour"
     assert dl._interval_to_alpaca("totally-unknown") == "1Day"  # safe default
+
+
+def test_interval_none_returns_default():
+    # None should resolve to the safe default interval.
+    assert dl._interval_to_alpaca(None) == "1Day"
 
 
 def test_fetch_alpaca_crypto_paginates_and_parses(monkeypatch):
@@ -60,6 +70,16 @@ def test_fetch_alpaca_crypto_paginates_and_parses(monkeypatch):
     assert df["close"].tolist() == [1.5, 2.0]
     assert df.index.tz is None, "index must be tz-naive"
     assert df.index.is_monotonic_increasing
+
+
+def test_fetch_alpaca_crypto_start_after_end_returns_empty(monkeypatch):
+    # When start date is after end date, the function should return an empty DataFrame.
+    monkeypatch.setattr(
+        dl, "_http_get_json", lambda url, headers, timeout=20.0: {"bars": {}, "next_page_token": None}
+    )
+    df = dl._fetch_alpaca_crypto("BTC/USDT", date(2024, 1, 3), date(2024, 1, 2), "1d")
+    assert isinstance(df, pd.DataFrame)
+    assert df.empty
 
 
 def test_fetch_ohlcv_sync_routes_crypto_to_alpaca(monkeypatch):
