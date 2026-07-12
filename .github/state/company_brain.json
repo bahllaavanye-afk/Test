@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783895556.0368464,
+    "last_updated": 1783899367.161414,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783895556.0363867
+    "last_brain_update": 1783899367.160956
   },
   "episodic": [
     {
@@ -811,6 +811,11 @@
       "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts also failed to apply patches.",
       "item_count": 20,
       "ts": 1783895556.0323446
+    },
+    {
+      "summary": "The auto-fix was aborted three times due to validation failure, as each attempt involved approximately 60 lines of changes, exceeding the 50-line limit.",
+      "item_count": 20,
+      "ts": 1783899367.1569226
     }
   ],
   "experiment_results": [
