@@ -18,6 +18,18 @@ DEFAULT_CRYPTO_SYMBOLS = [
 
 
 async def _fetch_and_publish(broker, symbol: str, cache) -> None:
+    """
+    Fetch a quote from the broker and publish it to Redis and WebSocket.
+
+    Parameters
+    ----------
+    broker: object
+        Broker instance exposing an async ``get_quote`` method.
+    symbol: str
+        Symbol to fetch.
+    cache: object
+        Cache instance exposing ``set_price``.
+    """
     try:
         quote = await broker.get_quote(symbol)
         price_data = {
@@ -41,8 +53,32 @@ async def _fetch_and_publish(broker, symbol: str, cache) -> None:
 async def run_price_feed(broker, symbols: list[str]) -> None:
     """
     Polls all symbols concurrently in batches of BATCH_SIZE every POLL_INTERVAL seconds.
-    Concurrent fetches reduce end-to-end latency from O(N) to O(ceil(N/BATCH_SIZE)).
+
+    Parameters
+    ----------
+    broker: object
+        Broker instance exposing an async ``get_quote`` method.
+    symbols: list[str]
+        List of symbols to poll.
+
+    Raises
+    ------
+    ValueError
+        If ``broker`` is missing required interface or ``symbols`` is not a non‑empty list of strings.
     """
+    # Validate broker interface
+    if broker is None or not callable(getattr(broker, "get_quote", None)):
+        raise ValueError("broker must provide an async callable 'get_quote' method")
+
+    # Validate symbols list
+    if not isinstance(symbols, (list, tuple)):
+        raise ValueError("symbols must be a list or tuple of strings")
+    if not symbols:
+        raise ValueError("symbols list cannot be empty")
+    for s in symbols:
+        if not isinstance(s, str) or not s:
+            raise ValueError(f"each symbol must be a non‑empty string, got {repr(s)}")
+
     # get_redis() is synchronous — do NOT await it; use the module-level price_cache singleton
     cache = price_cache
     logger.info("Price feed started", symbols=len(symbols), batch_size=BATCH_SIZE)
@@ -104,7 +140,27 @@ async def start_price_feed() -> None:
 
 
 async def _yfinance_price_feed(symbols: list[str]) -> None:
-    """Poll yfinance every 60 s and publish last-close prices to Redis + WebSocket."""
+    """
+    Poll yfinance every 60 s and publish last-close prices to Redis + WebSocket.
+
+    Parameters
+    ----------
+    symbols: list[str]
+        List of symbols to poll.
+
+    Raises
+    ------
+    ValueError
+        If ``symbols`` is not a non‑empty list of strings.
+    """
+    if not isinstance(symbols, (list, tuple)):
+        raise ValueError("symbols must be a list or tuple of strings")
+    if not symbols:
+        raise ValueError("symbols list cannot be empty")
+    for s in symbols:
+        if not isinstance(s, str) or not s:
+            raise ValueError(f"each symbol must be a non‑empty string, got {repr(s)}")
+
     cache = price_cache
     while True:
         for sym in symbols:
@@ -118,6 +174,24 @@ async def _yfinance_price_feed(symbols: list[str]) -> None:
 
 
 def _yf_publish_sync(symbol: str, cache) -> None:
+    """
+    Synchronous helper to fetch a yfinance price and publish it.
+
+    Parameters
+    ----------
+    symbol: str
+        Symbol to fetch.
+    cache: object
+        Cache instance exposing ``set_price``.
+
+    Raises
+    ------
+    ValueError
+        If ``symbol`` is not a non‑empty string.
+    """
+    if not isinstance(symbol, str) or not symbol:
+        raise ValueError(f"symbol must be a non‑empty string, got {repr(symbol)}")
+
     try:
         import yfinance as yf
         yf_sym = symbol.replace("/USD", "-USD").replace("/USDT", "-USD")
