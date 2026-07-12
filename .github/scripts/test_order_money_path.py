@@ -143,3 +143,50 @@ def test_malformed_json_response_returns_none(monkeypatch):
         def read(self): return b"<html>cloudflare says no</html>"
     monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=8: _Bad())
     assert asyncio.run(dop._place_order("SPY", "buy", 100.0, limit_price=500.0)) is None
+
+
+# ── Negative-cash auto-recovery (the real first-trade blocker) ────────────────
+
+def _reload():
+    spec = importlib.util.spec_from_file_location("dop_recover_test", _MOD)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)  # type: ignore[union-attr]
+    return m
+
+
+def test_recovery_flattens_on_negative_cash_zero_bp(monkeypatch):
+    m = _reload()
+    calls = []
+    def fake_delete(path):
+        calls.append(path)
+        return {"status": 207, "body": [{"symbol": "AAPL"}, {"symbol": "SPY"}]}
+    monkeypatch.setattr(m, "_alpaca_delete_sync", fake_delete)
+    acct = {"cash": "-25207.26", "non_marginable_buying_power": "0"}
+    assert asyncio.run(m.recover_negative_cash(acct)) is True
+    assert "/v2/orders" in calls[0]                       # cancels orders first
+    assert "/v2/positions" in calls[1]                    # then closes positions
+
+
+def test_recovery_never_touches_healthy_account(monkeypatch):
+    m = _reload()
+    monkeypatch.setattr(m, "_alpaca_delete_sync",
+                        lambda p: (_ for _ in ()).throw(AssertionError("must not be called")))
+    assert asyncio.run(m.recover_negative_cash({"cash": "90000", "non_marginable_buying_power": "90000"})) is False
+    # negative cash but SOME buying power → not the broken state either
+    assert asyncio.run(m.recover_negative_cash({"cash": "-100", "non_marginable_buying_power": "500"})) is False
+
+
+def test_recovery_refuses_non_paper_endpoint(monkeypatch):
+    m = _reload()
+    monkeypatch.setattr(m, "ALPACA_PAPER_BASE", "https://api.alpaca.markets")
+    monkeypatch.setattr(m, "_alpaca_delete_sync",
+                        lambda p: (_ for _ in ()).throw(AssertionError("must not be called")))
+    assert asyncio.run(m.recover_negative_cash({"cash": "-1", "non_marginable_buying_power": "0"})) is False
+
+
+def test_recovery_kill_switch(monkeypatch):
+    m = _reload()
+    monkeypatch.setattr(m, "AUTO_FLATTEN_ON_NEGATIVE_CASH", False)
+    monkeypatch.setattr(m, "_alpaca_delete_sync",
+                        lambda p: (_ for _ in ()).throw(AssertionError("must not be called")))
+    assert asyncio.run(m.recover_negative_cash({"cash": "-1", "non_marginable_buying_power": "0"})) is False

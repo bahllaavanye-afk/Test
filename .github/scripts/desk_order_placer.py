@@ -275,6 +275,62 @@ async def _alpaca_post(path: str, body: dict) -> dict:
     return await asyncio.to_thread(_alpaca_post_sync, path, body)
 
 
+def _alpaca_delete_sync(path: str) -> dict:
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(ALPACA_PAPER_BASE + path, method="DELETE", headers={
+        "APCA-API-KEY-ID":     ALPACA_API_KEY,
+        "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY,
+        "User-Agent":          "Mozilla/5.0 (X11; Linux x86_64) QuantEdge-Desk/1.0",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return {"status": resp.status, "body": json.loads(resp.read() or "[]")}
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode(errors="replace")[:200]
+        except Exception:  # noqa: BLE001
+            pass
+        print(f"    ⚠ alpaca DELETE {path} → {exc.code}: {detail}", flush=True)
+        raise
+
+
+AUTO_FLATTEN_ON_NEGATIVE_CASH = os.environ.get("AUTO_FLATTEN_ON_NEGATIVE_CASH", "1") == "1"
+
+
+async def recover_negative_cash(account: dict) -> bool:
+    """Auto-recovery for the account state that blocked the first trade for
+    days: cash deeply negative with $0 available (orphaned notional buys that
+    nothing tracks — Alpaca then 403s every crypto order with
+    'insufficient balance for USD'). Flatten the orphaned PAPER book once:
+    cancel all open orders + close all positions, freeing the cash.
+
+    Triple-guarded: paper URL asserted, TRADING_MODE must not be live, and
+    AUTO_FLATTEN_ON_NEGATIVE_CASH=0 disables it entirely."""
+    if not AUTO_FLATTEN_ON_NEGATIVE_CASH:
+        return False
+    cash = float(account.get("cash", 0) or 0)
+    nmbp = float(account.get("non_marginable_buying_power", 0) or 0)
+    if cash >= 0 or nmbp > 0:
+        return False
+    if "paper" not in ALPACA_PAPER_BASE or os.environ.get("TRADING_MODE", "paper") == "live":
+        print("  🛑 negative cash but NOT a paper endpoint — refusing to auto-flatten", flush=True)
+        return False
+    print(f"  🚑 RECOVERY: cash={cash:.2f}, available=0 — flattening orphaned paper book "
+          f"(cancel all orders, close all positions) to restore trading cash", flush=True)
+    try:
+        await asyncio.to_thread(_alpaca_delete_sync, "/v2/orders")
+        out = await asyncio.to_thread(_alpaca_delete_sync, "/v2/positions?cancel_orders=true")
+        closed = out.get("body") or []
+        print(f"  🚑 RECOVERY: close-all accepted for {len(closed)} position(s) — "
+              f"cash frees as closes fill; next run trades normally", flush=True)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"  🚑 RECOVERY failed: {str(exc)[:120]}", flush=True)
+        return False
+
+
 async def _get_account() -> dict | None:
     try:
         return await _alpaca_get("/v2/account")
@@ -819,6 +875,7 @@ async def main() -> None:
                 # are still generated and logged for the record.
                 last_equity = float(account.get("last_equity", 0) or 0)
                 _loss_cap_hit = daily_loss_cap_hit(equity, last_equity)
+                await recover_negative_cash(account)
                 if _loss_cap_hit:
                     print(f"  🛑 DAILY LOSS CAP: equity down {1.0 - equity / last_equity:.2%} vs prior "
                           f"close (cap {DAILY_LOSS_CAP_PCT:.0%}) — no new orders this run", flush=True)
