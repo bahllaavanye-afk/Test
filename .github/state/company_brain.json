@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783883766.5459087,
+    "last_updated": 1783895556.0368464,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783878153.3524227
+    "last_brain_update": 1783895556.0363867
   },
   "episodic": [
     {
@@ -806,6 +806,11 @@
       "summary": "The Slack agent-team run failed because messages likely exceeded the workspace quota (`message_limit_exceeded`), and two separate auto-fix attempts also failed to apply patches to files.",
       "item_count": 20,
       "ts": 1783878153.3481848
+    },
+    {
+      "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts also failed to apply patches.",
+      "item_count": 20,
+      "ts": 1783895556.0323446
     }
   ],
   "experiment_results": [
