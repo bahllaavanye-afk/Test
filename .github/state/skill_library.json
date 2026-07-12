@@ -199,8 +199,13 @@
     "Scan for deadlocks",
     "Test DB connections",
     "Verify thread counts",
-    "Scan for timeouts"
+    "Scan for timeouts",
+    "constants on backtest/options_synth.py: success \u2014 tests green",
+    "constants on comparison/report_builder.py: success \u2014 tests green",
+    "constants on tasks/desk_trade_sync.py: success \u2014 tests green",
+    "constants on api/v1/notifications.py: success \u2014 tests green",
+    "constants on test/unit/test_income_macro_strategies.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T18:01:42.436373+00:00",
+  "last_updated": "2026-07-12T18:26:12.019340+00:00",
   "total": 200
 }
