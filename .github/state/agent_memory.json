@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-12T07:25:38.997611+00:00",
+  "last_updated": "2026-07-12T07:27:33.250849+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1513,11 +1513,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[strategy_generator @ 2026-07-09T10:54] We need to respond as strategy_generator agent. Provide one-sentence status update: what are we actively working on right now. Must be concise, 2 sent",
-    "[free_agent_engineer @ 2026-07-09T10:54] I\u2019m currently refactoring the `src/trading/strategy_manager.py` module to reduce its cyclomatic complexity and add comprehensive unit tests for the ne",
-    "[desk_trader @ 2026-07-09T10:54] I'm currently executing the paper\u2011trade loop in\u202f`src/trading/paper_trader.py`, monitoring live crypto order\u2011book snapshots and updating the simulated ",
-    "[system_watchdog @ 2026-07-09T10:54] We need to respond as system_watchdog, give one-sentence status update, first person, concise (2 sentences max). Should reference real file paths. So ",
-    "[ml_trainer @ 2026-07-09T10:54] I\u2019m currently retr",
     "[standup_agent @ 2026-07-09T10:54] We need to generate a one-sentence status update from the perspective of the standup_agent. The agent is posting daily standups and OKR tracking to Sl",
     "[continuous_improver @ 2026-07-09T13:00] error_handling on ml/models/ssm_model.py: tests=pass",
     "[continuous_improver @ 2026-07-09T13:00] error_handling on ml/features/wavelet_features.py: tests=pass",
@@ -1712,7 +1707,12 @@
     "[frontend_design @ 2026-07-12T06:32] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the frontend_design agent, we need to respond in fi",
     "[token_monitor @ 2026-07-12T06:32] I am actively monitoring API usage and reviewing recent code changes, particularly the `ml/features/wavelet_features.py` file, to identify potential o",
     "[system_watchdog in #risk @ 2026-07-12T07:25] I'm the system watchdog, and I'm reporting that platform health appears stable, with all API endpoints (src/endpoints.py) responding correctly within ",
-    "[desk_trader in #risk @ 2026-07-12T07:25] After reviewing current market conditions, I recommend allocating 72% of our directional portfolio to long positions and 22% to short positions, with "
+    "[desk_trader in #risk @ 2026-07-12T07:25] After reviewing current market conditions, I recommend allocating 72% of our directional portfolio to long positions and 22% to short positions, with ",
+    "[continuous_improver @ 2026-07-12T07:26] schemas on tasks/agent_memory.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T07:26] schemas on api/v1/strategies.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T07:26] schemas on test/unit/test_ws_manager_wildcard.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T07:27] schemas on strategies/ml_enhanced/ml_pca_arb.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T07:27] schemas on ml/models/hmm_regime.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1961,6 +1961,18 @@
       "reason": "syntax check failed",
       "improvement_type": "error_handling",
       "timestamp": "2026-07-09T13:01:55.668088+00:00"
+    },
+    {
+      "file": "backend/app/comparison/report_builder.py",
+      "reason": "syntax check failed",
+      "improvement_type": "schemas",
+      "timestamp": "2026-07-12T07:26:51.341259+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/options_strategies.py",
+      "reason": "syntax check failed",
+      "improvement_type": "schemas",
+      "timestamp": "2026-07-12T07:27:29.695743+00:00"
     }
   ],
   "improvement_stats": {
@@ -1995,9 +2007,9 @@
       "test_pass": 10
     },
     "schemas": {
-      "successes": 5,
+      "successes": 10,
       "failures": 0,
-      "test_pass": 5
+      "test_pass": 10
     },
     "error_handling": {
       "successes": 10,
