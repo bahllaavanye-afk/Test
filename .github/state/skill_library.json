@@ -199,8 +199,12 @@
     "Scan for deadlocks",
     "Test DB connections",
     "Verify thread counts",
-    "Scan for timeouts"
+    "Scan for timeouts",
+    "strategy_logic on test/unit/test_llm_routing.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/central_bank_window.py: success \u2014 tests green",
+    "strategy_logic on ml/models/xgboost_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/sentiment.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T21:44:26.188725+00:00",
+  "last_updated": "2026-07-12T22:44:01.289332+00:00",
   "total": 200
 }
