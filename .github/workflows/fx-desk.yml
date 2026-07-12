@@ -1,0 +1,59 @@
+name: Desk Trading — FX 24/5 (OANDA Practice)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  schedule:
+    - cron: "11,41 * * * *"   # backup — event chain is the real heartbeat
+  workflow_dispatch: {}
+
+concurrency:
+  group: desk-fx
+  cancel-in-progress: false
+
+jobs:
+  place-fx-orders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-desk-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-desk-
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            pandas numpy scipy statsmodels scikit-learn \
+            fastapi pydantic pydantic-settings \
+            python-dotenv structlog tenacity anyio \
+            python-jose[cryptography] passlib[bcrypt] cryptography slowapi \
+            sqlalchemy[asyncio] httpx aiosqlite aiohttp \
+            requests yfinance
+
+      - name: Run FX desk (OANDA practice)
+        env:
+          OANDA_API_KEY:      ${{ secrets.OANDA_API_KEY }}
+          OANDA_ACCOUNT_ID:   ${{ secrets.OANDA_ACCOUNT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN:  ${{ secrets.DISCORD_BOT_TOKEN }}
+          TRADING_MODE:       paper
+          # Hardcoded paper-trading key — not a production secret
+          SECRET_KEY:         d70e4526f3a23417cf4b30afce4e5f2d827a9f33b56fc2ff665eeea2558ea1f1
+          DATABASE_URL:       ""
+          REDIS_URL:          ""
+          PYTHONPATH:         ${{ github.workspace }}/backend
+        run: python .github/scripts/fx_desk.py

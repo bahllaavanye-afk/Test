@@ -179,16 +179,18 @@ class OCOOrder:
             await asyncio.sleep(self.poll_seconds)
             elapsed += self.poll_seconds
 
-        # Timeout – cancel any remaining open orders to avoid orphaned positions
-        try:
-            await self.broker.cancel_order(ra.broker_order_id)
-        except Exception:
-            pass
-        try:
-            await self.broker.cancel_order(rb.broker_order_id)
-        except Exception:
-            pass
-        logger.warning("OCO timeout reached; both orders cancelled")
+        # Timeout – cancel any remaining open orders to avoid orphaned positions.
+        # A failed cancel here leaves a LIVE order running unattended — that must
+        # never be silent (it was: bare `except: pass` hid broker rejections).
+        for leg, res in (("A", ra), ("B", rb)):
+            try:
+                await self.broker.cancel_order(res.broker_order_id)
+            except Exception as exc:  # noqa: BLE001 — log and continue to next leg
+                logger.error(
+                    "OCO timeout: cancel of leg %s FAILED — order %s may still be live",
+                    leg, res.broker_order_id, exc_info=exc,
+                )
+        logger.warning("OCO timeout reached; cancellation attempted on both legs")
         return ra  # Returning the first order as a fallback result
 
 
