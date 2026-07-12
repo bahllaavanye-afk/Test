@@ -199,8 +199,13 @@
     "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
     "optimization on api/v1/strategies.py: success \u2014 tests green",
     "Check disk space",
-    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:"
+    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
+    "cleanup on api/v1/options.py: success \u2014 tests green",
+    "cleanup on strategies/manual/crypto_basis_roll.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "cleanup on ml/models/xgboost_model.py: success \u2014 tests green",
+    "cleanup on execution/smart_router.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T08:06:04.855582+00:00",
+  "last_updated": "2026-07-12T09:28:14.777919+00:00",
   "total": 200
 }
