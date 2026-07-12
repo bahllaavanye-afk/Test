@@ -190,3 +190,50 @@ def test_recovery_kill_switch(monkeypatch):
     monkeypatch.setattr(m, "_alpaca_delete_sync",
                         lambda p: (_ for _ in ()).throw(AssertionError("must not be called")))
     assert asyncio.run(m.recover_negative_cash({"cash": "-1", "non_marginable_buying_power": "0"})) is False
+
+
+# ── Cancel-replace execution (_ensure_filled) ─────────────────────────────────
+
+def test_ensure_filled_returns_fill_when_limit_fills(monkeypatch):
+    m = _reload()
+    monkeypatch.setattr(m, "FILL_POLL_S", 0)
+    seq = iter([{"id": "o1", "status": "open"}, {"id": "o1", "status": "filled"}])
+    async def fake_get(path, params=None, data_api=False): return next(seq)
+    monkeypatch.setattr(m, "_alpaca_get", fake_get)
+    out = asyncio.run(m._ensure_filled({"id": "o1", "type": "limit"}, "BTC/USD", "buy", 100))
+    assert out["status"] == "filled"
+
+
+def test_ensure_filled_replaces_stale_limit_with_market(monkeypatch):
+    m = _reload()
+    monkeypatch.setattr(m, "FILL_POLL_S", 0)
+    monkeypatch.setattr(m, "FILL_WAIT_S", 0)   # immediately stale
+    cancelled, placed = [], []
+    monkeypatch.setattr(m, "_alpaca_delete_sync", lambda p: cancelled.append(p) or {"status": 204})
+    async def fake_place(symbol, side, notional, limit_price=None, client_order_id=None):
+        placed.append((symbol, side, notional)); return {"id": "o2", "type": "market", "status": "accepted"}
+    monkeypatch.setattr(m, "_place_order", fake_place)
+    out = asyncio.run(m._ensure_filled({"id": "o1", "type": "limit"}, "BTC/USD", "buy", 100))
+    assert cancelled and "o1" in cancelled[0]
+    assert placed == [("BTC/USD", "buy", 100)]
+    assert out["id"] == "o2"
+
+
+def test_ensure_filled_double_fill_guard_on_cancel_race(monkeypatch):
+    m = _reload()
+    monkeypatch.setattr(m, "FILL_POLL_S", 0)
+    monkeypatch.setattr(m, "FILL_WAIT_S", 0)
+    def cancel_fails(p): raise RuntimeError("422 order not cancelable")
+    monkeypatch.setattr(m, "_alpaca_delete_sync", cancel_fails)
+    async def fake_get(path, params=None, data_api=False): return {"id": "o1", "status": "filled"}
+    monkeypatch.setattr(m, "_alpaca_get", fake_get)
+    async def must_not_place(*a, **k): raise AssertionError("double order!")
+    monkeypatch.setattr(m, "_place_order", must_not_place)
+    out = asyncio.run(m._ensure_filled({"id": "o1", "type": "limit"}, "BTC/USD", "buy", 100))
+    assert out["status"] == "filled"          # fill kept, no replacement sent
+
+
+def test_ensure_filled_passthrough_for_market_orders(monkeypatch):
+    m = _reload()
+    o = {"id": "o1", "type": "market", "status": "accepted"}
+    assert asyncio.run(m._ensure_filled(o, "SPY", "buy", 100)) is o
