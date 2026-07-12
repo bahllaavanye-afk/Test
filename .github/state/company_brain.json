@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783867132.5864918,
+    "last_updated": 1783878153.3528826,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783867132.5861723
+    "last_brain_update": 1783878153.3524227
   },
   "episodic": [
     {
@@ -801,6 +801,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1783867132.5806277
+    },
+    {
+      "summary": "The Slack agent-team run failed because messages likely exceeded the workspace quota (`message_limit_exceeded`), and two separate auto-fix attempts also failed to apply patches to files.",
+      "item_count": 20,
+      "ts": 1783878153.3481848
     }
   ],
   "experiment_results": [
