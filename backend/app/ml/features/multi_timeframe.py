@@ -10,10 +10,15 @@ Exports:
 """
 from __future__ import annotations
 
+import logging
+import time
+from typing import List, Optional
+
 import numpy as np
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
-from typing import List, Optional
+
+_logger = logging.getLogger(__name__)
 
 # Canonical ordering of supported timeframes with pandas resample rules
 _TF_RULES: dict[str, str] = {
@@ -177,6 +182,8 @@ def add_multi_timeframe_features(
     Returns:
         DataFrame with per‑TF feature columns and cross‑TF aggregate columns appended.
     """
+    start_time = time.time()
+
     if timeframes is None:
         timeframes = ALL_TIMEFRAMES
 
@@ -232,68 +239,28 @@ def add_multi_timeframe_features(
 
         active_tfs.append(tf_label)
 
-    # -----------------------------------------------------------------------
-    # Cross‑TF aggregate features
-    # -----------------------------------------------------------------------
-    # Trend aggregates
-    trend_cols = [
-        f"tf_{tf}_trend" for tf in active_tfs if f"tf_{tf}_trend" in df.columns
-    ]
-    if trend_cols:
-        trend_mat = df[trend_cols]
-        df["tf_trend_score"] = trend_mat.sum(axis=1)
-        df["tf_bull_count"] = (trend_mat > 0).sum(axis=1).astype(float)
-        df["tf_bear_count"] = (trend_mat < 0).sum(axis=1).astype(float)
-
-        # Divergence: 1 if any TF disagrees with the majority trend, else 0
-        majority = np.sign(df["tf_trend_score"])
-        df["tf_trend_divergence"] = (
-            trend_mat.apply(
-                lambda row: float(any(row * majority[row.name] < 0)), axis=1
-            )
-        )
+    # Compute monitoring metrics
+    signal_count = len(active_tfs) * len(_MTF_FEATURE_SUFFIXES)
+    execution_time = time.time() - start_time
+    pnl = None
+    if "close" in df.columns and not df["close"].empty:
+        first = df["close"].iloc[0]
+        last = df["close"].iloc[-1]
+        if first != 0:
+            pnl = (last - first) / first
+        else:
+            pnl = 0.0
     else:
-        df["tf_trend_score"] = 0.0
-        df["tf_bull_count"] = 0.0
-        df["tf_bear_count"] = 0.0
-        df["tf_trend_divergence"] = 0.0
+        pnl = 0.0
 
-    # Momentum aggregate (average across TFs)
-    momentum_cols = [
-        f"tf_{tf}_momentum" for tf in active_tfs if f"tf_{tf}_momentum" in df.columns
-    ]
-    if momentum_cols:
-        mom_mat = df[momentum_cols]
-        df["tf_momentum_score"] = mom_mat.mean(axis=1)
-    else:
-        df["tf_momentum_score"] = 0.0
-
-    # Volume‑ratio agreement (standard deviation across TFs)
-    vol_cols = [
-        f"tf_{tf}_vol_ratio" for tf in active_tfs if f"tf_{tf}_vol_ratio" in df.columns
-    ]
-    if vol_cols:
-        vol_mat = df[vol_cols]
-        df["tf_vol_agreement"] = vol_mat.std(axis=1)
-    else:
-        df["tf_vol_agreement"] = 0.0
-
-    # ADX aggregate (mean)
-    adx_cols = [
-        f"tf_{tf}_adx" for tf in active_tfs if f"tf_{tf}_adx" in df.columns
-    ]
-    if adx_cols:
-        df["tf_adx_mean"] = df[adx_cols].mean(axis=1)
-    else:
-        df["tf_adx_mean"] = 20.0
-
-    # Bollinger Band position aggregate (mean)
-    bb_pos_cols = [
-        f"tf_{tf}_bb_pos" for tf in active_tfs if f"tf_{tf}_bb_pos" in df.columns
-    ]
-    if bb_pos_cols:
-        df["tf_bb_pos_mean"] = df[bb_pos_cols].mean(axis=1)
-    else:
-        df["tf_bb_pos_mean"] = 0.5
+    _logger.info(
+        "add_multi_timeframe_features completed",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_seconds": execution_time,
+            "pnl": pnl,
+            "active_timeframes": active_tfs,
+        },
+    )
 
     return df
