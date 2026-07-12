@@ -180,3 +180,21 @@ class YieldCurveMomentumStrategy(AbstractStrategy):
             short_entries=short_entries,
             short_exits=short_exits,
         )
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# analyze() fetches external data; when the source is down/blocked it used to
+# raise out of the strategy. Contract: catch and return None so EVERY caller
+# (bot engine, StrategyRunner, backtests) is safe, not just the timeout-guarded desk.
+_unguarded_analyze = YieldCurveMomentumStrategy.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"yield_curve_momentum: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+YieldCurveMomentumStrategy.analyze = _failsoft_analyze
