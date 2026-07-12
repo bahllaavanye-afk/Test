@@ -10,6 +10,7 @@ from typing import Dict, List
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.utils.logging import logger
@@ -36,6 +37,77 @@ def _alpaca_headers() -> dict:
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
+
+
+class BenchmarkPoint(BaseModel):
+    """A single data point representing a benchmark value on a specific date."""
+
+    date: date = Field(
+        ...,
+        description="Date of the benchmark observation in ISO format (YYYY‑MM‑DD).",
+        example="2023-01-01",
+    )
+    value: float = Field(
+        ...,
+        ge=0,
+        description="Benchmark value normalized to 100 at the start date.",
+        example=102.5,
+    )
+
+    @validator("date")
+    def date_not_in_future(cls, v: date) -> date:
+        """Ensure the date is not in the future relative to UTC now."""
+        if v > datetime.now(timezone.utc).date():
+            raise ValueError("Benchmark date cannot be in the future.")
+        return v
+
+
+class BenchmarkStat(BaseModel):
+    """Static reference statistics for a benchmark."""
+
+    name: str = Field(
+        ...,
+        description="Human‑readable name of the benchmark.",
+        example="S&P 500",
+    )
+    annual_return: float = Field(
+        ...,
+        description="Annualized return expressed as a decimal (e.g., 0.10 for 10%).",
+        example=0.10,
+    )
+    sharpe: float = Field(
+        ...,
+        description="Sharpe ratio of the benchmark.",
+        example=0.47,
+    )
+    max_dd: float = Field(
+        ...,
+        description="Maximum drawdown expressed as a decimal (negative values).",
+        example=-0.57,
+    )
+
+    @validator("annual_return")
+    def return_reasonable_range(cls, v: float) -> float:
+        if not -1.0 <= v <= 2.0:
+            raise ValueError("Annual return out of expected range.")
+        return v
+
+    @validator("sharpe")
+    def sharpe_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("Sharpe ratio should be non‑negative.")
+        return v
+
+    @validator("max_dd")
+    def max_dd_negative(cls, v: float) -> float:
+        if v > 0:
+            raise ValueError("Maximum drawdown should be negative or zero.")
+        return v
+
+
+# Type aliases for clearer signatures
+BenchmarkCurvesResponse = Dict[str, List[BenchmarkPoint]]
+BenchmarkStatsResponse = Dict[str, BenchmarkStat]
 
 
 async def _fetch_ticker_bars(
@@ -94,7 +166,7 @@ async def _fetch_ticker_bars(
         return pd.Series(dtype=float)
 
 
-async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
+async def fetch_benchmark_curves(start: date, end: date) -> BenchmarkCurvesResponse:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
     if start >= end:
         logger.warning(
@@ -134,7 +206,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         if not series.empty
     }
 
-    result: dict[str, List[dict]] = {}
+    result: dict[str, List[BenchmarkPoint]] = {}
 
     # Process individual benchmarks
     for ticker in BENCHMARKS:
@@ -143,7 +215,8 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
             continue
         normalized = (series.dropna() / series.iloc[0] * 100).round(2)
         result[ticker] = [
-            {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
+            BenchmarkPoint(date=idx.date(), value=float(v))
+            for idx, v in normalized.items()
         ]
 
     # All Weather: monthly rebalanced weighted portfolio
@@ -157,7 +230,8 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         aw_ret = (monthly_returns * weights).sum(axis=1)
         aw_equity = (1 + aw_ret).cumprod() * 100
         result["ALL_WEATHER"] = [
-            {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
+            BenchmarkPoint(date=idx.date(), value=round(float(v), 2))
+            for idx, v in aw_equity.items()
         ]
 
     # Cache the result for future identical requests
@@ -165,11 +239,31 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     return result
 
 
-def get_benchmark_stats() -> dict:
+def get_benchmark_stats() -> BenchmarkStatsResponse:
     """Static benchmark reference stats for display."""
     return {
-        "SPY": {"name": "S&P 500", "annual_return": 0.100, "sharpe": 0.47, "max_dd": -0.57},
-        "QQQ": {"name": "NASDAQ 100", "annual_return": 0.145, "sharpe": 0.61, "max_dd": -0.83},
-        "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
-        "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
+        "SPY": BenchmarkStat(
+            name="S&P 500",
+            annual_return=0.100,
+            sharpe=0.47,
+            max_dd=-0.57,
+        ),
+        "QQQ": BenchmarkStat(
+            name="NASDAQ 100",
+            annual_return=0.145,
+            sharpe=0.61,
+            max_dd=-0.83,
+        ),
+        "BRK-B": BenchmarkStat(
+            name="Warren Buffett (BRK.B)",
+            annual_return=0.199,
+            sharpe=0.79,
+            max_dd=-0.48,
+        ),
+        "ALL_WEATHER": BenchmarkStat(
+            name="Ray Dalio All Weather",
+            annual_return=0.082,
+            sharpe=0.67,
+            max_dd=-0.20,
+        ),
     }
