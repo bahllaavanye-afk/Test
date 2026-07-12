@@ -25,6 +25,9 @@ class AlmgrenChriss:
         # Returns array of shares to trade at each time slice
     """
 
+    _EPSILON = 1e-12
+    _DENOM_TOL = 1e-15
+
     def __init__(
         self,
         sigma: float = 0.02,
@@ -53,24 +56,9 @@ class AlmgrenChriss:
         The trajectory minimises E[cost] + lambda * Var[cost] subject to
         liquidating all `shares` within time T.
         """
-        if n_slices <= 0:
-            raise ValueError(f"n_slices must be positive, got {n_slices}")
-        if T <= 0:
-            raise ValueError(f"T must be positive, got {T}")
-
-        kappa_sq = (self.lam * self.sigma ** 2) / self.eta
-        kappa = np.sqrt(max(kappa_sq, 1e-12))
-        t = np.linspace(0, T, n_slices + 1)
-
-        # Optimal holdings at each time step
-        denom = np.sinh(kappa * T)
-        if abs(denom) < 1e-15:
-            # Near-zero kappa: TWAP fallback (uniform slicing)
-            holdings = shares * (1.0 - t / T)
-        else:
-            holdings = shares * np.sinh(kappa * (T - t)) / denom
-
-        # Trade amounts = negative difference between consecutive holdings
+        self._validate_inputs(shares, T, n_slices)
+        kappa = self._compute_kappa()
+        holdings = self._compute_holdings(shares, T, n_slices, kappa)
         trades = -np.diff(holdings)
         return trades
 
@@ -98,3 +86,38 @@ class AlmgrenChriss:
             "timing_risk": float(timing_risk),
             "total": float(temp_impact + perm_impact + timing_risk),
         }
+
+    # --------------------------------------------------------------------- #
+    # Helper methods
+    # --------------------------------------------------------------------- #
+
+    def _validate_inputs(self, shares: float, T: float, n_slices: int) -> None:
+        """Validate inputs common to trajectory calculations."""
+        if shares <= 0:
+            raise ValueError(f"shares must be positive, got {shares}")
+        if n_slices <= 0:
+            raise ValueError(f"n_slices must be positive, got {n_slices}")
+        if T <= 0:
+            raise ValueError(f"T must be positive, got {T}")
+
+    def _compute_kappa(self) -> float:
+        """Compute the kappa parameter from model coefficients."""
+        kappa_sq = (self.lam * self.sigma ** 2) / self.eta
+        # Guard against negative or extremely small values
+        return np.sqrt(max(kappa_sq, self._EPSILON))
+
+    def _compute_holdings(
+        self, shares: float, T: float, n_slices: int, kappa: float
+    ) -> np.ndarray:
+        """
+        Compute the optimal holdings at each time step.
+
+        Returns an array of length n_slices + 1 representing remaining shares
+        after each slice (including start and end points).
+        """
+        t = np.linspace(0, T, n_slices + 1)
+        denom = np.sinh(kappa * T)
+        if abs(denom) < self._DENOM_TOL:
+            # Near-zero kappa: fallback to linear TWAP schedule
+            return shares * (1.0 - t / T)
+        return shares * np.sinh(kappa * (T - t)) / denom
