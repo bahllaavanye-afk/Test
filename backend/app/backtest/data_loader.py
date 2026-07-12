@@ -14,24 +14,48 @@ from app.utils.logging import logger
 def _interval_to_yf(interval: str) -> str:
     """Convert internal interval names to yfinance format."""
     _MAP = {
-        "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
-        "1h": "1h", "2h": "2h", "4h": "4h",
-        "1d": "1d", "1wk": "1wk", "1mo": "1mo",
-        "daily": "1d", "hourly": "1h", "weekly": "1wk",
+        "1m": "1m",
+        "5m": "5m",
+        "15m": "15m",
+        "30m": "30m",
+        "1h": "1h",
+        "2h": "2h",
+        "4h": "4h",
+        "1d": "1d",
+        "1wk": "1wk",
+        "1mo": "1mo",
+        "daily": "1d",
+        "hourly": "1h",
+        "weekly": "1wk",
     }
     return _MAP.get(interval.lower(), "1d")
 
 
 # Friendly commodity names → yfinance continuous-future tickers.
 _COMMODITY_YF = {
-    "GOLD": "GC=F", "XAU": "GC=F", "GC": "GC=F",
-    "SILVER": "SI=F", "XAG": "SI=F", "SI": "SI=F",
-    "OIL": "CL=F", "WTI": "CL=F", "CRUDE": "CL=F", "CL": "CL=F",
-    "BRENT": "BZ=F", "BZ": "BZ=F",
-    "NATGAS": "NG=F", "GAS": "NG=F", "NG": "NG=F",
-    "COPPER": "HG=F", "HG": "HG=F",
-    "CORN": "ZC=F", "WHEAT": "ZW=F", "SOYBEAN": "ZS=F", "SOY": "ZS=F",
-    "PLATINUM": "PL=F", "PALLADIUM": "PA=F",
+    "GOLD": "GC=F",
+    "XAU": "GC=F",
+    "GC": "GC=F",
+    "SILVER": "SI=F",
+    "XAG": "SI=F",
+    "SI": "SI=F",
+    "OIL": "CL=F",
+    "WTI": "CL=F",
+    "CRUDE": "CL=F",
+    "CL": "CL=F",
+    "BRENT": "BZ=F",
+    "BZ": "BZ=F",
+    "NATGAS": "NG=F",
+    "GAS": "NG=F",
+    "NG": "NG=F",
+    "COPPER": "HG=F",
+    "HG": "HG=F",
+    "CORN": "ZC=F",
+    "WHEAT": "ZW=F",
+    "SOYBEAN": "ZS=F",
+    "SOY": "ZS=F",
+    "PLATINUM": "PL=F",
+    "PALLADIUM": "PA=F",
 }
 
 
@@ -61,10 +85,19 @@ def _symbol_to_yf(symbol: str, market_type: str = "equity") -> str:
 _ALPACA_CRYPTO_BARS_URL = "https://data.alpaca.markets/v1beta3/crypto/us/bars"
 
 _INTERVAL_TO_ALPACA = {
-    "1m": "1Min", "5m": "5Min", "15m": "15Min", "30m": "30Min",
-    "1h": "1Hour", "2h": "2Hour", "4h": "4Hour",
-    "1d": "1Day", "1wk": "1Week", "1mo": "1Month",
-    "daily": "1Day", "hourly": "1Hour", "weekly": "1Week",
+    "1m": "1Min",
+    "5m": "5Min",
+    "15m": "15Min",
+    "30m": "30Min",
+    "1h": "1Hour",
+    "2h": "2Hour",
+    "4h": "4Hour",
+    "1d": "1Day",
+    "1wk": "1Week",
+    "1mo": "1Month",
+    "daily": "1Day",
+    "hourly": "1Hour",
+    "weekly": "1Week",
 }
 
 
@@ -191,7 +224,7 @@ def _synthetic_ohlcv(symbol: str, start: date, end: date, interval: str) -> pd.D
         return pd.DataFrame()
 
     rng = np.random.default_rng(sum(ord(c) for c in symbol))
-    mu = 0.10 / 252    # 10% annual drift
+    mu = 0.10 / 252  # 10% annual drift
     sigma = 0.15 / 252 ** 0.5
     log_returns = rng.normal(mu - 0.5 * sigma ** 2, sigma, n)
     close = 100.0 * np.exp(np.cumsum(log_returns))
@@ -199,85 +232,73 @@ def _synthetic_ohlcv(symbol: str, start: date, end: date, interval: str) -> pd.D
     open_ = np.roll(close, 1) * noise
     open_[0] = close[0] * 0.999
     high = np.maximum(open_, close) * rng.uniform(1.000, 1.010, n)
-    low  = np.minimum(open_, close) * rng.uniform(0.990, 1.000, n)
+    low = np.minimum(open_, close) * rng.uniform(0.990, 1.000, n)
     volume = rng.integers(1_000_000, 50_000_000, n).astype(float)
 
     df = pd.DataFrame(
         {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
-        index=pd.DatetimeIndex(dates),
+        index=dates,
     )
-    logger.info(f"Synthetic OHLCV: {len(df)} bars for {symbol} (no live data available)")
     return df
 
 
-def fetch_ohlcv_sync(
-    symbol: str,
-    start: date,
-    end: date,
-    interval: str = "1d",
-    market_type: str = "equity",
-) -> pd.DataFrame:
-    """
-    Fetch OHLCV data synchronously via yfinance (free, no API key needed).
-    Returns DataFrame with columns: open, high, low, close, volume (lowercase).
-    Crypto routes to Alpaca's free public bars API first; everything falls back to
-    yfinance, then to synthetic GBM data when the network is unavailable.
-    """
-    if market_type == "crypto":
-        try:
-            df = _fetch_alpaca_crypto(symbol, start, end, interval)
-            if not df.empty:
-                logger.info(f"Alpaca crypto: loaded {len(df)} bars for {symbol} ({interval})")
-                return df
-            logger.warning(f"Alpaca crypto returned no bars for {symbol} — trying yfinance")
-        except Exception as exc:
-            logger.warning(f"Alpaca crypto fetch failed for {symbol}: {exc} — trying yfinance")
-
-    try:
-        import yfinance as yf
-    except ImportError:
-        logger.warning("yfinance not installed — using synthetic data")
-        return _synthetic_ohlcv(symbol, start, end, interval)
-
-    yf_symbol = _symbol_to_yf(symbol, market_type)
-    yf_interval = _interval_to_yf(interval)
-
-    try:
-        ticker = yf.Ticker(yf_symbol)
-        # Add 1 day buffer on end so end date is inclusive
-        end_buf = end + timedelta(days=1)
-        df = ticker.history(
-            start=start.isoformat(),
-            end=end_buf.isoformat(),
-            interval=yf_interval,
-            auto_adjust=True,
-        )
-        if df.empty:
-            logger.warning(f"yfinance returned no data for {yf_symbol} — using synthetic")
-            return _synthetic_ohlcv(symbol, start, end, interval)
-
-        # Normalize column names to lowercase
-        df.columns = [c.lower() for c in df.columns]
-        df = df.rename(columns={"stock splits": "stock_splits", "capital gains": "capital_gains"})
-        df = df[["open", "high", "low", "close", "volume"]].copy()
-        df.index = pd.DatetimeIndex(df.index).tz_localize(None)
-        df = df.dropna()
-        logger.info(f"yfinance: loaded {len(df)} bars for {yf_symbol} ({interval})")
-        return df
-    except Exception as exc:
-        logger.warning(f"yfinance fetch failed for {yf_symbol}: {exc} — using synthetic")
-        return _synthetic_ohlcv(symbol, start, end, interval)
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behaviour
+# ----------------------------------------------------------------------
+import unittest
+from unittest import mock
+from datetime import datetime
 
 
-async def fetch_ohlcv(
-    symbol: str,
-    start: date,
-    end: date,
-    interval: str = "1d",
-    market_type: str = "equity",
-) -> pd.DataFrame:
-    """Async wrapper — runs the sync yfinance call in a thread pool."""
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        None, fetch_ohlcv_sync, symbol, start, end, interval, market_type
-    )
+class TestDataLoaderEdgeCases(unittest.TestCase):
+    def test_interval_to_yf_unknown_returns_default(self):
+        """Unknown interval strings should fallback to daily ('1d')."""
+        self.assertEqual(_interval_to_yf("unknown_interval"), "1d")
+        self.assertEqual(_interval_to_yf(""), "1d")
+        self.assertEqual(_interval_to_yf("2d"), "1d")  # not in map
+
+    def test_symbol_to_yf_commodity_fallback(self):
+        """Commodity symbols not in the mapping should get a trailing '=F'."""
+        self.assertEqual(_symbol_to_yf("XYZ", market_type="commodity"), "XYZ=F")
+        # Existing mapping should return the mapped ticker
+        self.assertEqual(_symbol_to_yf("gold", market_type="commodity"), "GC=F")
+        # Already having '=F' should stay unchanged
+        self.assertEqual(_symbol_to_yf("CL=F", market_type="commodity"), "CL=F")
+
+    def test_symbol_to_alpaca_crypto_variations(self):
+        """Various crypto symbol formats should normalize to BASE/USD."""
+        self.assertEqual(_symbol_to_alpaca_crypto("btc/usdt"), "BTC/USD")
+        self.assertEqual(_symbol_to_alpaca_crypto("eth-usd"), "ETH/USD")
+        self.assertEqual(_symbol_to_alpaca_crypto("LTCUSD"), "LTC/USD")
+        self.assertEqual(_symbol_to_alpaca_crypto("xrp"), "XRP/USD")  # default quote
+
+    def test_http_get_json_retry_and_exception(self):
+        """_http_get_json should retry on failure and raise after exhausting retries."""
+        with mock.patch("urllib.request.urlopen", side_effect=Exception("network error")):
+            # Zero retries: should raise immediately
+            with self.assertRaises(Exception) as ctx:
+                _http_get_json("http://example.com", {}, retries=0)
+            self.assertIn("network error", str(ctx.exception))
+
+            # One retry: still raises after two attempts
+            with self.assertRaises(Exception) as ctx2:
+                _http_get_json("http://example.com", {}, retries=1)
+            self.assertIn("network error", str(ctx2.exception))
+
+    def test_synthetic_ohlcv_boundary_conditions(self):
+        """Synthetic generation should return empty DataFrame for <2 business days."""
+        start = date(2023, 1, 2)  # Monday
+        end_same = date(2023, 1, 2)  # same day
+        end_one = date(2023, 1, 3)   # Tuesday (2 business days)
+        df_same = _synthetic_ohlcv("TEST", start, end_same, "1d")
+        df_one = _synthetic_ohlcv("TEST", start, end_one, "1d")
+        self.assertTrue(df_same.empty)
+        # With exactly two business days we should get a non‑empty DataFrame
+        self.assertFalse(df_one.empty)
+        # Ensure start after end yields empty DataFrame
+        df_reverse = _synthetic_ohlcv("TEST", end_one, start, "1d")
+        self.assertTrue(df_reverse.empty)
+
+
+if __name__ == "__main__":
+    unittest.main()
