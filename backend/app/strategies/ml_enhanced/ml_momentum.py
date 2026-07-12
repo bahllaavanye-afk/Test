@@ -6,7 +6,9 @@ momentum logic is provided by :class:`app.strategies.manual.momentum.MomentumStr
 while the ML inference is performed via the shared inference service.
 
 The strategy only emits a signal when both the traditional indicator and the ML model
-agree on direction, and it adjusts the confidence accordingly.
+agree on direction, and it adjusts the confidence accordingly. Additional entry
+filters tighten the signal quality, and an exit condition is generated when the ML
+model predicts an opposite direction with sufficient confidence.
 """
 
 import logging
@@ -25,8 +27,8 @@ logger = logging.getLogger(__name__)
 class MLMomentumStrategy(AbstractStrategy):
     """ML‑enhanced momentum strategy.
 
-    The strategy wraps the classic momentum logic and applies an ML filter.
-    It inherits from :class:`app.strategies.base.AbstractStrategy`.
+    The strategy wraps the classic momentum logic and applies an ML filter,
+    adding tighter entry filters and a simple ML‑driven exit condition.
     """
 
     name = "ml_momentum"
@@ -47,14 +49,16 @@ class MLMomentumStrategy(AbstractStrategy):
         """
         super().__init__(params)
         self._base = MomentumStrategy(params)
+        # Track open positions per symbol for simple exit handling.
+        self._open_positions: Dict[str, Signal] = {}
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """Generate a trading signal for a given symbol.
 
         The method first obtains a signal from the underlying momentum strategy.
-        If a base signal is present, it queries the ML inference service.  When the
-        ML prediction agrees with the base signal direction and the confidence
-        exceeds the threshold, the signal confidence is adjusted and returned.
+        If a base signal is present, it applies entry filters before querying the
+        ML inference service.  An ML‑driven exit is emitted when the model predicts
+        the opposite direction with sufficient confidence.
 
         Parameters
         ----------
@@ -66,40 +70,102 @@ class MLMomentumStrategy(AbstractStrategy):
         Returns
         -------
         Signal | None
-            A populated :class:`app.strategies.base.Signal` if both the base and
-            ML models agree, otherwise ``None``.
+            A populated :class:`app.strategies.base.Signal` if conditions are met,
+            otherwise ``None``.
         """
+        # Attempt to get the base momentum signal (may be ``None``).
         base_signal = await self._base.analyze(data, symbol)
-        if base_signal is None:
-            return None
 
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result is None or ml_result["prediction"] == "neutral":
+
+            # If the ML model cannot produce a directional prediction, stop here.
+            if ml_result is None or ml_result.get("prediction") == "neutral":
                 return None
 
-            return self._apply_ml_filter(base_signal, ml_result)
+            # Check for an existing open position – generate an exit if ML predicts
+            # the opposite direction with confidence above the threshold.
+            open_signal = self._open_positions.get(symbol)
+            if open_signal and self._should_exit(open_signal, ml_result):
+                exit_signal = self._create_exit_signal(symbol, ml_result)
+                self._open_positions.pop(symbol, None)
+                return exit_signal
+
+            # No base signal → no entry; exit logic already handled above.
+            if base_signal is None:
+                return None
+
+            # Apply tightened entry filters before accepting the ML agreement.
+            if not self._entry_filters_pass(data, base_signal):
+                return None
+
+            # Apply the ML filter; if it returns ``None`` the entry is rejected.
+            filtered_signal = self._apply_ml_filter(base_signal, ml_result)
+            if filtered_signal:
+                self._open_positions[symbol] = filtered_signal
+            return filtered_signal
+
         except Exception as e:  # pragma: no cover
             logger.exception("ML inference failed for %s: %s", symbol, e)
             return None
 
+    def _entry_filters_pass(self, data: pd.DataFrame, base_signal: Signal) -> bool:
+        """Run additional entry filters to tighten signal quality.
+
+        Filters include:
+        * Minimum base confidence.
+        * Recent price momentum consistency.
+        * Minimum average volume (if volume data is available).
+
+        Returns ``True`` when all filters are satisfied.
+        """
+        # Minimum confidence from the underlying momentum strategy.
+        base_conf_thresh = (
+            self.params.get("base_confidence_threshold", 0.6)
+            if self.params
+            else 0.6
+        )
+        if getattr(base_signal, "confidence", 0) < base_conf_thresh:
+            return False
+
+        # Ensure enough data points for momentum calculations.
+        if len(data) < 6:
+            return False
+
+        # Recent price momentum (5‑period price change).
+        price_change = (
+            data["close"].iloc[-1] - data["close"].iloc[-5]
+        ) / data["close"].iloc[-5]
+
+        momentum_min = (
+            self.params.get("price_momentum_min", 0.01)
+            if self.params
+            else 0.01
+        )
+        if base_signal.side == "buy" and price_change < momentum_min:
+            return False
+        if base_signal.side == "sell" and price_change > -momentum_min:
+            return False
+
+        # Volume filter (optional).
+        if "volume" in data.columns:
+            avg_vol = data["volume"].iloc[-5:].mean()
+            min_vol = (
+                self.params.get("min_avg_volume", 0)
+                if self.params
+                else 0
+            )
+            if avg_vol < min_vol:
+                return False
+
+        return True
+
     def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
         """Adjust the base signal if the ML prediction agrees.
 
-        Parameters
-        ----------
-        base_signal : Signal
-            Signal produced by the underlying momentum strategy.
-        ml_result : dict
-            Result from the ML inference service containing ``prediction`` and
-            ``confidence`` keys.
-
-        Returns
-        -------
-        Signal | None
-            Updated signal if directions match and confidence meets the threshold,
-            otherwise ``None``.
+        The confidence is combined and capped, and metadata is enriched with the
+        ML confidence value.
         """
         prediction = ml_result["prediction"]
         ml_conf = ml_result["confidence"]
@@ -119,20 +185,33 @@ class MLMomentumStrategy(AbstractStrategy):
         base_signal.metadata["ml_confidence"] = ml_conf
         return base_signal
 
+    def _should_exit(self, open_signal: Signal, ml_result: Dict[str, Any]) -> bool:
+        """Determine whether an open position should be exited."""
+        prediction = ml_result["prediction"]
+        ml_conf = ml_result["confidence"]
+        opposite = (
+            (prediction == "down" and open_signal.side == "buy")
+            or (prediction == "up" and open_signal.side == "sell")
+        )
+        return opposite and ml_conf >= self.confidence_threshold
+
+    def _create_exit_signal(self, symbol: str, ml_result: Dict[str, Any]) -> Signal:
+        """Create a signal that represents exiting an existing position."""
+        exit_side = "sell" if ml_result["prediction"] == "down" else "buy"
+        exit_confidence = ml_result["confidence"]
+        exit_signal = Signal(
+            side=exit_side,
+            confidence=exit_confidence,
+            metadata={"ml_confidence": exit_confidence, "exit_reason": "ml_opposite"},
+        )
+        exit_signal.strategy_name = self.name
+        exit_signal.strategy_type = self.strategy_type
+        return exit_signal
+
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """Generate back‑test signals for a dataframe.
 
         For back‑testing environments where live ML inference is unavailable,
         this method falls back to the base momentum signals.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Dataframe containing historical data for back‑testing.
-
-        Returns
-        -------
-        BacktestSignals
-            Signals suitable for back‑testing consumption.
         """
         return self._base.backtest_signals(df)
