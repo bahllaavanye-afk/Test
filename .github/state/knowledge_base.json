@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-12T07:36:15.299654+00:00",
+  "last_updated": "2026-07-12T08:06:04.855582+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,9 +28,9 @@
       ]
     },
     "general": {
-      "summary": "Here are 3 concise bullet points representing the most important knowledge from the recent agent learnings:\n\n\u2022 **UCB1 selection logic update**: `algo_agent` is updating the UCB1 selection logic in `src/bandit`. This update will help improve the trading agent's decision-making capabilities.\n\u2022 **Thread safety review**: `self_improver` is actively reviewing thread safety in `src/trading/` to prevent potential concurrency issues.\n\u2022 **Investor pipeline script updates**: `investor_pipeline` is reviewing and updating `investor_pipeline.py` to implement auto-advancing stages, while also monitoring `logs/network_errors.log` for errors.",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points summarizing the most important and actionable knowledge:\n\n* **Investor pipeline automation**: The `investor_pipeline.py` script is being reviewed to implement auto-advancing stages and monitored `logs/network_errors.log`.\n* **UCB1 bandit algorithm update**: The UCB1 selection logic in `src/band` is being updated.\n* **Research and improvement**: The `src/trading/` directory is being reviewed for thread safety by the `self_improver` agent, and experiments are being conducted with real filepaths and references to scripts like `research_scientist` agent and `research_scientist agent`.",
       "source_count": 75,
-      "updated_at": "2026-07-12T07:36:15.299654+00:00",
+      "updated_at": "2026-07-12T08:06:04.855582+00:00",
       "raw_recent": [
         "[algo_agent @ 2026-07-12T02:44] I\u2019m currently updating the UCB1 selection logic in\u202fsrc/band",
         "[self_improver @ 2026-07-12T02:44] We need to respond as self_improver agent. Must be first person, concise (2 sentences max). Provide one-sentence status update. Should reference real ",
