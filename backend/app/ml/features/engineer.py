@@ -7,7 +7,9 @@ The resulting feature set is used both for model training and live inference.
 
 from __future__ import annotations
 
+import logging
 import sys
+import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -18,6 +20,8 @@ from app.ml.features.multi_timeframe import MTF_FEATURE_COLS, add_multi_timefram
 from app.ml.features.normalization import FeatureScaler
 from app.ml.features.technical import add_technical_features
 from app.ml.features.wavelet_features import WAVELET_FEATURE_COLS, add_wavelet_features
+
+logger = logging.getLogger(__name__)
 
 # Social sentiment feature columns added for crypto market_type
 SOCIAL_SENTIMENT_FEATURE_COLS: List[str] = [
@@ -116,6 +120,7 @@ def engineer_features(
         NaNs from base or advanced indicator calculations are dropped, and any
         remaining NaNs in multi‑timeframe columns are filled with neutral values.
     """
+    start_time = time.perf_counter()
     df = df.copy()
     df = add_technical_features(df)
     df = add_advanced_features(df)
@@ -166,6 +171,17 @@ def engineer_features(
     elif normalize and scaler is None:
         raise ValueError("Pass a fitted FeatureScaler when normalize=True")
 
+    duration = time.perf_counter() - start_time
+    signal_count = len(df)
+    pnl = None
+    if "target" in df.columns:
+        pnl = float(df["target"].sum())
+
+    logger.info(
+        "engineer_features completed",
+        extra={"signal_count": signal_count, "execution_time": duration, "pnl": pnl},
+    )
+
     return df
 
 
@@ -195,6 +211,7 @@ def create_sequences(
         Corresponding targets of shape ``(n_samples,)`` if ``target_col`` exists,
         otherwise ``None``.
     """
+    start_time = time.perf_counter()
     active_cols = [c for c in FEATURE_COLS if c in df.columns]
     features = df[active_cols].values
     targets = df[target_col].values if target_col in df.columns else None
@@ -215,6 +232,13 @@ def create_sequences(
         # torch not installed — fall back to NumPy arrays.
         X_out = np.array(X, dtype=np.float32)
         y_out = np.array(y, dtype=np.float32) if targets is not None else None
+
+    duration = time.perf_counter() - start_time
+    seq_count = len(X)
+    logger.info(
+        "create_sequences completed",
+        extra={"sequence_count": seq_count, "execution_time": duration},
+    )
 
     return X_out, y_out
 
@@ -242,11 +266,24 @@ def add_labels(
     Returns
     -------
     pd.DataFrame
-        Copy of ``df`` with ``label`` and ``target`` columns added, and rows with
-        undefined labels removed.
+        DataFrame with ``label`` and ``target`` columns added.
     """
+    start_time = time.perf_counter()
     df = df.copy()
-    future_return = df["close"].pct_change(horizon).shift(-horizon)
-    df["label"] = (future_return > threshold).astype(int)
-    df["target"] = df["label"]  # alias for create_sequences compatibility
-    return df.dropna(subset=["label"])
+    future_returns = df["close"].pct_change(periods=horizon).shift(-horizon)
+    df["label"] = (future_returns.abs() > threshold).astype(int)
+    df["target"] = df["label"]
+    df = df.dropna(subset=["label"])
+
+    duration = time.perf_counter() - start_time
+    positive_labels = int(df["label"].sum())
+    total_labels = len(df)
+    logger.info(
+        "add_labels completed",
+        extra={
+            "positive_label_count": positive_labels,
+            "total_label_count": total_labels,
+            "execution_time": duration,
+        },
+    )
+    return df
