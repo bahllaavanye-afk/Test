@@ -32,7 +32,8 @@ def compute_correlation_clusters(
                 corr = corr_matrix.loc[s_a, s_b]
                 if abs(corr) > threshold:
                     union(s_a, s_b)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — pair missing from matrix
+                logger.debug("correlation pair %s/%s skipped: %s", s_a, s_b, exc)
                 continue
 
     clusters: dict[str, list[str]] = {}
