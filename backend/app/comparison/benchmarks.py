@@ -10,6 +10,7 @@ from typing import Dict, List
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.utils.logging import logger
@@ -173,3 +174,107 @@ def get_benchmark_stats() -> dict:
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+
+
+# -------------------------------------------------
+# Pydantic schemas for API responses
+# -------------------------------------------------
+
+
+class BenchmarkPoint(BaseModel):
+    """A single point on a benchmark equity curve."""
+
+    date: str = Field(
+        ...,
+        description="Date of the benchmark point in ISO format (YYYY-MM-DD).",
+        example="2023-01-01",
+    )
+    value: float = Field(
+        ...,
+        description="Normalized benchmark value (base 100).",
+        example=102.5,
+    )
+
+    @validator("date")
+    def validate_date(cls, v: str) -> str:
+        """Ensure the date string conforms to ISO format."""
+        try:
+            datetime.fromisoformat(v)
+        except ValueError as exc:
+            raise ValueError("date must be ISO format YYYY-MM-DD") from exc
+        return v
+
+
+class BenchmarkData(BaseModel):
+    """Mapping of ticker symbols to their respective equity curve data."""
+
+    __root__: Dict[str, List[BenchmarkPoint]] = Field(
+        ...,
+        description="Dictionary where each key is a ticker symbol and each value is a list of BenchmarkPoint objects.",
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "SPY": [
+                    {"date": "2023-01-01", "value": 100.0},
+                    {"date": "2023-01-02", "value": 101.2},
+                ],
+                "ALL_WEATHER": [
+                    {"date": "2023-01-01", "value": 100.0},
+                    {"date": "2023-02-01", "value": 101.5},
+                ],
+            }
+        }
+
+
+class BenchmarkStat(BaseModel):
+    """Statistical summary for a benchmark."""
+
+    name: str = Field(
+        ...,
+        description="Human‑readable name of the benchmark.",
+        example="S&P 500",
+    )
+    annual_return: float = Field(
+        ...,
+        description="Annualized return expressed as a decimal (e.g., 0.10 for 10%).",
+        example=0.10,
+    )
+    sharpe: float = Field(
+        ...,
+        description="Sharpe ratio of the benchmark.",
+        example=0.47,
+    )
+    max_dd: float = Field(
+        ...,
+        description="Maximum drawdown expressed as a negative decimal.",
+        example=-0.57,
+    )
+
+
+class BenchmarkStatsResponse(BaseModel):
+    """Mapping of ticker symbols to their statistical summaries."""
+
+    __root__: Dict[str, BenchmarkStat] = Field(
+        ...,
+        description="Dictionary where each key is a ticker symbol and each value is a BenchmarkStat object.",
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "SPY": {
+                    "name": "S&P 500",
+                    "annual_return": 0.10,
+                    "sharpe": 0.47,
+                    "max_dd": -0.57,
+                },
+                "ALL_WEATHER": {
+                    "name": "Ray Dalio All Weather",
+                    "annual_return": 0.082,
+                    "sharpe": 0.67,
+                    "max_dd": -0.20,
+                },
+            }
+        }
