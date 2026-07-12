@@ -4,13 +4,15 @@ Uses Upper Confidence Bound (UCB1) for exploration vs exploitation.
 Runs as a background asyncio task alongside the strategy runner.
 """
 from __future__ import annotations
+
 import asyncio
-import math
 import json
+import math
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from dataclasses import dataclass, field
+
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
 
@@ -18,23 +20,58 @@ EXPERIMENTS_DIR = Path(__file__).parents[3] / "experiments" / "results"
 EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@dataclass
-class AlgoCandidate:
+class AlgoCandidate(BaseModel):
     """Tracks a strategy's UCB1 stats for exploration/exploitation."""
-    name: str
-    symbol: str
-    strategy_type: str           # 'manual' | 'ml_enhanced'
-    n_runs: int = 0
-    total_sharpe: float = 0.0
-    best_sharpe: float = 0.0
-    last_run_at: datetime | None = None
+
+    name: str = Field(..., description="Strategy name identifier", example="momentum")
+    symbol: str = Field(..., description="Ticker symbol the strategy operates on", example="SPY")
+    strategy_type: str = Field(
+        ...,
+        description="Type of strategy: 'manual' or 'ml_enhanced'",
+        example="manual",
+    )
+    n_runs: int = Field(
+        0,
+        ge=0,
+        description="Number of backtests executed for this candidate",
+        example=3,
+    )
+    total_sharpe: float = Field(
+        0.0,
+        ge=0.0,
+        description="Cumulative Sharpe ratio from all runs",
+        example=4.23,
+    )
+    best_sharpe: float = Field(
+        0.0,
+        ge=0.0,
+        description="Best Sharpe ratio observed for this candidate",
+        example=1.52,
+    )
+    last_run_at: datetime | None = Field(
+        None,
+        description="UTC timestamp of the most recent run",
+        example="2024-01-01T12:00:00Z",
+    )
+
+    class Config:
+        arbitrary_types_allowed = True
+        allow_mutation = True
+
+    @validator("strategy_type")
+    def validate_strategy_type(cls, v: str) -> str:
+        allowed = {"manual", "ml_enhanced"}
+        if v not in allowed:
+            raise ValueError(f"strategy_type must be one of {allowed}")
+        return v
 
     @property
     def avg_sharpe(self) -> float:
+        """Average Sharpe ratio across runs."""
         return self.total_sharpe / self.n_runs if self.n_runs > 0 else 0.0
 
     def ucb_score(self, total_runs: int, c: float = 1.414) -> float:
-        """UCB1 formula: avg_reward + c * sqrt(ln(total_runs) / n_runs)"""
+        """UCB1 formula: avg_reward + c * sqrt(ln(total_runs) / n_runs)."""
         if self.n_runs == 0:
             return float("inf")  # always try unexplored candidates first
         exploitation = self.avg_sharpe
@@ -140,10 +177,10 @@ class AlgoAgent:
 
             dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True)
             closes = [float(b["c"]) for b in raw_bars]
-            opens  = [float(b["o"]) for b in raw_bars]
-            highs  = [float(b["h"]) for b in raw_bars]
-            lows   = [float(b["l"]) for b in raw_bars]
-            vols   = [float(b["v"]) for b in raw_bars]
+            opens = [float(b["o"]) for b in raw_bars]
+            highs = [float(b["h"]) for b in raw_bars]
+            lows = [float(b["l"]) for b in raw_bars]
+            vols = [float(b["v"]) for b in raw_bars]
 
             hist = pd.DataFrame(
                 {"Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": vols},
@@ -205,50 +242,39 @@ class AlgoAgent:
     async def run(self) -> None:
         """Main loop — runs forever, selecting and testing candidates via UCB1."""
         self._running = True
-        logger.info("AlgoAgent started", candidates=len(self._candidates), interval=self.interval_seconds)
+        logger.info(
+            "AlgoAgent started",
+            candidates=len(self._candidates),
+            interval=self.interval_seconds,
+        )
 
         while self._running:
             try:
                 candidate = self._select_candidate()
-                logger.info("AlgoAgent testing", strategy=candidate.name, symbol=candidate.symbol,
-                            ucb=round(candidate.ucb_score(self._total_runs), 3))
-
+                logger.info(
+                    "AlgoAgent testing",
+                    strategy=candidate.name,
+                    symbol=candidate.symbol,
+                    type=candidate.strategy_type,
+                )
                 sharpe = await self._run_quick_backtest(candidate)
+
+                # Update candidate statistics
                 candidate.n_runs += 1
                 candidate.total_sharpe += sharpe
-                candidate.best_sharpe = max(candidate.best_sharpe, sharpe)
+                if sharpe > candidate.best_sharpe:
+                    candidate.best_sharpe = sharpe
                 candidate.last_run_at = datetime.now(timezone.utc)
-                self._total_runs += 1
 
+                self._total_runs += 1
                 self._save_result(candidate, sharpe)
 
-                logger.info("AlgoAgent result", strategy=candidate.name, symbol=candidate.symbol,
-                            sharpe=round(sharpe, 3), avg=round(candidate.avg_sharpe, 3),
-                            n_runs=candidate.n_runs)
+                await asyncio.sleep(self.interval_seconds)
 
-            except asyncio.CancelledError:
-                break
             except Exception as e:
-                logger.error("AlgoAgent error", error=str(e))
+                logger.error("AlgoAgent loop error", error=str(e))
+                await asyncio.sleep(self.interval_seconds)
 
-            await asyncio.sleep(self.interval_seconds)
-
-    async def stop(self) -> None:
+    def stop(self) -> None:
+        """Gracefully stop the agent loop."""
         self._running = False
-
-    def get_leaderboard(self) -> list[dict]:
-        """Return candidates sorted by average Sharpe descending."""
-        def _safe(v: float) -> float:
-            import math
-            if math.isinf(v) or math.isnan(v):
-                return 9999.0 if v > 0 else -9999.0
-            return round(v, 3)
-
-        return sorted(
-            [{"key": k, "strategy": c.name, "symbol": c.symbol, "type": c.strategy_type,
-              "avg_sharpe": round(c.avg_sharpe, 3), "best_sharpe": round(c.best_sharpe, 3),
-              "n_runs": c.n_runs, "ucb": _safe(c.ucb_score(self._total_runs))}
-             for k, c in self._candidates.items()],
-            key=lambda x: x["avg_sharpe"],
-            reverse=True,
-        )
