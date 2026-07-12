@@ -21,7 +21,6 @@ import json
 import urllib.request
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
@@ -40,8 +39,8 @@ _SYMBOL_MAP: dict[str, str] = {
 }
 
 
-def _binance_get(path: str, params: dict) -> Any:
-    qs  = "&".join(f"{k}={v}" for k, v in params.items())
+def _binance_get(path: str, params: dict[str, Any]) -> Any:
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
     url = f"{_FAPI_BASE}{path}?{qs}"
     with urllib.request.urlopen(url, timeout=8) as resp:
         return json.loads(resp.read())
@@ -56,9 +55,9 @@ class OnChainExchangeNetflowStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.65
 
-    OI_LOOKBACK       = 8    # days of OI history
-    OI_THRESHOLD      = 0.02 # 2% OI change required to signal
-    PRICE_THRESHOLD   = 0.01 # 1% price move required
+    OI_LOOKBACK = 8    # days of OI history
+    OI_THRESHOLD = 0.02  # 2% OI change required to signal
+    PRICE_THRESHOLD = 0.01  # 1% price move required
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         binance_sym = _SYMBOL_MAP.get(symbol)
@@ -67,7 +66,6 @@ class OnChainExchangeNetflowStrategy(AbstractStrategy):
         if len(data) < 5 or "close" not in data.columns:
             return None
 
-        # Fetch OI history from Binance (blocking, run in thread pool)
         try:
             raw_oi = await asyncio.to_thread(
                 _binance_get,
@@ -92,19 +90,26 @@ class OnChainExchangeNetflowStrategy(AbstractStrategy):
             return None
         price_change_3d = float(close.iloc[-1] / close.iloc[-4] - 1.0)
 
-        # Signal grid: OI direction × price direction
-        oi_sign    = 1 if oi_change_3d > self.OI_THRESHOLD else (-1 if oi_change_3d < -self.OI_THRESHOLD else 0)
-        price_sign = 1 if price_change_3d > self.PRICE_THRESHOLD else (-1 if price_change_3d < -self.PRICE_THRESHOLD else 0)
+        oi_sign = (
+            1
+            if oi_change_3d > self.OI_THRESHOLD
+            else (-1 if oi_change_3d < -self.OI_THRESHOLD else 0)
+        )
+        price_sign = (
+            1
+            if price_change_3d > self.PRICE_THRESHOLD
+            else (-1 if price_change_3d < -self.PRICE_THRESHOLD else 0)
+        )
 
         if oi_sign == 0 or price_sign == 0:
             return None
 
         netflow = oi_sign * price_sign
-        side    = "buy" if netflow > 0 else "sell"
+        side = "buy" if netflow > 0 else "sell"
 
-        oi_mag    = min(abs(oi_change_3d) / 0.10, 1.0)
+        oi_mag = min(abs(oi_change_3d) / 0.10, 1.0)
         price_mag = min(abs(price_change_3d) / 0.05, 1.0)
-        conf      = min(0.63 + (oi_mag + price_mag) * 0.13, 0.89)
+        conf = min(0.63 + (oi_mag + price_mag) * 0.13, 0.89)
 
         if conf < self.confidence_threshold:
             return None
@@ -119,11 +124,11 @@ class OnChainExchangeNetflowStrategy(AbstractStrategy):
             risk_bucket=self.risk_bucket,
             target_price=spot,
             metadata={
-                "oi_change_3d":    round(oi_change_3d, 4),
+                "oi_change_3d": round(oi_change_3d, 4),
                 "price_change_3d": round(price_change_3d, 4),
-                "oi_sign":         oi_sign,
-                "price_sign":      price_sign,
-                "binance_sym":     binance_sym,
+                "oi_sign": oi_sign,
+                "price_sign": price_sign,
+                "binance_sym": binance_sym,
             },
         )
 
@@ -134,11 +139,12 @@ class OnChainExchangeNetflowStrategy(AbstractStrategy):
                 exits=pd.Series(False, index=df.index),
             )
         close = df["close"].astype(float)
-        ret3  = close.pct_change(3)
-        ret7  = close.pct_change(7)
+        ret3 = close.pct_change(3)
+        ret7 = close.pct_change(7)
 
-        # OI unavailable offline; use short + medium momentum agreement as proxy
-        entries       = ((ret3.shift(1) > self.PRICE_THRESHOLD) & (ret7.shift(1) > 0.02)).fillna(False)
-        short_entries = ((ret3.shift(1) < -self.PRICE_THRESHOLD) & (ret7.shift(1) < -0.02)).fillna(False)
-        exits         = (ret3.shift(1).abs() < 0.005).fillna(False)
+        entries = ((ret3.shift(1) > self.PRICE_THRESHOLD) & (ret7.shift(1) > 0.02)).fillna(False)
+        short_entries = ((ret3.shift(1) < -self.PRICE_THRESHOLD) & (ret7.shift(1) < -0.02)).fillna(
+            False
+        )
+        exits = (ret3.shift(1).abs() < 0.005).fillna(False)
         return BacktestSignals(entries=entries, exits=exits, short_entries=short_entries)
