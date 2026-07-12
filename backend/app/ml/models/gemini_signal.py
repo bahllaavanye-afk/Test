@@ -17,11 +17,12 @@ import re
 import json
 import asyncio
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
 import structlog
+from pydantic import BaseModel, Field, validator
 
 logger = structlog.get_logger()
 
@@ -48,6 +49,43 @@ Respond with ONLY this JSON (no other text):
 {{"direction_prob_up": <float 0.0-1.0>, "confidence": <"low"|"medium"|"high">, "regime": <"trending"|"ranging"|"volatile">}}"""
 
 
+class GeminiSignalResponse(BaseModel):
+    """
+    Pydantic schema for the JSON payload returned by the Gemini model.
+    """
+    direction_prob_up: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Probability that the next price movement is upward.",
+        example=0.73,
+    )
+    confidence: str = Field(
+        ...,
+        description="Model confidence level.",
+        example="high",
+    )
+    regime: str = Field(
+        ...,
+        description="Predicted market regime.",
+        example="trending",
+    )
+
+    @validator("confidence")
+    def _validate_confidence(cls, v: str) -> str:
+        allowed = {"low", "medium", "high"}
+        if v not in allowed:
+            raise ValueError(f"confidence must be one of {allowed}")
+        return v
+
+    @validator("regime")
+    def _validate_regime(cls, v: str) -> str:
+        allowed = {"trending", "ranging", "volatile"}
+        if v not in allowed:
+            raise ValueError(f"regime must be one of {allowed}")
+        return v
+
+
 def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     """Compute a compact technical summary for Gemini."""
     close = df["close"].astype(float)
@@ -71,11 +109,14 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     if "high" in df.columns and "low" in df.columns:
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        tr = pd.concat([
-            high - low,
-            (high - close.shift()).abs(),
-            (low - close.shift()).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
     else:
         atr = float(close.rolling(14).std().iloc[-1]) if n >= 14 else 0.0
@@ -84,27 +125,55 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     vol_ratio = 1.0
     if "volume" in df.columns:
         vol = df["volume"].astype(float)
-        avg_vol = float(vol.rolling(20).mean().iloc[-1]) if n >= 20 else float(vol.mean())
+        avg_vol = (
+            float(vol.rolling(20).mean().iloc[-1])
+            if n >= 20
+            else float(vol.mean())
+        )
         vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9)
 
-    high_20 = float(df["high"].astype(float).rolling(20).max().iloc[-1]) if "high" in df.columns and n >= 20 else price
-    low_20 = float(df["low"].astype(float).rolling(20).min().iloc[-1]) if "low" in df.columns and n >= 20 else price
+    high_20 = (
+        float(df["high"].astype(float).rolling(20).max().iloc[-1])
+        if "high" in df.columns and n >= 20
+        else price
+    )
+    low_20 = (
+        float(df["low"].astype(float).rolling(20).min().iloc[-1])
+        if "low" in df.columns and n >= 20
+        else price
+    )
     range_pct = (high_20 - low_20) / (low_20 + 1e-9)
 
     ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if n >= 50 else price
-    trend = "uptrend" if price > ema50 else "downtrend" if price < ema50 * 0.98 else "neutral"
+    trend = (
+        "uptrend"
+        if price > ema50
+        else "downtrend"
+        if price < ema50 * 0.98
+        else "neutral"
+    )
 
     return _ANALYSIS_TEMPLATE.format(
-        symbol=symbol, interval=interval, n=n, price=price,
-        ret5=ret5, ret20=ret20, rsi=rsi, vs_sma=vs_sma,
-        atr_pct=atr_pct, vol_ratio=vol_ratio, range_pct=range_pct, trend=trend,
+        symbol=symbol,
+        interval=interval,
+        n=n,
+        price=price,
+        ret5=ret5,
+        ret20=ret20,
+        rsi=rsi,
+        vs_sma=vs_sma,
+        atr_pct=atr_pct,
+        vol_ratio=vol_ratio,
+        range_pct=range_pct,
+        trend=trend,
     )
 
 
-def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
-    """Synchronous Gemini call returning parsed JSON dict."""
+def _call_gemini_json(prompt: str, api_key: str) -> Dict[str, Any]:
+    """Synchronous Gemini call returning a validated JSON dict."""
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
@@ -114,10 +183,16 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
         response = model.generate_content(prompt)
         text = response.text.strip() if response.text else ""
 
-        # Extract JSON
+        # Extract JSON payload
         m = re.search(r'\{.*?"direction_prob_up".*?\}', text, re.DOTALL)
         if m:
-            return json.loads(m.group(0))
+            raw_data = json.loads(m.group(0))
+            try:
+                validated = GeminiSignalResponse(**raw_data)
+                return validated.dict()
+            except Exception as e:
+                logger.debug("Gemini response validation failed", error=str(e))
+                return raw_data  # fallback to raw dict if validation fails
     except ImportError:
         pass
     except Exception as e:
