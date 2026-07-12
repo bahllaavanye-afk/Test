@@ -37,8 +37,13 @@ class CCIReversionStrategy(AbstractStrategy):
         self.trend_period = effective["trend_period"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        if not {"high", "low", "close"}.issubset(data.columns):
+        # Guard against None or empty DataFrames
+        if data is None or data.empty:
             return None
+        required_cols = {"high", "low", "close"}
+        if not required_cols.issubset(data.columns):
+            return None
+        # Ensure enough rows for the longest indicator plus a small buffer
         if len(data) < max(self.cci_period, self.trend_period) + 5:
             return None
 
@@ -48,34 +53,60 @@ class CCIReversionStrategy(AbstractStrategy):
 
         cci = ta.cci(high, low, close, length=self.cci_period)
         trend_ema = ta.ema(close, length=self.trend_period)
+
+        # Defensive checks for None or empty results
         if cci is None or trend_ema is None:
+            return None
+        if cci.empty or trend_ema.empty:
+            return None
+        # Need at least two CCI points to evaluate a cross
+        if len(cci) < 2:
             return None
 
         price = close.iloc[-1]
         trend = trend_ema.iloc[-1]
         cci_now = cci.iloc[-1]
         cci_prev = cci.iloc[-2]
+
+        # Guard against NaNs that could appear at the tail
         if pd.isna(trend) or pd.isna(cci_now) or pd.isna(cci_prev):
             return None
 
-        # cross back up through the oversold line, inside an uptrend
+        # Cross back up through the oversold line, inside an uptrend
         if price > trend and cci_prev < self.oversold <= cci_now:
             depth = min(1.0, (self.oversold - cci_prev) / 200.0)
             confidence = min(0.84, 0.58 + max(depth, 0.0) * 0.25)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"cci": round(float(cci_now), 2), "trend": "up"})
+            return Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={"cci": round(float(cci_now), 2), "trend": "up"},
+            )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        # Guard against None or empty inputs
+        if df is None or df.empty:
+            empty = pd.Series(False, index=pd.Index([]))
+            return BacktestSignals(entries=empty, exits=empty)
+
+        required_cols = {"high", "low", "close"}
+        if not required_cols.issubset(df.columns):
+            empty = pd.Series(False, index=df.index)
+            return BacktestSignals(entries=empty, exits=empty)
+
         high = df["high"]
         low = df["low"]
         close = df["close"]
 
         cci = ta.cci(high, low, close, length=self.cci_period)
         trend_ema = ta.ema(close, length=self.trend_period)
-        if cci is None or trend_ema is None:
+
+        # Defensive handling for indicator failures
+        if cci is None or trend_ema is None or cci.empty or trend_ema.empty:
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
@@ -88,4 +119,7 @@ class CCIReversionStrategy(AbstractStrategy):
         entries = (price > trend) & (cci_prev < self.oversold) & (cci_s >= self.oversold)
         exits = cci_s >= self.overbought
 
-        return BacktestSignals(entries=entries.fillna(False), exits=exits.fillna(False))
+        return BacktestSignals(
+            entries=entries.fillna(False),
+            exits=exits.fillna(False),
+        )
