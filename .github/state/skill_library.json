@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Explore UCB1 bandit",
-    "* The current LLM (Language Model) is experiencing connectivity issues and unavailable from multiple providers. Resolve this issue to ensure reliable information extraction.",
     "Test network connectivity",
     "* **Experiment Environment**: The `run_experiments` agent is currently initializing the experiment environment, checking the `/experiments` directory for any pending tasks.",
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +197,10 @@
     "Check disk space",
     "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Log API calls",
-    "Monitor memory leaks"
+    "Monitor memory leaks",
+    "Verify API keys",
+    "Scan for deadlocks"
   ],
-  "last_updated": "2026-07-12T15:56:13.199695+00:00",
+  "last_updated": "2026-07-12T16:58:08.818265+00:00",
   "total": 200
 }
