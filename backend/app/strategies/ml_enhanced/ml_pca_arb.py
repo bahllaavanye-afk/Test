@@ -11,6 +11,7 @@ If the ML inference service is unavailable the strategy falls back
 gracefully (returns None from analyze, uses base signals in backtest).
 """
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.strategies.manual.pca_stat_arb import PCAStatArbStrategy
@@ -24,6 +25,31 @@ except Exception:
 
 
 _ML_CONFIDENCE_THRESHOLD = 0.60
+
+
+class MLPCAStatArbParams(BaseModel):
+    """
+    Configuration parameters for :class:`MLPCAStatArbStrategy`.
+
+    Attributes
+    ----------
+    ml_confidence_threshold: float
+        Minimum confidence from the LSTM model required to accept a trade.
+        Must be between 0 and 1 inclusive.
+    """
+    ml_confidence_threshold: float = Field(
+        default=_ML_CONFIDENCE_THRESHOLD,
+        description="Minimum confidence from the LSTM model required to accept a trade.",
+        ge=0.0,
+        le=1.0,
+        example=0.65,
+    )
+
+    @validator("ml_confidence_threshold")
+    def _validate_threshold(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("ml_confidence_threshold must be between 0 and 1")
+        return v
 
 
 class MLPCAStatArbStrategy(AbstractStrategy):
@@ -45,13 +71,15 @@ class MLPCAStatArbStrategy(AbstractStrategy):
     tick_interval_seconds = 86_400.0  # daily
     confidence_threshold = 0.65
 
-    def __init__(self, params: dict | None = None):
+    def __init__(self, params: dict | MLPCAStatArbParams | None = None):
         super().__init__(params)
-        p = params or {}
+        # Normalise params to a Pydantic model for validation
+        if isinstance(params, MLPCAStatArbParams):
+            p_model = params
+        else:
+            p_model = MLPCAStatArbParams.parse_obj(params or {})
         self._base = PCAStatArbStrategy(params)
-        self._ml_threshold: float = float(
-            p.get("ml_confidence_threshold", _ML_CONFIDENCE_THRESHOLD)
-        )
+        self._ml_threshold: float = float(p_model.ml_confidence_threshold)
 
     # ------------------------------------------------------------------
     # AbstractStrategy interface
