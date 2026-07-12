@@ -199,8 +199,13 @@
     "Extract config files",
     "Refactor nested logic",
     "strategy_logic on ml/models/gnn_signal.py: success \u2014 tests green",
-    "Verify dependency versions"
+    "Verify dependency versions",
+    "edge_cases on api/v1/router.py: success \u2014 tests green",
+    "edge_cases on test/unit/test_regression.py: success \u2014 tests green",
+    "edge_cases on strategies/manual/cci_reversion.py: success \u2014 tests green",
+    "edge_cases on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "edge_cases on ml/features/normalization.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T07:36:15.299654+00:00",
+  "last_updated": "2026-07-12T08:07:03.305595+00:00",
   "total": 200
 }
