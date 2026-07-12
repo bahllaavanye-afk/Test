@@ -1,18 +1,23 @@
 """
 XGBoost binary classifier with Optuna hyperparameter optimization.
 SHAP-based explainability built in.
+Enhanced signal generation with tighter entry conditions,
+confirmation filters, and improved exit logic.
 """
-import numpy as np
 import json
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+
+import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 try:
-    import xgboost as xgb
     import shap
+    import xgboost as xgb
+
     XGB_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     XGB_AVAILABLE = False
 
 
@@ -22,6 +27,7 @@ class XGBoostClassifier(AbstractModel):
     def __init__(self, **kwargs):
         if not XGB_AVAILABLE:
             raise ImportError("xgboost not installed")
+        # Core XGBoost hyper‑parameters
         self.params = {
             "objective": "binary:logistic",
             "eval_metric": "auc",
@@ -39,16 +45,32 @@ class XGBoostClassifier(AbstractModel):
         self._explainer = None
         self.feature_names: list[str] = []
 
+        # ---- Signal logic parameters ----
+        # Entry must be above entry_threshold and confirmed by a short‑term trend.
+        self.entry_threshold: float = kwargs.get("entry_threshold", 0.60)
+        # Exit when probability falls below exit_threshold.
+        self.exit_threshold: float = kwargs.get("exit_threshold", 0.45)
+        # Number of recent predictions used for confirmation (must be > 0).
+        self.confirmation_window: int = max(1, kwargs.get("confirmation_window", 3))
+        # Minimum increase over the rolling mean to consider a true entry signal.
+        self.confirmation_delta: float = kwargs.get("confirmation_delta", 0.02)
+
+    # --------------------------------------------------------------------- #
+    # Core model interface
+    # --------------------------------------------------------------------- #
     def forward(self, x) -> np.ndarray:
+        """Return raw probability predictions for the positive class."""
         if hasattr(x, "numpy"):
             x = x.numpy()
         return self.model.predict_proba(x)[:, 1]
 
     def fit(self, X_train, y_train, X_val, y_val, feature_names: list[str] | None = None) -> dict:
+        """Fit the model and return validation metrics."""
         if feature_names:
             self.feature_names = feature_names
         self.model.fit(
-            X_train, y_train,
+            X_train,
+            y_train,
             eval_set=[(X_val, y_val)],
             verbose=False,
         )
@@ -60,10 +82,11 @@ class XGBoostClassifier(AbstractModel):
         }
 
     def train_epoch(self, loader, optimizer=None, criterion=None) -> dict:
-        # XGBoost uses fit() directly, not epoch-based training
+        """XGBoost uses fit() directly, not epoch‑based training."""
         return {"loss": 0.0, "accuracy": 0.0}
 
     def evaluate(self, loader) -> EvalMetrics:
+        """Compute accuracy and AUC over a data loader."""
         all_probs, all_labels = [], []
         for X, y in loader:
             probs = self.forward(X.numpy() if hasattr(X, "numpy") else X)
@@ -79,30 +102,97 @@ class XGBoostClassifier(AbstractModel):
             auc = 0.5
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
+    # --------------------------------------------------------------------- #
+    # Feature importance utilities
+    # --------------------------------------------------------------------- #
     def get_feature_importance(self) -> dict[str, float]:
-        """Return SHAP-based feature importance."""
+        """Return SHAP‑based feature importance ordered by magnitude."""
         if self._explainer is None:
             self._explainer = shap.TreeExplainer(self.model)
-        importance = dict(zip(
-            self.feature_names or [f"f{i}" for i in range(len(self.model.feature_importances_))],
-            self.model.feature_importances_.tolist()
-        ))
+        importance = dict(
+            zip(
+                self.feature_names
+                or [f"f{i}" for i in range(len(self.model.feature_importances_))],
+                self.model.feature_importances_.tolist(),
+            )
+        )
         return dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
 
+    # --------------------------------------------------------------------- #
+    # Prediction helpers
+    # --------------------------------------------------------------------- #
     def predict_proba(self, X) -> np.ndarray:
+        """Convenience wrapper returning probabilities for the positive class."""
         if hasattr(X, "numpy"):
             X = X.numpy()
         return self.model.predict_proba(X)[:, 1]
 
+    # --------------------------------------------------------------------- #
+    # Signal generation
+    # --------------------------------------------------------------------- #
+    def generate_signal(self, X) -> np.ndarray:
+        """
+        Produce a trading signal array (1 = long entry, -1 = exit/short, 0 = flat).
+
+        Entry criteria:
+            * Probability > entry_threshold
+            * Recent probability trend (rolling mean over ``confirmation_window``)
+              exceeds the current probability by at least ``confirmation_delta``
+
+        Exit criteria:
+            * Probability falls below exit_threshold
+
+        The method works on a batch of rows; it assumes temporal ordering
+        of the input data (e.g., a time‑series DataFrame converted to numpy).
+        """
+        probs = self.forward(X)
+        signals = np.zeros_like(probs, dtype=int)
+
+        # Compute rolling mean for confirmation; pad the beginning with the first value.
+        if self.confirmation_window > 1:
+            cumsum = np.cumsum(np.insert(probs, 0, 0))
+            rolling_mean = (cumsum[self.confirmation_window :] - cumsum[:-self.confirmation_window]) / self.confirmation_window
+            # Align lengths
+            rolling_mean = np.concatenate(
+                (np.full(self.confirmation_window - 1, rolling_mean[0]), rolling_mean)
+            )
+        else:
+            rolling_mean = probs
+
+        # Entry: prob > threshold AND prob - rolling_mean >= confirmation_delta
+        entry_mask = (probs > self.entry_threshold) & (
+            probs - rolling_mean >= self.confirmation_delta
+        )
+        signals[entry_mask] = 1
+
+        # Exit: prob < exit_threshold (override any existing entry)
+        exit_mask = probs < self.exit_threshold
+        signals[exit_mask] = -1
+
+        return signals
+
+    # --------------------------------------------------------------------- #
+    # Persistence
+    # --------------------------------------------------------------------- #
     def save(self, path: str, metadata: dict | None = None) -> None:
+        """Save model weights and accompanying metadata."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         model_path = path.replace(".pt", ".ubj")
         self.model.save_model(model_path)
-        meta = {"feature_names": self.feature_names, "params": self.params, **(metadata or {})}
+        meta = {
+            "feature_names": self.feature_names,
+            "params": self.params,
+            "entry_threshold": self.entry_threshold,
+            "exit_threshold": self.exit_threshold,
+            "confirmation_window": self.confirmation_window,
+            "confirmation_delta": self.confirmation_delta,
+            **(metadata or {}),
+        }
         Path(path).with_suffix(".json").write_text(json.dumps(meta, indent=2))
 
     @classmethod
     def load(cls, path: str) -> "XGBoostClassifier":
+        """Load a previously saved model."""
         model_path = path.replace(".pt", ".ubj")
         meta_path = Path(path).with_suffix(".json")
         instance = cls()
@@ -110,4 +200,8 @@ class XGBoostClassifier(AbstractModel):
         if meta_path.exists():
             meta = json.loads(meta_path.read_text())
             instance.feature_names = meta.get("feature_names", [])
+            instance.entry_threshold = meta.get("entry_threshold", 0.60)
+            instance.exit_threshold = meta.get("exit_threshold", 0.45)
+            instance.confirmation_window = meta.get("confirmation_window", 3)
+            instance.confirmation_delta = meta.get("confirmation_delta", 0.02)
         return instance
