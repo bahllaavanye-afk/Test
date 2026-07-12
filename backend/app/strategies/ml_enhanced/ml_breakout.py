@@ -24,8 +24,14 @@ class MLBreakoutStrategy(AbstractStrategy):
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result and ml_result["confidence"] > 0.65 and ml_result["prediction"] == "up":
-                base_signal.confidence = min(0.92, (base_signal.confidence + ml_result["confidence"]) / 2)
+            if (
+                ml_result
+                and ml_result["confidence"] > 0.65
+                and ml_result["prediction"] == "up"
+            ):
+                base_signal.confidence = min(
+                    0.92, (base_signal.confidence + ml_result["confidence"]) / 2
+                )
                 base_signal.strategy_name = self.name
                 base_signal.strategy_type = self.strategy_type
                 return base_signal
