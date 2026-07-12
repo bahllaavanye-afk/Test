@@ -199,8 +199,13 @@
     "Verify trade IDs",
     "Review thread safety",
     "Refactor memory logging",
-    "Improve disk monitoring"
+    "Improve disk monitoring",
+    "validation on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "validation on brokers/alpaca_orders.py: success \u2014 tests green",
+    "validation on backtest/monte_carlo.py: success \u2014 tests green",
+    "validation on comparison/engine.py: success \u2014 tests green",
+    "validation on tasks/price_feed.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T01:02:31.267258+00:00",
+  "last_updated": "2026-07-12T04:51:11.415976+00:00",
   "total": 200
 }
