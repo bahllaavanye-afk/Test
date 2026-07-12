@@ -199,8 +199,13 @@
     "Scan for deadlocks",
     "Test DB connections",
     "Verify thread counts",
-    "Scan for timeouts"
+    "Scan for timeouts",
+    "monitoring on strategies/manual/rsi2_pullback.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "monitoring on ml/models/ensemble_model.py: success \u2014 tests green",
+    "monitoring on ml/features/engineer.py: success \u2014 tests green",
+    "monitoring on execution/vwap.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T22:42:41.963277+00:00",
+  "last_updated": "2026-07-12T23:51:30.910246+00:00",
   "total": 200
 }
