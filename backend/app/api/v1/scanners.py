@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 
 from app.api.deps import get_current_user
 
@@ -13,18 +13,69 @@ router = APIRouter(prefix="/scanners", tags=["scanners"])
 
 
 class ScanResultOut(BaseModel):
-    symbol: str
-    desk: str
-    score: float
-    signals: list[str]
-    side: str
-    data: dict[str, Any] = {}
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the instrument.",
+        example="AAPL",
+    )
+    desk: str = Field(
+        ...,
+        description="Desk name that generated the scan (e.g., equity, crypto, polymarket).",
+        example="equity",
+    )
+    score: float = Field(
+        ...,
+        description="Numerical confidence score for the signal; higher indicates stronger conviction.",
+        example=0.85,
+        ge=0.0,
+        le=1.0,
+    )
+    signals: List[str] = Field(
+        default_factory=list,
+        description="List of generated signal identifiers.",
+        example=["momentum", "mean_reversion"],
+    )
+    side: str = Field(
+        ...,
+        description="Suggested position side based on the scan.",
+        example="buy",
+    )
+    data: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Arbitrary additional data associated with the scan result.",
+        example={"price": 150.23, "volume": 1_200_000},
+    )
+
+    @validator("side")
+    def validate_side(cls, v: str) -> str:
+        allowed = {"buy", "sell", "neutral"}
+        if v.lower() not in allowed:
+            raise ValueError(f"side must be one of {allowed}")
+        return v.lower()
+
+    @validator("desk")
+    def validate_desk(cls, v: str) -> str:
+        allowed = {"equity", "crypto", "polymarket"}
+        if v.lower() not in allowed:
+            raise ValueError(f"desk must be one of {allowed}")
+        return v.lower()
 
 
 class ScanResponse(BaseModel):
-    desk: str
-    results: list[ScanResultOut]
-    cached: bool = True
+    desk: str = Field(
+        ...,
+        description="Desk identifier for which the scan results belong.",
+        example="equity",
+    )
+    results: List[ScanResultOut] = Field(
+        default_factory=list,
+        description="List of scan results ordered by descending score.",
+    )
+    cached: bool = Field(
+        default=True,
+        description="Indicates whether the results were retrieved from cache (True) or generated live (False).",
+        example=True,
+    )
 
 
 async def _get_redis():
@@ -72,10 +123,17 @@ async def get_scan_results(
         else:
             results = await PolymarketScanner().scan()
 
-        out = [ScanResultOut(
-            symbol=r.symbol, desk=r.desk, score=r.score,
-            signals=r.signals, side=r.side, data=r.data,
-        ) for r in results[:20]]
+        out = [
+            ScanResultOut(
+                symbol=r.symbol,
+                desk=r.desk,
+                score=r.score,
+                signals=r.signals,
+                side=r.side,
+                data=r.data,
+            )
+            for r in results[:20]
+        ]
         return ScanResponse(desk=desk, results=out, cached=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
