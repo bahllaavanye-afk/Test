@@ -199,8 +199,13 @@
     "Scan for deadlocks",
     "Test DB connections",
     "Verify thread counts",
-    "Scan for timeouts"
+    "Scan for timeouts",
+    "cleanup on api/v1/regime.py: success \u2014 tests green",
+    "cleanup on test/unit/test_bot_lifecycle.py: success \u2014 tests green",
+    "cleanup on strategies/manual/on_chain_exchange_netflow.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
+    "cleanup on ml/models/transformer.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T21:44:26.188725+00:00",
+  "last_updated": "2026-07-12T21:46:07.011212+00:00",
   "total": 200
 }
