@@ -6,28 +6,26 @@ longs are paying shorts. Capture this by:
   - Short BTC perpetual (receive funding)
   - Long BTC spot (hedge delta)
 
-Net P&L ≈ funding rate × notional, delta-neutral.
+Net P&L ≈ funding rate × notional, delta‑neutral.
 
 Data source: Binance public REST API (free, unauthenticated).
   GET https://fapi.binance.com/fapi/v1/fundingRate
   GET https://fapi.binance.com/fapi/v1/premiumIndex
 """
-import numpy as np
-import pandas as pd
-import urllib.request
 import json
+import urllib.request
+
+import pandas as pd
+
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
-BINANCE_FUNDING_URL = (
-    "https://fapi.binance.com/fapi/v1/fundingRate?symbol={symbol}&limit=10"
-)
 BINANCE_PREMIUM_URL = (
     "https://fapi.binance.com/fapi/v1/premiumIndex?symbol={symbol}"
 )
 
 
 def _fetch_funding_rate(symbol: str = "BTCUSDT") -> float | None:
-    """Fetch latest 8-hour funding rate from Binance public REST."""
+    """Fetch the latest 8‑hour funding rate from Binance public REST."""
     try:
         url = BINANCE_PREMIUM_URL.format(symbol=symbol)
         with urllib.request.urlopen(url, timeout=5) as resp:
@@ -38,6 +36,8 @@ def _fetch_funding_rate(symbol: str = "BTCUSDT") -> float | None:
 
 
 class CryptoBasisRollStrategy(AbstractStrategy):
+    """Strategy that captures BTC perpetual funding carry."""
+
     name = "crypto_basis_roll"
     display_name = "Crypto Perpetual Basis Roll (BTC Funding)"
     market_type = "crypto"
@@ -45,8 +45,8 @@ class CryptoBasisRollStrategy(AbstractStrategy):
     risk_bucket = "arbitrage"
     tick_interval_seconds = 3600.0  # check hourly (funding settles every 8h)
 
-    FUNDING_THRESHOLD = 0.0001  # 0.01% per 8h ≈ ~11% annualized
-    FUNDING_UNWIND = 0.00005   # unwind when funding falls below 0.005%
+    FUNDING_THRESHOLD = 0.0001   # 0.01% per 8h ≈ ~11% annualized
+    FUNDING_UNWIND = 0.00005      # unwind when funding falls below 0.005%
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
@@ -55,10 +55,11 @@ class CryptoBasisRollStrategy(AbstractStrategy):
         self.funding_unwind = p.get("funding_unwind", self.FUNDING_UNWIND)
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Generate a signal based on the current funding rate."""
         if "close" not in data.columns:
             return None
 
-        # Try live funding rate from Binance
+        # Build perpetual symbol (e.g., BTCUSDT → BTCUSDT)
         perp_symbol = symbol.replace("-", "").replace("/", "") + "T"
         if not perp_symbol.endswith("USDT"):
             perp_symbol = "BTCUSDT"
@@ -89,7 +90,7 @@ class CryptoBasisRollStrategy(AbstractStrategy):
                     "trade_type": "short_perp_long_spot",
                 },
             )
-        elif funding_rate < -self.funding_threshold:
+        if funding_rate < -self.funding_threshold:
             # Negative funding: shorts pay longs → long perp + short spot
             confidence = min(0.85, 0.60 + abs(funding_rate) * 1000)
             return Signal(
@@ -107,6 +108,7 @@ class CryptoBasisRollStrategy(AbstractStrategy):
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        """Create back‑test signals using funding rate or a proxy."""
         if "funding_rate" in df.columns:
             fr = df["funding_rate"].shift(1)
         else:
@@ -114,9 +116,9 @@ class CryptoBasisRollStrategy(AbstractStrategy):
             ret = df["close"].pct_change()
             fr = ret.rolling(8).mean() * 0.01  # crude proxy
 
-        entries = fr < -self.funding_threshold       # negative funding → long perp
+        entries = fr < -self.funding_threshold               # negative funding → long perp
         exits = fr >= -self.funding_unwind
-        short_entries = fr > self.funding_threshold  # positive funding → short perp
+        short_entries = fr > self.funding_threshold          # positive funding → short perp
         short_exits = fr <= self.funding_unwind
 
         return BacktestSignals(
