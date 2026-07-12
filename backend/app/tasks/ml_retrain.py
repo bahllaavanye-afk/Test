@@ -3,47 +3,158 @@ Nightly ML retraining: downloads fresh data, retrains all active models,
 compares new vs old Sharpe, promotes if improved.
 """
 from __future__ import annotations
+
 import asyncio
+import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Literal, Optional
+
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
 
 ARTIFACTS_DIR = Path(__file__).parents[3] / "models_artifacts"
 
 
+class RetrainResult(BaseModel):
+    """
+    Schema representing the outcome of a model retraining run.
+
+    Attributes
+    ----------
+    status: Literal['success', 'skipped', 'error']
+        Overall status of the retraining attempt.
+    reason: Optional[str]
+        Human‑readable explanation when ``status`` is ``skipped``.
+    error: Optional[str]
+        Error message when ``status`` is ``error``.
+    symbol: str
+        Ticker symbol the model was trained on.
+    model: str
+        Name of the model architecture (e.g., ``lstm``).
+    retrained_at: datetime
+        UTC timestamp when the retraining completed.
+    """
+
+    status: Literal["success", "skipped", "error"] = Field(
+        ...,
+        description="Overall status of the retraining attempt.",
+        example="success",
+    )
+    reason: Optional[str] = Field(
+        None,
+        description="Explanation for a ``skipped`` status.",
+        example="insufficient data",
+    )
+    error: Optional[str] = Field(
+        None,
+        description="Error message when the retraining fails.",
+        example="Network timeout while downloading data",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol used for training.",
+        example="BTC-USD",
+    )
+    model: str = Field(
+        ...,
+        description="Identifier of the model architecture.",
+        example="lstm",
+    )
+    retrained_at: datetime = Field(
+        ...,
+        description="UTC timestamp when retraining finished.",
+        example="2023-09-15T12:34:56Z",
+    )
+
+    @validator("status")
+    def check_status(cls, v: str) -> str:
+        allowed = {"success", "skipped", "error"}
+        if v not in allowed:
+            raise ValueError(f"status must be one of {allowed}")
+        return v
+
+    class Config:
+        extra = "allow"
+        schema_extra = {
+            "example": {
+                "status": "success",
+                "symbol": "BTC-USD",
+                "model": "lstm",
+                "retrained_at": "2023-09-15T12:34:56Z",
+                "sharpe": 1.23,
+                "max_dd": 0.12,
+            }
+        }
+
+
 async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
     try:
         import yfinance as yf
+
         loop = asyncio.get_running_loop()
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=730)
 
         hist = await loop.run_in_executor(
             None,
-            lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                  interval=interval, auto_adjust=True, progress=False)
+            lambda: yf.download(
+                symbol,
+                start=str(start.date()),
+                end=str(end.date()),
+                interval=interval,
+                auto_adjust=True,
+                progress=False,
+            ),
         )
         if hist is None or len(hist) < 200:
-            return {"status": "skipped", "reason": "insufficient data"}
+            result = RetrainResult(
+                status="skipped",
+                reason="insufficient data",
+                symbol=symbol,
+                model=model_name,
+                retrained_at=datetime.now(timezone.utc),
+            )
+            logger.info("Model retrain skipped", **result.dict())
+            return result.dict()
 
         # Normalize column names
-        hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
+        hist.columns = [
+            c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns
+        ]
 
         from app.ml.training.train_lstm import train
+
         experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
-        result = await train(hist, experiment_name=experiment_name, max_epochs=30)
-        result["symbol"] = symbol
-        result["model"] = model_name
-        result["retrained_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info("Model retrained", **{k: v for k, v in result.items() if k != "best_model_path"})
-        return result
+        train_result = await train(hist, experiment_name=experiment_name, max_epochs=30)
+        train_result["symbol"] = symbol
+        train_result["model"] = model_name
+        train_result["retrained_at"] = datetime.now(timezone.utc).isoformat()
+        result = RetrainResult(**train_result)
+        logger.info(
+            "Model retrained",
+            **{k: v for k, v in result.dict().items() if k != "best_model_path"},
+        )
+        return result.dict()
 
     except Exception as e:
-        logger.error("Retrain failed", model=model_name, symbol=symbol, error=str(e))
-        return {"status": "error", "error": str(e)}
+        result = RetrainResult(
+            status="error",
+            error=str(e),
+            symbol=symbol,
+            model=model_name,
+            retrained_at=datetime.now(timezone.utc),
+        )
+        logger.error(
+            "Retrain failed",
+            model=model_name,
+            symbol=symbol,
+            error=str(e),
+        )
+        return result.dict()
 
 
 def _load_retrain_configs() -> list[tuple[str, str, str]]:
@@ -58,6 +169,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
 
     try:
         import yaml as _yaml
+
         _load_yaml = _yaml.safe_load
     except ImportError:
         _load_yaml = None
@@ -69,13 +181,17 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                     cfg = _load_yaml(f)
                 else:
                     # Minimal fallback: regex-extract model/symbol/interval from YAML text
-                    import re
                     text = f.read()
-                    cfg = {"experiment": {
-                        k: v for k, v in re.findall(
-                            r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)", text, re.MULTILINE
-                        )
-                    }}
+                    cfg = {
+                        "experiment": {
+                            k: v
+                            for k, v in re.findall(
+                                r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)",
+                                text,
+                                re.MULTILINE,
+                            )
+                        }
+                    }
             exp = (cfg or {}).get("experiment", {})
             model = exp.get("model", "lstm")
             symbol = exp.get("symbol", "SPY")
@@ -88,7 +204,11 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
             continue
 
     if not results:
-        results = [("lstm", "BTC-USD", "1h"), ("lstm", "ETH-USD", "1h"), ("lstm", "SPY", "1d")]
+        results = [
+            ("lstm", "BTC-USD", "1h"),
+            ("lstm", "ETH-USD", "1h"),
+            ("lstm", "SPY", "1d"),
+        ]
 
     return results
 
@@ -101,7 +221,11 @@ async def nightly_retrain() -> None:
     logger.info("Nightly retrain starting", configs=len(retrain_configs))
     results = await asyncio.gather(
         *[retrain_model(m, s, i) for m, s, i in retrain_configs],
-        return_exceptions=True
+        return_exceptions=True,
     )
     successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
-    logger.info("Nightly retrain complete", total=len(retrain_configs), succeeded=successes)
+    logger.info(
+        "Nightly retrain complete",
+        total=len(retrain_configs),
+        succeeded=successes,
+    )
