@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-
 @dataclass(slots=True)
 class OrderRequest:
     symbol: str
@@ -70,3 +69,57 @@ class AbstractBroker(ABC):
         self, symbol: str, interval: str, limit: int = 500
     ) -> list[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+
+
+# -------------------------------------------------------------------------
+# Unit tests for edge‑case behavior of the data classes defined above.
+# -------------------------------------------------------------------------
+import unittest
+
+class TestBrokerDataClasses(unittest.TestCase):
+    def test_order_request_defaults_and_boundary_quantity(self):
+        """Create an OrderRequest with minimal required fields and a zero quantity."""
+        req = OrderRequest(
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=0.0  # boundary condition: zero quantity
+        )
+        # Verify defaults are applied correctly
+        self.assertEqual(req.time_in_force, "GTC")
+        self.assertEqual(req.execution_algo, "limit_first")
+        self.assertIsNone(req.limit_price)
+        self.assertIsNone(req.stop_price)
+        self.assertIsNone(req.stop_loss)
+        self.assertIsNone(req.take_profit)
+        self.assertEqual(req.quantity, 0.0)
+
+        # Slots should prevent adding new attributes
+        with self.assertRaises(AttributeError):
+            req.new_attribute = "should fail"
+
+    def test_order_result_defaults_and_type_consistency(self):
+        """Validate default values and type consistency for OrderResult."""
+        result = OrderResult(broker_order_id="12345", status="filled")
+        self.assertEqual(result.filled_qty, 0.0)
+        self.assertIsNone(result.avg_fill_price)
+        self.assertIsNone(result.raw_payload)
+
+        # Ensure that modifying a mutable default (if any) does not affect other instances
+        result2 = OrderResult(broker_order_id="67890", status="pending")
+        self.assertIsNone(result2.raw_payload)
+        self.assertNotEqual(result.broker_order_id, result2.broker_order_id)
+
+    def test_quote_result_optional_volume(self):
+        """QuoteResult should accept None for optional volume field."""
+        quote = QuoteResult(symbol="MSFT", bid=250.5, ask=251.0, last=250.75, volume=None)
+        self.assertIsNone(quote.volume)
+        self.assertEqual(quote.symbol, "MSFT")
+        self.assertGreater(quote.ask, quote.bid)
+
+        # Slots enforcement: adding attributes raises AttributeError
+        with self.assertRaises(AttributeError):
+            quote.extra = 42
+
+if __name__ == "__main__":
+    unittest.main()
