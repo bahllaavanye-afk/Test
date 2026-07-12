@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import structlog
-from scipy.optimize import linprog
+from scipy.optimize import linprog, LinAlgError
 from typing import Optional
 
 from app.risk.hrp import HRPOptimizer  # re-export for convenience
@@ -73,18 +73,48 @@ class CVaROptimizer:
             one.  If the optimisation fails or the input data are insufficient, equal
             weighting is returned as a safe fallback.
         """
+        if not isinstance(returns, pd.DataFrame):
+            logger.error(
+                "CVaROptimizer.compute_weights received invalid type for returns",
+                expected_type="pd.DataFrame",
+                actual_type=type(returns).__name__,
+            )
+            raise TypeError("returns must be a pandas DataFrame")
+
         symbols = list(returns.columns)
         n = len(symbols)
 
         # Basic sanity checks – fall back to equal weighting if data are too sparse.
         if n < 2 or len(returns) < 20:
+            logger.warning(
+                "CVaROptimizer.compute_weights insufficient data, using equal weights",
+                n_assets=n,
+                n_observations=len(returns),
+            )
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         # Clean data: drop completely empty columns and replace remaining NaNs with zero.
-        returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
+        try:
+            returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
+        except Exception as exc:
+            logger.error(
+                "CVaROptimizer.compute_weights data cleaning failed",
+                error=str(exc),
+            )
+            raise
+
         symbols_clean = list(returns_clean.columns)
         n_clean = len(symbols_clean)
         T = len(returns_clean)
+
+        if n_clean == 0 or T == 0:
+            logger.warning(
+                "CVaROptimizer.compute_weights no valid data after cleaning, using equal weights",
+                n_assets=n_clean,
+                n_observations=T,
+            )
+            return pd.Series(1.0 / max(n, 1), index=symbols)
+
         R = returns_clean.values  # shape (T, n_clean)
 
         alpha = self.confidence
@@ -132,25 +162,52 @@ class CVaROptimizer:
                 bounds=bounds,
                 method="highs",
             )
-            if result.success:
-                w = result.x[:n_clean]
-                w = np.maximum(w, 0.0)
-                total = w.sum()
-                w = w / total if total > 0 else np.ones(n_clean) / n_clean
-
-                # Map the cleaned weights back onto the original symbol list.
-                out = pd.Series(0.0, index=symbols)
-                for i, sym in enumerate(symbols_clean):
-                    out[sym] = float(w[i])
-                return out
-        except Exception as exc:  # pragma: no cover
-            logger.warning(
-                "CVaROptimizer.optimize failed, falling back to equal weight",
+        except LinAlgError as exc:
+            logger.error(
+                "CVaROptimizer.linprog linear algebra error",
                 error=str(exc),
+                confidence=self.confidence,
+                n_assets=n_clean,
+                n_observations=T,
             )
+            return pd.Series(1.0 / n, index=symbols)
+        except ValueError as exc:
+            logger.error(
+                "CVaROptimizer.linprog value error",
+                error=str(exc),
+                confidence=self.confidence,
+                n_assets=n_clean,
+                n_observations=T,
+            )
+            return pd.Series(1.0 / n, index=symbols)
+        except Exception as exc:  # pragma: no cover
+            logger.error(
+                "CVaROptimizer.linprog unexpected error",
+                error=str(exc),
+                confidence=self.confidence,
+                n_assets=n_clean,
+                n_observations=T,
+            )
+            return pd.Series(1.0 / n, index=symbols)
 
-        # Fallback: equal weighting across the original symbols.
-        return pd.Series(1.0 / n, index=symbols)
+        if result.success:
+            w = result.x[:n_clean]
+            w = np.maximum(w, 0.0)
+            total = w.sum()
+            w = w / total if total > 0 else np.ones(n_clean) / n_clean
+
+            # Map the cleaned weights back onto the original symbol list.
+            out = pd.Series(0.0, index=symbols)
+            for i, sym in enumerate(symbols_clean):
+                out[sym] = float(w[i])
+            return out
+        else:
+            logger.warning(
+                "CVaROptimizer.linprog optimization failed, falling back to equal weight",
+                status=result.message,
+                success=result.success,
+            )
+            return pd.Series(1.0 / n, index=symbols)
 
 
 def optimize_portfolio(
@@ -179,7 +236,14 @@ def optimize_portfolio(
         return CVaROptimizer(confidence=confidence).compute_weights(returns)
     if method == "equal":
         n = len(returns.columns)
+        if n == 0:
+            logger.error("optimize_portfolio called with empty returns for equal method")
+            raise ValueError("returns must contain at least one column for equal weighting")
         return pd.Series(1.0 / n, index=returns.columns)
     if method != "hrp":
+        logger.error(
+            "optimize_portfolio received unknown method",
+            method=method,
+        )
         raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
     return HRPOptimizer().compute_weights(returns)
