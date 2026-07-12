@@ -34,13 +34,14 @@ from app.strategies import STRATEGY_REGISTRY  # noqa: E402
 # Fix = fail-soft fetch with a hard timeout, then REMOVE from this list.
 # Adding a name in a PR is a red flag; this list may only shrink.
 QUARANTINED: set[str] = {
-    "basis_carry",            # raises RuntimeError when Binance blocked
-    "credit_spread_income",   # fail-soft guarded, but yfinance retry sleeps >5s offline
-    "lorentzian_knn", 
-    "breakeven_inflation", "dollar_carry", "macro_risk_barometer", 
-    "multi_factor_equity", "mvrv_zscore_timing", 
-    "duration_momentum", "yield_curve_momentum", "pmi_sector_rotation",
-    "tlt_spy_rotation", "yield_spread_reversion",
+    # 2026-07-11: 11 more strategies fail-soft guarded and un-quarantined.
+    "credit_spread_income",   # guarded, but yfinance retry sleeps >5s offline
+    "multi_factor_equity",    # guarded; yfinance universe scan slow offline
+    "macro_risk_barometer",   # guarded; yfinance slow offline
+    "breakeven_inflation",    # guarded; yfinance slow offline
+    "duration_momentum",      # guarded; yfinance slow offline
+    "pmi_sector_rotation",    # guarded; yfinance slow offline
+    "lorentzian_knn",         # not in manual/ — locate + guard separately
 }
 
 PER_STRATEGY_TIMEOUT_S = 5.0

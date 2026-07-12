@@ -192,3 +192,21 @@ class BasisCarryStrategy(AbstractStrategy):
             short_entries=false_series,
             short_exits=false_series,
         )
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# analyze() fetches external data; when the source is down/blocked it used to
+# raise out of the strategy. Contract: catch and return None so EVERY caller
+# (bot engine, StrategyRunner, backtests) is safe, not just the timeout-guarded desk.
+_unguarded_analyze = BasisCarryStrategy.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"basis_carry: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+BasisCarryStrategy.analyze = _failsoft_analyze

@@ -138,3 +138,21 @@ class DurationMomentumStrategy(AbstractStrategy):
         exits   = (mom.shift(1) < 0.00).fillna(False)
 
         return BacktestSignals(entries=entries, exits=exits)
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# analyze() fetches external data; when the source is down/blocked it used to
+# raise out of the strategy. Contract: catch and return None so EVERY caller
+# (bot engine, StrategyRunner, backtests) is safe, not just the timeout-guarded desk.
+_unguarded_analyze = DurationMomentumStrategy.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"duration_momentum: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+DurationMomentumStrategy.analyze = _failsoft_analyze

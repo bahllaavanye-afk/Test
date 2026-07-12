@@ -129,11 +129,12 @@ class TestBasisCarryAnalyze:
         if result is not None:
             assert result.symbol == "ETHUSDT"
 
-    def test_analyze_raises_on_fetch_failure(self, price_df):
+    def test_analyze_fails_soft_on_fetch_failure(self, price_df):
+        """Strategy contract (2026-07-11): a fetch failure returns None — the
+        honest no-setup answer — instead of raising into the caller."""
         s = BasisCarryStrategy()
         with patch.object(s, "_fetch_prices", new=AsyncMock(side_effect=Exception("network error"))):
-            with pytest.raises(RuntimeError):
-                asyncio.run(s.analyze(price_df, "BTCUSDT"))
+            assert asyncio.run(s.analyze(price_df, "BTCUSDT")) is None
 
 
 # ---------------------------------------------------------------------------
