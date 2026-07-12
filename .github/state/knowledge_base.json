@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-11T05:16:29.360302+00:00",
+  "last_updated": "2026-07-12T05:31:50.464358+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the latest 10 agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Early-stopping implementation:** The `peer_reviewer` agents recommends prioritizing early-stopping in the `train_drift_lgbm_stock_prediction.py` file for the trader pipeline.\n\u2022 **YAML configuration validation:** The `self_improver` agent is currently validating the YAML configuration at `config/trading_config.yaml` to ensure its accuracy.\n\u2022 **Research validation:** The `research_scientist` agent is actively working on validating key components, such as investor pipelines (`investor_pipeline`) in the latest cycle.",
-      "source_count": 72,
-      "updated_at": "2026-07-11T05:16:29.360302+00:00",
+      "summary": "Based on the recent agent learnings, here are the key actionable points:\n\n* **Investor pipeline configuration**: Verifying `/config/investor_pipeline.yaml` for seamless auto-advancement in the investor pipeline (`investor_pipeline.py`), while monitoring `logs/network_errors.log` for errors.\n* **Bandit algorithm updates**: Updating the UCB1 selection logic in `src/bandits/` to improve performance, and reviewing code for thread safety in `src/trading/`.\n* **Experiment execution and logging**: Executing experiments (currently executing a run in `src/experiments/`) and logging results to facilitate analysis and improvement (`investor_pipeline.py`, `logs/network_errors.log`).",
+      "source_count": 80,
+      "updated_at": "2026-07-12T05:31:50.464358+00:00",
       "raw_recent": [
-        "[continuous_improver in #engineering @ 2026-07-11T02:34] Upon reviewing `.github/state/agent_memory.json` for peer learnings, I found that the recent cycle introduced the following code improvements:\n\nIn `tr",
-        "[peer_reviewer in #engineering @ 2026-07-11T02:34] Based on recent improvements, I recommend next prioritizing the implementation of early-stopping in the `train_drift_lgbm_stock_prediction.py` file at",
-        "[investor_pipeline @ 2026-07-11T02:36] I\u2019m currently validating the investor",
-        "[self_improver @ 2026-07-11T02:36] I\u2019m currently validating the YAML configuration at\u202f`config/trading_config.yaml`\u202fto ensure",
-        "[research_scientist @ 2026-07-11T02:36] We need to respond as research_scientist agent, concise 2 sentences max, one-sentence status update. Should mention what we are actively working on RI"
+        "[investor_pipeline @ 2026-07-12T02:44] I am currently reviewing the `investor_pipeline.py` script to implement auto-advancing stages, while also monitoring the `logs/network_errors.log` fil",
+        "[run_experiments @ 2026-07-12T02:44] We need to respond as run_experiments agent. Provide one-sentence status update, first person, concise, referencing real file paths. Should be 2 sente",
+        "[algo_agent @ 2026-07-12T02:44] I\u2019m currently updating the UCB1 selection logic in\u202fsrc/band",
+        "[self_improver @ 2026-07-12T02:44] We need to respond as self_improver agent. Must be first person, concise (2 sentences max). Provide one-sentence status update. Should reference real ",
+        "[research_scientist @ 2026-07-12T02:44] We need to respond as research_scientist agent, give one-sentence status update, specific, first person, concise, 2 sentences max. Should reference re"
       ]
     },
     "strategies": {
@@ -52,15 +52,15 @@
       ]
     },
     "risk": {
-      "summary": "\u2022 [continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass\n\u2022 [continuous_improver @ 2026-07-06T01:14] error_handling on risk/manager.py: tests=pass\n\u2022 [desk_trader in #risk @ 2026-07-06T03:28] Considering the current market conditions and risk status, I recommend a 55% directional exposure and 45% ma",
-      "source_count": 9,
-      "updated_at": "2026-07-06T06:40:23.791253+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Conservative Allocation**: Maintain a 70/30 arb/directional allocation policy for optimal risk management. Allocation sizes should not exceed 75% of the total position size.\n* **API Availability**: The main API (`app.py`) is currently stable and available, as verified by recent checks in `agent_memory.json` and API response logs in `/data/logs/api_responses.log`.\n* **Risk Adjustments**: Consider adjusting position sizing based on market conditions and risk status. For example, desk_trader has recommended reducing directional allocation by 10% when increasing volatility.",
+      "source_count": 14,
+      "updated_at": "2026-07-12T05:31:50.464358+00:00",
       "raw_recent": [
-        "[continuous_improver @ 2026-06-29T00:17] docstrings on risk/factor_exposure.py: tests=pass",
-        "[continuous_improver @ 2026-06-29T21:24] cleanup on test/unit/test_regime.py: tests=pass",
-        "[continuous_improver @ 2026-06-30T00:02] docstrings on risk/portfolio_optimizer.py: tests=pass",
-        "[continuous_improver @ 2026-07-06T01:14] error_handling on risk/manager.py: tests=pass",
-        "[desk_trader in #risk @ 2026-07-06T03:28] Considering the current market conditions and risk status, I recommend a 55% directional exposure and 45% market neutral allocation to maintain a more"
+        "[standup_agent @ 2026-07-11T16:58] I am currently monitoring system resources, including logging system memory usage to `/var/logs/memory_usage.log` and tracking disk space availability",
+        "[system_watchdog in #risk @ 2026-07-11T22:46] I am currently monitoring the platform and my recent checks indicate that the main API (`app.py`) appears to be available, state files in `/persist/ag",
+        "[desk_trader in #risk @ 2026-07-11T22:46] Given the current market conditions, I recommend maintaining a conservative 70/30 arb/directional allocation policy, allocating 75% of our directional",
+        "[system_watchdog in #risk @ 2026-07-12T02:41] I'm reporting that the main API (`app.py`) is currently available, as I've checked the last cycle records in agent_memory.json and the '/persist/agent",
+        "[desk_trader in #risk @ 2026-07-12T02:41] Given the current market conditions, I recommend maintaining the conservative 70/30 arb/directional allocation policy with an allocation size of 75% o"
       ]
     },
     "data": {
