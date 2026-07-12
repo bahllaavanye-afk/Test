@@ -11,6 +11,7 @@ Decision logic:
 All orders pass through RiskManager.check_order() before execution.
 """
 from dataclasses import asdict
+from typing import Optional
 
 from app.brokers.base import OrderRequest, OrderResult, AbstractBroker
 from app.execution.limit_first import LimitFirstExecution
@@ -31,7 +32,7 @@ class SmartOrderRouter:
     def __init__(
         self,
         broker: AbstractBroker,
-        slippage_tracker: SlippageTracker | None = None,
+        slippage_tracker: Optional[SlippageTracker] = None,
         risk_manager=None,
     ):
         self.broker = broker
@@ -75,9 +76,9 @@ class SmartOrderRouter:
             if fills:
                 total_qty = sum(f["qty"] for f in fills)
                 avg_price = sum(f["qty"] * f["price"] for f in fills) / max(total_qty, 1e-9)
-                from app.brokers.base import OrderResult
                 result = OrderResult(
                     order_id=f"rl_{request.symbol}",
+                    broker_order_id=f"rl_{request.symbol}",
                     symbol=request.symbol,
                     status="filled",
                     filled_qty=total_qty,
@@ -125,7 +126,10 @@ class SmartOrderRouter:
         import asyncio
 
         # Estimate sigma from metadata if available, default 2%
-        sigma = float(asdict(request).get("metadata", {}).get("sigma", 0.02)) if hasattr(request, "__dict__") else 0.02
+        sigma = float(
+            asdict(request).get("metadata", {}).get("sigma", 0.02)
+        ) if hasattr(request, "__dict__") else 0.02
+
         ac = AlmgrenChriss(sigma=sigma)
         n_slices = 10
         duration_minutes = 20
@@ -141,9 +145,13 @@ class SmartOrderRouter:
             if slice_qty < 1e-6:
                 continue
             # Use market slices — adding "limit" without a price causes broker rejection.
-            # AC's alpha comes from the optimal schedule, not from limit orders.
             slice_req = OrderRequest(
-                **{**asdict(request), "quantity": float(slice_qty), "order_type": "market", "limit_price": None}
+                **{
+                    **asdict(request),
+                    "quantity": float(slice_qty),
+                    "order_type": "market",
+                    "limit_price": None,
+                }
             )
             try:
                 result = await self.broker.place_order(slice_req)
@@ -187,8 +195,10 @@ class SmartOrderRouter:
             expected_total_cost=round(cost_info["total"], 6),
         )
         return OrderResult(
+            order_id=last_result.order_id if last_result else "ac_exec",
             broker_order_id=last_result.broker_order_id if last_result else "ac_exec",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
+            symbol=request.symbol,
+            status="filled" if total_filled >= request.quantity else "partial",
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
