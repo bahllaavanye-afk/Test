@@ -30,6 +30,12 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        # Defensive checks for None / empty inputs
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            return None
+        if not symbol:
+            return None
+
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -50,8 +56,17 @@ class EnsembleStrategy(AbstractStrategy):
                 return None
             sma = recent["close"].mean()
             median_vol = recent["volume"].median()
+
+            # Guard against NaN results from mean/median calculations
+            if pd.isna(sma) or pd.isna(median_vol):
+                return None
+
+            # Latest price/volume – safe indexing after empty check
             latest_close = data["close"].iloc[-1]
             latest_vol = data["volume"].iloc[-1]
+
+            if pd.isna(latest_close) or pd.isna(latest_vol):
+                return None
 
             # Directional confirmation
             if ml_result["prediction"] == "up":
@@ -90,13 +105,18 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
+        # Defensive handling for None / empty DataFrames
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            empty = pd.Series(False, index=pd.RangeIndex(0))
+            return BacktestSignals(entries=empty, exits=empty)
+
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
-        # Compute rolling SMA and median volume
+        # Compute rolling SMA and median volume with min_periods=1 to avoid NaNs for short series
         sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
         median_vol = df["volume"].rolling(window=self.sma_window, min_periods=1).median()
 
@@ -119,8 +139,8 @@ class EnsembleStrategy(AbstractStrategy):
         exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
         exits = exit_long | exit_short
 
-        # Align boolean Series with BacktestSignals expectations
-        entries = entries.astype(bool)
-        exits = exits.astype(bool)
+        # Ensure boolean Series have no NaNs
+        entries = entries.fillna(False).astype(bool)
+        exits = exits.fillna(False).astype(bool)
 
         return BacktestSignals(entries=entries, exits=exits)
