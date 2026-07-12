@@ -199,8 +199,13 @@
     "Log trade volumes",
     "Verify trade IDs",
     "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "error_handling on ml/features/wavelet_features.py: success \u2014 tests green"
+    "error_handling on ml/features/wavelet_features.py: success \u2014 tests green",
+    "schemas on comparison/benchmarks.py: success \u2014 tests green",
+    "schemas on tasks/price_feed.py: success \u2014 tests green",
+    "schemas on api/v1/scanners.py: success \u2014 tests green",
+    "schemas on test/unit/test_desk_taxonomy.py: success \u2014 tests green",
+    "schemas on strategies/manual/news_momentum.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T07:26:56.356765+00:00",
+  "last_updated": "2026-07-12T07:36:04.432957+00:00",
   "total": 200
 }
