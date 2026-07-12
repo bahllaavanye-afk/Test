@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783863850.1238122,
+    "last_updated": 1783867132.5864918,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783862118.0625827
+    "last_brain_update": 1783867132.5861723
   },
   "episodic": [
     {
@@ -539,6 +539,41 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1783802537.9436853
+    },
+    {
+      "lesson": "Investigate root cause of repeated auto-fix patch failures to prevent CI pipeline blockage and ensure code quality.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783867100.5720012
+    },
+    {
+      "lesson": "Upgrade Vercel plan to Pro to remove daily deployment limit and avoid blocking critical deployments.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783867100.5735762
+    },
+    {
+      "lesson": "Reduce deployment frequency by batching changes or using preview deployments only for significant commits to stay within free tier limits if upgrade is not immediate.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783867100.5750382
+    },
+    {
+      "lesson": "Implement monitoring and alerting for deployment rate limits to proactively manage capacity before hitting the cap.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1783867100.576513
+    },
+    {
+      "lesson": "Review auto-fix patch logic to ensure it handles edge cases and can reapply without manual intervention.",
+      "category": "code",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783867100.577983
     }
   ],
   "github_insights": [
@@ -761,6 +796,11 @@
       "summary": "The deployment failed due to a resource limitation error, and two consecutive auto-fix attempts also failed to apply a patch to the file.",
       "item_count": 20,
       "ts": 1783862118.0586894
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1783867132.5806277
     }
   ],
   "experiment_results": [
