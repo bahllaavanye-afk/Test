@@ -338,3 +338,19 @@ class LorentzianStrategy(AbstractStrategy):
             execution_time_ms=(time.perf_counter() - start_time) * 1000,
         )
         return backtest
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# Contract: analyze() must return Signal|None, never raise into the caller.
+_unguarded_analyze = LorentzianStrategy.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"lorentzian_knn: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+LorentzianStrategy.analyze = _failsoft_analyze
