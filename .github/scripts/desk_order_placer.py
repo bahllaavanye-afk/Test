@@ -528,6 +528,51 @@ async def _place_order(
         return None
 
 
+FILL_WAIT_S = 20   # give a limit this long to fill before replacing
+FILL_POLL_S = 5
+
+
+async def _ensure_filled(order: dict | None, symbol: str, side: str,
+                         notional_usd: float) -> dict | None:
+    """Cancel-replace execution (SOTA queue): limit-first orders that don't
+    fill within FILL_WAIT_S are cancelled and replaced with a market order,
+    so signals stop dying as stale unfilled limits. Double-fill safe: if the
+    cancel races a fill, the fill wins and NO replacement is sent."""
+    oid = (order or {}).get("id")
+    if not oid or (order or {}).get("type") != "limit":
+        return order
+    waited = 0
+    while waited < FILL_WAIT_S:
+        await asyncio.sleep(FILL_POLL_S)
+        waited += FILL_POLL_S
+        try:
+            cur = await _alpaca_get(f"/v2/orders/{oid}")
+        except Exception:  # noqa: BLE001 — can't poll: keep the original order
+            return order
+        st = str(cur.get("status", ""))
+        if st == "filled":
+            print(f"    ✓ limit filled after {waited}s", flush=True)
+            return cur
+        if st in ("canceled", "expired", "rejected", "done_for_day"):
+            print(f"    ✗ limit terminal ({st}) — no fill", flush=True)
+            return cur
+    try:
+        await asyncio.to_thread(_alpaca_delete_sync, f"/v2/orders/{oid}")
+    except Exception:  # noqa: BLE001 — cancel may race a fill
+        try:
+            cur = await _alpaca_get(f"/v2/orders/{oid}")
+            if str(cur.get("status")) == "filled":
+                print("    ✓ filled during cancel race — keeping fill", flush=True)
+                return cur
+        except Exception:  # noqa: BLE001
+            pass
+        print("    ⚠ cancel state unknown — NOT sending replacement (double-fill guard)", flush=True)
+        return order
+    print(f"    ↻ limit unfilled after {FILL_WAIT_S}s — replaced with market", flush=True)
+    replacement = await _place_order(symbol, side, notional_usd)
+    return replacement or order
+
+
 # ── Regime detection (SPY-based heuristic, no Redis dependency) ───────────────
 # Mirrors the logic in backend/app/tasks/regime_monitor.py for use in CI.
 # 0 = bear, 1 = sideways, 2 = bull
@@ -1077,6 +1122,7 @@ async def main() -> None:
                 )
                 order = await _place_order(symbol, signal.side, kelly_notional,
                                            limit_price=limit_price, client_order_id=coid)
+                order = await _ensure_filled(order, symbol, signal.side, kelly_notional)
                 if order and order.get("id"):
                     print(f"    ✓ order {order['id']} submitted ({order.get('status', '?')})", flush=True)
                     record = {
