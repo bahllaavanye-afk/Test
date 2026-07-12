@@ -4,19 +4,18 @@ State-of-the-art for multi-horizon time series forecasting.
 Attention mechanism provides interpretable feature importance per timestep.
 """
 from __future__ import annotations
+
 try:
     import torch
     import torch.nn as nn
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
 
-# Use the real nn.Module base when torch is present; fall back to ``object`` so these
-# classes still *import* (as inert placeholders) in torch-free environments. The model
-# registry can then expose them without crashing; instantiating them still needs torch.
 _NNModule = nn.Module if _TORCH_AVAILABLE else object
+
 import numpy as np
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
@@ -24,16 +23,21 @@ from app.ml.models.base_model import AbstractModel, EvalMetrics
 class GatedLinearUnit(_NNModule):
     def __init__(self, d: int):
         super().__init__()
+        if not _TORCH_AVAILABLE:
+            raise ImportError("Torch is required for GatedLinearUnit")
         self.fc = nn.Linear(d, d * 2)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.fc(x)
-        return h[..., :h.shape[-1]//2] * torch.sigmoid(h[..., h.shape[-1]//2:])
+        split = h.shape[-1] // 2
+        return h[..., :split] * torch.sigmoid(h[..., split:])
 
 
 class GatedResidualNetwork(_NNModule):
     def __init__(self, d_in: int, d_hidden: int, d_out: int, dropout: float = 0.1):
         super().__init__()
+        if not _TORCH_AVAILABLE:
+            raise ImportError("Torch is required for GatedResidualNetwork")
         self.fc1 = nn.Linear(d_in, d_hidden)
         self.fc2 = nn.Linear(d_hidden, d_out)
         self.gate = GatedLinearUnit(d_out)
@@ -41,7 +45,7 @@ class GatedResidualNetwork(_NNModule):
         self.skip = nn.Linear(d_in, d_out) if d_in != d_out else nn.Identity()
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = torch.relu(self.fc1(x))
         h = self.dropout(h)
         h = self.fc2(h)
@@ -53,12 +57,18 @@ class VariableSelectionNetwork(_NNModule):
     """Softmax-weighted GRN per variable — tells us which features matter."""
     def __init__(self, n_vars: int, d_model: int):
         super().__init__()
+        if not _TORCH_AVAILABLE:
+            raise ImportError("Torch is required for VariableSelectionNetwork")
         self.grns = nn.ModuleList([GatedResidualNetwork(d_model, d_model, d_model) for _ in range(n_vars)])
         self.softmax_grn = GatedResidualNetwork(n_vars * d_model, n_vars * d_model, n_vars)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # x: (batch, seq, n_vars * d_model) — pre-embedded features
-        processed = [self.grns[i](x[..., i*x.shape[-1]//len(self.grns):(i+1)*x.shape[-1]//len(self.grns)]) for i in range(len(self.grns))]
+        # x: (batch, seq, n_vars * d_model) — pre‑embedded features
+        var_dim = x.shape[-1] // len(self.grns)
+        processed = [
+            self.grns[i](x[..., i * var_dim:(i + 1) * var_dim])
+            for i in range(len(self.grns))
+        ]
         stacked = torch.stack(processed, dim=-1)   # (batch, seq, d, n_vars)
         flat = x.reshape(x.shape[0], x.shape[1], -1)
         weights = torch.softmax(self.softmax_grn(flat), dim=-1).unsqueeze(-2)  # (batch, seq, 1, n_vars)
@@ -76,6 +86,8 @@ class TFTModel(AbstractModel, _NNModule):
 
     def __init__(self, n_features: int = 20, d_model: int = 64, n_heads: int = 4,
                  seq_len: int = 60, dropout: float = 0.1):
+        if not _TORCH_AVAILABLE:
+            raise ImportError("Torch is required for TFTModel")
         nn.Module.__init__(self)
         self.n_features = n_features
         self.d_model = d_model
@@ -90,7 +102,7 @@ class TFTModel(AbstractModel, _NNModule):
         # GRN layers
         self.grn_enrich = GatedResidualNetwork(d_model, d_model * 2, d_model, dropout)
 
-        # Multi-head self-attention (interpretable)
+        # Multi‑head self‑attention (interpretable)
         self.attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
         self.attn_grn = GatedResidualNetwork(d_model, d_model, d_model, dropout)
         self.ln1 = nn.LayerNorm(d_model)
@@ -110,7 +122,7 @@ class TFTModel(AbstractModel, _NNModule):
         h, _ = self.lstm(h)                          # temporal encoding
         h = self.grn_enrich(h)                       # gated enrichment
 
-        # Self-attention with residual
+        # Self‑attention with residual
         attn_out, self._last_attn_weights = self.attn(h, h, h)
         h = self.ln1(h + self.dropout(attn_out))
         h = self.ln2(h + self.attn_grn(h))
@@ -119,12 +131,13 @@ class TFTModel(AbstractModel, _NNModule):
         return self.head(h[:, -1, :])
 
     def get_attention_weights(self) -> np.ndarray | None:
-        """Returns attention weights for interpretability (last forward pass)."""
+        """Return attention weights from the last forward pass."""
         if hasattr(self, "_last_attn_weights") and self._last_attn_weights is not None:
             return self._last_attn_weights.detach().cpu().numpy()
         return None
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
+        """One training epoch; returns average loss and accuracy."""
         self.train()
         total_loss, total_acc, n = 0.0, 0.0, 0
         for x, y in loader:
@@ -140,18 +153,19 @@ class TFTModel(AbstractModel, _NNModule):
         return {"loss": total_loss / max(n, 1), "acc": total_acc / max(n, 1)}
 
     def evaluate(self, loader) -> EvalMetrics:
+        """Evaluate on a validation set and return metrics."""
         self.eval()
         preds, labels = [], []
         with torch.no_grad():
             for x, y in loader:
-                preds.extend(self(x).squeeze(-1).numpy())
-                labels.extend(y.numpy())
-        preds = np.array(preds)
-        labels = np.array(labels)
-        acc = float(((preds > 0.5) == (labels > 0.5)).mean())
+                preds.extend(self(x).squeeze(-1).cpu().numpy())
+                labels.extend(y.cpu().numpy())
+        preds_arr = np.array(preds)
+        labels_arr = np.array(labels)
+        acc = float(((preds_arr > 0.5) == (labels_arr > 0.5)).mean())
         try:
             from sklearn.metrics import roc_auc_score
-            auc = float(roc_auc_score(labels, preds))
+            auc = float(roc_auc_score(labels_arr, preds_arr))
         except Exception:
             auc = 0.5
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0, loss=None)
