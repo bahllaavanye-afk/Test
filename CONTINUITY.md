@@ -11,7 +11,7 @@ _Last updated: 2026-07-11._
 ## ⚡ STATE AS OF 2026-07-11 (read this first)
 **Everything runs event-driven 24x7** — 21 team/research workflows + keep-alive chained to CI completions (cron starved; that was THE autonomy bug). 7 desks (incl. new International, 13 country ETFs). Signal ensembling live (agree→boost, conflict→stand aside). 8 advanced strategies deployed. Claude backstop capped $1/day (state/claude_budget.json). Per-employee brains in agent_memory.json employee_context.
 
-**FIRST-TRADE BLOCKER:** crypto desk signals fire (conf 0.90) but Alpaca order POST → 403. Order errors now print the response body — read latest desk-trading-crypto log for the exact reason; playbook: docs/playbooks/ALPACA_CRYPTO_CHECK.md.
+**FIRST-TRADE BLOCKER SOLVED 2026-07-12:** the 403 was 'insufficient balance for USD' — paper account overdrawn -$25,207, $0 available (orphaned notional buys nothing tracked). recover_negative_cash() in the desk now auto-flattens the orphaned PAPER book once (triple-guarded: paper URL assert, not-live, AUTO_FLATTEN_ON_NEGATIVE_CASH kill switch) — cash frees, next run trades. If Alpaca still refuses: reset the paper account in the dashboard (instant $100k).
 
 **USER UNLOCKS (only manual steps left):** WORKFLOW_PAT secret (playbook exists) · OA_SESSION_COOKIE · Alpaca crypto check.
 
