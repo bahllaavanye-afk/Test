@@ -199,8 +199,13 @@
     "Extract config files",
     "Refactor nested logic",
     "strategy_logic on ml/models/gnn_signal.py: success \u2014 tests green",
-    "Verify dependency versions"
+    "Verify dependency versions",
+    "schemas on tasks/algo_agent.py: success \u2014 tests green",
+    "schemas on api/v1/integrations.py: success \u2014 tests green",
+    "schemas on test/unit/test_execution.py: success \u2014 tests green",
+    "schemas on strategies/manual/options_strategies.py: success \u2014 tests green",
+    "schemas on ml/models/gemini_signal.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T07:36:15.299654+00:00",
+  "last_updated": "2026-07-12T07:40:31.425028+00:00",
   "total": 200
 }
