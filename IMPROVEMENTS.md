@@ -4,7 +4,7 @@
 
 
 - [x] **[P0] scripts/import_oa_bots.py** + ~~scrape OA PUBLIC leaderboard~~ INVALID: 'optionsalpha.com' 200s were a wrong-domain false positive; real site (optionalpha.com) redirects all bot pages to /login (verified 2026-07-11). Cookie or Cowork are the only paths — both built
-- [ ] **[P0] OANDA FX desk**; **[P1]** WORKFLOW_PAT fallback wiring; ADRs; EM cap 30%
+- [x] **[P0] OANDA FX desk** — fx_desk.py + fx-desk.yml, 7 majors 24/5, 7 tests; **[P1]** WORKFLOW_PAT fallback wiring; ADRs; EM cap 30%
 
 
 > **How tasks are tracked (the answer to "where do tasks live"):**
