@@ -227,7 +227,11 @@ class TrailingStop:
                 await asyncio.sleep(self.poll_seconds)
                 try:
                     quote = await self.broker.get_quote(request.symbol)
-                except Exception:
+                except Exception as exc:  # noqa: BLE001
+                    # A dead quote feed means this stop is NOT protecting the
+                    # position — that must be visible, not a silent skip.
+                    logger.warning("trailing stop: quote failed for %s — stop not adjusting (%s)",
+                                   request.symbol, exc)
                     continue
 
                 if quote.last > high_water:
@@ -273,7 +277,11 @@ class TrailingStop:
                 await asyncio.sleep(self.poll_seconds)
                 try:
                     quote = await self.broker.get_quote(request.symbol)
-                except Exception:
+                except Exception as exc:  # noqa: BLE001
+                    # A dead quote feed means this stop is NOT protecting the
+                    # position — that must be visible, not a silent skip.
+                    logger.warning("trailing stop: quote failed for %s — stop not adjusting (%s)",
+                                   request.symbol, exc)
                     continue
 
                 if quote.last < low_water:

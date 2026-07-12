@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+from app.utils.logging import logger
 from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
 from scipy.spatial.distance import squareform
 
@@ -132,5 +134,8 @@ class HRPOptimizer:
 
             return result
 
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # Silently degrading the optimizer to equal weights hid real input
+            # problems (bad covariance, NaNs) — say so when it happens.
+            logger.warning("HRP optimization failed — falling back to equal weights (%s)", exc)
             return pd.Series(1.0 / n, index=symbols)

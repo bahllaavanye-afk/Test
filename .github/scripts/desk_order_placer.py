@@ -382,6 +382,19 @@ async def _get_bars_batch(symbols: list[str], timeframe: str = "1Day",
 # Sharpe improvement across asset classes.
 _TARGET_ANNUAL_VOL = 0.20
 
+# Daily loss circuit breaker: if account equity is down more than this vs the
+# broker's prior-close equity (Alpaca `last_equity`), the run places NO new
+# orders. Stateless — no local ledger to drift or lose.
+DAILY_LOSS_CAP_PCT = float(os.environ.get("DAILY_LOSS_CAP_PCT", "0.02"))
+
+
+def daily_loss_cap_hit(equity: float, last_equity: float,
+                       cap: float = None) -> bool:
+    cap = DAILY_LOSS_CAP_PCT if cap is None else cap
+    if equity <= 0 or last_equity <= 0:
+        return False   # unknown baseline — don't false-trigger
+    return equity < last_equity * (1.0 - cap)
+
 
 def _vol_scalar(bars) -> float:
     """target/realized annualized vol from 20d closes, clamped [0.5, 2.0].
@@ -800,6 +813,15 @@ async def main() -> None:
                 cash   = float(account.get("cash",         0))
                 buying = float(account.get("buying_power", 0))
                 print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  buying_power=${buying:.2f}", flush=True)
+                # Daily loss circuit breaker (stateless — uses the broker's own
+                # prior-close equity): if the account is down more than the cap
+                # since yesterday's close, place NO new orders this run. Signals
+                # are still generated and logged for the record.
+                last_equity = float(account.get("last_equity", 0) or 0)
+                _loss_cap_hit = daily_loss_cap_hit(equity, last_equity)
+                if _loss_cap_hit:
+                    print(f"  🛑 DAILY LOSS CAP: equity down {1.0 - equity / last_equity:.2%} vs prior "
+                          f"close (cap {DAILY_LOSS_CAP_PCT:.0%}) — no new orders this run", flush=True)
 
             active_desks = [d for d in DESKS if not DESK_FILTER or DESK_FILTER in d.name.lower()]
             if DESK_FILTER and not active_desks:
@@ -946,7 +968,8 @@ async def main() -> None:
         all_orders: list[dict] = []
         desk_summaries: list[str] = []
         total_notional = 0.0
-        _account_ok = float(account.get("buying_power", 0)) > 0
+        _account_ok = (float(account.get("buying_power", 0)) > 0
+                       and not locals().get("_loss_cap_hit", False))
         with tracker.stage(ORDER_EXECUTION, "Place orders"):
             # The market clock only gates equity-hours desks — always-open desks
             # (crypto) trade through nights and weekends.

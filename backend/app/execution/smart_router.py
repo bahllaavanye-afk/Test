@@ -22,8 +22,9 @@ from app.utils.logging import logger
 try:
     from app.execution.rl_exec import RLExecution, get_rl_agent
     _RL_EXEC_AVAILABLE = True
-except Exception:
+except Exception as exc:  # noqa: BLE001 — optional dependency
     _RL_EXEC_AVAILABLE = False
+    logger.debug("RL execution unavailable — falling back to rule router (%s)", exc)
 
 
 class SmartOrderRouter:
