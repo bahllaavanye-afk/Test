@@ -1,12 +1,43 @@
 """Execution algorithm tests using mock broker."""
 import asyncio
 from datetime import datetime, timedelta
+from typing import Literal
 
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.brokers.base import OrderRequest, OrderResult, QuoteResult
 from app.execution.twap import TWAPExecution
 from app.execution.limit_first import LimitFirstExecution
+
+
+class ExecutionResult(BaseModel):
+    """Schema representing the result of an execution algorithm."""
+
+    status: Literal["filled", "partially_filled", "open", "rejected"] = Field(
+        ...,
+        description="Current status of the execution.",
+        example="filled",
+    )
+    filled_qty: float = Field(
+        ...,
+        ge=0,
+        description="Total quantity that has been filled.",
+        example=100.0,
+    )
+    avg_fill_price: float | None = Field(
+        None,
+        ge=0,
+        description="Average price at which the quantity was filled, if applicable.",
+        example=150.25,
+    )
+
+    @validator("status")
+    def check_status(cls, v: str) -> str:
+        allowed = {"filled", "partially_filled", "open", "rejected"}
+        if v not in allowed:
+            raise ValueError(f"status must be one of {allowed}")
+        return v
 
 
 class MockBroker:
@@ -88,6 +119,9 @@ async def test_twap_slices_evenly(request_obj: OrderRequest) -> None:
     twap = TWAPExecution(broker, slices=2, duration_minutes=0.001)
     result = await twap.execute(request_obj)
 
+    # Validate result schema
+    ExecutionResult(**result.dict())
+
     assert len(broker.placed) == 2, "TWAP must place exactly two slice orders"
     assert abs(broker.placed[0].quantity - 50) < 0.01, "First slice quantity should be half of total"
     assert result.filled_qty > 0, "Result should report filled quantity"
@@ -99,6 +133,9 @@ async def test_limit_first_fills_immediately(request_obj: OrderRequest) -> None:
     broker = MockBroker()
     lf = LimitFirstExecution(broker, offset_bps=5, fallback_seconds=1)
     result = await lf.execute(request_obj)
+
+    # Validate result schema
+    ExecutionResult(**result.dict())
 
     assert broker.placed[0].order_type == "limit", "First order must be a limit order"
     assert result.status in ("filled", "partially_filled"), "Result should indicate a fill"
@@ -112,6 +149,9 @@ async def test_limit_first_fallback_to_market(request_obj: OrderRequest) -> None
 
     # Run the execution; it should place a limit order first, wait, then place a market order.
     result = await lf.execute(request_obj)
+
+    # Validate result schema
+    ExecutionResult(**result.dict())
 
     # Two orders should be placed: the initial limit and the fallback market order.
     assert len(broker.placed) == 2, "Both limit and fallback market orders should be placed"
@@ -134,10 +174,11 @@ async def test_twap_exit_logic(request_obj: OrderRequest) -> None:
     result = await twap.execute(request_obj)
     end_time = datetime.utcnow()
 
+    # Validate result schema
+    ExecutionResult(**result.dict())
+
     elapsed = (end_time - start_time).total_seconds() / 60.0
     # Allow a small tolerance due to execution overhead.
     assert elapsed <= duration_minutes * 1.1, "TWAP execution should not significantly exceed the duration"
     assert len(broker.placed) == slices, "TWAP must place the configured number of slices"
     assert result.filled_qty > 0, "Result should contain filled quantity"
-
-"""End of test_execution.py"""
