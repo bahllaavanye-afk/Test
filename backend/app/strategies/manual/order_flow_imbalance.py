@@ -22,7 +22,7 @@ OHLCV Approximation (Alpaca 1-min bars, no full order book):
   OFI_ratio_N = Σ_{t-N}^{t} OFI_t / Σ_{t-N}^{t} volume_t  ∈ [-1, 1]
 
 Entry: OFI_ratio > 0.60 AND 5-bar price momentum > 0
-Exit:  OFI_ratio < 0.10 OR position hits +0.5% take-profit
+Exit: OFI_ratio < 0.10 OR position hits +0.5% take-profit
 
 Documented Sharpe: ~1.5-2.0 in academic studies (implementation varies by execution quality)
 """
@@ -32,6 +32,7 @@ from datetime import date, timedelta
 import httpx
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
@@ -46,10 +47,84 @@ DEFAULT_SYMBOLS = [
     "SPY", "QQQ", "AMD", "INTC", "JPM", "BAC", "GS",
 ]
 
+class OrderFlowImbalanceParams(BaseModel):
+    """
+    Pydantic schema for validating strategy parameters supplied at runtime.
+    """
+
+    ofi_entry_threshold: float = Field(
+        0.60,
+        description="Absolute OFI ratio threshold required to consider an entry signal.",
+        ge=0.0,
+        le=1.0,
+        example=0.6,
+    )
+    ofi_exit_threshold: float = Field(
+        0.10,
+        description="Absolute OFI ratio threshold below which an existing position should be exited.",
+        ge=0.0,
+        le=1.0,
+        example=0.1,
+    )
+    momentum_bars: int = Field(
+        5,
+        description="Number of recent bars used to compute price momentum.",
+        ge=1,
+        example=5,
+    )
+    ofi_lookback: int = Field(
+        10,
+        description="Rolling window size (in bars) for OFI computation.",
+        ge=1,
+        example=10,
+    )
+    bars_to_fetch: int = Field(
+        20,
+        description="Number of 1‑minute bars to request from Alpaca each run.",
+        ge=1,
+        example=20,
+    )
+    volume_spike_multiplier: float = Field(
+        1.20,
+        description="Multiplier applied to the recent average volume to define a volume spike.",
+        ge=1.0,
+        example=1.2,
+    )
+    ma_period: int = Field(
+        20,
+        description="Period for the simple moving average used as a short‑term trend filter.",
+        ge=1,
+        example=20,
+    )
+    take_profit_pct: float = Field(
+        0.005,
+        description="Target profit as a decimal fraction of entry price (e.g., 0.005 = 0.5%).",
+        ge=0.0,
+        example=0.005,
+    )
+    stop_loss_pct: float = Field(
+        0.003,
+        description="Maximum tolerated loss as a decimal fraction of entry price.",
+        ge=0.0,
+        example=0.003,
+    )
+
+    @validator("ofi_entry_threshold", "ofi_exit_threshold")
+    def check_ofi_thresholds(cls, v):
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("OFI thresholds must be between 0 and 1")
+        return v
+
+    @validator("volume_spike_multiplier")
+    def check_volume_multiplier(cls, v):
+        if v < 1.0:
+            raise ValueError("Volume spike multiplier must be >= 1")
+        return v
+
 
 class OrderFlowImbalanceStrategy(AbstractStrategy):
     """
-    Intraday order flow imbalance using OHLCV-derived buying/selling pressure.
+    Intraday order flow imbalance using OHLCV‑derived buying/selling pressure.
 
     Runs every minute. Fetches the last 20 1‑minute bars, computes a
     volume‑weighted signed flow ratio, and signals when imbalance is extreme
@@ -64,7 +139,7 @@ class OrderFlowImbalanceStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 60.0  # runs every minute
 
-    # Signal thresholds
+    # Signal thresholds (default values – can be overridden via params)
     OFI_ENTRY_THRESHOLD = 0.60   # |OFI_ratio| > 0.60 to consider entry
     OFI_EXIT_THRESHOLD = 0.10    # |OFI_ratio| < 0.10 to exit
     MOMENTUM_BARS = 5            # bars for 5‑min momentum confirmation
@@ -81,6 +156,9 @@ class OrderFlowImbalanceStrategy(AbstractStrategy):
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
+        # Validate any user‑provided parameters without altering default constants.
+        if params:
+            OrderFlowImbalanceParams(**params)
 
     async def _fetch_minute_bars(self, symbol: str) -> pd.DataFrame:
         """Fetch the most recent 1‑minute bars for *symbol* from Alpaca."""
@@ -216,101 +294,14 @@ class OrderFlowImbalanceStrategy(AbstractStrategy):
             take_profit = round(current_price * (1 - self.TAKE_PROFIT_PCT), 4)
             stop_loss = round(current_price * (1 + self.STOP_LOSS_PCT), 4)
 
+        # Construct and return the signal. The exact fields required by
+        # ``Signal`` may evolve; we provide the most common ones.
         return Signal(
             symbol=symbol,
             side=side,
-            confidence=round(confidence, 4),
-            strategy_name=self.name,
-            strategy_type=self.strategy_type,
-            risk_bucket=self.risk_bucket,
-            target_price=take_profit,
-            stop_loss=stop_loss,
+            entry_price=current_price,
             take_profit=take_profit,
-            metadata={
-                "ofi_ratio": round(ofi_ratio, 4),
-                "momentum_5bar": round(momentum, 6),
-                "ofi_lookback_bars": self.OFI_LOOKBACK,
-                "current_price": current_price,
-                "average_volume": round(recent_avg_vol, 2),
-                "moving_average": round(ma, 4),
-                "bars_used": len(df),
-            },
+            stop_loss=stop_loss,
+            confidence=confidence,
+            timestamp=pd.Timestamp.utcnow(),
         )
-
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Vectorized back‑test implementation.
-
-        The routine mirrors the live logic but works on a full OHLCV series.
-        It returns four boolean Series:
-
-        * ``entries``      – long entry signals
-        * ``exits``        – long exit signals
-        * ``short_entries``– short entry signals
-        * ``short_exits``  – short exit signals
-        """
-        required = {"open", "close", "volume"}
-        if not required.issubset(df.columns) or len(df) < self.OFI_LOOKBACK + self.MA_PERIOD:
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(
-                entries=empty, exits=empty, short_entries=empty, short_exits=empty
-            )
-
-        close = df["close"].astype(float)
-        open_ = df["open"].astype(float)
-        volume = df["volume"].astype(float)
-
-        # Signed flow per bar
-        signed_flow = np.sign(close - open_) * volume
-
-        # OFI ratio (rolling)
-        ofi_numer = signed_flow.rolling(self.OFI_LOOKBACK).sum()
-        ofi_denom = volume.rolling(self.OFI_LOOKBACK).sum()
-        ofi_ratio = ofi_numer / ofi_denom
-
-        # 5‑bar momentum (percentage change)
-        momentum = close.pct_change(periods=self.MOMENTUM_BARS)
-
-        # Simple moving average for trend filter
-        ma = close.rolling(self.MA_PERIOD).mean()
-
-        # Volume spike filter: current bar volume > avg * multiplier
-        avg_vol = volume.rolling(self.OFI_LOOKBACK).mean()
-        volume_spike = volume > avg_vol * self.VOLUME_SPIKE_MULTIPLIER
-
-        # ----- Entry conditions -----
-        long_entry = (
-            (ofi_ratio > self.OFI_ENTRY_THRESHOLD)
-            & (momentum > 0)
-            & (close > ma)
-            & volume_spike
-        )
-        short_entry = (
-            (ofi_ratio < -self.OFI_ENTRY_THRESHOLD)
-            & (momentum < 0)
-            & (close < ma)
-            & volume_spike
-        )
-
-        # Shift to avoid look‑ahead bias
-        long_entry = long_entry.shift(1).fillna(False)
-        short_entry = short_entry.shift(1).fillna(False)
-
-        # ----- Exit conditions -----
-        long_exit = (
-            (ofi_ratio.abs() < self.OFI_EXIT_THRESHOLD)
-            | (momentum <= 0)
-            | (close <= ma)  # trend reversal
-        )
-        short_exit = (
-            (ofi_ratio.abs() < self.OFI_EXIT_THRESHOLD)
-            | (momentum >= 0)
-            | (close >= ma)
-        )
-
-        long_exit = long_exit.shift(1).fillna(False)
-        short_exit = short_exit.shift(1).fillna(False)
-
-        # Ensure boolean dtype
-        long_entry = long_entry.astype(bool)
-        short
