@@ -199,8 +199,13 @@
     "Verify trade IDs",
     "Review thread safety",
     "Refactor memory logging",
-    "Improve disk monitoring"
+    "Improve disk monitoring",
+    "error_handling on ml/models/mamba_trader.py: success \u2014 tests green",
+    "error_handling on ml/features/macro_signals.py: success \u2014 tests green",
+    "error_handling on execution/iceberg.py: success \u2014 tests green",
+    "error_handling on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "error_handling on brokers/tradestation.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T01:02:31.267258+00:00",
+  "last_updated": "2026-07-12T01:03:34.000497+00:00",
   "total": 200
 }

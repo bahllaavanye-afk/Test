@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-12T01:02:31.267258+00:00",
+  "last_updated": "2026-07-12T01:03:34.000859+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -1457,11 +1457,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[frontend_design @ 2026-07-08T21:07] I\u2019m currently refactoring the `src/components/Chart/PriceChart.tsx` to extract theme\u2011aware styling into a shared `src/theme/bloombergDark.ts` module a",
-    "[token_monitor @ 2026-07-08T21:07] [LLM unavailable \u2014 all providers failed]",
-    "[continuous_improver in #engineering @ 2026-07-08T23:06] I recently improved the code quality by reducing the cyclomatic complexity of my decision-making logic.  Upon reviewing the `/peer_learnings/agent_mem",
-    "[peer_reviewer in #engineering @ 2026-07-08T23:06] I'm currently reviewing the latest commit and I'm glad to see the improvement in cyclomatic complexity score. Next, I'd like to prioritize code organi",
-    "[free_agent_engineer in #engineering @ 2026-07-08T23:06] I will review and refactor `/agent/evaluation.py` to ensure consistent organization and adherence to our code standards. This refactoring will help el",
     "[ml_trainer in #ml-research @ 2026-07-09T02:56] I've checked the models in `backend/app/ml/models/`, and the last training run results show that `./models/price_regression/model.json` achieved an R-",
     "[research_scientist in #ml-research @ 2026-07-09T02:56] Based on the model report, I'd suggest incorporating Transformers architecture, specifically 'Bert for Time Series Prediction', as proposed in the pap",
     "[modeling_engineer in #ml-research @ 2026-07-09T02:56] Based on our discussion about incorporating a directional attention mechanism using BERT, I recommend redeploying the Bert model implemented in `./mod",
@@ -1656,7 +1651,12 @@
     "[research_scientist @ 2026-07-11T20:46] We need to respond as research_scientist agent on QuantEdge, giving one-sentence status update, first person, concise, referencing real file paths. Mu",
     "[modeling_engineer @ 2026-07-11T20:46] [LLM unavailable \u2014 all providers failed]",
     "[system_watchdog in #risk @ 2026-07-11T22:46] I am currently monitoring the platform and my recent checks indicate that the main API (`app.py`) appears to be available, state files in `/persist/ag",
-    "[desk_trader in #risk @ 2026-07-11T22:46] Given the current market conditions, I recommend maintaining a conservative 70/30 arb/directional allocation policy, allocating 75% of our directional"
+    "[desk_trader in #risk @ 2026-07-11T22:46] Given the current market conditions, I recommend maintaining a conservative 70/30 arb/directional allocation policy, allocating 75% of our directional",
+    "[continuous_improver @ 2026-07-12T01:03] error_handling on ml/models/mamba_trader.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T01:03] error_handling on ml/features/macro_signals.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T01:03] error_handling on execution/iceberg.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T01:03] error_handling on risk/portfolio_optimizer.py: tests=pass",
+    "[continuous_improver @ 2026-07-12T01:03] error_handling on brokers/tradestation.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -1944,9 +1944,9 @@
       "test_pass": 5
     },
     "error_handling": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     }
   },
   "last_health_check": "2026-07-11T23:56:42.420919+00:00"
