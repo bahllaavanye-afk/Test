@@ -1,7 +1,12 @@
 """Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+import logging
+import time
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
+
+
+logger = logging.getLogger(__name__)
 
 
 class EnsembleStrategy(AbstractStrategy):
@@ -30,6 +35,8 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        start_time = time.time()
+        signal = None
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -65,7 +72,7 @@ class EnsembleStrategy(AbstractStrategy):
             if latest_vol < median_vol:
                 return None
 
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="buy" if ml_result["prediction"] == "up" else "sell",
                 confidence=ml_result["confidence"],
@@ -74,9 +81,23 @@ class EnsembleStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata=ml_result,
             )
-        except Exception:
-            # In production we would log the exception; for now we silently ignore.
+            return signal
+        except Exception as e:
+            logger.exception("EnsembleStrategy analyze encountered an exception")
             return None
+        finally:
+            elapsed = time.time() - start_time
+            signal_count = 1 if signal else 0
+            # P&L is not available at analysis time; placeholder set to None
+            logger.info(
+                "EnsembleStrategy analyze completed",
+                extra={
+                    "symbol": symbol,
+                    "signal_count": signal_count,
+                    "execution_time_s": round(elapsed, 4),
+                    "pnl": None,
+                },
+            )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -90,37 +111,45 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
-        required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
-        if not required_cols.issubset(df.columns):
-            # If required columns are missing, return empty signals to avoid crashes.
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
+        start_time = time.time()
+        try:
+            required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
+            if not required_cols.issubset(df.columns):
+                # If required columns are missing, return empty signals to avoid crashes.
+                empty = pd.Series(False, index=df.index)
+                return BacktestSignals(entries=empty, exits=empty)
 
-        # Compute rolling SMA and median volume
-        sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
-        median_vol = df["volume"].rolling(window=self.sma_window, min_periods=1).median()
+            # Compute rolling SMA and median volume
+            sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
+            median_vol = df["volume"].rolling(window=self.sma_window, min_periods=1).median()
 
-        # Conditions for a valid entry
-        is_up = df["ml_prediction"] == "up"
-        is_down = df["ml_prediction"] == "down"
-        conf_ok = df["ml_confidence"] >= self.confidence_threshold
-        price_above_sma = df["close"] > sma
-        price_below_sma = df["close"] < sma
-        vol_ok = df["volume"] >= median_vol
+            # Conditions for a valid entry
+            is_up = df["ml_prediction"] == "up"
+            is_down = df["ml_prediction"] == "down"
+            conf_ok = df["ml_confidence"] >= self.confidence_threshold
+            price_above_sma = df["close"] > sma
+            price_below_sma = df["close"] < sma
+            vol_ok = df["volume"] >= median_vol
 
-        long_entry = is_up & conf_ok & price_above_sma & vol_ok
-        short_entry = is_down & conf_ok & price_below_sma & vol_ok
+            long_entry = is_up & conf_ok & price_above_sma & vol_ok
+            short_entry = is_down & conf_ok & price_below_sma & vol_ok
 
-        entries = long_entry | short_entry
+            entries = long_entry | short_entry
 
-        # Exit when any of the entry conditions become false for the current side.
-        # For simplicity we treat the opposite side as an exit signal.
-        exit_long = (~price_above_sma) | (~vol_ok) | (df["ml_prediction"] == "down")
-        exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
-        exits = exit_long | exit_short
+            # Exit when any of the entry conditions become false for the current side.
+            # For simplicity we treat the opposite side as an exit signal.
+            exit_long = (~price_above_sma) | (~vol_ok) | (df["ml_prediction"] == "down")
+            exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
+            exits = exit_long | exit_short
 
-        # Align boolean Series with BacktestSignals expectations
-        entries = entries.astype(bool)
-        exits = exits.astype(bool)
+            # Align boolean Series with BacktestSignals expectations
+            entries = entries.astype(bool)
+            exits = exits.astype(bool)
 
-        return BacktestSignals(entries=entries, exits=exits)
+            return BacktestSignals(entries=entries, exits=exits)
+        finally:
+            elapsed = time.time() - start_time
+            logger.info(
+                "EnsembleStrategy backtest_signals completed",
+                extra={"execution_time_s": round(elapsed, 4)},
+            )
