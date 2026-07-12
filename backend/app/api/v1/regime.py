@@ -1,4 +1,6 @@
 """Market regime and cross-strategy correlation endpoints."""
+from collections import Counter
+
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -27,7 +29,6 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         "unknown": "unknown",
     }
 
-    from collections import Counter
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
