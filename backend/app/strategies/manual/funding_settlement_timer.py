@@ -256,3 +256,20 @@ class FundingSettlementTimer(AbstractStrategy):
             short_entries=short_entries,
             short_exits=short_exits,
         )
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# analyze() fetches Binance funding data; on failure it raised RuntimeError
+# (caught in CI by the registry-wide contract test). Contract: return None.
+_unguarded_analyze = FundingSettlementTimer.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"funding_settlement_timer: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+FundingSettlementTimer.analyze = _failsoft_analyze
