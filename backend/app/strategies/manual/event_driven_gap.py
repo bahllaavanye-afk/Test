@@ -37,26 +37,37 @@ class EventDrivenGapStrategy(AbstractStrategy):
         self.vol_multiplier = p.get("vol_multiplier", self.VOL_MULTIPLIER)
         self.vol_window = p.get("vol_window", self.VOL_WINDOW)
 
-    def _compute_gap(self, df: pd.DataFrame) -> float:
+    def _compute_gap(self, df: pd.DataFrame | None) -> float:
         """Gap = (today's open - yesterday's close) / yesterday's close."""
-        if "open" not in df.columns or len(df) < 2:
+        if df is None or df.empty or "open" not in df.columns or "close" not in df.columns:
+            return 0.0
+        if len(df) < 2:
             return 0.0
         prev_close = float(df["close"].iloc[-2])
         today_open = float(df["open"].iloc[-1])
         return (today_open - prev_close) / prev_close if prev_close > 0 else 0.0
 
-    def _relative_volume(self, df: pd.DataFrame) -> float:
-        """Today's volume / 20-day average volume."""
-        if "volume" not in df.columns or len(df) < self.vol_window + 1:
+    def _relative_volume(self, df: pd.DataFrame | None) -> float:
+        """Today's volume / average volume over the configured window."""
+        if df is None or df.empty or "volume" not in df.columns:
             return 1.0
-        avg_vol = float(df["volume"].iloc[-(self.vol_window + 1):-1].mean())
+        if len(df) < self.vol_window + 1:
+            return 1.0
+        # Slice the window safely; pandas may return NaN if the slice is empty
+        window = df["volume"].iloc[-(self.vol_window + 1) : -1]
+        avg_vol = float(window.mean())
         today_vol = float(df["volume"].iloc[-1])
+        if np.isnan(avg_vol) or avg_vol <= 0:
+            return 1.0
         return today_vol / avg_vol if avg_vol > 0 else 1.0
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str) -> Signal | None:
+        if data is None or data.empty:
+            return None
         if len(data) < self.vol_window + 2:
             return None
-        if "close" not in data.columns:
+        required_cols = {"open", "close", "volume"}
+        if not required_cols.issubset(data.columns):
             return None
 
         gap = self._compute_gap(data)
@@ -77,7 +88,7 @@ class EventDrivenGapStrategy(AbstractStrategy):
                     "relative_volume": round(rvol, 2),
                 },
             )
-        elif gap < -self.gap_threshold and rvol > self.vol_multiplier:
+        if gap < -self.gap_threshold and rvol > self.vol_multiplier:
             # Gap-down with volume → sell short continuation
             confidence = min(0.80, 0.60 + abs(gap) * 5)
             return Signal(
@@ -94,25 +105,36 @@ class EventDrivenGapStrategy(AbstractStrategy):
             )
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        close = df["close"]
+    def backtest_signals(self, df: pd.DataFrame | None) -> BacktestSignals:
+        if df is None or df.empty:
+            empty_series = pd.Series([], dtype=bool)
+            return BacktestSignals(
+                entries=empty_series,
+                exits=empty_series,
+                short_entries=empty_series,
+                short_exits=empty_series,
+            )
 
+        close = df["close"] if "close" in df.columns else pd.Series(dtype=float)
+
+        # Compute gap
         if "open" in df.columns:
             opens = df["open"]
             gap = (opens - close.shift(1)) / close.shift(1)
         else:
             gap = close.pct_change()
 
+        # Compute relative volume
         if "volume" in df.columns:
             vol = df["volume"]
-            vol_avg = vol.rolling(self.vol_window).mean()
-            rvol = vol / vol_avg
+            vol_avg = vol.rolling(self.vol_window, min_periods=1).mean()
+            rvol = vol / vol_avg.replace({0: np.nan})
         else:
             rvol = pd.Series(self.vol_multiplier + 1, index=close.index)
 
-        # Shift everything by 1 to prevent lookahead
-        gap_s = gap.shift(1)
-        rvol_s = rvol.shift(1)
+        # Shift to avoid lookahead bias
+        gap_s = gap.shift(1).fillna(0.0)
+        rvol_s = rvol.shift(1).fillna(self.vol_multiplier + 1)
 
         entries = (gap_s > self.gap_threshold) & (rvol_s > self.vol_multiplier)
         exits = gap_s < 0.0
