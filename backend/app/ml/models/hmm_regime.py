@@ -13,14 +13,38 @@ from __future__ import annotations
 
 import os
 import pickle
+import logging
+from typing import Optional, Dict
+
 import numpy as np
-from typing import Optional
+
+# ----------------------------------------------------------------------
+# Logging configuration (structured, level‑aware)
+# ----------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+# ----------------------------------------------------------------------
+# Custom exception hierarchy
+# ----------------------------------------------------------------------
+class RegimeDetectorError(Exception):
+    """Base exception for all RegimeDetector related errors."""
+    pass
 
 
-# ── Baum-Welch fallback (pure NumPy) ─────────────────────────────────────────
+class RegimePersistenceError(RegimeDetectorError):
+    """Raised when saving or loading a detector fails."""
+    pass
+
+
+class RegimeModelError(RegimeDetectorError):
+    """Raised for errors occurring during model fitting or prediction."""
+    pass
+
+
+# ── Baum‑Welch fallback (pure NumPy) ──────────────────────────────────────
 
 class _BaumWelchHMM:
-    """Minimal Gaussian HMM via Baum-Welch EM. 2-feature input."""
+    """Minimal Gaussian HMM via Baum‑Welch EM. 2‑feature input."""
 
     def __init__(self, n_states: int = 3, n_iter: int = 100, tol: float = 1e-4):
         self.n_states = n_states
@@ -28,7 +52,7 @@ class _BaumWelchHMM:
         self.tol = tol
         self._init_params()
 
-    def _init_params(self):
+    def _init_params(self) -> None:
         K = self.n_states
         self.pi = np.ones(K) / K
         self.A = np.full((K, K), 1.0 / K)
@@ -118,7 +142,7 @@ class _BaumWelchHMM:
 
 class RegimeDetector:
     """
-    3-state HMM for market regime detection.
+    3‑state HMM for market regime detection.
 
     Fit on a return series; features are [return, abs_return].
     States are automatically labelled as bear/sideways/bull by drift ordering.
@@ -127,15 +151,21 @@ class RegimeDetector:
 
     def __init__(self):
         self._model: Optional[_BaumWelchHMM] = None
-        self._state_map: dict[int, int] = {0: 0, 1: 1, 2: 2}
+        self._state_map: Dict[int, int] = {0: 0, 1: 1, 2: 2}
         self._use_hmmlearn = False
         self._hmmlearn_model = None
         self._fitted = False
 
+    # ------------------------------------------------------------------
+    # Feature engineering
+    # ------------------------------------------------------------------
     def _build_features(self, returns: np.ndarray) -> np.ndarray:
         r = np.asarray(returns, dtype=float)
         return np.column_stack([r, np.abs(r)])
 
+    # ------------------------------------------------------------------
+    # Model fitting
+    # ------------------------------------------------------------------
     def fit(self, returns: np.ndarray) -> "RegimeDetector":
         X = self._build_features(returns)
         try:
@@ -151,27 +181,48 @@ class RegimeDetector:
             self._hmmlearn_model = model
             self._use_hmmlearn = True
         except ImportError:
+            logger.info("hmmlearn not available – falling back to pure‑NumPy implementation")
             self._model = _BaumWelchHMM(n_states=self.N_STATES, n_iter=150)
             self._model.fit(X)
             self._use_hmmlearn = False
+        except Exception as exc:  # pragma: no cover
+            logger.exception("Unexpected error during HMM fitting")
+            raise RegimeModelError(f"Failed to fit HMM: {exc}") from exc
 
         # Establish state → regime label by drift ordering
-        states = self.predict(returns)
-        means = [float(returns[states == k].mean()) if (states == k).any() else 0.0
-                 for k in range(self.N_STATES)]
-        # Sort states by mean drift: lowest→bear(0), middle→sideways(1), highest→bull(2)
+        try:
+            states = self.predict(returns)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("Failed to generate initial state sequence after fitting")
+            raise RegimeModelError(f"Prediction error post‑fit: {exc}") from exc
+
+        means = [
+            float(returns[states == k].mean()) if (states == k).any() else 0.0
+            for k in range(self.N_STATES)
+        ]
         order = sorted(range(self.N_STATES), key=lambda k: means[k])
         self._state_map = {raw: label for label, raw in enumerate(order)}
         self._fitted = True
         return self
 
+    # ------------------------------------------------------------------
+    # Prediction helpers
+    # ------------------------------------------------------------------
     def predict(self, returns: np.ndarray) -> np.ndarray:
         """Raw Viterbi state sequence (0/1/2, unordered)."""
         X = self._build_features(returns)
         if self._use_hmmlearn and self._hmmlearn_model is not None:
-            return self._hmmlearn_model.predict(X)
+            try:
+                return self._hmmlearn_model.predict(X)
+            except Exception as exc:  # pragma: no cover
+                logger.exception("hmmlearn prediction failed")
+                raise RegimeModelError(f"hmmlearn prediction error: {exc}") from exc
         if self._model is not None:
-            return self._model.predict(X)
+            try:
+                return self._model.predict(X)
+            except Exception as exc:  # pragma: no cover
+                logger.exception("Baum‑Welch prediction failed")
+                raise RegimeModelError(f"Baum‑Welch prediction error: {exc}") from exc
         raise RuntimeError("Model not fitted — call fit() first")
 
     def predict_regimes(self, returns: np.ndarray) -> np.ndarray:
@@ -186,21 +237,41 @@ class RegimeDetector:
     def regime_name(self, regime: int) -> str:
         return {0: "bear", 1: "sideways", 2: "bull"}.get(regime, "unknown")
 
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
     def save(self, path: str) -> None:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with open(path, "wb") as f:
-            pickle.dump({
-                "model": self._model,
-                "hmmlearn_model": self._hmmlearn_model,
-                "use_hmmlearn": self._use_hmmlearn,
-                "state_map": self._state_map,
-                "fitted": self._fitted,
-            }, f)
+        """Serialise the detector to ``path``."""
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "wb") as f:
+                pickle.dump(
+                    {
+                        "model": self._model,
+                        "hmmlearn_model": self._hmmlearn_model,
+                        "use_hmmlearn": self._use_hmmlearn,
+                        "state_map": self._state_map,
+                        "fitted": self._fitted,
+                    },
+                    f,
+                )
+        except (OSError, pickle.PickleError) as exc:
+            logger.exception("Failed to save RegimeDetector", extra={"path": path})
+            raise RegimePersistenceError(f"Unable to save detector to {path}: {exc}") from exc
 
     @classmethod
     def load(cls, path: str) -> "RegimeDetector":
-        with open(path, "rb") as f:
-            data = pickle.load(f)
+        """Deserialize a detector from ``path``."""
+        try:
+            with open(path, "rb") as f:
+                data = pickle.load(f)
+        except FileNotFoundError as exc:
+            logger.exception("RegimeDetector file not found", extra={"path": path})
+            raise RegimePersistenceError(f"File not found: {path}") from exc
+        except (OSError, pickle.PickleError) as exc:
+            logger.exception("Failed to load RegimeDetector", extra={"path": path})
+            raise RegimePersistenceError(f"Unable to load detector from {path}: {exc}") from exc
+
         det = cls()
         det._model = data.get("model")
         det._hmmlearn_model = data.get("hmmlearn_model")
@@ -208,8 +279,3 @@ class RegimeDetector:
         det._state_map = data.get("state_map", {0: 0, 1: 1, 2: 2})
         det._fitted = data.get("fitted", False)
         return det
-
-
-# Public alias — the model registry (app/ml/models/__init__.py) imports the HMM
-# regime model as ``HMMRegimeModel``; the implementation class is ``RegimeDetector``.
-HMMRegimeModel = RegimeDetector
