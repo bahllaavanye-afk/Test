@@ -1,8 +1,5 @@
 {
   "skills": [
-    "optimization on backtest/stress_test.py: success \u2014 tests green",
-    "Check RAM usage",
-    "Based on the agent learnings, the following are the most important and actionable takeaways:",
     "Optimize agent memory usage",
     "* Monitor model drift pipeline for the `LSTM` model, triggered by a recommendation to retrain it after referencing `LSTM_model_retraining.ipynb`.",
     "error_handling on ml/features/wavelet_features.py: success \u2014 tests green",
@@ -199,8 +196,11 @@
     "Scan for deadlocks",
     "Test DB connections",
     "Verify thread counts",
-    "Scan for timeouts"
+    "Scan for timeouts",
+    "Track GC cycles",
+    "Verify dependencies",
+    "Scan for orphaned threads"
   ],
-  "last_updated": "2026-07-12T22:42:41.963277+00:00",
+  "last_updated": "2026-07-12T23:50:27.673297+00:00",
   "total": 200
 }
