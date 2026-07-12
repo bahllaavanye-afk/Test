@@ -8,6 +8,7 @@ Standard at all hedge funds. Uniquely missing from open‑source bots.
 from __future__ import annotations
 
 import logging
+import unittest
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 
@@ -222,3 +223,41 @@ def compute_factor_exposure(
         alpha_annualized=alpha_daily * 252,
         tracking_error=tracking_error,
     )
+
+
+class TestFactorExposure(unittest.TestCase):
+    """Edge‑case unit tests for compute_factor_exposure."""
+
+    def test_insufficient_data_returns_default(self):
+        """When fewer than 20 observations are provided, a default result is returned."""
+        portfolio = [0.001] * 10
+        spy = [0.001] * 10
+        result = compute_factor_exposure(portfolio, spy)
+        self.assertEqual(result.market_beta, 1.0)
+        self.assertEqual(result.r_squared, 0.0)
+        self.assertEqual(result.tracking_error, 0.02)
+
+    def test_momentum_factor_too_short_is_ignored(self):
+        """A momentum factor shorter than the usable window should be ignored without error."""
+        n = 25
+        portfolio = np.random.normal(0, 0.01, n).tolist()
+        spy = np.random.normal(0, 0.01, n).tolist()
+        # Provide momentum factor with length less than n
+        momentum = np.random.normal(0, 0.01, n - 5).tolist()
+        result = compute_factor_exposure(portfolio, spy, momentum_factor=momentum)
+        # Since momentum was ignored, its loading should be zero
+        self.assertAlmostEqual(result.momentum_loading, 0.0, places=6)
+
+    def test_zero_variance_portfolio_yields_zero_r_squared(self):
+        """When portfolio returns have zero variance, r_squared should be zero and not raise."""
+        n = 30
+        portfolio = [0.0] * n  # zero variance
+        spy = np.random.normal(0, 0.01, n).tolist()
+        result = compute_factor_exposure(portfolio, spy)
+        self.assertEqual(result.r_squared, 0.0)
+        # Alpha should be zero because the portfolio never moves
+        self.assertEqual(result.alpha_annualized, 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
