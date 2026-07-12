@@ -199,8 +199,13 @@
     "Scan for deadlocks",
     "Test DB connections",
     "Verify thread counts",
-    "Scan for timeouts"
+    "Scan for timeouts",
+    "schemas on tasks/ml_retrain.py: success \u2014 tests green",
+    "schemas on api/v1/regime.py: success \u2014 tests green",
+    "schemas on strategies/manual/opening_range_breakout.py: success \u2014 tests green",
+    "schemas on ml/models/xgboost_model.py: success \u2014 tests green",
+    "schemas on ml/features/alternative.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T18:01:42.436373+00:00",
+  "last_updated": "2026-07-12T19:38:37.293465+00:00",
   "total": 200
 }
