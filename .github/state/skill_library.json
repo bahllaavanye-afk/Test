@@ -199,8 +199,13 @@
     "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
     "optimization on api/v1/strategies.py: success \u2014 tests green",
     "Check disk space",
-    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:"
+    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
+    "strategy_logic on test/unit/test_ml_registry_names.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/cross_asset_carry.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "strategy_logic on ml/models/hmm_regime.py: success \u2014 tests green",
+    "strategy_logic on ml/features/sentiment.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T09:26:37.040760+00:00",
+  "last_updated": "2026-07-12T10:54:09.250060+00:00",
   "total": 200
 }
