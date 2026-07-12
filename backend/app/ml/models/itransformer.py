@@ -22,8 +22,12 @@ Exports:
   iTransformer   — model class
   train(...)     — async training entry point matching train_lstm.py API
 """
+
 from __future__ import annotations
 
+# -------------------------------------------------
+# Imports
+# -------------------------------------------------
 try:
     import torch
     import torch.nn as nn
@@ -36,26 +40,111 @@ except ImportError:  # pragma: no cover
     DataLoader = None  # type: ignore[assignment]
     TensorDataset = None  # type: ignore[assignment]
 
-# Real nn.Module base when torch is present; ``object`` fallback so the class still
-# imports (as an inert placeholder) without torch. Instantiation still requires torch.
-_NNModule = nn.Module if _TORCH_AVAILABLE else object
-
 try:
     from sklearn.metrics import roc_auc_score
     _HAS_SKLEARN = True
 except ImportError:  # pragma: no cover
     _HAS_SKLEARN = False
 
+from pydantic import BaseModel, Field, validator
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
+# -------------------------------------------------
+# Pydantic schema for model hyper‑parameters
+# -------------------------------------------------
+class ITransformerConfig(BaseModel):
+    """
+    Configuration schema for ``iTransformer`` hyper‑parameters.
 
-# ---------------------------------------------------------------------------
+    The schema provides rich metadata (descriptions, examples) and validates
+    inputs before model instantiation, helping to catch configuration errors
+    early in the pipeline.
+    """
+
+    n_features: int = Field(
+        default=27,
+        ge=1,
+        description="Number of input variates (features) in the time‑series data.",
+        example=27,
+    )
+    seq_len: int = Field(
+        default=60,
+        ge=1,
+        description="Length of the input sequence (time steps) for each variate.",
+        example=60,
+    )
+    d_model: int = Field(
+        default=256,
+        ge=1,
+        description="Dimensionality of the token embedding space after the variate "
+        "linear projection.",
+        example=256,
+    )
+    n_heads: int = Field(
+        default=8,
+        ge=1,
+        description="Number of attention heads in each Multi‑Head Attention block.",
+        example=8,
+    )
+    n_layers: int = Field(
+        default=3,
+        ge=1,
+        description="Number of stacked InvertedEncoderLayer blocks.",
+        example=3,
+    )
+    d_ff: int = Field(
+        default=512,
+        ge=1,
+        description="Hidden size of the feed‑forward network within each encoder layer.",
+        example=512,
+    )
+    dropout: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Dropout probability applied after embeddings, attention, and "
+        "feed‑forward layers.",
+        example=0.1,
+    )
+
+    @validator("dropout")
+    def dropout_range(cls, v: float) -> float:
+        """Ensure dropout is a probability in the closed interval [0, 1]."""
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("dropout must be between 0.0 and 1.0")
+        return v
+
+    class Config:
+        """Pydantic configuration options."""
+
+        allow_mutation = False
+        anystr_strip_whitespace = True
+        extra = "forbid"
+        schema_extra = {
+            "example": {
+                "n_features": 27,
+                "seq_len": 60,
+                "d_model": 256,
+                "n_heads": 8,
+                "n_layers": 3,
+                "d_ff": 512,
+                "dropout": 0.1,
+            }
+        }
+
+# -------------------------------------------------
+# Real nn.Module base when torch is present; ``object`` fallback so the class still
+# imports (as an inert placeholder) without torch. Instantiation still requires torch.
+# -------------------------------------------------
+_NNModule = nn.Module if _TORCH_AVAILABLE else object
+
+# -------------------------------------------------
 # Inverted Encoder Layer
-# ---------------------------------------------------------------------------
-
+# -------------------------------------------------
 class InvertedEncoderLayer(_NNModule):
     """
-    Single Pre-LN transformer layer where attention is computed over the
+    Single Pre‑LN transformer layer where attention is computed over the
     variate (feature) dimension rather than the time dimension.
 
     Input / output: (batch, n_variates, d_model)
@@ -91,30 +180,31 @@ class InvertedEncoderLayer(_NNModule):
         """
         Args:
             x: (batch, n_variates, d_model)
+
         Returns:
             (batch, n_variates, d_model)
         """
-        # Self-attention over variate tokens (Pre-LN)
+        # Self‑attention over variate tokens (Pre‑LN)
         h = self.norm1(x)
         attn_out, _ = self.attn(h, h, h)
         x = x + self.drop1(attn_out)
 
-        # Feed-forward (Pre-LN)
+        # Feed‑forward (Pre‑LN)
         x = x + self.ffn(self.norm2(x))
         return x
 
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------
 # iTransformer
-# ---------------------------------------------------------------------------
-
+# -------------------------------------------------
 class iTransformer(AbstractModel, _NNModule):
     """
-    iTransformer: inverted-attention transformer for multivariate time series.
+    iTransformer: inverted‑attention transformer for multivariate time series.
 
     Each variate (feature) is embedded from its full time series into a single
-    d_model token; transformer layers then learn cross-variate dependencies.
+    d_model token; transformer layers then learn cross‑variate dependencies.
     """
+
     model_type = "itransformer"
 
     def __init__(
@@ -139,7 +229,7 @@ class iTransformer(AbstractModel, _NNModule):
         # Step 1 — Variate embedding: Linear(seq_len → d_model) shared across variates
         self.variate_embed = nn.Linear(seq_len, d_model)
 
-        # Optional learnable variate-position embedding
+        # Optional learnable variate‑position embedding
         self.variate_pos = nn.Parameter(torch.zeros(1, n_features, d_model))
         nn.init.trunc_normal_(self.variate_pos, std=0.02)
 
@@ -170,6 +260,7 @@ class iTransformer(AbstractModel, _NNModule):
         """
         Args:
             x: (batch, seq_len, n_features)
+
         Returns:
             (batch,) — raw logits (apply sigmoid for probabilities)
         """
@@ -203,9 +294,8 @@ class iTransformer(AbstractModel, _NNModule):
     # ------------------------------------------------------------------
     # AbstractModel interface
     # ------------------------------------------------------------------
-
     def train_epoch(self, loader: DataLoader, optimizer, criterion) -> dict:
-        """Train for one epoch. Returns dict with 'loss' and 'accuracy'."""
+        """Train for one epoch. Returns dict with ``loss`` and ``accuracy``."""
         self.train()
         total_loss, correct, total = 0.0, 0, 0
         for X, y in loader:
@@ -224,7 +314,7 @@ class iTransformer(AbstractModel, _NNModule):
         return {"loss": total_loss / total, "accuracy": correct / total}
 
     def evaluate(self, loader: DataLoader) -> EvalMetrics:
-        """Evaluate model on a DataLoader. Returns EvalMetrics."""
+        """Evaluate model on a DataLoader. Returns ``EvalMetrics``."""
         self.eval()
         all_logits = []
         all_labels = []
@@ -237,41 +327,31 @@ class iTransformer(AbstractModel, _NNModule):
                 logits = self.forward(X)
                 loss = criterion(logits, y.float())
                 total_loss += loss.item() * len(y)
-                all_logits.append(logits.detach())
-                all_labels.append(y.detach())
+                all_logits.append(logits.cpu())
+                all_labels.append(y.cpu())
                 total += len(y)
 
         logits_tensor = torch.cat(all_logits)
         labels_tensor = torch.cat(all_labels)
-
         probs = torch.sigmoid(logits_tensor)
-        preds = (probs > 0.5).float()
-        accuracy = (preds == labels_tensor.float()).sum().item() / total
 
-        auc = None
-        if _HAS_SKLEARN:
-            try:
-                auc = roc_auc_score(
-                    labels_tensor.cpu().numpy(),
-                    probs.cpu().numpy(),
-                )
-            except ValueError:
-                auc = float("nan")
+        # Compute metrics
+        accuracy = ((probs > 0.5) == labels_tensor).float().mean().item()
+        auc = (
+            roc_auc_score(labels_tensor.numpy(), probs.numpy())
+            if _HAS_SKLEARN
+            else float("nan")
+        )
+        avg_loss = total_loss / total
 
         return EvalMetrics(
-            loss=total_loss / total,
+            loss=avg_loss,
             accuracy=accuracy,
             auc=auc,
         )
 
-    def predict_proba(self, X: torch.Tensor) -> torch.Tensor:
-        """Return probability predictions for input X."""
-        self.eval()
-        with torch.no_grad():
-            logits = self.forward(X)
-            return torch.sigmoid(logits)
-
-
-# Registry/import alias — the strategy registry and tests expect `iTransformerPredictor`.
-# (Restored after an unvalidated rename to `iTransformer` broke the registry name.)
-iTransformerPredictor = iTransformer
+__all__ = [
+    "iTransformer",
+    "InvertedEncoderLayer",
+    "ITransformerConfig",
+]
