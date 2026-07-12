@@ -1,7 +1,5 @@
 {
   "skills": [
-    "git pull --rebase before committing \u2014 prevents push rejections",
-    "cleanup on test/unit/test_reward_gate.py: success \u2014 tests green",
     "Explore UCB1 bandit",
     "* The current LLM (Language Model) is experiencing connectivity issues and unavailable from multiple providers. Resolve this issue to ensure reliable information extraction.",
     "Test network connectivity",
@@ -199,8 +197,10 @@
     "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
     "optimization on api/v1/strategies.py: success \u2014 tests green",
     "Check disk space",
-    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:"
+    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
+    "Log API calls",
+    "Monitor memory leaks"
   ],
-  "last_updated": "2026-07-12T14:40:10.466693+00:00",
+  "last_updated": "2026-07-12T15:56:13.199695+00:00",
   "total": 200
 }
