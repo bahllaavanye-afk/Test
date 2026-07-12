@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Review code for optimization",
-    "monitoring on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
-    "Log exception details",
-    "[desk_trader in #risk @ 2026-07-06T03:28] Considering the current market conditions and risk status, I recommend a 55% directional exposure and 45% ma",
-    "Test DB connections",
-    "Based on the recent agent learnings:",
     "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
     "Handle timeouts",
     "* **Voting model needs retraining**: `ml_trainer` recommends retraining the 'voting_model.py' with Temporal Shift Embedding (TSE) to improve prediction accuracy.",
@@ -199,8 +193,14 @@
     "Check DB connections",
     "Test market data",
     "Verify config files",
-    "Check system clocks"
+    "Check system clocks",
+    "Monitor heap size",
+    "Log network errors",
+    "Verify trade IDs",
+    "Review thread safety",
+    "Refactor memory logging",
+    "Improve disk monitoring"
   ],
-  "last_updated": "2026-07-11T23:25:02.582763+00:00",
+  "last_updated": "2026-07-12T01:02:31.267258+00:00",
   "total": 200
 }
