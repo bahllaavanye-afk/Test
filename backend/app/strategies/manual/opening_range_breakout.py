@@ -24,17 +24,56 @@ Expected Sharpe: 0.9-1.4 (intraday, not annualized)
 
 Data requirement: 1-minute bars (Alpaca free tier provides this)
 """
+
 import numpy as np
 import pandas as pd
 import httpx
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from pydantic import BaseModel, Field, validator
+
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 from app.config import settings
 from app.brokers.alpaca_headers import alpaca_headers
 
 
 ET = ZoneInfo("America/New_York")
+
+
+class OpeningRangeBreakoutParams(BaseModel):
+    """Configuration parameters for the Opening Range Breakout strategy."""
+
+    orb_minutes: int = Field(
+        30,
+        description="Length of the opening range window in minutes.",
+        example=30,
+        ge=1,
+    )
+    volume_multiplier: float = Field(
+        1.2,
+        description="Multiplier applied to average volume to filter low‑liquidity days.",
+        example=1.2,
+        ge=1.0,
+    )
+    stop_loss_pct: float = Field(
+        0.5,
+        description="Maximum loss as a proportion of the premium paid (0‑1).",
+        example=0.5,
+        ge=0.0,
+        le=1.0,
+    )
+    profit_target_pct: float = Field(
+        50.0,
+        description="Profit target expressed as a percentage of the premium paid.",
+        example=50.0,
+        gt=0.0,
+    )
+
+    @validator("profit_target_pct")
+    def profit_target_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("profit_target_pct must be greater than 0")
+        return v
 
 
 class OpeningRangeBreakoutStrategy(AbstractStrategy):
@@ -46,12 +85,12 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
     tick_interval_seconds = 60.0  # 1-minute resolution
 
     OR_START = 9 * 60 + 30   # 9:30 ET in minutes from midnight
-    OR_END   = 10 * 60 + 0   # 10:00 ET
+    OR_END = 10 * 60 + 0     # 10:00 ET
     HARD_EXIT = 14 * 60 + 0  # 2:00 PM ET
-    MIN_RANGE_PCT = 0.003     # Minimum 0.3% range to trade (filter out quiet opens)
-    GAP_UP_PCT   = 0.003      # Minimum gap size for daily OHLCV backtest proxy
-    PROFIT_TARGET = 0.50      # 50% of premium paid
-    MAX_STOP_PCT = 0.50       # Stop at 50% loss (options can move fast)
+    MIN_RANGE_PCT = 0.003    # Minimum 0.3% range to trade (filter out quiet opens)
+    GAP_UP_PCT = 0.003       # Minimum gap size for daily OHLCV backtest proxy
+    PROFIT_TARGET = 0.50     # 50% of premium paid
+    MAX_STOP_PCT = 0.50      # Stop at 50% loss (options can move fast)
 
     _DATA_BASE = "https://data.alpaca.markets"
 
@@ -65,13 +104,16 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
     def __init__(self, params: dict | None = None):
         super().__init__(params)
         effective = {**self.DEFAULT_PARAMS, **(params or {})}
-        self.orb_minutes = int(effective["orb_minutes"])
-        self.volume_multiplier = float(effective["volume_multiplier"])
-        self.stop_loss_pct = float(effective["stop_loss_pct"])
-        self.profit_target_pct = float(effective["profit_target_pct"])
+        # Validate and coerce parameters using the Pydantic model
+        validated_params = OpeningRangeBreakoutParams(**effective)
+
+        self.orb_minutes = validated_params.orb_minutes
+        self.volume_multiplier = validated_params.volume_multiplier
+        self.stop_loss_pct = validated_params.stop_loss_pct
+        self.profit_target_pct = validated_params.profit_target_pct
 
     async def _fetch_intraday_bars(self, symbol: str) -> pd.DataFrame:
-        """Fetch today's 1-minute bars."""
+        """Fetch today's 1‑minute bars for a given symbol."""
         today = date.today().isoformat()
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
@@ -108,13 +150,13 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
         if intraday.empty:
             return None
 
-        # Compute opening range: high and low of 9:30-10:00
+        # Compute opening range: high and low of 9:30‑10:00
         or_bars = intraday.between_time("09:30", "09:59")
         if or_bars.empty:
             return None
 
         or_high = float(or_bars["h"].max())
-        or_low  = float(or_bars["l"].min())
+        or_low = float(or_bars["l"].min())
         or_range_pct = (or_high - or_low) / or_low
 
         if or_range_pct < self.MIN_RANGE_PCT:
@@ -124,10 +166,10 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
         current_price = float(intraday["c"].iloc[-1])
 
         # Breakout signal
-        if current_price > or_high * 1.001:  # 0.1% buffer above OR-high
+        if current_price > or_high * 1.001:  # 0.1% buffer above OR‑high
             side = "buy"
             confidence = min((current_price / or_high - 1) / 0.005, 1.0)
-        elif current_price < or_low * 0.999:  # 0.1% buffer below OR-low
+        elif current_price < or_low * 0.999:  # 0.1% buffer below OR‑low
             side = "sell"
             confidence = min((or_low / current_price - 1) / 0.005, 1.0)
         else:
@@ -156,16 +198,16 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
         """
         Daily OHLCV proxy for ORB.
 
-        True ORB requires 1-minute intraday bars (9:30-10:00 ET range).  With
-        daily OHLCV we approximate using the open-gap + intraday range filter:
+        True ORB requires 1‑minute intraday bars (9:30‑10:00 ET range). With
+        daily OHLCV we approximate using the open‑gap + intraday range filter:
 
           • Gap up  (open > prev_close + MIN_GAP) AND day's range is wide
             (high - low > ATR_MULT * 20d ATR) → long entry signal.
           • Gap down (open < prev_close - MIN_GAP) with wide range → short.
-          • Exit after 1 bar (intraday hold, simulated as next-bar close).
+          • Exit after 1 bar (intraday hold, simulated as next‑bar close).
 
-        NOTE: This proxy under-estimates live performance because it cannot
-        capture the exact 9:30-10:00 range breakout timing.  Walk-forward
+        NOTE: This proxy under‑estimates live performance because it cannot
+        capture the exact 9:30‑10:00 range breakout timing. Walk‑forward
         validation on daily bars provides a conservative lower bound.
         """
         if "open" not in df.columns or "high" not in df.columns or len(df) < 25:
@@ -176,28 +218,28 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
 
         close = df["close"].astype(float)
         open_ = df["open"].astype(float)
-        high  = df["high"].astype(float)
-        low   = df["low"].astype(float)
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
 
         prev_close = close.shift(1)
-        gap_pct    = (open_ - prev_close) / prev_close
+        gap_pct = (open_ - prev_close) / prev_close
 
-        # 20-day ATR as volatility filter — only trade on high-range days
-        tr     = (high - low).combine(
+        # 20‑day ATR as volatility filter — only trade on high‑range days
+        tr = (high - low).combine(
             (high - close.shift(1)).abs(), max
         ).combine((low - close.shift(1)).abs(), max)
         atr_20 = tr.rolling(20, min_periods=10).mean()
         intraday_range = high - low
         wide_range = intraday_range > (1.2 * atr_20)
 
-        gap_up   = (gap_pct > self.GAP_UP_PCT)   & wide_range
-        gap_down = (gap_pct < -self.GAP_UP_PCT)  & wide_range
+        gap_up = (gap_pct > self.GAP_UP_PCT) & wide_range
+        gap_down = (gap_pct < -self.GAP_UP_PCT) & wide_range
 
         # shift(1): yesterday's gap determines today's signal
-        entries       = gap_up.shift(1).fillna(False)
-        exits         = entries.shift(1).fillna(False)   # 1-bar hold
+        entries = gap_up.shift(1).fillna(False)
+        exits = entries.shift(1).fillna(False)   # 1‑bar hold
         short_entries = gap_down.shift(1).fillna(False)
-        short_exits   = short_entries.shift(1).fillna(False)
+        short_exits = short_entries.shift(1).fillna(False)
 
         return BacktestSignals(
             entries=entries.astype(bool),
