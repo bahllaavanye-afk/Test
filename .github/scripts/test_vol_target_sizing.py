@@ -63,3 +63,17 @@ def test_kelly_notional_scales_with_vol():
 def test_kelly_without_bars_unchanged_behavior():
     # regression: legacy call signature still works and is deterministic
     assert dop._kelly_notional(100_000, 0.90) == dop._kelly_notional(100_000, 0.90)
+
+
+# ── Daily loss circuit breaker ────────────────────────────────────────────────
+
+def test_loss_cap_triggers_beyond_2pct():
+    assert dop.daily_loss_cap_hit(97_900.0, 100_000.0, cap=0.02) is True    # -2.1%
+    assert dop.daily_loss_cap_hit(98_100.0, 100_000.0, cap=0.02) is False   # -1.9%
+    assert dop.daily_loss_cap_hit(101_000.0, 100_000.0, cap=0.02) is False  # up day
+
+
+def test_loss_cap_never_false_triggers_without_baseline():
+    assert dop.daily_loss_cap_hit(0.0, 100_000.0) is False       # unknown equity
+    assert dop.daily_loss_cap_hit(50_000.0, 0.0) is False        # no prior close
+    assert dop.daily_loss_cap_hit(-1.0, -1.0) is False
