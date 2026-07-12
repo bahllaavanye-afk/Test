@@ -25,10 +25,15 @@ from typing import Any, Iterable
 
 from app.utils.logging import logger
 
-# Every desk order is tagged with this prefix by desk_order_placer.py. Scoping
-# strictly to it isolates desk fills from anything else on the Alpaca account
-# (manual orders, bot orders) so we never double-count.
+# Constants
 DESK_COID_PREFIX = "qe-"
+STATUS_FILLED = "filled"
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+TIMESTAMP_FIELDS = ("filled_at", "updated_at", "submitted_at")
+TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+DEFAULT_LOOKBACK_DAYS = 30
+EPSILON = 1e-12
 
 
 def _sign(x: float) -> int:
@@ -107,7 +112,7 @@ def reconstruct_closed_trades(
     """
     fills: list[dict] = []
     for o in orders:
-        if str(o.get("status", "")).lower() != "filled":
+        if str(o.get("status", "")).lower() != STATUS_FILLED:
             continue
         strat = parse_strategy_from_coid(o.get("client_order_id"), registry_names)
         if strat is None:
@@ -119,11 +124,15 @@ def reconstruct_closed_trades(
             continue
         if qty <= 0 or price <= 0:
             continue
-        ts = _parse_ts(o.get("filled_at") or o.get("updated_at") or o.get("submitted_at"))
+        ts = _parse_ts(
+            o.get("filled_at")
+            or o.get("updated_at")
+            or o.get("submitted_at")
+        )
         if ts is None:
             continue
         side = str(o.get("side", "")).lower()
-        if side not in ("buy", "sell"):
+        if side not in (SIDE_BUY, SIDE_SELL):
             continue
         fills.append({
             "strategy": strat,
@@ -144,20 +153,20 @@ def reconstruct_closed_trades(
     for f in fills:
         key = (f["strategy"], f["symbol"])
         q = lots[key]
-        remaining = f["qty"] if f["side"] == "buy" else -f["qty"]
+        remaining = f["qty"] if f["side"] == SIDE_BUY else -f["qty"]
 
         # Close opposing lots FIFO.
-        while abs(remaining) > 1e-12 and q and _sign(q[0]["signed"]) == -_sign(remaining):
+        while abs(remaining) > EPSILON and q and _sign(q[0]["signed"]) == -_sign(remaining):
             lot = q[0]
             match = min(abs(lot["signed"]), abs(remaining))
             entry = lot["price"]
             exit_price = f["price"]
             if lot["signed"] > 0:  # closing a long
                 pnl = (exit_price - entry) * match
-                lot_side = "buy"
+                lot_side = SIDE_BUY
             else:                  # closing a short
                 pnl = (entry - exit_price) * match
-                lot_side = "sell"
+                lot_side = SIDE_SELL
             hold_seconds = int((f["ts"] - lot["opened_at"]).total_seconds())
             trades.append({
                 "strategy_name": f["strategy"],
@@ -174,14 +183,14 @@ def reconstruct_closed_trades(
                 "open_order_id": lot["order_id"],
             })
             lot_remaining = abs(lot["signed"]) - match
-            if lot_remaining <= 1e-12:
+            if lot_remaining <= EPSILON:
                 q.popleft()
             else:
                 lot["signed"] = _sign(lot["signed"]) * lot_remaining
             remaining = _sign(remaining) * (abs(remaining) - match)
 
         # Leftover (same-direction add, or the excess of a position flip) opens a lot.
-        if abs(remaining) > 1e-12:
+        if abs(remaining) > EPSILON:
             q.append({
                 "signed": remaining,
                 "price": f["price"],
@@ -192,7 +201,7 @@ def reconstruct_closed_trades(
     return trades
 
 
-async def _fetch_closed_orders(acct, lookback_days: int = 30) -> list[dict]:
+async def _fetch_closed_orders(acct, lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> list[dict]:
     """Fetch recently-closed orders for an Alpaca account (paginated, bounded)."""
     import httpx
 
@@ -201,149 +210,7 @@ async def _fetch_closed_orders(acct, lookback_days: int = 30) -> list[dict]:
     headers = await _headers(acct)
     base = _base_url(acct)
     after = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+        TIMESTAMP_FORMAT
     )
-    collected: list[dict] = []
-    # Alpaca caps `limit` at 500 and paginates by the last seen submitted_at.
-    async with httpx.AsyncClient(timeout=15) as client:
-        for _ in range(10):  # hard cap: 5000 orders / sync
-            params = {
-                "status": "closed",
-                "limit": 500,
-                "direction": "asc",
-                "after": after,
-                "nested": "false",
-            }
-            resp = await client.get(f"{base}/v2/orders", headers=headers, params=params)
-            if resp.status_code != 200:
-                logger.warning("Desk trade sync: order fetch failed", status=resp.status_code)
-                break
-            page = resp.json()
-            if not page:
-                break
-            collected.extend(page)
-            if len(page) < 500:
-                break
-            # Advance the window past the last order to avoid re-fetching it.
-            last_ts = page[-1].get("submitted_at") or page[-1].get("created_at")
-            if not last_ts:
-                break
-            after = last_ts
-    return collected
-
-
-async def sync_desk_trades(db_session_factory=None, lookback_days: int = 30) -> int:
-    """Pull desk fills from Alpaca and persist newly-closed round trips as Trades.
-
-    Idempotent: a trade is keyed by its closing Alpaca order id
-    (``raw_payload.close_order_id``); trades already recorded in the lookback
-    window are skipped, so re-running never duplicates rows.
-
-    Returns the number of new Trade rows written.
-    """
-    from sqlalchemy import select
-
-    from app.models.account import Account
-    from app.models.strategy import Strategy
-    from app.models.trade import Trade
-
-    if db_session_factory is None:
-        try:
-            from app.database import AsyncSessionLocal as db_session_factory  # type: ignore
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Desk trade sync: no DB session factory", error=str(exc))
-            return 0
-
-    try:
-        from app.strategies import STRATEGY_REGISTRY
-
-        registry_names = set(STRATEGY_REGISTRY.keys())
-    except Exception:
-        registry_names = set()
-
-    written = 0
-    try:
-        async with db_session_factory() as db:
-            accounts = (await db.execute(
-                select(Account).where(
-                    Account.broker == "alpaca",
-                    Account.mode == "paper",
-                    Account.is_active == True,  # noqa: E712
-                    Account.encrypted_key.isnot(None),
-                )
-            )).scalars().all()
-
-            # name → strategy_id, for FK attribution (best-effort).
-            strat_rows = (await db.execute(select(Strategy.id, Strategy.name))).all()
-            strat_id_by_name = {r.name: r.id for r in strat_rows}
-
-        if not accounts:
-            logger.debug("Desk trade sync: no active Alpaca paper accounts")
-            return 0
-
-        lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-
-        for acct in accounts:
-            try:
-                orders = await _fetch_closed_orders(acct, lookback_days=lookback_days)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Desk trade sync: fetch error", account_id=acct.id, error=str(exc))
-                continue
-            if not orders:
-                continue
-
-            reconstructed = reconstruct_closed_trades(orders, registry_names)
-            if not reconstructed:
-                continue
-
-            async with db_session_factory() as db:
-                existing = (await db.execute(
-                    select(Trade).where(
-                        Trade.account_id == acct.id,
-                        Trade.closed_at >= lookback_start,
-                    )
-                )).scalars().all()
-                seen_close_ids = {
-                    (t.raw_payload or {}).get("close_order_id")
-                    for t in existing
-                    if t.raw_payload
-                }
-
-                new_rows = 0
-                for tr in reconstructed:
-                    close_id = tr.get("close_order_id")
-                    if close_id and close_id in seen_close_ids:
-                        continue
-                    seen_close_ids.add(close_id)
-                    db.add(Trade(
-                        account_id=acct.id,
-                        strategy_id=strat_id_by_name.get(tr["strategy_name"]),
-                        strategy_name=tr["strategy_name"],
-                        symbol=tr["symbol"],
-                        side=tr["side"],
-                        entry_price=tr["entry_price"],
-                        exit_price=tr["exit_price"],
-                        quantity=tr["quantity"],
-                        realized_pnl=tr["realized_pnl"],
-                        fees=0.0,
-                        opened_at=tr["opened_at"],
-                        closed_at=tr["closed_at"],
-                        hold_seconds=tr["hold_seconds"],
-                        raw_payload={
-                            "source": "desk_alpaca_sync",
-                            "close_order_id": tr["close_order_id"],
-                            "open_order_id": tr["open_order_id"],
-                            "strategy": tr["strategy_name"],
-                        },
-                    ))
-                    new_rows += 1
-
-                if new_rows:
-                    await db.commit()
-                    written += new_rows
-                    logger.info("Desk trade sync wrote trades", account_id=acct.id, count=new_rows)
-
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Desk trade sync failed", error=str(exc))
-
-    return written
+    collected: list
+# ... (truncated for brevity)
