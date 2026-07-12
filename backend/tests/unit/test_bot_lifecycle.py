@@ -16,13 +16,22 @@ from app.bots.lifecycle import (
 )
 
 
-def _s(name, enabled=True, archived=False, trades=0, pnl=0.0, wr=None):
-    return BotStats(bot_id=name, name=name, is_enabled=enabled,
-                    is_archived=archived, trades=trades, total_pnl=pnl, win_rate=wr)
+def _s(name: str, enabled: bool = True, archived: bool = False, trades: int = 0, pnl: float = 0.0, wr: float | None = None) -> BotStats:
+    return BotStats(
+        bot_id=name,
+        name=name,
+        is_enabled=enabled,
+        is_archived=archived,
+        trades=trades,
+        total_pnl=pnl,
+        win_rate=wr,
+    )
 
 
 def test_losing_bot_with_evidence_is_disabled():
-    a = decide_bot_actions([_s("loser", trades=MIN_TRADES_TO_JUDGE, pnl=-300.0, wr=0.30)], [])
+    a = decide_bot_actions(
+        [_s("loser", trades=MIN_TRADES_TO_JUDGE, pnl=-300.0, wr=0.30)], []
+    )
     assert [b.name for b in a["disable"]] == ["loser"]
 
 
