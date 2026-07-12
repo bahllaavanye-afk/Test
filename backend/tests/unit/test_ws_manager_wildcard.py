@@ -5,8 +5,41 @@ subscribes to the literal topic ``prices:*`` while the feed broadcasts to
 ``prices:{symbol}``. Before the fix, the wildcard subscriber received nothing.
 """
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.ws.manager import ConnectionManager
+
+
+class PriceUpdate(BaseModel):
+    """Schema for price update messages broadcast over WebSocket topics.
+
+    Attributes
+    ----------
+    symbol: str
+        Ticker symbol of the asset.
+    last: float
+        Last traded price. Must be a positive number.
+    """
+    symbol: str = Field(..., description="Ticker symbol of the asset", example="AAPL")
+    last: float = Field(..., description="Last traded price", example=1.23)
+
+    @validator("last")
+    def last_must_be_positive(cls, v: float) -> float:
+        """Ensure the price is a positive number."""
+        if v <= 0:
+            raise ValueError("last price must be positive")
+        return v
+
+
+class AlertMessage(BaseModel):
+    """Schema for generic alert messages broadcast over WebSocket topics.
+
+    Attributes
+    ----------
+    msg: str
+        Human‑readable alert description.
+    """
+    msg: str = Field(..., description="Alert description", example="VaR breach")
 
 
 class _FakeWS:
@@ -28,12 +61,12 @@ async def test_wildcard_subscriber_receives_concrete_topic():
     await m.connect(all_sub, "prices:*")
     await m.connect(one_sub, "prices:AAPL")
 
-    await m.broadcast("prices:AAPL", {"symbol": "AAPL", "last": 1.0})
+    await m.broadcast("prices:AAPL", PriceUpdate(symbol="AAPL", last=1.0).dict())
     assert len(all_sub.sent) == 1, "wildcard subscriber must receive prices:AAPL"
     assert len(one_sub.sent) == 1, "exact-topic subscriber must still receive its symbol"
 
     # A different symbol reaches the wildcard, not the AAPL-only socket.
-    await m.broadcast("prices:TSLA", {"symbol": "TSLA", "last": 2.0})
+    await m.broadcast("prices:TSLA", PriceUpdate(symbol="TSLA", last=2.0).dict())
     assert len(all_sub.sent) == 2
     assert len(one_sub.sent) == 1
 
@@ -44,7 +77,7 @@ async def test_wildcard_is_prefix_scoped():
     m = ConnectionManager()
     price_sub = _FakeWS()
     await m.connect(price_sub, "prices:*")
-    await m.broadcast("alerts:risk", {"msg": "VaR breach"})
+    await m.broadcast("alerts:risk", AlertMessage(msg="VaR breach").dict())
     assert price_sub.sent == []
 
 
@@ -57,6 +90,6 @@ async def test_dead_socket_is_purged():
     m = ConnectionManager()
     dead = _Dead()
     await m.connect(dead, "prices:*")
-    await m.broadcast("prices:AAPL", {"symbol": "AAPL"})
+    await m.broadcast("prices:AAPL", PriceUpdate(symbol="AAPL", last=1.0).dict())
     # Purged from every topic set so it is not retried forever.
     assert all(dead not in s for s in m._connections.values())
