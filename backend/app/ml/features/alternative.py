@@ -8,14 +8,17 @@ BinanceFundingRateFeatures:
 
 All API calls are async. For sync contexts, use compute_features_sync().
 """
+
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Literal, List
 
 import httpx
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
@@ -24,6 +27,96 @@ _FUTURES_DATA_BASE = "https://fapi.binance.com"
 def _to_binance_symbol(symbol: str) -> str:
     """Convert 'BTC-USD' or 'BTC/USDT' to 'BTCUSDT'."""
     return symbol.replace("-", "").replace("/", "").upper()
+
+
+class FundingRateParams(BaseModel):
+    """Parameters for requesting Binance funding rate history."""
+
+    symbol: str = Field(
+        ...,
+        description="Trading pair symbol, e.g., 'BTC-USD' or 'BTC/USDT'.",
+        example="BTC-USD",
+    )
+    limit: int = Field(
+        500,
+        ge=1,
+        le=1000,
+        description="Maximum number of funding rate records to fetch (max 1000).",
+        example=500,
+    )
+
+    @validator("symbol")
+    def symbol_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("symbol must be a non‑empty string")
+        return v
+
+
+class OpenInterestParams(BaseModel):
+    """Parameters for requesting Binance open interest history."""
+
+    symbol: str = Field(
+        ...,
+        description="Trading pair symbol, e.g., 'BTC-USD' or 'BTC/USDT'.",
+        example="BTC-USD",
+    )
+    period: Literal[
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "12h",
+        "1d",
+    ] = Field(
+        "1d",
+        description="Kline interval period for open‑interest data.",
+        example="1d",
+    )
+    limit: int = Field(
+        500,
+        ge=1,
+        le=500,
+        description="Maximum number of open‑interest records to fetch (max 500).",
+        example=500,
+    )
+
+    @validator("symbol")
+    def symbol_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("symbol must be a non‑empty string")
+        return v
+
+
+class ComputeFeaturesParams(BaseModel):
+    """Parameters for computing alternative features on an OHLCV DataFrame."""
+
+    symbol: str = Field(
+        ...,
+        description="Trading pair symbol, e.g., 'BTC-USD' or 'BTC/USDT'.",
+        example="BTC-USD",
+    )
+    df: pd.DataFrame = Field(
+        ...,
+        description="OHLCV DataFrame with a UTC DatetimeIndex.",
+        example="pd.DataFrame(...)",
+    )
+
+    @validator("symbol")
+    def symbol_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("symbol must be a non‑empty string")
+        return v
+
+    @validator("df")
+    def df_must_have_datetime_index(cls, v: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(v.index, pd.DatetimeIndex):
+            raise ValueError("df must have a DatetimeIndex")
+        if v.index.tz is None:
+            raise ValueError("df DatetimeIndex must be timezone‑aware (UTC)")
+        return v
 
 
 class BinanceFundingRateFeatures:
@@ -43,12 +136,15 @@ class BinanceFundingRateFeatures:
         Returns DataFrame with columns: [ts, funding_rate] sorted ascending.
         Returns empty DataFrame on any error.
         """
-        bn_sym = _to_binance_symbol(symbol)
+        # Validate inputs via Pydantic
+        params = FundingRateParams(symbol=symbol, limit=limit)
+
+        bn_sym = _to_binance_symbol(params.symbol)
         url = f"{_FAPI_BASE}/fapi/v1/fundingRate"
-        params = {"symbol": bn_sym, "limit": min(limit, 1000)}
+        request_params = {"symbol": bn_sym, "limit": min(params.limit, 1000)}
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url, params=params)
+                resp = await client.get(url, params=request_params)
                 resp.raise_for_status()
                 data = resp.json()
             if not data:
@@ -78,12 +174,19 @@ class BinanceFundingRateFeatures:
         Returns empty DataFrame on any error.
         Valid periods: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d
         """
-        bn_sym = _to_binance_symbol(symbol)
+        # Validate inputs via Pydantic
+        params = OpenInterestParams(symbol=symbol, period=period, limit=limit)
+
+        bn_sym = _to_binance_symbol(params.symbol)
         url = f"{_FUTURES_DATA_BASE}/futures/data/openInterestHist"
-        params = {"symbol": bn_sym, "period": period, "limit": min(limit, 500)}
+        request_params = {
+            "symbol": bn_sym,
+            "period": params.period,
+            "limit": min(params.limit, 500),
+        }
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url, params=params)
+                resp = await client.get(url, params=request_params)
                 resp.raise_for_status()
                 data = resp.json()
             if not data:
@@ -115,6 +218,9 @@ class BinanceFundingRateFeatures:
 
         Missing data → NaN (not filled with fake values).
         """
+        # Validate via Pydantic model
+        ComputeFeaturesParams(symbol=symbol, df=df)
+
         df = df.copy()
         for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
             df[col] = np.nan
@@ -149,7 +255,9 @@ class BinanceFundingRateFeatures:
         if not oi_df.empty:
             oi_df = oi_df.set_index("ts").resample("D").last()
             oi_df["oi_change_pct"] = oi_df["open_interest"].pct_change() * 100
-            oi_df["oi_momentum"] = oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
+            oi_df["oi_momentum"] = (
+                oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
+            )
 
             if hasattr(df.index, "tz") and df.index.tz is not None:
                 idx = df.index.normalize()
@@ -175,6 +283,7 @@ class BinanceFundingRateFeatures:
             if loop.is_running():
                 # Already inside an event loop (e.g., FastAPI) — create a task
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
                         asyncio.run, self.compute_features_async(symbol, df)
@@ -189,7 +298,7 @@ class BinanceFundingRateFeatures:
             return df
 
 
-ALTERNATIVE_FEATURE_COLS = [
+ALTERNATIVE_FEATURE_COLS: List[str] = [
     "funding_rate",
     "funding_rate_ma7",
     "oi_change_pct",
@@ -202,7 +311,7 @@ _binance_features = BinanceFundingRateFeatures()
 def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
     """
     Add Binance alternative data features for crypto symbols.
-    For non-crypto symbols, adds columns filled with NaN.
+    For non‑crypto symbols, adds columns filled with NaN.
     """
     is_crypto = any(
         kw in symbol.upper()
