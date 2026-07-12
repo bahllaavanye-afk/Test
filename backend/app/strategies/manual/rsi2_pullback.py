@@ -7,6 +7,8 @@ exhausted pullback, but only trades when price is above its long trend SMA so
 we're buying dips in things that are still going up. Exit on mean reversion
 (RSI recovers or price reclaims a short SMA), not on a fixed target.
 """
+import time
+import logging
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
@@ -36,14 +38,29 @@ class RSI2PullbackStrategy(AbstractStrategy):
         self.rsi_exit = effective["rsi_exit"]
         self.trend_period = effective["trend_period"]
         self.exit_period = effective["exit_period"]
+        self.logger = logging.getLogger(__name__)
+        self.signal_count = 0
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        start_time = time.time()
+        signal = None
+
         if "close" not in data.columns or len(data) < self.trend_period + 5:
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "RSI2Pullback analyze skipped",
+                extra={"symbol": symbol, "elapsed_ms": elapsed_ms, "signal_generated": False}
+            )
             return None
 
         close = data["close"]
         rsi = ta.rsi(close, length=self.rsi_period)
         if rsi is None:
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "RSI2Pullback analyze missing RSI",
+                extra={"symbol": symbol, "elapsed_ms": elapsed_ms, "signal_generated": False}
+            )
             return None
 
         trend_sma = close.rolling(self.trend_period).mean()
@@ -53,22 +70,60 @@ class RSI2PullbackStrategy(AbstractStrategy):
         rsi_val = rsi.iloc[-1]
         trend = trend_sma.iloc[-1]
         if pd.isna(trend) or pd.isna(rsi_val):
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "RSI2Pullback analyze NaN values",
+                extra={"symbol": symbol, "elapsed_ms": elapsed_ms, "signal_generated": False}
+            )
             return None
 
         if price > trend and rsi_val < self.rsi_buy:
             depth = (self.rsi_buy - rsi_val) / max(self.rsi_buy, 1e-8)
             confidence = min(0.85, 0.58 + depth * 0.25)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket, target_price=exit_sma.iloc[-1],
-                          metadata={"rsi2": round(float(rsi_val), 2), "trend": "up"})
-        return None
+            target_price = exit_sma.iloc[-1]
+            potential_pnl = (target_price - price) / price if price != 0 else 0.0
+
+            signal = Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                target_price=target_price,
+                metadata={"rsi2": round(float(rsi_val), 2), "trend": "up"},
+            )
+            self.signal_count += 1
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "RSI2Pullback signal generated",
+                extra={
+                    "symbol": symbol,
+                    "signal_count": self.signal_count,
+                    "elapsed_ms": elapsed_ms,
+                    "confidence": confidence,
+                    "potential_pnl": potential_pnl,
+                },
+            )
+        else:
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "RSI2Pullback no signal",
+                extra={"symbol": symbol, "elapsed_ms": elapsed_ms, "signal_generated": False},
+            )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.time()
         close = df["close"]
         rsi = ta.rsi(close, length=self.rsi_period)
         if rsi is None:
             empty = pd.Series(False, index=df.index)
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "RSI2Pullback backtest skipped (no RSI)",
+                extra={"elapsed_ms": elapsed_ms, "entries": 0, "exits": 0},
+            )
             return BacktestSignals(entries=empty, exits=empty)
 
         trend_sma = close.rolling(self.trend_period).mean()
@@ -83,4 +138,16 @@ class RSI2PullbackStrategy(AbstractStrategy):
         entries = (price > trend) & (rsi_s < self.rsi_buy)
         exits = (rsi_s > self.rsi_exit) | (price > exit_ma)
 
-        return BacktestSignals(entries=entries.fillna(False), exits=exits.fillna(False))
+        entries_filled = entries.fillna(False)
+        exits_filled = exits.fillna(False)
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        self.logger.info(
+            "RSI2Pullback backtest completed",
+            extra={
+                "elapsed_ms": elapsed_ms,
+                "entries": int(entries_filled.sum()),
+                "exits": int(exits_filled.sum()),
+            },
+        )
+        return BacktestSignals(entries=entries_filled, exits=exits_filled)
