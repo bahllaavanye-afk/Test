@@ -1,7 +1,7 @@
 """Account management endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.account import Account
@@ -17,29 +17,38 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 async def latest_total_equity(db: AsyncSession) -> float:
     """Sum of each active account's most recent snapshot equity.
 
-    The Account model itself has NO equity column — equity is a time series on
-    AccountSnapshot (written hourly from live broker data). Every caller that
-    wants "current equity" must read the latest snapshot, not the account row;
-    reading `account.total_equity` is an AttributeError.
+    Optimized to perform a single query instead of N+1 queries.
     """
     from app.models.account import AccountSnapshot
 
-    account_ids = (
-        (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
-        .scalars().all()
-    )
-    total = 0.0
-    for acc_id in account_ids:
-        snap = (
-            await db.execute(
-                select(AccountSnapshot.total_equity)
-                .where(AccountSnapshot.account_id == acc_id)
-                .order_by(AccountSnapshot.ts.desc())
-                .limit(1)
+    # Early exit if there are no active accounts
+    active_ids = (
+        await db.execute(select(Account.id).where(Account.is_active == True))  # noqa: E712
+    ).scalars().all()
+    if not active_ids:
+        return 0.0
+
+    # Subquery that assigns a row number per account ordered by timestamp descending
+    rn_subq = (
+        select(
+            AccountSnapshot.account_id,
+            AccountSnapshot.total_equity,
+            func.row_number()
+            .over(
+                partition_by=AccountSnapshot.account_id,
+                order_by=AccountSnapshot.ts.desc(),
             )
-        ).scalar_one_or_none()
-        total += float(snap or 0)
-    return total
+            .label("rn"),
+        )
+        .where(AccountSnapshot.account_id.in_(active_ids))
+        .subquery()
+    )
+
+    # Sum the total_equity of the latest snapshot per account (rn = 1)
+    total = await db.scalar(
+        select(func.coalesce(func.sum(rn_subq.c.total_equity), 0.0)).where(rn_subq.c.rn == 1)
+    )
+    return float(total)
 
 
 class AccountCreate(BaseModel):
@@ -137,6 +146,7 @@ async def get_account_equity(
         raise HTTPException(400, "Live equity is only available for Alpaca accounts with stored credentials")
 
     from app.brokers.alpaca_orders import get_alpaca_account
+
     try:
         data = await get_alpaca_account(account)
     except Exception as e:
@@ -153,14 +163,15 @@ async def get_account_equity(
     )
 
 
-
 @router.delete("/{account_id}")
 async def delete_account(
     account_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+    )
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(404, "Account not found")
