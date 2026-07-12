@@ -199,8 +199,13 @@
     "Scan for deadlocks",
     "Test DB connections",
     "Verify thread counts",
-    "Scan for timeouts"
+    "Scan for timeouts",
+    "edge_cases on tasks/self_improving_loop.py: success \u2014 tests green",
+    "edge_cases on api/v1/pipeline.py: success \u2014 tests green",
+    "edge_cases on test/unit/test_data_loader_crypto.py: success \u2014 tests green",
+    "edge_cases on strategies/manual/event_driven_gap.py: success \u2014 tests green",
+    "edge_cases on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-12T19:37:11.271760+00:00",
+  "last_updated": "2026-07-12T20:42:10.505071+00:00",
   "total": 200
 }
