@@ -41,7 +41,6 @@ QUARANTINED: set[str] = {
     "breakeven_inflation",    # guarded; yfinance slow offline
     "duration_momentum",      # guarded; yfinance slow offline
     "pmi_sector_rotation",    # guarded; yfinance slow offline
-    "lorentzian_knn",         # not in manual/ — locate + guard separately
 }
 
 PER_STRATEGY_TIMEOUT_S = 5.0
