@@ -13,14 +13,17 @@ from __future__ import annotations
 
 import os
 import pickle
+from typing import Any, Dict, Optional
+
 import numpy as np
-from typing import Optional
+from pydantic import BaseModel, Field, validator
 
 
 # ── Baum-Welch fallback (pure NumPy) ─────────────────────────────────────────
 
+
 class _BaumWelchHMM:
-    """Minimal Gaussian HMM via Baum-Welch EM. 2-feature input."""
+    """Minimal Gaussian HMM via Baum‑Welch EM. 2‑feature input."""
 
     def __init__(self, n_states: int = 3, n_iter: int = 100, tol: float = 1e-4):
         self.n_states = n_states
@@ -28,7 +31,7 @@ class _BaumWelchHMM:
         self.tol = tol
         self._init_params()
 
-    def _init_params(self):
+    def _init_params(self) -> None:
         K = self.n_states
         self.pi = np.ones(K) / K
         self.A = np.full((K, K), 1.0 / K)
@@ -37,7 +40,7 @@ class _BaumWelchHMM:
         self.sigma2 = np.ones((K, 2)) * 0.0001
 
     def _gaussian_pdf(self, X: np.ndarray) -> np.ndarray:
-        """Returns (T, K) emission probabilities."""
+        """Return emission probabilities (T, K)."""
         T = len(X)
         K = self.n_states
         B = np.zeros((T, K))
@@ -48,7 +51,7 @@ class _BaumWelchHMM:
             B[:, k] = np.exp(exponent) / np.clip(norm, 1e-300, None)
         return B + 1e-300
 
-    def _forward(self, B: np.ndarray):
+    def _forward(self, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         T, K = B.shape
         alpha = np.zeros((T, K))
         alpha[0] = self.pi * B[0]
@@ -61,7 +64,7 @@ class _BaumWelchHMM:
             alpha[t] /= scale[t]
         return alpha, scale
 
-    def _backward(self, B: np.ndarray, scale: np.ndarray):
+    def _backward(self, B: np.ndarray, scale: np.ndarray) -> np.ndarray:
         T, K = B.shape
         beta = np.zeros((T, K))
         beta[-1] = 1.0
@@ -82,7 +85,7 @@ class _BaumWelchHMM:
             for t in range(T - 1):
                 xi[t] = (alpha[t, :, None] * self.A * (B[t + 1] * beta[t + 1]))
                 xi[t] /= xi[t].sum() or 1e-300
-            # Update
+            # Update parameters
             self.pi = gamma[0] / gamma[0].sum()
             self.A = xi.sum(axis=0) / xi.sum(axis=0).sum(axis=1, keepdims=True).clip(1e-300)
             self.mu = (gamma[:, :, None] * X[:, None, :]).sum(axis=0) / gamma.sum(axis=0)[:, None].clip(1e-300)
@@ -114,22 +117,68 @@ class _BaumWelchHMM:
         return states
 
 
+# ── Pydantic schemas for persistence ────────────────────────────────────────
+
+
+class RegimeDetectorState(BaseModel):
+    """
+    Serialized representation of :class:`RegimeDetector`.
+
+    The schema validates the content loaded from disk, ensuring that
+    critical fields have the expected structure.
+    """
+
+    model: Optional[Any] = Field(
+        default=None,
+        description="Fallback NumPy HMM instance (or None if hmmlearn is used).",
+    )
+    hmmlearn_model: Optional[Any] = Field(
+        default=None,
+        description="hmmlearn GaussianHMM instance when the optional dependency is available.",
+    )
+    use_hmmlearn: bool = Field(
+        default=False,
+        description="Flag indicating which implementation was used during fitting.",
+    )
+    state_map: Dict[int, int] = Field(
+        default_factory=dict,
+        description="Mapping from raw state indices (0‑2) to labelled regimes (0‑bear,1‑sideways,2‑bull).",
+        example={0: 1, 1: 0, 2: 2},
+    )
+    fitted: bool = Field(
+        default=False,
+        description="Whether the detector has been fitted with data.",
+    )
+
+    @validator("state_map")
+    def validate_state_map(cls, v: Dict[int, int]) -> Dict[int, int]:
+        """Ensure keys and values are within the allowed regime range."""
+        allowed = {0, 1, 2}
+        if set(v.keys()) - allowed:
+            raise ValueError("state_map keys must be in {0,1,2}")
+        if set(v.values()) - allowed:
+            raise ValueError("state_map values must be in {0,1,2}")
+        return v
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 class RegimeDetector:
     """
-    3-state HMM for market regime detection.
+    3‑state HMM for market regime detection.
 
-    Fit on a return series; features are [return, abs_return].
+    Fit on a return series; features are ``[return, abs_return]``.
     States are automatically labelled as bear/sideways/bull by drift ordering.
     """
+
     N_STATES = 3
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._model: Optional[_BaumWelchHMM] = None
         self._state_map: dict[int, int] = {0: 0, 1: 1, 2: 2}
         self._use_hmmlearn = False
-        self._hmmlearn_model = None
+        self._hmmlearn_model: Optional[Any] = None
         self._fitted = False
 
     def _build_features(self, returns: np.ndarray) -> np.ndarray:
@@ -157,9 +206,10 @@ class RegimeDetector:
 
         # Establish state → regime label by drift ordering
         states = self.predict(returns)
-        means = [float(returns[states == k].mean()) if (states == k).any() else 0.0
-                 for k in range(self.N_STATES)]
-        # Sort states by mean drift: lowest→bear(0), middle→sideways(1), highest→bull(2)
+        means = [
+            float(returns[states == k].mean()) if (states == k).any() else 0.0
+            for k in range(self.N_STATES)
+        ]
         order = sorted(range(self.N_STATES), key=lambda k: means[k])
         self._state_map = {raw: label for label, raw in enumerate(order)}
         self._fitted = True
@@ -184,32 +234,39 @@ class RegimeDetector:
         return int(self.predict_regimes(returns)[-1])
 
     def regime_name(self, regime: int) -> str:
+        """Human‑readable name for a regime label."""
         return {0: "bear", 1: "sideways", 2: "bull"}.get(regime, "unknown")
 
     def save(self, path: str) -> None:
+        """Persist the detector to ``path`` using ``pickle``."""
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "wb") as f:
-            pickle.dump({
-                "model": self._model,
-                "hmmlearn_model": self._hmmlearn_model,
-                "use_hmmlearn": self._use_hmmlearn,
-                "state_map": self._state_map,
-                "fitted": self._fitted,
-            }, f)
+            pickle.dump(
+                {
+                    "model": self._model,
+                    "hmmlearn_model": self._hmmlearn_model,
+                    "use_hmmlearn": self._use_hmmlearn,
+                    "state_map": self._state_map,
+                    "fitted": self._fitted,
+                },
+                f,
+            )
 
     @classmethod
     def load(cls, path: str) -> "RegimeDetector":
+        """Load a persisted detector from ``path`` and validate its schema."""
         with open(path, "rb") as f:
             data = pickle.load(f)
+
+        # Validate loaded data against the Pydantic schema
+        validated = RegimeDetectorState(**data)
+
         det = cls()
-        det._model = data.get("model")
-        det._hmmlearn_model = data.get("hmmlearn_model")
-        det._use_hmmlearn = data.get("use_hmmlearn", False)
-        det._state_map = data.get("state_map", {0: 0, 1: 1, 2: 2})
-        det._fitted = data.get("fitted", False)
+        det._model = validated.model
+        det._hmmlearn_model = validated.hmmlearn_model
+        det._use_hmmlearn = validated.use_hmmlearn
+        det._state_map = validated.state_map
+        det._fitted = validated.fitted
         return det
 
-
-# Public alias — the model registry (app/ml/models/__init__.py) imports the HMM
-# regime model as ``HMMRegimeModel``; the implementation class is ``RegimeDetector``.
-HMMRegimeModel = RegimeDetector
+# End of file
