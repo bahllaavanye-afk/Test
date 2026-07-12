@@ -4,9 +4,9 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,20 +25,22 @@ def _count_loc(root: Path) -> dict:
     blank_lines = 0
     comment_lines = 0
 
+    skip_patterns = ("__pycache__", ".pytest_cache", "test.db")
     for py_file in root.rglob("*.py"):
-        if any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db")):
+        if any(skip in str(py_file) for skip in skip_patterns):
             continue
         total_files += 1
         try:
-            for line in py_file.read_text(errors="ignore").splitlines():
-                total_lines += 1
-                stripped = line.strip()
-                if not stripped:
-                    blank_lines += 1
-                elif stripped.startswith("#"):
-                    comment_lines += 1
-                else:
-                    code_lines += 1
+            with py_file.open(errors="ignore") as f:
+                for line in f:
+                    total_lines += 1
+                    stripped = line.strip()
+                    if not stripped:
+                        blank_lines += 1
+                    elif stripped.startswith("#"):
+                        comment_lines += 1
+                    else:
+                        code_lines += 1
         except Exception as e:
             logger.debug("code_quality: skip unreadable file", error=str(e))
             continue
@@ -54,20 +56,24 @@ def _count_loc(root: Path) -> dict:
 
 
 def _count_strategies(root: Path) -> dict:
-    manual = list((root / "app" / "strategies" / "manual").glob("*.py"))
-    ml = list((root / "app" / "strategies" / "ml_enhanced").glob("*.py"))
+    manual_dir = root / "app" / "strategies" / "manual"
+    ml_dir = root / "app" / "strategies" / "ml_enhanced"
+    manual_count = sum(1 for f in manual_dir.glob("*.py") if not f.name.startswith("__"))
+    ml_count = sum(1 for f in ml_dir.glob("*.py") if not f.name.startswith("__"))
     return {
-        "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
-        "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
+        "manual_strategies": manual_count,
+        "ml_strategies": ml_count,
     }
 
 
 def _count_tests(root: Path) -> dict:
-    unit = list((root / "tests" / "unit").glob("test_*.py"))
-    integration = list((root / "tests" / "integration").glob("test_*.py"))
+    unit_dir = root / "tests" / "unit"
+    integration_dir = root / "tests" / "integration"
+    unit_count = sum(1 for f in unit_dir.glob("test_*.py"))
+    integration_count = sum(1 for f in integration_dir.glob("test_*.py"))
     return {
-        "unit_test_files": len(unit),
-        "integration_test_files": len(integration),
+        "unit_test_files": unit_count,
+        "integration_test_files": integration_count,
     }
 
 
