@@ -45,6 +45,11 @@ class BinanceBroker(AbstractBroker):
         self._ticker_cache = {"data": None, "timestamp": 0.0}
         self._ticker_lock = asyncio.Lock()
 
+        # Cache for historical data (keyed by (symbol, interval, limit))
+        self._historical_cache: dict[tuple[str, str, int], dict] = {}
+        self._historical_lock = asyncio.Lock()
+        self._historical_ttl = 300  # seconds
+
     async def close(self):
         await self.exchange.close()
 
@@ -83,7 +88,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -126,19 +136,32 @@ class BinanceBroker(AbstractBroker):
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
     ) -> list[dict]:
+        if limit <= 0:
+            return []
+
         tf = INTERVAL_MAP.get(interval, "1d")
-        ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
-        return [
-            {
-                "ts": self.exchange.iso8601(bar[0]),
-                "open": bar[1],
-                "high": bar[2],
-                "low": bar[3],
-                "close": bar[4],
-                "volume": bar[5],
-            }
-            for bar in ohlcv
-        ]
+        cache_key = (symbol, tf, limit)
+
+        async with self._historical_lock:
+            now = time.monotonic()
+            cached = self._historical_cache.get(cache_key)
+            if cached and now - cached["timestamp"] < self._historical_ttl:
+                return cached["data"]
+
+            ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
+            data = [
+                {
+                    "ts": self.exchange.iso8601(bar[0]),
+                    "open": bar[1],
+                    "high": bar[2],
+                    "low": bar[3],
+                    "close": bar[4],
+                    "volume": bar[5],
+                }
+                for bar in ohlcv
+            ]
+            self._historical_cache[cache_key] = {"data": data, "timestamp": now}
+            return data
 
     async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
         return await self.exchange.fetch_order_book(symbol, limit)
