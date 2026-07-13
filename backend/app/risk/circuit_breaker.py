@@ -45,24 +45,57 @@ class CircuitBreaker:
         Returns:
             bool: True if the breaker remains in NORMAL state, False if HALTED.
         """
-        if equity is None or not isinstance(equity, (int, float)):
-            logger.warning("Circuit breaker received invalid equity value", name=self.name, equity=equity)
+        if not self._validate_equity(equity):
             return not self.is_halted
 
-        # Update peak and current equity
+        self._update_equity(equity)
+
+        if self.state == BreakerState.HALTED:
+            return self._handle_halted_state(equity)
+
+        return self._process_drawdown()
+
+    # --------------------------------------------------------------------- #
+    # Helper methods
+    # --------------------------------------------------------------------- #
+
+    def _validate_equity(self, equity: float) -> bool:
+        """Validate the incoming equity value."""
+        if equity is None or not isinstance(equity, (int, float)):
+            logger.warning(
+                "Circuit breaker received invalid equity value",
+                name=self.name,
+                equity=equity,
+            )
+            return False
+        return True
+
+    def _update_equity(self, equity: float) -> None:
+        """Update peak and current equity based on the new snapshot."""
         if equity > self.peak_equity:
             self.peak_equity = equity
         self.current_equity = equity
 
-        # If already halted, check for possible auto‑recovery
-        if self.state == BreakerState.HALTED:
-            if self._should_recover():
-                self.reset(equity)
-                logger.info("Circuit breaker auto‑recovered", name=self.name)
-            else:
-                return False
+    def _handle_halted_state(self, equity: float) -> bool:
+        """
+        Manage behavior when the breaker is already halted.
 
-        # Compute drawdown only when peak_equity is positive
+        Returns:
+            bool: True if recovered (normal), False if still halted.
+        """
+        if self._should_recover():
+            self.reset(equity)
+            logger.info("Circuit breaker auto‑recovered", name=self.name)
+            return True
+        return False
+
+    def _process_drawdown(self) -> bool:
+        """
+        Evaluate current drawdown against thresholds and update state.
+
+        Returns:
+            bool: True if still normal, False if transition to halted.
+        """
         drawdown = self.current_drawdown
         if drawdown >= self.max_drawdown_pct:
             self._breach_count += 1
@@ -74,23 +107,41 @@ class CircuitBreaker:
                 breach_count=self._breach_count,
             )
             if self._breach_count >= self.confirmation_period:
-                self.state = BreakerState.HALTED
-                self.halted_at = datetime.now(timezone.utc)
-                reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} (confirmed {self._breach_count}×)"
-                self.halt_reasons.append(reason)
-                logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)
+                self._enter_halted_state(drawdown)
                 return False
         else:
-            # Reset breach counter when drawdown falls back below threshold
-            if self._breach_count:
-                logger.debug(
-                    "Circuit breaker breach counter reset",
-                    name=self.name,
-                    previous_breach_count=self._breach_count,
-                )
-            self._breach_count = 0
-
+            self._reset_breach_counter_if_needed()
         return True
+
+    def _enter_halted_state(self, drawdown: float) -> None:
+        """Transition the breaker to the HALTED state and log the event."""
+        self.state = BreakerState.HALTED
+        self.halted_at = datetime.now(timezone.utc)
+        reason = (
+            f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} "
+            f"(confirmed {self._breach_count}×)"
+        )
+        self.halt_reasons.append(reason)
+        logger.error(
+            "Circuit breaker TRIPPED",
+            name=self.name,
+            drawdown=drawdown,
+            threshold=self.max_drawdown_pct,
+        )
+
+    def _reset_breach_counter_if_needed(self) -> None:
+        """Reset breach counter when drawdown falls below the threshold."""
+        if self._breach_count:
+            logger.debug(
+                "Circuit breaker breach counter reset",
+                name=self.name,
+                previous_breach_count=self._breach_count,
+            )
+        self._breach_count = 0
+
+    # --------------------------------------------------------------------- #
+    # Existing public methods & properties
+    # --------------------------------------------------------------------- #
 
     def _should_recover(self) -> bool:
         """
