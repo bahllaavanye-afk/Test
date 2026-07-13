@@ -17,10 +17,14 @@ Documented Sharpe: 2.23 after 0.10% round-trip transaction costs (2025 study).
 """
 from __future__ import annotations
 
+import logging
+import time
 import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+logger = logging.getLogger(__name__)
 
 
 class BTCETHStatArb(AbstractStrategy):
@@ -79,7 +83,11 @@ class BTCETHStatArb(AbstractStrategy):
 
         spread = log_btc - hedge_ratios * log_eth
         roll_mean = spread.rolling(self.window, min_periods=self.window // 2).mean()
-        roll_std = spread.rolling(self.window, min_periods=self.window // 2).std().clip(lower=1e-8)
+        roll_std = (
+            spread.rolling(self.window, min_periods=self.window // 2)
+            .std()
+            .clip(lower=1e-8)
+        )
         z_score = (spread - roll_mean) / roll_std
         return z_score
 
@@ -88,14 +96,28 @@ class BTCETHStatArb(AbstractStrategy):
         data must contain columns 'btc_close' and 'eth_close'.
         Falls back to 'close' column if running on single-symbol feed.
         """
+        start_time = time.time()
+        signal: Signal | None = None
+
         btc_col = "btc_close" if "btc_close" in data.columns else "close"
         eth_col = "eth_close" if "eth_close" in data.columns else None
 
         if eth_col is None or btc_col not in data.columns:
+            elapsed = time.time() - start_time
+            logger.info(
+                "BTCETHStatArb analyze: missing required columns, execution_time=%.4fs",
+                elapsed,
+            )
             return None
 
         min_bars = self.hedge_window + self.window + 5
         if len(data) < min_bars:
+            elapsed = time.time() - start_time
+            logger.info(
+                "BTCETHStatArb analyze: insufficient data (%d rows), execution_time=%.4fs",
+                len(data),
+                elapsed,
+            )
             return None
 
         log_btc = np.log(data[btc_col].astype(float))
@@ -104,14 +126,17 @@ class BTCETHStatArb(AbstractStrategy):
         current_z = float(z_score.iloc[-1])
 
         if np.isnan(current_z):
+            elapsed = time.time() - start_time
+            logger.info(
+                "BTCETHStatArb analyze: NaN z_score, execution_time=%.4fs", elapsed
+            )
             return None
 
         current_price = float(data[btc_col].iloc[-1])
 
         if current_z < -self.entry_z:
-            # Spread too low: long BTC, short ETH
             confidence = min(0.90, 0.65 + abs(current_z) / 10.0)
-            return Signal(
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -125,11 +150,9 @@ class BTCETHStatArb(AbstractStrategy):
                     "order_type": "limit",
                 },
             )
-
-        if current_z > self.entry_z:
-            # Spread too high: short BTC, long ETH
+        elif current_z > self.entry_z:
             confidence = min(0.90, 0.65 + abs(current_z) / 10.0)
-            return Signal(
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -144,13 +167,32 @@ class BTCETHStatArb(AbstractStrategy):
                 },
             )
 
-        return None
+        elapsed = time.time() - start_time
+        if signal:
+            pnl = signal.metadata.get("pnl", "N/A")
+            logger.info(
+                "BTCETHStatArb analyze: generated signal (side=%s, z_score=%.4f), "
+                "execution_time=%.4fs, pnl=%s",
+                signal.side,
+                current_z,
+                elapsed,
+                pnl,
+            )
+        else:
+            logger.info(
+                "BTCETHStatArb analyze: no signal generated (z_score=%.4f), execution_time=%.4fs",
+                current_z,
+                elapsed,
+            )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
         Expects df to have 'btc_close' and 'eth_close' columns, or falls back
         to 'close' for BTC and an approximate relationship.
         """
+        start_time = time.time()
+
         false_series = pd.Series(False, index=df.index)
         default = BacktestSignals(
             entries=false_series,
@@ -167,9 +209,20 @@ class BTCETHStatArb(AbstractStrategy):
             # Proxy: use close as BTC, open as ETH (imperfect but avoids crash)
             btc_col, eth_col = "close", "open"
         else:
+            elapsed = time.time() - start_time
+            logger.info(
+                "BTCETHStatArb backtest_signals: missing required columns, execution_time=%.4fs",
+                elapsed,
+            )
             return default
 
         if len(df) < min_bars:
+            elapsed = time.time() - start_time
+            logger.info(
+                "BTCETHStatArb backtest_signals: insufficient data (%d rows), execution_time=%.4fs",
+                len(df),
+                elapsed,
+            )
             return default
 
         log_btc = np.log(df[btc_col].astype(float).clip(lower=1e-8))
@@ -179,10 +232,18 @@ class BTCETHStatArb(AbstractStrategy):
         # shift(1) — no lookahead
         z_lag = z_score.shift(1)
 
-        entries = (z_lag < -self.entry_z).fillna(False).astype(bool)       # long BTC
+        entries = (z_lag < -self.entry_z).fillna(False).astype(bool)  # long BTC
         exits = (z_lag.abs() < self.exit_z).fillna(False).astype(bool)
         short_entries = (z_lag > self.entry_z).fillna(False).astype(bool)  # short BTC
         short_exits = exits.copy()
+
+        signals_count = int(entries.sum() + short_entries.sum())
+        elapsed = time.time() - start_time
+        logger.info(
+            "BTCETHStatArb backtest_signals: generated %d entry signals, execution_time=%.4fs",
+            signals_count,
+            elapsed,
+        )
 
         return BacktestSignals(
             entries=entries,
