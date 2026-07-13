@@ -199,8 +199,13 @@
     "Scan for file locks",
     "Refactor validation logic",
     "Optimize experiment code",
-    "Review LLM integration"
+    "Review LLM integration",
+    "test_cases on ml/features/macro_signals.py: success \u2014 tests green",
+    "test_cases on execution/limit_first.py: success \u2014 tests green",
+    "test_cases on risk/correlation.py: success \u2014 tests green",
+    "test_cases on brokers/alpaca.py: success \u2014 tests green",
+    "test_cases on backtest/stress_test.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T02:27:36.164338+00:00",
+  "last_updated": "2026-07-13T02:33:18.730833+00:00",
   "total": 200
 }
