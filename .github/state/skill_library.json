@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Log disk space",
     "Monitor heap size",
     "Review LLM integration",
     "**Signal Data**: Review trading signals in `/tmp/data/agent_memory.json` to identify patterns and optimize signal generation.",
@@ -199,8 +198,9 @@
     "Refactor predict.py",
     "Review Experiment objects",
     "Monitor RAM usage",
-    "Verify data types"
+    "Verify data types",
+    "Test data feeds"
   ],
-  "last_updated": "2026-07-13T09:19:08.413344+00:00",
+  "last_updated": "2026-07-13T12:19:30.225279+00:00",
   "total": 200
 }
