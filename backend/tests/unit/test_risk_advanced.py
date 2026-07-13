@@ -1,6 +1,5 @@
 """Tests for VaR, factor exposure, and drawdown recovery."""
 import numpy as np
-import pytest
 from app.risk.var import historical_var, VaRResult
 from app.risk.factor_exposure import compute_factor_exposure, FactorExposure
 from app.risk.drawdown_recovery import estimate_recovery
