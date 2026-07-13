@@ -199,8 +199,13 @@
     "Verify data types",
     "Test data feeds",
     "Sanitize file paths",
-    "Track execution time"
+    "Track execution time",
+    "strategy_logic on test/unit/test_smart_router.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/earnings_accruals.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "strategy_logic on ml/models/xgboost_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/sentiment.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T21:27:58.988636+00:00",
+  "last_updated": "2026-07-13T22:29:41.109071+00:00",
   "total": 200
 }
