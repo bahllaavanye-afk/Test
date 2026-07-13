@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -97,8 +97,26 @@ async def list_trades(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Compute avg_fill_price directly in SQL to avoid per‑row Python branching
+    avg_fill_price_expr = case(
+        (Trade.side == "buy", Trade.entry_price),
+        (Trade.side == "sell", Trade.exit_price),
+    ).label("avg_fill_price")
+
     query = (
-        select(Trade)
+        select(
+            Trade.id,
+            Trade.symbol,
+            Trade.side,
+            Trade.realized_pnl,
+            Trade.entry_price,
+            Trade.exit_price,
+            Trade.quantity,
+            Trade.opened_at,
+            Trade.closed_at,
+            Trade.strategy_name,
+            avg_fill_price_expr,
+        )
         .join(Account, Trade.account_id == Account.id)
         .where(Account.user_id == current_user.id)
         .order_by(Trade.opened_at.desc())
@@ -108,31 +126,24 @@ async def list_trades(
         query = query.where(Trade.account_id == account_id)
     if symbol:
         query = query.where(Trade.symbol == symbol)
+
     result = await db.execute(query)
-    trades = result.scalars().all()
+    rows = result.all()
 
-    # Build response manually so we can compute avg_fill_price from existing columns
-    out: list[TradeOut] = []
-    for t in trades:
-        fill_price: float | None
-        if t.side == "buy":
-            fill_price = float(t.entry_price) if t.entry_price is not None else None
-        else:
-            fill_price = float(t.exit_price) if t.exit_price is not None else None
-
-        out.append(
-            TradeOut(
-                id=t.id,
-                symbol=t.symbol,
-                side=t.side,
-                realized_pnl=float(t.realized_pnl) if t.realized_pnl is not None else None,
-                entry_price=float(t.entry_price) if t.entry_price is not None else None,
-                exit_price=float(t.exit_price) if t.exit_price is not None else None,
-                avg_fill_price=fill_price,
-                quantity=float(t.quantity),
-                opened_at=t.opened_at,
-                closed_at=t.closed_at,
-                strategy_name=t.strategy_name,
-            )
+    # Use list comprehension for concise and efficient construction
+    return [
+        TradeOut(
+            id=row.id,
+            symbol=row.symbol,
+            side=row.side,
+            realized_pnl=float(row.realized_pnl) if row.realized_pnl is not None else None,
+            entry_price=float(row.entry_price) if row.entry_price is not None else None,
+            exit_price=float(row.exit_price) if row.exit_price is not None else None,
+            avg_fill_price=float(row.avg_fill_price) if row.avg_fill_price is not None else None,
+            quantity=float(row.quantity),
+            opened_at=row.opened_at,
+            closed_at=row.closed_at,
+            strategy_name=row.strategy_name,
         )
-    return out
+        for row in rows
+    ]
