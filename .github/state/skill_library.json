@@ -199,8 +199,13 @@
     "Review Experiment objects",
     "Monitor RAM usage",
     "Verify data types",
-    "Test data feeds"
+    "Test data feeds",
+    "constants on backtest/metrics.py: success \u2014 tests green",
+    "constants on comparison/benchmarks.py: success \u2014 tests green",
+    "constants on tasks/agent_bus.py: success \u2014 tests green",
+    "constants on api/v1/comparison.py: success \u2014 tests green",
+    "constants on test/unit/conftest.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T17:28:22.323655+00:00",
+  "last_updated": "2026-07-13T18:57:13.575509+00:00",
   "total": 200
 }
