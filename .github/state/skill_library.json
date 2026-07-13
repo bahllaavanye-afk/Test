@@ -1,9 +1,5 @@
 {
   "skills": [
-    "strategy_logic on test/unit/test_alembic_single_head.py: success \u2014 tests green",
-    "* **Investor pipeline automation**: The `investor_pipeline.py` script is being reviewed to implement auto-advancing stages and monitored `logs/network_errors.log`.",
-    "Use circuit breakers",
-    "Test edge cases daily",
     "Here are 3 concise bullet points of the most important, actionable knowledge extracted from the recent agent learnings:",
     "* **API Availability**: The main API (`app.py`) is currently stable and available, as verified by recent checks in `agent_memory.json` and API response logs in `/data/logs/api_responses.log`.",
     "Log disk space",
@@ -199,8 +195,12 @@
     "Track thread timeouts",
     "Rate limit APIs",
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "**Backtesting and Walk-Forward Analysis Improvements**: There are efforts to standardize logging levels in walk_forward.py and improve backtesting and walk-forward analysis in backtest.py."
+    "**Backtesting and Walk-Forward Analysis Improvements**: There are efforts to standardize logging levels in walk_forward.py and improve backtesting and walk-forward analysis in backtest.py.",
+    "Handle network errors",
+    "Log exception stacks",
+    "Refactor predict.py",
+    "Review Experiment objects"
   ],
-  "last_updated": "2026-07-13T05:41:06.124464+00:00",
+  "last_updated": "2026-07-13T05:52:17.603671+00:00",
   "total": 200
 }
