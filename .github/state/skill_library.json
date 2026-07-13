@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Optimize agent memory usage",
-    "* Monitor model drift pipeline for the `LSTM` model, triggered by a recommendation to retrain it after referencing `LSTM_model_retraining.ipynb`.",
-    "error_handling on ml/features/wavelet_features.py: success \u2014 tests green",
-    "* **Conservative Allocation**: Maintain a 70/30 arb/directional allocation policy for optimal risk management. Allocation sizes should not exceed 75% of the total position size.",
-    "Optimize database connections",
     "Here are 3 reusable patterns or skills extracted from the given learnings:",
     "Review code changes",
     "Test network latency",
@@ -199,8 +194,13 @@
     "Scan for timeouts",
     "Track GC cycles",
     "Verify dependencies",
-    "Scan for orphaned threads"
+    "Scan for orphaned threads",
+    "Check DNS resolution",
+    "Scan for file locks",
+    "Refactor validation logic",
+    "Optimize experiment code",
+    "Review LLM integration"
   ],
-  "last_updated": "2026-07-12T23:50:27.673297+00:00",
+  "last_updated": "2026-07-13T02:27:36.164338+00:00",
   "total": 200
 }
