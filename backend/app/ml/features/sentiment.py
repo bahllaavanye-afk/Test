@@ -3,6 +3,7 @@ Market sentiment features: Fear & Greed Index + FinBERT news sentiment.
 Free APIs only. All features are lagged by 1 period to prevent lookahead.
 """
 from __future__ import annotations
+
 import asyncio
 import httpx
 import pandas as pd
@@ -23,11 +24,13 @@ async def fetch_fear_greed_index() -> dict:
         readings = data.get("data", [])
         result = []
         for r in readings:
-            result.append({
-                "date": datetime.fromtimestamp(int(r["timestamp"]), tz=timezone.utc).date(),
-                "value": int(r["value"]),
-                "classification": r["value_classification"],
-            })
+            result.append(
+                {
+                    "date": datetime.fromtimestamp(int(r["timestamp"]), tz=timezone.utc).date(),
+                    "value": int(r["value"]),
+                    "classification": r["value_classification"],
+                }
+            )
         return {"status": "ok", "readings": result, "current": result[0] if result else None}
     except Exception as e:
         logger.warning("Fear & Greed fetch failed", error=str(e))
@@ -63,11 +66,13 @@ async def fetch_news_sentiment(symbol: str, api_key: str | None = None) -> list[
             title = a.get("title", "") or ""
             # Simple lexicon-based scoring (no heavy model needed for free tier)
             score = _simple_sentiment(title)
-            sentiments.append({
-                "published_at": a.get("publishedAt"),
-                "title": title[:120],
-                "sentiment_score": score,
-            })
+            sentiments.append(
+                {
+                    "published_at": a.get("publishedAt"),
+                    "title": title[:120],
+                    "sentiment_score": score,
+                }
+            )
         return sentiments
     except Exception as e:
         logger.warning("NewsAPI fetch failed", symbol=symbol, error=str(e))
@@ -77,8 +82,34 @@ async def fetch_news_sentiment(symbol: str, api_key: str | None = None) -> list[
 def _simple_sentiment(text: str) -> float:
     """Fast lexicon sentiment score in range [-1, 1]."""
     text_lower = text.lower()
-    bullish = ["surge", "rally", "gain", "bull", "up", "high", "rise", "strong", "beat", "record", "buy", "growth"]
-    bearish = ["crash", "drop", "fall", "bear", "down", "low", "decline", "weak", "miss", "loss", "sell", "fear"]
+    bullish = [
+        "surge",
+        "rally",
+        "gain",
+        "bull",
+        "up",
+        "high",
+        "rise",
+        "strong",
+        "beat",
+        "record",
+        "buy",
+        "growth",
+    ]
+    bearish = [
+        "crash",
+        "drop",
+        "fall",
+        "bear",
+        "down",
+        "low",
+        "decline",
+        "weak",
+        "miss",
+        "loss",
+        "sell",
+        "fear",
+    ]
     score = sum(1 for w in bullish if w in text_lower) - sum(1 for w in bearish if w in text_lower)
     return max(-1.0, min(1.0, score / max(len(bullish), 1)))
 
@@ -103,6 +134,7 @@ class SECFilingSentiment:
     def _try_load_finbert(self) -> bool:
         try:
             from transformers import pipeline as hf_pipeline  # type: ignore
+
             self._pipeline = hf_pipeline(
                 "text-classification",
                 model="ProsusAI/finbert",
@@ -151,17 +183,13 @@ class SECFilingSentiment:
 
         try:
             url = self.EDGAR_SUBMISSIONS.format(cik=cik)
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": self._USER_AGENT},
-            )
+            req = urllib.request.Request(url, headers={"User-Agent": self._USER_AGENT})
             with urllib.request.urlopen(req, timeout=10) as r:
                 submissions = json.loads(r.read())
         except Exception as exc:
             logger.debug("SEC submissions fetch failed", ticker=ticker, error=str(exc))
             return None
 
-        # Extract the most recent 8-K or 10-Q description as tone proxy
         recent = submissions.get("filings", {}).get("recent", {})
         forms = recent.get("form", [])
         descriptions = recent.get("primaryDocument", [])
@@ -180,7 +208,6 @@ class SECFilingSentiment:
 
         try:
             scores_list = self._pipeline(combined_text)  # type: ignore
-            # scores_list: [[{label, score}, ...]]
             if not scores_list:
                 return None
             scores = {item["label"].lower(): item["score"] for item in scores_list[0]}
@@ -201,27 +228,89 @@ def add_sentiment_features(df: pd.DataFrame, fear_greed_history: list[dict]) -> 
       - fear_greed_norm: -1 to 1 rescaled
       - extreme_fear: bool (score < 25)
       - extreme_greed: bool (score > 75)
+    The function also creates smoothed sentiment signals and entry/exit flags
+    to tighten strategy logic.
     """
     if not fear_greed_history:
         df["fear_greed_score"] = 50.0
         df["fear_greed_norm"] = 0.0
         df["extreme_fear"] = False
         df["extreme_greed"] = False
+        # generate placeholder columns for downstream logic
+        df["fg_norm_sma3"] = 0.0
+        df["long_entry"] = False
+        df["long_exit"] = False
         return df
 
     fg_df = pd.DataFrame(fear_greed_history)
     fg_df["date"] = pd.to_datetime(fg_df["date"])
-    fg_df = fg_df.set_index("date")["value"].rename("fear_greed_score")
+    fg_df = fg_df.sort_values("date")
 
-    df.index = pd.to_datetime(df.index)
-    date_index = df.index.normalize()
-    df["fear_greed_score"] = date_index.map(fg_df.to_dict()).fillna(method="ffill").fillna(50)
-    df["fear_greed_norm"] = (df["fear_greed_score"] - 50) / 50.0
-    df["extreme_fear"] = df["fear_greed_score"] < 25
-    df["extreme_greed"] = df["fear_greed_score"] > 75
+    # Ensure the input dataframe has a DateTime index; if not, try to locate a column named 'date'
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if "date" in df.columns:
+            df = df.set_index(pd.to_datetime(df["date"]))
+        else:
+            raise ValueError("DataFrame must have a DateTime index or a 'date' column for merging sentiment data.")
 
-    # Lag by 1 to prevent lookahead
-    for col in ["fear_greed_score", "fear_greed_norm", "extreme_fear", "extreme_greed"]:
-        df[col] = df[col].shift(1)
+    # Merge using asof to avoid lookahead – aligns each bar with the most recent F&G reading
+    merged = pd.merge_asof(
+        left=df.sort_index(),
+        right=fg_df,
+        left_index=True,
+        right_on="date",
+        direction="backward",
+        tolerance=pd.Timedelta("1D"),
+    )
+    # Fill missing values with neutral defaults
+    merged["value"] = merged["value"].fillna(50)
+    merged["classification"] = merged["classification"].fillna("Neutral")
 
-    return df
+    # Basic features
+    merged["fear_greed_score"] = merged["value"]
+    merged["fear_greed_norm"] = (merged["value"] - 50) / 50  # -1 to 1
+    merged["extreme_fear"] = merged["value"] < 25
+    merged["extreme_greed"] = merged["value"] > 75
+
+    # Smoothed sentiment to reduce noise – 3‑bar simple moving average, lagged by 1 bar
+    merged["fg_norm_sma3"] = merged["fear_greed_norm"].rolling(window=3, min_periods=1).mean().shift(1).fillna(0.0)
+
+    # ----- Tightened entry logic -----
+    # Conditions:
+    #   1. Smoothed normalized sentiment is strongly bullish (> 0.4)
+    #   2. Not in extreme fear
+    #   3. Previous bar also had positive sentiment (momentum confirmation)
+    #   4. Optional: extreme greed flag can act as a secondary confirmation (but not required)
+    bullish_momentum = merged["fg_norm_sma3"] > 0.4
+    prev_positive = merged["fg_norm_sma3"].shift(1) > 0.0
+    entry_condition = bullish_momentum & prev_positive & ~merged["extreme_fear"]
+    merged["long_entry"] = entry_condition
+
+    # ----- Improved exit logic -----
+    # Exit when any of the following occurs:
+    #   a) Normalized sentiment drops below 0 (bearish shift)
+    #   b) Extreme fear flag becomes true
+    #   c) Smoothed sentiment crosses from positive to non‑positive
+    bearish_shift = merged["fg_norm_sma3"] < 0.0
+    cross_to_nonpos = (merged["fg_norm_sma3"].shift(1) > 0.0) & (merged["fg_norm_sma3"] <= 0.0)
+    exit_condition = bearish_shift | merged["extreme_fear"] | cross_to_nonpos
+    merged["long_exit"] = exit_condition
+
+    # Drop helper columns before returning to keep the dataframe tidy
+    merged = merged.drop(columns=["date", "value", "classification"])
+
+    return merged
+
+
+# Additional helper for external modules that only need the signal columns
+def extract_signal_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a lightweight DataFrame containing only the sentiment‑derived signals.
+    This is useful for strategy modules that do not require the full OHLCV data.
+    """
+    required = ["fear_greed_score", "fear_greed_norm", "extreme_fear", "extreme_greed",
+                "fg_norm_sma3", "long_entry", "long_exit"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise KeyError(f"Missing required sentiment columns: {missing}")
+    return df[required].copy()
