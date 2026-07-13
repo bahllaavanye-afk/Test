@@ -205,3 +205,88 @@ class LimitFirstExecution:
             },
         )
         return result
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case handling
+# ---------------------------------------------------------------------------
+import unittest
+from unittest.mock import AsyncMock, MagicMock
+
+class TestLimitFirstExecution(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Minimal stub objects to satisfy type expectations
+        class Quote:
+            def __init__(self, bid, ask):
+                self.bid = bid
+                self.ask = ask
+
+        class SimpleOrderResult(OrderResult):
+            def __init__(self, status, broker_order_id, filled_qty=None, filled_price=None):
+                self.status = status
+                self.broker_order_id = broker_order_id
+                self.filled_qty = filled_qty
+                self.filled_price = filled_price
+
+        self.Quote = Quote
+        self.SimpleOrderResult = SimpleOrderResult
+
+    async def test_zero_offset_results_in_no_price_adjustment(self):
+        """When offset_bps is 0 the limit price should equal the reference price."""
+        broker = AsyncMock(spec=AbstractBroker)
+        broker.get_quote.return_value = self.Quote(bid=99.0, ask=100.0)
+        broker.place_order.side_effect = lambda req: self.SimpleOrderResult(
+            status="open", broker_order_id="order123"
+        )
+        broker.get_order.return_value = {"status": "open"}
+
+        exec_strategy = LimitFirstExecution(broker, offset_bps=0, fallback_seconds=1)
+        request = OrderRequest(symbol="TEST", side="buy", quantity=10, order_type="market")
+        await exec_strategy.execute(request)
+
+        # Verify that limit_price sent to broker is exactly the ask price
+        placed_req = broker.place_order.call_args[0][0]
+        self.assertEqual(placed_req.limit_price, 100.0)
+
+    async def test_zero_fallback_seconds_bypasses_wait_loop(self):
+        """With fallback_seconds set to 0 the strategy should immediately fallback to market."""
+        broker = AsyncMock(spec=AbstractBroker)
+        broker.get_quote.return_value = self.Quote(bid=99.0, ask=100.0)
+        # First call (limit order) returns an open order
+        broker.place_order.side_effect = [
+            self.SimpleOrderResult(status="open", broker_order_id="limit123"),
+            self.SimpleOrderResult(status="filled", broker_order_id="market123", filled_qty=10, filled_price=100.5),
+        ]
+        broker.get_order.return_value = {"status": "open"}
+
+        exec_strategy = LimitFirstExecution(broker, offset_bps=5, fallback_seconds=0)
+        request = OrderRequest(symbol="TEST", side="sell", quantity=5, order_type="market")
+        result = await exec_strategy.execute(request)
+
+        # Ensure cancel_order was called for the limit order
+        broker.cancel_order.assert_awaited_once_with("limit123")
+        # Ensure the final result is the market order result
+        self.assertEqual(result.status, "filled")
+        self.assertEqual(result.filled_qty, 5)
+
+    async def test_exception_during_quote_falls_back_to_market(self):
+        """If getting a quote raises, execution should fall back to a market order."""
+        broker = AsyncMock(spec=AbstractBroker)
+        broker.get_quote.side_effect = RuntimeError("quote failure")
+        broker.place_order.return_value = self.SimpleOrderResult(
+            status="filled", broker_order_id="market123", filled_qty=8, filled_price=101.0
+        )
+
+        exec_strategy = LimitFirstExecution(broker, offset_bps=5, fallback_seconds=10)
+        request = OrderRequest(symbol="TEST", side="buy", quantity=8, order_type="market")
+        result = await exec_strategy.execute(request)
+
+        # Verify that only a market order was placed after the exception
+        placed_req = broker.place_order.call_args[0][0]
+        self.assertEqual(placed_req.order_type, "market")
+        self.assertEqual(result.filled_qty, 8)
+        self.assertEqual(result.filled_price, 101.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
