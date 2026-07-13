@@ -199,8 +199,13 @@
     "Verify data types",
     "Test data feeds",
     "Sanitize file paths",
-    "Track execution time"
+    "Track execution time",
+    "cleanup on api/v1/notifications.py: success \u2014 tests green",
+    "cleanup on test/unit/test_portfolio_optimizers.py: success \u2014 tests green",
+    "cleanup on strategies/manual/fx_reversion.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "cleanup on ml/models/xgboost_model.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T20:14:42.026951+00:00",
+  "last_updated": "2026-07-13T21:28:24.447785+00:00",
   "total": 200
 }
