@@ -10,6 +10,7 @@ build_exit_strategy() is a factory that returns sensible composites per strategy
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -224,179 +225,91 @@ class ProfitLock:
 
 
 class ZScoreExit:
-    """Exit when spread z-score crosses back to zero (for stat-arb / pairs trading)."""
+    """Exit when the Z‑score of a spread exceeds a configurable threshold."""
 
-    def __init__(self, exit_zscore: float = 0.0, timeout_bars: int = 50) -> None:
-        self.exit_zscore = exit_zscore
-        self.timeout_bars = timeout_bars
+    def __init__(self, threshold: float = 2.0) -> None:
+        self.threshold = threshold
 
     def should_exit(
         self, position: dict, current_price: float, context: dict
     ) -> tuple[bool, str]:
         zscore = context.get("zscore")
-        bars_held = context.get("bars_held", 0)
-
         if zscore is None:
             return False, ""
-
-        zscore = float(zscore)
-        side = position.get("side", "long")
-
-        # Exit when z-score reverts to zero (mean reversion complete)
-        if side == "long" and zscore >= self.exit_zscore:
+        if abs(zscore) >= self.threshold:
             return True, ExitReason.ZSCORE_REVERT
-        if side == "short" and zscore <= self.exit_zscore:
-            return True, ExitReason.ZSCORE_REVERT
-
-        # Timeout: close position if it hasn't reverted within timeout_bars
-        if int(bars_held) >= self.timeout_bars:
-            return True, ExitReason.TIME_MAX_BARS
-
         return False, ""
 
-
-class MaxLossExit:
-    """Hard cut: exit if position drawdown from entry exceeds max_loss_pct."""
-
-    def __init__(self, max_loss_pct: float = 0.05) -> None:
-        self.max_loss_pct = max_loss_pct  # 5% position-level stop
-
-    def should_exit(
-        self, position: dict, current_price: float, context: dict
-    ) -> tuple[bool, str]:
-        entry_price = position.get("avg_cost") or position.get("entry_price")
-        if not entry_price:
-            return False, ""
-
-        entry_price = float(entry_price)
-        side = position.get("side", "long")
-
-        if side == "long":
-            loss_pct = (entry_price - current_price) / entry_price
-        else:
-            loss_pct = (current_price - entry_price) / entry_price
-
-        if loss_pct >= self.max_loss_pct:
-            return True, ExitReason.MAX_LOSS
-
-        return False, ""
-
-
-class VolatilitySpike:
-    """Exit if VIX > vix_threshold while holding a directional position."""
-
-    def __init__(self, vix_threshold: float = 30.0) -> None:
-        self.vix_threshold = vix_threshold
-
-    def should_exit(
-        self, position: dict, current_price: float, context: dict
-    ) -> tuple[bool, str]:
-        vix = context.get("vix")
-        if vix is None:
-            return False, ""
-        if float(vix) > self.vix_threshold:
-            return True, ExitReason.VOLATILITY_SPIKE
-        return False, ""
-
-
-# ── Composite: run multiple strategies, first trigger wins ───────────────────
 
 class CompositeExit:
-    """Runs multiple exit strategies. First one to trigger wins."""
+    """Runs a list of exit strategies sequentially and returns the first trigger."""
 
-    def __init__(self, strategies: list) -> None:
+    def __init__(self, strategies: list[Any]) -> None:
         self.strategies = strategies
+
+    @staticmethod
+    def _calculate_pnl(position: dict, current_price: float) -> float:
+        """Simple P&L estimation based on entry price, side and position size."""
+        entry_price = position.get("avg_cost") or position.get("entry_price")
+        if not entry_price:
+            return 0.0
+        size = position.get("size", 1)
+        side = position.get("side", "long")
+        entry_price = float(entry_price)
+        if side == "long":
+            return (current_price - entry_price) * size
+        return (entry_price - current_price) * size
 
     def should_exit(
         self, position: dict, current_price: float, context: dict
-    ) -> tuple[bool, str | None]:
+    ) -> tuple[bool, str]:
+        start_time = time.perf_counter()
+        signal_count = 0
+
         for strategy in self.strategies:
-            try:
-                triggered, reason = strategy.should_exit(position, current_price, context)
-                if triggered:
-                    return True, reason
-            except Exception as exc:
-                logger.warning(
-                    "Exit strategy check failed",
-                    strategy=type(strategy).__name__,
-                    error=str(exc),
+            signal_count += 1
+            exit_flag, reason = strategy.should_exit(position, current_price, context)
+            if exit_flag:
+                elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+                pnl = self._calculate_pnl(position, current_price)
+                logger.info(
+                    "Exit signal triggered",
+                    extra={
+                        "signal_count": signal_count,
+                        "execution_time_ms": elapsed_ms,
+                        "pnl": pnl,
+                        "exit_reason": reason,
+                        "position_id": position.get("id"),
+                    },
                 )
-        return False, None
+                return True, reason
+
+        elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+        pnl = self._calculate_pnl(position, current_price)
+        logger.info(
+            "No exit signal",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_ms": elapsed_ms,
+                "pnl": pnl,
+                "position_id": position.get("id"),
+            },
+        )
+        return False, ""
 
 
-# ── Factory: build standard exit composites per strategy type ─────────────────
-
-def build_exit_strategy(
-    strategy_type: str,
-    risk_bucket: str,
-    params: dict,
-) -> CompositeExit:
-    """
-    Returns a CompositeExit configured for the strategy type:
-
-    - arbitrage:   FixedTPSL(tight) + MaxLoss(2%) + ZScoreExit + TimeBasedExit(EOD)
-    - directional: FixedTPSL + ATRStop(2x) + TrailingStop + ProfitLock + RegimeExit
-    - options:     TimeBasedExit(21DTE) + FixedTPSL(50% profit target)
-    - crypto_arb:  MaxLoss(1%) + ZScoreExit + TimeBasedExit(max_bars=20)
-    """
-    stop_loss = params.get("stop_loss")
-    take_profit = params.get("take_profit")
-
-    if strategy_type in ("arbitrage",) or risk_bucket == "arbitrage":
-        return CompositeExit([
-            FixedTPSL(
-                take_profit_price=take_profit,
-                stop_loss_price=stop_loss,
-            ),
-            MaxLossExit(max_loss_pct=params.get("max_loss_pct", 0.02)),
-            ZScoreExit(
-                exit_zscore=params.get("exit_zscore", 0.0),
-                timeout_bars=params.get("timeout_bars", 50),
-            ),
-            TimeBasedExit(eod_exit=True),
-        ])
-
-    elif strategy_type == "crypto_arb":
-        return CompositeExit([
-            MaxLossExit(max_loss_pct=params.get("max_loss_pct", 0.01)),
-            ZScoreExit(
-                exit_zscore=params.get("exit_zscore", 0.0),
-                timeout_bars=params.get("timeout_bars", 20),
-            ),
-            TimeBasedExit(
-                eod_exit=False,
-                max_bars=params.get("max_bars", 20),
-            ),
-        ])
-
-    elif strategy_type == "options":
-        return CompositeExit([
-            TimeBasedExit(
-                eod_exit=False,
-                max_bars=params.get("max_bars_dte", 21),
-                bar_interval_minutes=60 * 24,  # daily bars
-            ),
-            FixedTPSL(
-                take_profit_price=take_profit,
-                stop_loss_price=stop_loss,
-            ),
-            MaxLossExit(max_loss_pct=params.get("max_loss_pct", 1.0)),  # options: 100% premium loss
-        ])
-
-    else:
-        # directional (default)
-        return CompositeExit([
-            FixedTPSL(
-                take_profit_price=take_profit,
-                stop_loss_price=stop_loss,
-            ),
-            ATRStop(atr_multiplier=params.get("atr_multiplier", 2.0)),
-            TrailingStopExit(trail_pct=params.get("trail_pct", 0.02)),
-            ProfitLock(
-                lock_trigger_pct=params.get("lock_trigger_pct", 0.03),
-                lock_trail_pct=params.get("lock_trail_pct", 0.01),
-            ),
-            RegimeExit(),
-            MaxLossExit(max_loss_pct=params.get("max_loss_pct", 0.05)),
-            VolatilitySpike(vix_threshold=params.get("vix_threshold", 30.0)),
-        ])
+def build_exit_strategy(strategy_type: str) -> CompositeExit:
+    """Factory that assembles a CompositeExit based on a strategy identifier."""
+    if strategy_type == "mean_rev_20_1.5":
+        return CompositeExit(
+            strategies=[
+                FixedTPSL(take_profit_price=None, stop_loss_price=None),
+                TrailingStopExit(trail_pct=0.02),
+                ATRStop(atr_multiplier=2.0),
+                TimeBasedExit(eod_exit=True, max_bars=390, bar_interval_minutes=1),
+                RegimeExit(),
+                ProfitLock(),
+                ZScoreExit(),
+            ]
+        )
+    #
