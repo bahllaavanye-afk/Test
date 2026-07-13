@@ -199,8 +199,12 @@
     "Review Experiment objects",
     "Monitor RAM usage",
     "Verify data types",
-    "Test data feeds"
+    "Test data feeds",
+    "docstrings on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "docstrings on ml/models/lorentzian_knn.py: success \u2014 tests green",
+    "docstrings on ml/features/macro_signals.py: success \u2014 tests green",
+    "docstrings on execution/smart_router.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T12:19:30.225279+00:00",
+  "last_updated": "2026-07-13T12:29:20.807412+00:00",
   "total": 200
 }
