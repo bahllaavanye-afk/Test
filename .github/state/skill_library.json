@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Monitor heap size",
-    "Review LLM integration",
     "**Signal Data**: Review trading signals in `/tmp/data/agent_memory.json` to identify patterns and optimize signal generation.",
     "Implement Transfer Learning",
     "Check NaN in inputs",
@@ -199,8 +197,10 @@
     "Review Experiment objects",
     "Monitor RAM usage",
     "Verify data types",
-    "Test data feeds"
+    "Test data feeds",
+    "Sanitize file paths",
+    "Track execution time"
   ],
-  "last_updated": "2026-07-13T18:58:15.562375+00:00",
+  "last_updated": "2026-07-13T20:14:42.026951+00:00",
   "total": 200
 }
