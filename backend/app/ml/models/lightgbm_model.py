@@ -3,10 +3,14 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
 import json
+import time
 from pathlib import Path
 from dataclasses import dataclass
+
+import numpy as np
+import torch
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
@@ -21,8 +25,6 @@ try:
     HAS_SHAP = True
 except ImportError:
     HAS_SHAP = False
-
-import torch
 
 
 @dataclass
@@ -55,18 +57,36 @@ class LightGBMClassifier(AbstractModel):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self._model is None:
             raise RuntimeError("Model not trained yet")
+        start = time.perf_counter()
         arr = x.numpy() if isinstance(x, torch.Tensor) else x
         if arr.ndim == 3:
             arr = arr[:, -1, :]  # use last timestep for flat features
-        return torch.tensor(self._model.predict(arr), dtype=torch.float32)
+        preds = torch.tensor(self._model.predict(arr), dtype=torch.float32)
+        duration_ms = (time.perf_counter() - start) * 1000
+        signal_count = x.shape[0] if hasattr(x, "shape") else len(x)
+        logger.info(
+            "LightGBM forward",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_ms": round(duration_ms, 2),
+                "pnl": None,
+            },
+        )
+        return preds
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray,
-            X_val: np.ndarray | None = None, y_val: np.ndarray | None = None,
-            feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,
+        y_val: np.ndarray | None = None,
+        feature_names: list[str] | None = None,
+    ) -> dict:
         if not HAS_LGB:
             logger.warning("lightgbm not installed. Install: pip install lightgbm")
             return {"error": "lightgbm not installed"}
 
+        start = time.perf_counter()
         self._feature_names = feature_names or [f"f{i}" for i in range(X_train.shape[1])]
         train_set = lgb.Dataset(X_train, label=y_train, feature_name=self._feature_names)
         valid_sets = [train_set]
@@ -89,14 +109,28 @@ class LightGBMClassifier(AbstractModel):
         }
         callbacks = [lgb.early_stopping(self.config.early_stopping_rounds), lgb.log_evaluation(50)]
         self._model = lgb.train(
-            params, train_set,
+            params,
+            train_set,
             num_boost_round=self.config.n_estimators,
             valid_sets=valid_sets,
             callbacks=callbacks,
         )
+        duration_ms = (time.perf_counter() - start) * 1000
         best_iter = self._model.best_iteration
+        best_score = self._model.best_score
+        logger.info(
+            "LightGBM fit completed",
+            extra={
+                "training_samples": int(X_train.shape[0]),
+                "validation_samples": int(X_val.shape[0]) if X_val is not None else 0,
+                "execution_time_ms": round(duration_ms, 2),
+                "best_iteration": best_iter,
+                "best_score": best_score,
+                "pnl": None,
+            },
+        )
         logger.info(f"LightGBM trained: best_iteration={best_iter}")
-        return {"best_iteration": best_iter, "best_score": self._model.best_score}
+        return {"best_iteration": best_iter, "best_score": best_score}
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
         # Collect all data and do a full LightGBM fit
@@ -114,6 +148,7 @@ class LightGBMClassifier(AbstractModel):
     def evaluate(self, loader) -> EvalMetrics:
         if self._model is None:
             return EvalMetrics(accuracy=0.5, auc=0.5, sharpe=0.0)
+        start = time.perf_counter()
         X, Y = [], []
         for x, y in loader:
             arr = x.numpy()
@@ -130,6 +165,17 @@ class LightGBMClassifier(AbstractModel):
             auc = float(roc_auc_score(Y, preds))
         except Exception:
             auc = 0.5
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "LightGBM evaluation",
+            extra={
+                "evaluation_samples": int(X.shape[0]),
+                "execution_time_ms": round(duration_ms, 2),
+                "accuracy": round(acc, 4),
+                "auc": round(auc, 4),
+                "pnl": None,
+            },
+        )
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def feature_importance(self) -> dict[str, float]:
