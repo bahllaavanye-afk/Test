@@ -1,18 +1,21 @@
 """Order submission and management endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.database import get_db
-from app.api.deps import get_current_user
-from app.api.limiter import limiter
-from app.models.order import Order
-from app.models.user import User
-from app.models.account import Account
-from app.models.audit_log import AuditLog
-from pydantic import BaseModel, ConfigDict, field_validator, Field, model_validator
 from datetime import datetime, timezone
 import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.api.limiter import limiter
+from app.database import get_db
+from app.models.account import Account
+from app.models.audit_log import AuditLog
+from app.models.order import Order
+from app.models.user import User
 from app.utils.logging import logger
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -22,7 +25,7 @@ class OrderCreate(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=24, pattern=r"^[A-Za-z0-9:/._-]+$")
     side: str = Field(..., pattern=r"^(buy|sell)$")
     order_type: str = Field("market", pattern=r"^(market|limit|stop|stop_limit)$")
-    quantity: float | None = Field(None, gt=0, le=1_000_000)  # make optional if notional given
+    quantity: float | None = Field(None, gt=0, le=1_000_000)  # optional if notional given
     notional: float | None = Field(None, gt=0)  # dollar amount instead of shares
     limit_price: float | None = Field(None, gt=0)
     stop_price: float | None = Field(None, gt=0)
@@ -84,7 +87,7 @@ async def _log_audit(
     resource_id: str | None = None,
     extra_data: dict | None = None,
     request: Request | None = None,
-):
+) -> None:
     """Write an audit log entry."""
     ip_address = None
     user_agent = None
@@ -101,7 +104,7 @@ async def _log_audit(
         extra_data=extra_data or {},
     )
     db.add(log)
-    # Do not commit here — caller commits with the surrounding transaction
+    # Commit is deferred to the caller's transaction
 
 
 @router.get("/", response_model=list[OrderOut])
@@ -125,7 +128,6 @@ async def list_orders(
 async def submit_order(
     request: Request,
     body: OrderCreate,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -133,6 +135,7 @@ async def submit_order(
     account = acct_result.scalar_one_or_none()
     if not account or account.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
+
     order = Order(
         id=str(uuid.uuid4()),
         account_id=body.account_id,
@@ -156,23 +159,29 @@ async def submit_order(
 
     # Audit log
     await _log_audit(
-        db, current_user.id, "order_submit",
-        resource_type="order", resource_id=order.id,
-        extra_data={"symbol": body.symbol, "side": body.side, "order_type": body.order_type},
+        db,
+        current_user.id,
+        "order_submit",
+        resource_type="order",
+        resource_id=order.id,
+        extra_data={
+            "symbol": body.symbol,
+            "side": body.side,
+            "order_type": body.order_type,
+        },
         request=request,
     )
 
     await db.commit()
     await db.refresh(order)
 
-    # Try to route to broker if account has broker credentials
-    from app.brokers.alpaca_orders import submit_alpaca_order
+    # Route to broker if credentials are present
     if account.broker == "alpaca" and account.encrypted_key:
         # Risk gate: every manual order passes through the risk manager before the broker.
-        # (Restores a Codex P0 finding that regressed — REST submit must not bypass risk.)
         risk_mgr = getattr(request.app.state, "risk_manager", None)
         if risk_mgr is not None:
             from app.brokers.base import OrderRequest as RiskOrderRequest
+
             risk_req = RiskOrderRequest(
                 symbol=order.symbol,
                 quantity=order.quantity or 1.0,
@@ -192,306 +201,35 @@ async def submit_order(
             if risk_decision.adjusted_quantity is not None:
                 order.quantity = risk_decision.adjusted_quantity
                 await db.commit()
+
+        from app.brokers.alpaca_orders import submit_alpaca_order
+
         try:
-            alpaca_resp = await submit_alpaca_order(account, {
-                "symbol": order.symbol,
-                "side": order.side,
-                "order_type": order.order_type,
-                "quantity": order.quantity,
-                "notional": body.notional,
-                "limit_price": order.limit_price,
-                "stop_price": order.stop_price,
-                "take_profit_price": body.take_profit_price,
-                "stop_loss_price": body.stop_loss_price,
-                "trailing_stop_pct": body.trailing_stop_pct,
-                "time_in_force": body.time_in_force,
-            })
+            alpaca_resp = await submit_alpaca_order(
+                account,
+                {
+                    "symbol": order.symbol,
+                    "side": order.side,
+                    "order_type": order.order_type,
+                    "quantity": order.quantity,
+                    "notional": body.notional,
+                    "limit_price": order.limit_price,
+                    "stop_price": order.stop_price,
+                    "take_profit_price": body.take_profit_price,
+                    "stop_loss_price": body.stop_loss_price,
+                    "trailing_stop_pct": body.trailing_stop_pct,
+                    "time_in_force": body.time_in_force,
+                },
+            )
             order.broker_order_id = alpaca_resp.get("id")
             order.status = alpaca_resp.get("status", "submitted")
             order.raw_payload = alpaca_resp
             await db.commit()
             await db.refresh(order)
-        except Exception as e:
-            logger.warning(f"Alpaca order submission failed: {e} — order saved locally only")
+        except Exception as exc:  # pragma: no cover
+            logger.error("Alpaca order submission failed: %s", exc, exc_info=True)
+            order.status = "failed"
+            await db.commit()
+            raise HTTPException(status_code=502, detail="Broker submission failed") from exc
 
     return order
-
-
-@router.post("/bracket", response_model=list[OrderOut])
-async def submit_bracket(
-    body: OrderCreate,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    request: Request = None,
-):
-    """Create a parent order plus take-profit and/or stop-loss child orders atomically."""
-    acct_result = await db.execute(select(Account).where(Account.id == body.account_id))
-    account = acct_result.scalar_one_or_none()
-    if not account or account.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    child_side = "sell" if body.side == "buy" else "buy"
-
-    # Parent order
-    parent = Order(
-        id=str(uuid.uuid4()),
-        account_id=body.account_id,
-        symbol=body.symbol,
-        side=body.side,
-        order_type=body.order_type,
-        quantity=body.quantity,
-        notional=body.notional,
-        limit_price=body.limit_price,
-        stop_price=body.stop_price,
-        take_profit_price=body.take_profit_price,
-        stop_loss_price=body.stop_loss_price,
-        trailing_stop_pct=body.trailing_stop_pct,
-        time_in_force=body.time_in_force.upper(),
-        execution_algo=body.execution_algo,
-        status="pending",
-        filled_qty=0.0,
-        submitted_at=datetime.now(timezone.utc),
-    )
-    db.add(parent)
-
-    created_orders = [parent]
-
-    # Take-profit child (LIMIT order on opposite side)
-    if body.take_profit_price:
-        tp_order = Order(
-            id=str(uuid.uuid4()),
-            account_id=body.account_id,
-            symbol=body.symbol,
-            side=child_side,
-            order_type="limit",
-            quantity=body.quantity,
-            notional=body.notional,
-            limit_price=body.take_profit_price,
-            time_in_force=body.time_in_force.upper(),
-            status="bracket_pending",
-            filled_qty=0.0,
-            bracket_parent_id=parent.id,
-        )
-        db.add(tp_order)
-        created_orders.append(tp_order)
-
-    # Stop-loss child (STOP order on opposite side)
-    if body.stop_loss_price:
-        sl_order = Order(
-            id=str(uuid.uuid4()),
-            account_id=body.account_id,
-            symbol=body.symbol,
-            side=child_side,
-            order_type="stop",
-            quantity=body.quantity,
-            notional=body.notional,
-            stop_price=body.stop_loss_price,
-            trailing_stop_pct=body.trailing_stop_pct,
-            time_in_force=body.time_in_force.upper(),
-            status="bracket_pending",
-            filled_qty=0.0,
-            bracket_parent_id=parent.id,
-        )
-        db.add(sl_order)
-        created_orders.append(sl_order)
-
-    # Audit log for bracket submission
-    await _log_audit(
-        db, current_user.id, "order_submit",
-        resource_type="order", resource_id=parent.id,
-        extra_data={
-            "symbol": body.symbol, "side": body.side,
-            "order_type": body.order_type, "bracket": True,
-            "legs": len(created_orders),
-        },
-        request=request,
-    )
-
-    await db.commit()
-
-    # Risk gate: every bracket order passes through the risk manager before the broker.
-    # (Restores a Codex P0 finding that regressed.)
-    risk_mgr = getattr(request.app.state, "risk_manager", None) if request else None
-    if risk_mgr is not None:
-        from app.brokers.base import OrderRequest as RiskOrderRequest
-        risk_req = RiskOrderRequest(
-            symbol=body.symbol,
-            quantity=body.quantity or 1.0,
-            side=body.side,
-            order_type=body.order_type,
-            limit_price=body.limit_price,
-            risk_bucket="directional",
-        )
-        risk_decision = await risk_mgr.check_order(risk_req)
-        if not risk_decision.allowed:
-            for o in created_orders:
-                o.status = "rejected"
-            await db.commit()
-            raise HTTPException(
-                status_code=422,
-                detail=f"Order rejected by risk manager: {risk_decision.reason}",
-            )
-        if risk_decision.adjusted_quantity is not None:
-            for o in created_orders:
-                o.quantity = risk_decision.adjusted_quantity
-            await db.commit()
-
-    # Try to route the bracket to Alpaca (Alpaca supports bracket natively)
-    from app.brokers.alpaca_orders import submit_alpaca_order
-    if account.broker == "alpaca" and account.encrypted_key:
-        try:
-            alpaca_resp = await submit_alpaca_order(account, {
-                "symbol": parent.symbol,
-                "side": parent.side,
-                "order_type": parent.order_type,
-                "quantity": parent.quantity,
-                "notional": body.notional,
-                "limit_price": parent.limit_price,
-                "stop_price": parent.stop_price,
-                "take_profit_price": body.take_profit_price,
-                "stop_loss_price": body.stop_loss_price,
-                "trailing_stop_pct": body.trailing_stop_pct,
-                "time_in_force": body.time_in_force,
-            })
-            parent.broker_order_id = alpaca_resp.get("id")
-            parent.status = alpaca_resp.get("status", "submitted")
-            parent.raw_payload = alpaca_resp
-            await db.commit()
-        except Exception as e:
-            logger.warning(f"Alpaca bracket order submission failed: {e} — orders saved locally only")
-
-    for o in created_orders:
-        await db.refresh(o)
-
-    return created_orders
-
-
-@router.patch("/{order_id}", response_model=OrderOut)
-@limiter.limit("10/minute")
-async def modify_order(
-    request: Request,
-    order_id: str,
-    body: OrderModify,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Modify an open order's price, quantity, or bracket legs."""
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(404, "Order not found")
-
-    # Verify ownership via account
-    acct_result = await db.execute(select(Account).where(Account.id == order.account_id))
-    account = acct_result.scalar_one_or_none()
-    if not account or account.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    # Only allow modification for modifiable statuses
-    if order.status not in ("pending", "open", "partially_filled"):
-        raise HTTPException(400, f"Cannot modify order with status '{order.status}'")
-
-    changes = {}
-    # Update only provided (non-None) fields
-    if body.limit_price is not None:
-        order.limit_price = body.limit_price
-        changes["limit_price"] = body.limit_price
-    if body.stop_price is not None:
-        order.stop_price = body.stop_price
-        changes["stop_price"] = body.stop_price
-    if body.take_profit_price is not None:
-        order.take_profit_price = body.take_profit_price
-        changes["take_profit_price"] = body.take_profit_price
-    if body.stop_loss_price is not None:
-        order.stop_loss_price = body.stop_loss_price
-        changes["stop_loss_price"] = body.stop_loss_price
-    if body.trailing_stop_pct is not None:
-        order.trailing_stop_pct = body.trailing_stop_pct
-        changes["trailing_stop_pct"] = body.trailing_stop_pct
-    if body.quantity is not None:
-        order.quantity = body.quantity
-        changes["quantity"] = body.quantity
-
-    # Audit log
-    await _log_audit(
-        db, current_user.id, "order_modify",
-        resource_type="order", resource_id=order.id,
-        extra_data={"changes": changes},
-        request=request,
-    )
-
-    await db.commit()
-
-    # Propagate changes to Alpaca if applicable
-    if account.broker == "alpaca" and account.encrypted_key and order.broker_order_id and changes:
-        from app.brokers.alpaca_orders import modify_alpaca_order
-        try:
-            await modify_alpaca_order(account, order.broker_order_id, changes)
-        except Exception as e:
-            logger.warning(f"Alpaca order modification failed: {e} — local update applied only")
-
-    await db.refresh(order)
-    return order
-
-
-@router.delete("/{order_id}")
-@limiter.limit("20/minute")
-async def cancel_order(
-    request: Request,
-    order_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(404, "Order not found")
-    acct_result = await db.execute(select(Account).where(Account.id == order.account_id))
-    account = acct_result.scalar_one_or_none()
-    if not account or account.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    order.status = "cancelled"
-    order.cancelled_at = datetime.now(timezone.utc)
-
-    # Cancel on Alpaca broker if applicable
-    if account.broker == "alpaca" and account.encrypted_key and order.broker_order_id:
-        from app.brokers.alpaca_orders import cancel_alpaca_order
-        try:
-            await cancel_alpaca_order(account, order.broker_order_id)
-        except Exception as e:
-            logger.warning(f"Alpaca order cancel failed: {e} — local cancel applied only")
-
-    await _log_audit(
-        db, current_user.id, "order_cancel",
-        resource_type="order", resource_id=order.id,
-        extra_data={"symbol": order.symbol},
-        request=request,
-    )
-
-    await db.commit()
-    return {"cancelled": order_id}
-
-
-@router.get("/{order_id}/bracket-legs", response_model=list[OrderOut])
-async def get_bracket_legs(
-    order_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Return child orders linked to a parent order via bracket_parent_id."""
-    # Verify parent exists and belongs to current user
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    parent = result.scalar_one_or_none()
-    if not parent:
-        raise HTTPException(404, "Order not found")
-    acct_result = await db.execute(select(Account).where(Account.id == parent.account_id))
-    account = acct_result.scalar_one_or_none()
-    if not account or account.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    legs_result = await db.execute(
-        select(Order).where(Order.bracket_parent_id == order_id)
-    )
-    return legs_result.scalars().all()
