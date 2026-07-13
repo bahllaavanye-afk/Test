@@ -205,3 +205,146 @@ def stress_summary(results: list[StressResult]) -> dict:
                 "num_trades": r.metrics.num_trades,
             }
     return out
+
+
+# ----------------------------------------------------------------------
+# Unit Tests for Edge Cases
+# ----------------------------------------------------------------------
+import unittest
+from unittest.mock import patch
+from datetime import datetime, timedelta
+
+
+class DummyMetrics:
+    """Simple stand‑in for BacktestMetrics with required attributes."""
+    def __init__(self, total_return=0.05, max_drawdown=-0.1, sharpe=1.2, win_rate=0.6, num_trades=10):
+        self.total_return = total_return
+        self.max_drawdown = max_drawdown
+        self.sharpe = sharpe
+        self.win_rate = win_rate
+        self.num_trades = num_trades
+
+
+class TestStressTestEdgeCases(unittest.TestCase):
+    def setUp(self):
+        # Base daily index for tests
+        self.base_date = datetime(2020, 1, 1)
+        self.dates = pd.date_range(self.base_date, periods=30, freq="D")
+
+    def test_no_overlap_scenario(self):
+        """Scenario window does not intersect price data → period_covered=False."""
+        prices = pd.Series([100 + i for i in range(30)], index=self.dates)
+        signals = pd.Series([1] * 30, index=self.dates)
+
+        # Define a scenario completely outside the price range
+        outside_scenario = StressScenario(
+            name="outside",
+            label="Outside",
+            start=date(1990, 1, 1),
+            end=date(1990, 1, 10),
+            description="No overlap with price data",
+        )
+
+        results = run_stress_tests(signals, prices, scenarios=[outside_scenario])
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertFalse(res.period_covered)
+        self.assertIsNone(res.metrics)
+        self.assertEqual(res.data_points, 0)
+
+    def test_exact_boundary_five_points(self):
+        """Exactly 5 data points in the window should be processed."""
+        # Create price series that spans exactly 5 days within the scenario
+        scenario_start = self.base_date + timedelta(days=5)
+        scenario_end = scenario_start + timedelta(days=4)  # 5 days total
+        dates = pd.date_range(scenario_start, scenario_end, freq="D")
+        prices = pd.Series([100 + i for i in range(5)], index=dates)
+        signals = pd.Series([1] * 5, index=dates)
+
+        exact_scenario = StressScenario(
+            name="exact_five",
+            label="Exact Five",
+            start=scenario_start.date(),
+            end=scenario_end.date(),
+            description="Exactly five data points",
+        )
+
+        with patch(
+            "backend.app.backtest.stress_test.run_backtest",
+            return_value=DummyMetrics(),
+        ):
+            results = run_stress_tests(signals, prices, scenarios=[exact_scenario])
+
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertTrue(res.period_covered)
+        self.assertIsInstance(res.metrics, DummyMetrics)
+        self.assertEqual(res.data_points, 5)
+
+    def test_insufficient_data_points(self):
+        """Fewer than 5 points should result in period_covered=False."""
+        scenario_start = self.base_date + timedelta(days=1)
+        scenario_end = scenario_start + timedelta(days=2)  # 3 days total
+        dates = pd.date_range(scenario_start, scenario_end, freq="D")
+        prices = pd.Series([100, 101, 102], index=dates)
+        signals = pd.Series([1, 1, 1], index=dates)
+
+        short_scenario = StressScenario(
+            name="short",
+            label="Short",
+            start=scenario_start.date(),
+            end=scenario_end.date(),
+            description="Less than five data points",
+        )
+
+        results = run_stress_tests(signals, prices, scenarios=[short_scenario])
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertFalse(res.period_covered)
+        self.assertIsNone(res.metrics)
+        self.assertEqual(res.data_points, 3)
+
+    def test_stress_summary_representation(self):
+        """stress_summary should correctly represent covered and uncovered scenarios."""
+        # Covered scenario
+        covered_scenario = StressScenario(
+            name="covered",
+            label="Covered",
+            start=date(2020, 1, 1),
+            end=date(2020, 1, 10),
+            description="Covered scenario",
+        )
+        # Uncovered scenario
+        uncovered_scenario = StressScenario(
+            name="uncovered",
+            label="Uncovered",
+            start=date(1999, 1, 1),
+            end=date(1999, 1, 5),
+            description="Uncovered scenario",
+        )
+
+        # Dummy result objects
+        covered_result = StressResult(
+            scenario=covered_scenario,
+            metrics=DummyMetrics(total_return=0.1, max_drawdown=-0.05, sharpe=1.5, win_rate=0.7, num_trades=20),
+            period_covered=True,
+            data_points=8,
+        )
+        uncovered_result = StressResult(
+            scenario=uncovered_scenario,
+            metrics=None,
+            period_covered=False,
+            data_points=0,
+        )
+
+        summary = stress_summary([covered_result, uncovered_result])
+        self.assertIn("covered", summary["covered"])
+        self.assertTrue(summary["covered"]["covered"])
+        self.assertEqual(summary["covered"]["total_return_pct"], 10.0)
+        self.assertIn("uncovered", summary)
+        self.assertFalse(summary["uncovered"]["covered"])
+        self.assertEqual(summary["uncovered"]["label"], "Uncovered")
+
+
+if __name__ == "__main__":
+    unittest.main()
