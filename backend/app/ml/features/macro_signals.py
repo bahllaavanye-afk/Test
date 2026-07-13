@@ -12,6 +12,9 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Optional
 from app.utils.logging import logger
 
+# -------------------------------------------------------------------------
+# Core macro fetching utilities
+# -------------------------------------------------------------------------
 
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 APEWISDOM_URL = "https://apewisdom.io/api/v1.0/filter/all-stocks/page/1"
@@ -19,7 +22,10 @@ APEWISDOM_URL = "https://apewisdom.io/api/v1.0/filter/all-stocks/page/1"
 
 async def _fred_latest(series_id: str, api_key: str = "DEMO_KEY") -> Optional[float]:
     """Fetch latest value from FRED. DEMO_KEY allows 500 req/day — no registration needed."""
-    url = f"{FRED_BASE}?series_id={series_id}&api_key={api_key}&file_type=json&sort_order=desc&limit=1"
+    url = (
+        f"{FRED_BASE}?series_id={series_id}&api_key={api_key}"
+        f"&file_type=json&sort_order=desc&limit=1"
+    )
     try:
         async with aiohttp.ClientSession() as sess:
             async with sess.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
@@ -27,7 +33,7 @@ async def _fred_latest(series_id: str, api_key: str = "DEMO_KEY") -> Optional[fl
                     return None
                 data = await resp.json()
                 obs = data.get("observations", [])
-                if obs and obs[0]["value"] != ".":
+                if obs and obs[0].get("value") != ".":
                     return float(obs[0]["value"])
     except Exception as e:
         logger.debug(f"FRED fetch {series_id}: {e}")
@@ -41,11 +47,11 @@ async def get_macro_snapshot() -> dict:
     """
     # Fetch in parallel
     results = await asyncio.gather(
-        _fred_latest("T10Y2Y"),       # 10Y-2Y yield curve spread (negative = inverted = recession risk)
-        _fred_latest("VIXCLS"),       # VIX close (CBOE Volatility Index)
-        _fred_latest("DFF"),          # Fed Funds effective rate
-        _fred_latest("BAMLH0A0HYM2"), # High-yield credit spread (recession proxy)
-        _fred_latest("DTWEXBGS"),     # USD broad dollar index
+        _fred_latest("T10Y2Y"),  # 10Y-2Y yield curve spread (negative = inverted = recession risk)
+        _fred_latest("VIXCLS"),  # VIX close (CBOE Volatility Index)
+        _fred_latest("DFF"),  # Fed Funds effective rate
+        _fred_latest("BAMLH0A0HYM2"),  # High-yield credit spread (recession proxy)
+        _fred_latest("DTWEXBGS"),  # USD broad dollar index
         return_exceptions=True,
     )
 
@@ -60,7 +66,13 @@ async def get_macro_snapshot() -> dict:
     if yield_spread is not None:
         signals["yield_curve_inverted"] = yield_spread < 0
         signals["yield_spread_bps"] = round(yield_spread * 100, 1)
-        signals["yield_curve_signal"] = "risk_off" if yield_spread < -0.5 else "neutral" if yield_spread < 0.5 else "risk_on"
+        signals["yield_curve_signal"] = (
+            "risk_off"
+            if yield_spread < -0.5
+            else "neutral"
+            if yield_spread < 0.5
+            else "risk_on"
+        )
 
     if vix is not None:
         signals["vix_regime"] = "fear" if vix > 30 else "elevated" if vix > 20 else "complacent"
@@ -85,8 +97,14 @@ async def get_macro_snapshot() -> dict:
         "hy_credit_spread": hy_spread,
         "usd_index": usd_index,
         "signals": signals,
-        "macro_score": macro_score,           # -3 to +3: positive = risk-on environment
-        "macro_bias": "risk_on" if macro_score >= 1 else "risk_off" if macro_score <= -1 else "neutral",
+        "macro_score": macro_score,  # -3 to +3: positive = risk-on environment
+        "macro_bias": (
+            "risk_on"
+            if macro_score >= 1
+            else "risk_off"
+            if macro_score <= -1
+            else "neutral"
+        ),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -117,7 +135,10 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
         return {"error": str(e), "results": []}
 
 
-# Simple cache to avoid hammering FRED
+# -------------------------------------------------------------------------
+# Simple caching layer
+# -------------------------------------------------------------------------
+
 _macro_cache: dict = {}
 _macro_cache_time: datetime | None = None
 MACRO_CACHE_SECONDS = 300  # 5 min
@@ -131,3 +152,47 @@ async def get_macro_snapshot_cached() -> dict:
     _macro_cache = await get_macro_snapshot()
     _macro_cache_time = now
     return _macro_cache
+
+
+# -------------------------------------------------------------------------
+# Unit tests for edge‑case handling
+# -------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import unittest
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    class TestMacroSignals(unittest.IsolatedAsyncioTestCase):
+        async def test_fred_latest_missing_value(self):
+            """When FRED returns a placeholder '.' value, the function should return None."""
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_resp.json = AsyncMock(return_value={"observations": [{"value": "."}]})
+            mock_session = MagicMock()
+            mock_session.get = AsyncMock(return_value=mock_resp)
+            with patch("aiohttp.ClientSession", return_value=mock_session):
+                result = await _fred_latest("TEST_SERIES")
+                self.assertIsNone(result)
+
+        async def test_fred_latest_non_200(self):
+            """A non‑200 HTTP status should cause the function to return None without error."""
+            mock_resp = MagicMock()
+            mock_resp.status = 404
+            mock_session = MagicMock()
+            mock_session.get = AsyncMock(return_value=mock_resp)
+            with patch("aiohttp.ClientSession", return_value=mock_session):
+                result = await _fred_latest("TEST_SERIES")
+                self.assertIsNone(result)
+
+        async def test_get_macro_snapshot_all_none(self):
+            """If all FRED calls return None, macro_score should be 0 and bias neutral."""
+            with patch(__name__ + "._fred_latest", AsyncMock(return_value=None)):
+                snapshot = await get_macro_snapshot()
+                self.assertEqual(snapshot["macro_score"], 0)
+                self.assertEqual(snapshot["macro_bias"], "neutral")
+                # Ensure all primary fields are explicitly None
+                self.assertIsNone(snapshot["yield_spread_10y2y"])
+                self.assertIsNone(snapshot["vix"])
+                self.assertIsNone(snapshot["hy_credit_spread"])
+
+    unittest.main(verbosity=2)
