@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.risk.hrp import HRPOptimizer, _corr_to_distance, _get_quasi_diag
+from app.risk.hrp import HRPOptimizer, _corr_to_distance
 from app.risk.portfolio_optimizer import CVaROptimizer, optimize_portfolio
 
 
