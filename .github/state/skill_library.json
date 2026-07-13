@@ -1,7 +1,5 @@
 {
   "skills": [
-    "**Signal Data**: Review trading signals in `/tmp/data/agent_memory.json` to identify patterns and optimize signal generation.",
-    "Implement Transfer Learning",
     "Check NaN in inputs",
     "Implement rate limits",
     "Monitor model drift",
@@ -199,8 +197,10 @@
     "Verify data types",
     "Test data feeds",
     "Sanitize file paths",
-    "Track execution time"
+    "Track execution time",
+    "Verify library versions",
+    "Bind to specific CPUs"
   ],
-  "last_updated": "2026-07-13T21:27:58.988636+00:00",
+  "last_updated": "2026-07-13T22:29:12.644123+00:00",
   "total": 200
 }
