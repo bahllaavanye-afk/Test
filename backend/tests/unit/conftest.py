@@ -2,6 +2,10 @@
 import sys
 from pathlib import Path
 
-BACKEND_ROOT = Path(__file__).parents[2]
+# Constants
+PARENT_LEVEL = 2
+SYS_PATH_INSERT_INDEX = 0
+
+BACKEND_ROOT = Path(__file__).parents[PARENT_LEVEL]
 if str(BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(BACKEND_ROOT))
+    sys.path.insert(SYS_PATH_INSERT_INDEX, str(BACKEND_ROOT))
