@@ -3,16 +3,38 @@ import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
 
+# Constants
+NAME = "ensemble"
+DISPLAY_NAME = "Ensemble ML (LSTM + XGB + Lorentzian)"
+MARKET_TYPE = "equity"
+STRATEGY_TYPE = "ml_enhanced"
+RISK_BUCKET = "directional"
+TICK_INTERVAL_SECONDS = 300.0
+CONFIDENCE_THRESHOLD = 0.70
+SMA_WINDOW = 20
+
+PREDICTION_UP = "up"
+PREDICTION_DOWN = "down"
+PREDICTION_NEUTRAL = "neutral"
+
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+
+COL_CLOSE = "close"
+COL_VOLUME = "volume"
+COL_ML_PREDICTION = "ml_prediction"
+COL_ML_CONFIDENCE = "ml_confidence"
+
 
 class EnsembleStrategy(AbstractStrategy):
-    name = "ensemble"
-    display_name = "Ensemble ML (LSTM + XGB + Lorentzian)"
-    market_type = "equity"
-    strategy_type = "ml_enhanced"
-    risk_bucket = "directional"
-    tick_interval_seconds = 300.0
-    confidence_threshold = 0.70  # higher bar for pure ML
-    sma_window = 20  # simple moving average window for confirmation
+    name = NAME
+    display_name = DISPLAY_NAME
+    market_type = MARKET_TYPE
+    strategy_type = STRATEGY_TYPE
+    risk_bucket = RISK_BUCKET
+    tick_interval_seconds = TICK_INTERVAL_SECONDS
+    confidence_threshold = CONFIDENCE_THRESHOLD
+    sma_window = SMA_WINDOW
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         """
@@ -35,26 +57,26 @@ class EnsembleStrategy(AbstractStrategy):
             ml_result = await inference.predict(data, symbol)
 
             # Basic ML validation
-            if not ml_result or ml_result.get("prediction") == "neutral":
+            if not ml_result or ml_result.get("prediction") == PREDICTION_NEUTRAL:
                 return None
             if ml_result.get("confidence", 0) < self.confidence_threshold:
                 return None
 
             # Ensure we have price and volume data for confirmation
-            if "close" not in data.columns or "volume" not in data.columns:
+            if COL_CLOSE not in data.columns or COL_VOLUME not in data.columns:
                 return None
 
             # Compute SMA and median volume on the latest slice
             recent = data.tail(self.sma_window)
             if recent.empty:
                 return None
-            sma = recent["close"].mean()
-            median_vol = recent["volume"].median()
-            latest_close = data["close"].iloc[-1]
-            latest_vol = data["volume"].iloc[-1]
+            sma = recent[COL_CLOSE].mean()
+            median_vol = recent[COL_VOLUME].median()
+            latest_close = data[COL_CLOSE].iloc[-1]
+            latest_vol = data[COL_VOLUME].iloc[-1]
 
             # Directional confirmation
-            if ml_result["prediction"] == "up":
+            if ml_result["prediction"] == PREDICTION_UP:
                 if latest_close <= sma:
                     return None
             else:  # prediction == "down"
@@ -67,7 +89,7 @@ class EnsembleStrategy(AbstractStrategy):
 
             return Signal(
                 symbol=symbol,
-                side="buy" if ml_result["prediction"] == "up" else "sell",
+                side=SIDE_BUY if ml_result["prediction"] == PREDICTION_UP else SIDE_SELL,
                 confidence=ml_result["confidence"],
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
@@ -90,23 +112,23 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
-        required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
+        required_cols = {COL_CLOSE, COL_VOLUME, COL_ML_PREDICTION, COL_ML_CONFIDENCE}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
         # Compute rolling SMA and median volume
-        sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
-        median_vol = df["volume"].rolling(window=self.sma_window, min_periods=1).median()
+        sma = df[COL_CLOSE].rolling(window=self.sma_window, min_periods=1).mean()
+        median_vol = df[COL_VOLUME].rolling(window=self.sma_window, min_periods=1).median()
 
         # Conditions for a valid entry
-        is_up = df["ml_prediction"] == "up"
-        is_down = df["ml_prediction"] == "down"
-        conf_ok = df["ml_confidence"] >= self.confidence_threshold
-        price_above_sma = df["close"] > sma
-        price_below_sma = df["close"] < sma
-        vol_ok = df["volume"] >= median_vol
+        is_up = df[COL_ML_PREDICTION] == PREDICTION_UP
+        is_down = df[COL_ML_PREDICTION] == PREDICTION_DOWN
+        conf_ok = df[COL_ML_CONFIDENCE] >= self.confidence_threshold
+        price_above_sma = df[COL_CLOSE] > sma
+        price_below_sma = df[COL_CLOSE] < sma
+        vol_ok = df[COL_VOLUME] >= median_vol
 
         long_entry = is_up & conf_ok & price_above_sma & vol_ok
         short_entry = is_down & conf_ok & price_below_sma & vol_ok
@@ -115,8 +137,8 @@ class EnsembleStrategy(AbstractStrategy):
 
         # Exit when any of the entry conditions become false for the current side.
         # For simplicity we treat the opposite side as an exit signal.
-        exit_long = (~price_above_sma) | (~vol_ok) | (df["ml_prediction"] == "down")
-        exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
+        exit_long = (~price_above_sma) | (~vol_ok) | (df[COL_ML_PREDICTION] == PREDICTION_DOWN)
+        exit_short = (~price_below_sma) | (~vol_ok) | (df[COL_ML_PREDICTION] == PREDICTION_UP)
         exits = exit_long | exit_short
 
         # Align boolean Series with BacktestSignals expectations
