@@ -25,16 +25,18 @@ class MLMeanReversionStrategy(AbstractStrategy):
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
             if ml_result and ml_result["confidence"] > 0.60:
-                match = (ml_result["prediction"] == "up" and base_signal.side == "buy") or \
-                        (ml_result["prediction"] == "down" and base_signal.side == "sell")
+                match = (
+                    (ml_result["prediction"] == "up" and base_signal.side == "buy")
+                    or (ml_result["prediction"] == "down" and base_signal.side == "sell")
+                )
                 if match:
                     base_signal.confidence = min(0.93, base_signal.confidence * 1.1)
                     base_signal.strategy_name = self.name
                     base_signal.strategy_type = self.strategy_type
                     return base_signal
-                return None  # ML disagrees — skip
+                return None
         except Exception:
-            return base_signal  # fallback
+            return base_signal
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
