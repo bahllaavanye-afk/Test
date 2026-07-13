@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
@@ -38,27 +39,13 @@ async def get_intraday_volume_profile(
     """Return a normalized intraday volume distribution for *symbol*.
 
     The function attempts to fetch the previous trading day's 30‑minute bar
-    volumes from the supplied *broker*.  If the broker returns sufficient data
+    volumes from the supplied *broker*. If the broker returns sufficient data
     (at least eight non‑zero volume entries), the raw volumes are normalised to
     create a dynamic profile that reflects the instrument's recent trading
     pattern.
 
     If the broker is ``None`` or the fetch fails, the function falls back to the
     static empirical U‑shaped profile defined by ``_EMPIRICAL_PROFILE``.
-
-    Parameters
-    ----------
-    symbol:
-        Ticker symbol for which to retrieve the volume distribution.
-    broker:
-        Optional :class:`~app.brokers.base.AbstractBroker` instance used to query
-        historical bars.  When ``None`` the empirical profile is returned.
-
-    Returns
-    -------
-    list[float]
-        Normalised volume weights that sum to 1.0 (or the empirical profile if
-        dynamic data could not be obtained).
     """
     if broker is not None:
         try:
@@ -69,7 +56,9 @@ async def get_intraday_volume_profile(
                 total = sum(volumes)
                 profile = [v / total for v in volumes]
                 logger.debug(
-                    "VWAP dynamic profile loaded", symbol=symbol, buckets=len(profile)
+                    "VWAP dynamic profile loaded",
+                    symbol=symbol,
+                    buckets=len(profile),
                 )
                 return profile
         except Exception as e:
@@ -78,6 +67,7 @@ async def get_intraday_volume_profile(
                 symbol=symbol,
                 error=str(e),
             )
+    # Return a mutable copy of the empirical profile
     return list(_EMPIRICAL_PROFILE)
 
 
@@ -101,9 +91,16 @@ class VWAPExecution:
             The broker implementation used to place orders and fetch market data.
         participation_rate:
             Desired fraction of market volume to participate in (default 10 %).
+            Must be between 0 and 1.
         slices:
             Number of time slices (or intervals) the order will be divided into.
+            Must be a positive integer.
         """
+        if not 0 < participation_rate <= 1:
+            raise ValueError("participation_rate must be in the interval (0, 1].")
+        if slices <= 0:
+            raise ValueError("slices must be a positive integer.")
+
         self.broker = broker
         self.participation_rate = participation_rate
         self.slices = slices
@@ -113,23 +110,9 @@ class VWAPExecution:
         """Execute a VWAP order.
 
         The method retrieves a volume profile, splits the order into slices, and
-        sends each slice as a market order.  Between slices it sleeps for the
+        sends each slice as a market order. Between slices it sleeps for the
         calculated interval to spread execution across the session.
-
-        Parameters
-        ----------
-        request:
-            An :class:`~app.brokers.base.OrderRequest` describing the order to be
-            executed (symbol, quantity, etc.).
-
-        Returns
-        -------
-        OrderResult
-            Aggregated result containing the total filled quantity, average fill
-            price, and an overall status (``filled`` if at least 95 % of the
-            target quantity was executed, otherwise ``partial``).
         """
-        # Fetch dynamic profile; cap slices to profile length
         profile = await get_intraday_volume_profile(request.symbol, self.broker)
         active_slices = min(self.slices, len(profile))
         profile_slice = profile[:active_slices]
@@ -140,7 +123,7 @@ class VWAPExecution:
         last_result: OrderResult | None = None
 
         for i in range(active_slices):
-            slice_weight = profile_slice[i] / profile_total
+            slice_weight = profile_slice[i] / profile_total if profile_total else 0
             slice_qty = request.quantity * slice_weight
 
             slice_req = OrderRequest(
@@ -153,7 +136,10 @@ class VWAPExecution:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
                 logger.debug(
-                    "VWAP slice filled", slice=i, qty=slice_qty, filled=result.filled_qty
+                    "VWAP slice filled",
+                    slice=i,
+                    qty=slice_qty,
+                    filled=result.filled_qty,
                 )
             except Exception as e:
                 logger.warning("VWAP slice failed", slice=i, error=str(e))
