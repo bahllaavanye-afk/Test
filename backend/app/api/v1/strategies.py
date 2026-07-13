@@ -35,7 +35,8 @@ class StrategyToggle(BaseModel):
 async def get_params_schema(current_user: User = Depends(get_current_user)):
     """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
     schema = {}
-    for name, cls in STRATEGY_REGISTRY.items():
+    registry = STRATEGY_REGISTRY or {}
+    for name, cls in registry.items():
         if hasattr(cls, "DEFAULT_PARAMS"):
             schema[name] = {
                 "params": cls.DEFAULT_PARAMS,
@@ -47,7 +48,8 @@ async def get_params_schema(current_user: User = Depends(get_current_user)):
 @router.get("/available")
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
-    return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    registry = STRATEGY_REGISTRY or {}
+    return [{"name": k} for k in registry.keys()]
 
 
 @router.get("/desks")
@@ -58,12 +60,15 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     so the equities/crypto/options/prediction-market/TradingView desks all share one
     format and a new strategy is placed automatically.
     """
-    grouped = strategies_by_desk()
+    grouped = strategies_by_desk() or {}
+    desks = list_desks() or []
+    counts = {desk: len(members) for desk, members in grouped.items()}
+    total = sum(counts.values())
     return {
-        "desks": list_desks(),
+        "desks": desks,
         "by_desk": grouped,
-        "counts": {desk: len(members) for desk, members in grouped.items()},
-        "total": sum(len(m) for m in grouped.values()),
+        "counts": counts,
+        "total": total,
     }
 
 
@@ -114,7 +119,8 @@ async def list_strategies(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Strategy))
-    return result.scalars().all()
+    strategies = result.scalars().all()
+    return strategies or []
 
 
 @router.patch("/{strategy_id}/toggle")
@@ -124,6 +130,10 @@ async def toggle_strategy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
+    if not strategy_id:
+        raise HTTPException(400, "Invalid strategy ID")
+    if body is None or body.is_enabled is None:
+        raise HTTPException(400, "Invalid request body")
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
