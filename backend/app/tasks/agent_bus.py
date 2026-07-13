@@ -27,6 +27,15 @@ from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
+# Constants
+BUS_KEY_PREFIX: str = "bus:events:"
+BUS_STREAM_MAX: int = 2000  # max events per topic (ring buffer)
+DEFAULT_CONSUMER_OFFSET: str = "$"
+XREAD_BLOCK_MS: int = 200  # block time for XREAD in milliseconds
+XREAD_COUNT: int = 50     # max number of messages per XREAD
+SLEEP_SHORT: float = 0.5  # sleep when no streams are subscribed
+SLEEP_LONG: float = 1.0   # sleep after unexpected error
+
 # All valid bus topics — unknown topics are rejected to prevent typos cascading silently
 TOPICS = frozenset({
     "market:regime",
@@ -40,9 +49,6 @@ TOPICS = frozenset({
     "knowledge:learned",
     "auction:allocated",
 })
-
-_BUS_KEY_PREFIX = "bus:events:"
-_BUS_STREAM_MAX = 2000   # max events per topic (ring buffer)
 
 Handler = Callable[[str, dict], Awaitable[None]]
 
@@ -72,15 +78,22 @@ class AgentBus:
         if topic not in TOPICS:
             logger.warning("AgentBus: unknown topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
-        key = f"{_BUS_KEY_PREFIX}{topic}"
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
+        key = f"{BUS_KEY_PREFIX}{topic}"
         try:
-            await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
+            await self._r.xadd(key, payload, maxlen=BUS_STREAM_MAX, approximate=True)
         except Exception as e:
             # Redis unavailable — log but don't crash the caller
             logger.debug("AgentBus.publish failed topic=%s: %s", topic, e)
 
-    # ── Subscribing ───────────────────────────────────────────────────────────
+    # ── Subscribing ─────────────────────────────────────────────────────────
 
     def subscribe(self, topic: str, handler: Handler) -> None:
         """Register an async handler for a topic. Called at startup, not at runtime."""
@@ -88,7 +101,7 @@ class AgentBus:
             raise ValueError(f"AgentBus: unknown topic {topic!r}")
         self._handlers.setdefault(topic, []).append(handler)
         # Start reading from "now" — don't replay old events on (re)subscription
-        self._consumer_offsets.setdefault(topic, "$")
+        self._consumer_offsets.setdefault(topic, DEFAULT_CONSUMER_OFFSET)
 
     # ── Event loop ────────────────────────────────────────────────────────────
 
@@ -106,21 +119,23 @@ class AgentBus:
         while self._running:
             try:
                 streams = {
-                    f"{_BUS_KEY_PREFIX}{topic}": offset
+                    f"{BUS_KEY_PREFIX}{topic}": offset
                     for topic, offset in self._consumer_offsets.items()
                     if topic in self._handlers
                 }
                 if not streams:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(SLEEP_SHORT)
                     continue
 
-                # XREAD with 200ms block — yields when events arrive, not on a fixed interval
-                results = await self._r.xread(streams, block=200, count=50)
+                # XREAD with block — yields when events arrive, not on a fixed interval
+                results = await self._r.xread(
+                    streams, block=XREAD_BLOCK_MS, count=XREAD_COUNT
+                )
                 if not results:
                     continue
 
                 for stream_key, messages in (results or []):
-                    topic = stream_key.removeprefix(_BUS_KEY_PREFIX)
+                    topic = stream_key.removeprefix(BUS_KEY_PREFIX)
                     for msg_id, fields in messages:
                         # Advance consumer offset so we don't re-read this message
                         self._consumer_offsets[topic] = msg_id
@@ -139,18 +154,20 @@ class AgentBus:
                             except Exception as exc:
                                 logger.error(
                                     "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
+                                    topic,
+                                    handler.__name__,
+                                    exc,
                                 )
             except Exception as exc:
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(SLEEP_LONG)
 
     # ── Introspection ─────────────────────────────────────────────────────────
 
     async def queue_depth(self, topic: str) -> int:
         """How many events are buffered for a topic (monitoring)."""
         try:
-            return await self._r.xlen(f"{_BUS_KEY_PREFIX}{topic}")
+            return await self._r.xlen(f"{BUS_KEY_PREFIX}{topic}")
         except Exception:
             return -1
 
@@ -165,6 +182,7 @@ def get_bus(redis_client: Any | None = None) -> AgentBus:
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _bus = AgentBus(redis_client)
     return _bus
