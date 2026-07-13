@@ -199,8 +199,13 @@
     "Review Experiment objects",
     "Monitor RAM usage",
     "Verify data types",
-    "Test data feeds"
+    "Test data feeds",
+    "refactor on execution/iceberg.py: success \u2014 tests green",
+    "refactor on risk/circuit_breaker.py: success \u2014 tests green",
+    "refactor on brokers/alpaca_headers.py: success \u2014 tests green",
+    "refactor on comparison/report_builder.py: success \u2014 tests green",
+    "refactor on tasks/position_monitor.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T12:19:30.225279+00:00",
+  "last_updated": "2026-07-13T15:26:17.664216+00:00",
   "total": 200
 }
