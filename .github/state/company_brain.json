@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783914068.0166347,
+    "last_updated": 1783918076.0277689,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783905242.142517
+    "last_brain_update": 1783918076.0273147
   },
   "episodic": [
     {
@@ -574,6 +574,27 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1783867100.577983
+    },
+    {
+      "lesson": "Investigate root cause of repeated auto-fix failures; likely due to patch conflicts or malformed patches, blocking code integration.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783918072.2528822
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free-tier daily limit (100 deployments). Upgrade to Pro plan or reduce deployment frequency to avoid 24-hour delays.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1783918072.2549753
+    },
+    {
+      "lesson": "Implement deployment batching or staging environments to minimize free-tier usage and ensure critical updates can be deployed without rate limits.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1783918072.2569354
     }
   ],
   "github_insights": [
@@ -821,6 +842,11 @@
       "summary": "The deployment failed due to resource limitations, and an automated fix was aborted because the proposed changes (~60 lines) exceeded the allowed limit of 50 lines.",
       "item_count": 20,
       "ts": 1783905242.1384006
+    },
+    {
+      "summary": "The auto-fix bot repeatedly failed to apply patches to a file, with three identical error messages indicating the same issue.",
+      "item_count": 20,
+      "ts": 1783918076.0232038
     }
   ],
   "experiment_results": [
