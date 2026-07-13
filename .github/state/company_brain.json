@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783976077.9263158,
+    "last_updated": 1783979572.4496071,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1783976077.9255877
+    "last_brain_update": 1783979572.4491844
   },
   "episodic": [
     {
@@ -885,6 +885,11 @@
       "summary": "The deployment failed due to a resource limit error, and an automatic patch attempt also failed to apply.",
       "item_count": 20,
       "ts": 1783976077.9146187
+    },
+    {
+      "summary": "The deployment failed due to resource limitations, and two attempts at automatic fixes also failed to apply patches.",
+      "item_count": 20,
+      "ts": 1783979572.445035
     }
   ],
   "experiment_results": [
