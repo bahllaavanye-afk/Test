@@ -7,10 +7,15 @@ from app.api.deps import get_current_user
 from app.models.comparison import ComparisonResult as ComparisonModel
 from app.models.user import User
 from app.comparison.benchmarks import get_benchmark_stats
-from pydantic import BaseModel, ConfigDict, ConfigDict
-from datetime import date
+from pydantic import BaseModel, ConfigDict
 
-router = APIRouter(prefix="/comparison", tags=["comparison"])
+# Constants
+ROUTER_PREFIX = "/comparison"
+ROUTER_TAGS = ["comparison"]
+DEFAULT_EPSILON = 1e-9
+MAX_RESULTS = 20
+
+router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
 class ComparisonOut(BaseModel):
@@ -30,13 +35,16 @@ class ComparisonOut(BaseModel):
     def from_model(cls, m) -> "ComparisonOut":
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            base = float(m.manual_sharpe) or 1e-9
+            base = float(m.manual_sharpe) or DEFAULT_EPSILON
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
         return cls(
-            id=m.id, strategy_name=m.strategy_name, symbol=m.symbol,
+            id=m.id,
+            strategy_name=m.strategy_name,
+            symbol=m.symbol,
             manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe else None,
             ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe else None,
-            is_significant=m.is_significant, winner=m.winner,
+            is_significant=m.is_significant,
+            winner=m.winner,
             spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe else None,
             ml_improvement_pct=round(improvement, 4) if improvement else None,
         )
@@ -54,7 +62,7 @@ async def list_comparisons(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(20)
+        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(MAX_RESULTS)
     )
     rows = result.scalars().all()
     return [ComparisonOut.from_model(r) for r in rows]
