@@ -199,8 +199,13 @@
     "Refactor predict.py",
     "Review Experiment objects",
     "Monitor RAM usage",
-    "Verify data types"
+    "Verify data types",
+    "cleanup on api/v1/orders.py: success \u2014 tests green",
+    "cleanup on test/unit/test_risk_advanced.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
+    "cleanup on ml/models/gemini_signal.py: success \u2014 tests green",
+    "cleanup on execution/vwap.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T09:19:08.413344+00:00",
+  "last_updated": "2026-07-13T09:53:40.589381+00:00",
   "total": 200
 }
