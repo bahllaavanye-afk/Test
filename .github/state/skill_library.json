@@ -199,8 +199,13 @@
     "Review Experiment objects",
     "Monitor RAM usage",
     "Verify data types",
-    "Test data feeds"
+    "Test data feeds",
+    "optimization on brokers/binance.py: success \u2014 tests green",
+    "optimization on backtest/walk_forward.py: success \u2014 tests green",
+    "optimization on comparison/engine.py: success \u2014 tests green",
+    "optimization on api/v1/trades.py: success \u2014 tests green",
+    "optimization on strategies/manual/open_close_revert.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-13T12:19:30.225279+00:00",
+  "last_updated": "2026-07-13T17:29:55.192106+00:00",
   "total": 200
 }
