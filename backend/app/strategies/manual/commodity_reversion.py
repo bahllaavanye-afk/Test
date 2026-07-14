@@ -38,38 +38,76 @@ class CommodityReversionStrategy(AbstractStrategy):
         self.entry_z = float(eff["entry_z"])
         self.exit_z = float(eff["exit_z"])
 
-    def _zscore(self, close: pd.Series) -> pd.Series:
+    def _zscore(self, close: pd.Series | None) -> pd.Series:
+        """Calculate rolling z‑score, safely handling None or empty inputs."""
+        if close is None or close.empty:
+            # Return an empty series with the same dtype as a typical float series
+            return pd.Series(dtype=float)
         mean = close.rolling(self.window).mean()
         std = close.rolling(self.window).std()
+        # Replace zero std with NA to avoid division by zero
         return (close - mean) / std.replace(0, pd.NA)
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str) -> Signal | None:
+        """Generate a live signal from the most recent bar."""
+        if data is None or not isinstance(data, pd.DataFrame):
+            return None
         if "close" not in data.columns or len(data) < self.window + 5:
             return None
-        z = self._zscore(data["close"]).iloc[-1]
+        z_series = self._zscore(data["close"])
+        if z_series.empty:
+            return None
+        z = z_series.iloc[-1]
         if pd.isna(z):
             return None
         if z <= -self.entry_z:  # stretched below the mean → fade up (long)
             conf = min(0.85, 0.55 + (abs(z) - self.entry_z) * 0.1)
-            return Signal(symbol=symbol, side="buy", confidence=conf,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"zscore": round(float(z), 2), "window": self.window})
+            return Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=conf,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={"zscore": round(float(z), 2), "window": self.window},
+            )
         if z >= self.entry_z:   # stretched above the mean → fade down (short)
             conf = min(0.85, 0.55 + (abs(z) - self.entry_z) * 0.1)
-            return Signal(symbol=symbol, side="sell", confidence=conf,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"zscore": round(float(z), 2), "window": self.window})
+            return Signal(
+                symbol=symbol,
+                side="sell",
+                confidence=conf,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={"zscore": round(float(z), 2), "window": self.window},
+            )
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, df: pd.DataFrame | None) -> BacktestSignals:
+        """Generate back‑test signals, handling edge cases gracefully."""
+        # Guard against None, wrong type, or insufficient data
+        if df is None or not isinstance(df, pd.DataFrame):
+            empty = pd.Series([False] * 0, dtype=bool)
+            return BacktestSignals(
+                entries=empty, exits=empty,
+                short_entries=empty, short_exits=empty,
+            )
+        if "close" not in df.columns or len(df) < self.window:
+            empty = pd.Series([False] * len(df), dtype=bool)
+            return BacktestSignals(
+                entries=empty, exits=empty,
+                short_entries=empty, short_exits=empty,
+            )
         z = self._zscore(df["close"]).shift(1)  # decide today from yesterday's z-score
-        entries = z <= -self.entry_z            # long when oversold
-        exits = z >= -self.exit_z               # flatten as it reverts toward the mean
-        short_entries = z >= self.entry_z       # short when overbought
-        short_exits = z <= self.exit_z          # cover as it reverts toward the mean
+        # Ensure the series aligns with the original dataframe length
+        entries = (z <= -self.entry_z).fillna(False)
+        exits = (z >= -self.exit_z).fillna(False)
+        short_entries = (z >= self.entry_z).fillna(False)
+        short_exits = (z <= self.exit_z).fillna(False)
         return BacktestSignals(
-            entries=entries.fillna(False), exits=exits.fillna(False),
-            short_entries=short_entries.fillna(False), short_exits=short_exits.fillna(False),
+            entries=entries,
+            exits=exits,
+            short_entries=short_entries,
+            short_exits=short_exits,
         )
