@@ -199,8 +199,13 @@
     "Verify market data",
     "Log UCB1 decisions",
     "Check trading halt",
-    "Validate order IDs"
+    "Validate order IDs",
+    "constants on backtest/engine.py: success \u2014 tests green",
+    "constants on comparison/report_builder.py: success \u2014 tests green",
+    "constants on tasks/agent_memory.py: success \u2014 tests green",
+    "constants on api/v1/discord_interactions.py: success \u2014 tests green",
+    "constants on test/unit/test_oa_clone_templates.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T17:12:17.834465+00:00",
+  "last_updated": "2026-07-14T18:38:07.458713+00:00",
   "total": 200
 }
