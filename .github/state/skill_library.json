@@ -199,8 +199,13 @@
     "Verify market data",
     "Log UCB1 decisions",
     "Check trading halt",
-    "Validate order IDs"
+    "Validate order IDs",
+    "constants on backtest/cpcv.py: success \u2014 tests green",
+    "constants on comparison/engine.py: success \u2014 tests green",
+    "constants on tasks/self_improver.py: success \u2014 tests green",
+    "constants on api/v1/backtests.py: success \u2014 tests green",
+    "constants on strategies/ml_enhanced/ensemble.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T06:07:42.249726+00:00",
+  "last_updated": "2026-07-14T06:09:35.118415+00:00",
   "total": 200
 }
