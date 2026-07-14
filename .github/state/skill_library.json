@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Parse agent memory files",
-    "Check CPU usage",
-    "Sanitize file paths",
-    "Bind to specific CPUs",
-    "* The `VIX mean reversion` strategy (manual/vix_mean_reversion.py) and `commodity trend` strategy (commodity_trend.py) have successful tests, indicating their strategy logic is sound.",
     "Test files in backend/tests/ \u2014 always run pytest after modifying backend code",
     "Check clock sync",
     "Refactor for cyclomatic complexity",
@@ -199,8 +194,13 @@
     "**Thread safety review**: `self_improver` is actively reviewing thread safety in `src/trading/` to prevent potential concurrency issues.",
     "Monitor thread activity",
     "Monitor disk space",
-    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:"
+    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
+    "Check algo_agent init",
+    "Verify market data",
+    "Log UCB1 decisions",
+    "Check trading halt",
+    "Validate order IDs"
   ],
-  "last_updated": "2026-07-14T04:54:24.188901+00:00",
+  "last_updated": "2026-07-14T06:07:42.249726+00:00",
   "total": 200
 }
