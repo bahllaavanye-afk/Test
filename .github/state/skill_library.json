@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Check NaN in inputs",
-    "Implement rate limits",
-    "Monitor model drift",
-    "Verify trade IDs",
     "* **LSTM model needs improvement**: The recent update on `ml/models/lstm.py` shows that improvements are needed to increase its performance.",
     "optimization on api/v1/strategies.py: success \u2014 tests green",
     "Check API timeouts",
@@ -199,8 +195,12 @@
     "Sanitize file paths",
     "Track execution time",
     "Verify library versions",
-    "Bind to specific CPUs"
+    "Bind to specific CPUs",
+    "Check thread counts",
+    "Limit open files",
+    "Refactor predict.py code",
+    "Monitor API uptime"
   ],
-  "last_updated": "2026-07-13T23:27:11.385940+00:00",
+  "last_updated": "2026-07-14T00:53:10.900767+00:00",
   "total": 200
 }
