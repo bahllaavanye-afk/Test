@@ -50,7 +50,10 @@ class Task:
     error: str = ""
 
     def to_redis(self) -> dict[str, str]:
-        return {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in asdict(self).items()}
+        return {
+            k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+            for k, v in asdict(self).items()
+        }
 
     @classmethod
     def from_redis(cls, fields: dict) -> "Task":
@@ -116,23 +119,41 @@ class TaskQueue:
 
     # ── Processing ────────────────────────────────────────────────────────────
 
+    async def _first_nonempty_priority(self) -> int | None:
+        """Return the highest‑priority queue that currently holds at least one entry."""
+        priorities = (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW)
+        try:
+            pipe = self._r.pipeline()
+            for p in priorities:
+                pipe.xlen(f"{_QUEUE_PREFIX}{p}")
+            lengths = await pipe.execute()
+            for p, length in zip(priorities, lengths):
+                if length and length > 0:
+                    return p
+        except Exception as e:
+            logger.debug("TaskQueue._first_nonempty_priority error: %s", e)
+        return None
+
     async def process_once(self) -> bool:
-        """Drain one task from the highest-priority non-empty queue. Returns True if a task ran."""
-        for priority in (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW):
-            key = f"{_QUEUE_PREFIX}{priority}"
-            try:
-                results = await self._r.xread({key: "0"}, count=1)
-                if not results:
-                    continue
-                for _, messages in results:
-                    for msg_id, fields in messages:
-                        task = Task.from_redis(fields)
-                        # Delete from queue before processing (at-most-once delivery)
-                        await self._r.xdel(key, msg_id)
-                        await self._dispatch(task)
-                        return True
-            except Exception as e:
-                logger.debug("TaskQueue.process_once error priority=%d: %s", priority, e)
+        """Drain one task from the highest‑priority non‑empty queue. Returns True if a task ran."""
+        priority = await self._first_nonempty_priority()
+        if priority is None:
+            return False
+
+        key = f"{_QUEUE_PREFIX}{priority}"
+        try:
+            results = await self._r.xread({key: "0"}, count=1)
+            if not results:
+                return False
+            for _, messages in results:
+                for msg_id, fields in messages:
+                    task = Task.from_redis(fields)
+                    # Delete from queue before processing (at‑most‑once delivery)
+                    await self._r.xdel(key, msg_id)
+                    await self._dispatch(task)
+                    return True
+        except Exception as e:
+            logger.debug("TaskQueue.process_once error priority=%d: %s", priority, e)
         return False
 
     async def run_worker(self, poll_interval: float = 0.5) -> None:
@@ -150,7 +171,7 @@ class TaskQueue:
     async def _dispatch(self, task: Task) -> None:
         now = time.time()
         if task.scheduled_at > now:
-            # Re-enqueue with delay (use original priority)
+            # Re‑enqueue with delay (use original priority)
             delay = task.scheduled_at - now
             await asyncio.sleep(min(delay, 5.0))
             await self._requeue(task, delay=max(0, task.scheduled_at - time.time()))
@@ -185,7 +206,12 @@ class TaskQueue:
             logger.debug("TaskQueue._requeue failed: %s", e)
 
     async def _dead_letter(self, task: Task) -> None:
-        logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
+        logger.error(
+            "TaskQueue: task permanently failed type=%s id=%s error=%s",
+            task.task_type,
+            task.task_id,
+            task.error,
+        )
         try:
             await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
         except Exception:
@@ -218,6 +244,7 @@ def get_task_queue(redis_client: Any | None = None) -> TaskQueue:
     if _queue is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _queue = TaskQueue(redis_client)
     return _queue
