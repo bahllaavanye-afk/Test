@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Track API call durations",
-    "Diagnostic checks are being run on investor_pipeline's systems, including DNS resolution in `/etc/resolv.conf`, to ensure smooth connectivity.",
-    "**Review and refine `agent.memory` module**: Peer_reviewer recommends reviewing `backend/app/store/memory.py` to ensure the `agent.memory` module correctly persists changes.",
     "Use load balancing",
     "Check thread counts",
     "**Real-time awareness**: Agents need to be aware of their current tasks and provide specific, first-person updates to maintain transparency and efficiency.",
@@ -199,8 +196,11 @@
     "Log algo errors",
     "Review market briefs",
     "Analyze signal strength",
-    "Refactor code regularly"
+    "Refactor code regularly",
+    "Check clock sync",
+    "Test API keys",
+    "Check dependency updates"
   ],
-  "last_updated": "2026-07-14T20:07:27.200129+00:00",
+  "last_updated": "2026-07-14T21:29:48.736005+00:00",
   "total": 200
 }
