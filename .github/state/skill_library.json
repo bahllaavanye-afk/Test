@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Check clock sync",
-    "Refactor for cyclomatic complexity",
-    "Validate user perms",
-    "Test network latency",
     "Track API call durations",
     "Diagnostic checks are being run on investor_pipeline's systems, including DNS resolution in `/etc/resolv.conf`, to ensure smooth connectivity.",
     "**Review and refine `agent.memory` module**: Peer_reviewer recommends reviewing `backend/app/store/memory.py` to ensure the `agent.memory` module correctly persists changes.",
@@ -199,8 +195,12 @@
     "Log UCB1 decisions",
     "Check trading halt",
     "Validate order IDs",
-    "Validate algo params"
+    "Validate algo params",
+    "Log algo errors",
+    "Review market briefs",
+    "Analyze signal strength",
+    "Refactor code regularly"
   ],
-  "last_updated": "2026-07-14T18:37:22.217391+00:00",
+  "last_updated": "2026-07-14T20:07:27.200129+00:00",
   "total": 200
 }
