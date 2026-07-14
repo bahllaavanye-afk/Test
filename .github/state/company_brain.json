@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784021062.1433995,
+    "last_updated": 1784032815.0034947,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784021062.1429102
+    "last_brain_update": 1784032815.0031085
   },
   "episodic": [
     {
@@ -933,6 +933,11 @@
       "summary": "An automated weekly security scan using Bandit found high-severity issues, but the auto-fix attempt failed and could not apply the patch.",
       "item_count": 20,
       "ts": 1784021062.138227
+    },
+    {
+      "summary": "Deployment failed due to resource limits (try again in 24 hours), and an automated fix attempt also failed to apply a patch.",
+      "item_count": 20,
+      "ts": 1784032814.9995453
     }
   ],
   "experiment_results": [
