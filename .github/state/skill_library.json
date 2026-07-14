@@ -1,7 +1,5 @@
 {
   "skills": [
-    "* **LSTM model needs improvement**: The recent update on `ml/models/lstm.py` shows that improvements are needed to increase its performance.",
-    "optimization on api/v1/strategies.py: success \u2014 tests green",
     "Check API timeouts",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
     "Review thread safety",
@@ -199,8 +197,10 @@
     "Check thread counts",
     "Limit open files",
     "Refactor predict.py code",
-    "Monitor API uptime"
+    "Monitor API uptime",
+    "Log memory usage",
+    "Use circuit breakers"
   ],
-  "last_updated": "2026-07-14T00:53:10.900767+00:00",
+  "last_updated": "2026-07-14T03:54:17.925578+00:00",
   "total": 200
 }
