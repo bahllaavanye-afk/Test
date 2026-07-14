@@ -14,6 +14,7 @@ Reference: Hawkes (1971) "Spectra of Some Self-Exciting and Mutually Exciting Po
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,6 +49,8 @@ class HawkesProcess:
         # 'market' if busy, 'limit' if quiet
     """
 
+    _MIN_SWITCH_INTERVAL = 10.0  # seconds: minimum time between order‑type changes
+
     def __init__(self, beta: float = 1.0):
         if not isinstance(beta, (int, float)):
             raise TypeError(f"beta must be a numeric type, got {type(beta)}")
@@ -55,6 +58,8 @@ class HawkesProcess:
             raise ValueError(f"beta must be positive, got {beta}")
         self.beta = float(beta)
         self.params: HawkesParams | None = None
+        self._last_suggested: str | None = None
+        self._last_change_ts: float = 0.0
 
     def fit(self, timestamps: np.ndarray) -> HawkesParams:
         """
@@ -63,7 +68,7 @@ class HawkesProcess:
         Uses EM-like iterative estimation (Veen & Schoenberg 2008).
 
         Args:
-            timestamps: sorted 1-D array of Unix timestamps in seconds.
+            timestamps: sorted 1‑D array of Unix timestamps in seconds.
                         Must have at least 10 events.
 
         Returns:
@@ -84,7 +89,7 @@ class HawkesProcess:
             logger.info("Insufficient timestamps (%d); using default parameters", len(timestamps))
             return HawkesParams(mu=1.0, alpha=0.5, beta=self.beta)
 
-        # Sort just in case
+        # Ensure chronological order
         timestamps = np.sort(timestamps)
         T = float(timestamps[-1] - timestamps[0])
         if T < 1e-9:
@@ -96,9 +101,9 @@ class HawkesProcess:
         alpha = 0.3
         beta = self.beta
 
-        for _ in range(50):  # EM-like iterations
+        for _ in range(50):  # EM‑like iterations
             try:
-                # E-step: compute conditional intensities at each event time
+                # E‑step: compute conditional intensities at each event time
                 intensities = np.empty(n, dtype=float)
                 for i in range(n):
                     ti = timestamps[i]
@@ -109,7 +114,7 @@ class HawkesProcess:
                     )
                     intensities[i] = max(mu + excitation, 1e-10)
 
-                # M-step: update mu and alpha
+                # M‑step: update mu and alpha
                 inv_int = 1.0 / intensities
 
                 mu_new = mu * np.sum(inv_int) / (T + 1e-10)
@@ -142,7 +147,7 @@ class HawkesProcess:
         horizon_seconds: float = 30.0,
     ) -> float:
         """
-        Predict expected number of arrivals in the next horizon_seconds.
+        Predict expected number of arrivals in the next ``horizon_seconds``.
 
         Uses current excitation level from the last 5 minutes of timestamps.
 
@@ -151,7 +156,7 @@ class HawkesProcess:
             horizon_seconds: prediction window length.
 
         Returns:
-            Expected number of events in [t_last, t_last + horizon_seconds].
+            Expected number of events in ``[t_last, t_last + horizon_seconds]``.
         """
         if self.params is None:
             logger.debug("Parameters not fitted; returning default intensity 1.0")
@@ -176,15 +181,13 @@ class HawkesProcess:
             logger.error("Invalid horizon_seconds type: %s", type(horizon_seconds))
             raise TypeError("horizon_seconds must be a numeric type")
         if horizon_seconds <= 0:
-            logger.error("Non-positive horizon_seconds: %f", horizon_seconds)
+            logger.error("Non‑positive horizon_seconds: %f", horizon_seconds)
             raise ValueError("horizon_seconds must be positive")
 
         p = self.params
         t_last = float(timestamps[-1])
-        recent = timestamps[timestamps > t_last - 300.0]
-        carry = float(
-            p.alpha * p.beta * np.sum(np.exp(-p.beta * (t_last - recent)))
-        )
+        recent = timestamps[timestamps > t_last - 300.0]  # last 5 min
+        carry = float(p.alpha * p.beta * np.sum(np.exp(-p.beta * (t_last - recent))))
         lam = p.mu + carry
         intensity = float(lam * horizon_seconds)
         logger.debug(
@@ -192,6 +195,19 @@ class HawkesProcess:
             p.mu, carry, lam, horizon_seconds, intensity,
         )
         return intensity
+
+    def _confirmation_filter(self, intensity: float, mu: float) -> bool:
+        """
+        Internal helper to decide whether the intensity signal is strong enough.
+
+        Returns ``True`` if the intensity exceeds both an absolute ``threshold``
+        and a relative factor over the baseline ``mu``.
+        """
+        # Absolute threshold handled by ``suggest_execution``; here we enforce a
+        # relative condition to avoid false‑positive entries during periods of
+        # modest baseline activity.
+        relative_factor = 2.0  # require at least double the baseline rate
+        return intensity > mu * relative_factor
 
     def suggest_execution(
         self,
@@ -201,26 +217,100 @@ class HawkesProcess:
         """
         Recommend order type based on predicted arrival intensity.
 
-        High intensity (many orders arriving) → market order (good liquidity).
-        Low intensity (few orders) → limit order (avoid crossing spread).
+        * **Market order** – high intensity (many orders arriving) → good liquidity.
+        * **Limit order** – low intensity (few orders) → avoid crossing spread.
+
+        The decision is tightened by:
+        - requiring intensity to be above ``threshold`` **and** at least twice the
+          baseline intensity (``mu``);
+        - enforcing a minimum ``_MIN_SWITCH_INTERVAL`` between consecutive
+          changes to prevent churning.
 
         Args:
-            intensity: predicted arrivals in horizon from predict_intensity().
-            threshold: arrivals cutoff between limit and market order.
+            intensity: predicted arrivals in horizon from ``predict_intensity``.
+            threshold: absolute arrivals cutoff between limit and market.
 
         Returns:
-            'market' if intensity > threshold, else 'limit'.
+            ``'market'`` or ``'limit'``.
         """
         if not isinstance(intensity, (int, float)):
             logger.error("Invalid intensity type: %s", type(intensity))
             raise TypeError("intensity must be a numeric type")
-        if not isinstance(threshold, (int, float)):
-            logger.error("Invalid threshold type: %s", type(threshold))
-            raise TypeError("threshold must be a numeric type")
-        if threshold < 0:
-            logger.error("Negative threshold value: %f", threshold)
-            raise ValueError("threshold must be non-negative")
+        if intensity < 0:
+            logger.error("Negative intensity received: %f", intensity)
+            raise ValueError("intensity must be non‑negative")
 
-        decision = "market" if intensity > threshold else "limit"
-        logger.info("Execution suggestion: intensity=%.3f, threshold=%.3f -> %s", intensity, threshold, decision)
-        return decision
+        # Baseline reference for relative comparison
+        mu = self.params.mu if self.params else 1.0
+
+        # Determine raw signal
+        raw_signal = intensity > threshold and self._confirmation_filter(intensity, mu)
+
+        # Resolve final suggestion with churn protection
+        now = time.time()
+        desired = "market" if raw_signal else "limit"
+
+        if self._last_suggested is None:
+            # First call – set state without restriction
+            self._last_suggested = desired
+            self._last_change_ts = now
+            logger.debug("Initial execution suggestion: %s", desired)
+            return desired
+
+        if desired != self._last_suggested:
+            time_since_change = now - self._last_change_ts
+            if time_since_change < self._MIN_SWITCH_INTERVAL:
+                # Keep previous suggestion until the interval expires
+                logger.debug(
+                    "Switch suppressed (%.2fs < %.2fs); keeping %s",
+                    time_since_change,
+                    self._MIN_SWITCH_INTERVAL,
+                    self._last_suggested,
+                )
+                return self._last_suggested
+            else:
+                logger.debug(
+                    "Execution suggestion changed from %s to %s after %.2fs",
+                    self._last_suggested,
+                    desired,
+                    time_since_change,
+                )
+                self._last_suggested = desired
+                self._last_change_ts = now
+                return desired
+
+        # No change needed
+        logger.debug("Execution suggestion unchanged: %s", desired)
+        return desired
+
+    # --------------------------------------------------------------------- #
+    # Additional helper for external callers that need explicit exit logic
+    # --------------------------------------------------------------------- #
+    def should_exit_market(
+        self,
+        intensity: float,
+        exit_threshold: float = 3.0,
+    ) -> bool:
+        """
+        Determine whether a previously taken market order should be exited
+        (i.e., switch to limit) based on a lower intensity threshold.
+
+        This method can be used by higher‑level strategies to implement a
+        graceful exit from aggressive execution when liquidity dries up.
+
+        Args:
+            intensity: current predicted intensity.
+            exit_threshold: intensity below which the market position should be
+                reconsidered.
+
+        Returns:
+            ``True`` if the strategy should move to limit orders.
+        """
+        if not isinstance(intensity, (int, float)):
+            raise TypeError("intensity must be numeric")
+        if intensity < 0:
+            raise ValueError("intensity must be non‑negative")
+        # Use a relative component similar to the entry filter
+        mu = self.params.mu if self.params else 1.0
+        relative_factor = 0.5  # drop below half the baseline to trigger exit
+        return intensity < exit_threshold and intensity < mu * relative_factor
