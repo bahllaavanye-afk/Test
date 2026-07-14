@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784042130.3850107,
+    "last_updated": 1784042305.6289747,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,47 +108,47 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 3,
-    "macro_score": 0,
-    "vix": 22.22,
-    "market_scan_ts": 1781136270.285874,
+    "macro_score": 3,
+    "vix": 16.42,
+    "market_scan_ts": 1784042305.6180918,
     "sector_leaders": [
-      "Healthcare",
-      "Cons. Staples",
-      "Financials"
+      "Financials",
+      "Utilities",
+      "Industrials"
     ],
     "sector_laggards": [
-      "Comm.",
-      "Cons. Disc.",
-      "Materials"
+      "Energy",
+      "Materials",
+      "Cons. Staples"
     ],
     "active_universe": [
-      "GLD",
-      "XLK",
-      "QQQ",
-      "XLI",
-      "KO",
-      "C",
-      "IWM",
-      "PEP",
-      "UNH",
-      "AAPL",
-      "SPY",
-      "XLP",
-      "JNJ",
-      "XLV",
-      "MRK",
-      "MSFT",
       "GS",
-      "MO",
-      "PG",
-      "LLY"
+      "ORCL",
+      "WFC",
+      "NOW",
+      "XLV",
+      "CRWD",
+      "BAC",
+      "XLF",
+      "MS",
+      "JPM",
+      "LLY",
+      "C",
+      "AVGO",
+      "XLI",
+      "NVDA",
+      "META",
+      "PANW",
+      "JNJ",
+      "QQQ",
+      "IWM"
     ],
     "top_momentum": [
-      "LLY",
-      "WFC",
-      "JNJ",
-      "BAC",
-      "ABBV"
+      "PANW",
+      "CRWD",
+      "META",
+      "TMO",
+      "GS"
     ],
     "risk_flags": [],
     "risk_status": "normal",
@@ -663,6 +663,21 @@
       },
       "lesson": "Bull regime with a strong SPY uptrend and tightening credit spreads supports risk-on positioning, though a flat yield curve and moderate breadth (6/11 sectors above 20-SMA) warrant selective exposure. Favour trend-following strategies today to capture momentum while avoiding overconcentration in lagging sectors.",
       "ts": 1784042130.3871737
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Financials",
+        "Utilities",
+        "Industrials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Financials, Utilities. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784042305.6310408
     }
   ],
   "github_insights": [
