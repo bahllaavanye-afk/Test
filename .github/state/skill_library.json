@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Use load balancing",
-    "Check thread counts",
     "**Real-time awareness**: Agents need to be aware of their current tasks and provide specific, first-person updates to maintain transparency and efficiency.",
     "Verify dependency updates",
     "TRADING_MODE must always be paper \u2014 never set to live",
@@ -199,8 +197,10 @@
     "Refactor code regularly",
     "Check clock sync",
     "Test API keys",
-    "Check dependency updates"
+    "Check dependency updates",
+    "Verify data feeds",
+    "Check queue lengths"
   ],
-  "last_updated": "2026-07-14T21:29:48.736005+00:00",
+  "last_updated": "2026-07-14T22:32:52.729740+00:00",
   "total": 200
 }
