@@ -2,25 +2,27 @@
 3-state Hidden Markov Model for market regime detection.
 
 States:
-  0 = bear   — high volatility, negative drift
-  1 = sideways — low volatility, near-zero drift
-  2 = bull   — low volatility, positive drift
+  0 = bear      — high volatility, negative drift
+  1 = sideways — low volatility, near‑zero drift
+  2 = bull      — low volatility, positive drift
 
-Uses hmmlearn if available, else falls back to a pure-NumPy Baum-Welch
-implementation that converges in 50-100 iterations for financial data.
+Uses hmmlearn if available, else falls back to a pure‑NumPy Baum‑Welch
+implementation that converges in 50‑100 iterations for financial data.
 """
 from __future__ import annotations
 
 import os
 import pickle
-import numpy as np
 from typing import Optional
 
+import numpy as np
 
-# ── Baum-Welch fallback (pure NumPy) ─────────────────────────────────────────
+
+# ── Baum‑Welch fallback (pure NumPy) ────────────────────────────────────────
+
 
 class _BaumWelchHMM:
-    """Minimal Gaussian HMM via Baum-Welch EM. 2-feature input."""
+    """Minimal Gaussian HMM via Baum‑Welch EM. 2‑feature input."""
 
     def __init__(self, n_states: int = 3, n_iter: int = 100, tol: float = 1e-4):
         self.n_states = n_states
@@ -28,19 +30,19 @@ class _BaumWelchHMM:
         self.tol = tol
         self._init_params()
 
-    def _init_params(self):
+    def _init_params(self) -> None:
         K = self.n_states
         self.pi = np.ones(K) / K
         self.A = np.full((K, K), 1.0 / K)
-        # Means: bear=(-0.002,0.02), sideways=(0,0.01), bull=(0.002,0.008)
+        # Means: bear = (-0.002, 0.020), sideways = (0.0, 0.010), bull = (0.002, 0.008)
         self.mu = np.array([[-0.002, 0.020], [0.0, 0.010], [0.002, 0.008]])
         self.sigma2 = np.ones((K, 2)) * 0.0001
 
     def _gaussian_pdf(self, X: np.ndarray) -> np.ndarray:
-        """Returns (T, K) emission probabilities."""
+        """Emission probabilities (T, K)."""
         T = len(X)
         K = self.n_states
-        B = np.zeros((T, K))
+        B = np.empty((T, K), dtype=float)
         for k in range(K):
             diff = X - self.mu[k]
             exponent = -0.5 * np.sum(diff ** 2 / np.clip(self.sigma2[k], 1e-10, None), axis=1)
@@ -50,9 +52,9 @@ class _BaumWelchHMM:
 
     def _forward(self, B: np.ndarray):
         T, K = B.shape
-        alpha = np.zeros((T, K))
+        alpha = np.empty((T, K), dtype=float)
         alpha[0] = self.pi * B[0]
-        scale = np.zeros(T)
+        scale = np.empty(T, dtype=float)
         scale[0] = alpha[0].sum() or 1e-300
         alpha[0] /= scale[0]
         for t in range(1, T):
@@ -63,7 +65,7 @@ class _BaumWelchHMM:
 
     def _backward(self, B: np.ndarray, scale: np.ndarray):
         T, K = B.shape
-        beta = np.zeros((T, K))
+        beta = np.empty((T, K), dtype=float)
         beta[-1] = 1.0
         for t in range(T - 2, -1, -1):
             beta[t] = (self.A @ (B[t + 1] * beta[t + 1])) / (scale[t + 1] or 1e-300)
@@ -75,21 +77,25 @@ class _BaumWelchHMM:
             B = self._gaussian_pdf(X)
             alpha, scale = self._forward(B)
             beta = self._backward(B, scale)
-            T, K = alpha.shape
+
             gamma = alpha * beta
             gamma /= gamma.sum(axis=1, keepdims=True).clip(1e-300)
-            xi = np.zeros((T - 1, K, K))
-            for t in range(T - 1):
+
+            xi = np.empty((X.shape[0] - 1, self.n_states, self.n_states), dtype=float)
+            for t in range(X.shape[0] - 1):
                 xi[t] = (alpha[t, :, None] * self.A * (B[t + 1] * beta[t + 1]))
                 xi[t] /= xi[t].sum() or 1e-300
-            # Update
+
             self.pi = gamma[0] / gamma[0].sum()
             self.A = xi.sum(axis=0) / xi.sum(axis=0).sum(axis=1, keepdims=True).clip(1e-300)
+
             self.mu = (gamma[:, :, None] * X[:, None, :]).sum(axis=0) / gamma.sum(axis=0)[:, None].clip(1e-300)
-            for k in range(K):
+
+            for k in range(self.n_states):
                 diff = X - self.mu[k]
                 self.sigma2[k] = (gamma[:, k, None] * diff ** 2).sum(0) / gamma[:, k].sum().clip(1e-300)
                 self.sigma2[k] = np.clip(self.sigma2[k], 1e-8, None)
+
             ll = np.log(scale).sum()
             if abs(ll - prev_ll) < self.tol:
                 break
@@ -100,36 +106,39 @@ class _BaumWelchHMM:
         """Viterbi decoding → state sequence."""
         B = self._gaussian_pdf(X)
         T, K = B.shape
-        viterbi = np.zeros((T, K))
-        psi = np.zeros((T, K), dtype=int)
+        viterbi = np.empty((T, K), dtype=float)
+        psi = np.empty((T, K), dtype=int)
+
         viterbi[0] = np.log(self.pi + 1e-300) + np.log(B[0])
         for t in range(1, T):
             trans = viterbi[t - 1, :, None] + np.log(self.A + 1e-300)
             psi[t] = trans.argmax(axis=0)
             viterbi[t] = trans.max(axis=0) + np.log(B[t])
-        states = np.zeros(T, dtype=int)
+
+        states = np.empty(T, dtype=int)
         states[-1] = viterbi[-1].argmax()
         for t in range(T - 2, -1, -1):
             states[t] = psi[t + 1, states[t + 1]]
         return states
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ── Public API ───────────────────────────────────────────────────────────────
+
 
 class RegimeDetector:
     """
-    3-state HMM for market regime detection.
+    3‑state HMM for market regime detection.
 
     Fit on a return series; features are [return, abs_return].
     States are automatically labelled as bear/sideways/bull by drift ordering.
     """
     N_STATES = 3
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._model: Optional[_BaumWelchHMM] = None
-        self._state_map: dict[int, int] = {0: 0, 1: 1, 2: 2}
-        self._use_hmmlearn = False
         self._hmmlearn_model = None
+        self._use_hmmlearn = False
+        self._state_map: dict[int, int] = {0: 0, 1: 1, 2: 2}
         self._fitted = False
 
     def _build_features(self, returns: np.ndarray) -> np.ndarray:
@@ -156,10 +165,11 @@ class RegimeDetector:
             self._use_hmmlearn = False
 
         # Establish state → regime label by drift ordering
-        states = self.predict(returns)
-        means = [float(returns[states == k].mean()) if (states == k).any() else 0.0
-                 for k in range(self.N_STATES)]
-        # Sort states by mean drift: lowest→bear(0), middle→sideways(1), highest→bull(2)
+        raw_states = self.predict(returns)
+        means = [
+            float(returns[raw_states == k].mean()) if (raw_states == k).any() else 0.0
+            for k in range(self.N_STATES)
+        ]
         order = sorted(range(self.N_STATES), key=lambda k: means[k])
         self._state_map = {raw: label for label, raw in enumerate(order)}
         self._fitted = True
@@ -177,10 +187,10 @@ class RegimeDetector:
     def predict_regimes(self, returns: np.ndarray) -> np.ndarray:
         """Labelled regime sequence: 0=bear, 1=sideways, 2=bull."""
         raw = self.predict(returns)
-        return np.array([self._state_map.get(int(s), s) for s in raw])
+        return np.array([self._state_map.get(int(s), s) for s in raw], dtype=int)
 
     def current_regime(self, returns: np.ndarray) -> int:
-        """Returns the current regime label for the most recent bar."""
+        """Current regime label for the most recent bar."""
         return int(self.predict_regimes(returns)[-1])
 
     def regime_name(self, regime: int) -> str:
@@ -189,13 +199,16 @@ class RegimeDetector:
     def save(self, path: str) -> None:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "wb") as f:
-            pickle.dump({
-                "model": self._model,
-                "hmmlearn_model": self._hmmlearn_model,
-                "use_hmmlearn": self._use_hmmlearn,
-                "state_map": self._state_map,
-                "fitted": self._fitted,
-            }, f)
+            pickle.dump(
+                {
+                    "model": self._model,
+                    "hmmlearn_model": self._hmmlearn_model,
+                    "use_hmmlearn": self._use_hmmlearn,
+                    "state_map": self._state_map,
+                    "fitted": self._fitted,
+                },
+                f,
+            )
 
     @classmethod
     def load(cls, path: str) -> "RegimeDetector":
@@ -208,8 +221,3 @@ class RegimeDetector:
         det._state_map = data.get("state_map", {0: 0, 1: 1, 2: 2})
         det._fitted = data.get("fitted", False)
         return det
-
-
-# Public alias — the model registry (app/ml/models/__init__.py) imports the HMM
-# regime model as ``HMMRegimeModel``; the implementation class is ``RegimeDetector``.
-HMMRegimeModel = RegimeDetector
