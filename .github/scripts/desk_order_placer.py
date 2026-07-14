@@ -444,6 +444,23 @@ _TARGET_ANNUAL_VOL = 0.20
 DAILY_LOSS_CAP_PCT = float(os.environ.get("DAILY_LOSS_CAP_PCT", "0.02"))
 
 
+MIN_ORDER_USD = 25.0
+
+
+def cash_capped_notional(notional: float, symbol: str, account: dict) -> float:
+    """Cap an order's notional at what the account can actually pay (95% of
+    the relevant buying power; crypto needs non-marginable cash). Sizing used
+    to ignore this and Alpaca 403'd 'insufficient balance' — with $215
+    available we requested $378 instead of placing a $205 order. Returns 0
+    when even MIN_ORDER_USD isn't affordable (caller skips honestly)."""
+    is_crypto = "/" in symbol
+    field = "non_marginable_buying_power" if is_crypto else "buying_power"
+    avail = float(account.get(field, 0) or 0) * 0.95
+    if avail < MIN_ORDER_USD:
+        return 0.0
+    return min(float(notional), avail)
+
+
 def daily_loss_cap_hit(equity: float, last_equity: float,
                        cap: float = None) -> bool:
     cap = DAILY_LOSS_CAP_PCT if cap is None else cap
@@ -1110,6 +1127,11 @@ async def main() -> None:
                 if perf_w != 1.0:
                     print(f"    · perf weight {perf_w:.2f}x for {strategy.name}", flush=True)
                     kelly_notional *= perf_w
+                kelly_notional = cash_capped_notional(kelly_notional, symbol, account)
+                if kelly_notional <= 0:
+                    print(f"  · {strategy.name}/{symbol} skipped — insufficient available cash "
+                          f"(< ${MIN_ORDER_USD:.0f}; frees as pending closes fill)", flush=True)
+                    continue
                 coid = f"qe-{strategy.name[:10]}-{symbol[:4].replace('/', '')}-{int(time.time())}"
                 limit_price: float | None = None
                 _df = bars_cache.get(symbol)
