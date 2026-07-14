@@ -199,8 +199,12 @@
     "Check thread counts",
     "Limit open files",
     "Refactor predict.py code",
-    "Monitor API uptime"
+    "Monitor API uptime",
+    "docstrings on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "docstrings on ml/features/engineer.py: success \u2014 tests green",
+    "docstrings on execution/rl_exec.py: success \u2014 tests green",
+    "docstrings on risk/kelly.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T00:53:10.900767+00:00",
+  "last_updated": "2026-07-14T00:54:12.563841+00:00",
   "total": 200
 }
