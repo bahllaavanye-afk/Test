@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Test files in backend/tests/ \u2014 always run pytest after modifying backend code",
     "Check clock sync",
     "Refactor for cyclomatic complexity",
     "Validate user perms",
@@ -199,8 +198,9 @@
     "Verify market data",
     "Log UCB1 decisions",
     "Check trading halt",
-    "Validate order IDs"
+    "Validate order IDs",
+    "Validate algo params"
   ],
-  "last_updated": "2026-07-14T17:12:17.834465+00:00",
+  "last_updated": "2026-07-14T18:37:22.217391+00:00",
   "total": 200
 }
