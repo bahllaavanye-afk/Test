@@ -3,10 +3,14 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
+import time
 import json
 from pathlib import Path
 from dataclasses import dataclass
+
+import numpy as np
+import torch
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
@@ -21,8 +25,6 @@ try:
     HAS_SHAP = True
 except ImportError:
     HAS_SHAP = False
-
-import torch
 
 
 @dataclass
@@ -55,18 +57,31 @@ class LightGBMClassifier(AbstractModel):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self._model is None:
             raise RuntimeError("Model not trained yet")
+        start = time.time()
         arr = x.numpy() if isinstance(x, torch.Tensor) else x
         if arr.ndim == 3:
             arr = arr[:, -1, :]  # use last timestep for flat features
-        return torch.tensor(self._model.predict(arr), dtype=torch.float32)
+        result = torch.tensor(self._model.predict(arr), dtype=torch.float32)
+        exec_time = time.time() - start
+        signal_count = arr.shape[0] if hasattr(arr, "shape") else 0
+        logger.info(
+            f"LightGBM forward: signal_count={signal_count}, exec_time={exec_time:.6f}s"
+        )
+        return result
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray,
-            X_val: np.ndarray | None = None, y_val: np.ndarray | None = None,
-            feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,
+        y_val: np.ndarray | None = None,
+        feature_names: list[str] | None = None,
+    ) -> dict:
         if not HAS_LGB:
             logger.warning("lightgbm not installed. Install: pip install lightgbm")
             return {"error": "lightgbm not installed"}
 
+        start = time.time()
         self._feature_names = feature_names or [f"f{i}" for i in range(X_train.shape[1])]
         train_set = lgb.Dataset(X_train, label=y_train, feature_name=self._feature_names)
         valid_sets = [train_set]
@@ -89,13 +104,18 @@ class LightGBMClassifier(AbstractModel):
         }
         callbacks = [lgb.early_stopping(self.config.early_stopping_rounds), lgb.log_evaluation(50)]
         self._model = lgb.train(
-            params, train_set,
+            params,
+            train_set,
             num_boost_round=self.config.n_estimators,
             valid_sets=valid_sets,
             callbacks=callbacks,
         )
+        exec_time = time.time() - start
         best_iter = self._model.best_iteration
-        logger.info(f"LightGBM trained: best_iteration={best_iter}")
+        logger.info(
+            f"LightGBM trained: best_iteration={best_iter}, "
+            f"train_samples={X_train.shape[0]}, exec_time={exec_time:.6f}s"
+        )
         return {"best_iteration": best_iter, "best_score": self._model.best_score}
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
@@ -114,6 +134,8 @@ class LightGBMClassifier(AbstractModel):
     def evaluate(self, loader) -> EvalMetrics:
         if self._model is None:
             return EvalMetrics(accuracy=0.5, auc=0.5, sharpe=0.0)
+
+        start = time.time()
         X, Y = [], []
         for x, y in loader:
             arr = x.numpy()
@@ -130,6 +152,14 @@ class LightGBMClassifier(AbstractModel):
             auc = float(roc_auc_score(Y, preds))
         except Exception:
             auc = 0.5
+
+        exec_time = time.time() - start
+        signal_count = X.shape[0]
+        # Simple P&L approximation: profit from correct directional bets
+        pnl = float(((preds - 0.5) * (Y - 0.5)).sum())
+        logger.info(
+            f"LightGBM evaluate: signal_count={signal_count}, exec_time={exec_time:.6f}s, pnl={pnl:.4f}"
+        )
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def feature_importance(self) -> dict[str, float]:
@@ -151,7 +181,11 @@ class LightGBMClassifier(AbstractModel):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         if self._model:
             self._model.save_model(path + ".lgb")
-        meta = {"model_type": self.model_type, "feature_names": self._feature_names, **(metadata or {})}
+        meta = {
+            "model_type": self.model_type,
+            "feature_names": self._feature_names,
+            **(metadata or {}),
+        }
         Path(path + ".json").write_text(json.dumps(meta, indent=2))
 
     @classmethod
