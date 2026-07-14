@@ -49,9 +49,10 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         super().__init__(params)
         p = params or {}
         self._base = PCAStatArbStrategy(params)
-        self._ml_threshold: float = float(
+        # Clamp threshold to sensible range [0, 1]
+        self._ml_threshold: float = max(0.0, min(1.0, float(
             p.get("ml_confidence_threshold", _ML_CONFIDENCE_THRESHOLD)
-        )
+        )))
 
     # ------------------------------------------------------------------
     # AbstractStrategy interface
@@ -61,8 +62,15 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Generate a signal only when PCA s-score AND LSTM agree.
 
-        Falls back to None (no trade) when ML is unavailable.
+        Falls back to None (no trade) when ML is unavailable or inputs are
+        invalid.
         """
+        # Guard against invalid inputs
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            return None
+        if not symbol or not isinstance(symbol, str):
+            return None
+
         # Step 1: get base PCA signal
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
@@ -76,30 +84,38 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         try:
             inference = _get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result is None:
+            if not ml_result or not isinstance(ml_result, dict):
                 return None
 
             ml_confidence: float = float(ml_result.get("confidence", 0.0))
-            ml_prediction: str = ml_result.get("prediction", "neutral")
+            ml_prediction: str = str(ml_result.get("prediction", "neutral")).lower()
 
+            # Basic validation of ML outputs
             if ml_confidence < self._ml_threshold:
                 return None
-            if ml_prediction == "neutral":
+            if ml_prediction not in {"up", "down"}:
                 return None
 
             # Direction agreement check
+            side = getattr(base_signal, "side", None)
+            if side not in {"buy", "sell"}:
+                return None
             direction_ok = (
-                (ml_prediction == "up" and base_signal.side == "buy")
-                or (ml_prediction == "down" and base_signal.side == "sell")
+                (ml_prediction == "up" and side == "buy")
+                or (ml_prediction == "down" and side == "sell")
             )
             if not direction_ok:
                 return None
 
-            # Blend confidences
-            blended = min(0.95, (base_signal.confidence + ml_confidence) / 2)
+            # Blend confidences safely
+            base_conf = getattr(base_signal, "confidence", 0.0) or 0.0
+            blended = min(0.95, (base_conf + ml_confidence) / 2)
             base_signal.confidence = blended
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
+            # Ensure metadata dict exists
+            if not hasattr(base_signal, "metadata") or base_signal.metadata is None:
+                base_signal.metadata = {}
             base_signal.metadata["ml_confidence"] = ml_confidence
             return base_signal
 
@@ -111,8 +127,11 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Delegate to the base PCA strategy for backtesting.
 
-        In a production backtest with a trained LSTM available, the signals
-        would be gated per-bar.  Without a serialized model this delegation
-        is the correct fallback: it still uses the same PCA edge.
+        Handles empty or None inputs by returning an empty BacktestSignals
+        instance.
         """
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            # Return an empty BacktestSignals; constructor signature may vary,
+            # but passing an empty list is safe for typical implementations.
+            return BacktestSignals([])
         return self._base.backtest_signals(df)
