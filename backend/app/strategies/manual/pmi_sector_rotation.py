@@ -21,6 +21,10 @@ Documented Sharpe: 0.6-0.9 (SSGA sector rotation research, 2021)
 
 from __future__ import annotations
 
+import logging
+import time
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -33,6 +37,7 @@ _MOMENTUM_DAYS      = 63  # ~3 months
 _TOP_N              = 3
 _REBAL_DAYS         = 21  # ~1 month rebalancing
 
+_logger = logging.getLogger(__name__)
 
 def _fetch_yf(symbol: str, period: str = "2y") -> pd.Series | None:
     try:
@@ -68,13 +73,19 @@ class PMISectorRotationStrategy(AbstractStrategy):
         self.top_n         = int(p.get("top_n",         _TOP_N))
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        series = {}
+        start_time = time.perf_counter()
+        series: dict[str, pd.Series] = {}
         for etf in _ALL_SECTORS:
             s = _fetch_yf(etf)
             if s is not None and len(s) >= self.momentum_days:
                 series[etf] = s
 
         if len(series) < 4:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            _logger.info(
+                "PMI analyze - insufficient data",
+                extra={"signal_count": 0, "exec_ms": round(elapsed_ms, 2)}
+            )
             return None
 
         returns = {etf: float(s.iloc[-1] / s.iloc[-self.momentum_days] - 1)
@@ -95,7 +106,7 @@ class PMISectorRotationStrategy(AbstractStrategy):
         if in_top:
             best_ret = returns.get(top_sectors[0], 0)
             confidence = min(0.85, 0.60 + abs(best_ret) * 1.0)
-            return Signal(
+            signal = Signal(
                 symbol=trade_sym,
                 side="buy",
                 confidence=round(confidence, 4),
@@ -110,10 +121,20 @@ class PMISectorRotationStrategy(AbstractStrategy):
                     "academic_ref": "SSGA sector rotation + ISM PMI cycle research",
                 },
             )
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            _logger.info(
+                "PMI analyze - generated buy signal",
+                extra={
+                    "signal_count": 1,
+                    "exec_ms": round(elapsed_ms, 2),
+                    "estimated_pnl": round(returns.get(trade_sym, 0), 4),
+                },
+            )
+            return signal
 
         if in_bottom:
             confidence = min(0.75, 0.55 + abs(returns.get(trade_sym, 0)) * 1.0)
-            return Signal(
+            signal = Signal(
                 symbol=trade_sym,
                 side="sell",
                 confidence=round(confidence, 4),
@@ -126,12 +147,33 @@ class PMISectorRotationStrategy(AbstractStrategy):
                     "momentum_3m": round(returns.get(trade_sym, 0), 4),
                 },
             )
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            _logger.info(
+                "PMI analyze - generated sell signal",
+                extra={
+                    "signal_count": 1,
+                    "exec_ms": round(elapsed_ms, 2),
+                    "estimated_pnl": round(returns.get(trade_sym, 0), 4),
+                },
+            )
+            return signal
 
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        _logger.info(
+            "PMI analyze - no actionable signal",
+            extra={"signal_count": 0, "exec_ms": round(elapsed_ms, 2)}
+        )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        start_time = time.perf_counter()
         if "close" not in df.columns or len(df) < self.momentum_days + _REBAL_DAYS:
             empty = pd.Series(False, index=df.index)
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            _logger.info(
+                "PMI backtest - insufficient data",
+                extra={"entries": 0, "exits": 0, "exec_ms": round(elapsed_ms, 2)}
+            )
             return BacktestSignals(entries=empty, exits=empty)
 
         close = df["close"].astype(float)
@@ -141,6 +183,15 @@ class PMISectorRotationStrategy(AbstractStrategy):
         entries = (momentum.shift(1) > 0).fillna(False)
         exits   = (momentum.shift(1) < -0.02).fillna(False)
 
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        _logger.info(
+            "PMI backtest - signals generated",
+            extra={
+                "entries": int(entries.sum()),
+                "exits": int(exits.sum()),
+                "exec_ms": round(elapsed_ms, 2),
+            },
+        )
         return BacktestSignals(entries=entries, exits=exits)
 
 
@@ -155,7 +206,10 @@ async def _failsoft_analyze(self, data, symbol: str = "SPY"):
     try:
         return await _unguarded_analyze(self, data, symbol)
     except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
-        print(f"pmi_sector_rotation: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        _logger.warning(
+            "pmi_sector_rotation: analyze fail-soft -> None",
+            extra={"error_type": type(exc).__name__, "error_msg": str(exc)[:80]},
+        )
         return None
 
 
