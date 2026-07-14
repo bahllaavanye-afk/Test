@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1783998985.002955,
+    "last_updated": 1784013649.1513689,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,8 +151,8 @@
       "ABBV"
     ],
     "risk_flags": [],
-    "risk_status": "alert",
-    "last_brain_update": 1783986694.1782594
+    "risk_status": "normal",
+    "last_brain_update": 1784013649.150921
   },
   "episodic": [
     {
@@ -623,6 +623,34 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1783976063.30584
+    },
+    {
+      "lesson": "Repeated auto-fix patch application failures indicate a systemic CI/CD pipeline issue; investigate the patch generation and application process to resolve conflicts or formatting errors.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784013617.1319134
+    },
+    {
+      "lesson": "Exposed encrypted tokens in GitHub issue comments present a security risk; rotate all potentially compromised secrets and enforce policies to prevent secret leakage in public channels.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784013617.1344862
+    },
+    {
+      "lesson": "Multiple identical auto-fix failures suggest a root cause in the automated patch mechanism (e.g., incorrect diff format or merge conflicts); review pipeline logs and fix the underlying script or integration.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784013617.1369336
+    },
+    {
+      "lesson": "The auto-fix failures may be linked to ML model updates or auto-generated code patches; validate the model output and ensure proper versioning and testing before deployment.",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784013617.139137
     }
   ],
   "github_insights": [
@@ -895,6 +923,11 @@
       "summary": "The deployment failed due to resource limits, with an error suggesting a 24-hour wait, and automated patch fixes were unsuccessful.",
       "item_count": 20,
       "ts": 1783986694.174028
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784013649.1432981
     }
   ],
   "experiment_results": [
