@@ -7,6 +7,14 @@ $2,500 (2.5%) allocation, and carry real exit rules — no fire-and-forget bots.
 from app.bots.templates import BOT_TEMPLATES
 from app.schemas.bot import BotCreate
 
+# Constants
+INTERVAL_1M = "1m"
+SIZE_PCT_ALLOCATION = 2.5
+MARKET_TYPE_OPTIONS = "options"
+CONDITION_NO_POSITION = "no_position"
+LEG_SIDE_SELL = "sell"
+EXIT_TYPE_STOP_LOSS = "stop_loss"
+
 OA_IDS = [
     "oa_friday_14dte_bwb", "oa_ib_0945_10d", "oa_ncr_0dte_spx_a", "oa_vix_range",
     "oa_ncr_spx_0dte_b", "oa_iron_butter_clone", "oa_short_put_spread",
@@ -30,9 +38,9 @@ def test_oa_clones_validate_against_bot_schema():
 def test_oa_clones_one_minute_and_2500_allocation():
     for tid in OA_IDS:
         t = BOT_TEMPLATES[tid]
-        assert t["trigger"]["interval"] == "1m", tid
-        assert t["action"]["size_pct"] == 2.5, tid          # $2,500 of $100k paper
-        assert t["market_type"] == "options", tid
+        assert t["trigger"]["interval"] == INTERVAL_1M, tid
+        assert t["action"]["size_pct"] == SIZE_PCT_ALLOCATION, tid          # $2,500 of $100k paper
+        assert t["market_type"] == MARKET_TYPE_OPTIONS, tid
 
 
 def test_oa_clones_always_have_exits_and_entry_guard():
@@ -41,13 +49,13 @@ def test_oa_clones_always_have_exits_and_entry_guard():
         assert t["exit_rules"], f"{tid} has no exit rules"
         # 1-minute cadence without no_position would stack positions every minute
         cond_types = {c["type"] for c in t["conditions"]}
-        assert "no_position" in cond_types, f"{tid} missing no_position guard"
+        assert CONDITION_NO_POSITION in cond_types, f"{tid} missing {CONDITION_NO_POSITION} guard"
 
 
 def test_short_premium_clones_have_stops():
     for tid in OA_IDS:
         t = BOT_TEMPLATES[tid]
-        sells = any(l["side"] == "sell" for l in t["action"]["legs"])
+        sells = any(l["side"] == LEG_SIDE_SELL for l in t["action"]["legs"])
         if sells:
             kinds = {r["type"] for r in t["exit_rules"]}
-            assert "stop_loss" in kinds, f"{tid} sells premium without a stop"
+            assert EXIT_TYPE_STOP_LOSS in kinds, f"{tid} sells premium without a stop"
