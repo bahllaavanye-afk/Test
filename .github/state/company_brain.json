@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784037762.4943964,
+    "last_updated": 1784042130.3850107,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,52 +62,52 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-10T16:13:11.863144+00:00",
+      "generated_at": "2026-07-14T15:15:07.528877+00:00",
       "signals": {
         "vix": {
-          "value": 15.4,
+          "value": 16.38,
           "trend": "flat"
         },
         "spy": {
-          "price": 753.21,
-          "sma50": 739.87,
-          "sma200": 691.09,
+          "price": 752.63,
+          "sma50": 741.41,
+          "sma200": 692.04,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0319,
-          "median": 1.0527,
+          "ratio": 1.03,
+          "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.024,
+          "hyg_lqd_momentum_20d": 1.335,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 8,
+          "sectors_above_sma20": 6,
           "total_sectors": 11,
-          "breadth_pct": 72.7
+          "breadth_pct": 54.5
         },
         "btc": {
-          "price": 63992,
-          "24h_pct": 1.88
+          "price": 64164,
+          "24h_pct": 2.25
         }
       },
-      "score": 4,
+      "score": 3,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "[LLM unavailable \u2014 all providers failed]"
+      "summary": "Bull regime with a strong SPY uptrend and tightening credit spreads supports risk-on positioning, though a flat yield curve and moderate breadth (6/11 sectors above 20-SMA) warrant selective exposure. Favour trend-following strategies today to capture momentum while avoiding overconcentration in lagging sectors."
     },
     "strategy_gates": {
       "directional": true,
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 4,
+    "opinion_score": 3,
     "macro_score": 0,
     "vix": 22.22,
     "market_scan_ts": 1781136270.285874,
@@ -651,6 +651,18 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784013617.139137
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "Bull regime with a strong SPY uptrend and tightening credit spreads supports risk-on positioning, though a flat yield curve and moderate breadth (6/11 sectors above 20-SMA) warrant selective exposure. Favour trend-following strategies today to capture momentum while avoiding overconcentration in lagging sectors.",
+      "ts": 1784042130.3871737
     }
   ],
   "github_insights": [
