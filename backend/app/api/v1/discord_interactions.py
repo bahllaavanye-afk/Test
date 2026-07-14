@@ -30,22 +30,36 @@ from app.utils.logging import logger
 
 router = APIRouter(prefix="/discord", tags=["discord"])
 
-# The application PUBLIC key — verification-only, not a secret (it cannot sign
-# anything). Env-overridable for rotation or a different Discord application.
-_PUBLIC_KEY_HEX = os.environ.get(
-    "DISCORD_PUBLIC_KEY",
-    "2c015f35979920d20c155a8836fbc27916b5d4572eebc8fffe7c26a72198456c",
-)
+# Constants
+DEFAULT_PUBLIC_KEY_HEX = "2c015f35979920d20c155a8836fbc27916b5d4572eebc8fffe7c26a72198456c"
 
-# Interaction types / response types (Discord API v10)
-_PING, _APPLICATION_COMMAND = 1, 2
-_PONG, _CHANNEL_MESSAGE = 1, 4
-_EPHEMERAL = 64
+INTERACTION_TYPE_PING = 1
+INTERACTION_TYPE_APPLICATION_COMMAND = 2
+RESPONSE_TYPE_PONG = 1
+RESPONSE_TYPE_CHANNEL_MESSAGE = 4
+MESSAGE_FLAG_EPHEMERAL = 64
+
+MAX_CONTENT_LENGTH = 1990
+
+ERROR_INVALID_SIGNATURE = "invalid request signature"
+ERROR_UNSUPPORTED_INTERACTION = "Unsupported interaction type."
+
+USAGE_RUN_BOT = "Usage: `/run-bot name:<part of the bot's name>`"
+NO_BOT_MATCH_TEMPLATE = "No enabled bot matches `{q}`."
+AMBIGUOUS_BOT_MATCH_TEMPLATE = "Ambiguous — matches: {matches}. Be more specific."
+UNKNOWN_COMMAND_TEMPLATE = "Unknown command `{name}`."
+COMMAND_FAILED_TEMPLATE = "⚠️ `{name}` failed: {error}"
+HEALTH_DATABASE_OK = "✅ database"
+HEALTH_DATABASE_ERR_TEMPLATE = "🔴 database: {error}"
+HEALTH_SCHEDULER_OK_TEMPLATE = "✅ scheduler: {jobs}"
+HEALTH_SCHEDULER_NOT_RUNNING = "🔴 scheduler: not running"
+HEALTH_SCHEDULER_ERR_TEMPLATE = "🔴 scheduler: {error}"
+HEALTH_DISCORD_OK = "✅ discord: you're reading this"
 
 
 def _verify_signature(signature_hex: str, timestamp: str, body: bytes) -> bool:
     try:
-        key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(_PUBLIC_KEY_HEX))
+        key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(DEFAULT_PUBLIC_KEY_HEX))
         key.verify(bytes.fromhex(signature_hex), timestamp.encode() + body)
         return True
     except (InvalidSignature, ValueError):
@@ -53,10 +67,10 @@ def _verify_signature(signature_hex: str, timestamp: str, body: bytes) -> bool:
 
 
 def _msg(text: str, ephemeral: bool = False) -> dict:
-    data: dict = {"content": text[:1990]}
+    data: dict = {"content": text[:MAX_CONTENT_LENGTH]}
     if ephemeral:
-        data["flags"] = _EPHEMERAL
-    return {"type": _CHANNEL_MESSAGE, "data": data}
+        data["flags"] = MESSAGE_FLAG_EPHEMERAL
+    return {"type": RESPONSE_TYPE_CHANNEL_MESSAGE, "data": data}
 
 
 async def _cmd_status() -> str:
@@ -107,18 +121,20 @@ async def _cmd_health() -> str:
 
         async with AsyncSessionLocal() as db:
             await db.execute(select(1))
-        checks.append("✅ database")
+        checks.append(HEALTH_DATABASE_OK)
     except Exception as exc:
-        checks.append(f"🔴 database: {str(exc)[:60]}")
+        checks.append(HEALTH_DATABASE_ERR_TEMPLATE.format(error=str(exc)[:60]))
     try:
         from app.tasks.scheduler import get_scheduler
 
         sched = get_scheduler()
         n = len(sched.get_jobs()) if sched.running else 0
-        checks.append(f"✅ scheduler: {n} jobs" if sched.running else "🔴 scheduler: not running")
+        checks.append(
+            HEALTH_SCHEDULER_OK_TEMPLATE.format(jobs=n) if sched.running else HEALTH_SCHEDULER_NOT_RUNNING
+        )
     except Exception as exc:
-        checks.append(f"🔴 scheduler: {str(exc)[:60]}")
-    checks.append("✅ discord: you're reading this")
+        checks.append(HEALTH_SCHEDULER_ERR_TEMPLATE.format(error=str(exc)[:60]))
+    checks.append(HEALTH_DISCORD_OK)
     return "**Health**\n" + "\n".join(checks)
 
 
@@ -129,7 +145,7 @@ async def _cmd_run_bot(name_query: str) -> str:
 
     q = (name_query or "").strip()
     if not q:
-        return "Usage: `/run-bot name:<part of the bot's name>`"
+        return USAGE_RUN_BOT
     async with AsyncSessionLocal() as db:
         bots = (await db.execute(
             select(Bot).where(
@@ -139,9 +155,10 @@ async def _cmd_run_bot(name_query: str) -> str:
             ).limit(2)
         )).scalars().all()
         if not bots:
-            return f"No enabled bot matches `{q}`."
+            return NO_BOT_MATCH_TEMPLATE.format(q=q)
         if len(bots) > 1:
-            return f"Ambiguous — matches: {', '.join(b.name for b in bots)}. Be more specific."
+            matches = ", ".join(b.name for b in bots)
+            return AMBIGUOUS_BOT_MATCH_TEMPLATE.format(matches=matches)
         bot = bots[0]
         result = await BotEngine().evaluate(bot, db)
     fired = "🔥 FIRED" if result.fired else "💤 held"
@@ -160,17 +177,17 @@ async def discord_interactions(request: Request):
     body = await request.body()
     if not signature or not timestamp or not _verify_signature(signature, timestamp, body):
         # 401 is required by Discord's endpoint validation for bad signatures
-        raise HTTPException(status_code=401, detail="invalid request signature")
+        raise HTTPException(status_code=401, detail=ERROR_INVALID_SIGNATURE)
 
     import json as _json
 
     payload = _json.loads(body)
     itype = payload.get("type")
 
-    if itype == _PING:
-        return {"type": _PONG}
+    if itype == INTERACTION_TYPE_PING:
+        return {"type": RESPONSE_TYPE_PONG}
 
-    if itype == _APPLICATION_COMMAND:
+    if itype == INTERACTION_TYPE_APPLICATION_COMMAND:
         data = payload.get("data") or {}
         name = (data.get("name") or "").lower()
         options = {o.get("name"): o.get("value") for o in (data.get("options") or [])}
@@ -183,9 +200,12 @@ async def discord_interactions(request: Request):
                 return _msg(await _cmd_health())
             if name == "run-bot":
                 return _msg(await _cmd_run_bot(str(options.get("name", ""))))
-            return _msg(f"Unknown command `{name}`.", ephemeral=True)
+            return _msg(UNKNOWN_COMMAND_TEMPLATE.format(name=name), ephemeral=True)
         except Exception as exc:
             logger.error("Discord command failed", command=name, error=str(exc))
-            return _msg(f"⚠️ `{name}` failed: {str(exc)[:150]}", ephemeral=True)
+            return _msg(
+                COMMAND_FAILED_TEMPLATE.format(name=name, error=str(exc)[:150]),
+                ephemeral=True,
+            )
 
-    return _msg("Unsupported interaction type.", ephemeral=True)
+    return _msg(ERROR_UNSUPPORTED_INTERACTION, ephemeral=True)
