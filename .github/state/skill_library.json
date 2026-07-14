@@ -199,8 +199,13 @@
     "Log algo errors",
     "Review market briefs",
     "Analyze signal strength",
-    "Refactor code regularly"
+    "Refactor code regularly",
+    "cleanup on api/v1/router.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "cleanup on ml/models/hmm_regime.py: success \u2014 tests green",
+    "cleanup on execution/smart_router.py: success \u2014 tests green",
+    "cleanup on risk/circuit_breaker.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T20:07:27.200129+00:00",
+  "last_updated": "2026-07-14T21:31:06.288628+00:00",
   "total": 200
 }
