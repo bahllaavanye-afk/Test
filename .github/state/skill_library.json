@@ -199,8 +199,13 @@
     "Verify market data",
     "Log UCB1 decisions",
     "Check trading halt",
-    "Validate order IDs"
+    "Validate order IDs",
+    "test_cases on execution/rl_exec.py: success \u2014 tests green",
+    "test_cases on risk/kelly.py: success \u2014 tests green",
+    "test_cases on brokers/polymarket.py: success \u2014 tests green",
+    "test_cases on backtest/metrics.py: success \u2014 tests green",
+    "test_cases on comparison/benchmarks.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T12:07:52.369474+00:00",
+  "last_updated": "2026-07-14T14:23:33.379645+00:00",
   "total": 200
 }
