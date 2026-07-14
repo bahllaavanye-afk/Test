@@ -69,6 +69,16 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        # Guard against None or empty inputs
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            empty_series = pd.Series([], dtype=bool)
+            return BacktestSignals(
+                entries=empty_series,
+                exits=empty_series,
+                short_entries=empty_series,
+                short_exits=empty_series,
+            )
+
         false_series = pd.Series(False, index=df.index)
 
         if "close" not in df.columns or len(df) < 260:
@@ -114,15 +124,19 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
 
     async def analyze(self, df: pd.DataFrame, symbol: str) -> Signal | None:
         """Live signal — uses same logic as backtest_signals on recent bars."""
+        # Guard against None or empty inputs
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return None
         if "close" not in df.columns or len(df) < 260:
             return None
 
         close = df["close"].astype(float)
         log_ret = np.log(close / close.shift(1))
 
-        mom_21  = (close.iloc[-1] / close.iloc[-22]  - 1) if len(close) > 22  else 0.0
-        mom_63  = (close.iloc[-1] / close.iloc[-64]  - 1) if len(close) > 64  else 0.0
-        mom_252 = (close.iloc[-1] / close.iloc[-253] - 1) if len(close) > 253 else 0.0
+        # Use safe indexing with >= checks to avoid off‑by‑one errors
+        mom_21  = (close.iloc[-1] / close.iloc[-22]  - 1) if len(close) >= 22  else 0.0
+        mom_63  = (close.iloc[-1] / close.iloc[-64]  - 1) if len(close) >= 64  else 0.0
+        mom_252 = (close.iloc[-1] / close.iloc[-253] - 1) if len(close) >= 253 else 0.0
 
         # Rank using last 252-bar cross-section
         moms = [mom_21, mom_63, mom_252]
