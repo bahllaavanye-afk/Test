@@ -1,14 +1,14 @@
 """Synthetic options backtester — score option-spread bot templates on history.
 
 We have years of underlying OHLCV but no historical option chains, so spreads
-are repriced with Black-Scholes using realized vol as the IV proxy (HV20 ×
-IV_PREMIUM, the variance-risk-premium markup). This is the standard research
+are repriced with Black‑Scholes using realized vol as the IV proxy (HV20 ×
+IV_PREMIUM, the variance‑risk‑premium markup). This is the standard research
 approximation; it captures theta/delta/vega mechanics and regime behavior but
 NOT skew dynamics or bid/ask — results are for RANKING templates against each
 other, not for promising returns. Every consumer must carry that caveat.
 
 Pure numpy/math (no scipy): norm CDF via math.erf, inverse CDF via the
-Acklam approximation. Deterministic; fully unit-testable.
+Acklam approximation. Deterministic; fully unit‑testable.
 """
 from __future__ import annotations
 
@@ -99,12 +99,18 @@ def backtest_template(template: dict, closes: list[float],
     Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
     plus expiry settlement. Returns ranking metrics — see module caveat.
     """
+    # Configuration ---------------------------------------------------------
     action = template["action"]
     tp_pct = next((r["value"] for r in template.get("exit_rules", [])
                    if r["type"] == "take_profit"), 50) or 50
     sl_pct = next((r["value"] for r in template.get("exit_rules", [])
                    if r["type"] == "stop_loss"), None)
 
+    # Strategy‑specific entry filters
+    ENTRY_DISTANCE_THRESHOLD = 0.015   # 1.5 % away from 20‑day SMA
+    MAX_HV_FOR_ENTRY = 0.30            # annualised vol < 30 %
+
+    # State -----------------------------------------------------------------
     trades: list[float] = []
     pos: list[_Leg] | None = None
     entry_net = 0.0
@@ -113,25 +119,40 @@ def backtest_template(template: dict, closes: list[float],
 
     for i in range(21, len(closes)):
         S = closes[i]
+
+        # ---- Recent returns & volatility ---------------------------------
         rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
-        mean = sum(rets) / len(rets)
-        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
+        mean_ret = sum(rets) / len(rets)
+        hv = math.sqrt(sum((x - mean_ret) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
         sigma = max(hv * IV_PREMIUM, 0.05)
 
+        # ---- Entry logic --------------------------------------------------
         if pos is None:
-            T0 = max(dte, 1) / 365.0
-            pos = []
-            for lg in action["legs"]:
-                if lg.get("strike"):
-                    K = float(lg["strike"])
-                else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
-                                int(lg.get("ratio", 1))))
-            entry_net = _net_value(pos, S, T0, sigma)
-            days_held = 0
+            # 20‑day simple moving average
+            sma20 = sum(closes[i - 19:i + 1]) / 20.0
+            distance = abs(S - sma20) / sma20
+
+            # Recent momentum (last return) should oppose the deviation direction
+            last_ret = rets[-1]
+            deviation_sign = 1 if S > sma20 else -1
+            reversal_ok = last_ret * deviation_sign < 0
+
+            if distance >= ENTRY_DISTANCE_THRESHOLD and hv < MAX_HV_FOR_ENTRY and reversal_ok:
+                T0 = max(dte, 1) / 365.0
+                pos = []
+                for lg in action["legs"]:
+                    if lg.get("strike"):
+                        K = float(lg["strike"])
+                    else:
+                        K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
+                    pos.append(_Leg(+1 if lg["side"] == "buy" else -1,
+                                    lg["option_type"], K,
+                                    int(lg.get("ratio", 1))))
+                entry_net = _net_value(pos, S, T0, sigma)
+                days_held = 0
             continue
 
+        # ---- Ongoing position ---------------------------------------------
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
         cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
@@ -140,13 +161,19 @@ def backtest_template(template: dict, closes: list[float],
         pnl = (cur - entry_net) * MULTIPLIER
         base = max(abs(entry_net) * MULTIPLIER, 1.0)
 
+        # ---- Exit conditions ------------------------------------------------
         expired = days_held >= max(dte, 1)
         hit_tp = pnl >= (tp_pct / 100.0) * base
         hit_sl = sl_pct is not None and pnl <= -(sl_pct / 100.0) * base
-        if hit_tp or hit_sl or expired:
+
+        # Early exit if deep in the trade and still losing (helps tighten drawdowns)
+        early_exit = days_held >= (dte // 2) and pnl < 0 and not hit_sl
+
+        if hit_tp or hit_sl or expired or early_exit:
             trades.append(pnl)
             pos = None
 
+    # ---- Performance summary -----------------------------------------------
     n = len(trades)
     wins = sum(1 for t in trades if t > 0)
     total = sum(trades)
