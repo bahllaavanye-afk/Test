@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784052461.6519043,
+    "last_updated": 1784054232.073193,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,8 +151,8 @@
       "GS"
     ],
     "risk_flags": [],
-    "risk_status": "normal",
-    "last_brain_update": 1784032815.0031085
+    "risk_status": "alert",
+    "last_brain_update": 1784054232.0726438
   },
   "episodic": [
     {
@@ -723,6 +723,34 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Utilities. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784052461.654109
+    },
+    {
+      "lesson": "Investigate root cause of repeated auto-fix patch failures to prevent code quality degradation.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784054230.0672328
+    },
+    {
+      "lesson": "Review Vercel deployment logs for errors corresponding to the two failed preview links.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784054230.069553
+    },
+    {
+      "lesson": "Implement human-in-the-loop alerting when auto-fix fails to apply patch, reducing silent failures.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784054230.0717814
+    },
+    {
+      "lesson": "Analyze failure patterns in auto-fix to improve patch generation logic and reduce recurrence.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784054230.0739875
     }
   ],
   "github_insights": [
@@ -1010,6 +1038,11 @@
       "summary": "Deployment failed due to resource limits (try again in 24 hours), and an automated fix attempt also failed to apply a patch.",
       "item_count": 20,
       "ts": 1784032814.9995453
+    },
+    {
+      "summary": "The automated fix process repeatedly failed to apply a patch to a file, with three identical error messages indicating the patch could not be applied.",
+      "item_count": 20,
+      "ts": 1784054232.0663822
     }
   ],
   "experiment_results": [
