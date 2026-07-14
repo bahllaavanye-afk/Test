@@ -1,6 +1,29 @@
 """API v1 router — mounts all sub-routers."""
 from fastapi import APIRouter
-from app.api.v1 import auth, accounts, orders, positions, trades, strategies, backtests, comparison, experiments, ml, risk, market_data, analytics, agents, notifications, archive, improvements, monitoring, integrations, pipeline, leaderboard, releases
+from app.api.v1 import (
+    auth,
+    accounts,
+    orders,
+    positions,
+    trades,
+    strategies,
+    backtests,
+    comparison,
+    experiments,
+    ml,
+    risk,
+    market_data,
+    analytics,
+    agents,
+    notifications,
+    archive,
+    improvements,
+    monitoring,
+    integrations,
+    pipeline,
+    leaderboard,
+    releases,
+)
 from app.api.v1.scanners import router as scanners_router
 from app.api.v1.options import router as options_router
 from app.api.v1.regime import router as regime_router
