@@ -173,3 +173,69 @@ def get_benchmark_stats() -> dict:
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ----------------------------------------------------------------------
+import pytest
+
+@pytest.fixture(autouse=True)
+def _clear_benchmark_cache():
+    """Ensure cache does not affect test isolation."""
+    _benchmark_cache.clear()
+    yield
+    _benchmark_cache.clear()
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_invalid_range(caplog):
+    """Start date after end date should return empty dict and log a warning."""
+    start = date(2023, 1, 10)
+    end = date(2023, 1, 5)
+    with caplog.at_level("WARNING"):
+        result = await fetch_benchmark_curves(start, end)
+    assert result == {}
+    assert any("Invalid benchmark date range" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_insufficient_aw_tickers(monkeypatch):
+    """ALL_WEATHER should be omitted when fewer than three component tickers are present."""
+    start = date(2023, 1, 1)
+    end = date(2023, 1, 31)
+
+    async def mock_fetch_ticker_bars(client, ticker, start, end):
+        if ticker in ("TLT", "IEF"):
+            dates = pd.date_range(start, end, freq="D", tz=timezone.utc)
+            return pd.Series([1.0] * len(dates), index=dates, name=ticker)
+        return pd.Series(dtype=float)
+
+    monkeypatch.setattr(
+        "backend.app.comparison.benchmarks._fetch_ticker_bars",
+        mock_fetch_ticker_bars,
+    )
+    result = await fetch_benchmark_curves(start, end)
+    assert "ALL_WEATHER" not in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_normalization(monkeypatch):
+    """First value of a normalized benchmark series should be exactly 100."""
+    start = date(2023, 1, 1)
+    end = date(2023, 1, 3)
+
+    async def mock_fetch_ticker_bars(client, ticker, start, end):
+        if ticker == "SPY":
+            dates = pd.date_range(start, end, freq="D", tz=timezone.utc)
+            values = [10, 20, 30]  # arbitrary values
+            return pd.Series(values, index=dates, name="SPY")
+        return pd.Series(dtype=float)
+
+    monkeypatch.setattr(
+        "backend.app.comparison.benchmarks._fetch_ticker_bars",
+        mock_fetch_ticker_bars,
+    )
+    result = await fetch_benchmark_curves(start, end)
+    spy_curve = result.get("SPY")
+    assert spy_curve is not None
+    assert spy_curve[0]["value"] == 100.0
