@@ -3,7 +3,7 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -57,8 +57,12 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -67,20 +71,8 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
         logger.error("Experiment %s failed: %s", experiment_id, exc)
 
 
-@router.post("/train")
-async def trigger_training(
-    body: TrainRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Queue a training run from an experiment config YAML.
-
-    Returns immediately with experiment_id and status='queued'.
-    The training runs as a background asyncio task.
-    """
-    config_name = body.config_name.removesuffix(".yaml")
-
-    # Validate config exists
+def _validate_config_path(config_name: str) -> Path:
+    """Ensure the configuration file exists and return its Path."""
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     if not config_path.exists():
         available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
@@ -88,10 +80,14 @@ async def trigger_training(
             404,
             f"Config '{config_name}' not found. Available: {available[:10]}{'...' if len(available) > 10 else ''}",
         )
+    return config_path
 
+
+async def _create_experiment_record(
+    db: AsyncSession, config_name: str, now: datetime
+) -> Experiment:
+    """Create and persist a new Experiment instance."""
     experiment_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
-
     exp = Experiment(
         id=experiment_id,
         name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
@@ -102,12 +98,31 @@ async def trigger_training(
     )
     db.add(exp)
     await db.commit()
+    return exp
+
+
+@router.post("/train")
+async def trigger_training(
+    body: TrainRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Queue a training run from an experiment config.
+
+    Returns immediately with experiment_id and status='queued'.
+    The training runs as a background asyncio task.
+    """
+    config_name = body.config_name.removesuffix(".yaml")
+    _validate_config_path(config_name)  # raises HTTPException if invalid
+
+    now = datetime.now(timezone.utc)
+    exp = await _create_experiment_record(db, config_name, now)
 
     # Launch background training task (fire-and-forget)
-    asyncio.create_task(_run_experiment_async(config_name, experiment_id))
+    asyncio.create_task(_run_experiment_async(config_name, exp.id))
 
     return {
-        "experiment_id": experiment_id,
+        "experiment_id": exp.id,
         "status": "queued",
         "config_name": config_name,
     }
