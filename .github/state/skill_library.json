@@ -199,8 +199,13 @@
     "Check thread counts",
     "Limit open files",
     "Refactor predict.py code",
-    "Monitor API uptime"
+    "Monitor API uptime",
+    "refactor on risk/correlation_monitor.py: success \u2014 tests green",
+    "refactor on brokers/tradestation.py: success \u2014 tests green",
+    "refactor on backtest/walk_forward.py: success \u2014 tests green",
+    "refactor on api/v1/experiments.py: success \u2014 tests green",
+    "refactor on test/unit/test_slippage.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T00:53:10.900767+00:00",
+  "last_updated": "2026-07-14T03:55:39.083914+00:00",
   "total": 200
 }
