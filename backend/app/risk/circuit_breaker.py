@@ -31,12 +31,25 @@ class CircuitBreaker:
     halted_at: Optional[datetime] = None
     halt_reasons: List[str] = field(default_factory=list)
 
-    # New configurable parameters
+    # Configurable parameters
     confirmation_period: int = 1                # number of consecutive breaches required to halt
     recovery_drawdown_pct: float = 0.0          # drawdown pct below which the breaker auto‑resets
 
     # Internal tracking (not part of the public dataclass fields)
     _breach_count: int = field(init=False, default=0)
+
+    def __post_init__(self) -> None:
+        """Validate initialization parameters."""
+        if not (0.0 < self.max_drawdown_pct <= 1.0):
+            raise ValueError("max_drawdown_pct must be > 0 and <= 1")
+        if self.confirmation_period < 1:
+            raise ValueError("confirmation_period must be at least 1")
+        if self.recovery_drawdown_pct < 0.0:
+            raise ValueError("recovery_drawdown_pct cannot be negative")
+        if self.recovery_drawdown_pct and self.recovery_drawdown_pct >= self.max_drawdown_pct:
+            raise ValueError("recovery_drawdown_pct must be less than max_drawdown_pct")
+        if self.peak_equity < 0 or self.current_equity < 0:
+            raise ValueError("Equity values cannot be negative")
 
     def update(self, equity: float) -> bool:
         """
@@ -46,7 +59,11 @@ class CircuitBreaker:
             bool: True if the breaker remains in NORMAL state, False if HALTED.
         """
         if equity is None or not isinstance(equity, (int, float)):
-            logger.warning("Circuit breaker received invalid equity value", name=self.name, equity=equity)
+            logger.warning(
+                "Circuit breaker received invalid equity value",
+                name=self.name,
+                equity=equity,
+            )
             return not self.is_halted
 
         # Update peak and current equity
@@ -59,8 +76,8 @@ class CircuitBreaker:
             if self._should_recover():
                 self.reset(equity)
                 logger.info("Circuit breaker auto‑recovered", name=self.name)
-            else:
-                return False
+                return True
+            return False
 
         # Compute drawdown only when peak_equity is positive
         drawdown = self.current_drawdown
@@ -76,12 +93,19 @@ class CircuitBreaker:
             if self._breach_count >= self.confirmation_period:
                 self.state = BreakerState.HALTED
                 self.halted_at = datetime.now(timezone.utc)
-                reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} (confirmed {self._breach_count}×)"
+                reason = (
+                    f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} "
+                    f"(confirmed {self._breach_count}×)"
+                )
                 self.halt_reasons.append(reason)
-                logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)
+                logger.error(
+                    "Circuit breaker TRIPPED",
+                    name=self.name,
+                    drawdown=drawdown,
+                    threshold=self.max_drawdown_pct,
+                )
                 return False
         else:
-            # Reset breach counter when drawdown falls back below threshold
             if self._breach_count:
                 logger.debug(
                     "Circuit breaker breach counter reset",
