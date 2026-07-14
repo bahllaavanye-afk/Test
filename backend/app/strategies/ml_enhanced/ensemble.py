@@ -1,10 +1,28 @@
-"""Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+"""Ensemble strategy: pure ML signal from all models combined with additional confirmation filters.
+
+This module defines the :class:`EnsembleStrategy` which integrates the output of a
+machine‑learning inference service with simple price‑based confirmation filters
+(SMA and volume) to produce a trading signal.  The strategy is intended for
+equity markets and is classified as ``ml_enhanced`` with a directional risk
+bucket.
+"""
+
 import pandas as pd
+from typing import Optional, Dict, Any
+
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
 
 
 class EnsembleStrategy(AbstractStrategy):
+    """ML‑enhanced ensemble strategy.
+
+    The strategy combines predictions from an external inference service with
+    confirmation filters based on a simple moving average (SMA) and recent
+    median volume.  It emits a :class:`Signal` when confidence exceeds
+    ``confidence_threshold`` and the price/volume conditions are satisfied.
+    """
+
     name = "ensemble"
     display_name = "Ensemble ML (LSTM + XGB + Lorentzian)"
     market_type = "equity"
@@ -14,25 +32,25 @@ class EnsembleStrategy(AbstractStrategy):
     confidence_threshold = 0.70  # higher bar for pure ML
     sma_window = 20  # simple moving average window for confirmation
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        """
-        Produce a trading signal based on the ML inference combined with
-        price‑based confirmation filters.
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
+        """Generate a live trading signal.
 
-        Entry Conditions
-        ----------------
-        1. ML model predicts a directional move (up/down) with confidence >= threshold.
-        2. Current close price is above the SMA for a long signal, or below the SMA for a short.
-        3. Volume is above the median of the recent window (default 20 periods).
+        Parameters
+        ----------
+        data : pd.DataFrame
+            Market data containing at least ``close`` and ``volume`` columns.
+        symbol : str
+            Ticker symbol for which the signal is generated.
 
-        Exit Conditions
-        ----------------
-        A signal is not emitted if any of the above conditions fail, which the
-        back‑testing engine interprets as an exit for the active position.
+        Returns
+        -------
+        Optional[Signal]
+            A populated :class:`Signal` if all entry conditions are met,
+            otherwise ``None`` to indicate no signal (or an exit).
         """
         try:
             inference = get_inference_service()
-            ml_result = await inference.predict(data, symbol)
+            ml_result: Dict[str, Any] = await inference.predict(data, symbol)
 
             # Basic ML validation
             if not ml_result or ml_result.get("prediction") == "neutral":
@@ -79,16 +97,22 @@ class EnsembleStrategy(AbstractStrategy):
             return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        """
-        Generate entry and exit signals for back‑testing.
+        """Generate entry and exit signals for back‑testing.
 
-        Expected DataFrame columns:
-        - 'close': price series
-        - 'volume': volume series
-        - 'ml_prediction': string ("up", "down", "neutral")
-        - 'ml_confidence': float (0‑1)
+        The method mirrors the runtime :meth:`analyze` logic but operates
+        row‑wise on a historical DataFrame.
 
-        The method mirrors the runtime `analyze` logic but operates row‑wise.
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Historical market data that must contain the columns
+            ``close``, ``volume``, ``ml_prediction`` and ``ml_confidence``.
+
+        Returns
+        -------
+        BacktestSignals
+            A container with boolean ``entries`` and ``exits`` Series aligned
+            with the input index.
         """
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
