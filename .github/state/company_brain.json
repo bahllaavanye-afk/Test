@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784045488.357957,
+    "last_updated": 1784049694.086516,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 2,
-    "vix": 16.58,
-    "market_scan_ts": 1784045488.3470514,
+    "vix": 16.48,
+    "market_scan_ts": 1784049694.0748327,
     "sector_leaders": [
       "Financials",
       "Utilities",
@@ -126,29 +126,29 @@
       "C",
       "ORCL",
       "WFC",
-      "XLV",
-      "NOW",
       "CRWD",
+      "NOW",
+      "XLV",
+      "MS",
       "BAC",
       "XLF",
-      "MS",
+      "NVDA",
       "JPM",
       "LLY",
-      "NVDA",
       "XLI",
-      "AVGO",
+      "ABT",
       "PANW",
       "META",
-      "QQQ",
-      "INTU",
-      "IWM"
+      "AVGO",
+      "JNJ",
+      "QQQ"
     ],
     "top_momentum": [
       "PANW",
       "CRWD",
       "META",
-      "GS",
-      "MA"
+      "TMO",
+      "GS"
     ],
     "risk_flags": [],
     "risk_status": "normal",
@@ -693,6 +693,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Utilities. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784045488.3599365
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Utilities",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Utilities. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784049694.0887363
     }
   ],
   "github_insights": [
