@@ -4,6 +4,7 @@ Uses A3C-LSTM agent to generate buy/hold/sell signals.
 Falls back to RSI-based signals if no trained model is loaded.
 """
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,7 @@ import pandas as pd
 try:
     import torch
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
 
@@ -36,10 +37,15 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor | None:
+def _sma(series: pd.Series, window: int = 20) -> pd.Series:
+    """Simple moving average."""
+    return series.rolling(window=window, min_periods=1).mean()
+
+
+def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> Optional[torch.Tensor]:
     """
     Build a (1, seq_len, n_features) tensor from the last `seq_len` rows
-    of an OHLCV DataFrame.  Returns None if df is too short.
+    of an OHLCV DataFrame. Returns None if df is too short.
     """
     if len(df) < seq_len + 1:
         return None
@@ -47,7 +53,7 @@ def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor |
     close = df["close"]
     volume = df["volume"]
 
-    # Simple feature set: returns, log-volume, RSI normalised to [-1, 1]
+    # Feature set: returns, log-volume, RSI normalised to [-1, 1]
     returns = close.pct_change().fillna(0.0)
     log_vol = np.log1p(volume).diff().fillna(0.0)
     rsi_norm = (_rsi(close).fillna(50.0) - 50.0) / 50.0
@@ -82,7 +88,7 @@ class RLTraderStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.60
 
-    # Feature dimension expected by the model.  Must match training config.
+    # Feature dimension expected by the model. Must match training config.
     N_FEATURES = 3
     SEQ_LEN = 30
 
@@ -106,10 +112,10 @@ class RLTraderStrategy(AbstractStrategy):
 
             self._agent = A3CLSTMAgent.load(str(self._model_path))
             self._agent.eval()
-        except Exception:
+        except Exception:  # pragma: no cover
             self._agent = None
 
-    def _rsi_signal(self, df: pd.DataFrame, symbol: str) -> Signal | None:
+    def _rsi_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """Fallback: plain RSI oversold/overbought signal."""
         if len(df) < 15:
             return None
@@ -140,11 +146,29 @@ class RLTraderStrategy(AbstractStrategy):
             )
         return None
 
+    def _apply_confirmation_filters(
+        self,
+        side: str,
+        close: float,
+        rsi_val: float,
+        sma20: float,
+    ) -> bool:
+        """
+        Apply simple confirmation filters to reduce false entries.
+        - For buys: RSI < 40 and price above 20‑period SMA.
+        - For sells: RSI > 60 and price below 20‑period SMA.
+        """
+        if side == "buy":
+            return rsi_val < 40 and close > sma20
+        if side == "sell":
+            return rsi_val > 60 and close < sma20
+        return False
+
     # ------------------------------------------------------------------
     # AbstractStrategy interface
     # ------------------------------------------------------------------
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """
         Run A3C-LSTM inference on recent OHLCV; fall back to RSI if model absent.
         """
@@ -157,12 +181,9 @@ class RLTraderStrategy(AbstractStrategy):
 
         # Pad or trim feature dimension to match model expectations
         if x.shape[-1] != self._agent.n_features:
-            # Pad with zeros to match training feature count
             pad_size = self._agent.n_features - x.shape[-1]
             if pad_size > 0:
-                x = torch.cat(
-                    [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                )
+                x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
             else:
                 x = x[..., : self._agent.n_features]
 
@@ -170,29 +191,44 @@ class RLTraderStrategy(AbstractStrategy):
         action_probs, _ = self._agent.forward(x)
         confidence = float(action_probs[0, action].item())
         close = float(data["close"].iloc[-1])
+        rsi_val = float(_rsi(data["close"]).iloc[-1])
+        sma20 = float(_sma(data["close"]).iloc[-1])
 
+        # Tighten entry: require both confidence and confirmation filters
         if action == _BUY and confidence >= self.confidence_threshold:
-            return Signal(
-                symbol=symbol,
-                side="buy",
-                confidence=confidence,
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                target_price=close,
-                metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
-            )
+            if self._apply_confirmation_filters("buy", close, rsi_val, sma20):
+                return Signal(
+                    symbol=symbol,
+                    side="buy",
+                    confidence=confidence,
+                    strategy_name=self.name,
+                    strategy_type=self.strategy_type,
+                    risk_bucket=self.risk_bucket,
+                    target_price=close,
+                    metadata={
+                        "source": "a3c_lstm",
+                        "action_probs": action_probs[0].tolist(),
+                        "rsi": rsi_val,
+                        "sma20": sma20,
+                    },
+                )
         if action == _SELL and confidence >= self.confidence_threshold:
-            return Signal(
-                symbol=symbol,
-                side="sell",
-                confidence=confidence,
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                target_price=close,
-                metadata={"source": "a3c_lstm", "action_probs": action_probs[0].tolist()},
-            )
+            if self._apply_confirmation_filters("sell", close, rsi_val, sma20):
+                return Signal(
+                    symbol=symbol,
+                    side="sell",
+                    confidence=confidence,
+                    strategy_name=self.name,
+                    strategy_type=self.strategy_type,
+                    risk_bucket=self.risk_bucket,
+                    target_price=close,
+                    metadata={
+                        "source": "a3c_lstm",
+                        "action_probs": action_probs[0].tolist(),
+                        "rsi": rsi_val,
+                        "sma20": sma20,
+                    },
+                )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
@@ -203,12 +239,13 @@ class RLTraderStrategy(AbstractStrategy):
         if self._agent is None or len(df) < self.SEQ_LEN + 1:
             # RSI fallback — vectorized
             rsi_series = _rsi(df["close"]).shift(1)
-            entries = (rsi_series < 30).fillna(False)
-            exits = (rsi_series > 70).fillna(False)
-            return BacktestSignals(entries=entries, exits=exits)
+            sma_series = _sma(df["close"]).shift(1)
+            entries = (rsi_series < 30) & (df["close"] > sma_series)
+            exits = (rsi_series > 70) & (df["close"] < sma_series)
+            return BacktestSignals(entries=entries.fillna(False), exits=exits.fillna(False))
 
-        actions = pd.Series(index=df.index, dtype=int)
-        actions[:] = _HOLD
+        entries = pd.Series(False, index=df.index)
+        exits = pd.Series(False, index=df.index)
 
         self._agent.eval()
         with torch.no_grad():
@@ -217,28 +254,32 @@ class RLTraderStrategy(AbstractStrategy):
                 x = _build_feature_tensor(window, seq_len=self.SEQ_LEN)
                 if x is None:
                     continue
+
+                # Align feature dimensions
                 if x.shape[-1] != self._agent.n_features:
                     pad_size = self._agent.n_features - x.shape[-1]
                     if pad_size > 0:
-                        x = torch.cat(
-                            [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                        )
+                        x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
                     else:
                         x = x[..., : self._agent.n_features]
+
+                action = self._agent.select_action(x)
                 action_probs, _ = self._agent.forward(x)
-                actions.iloc[i] = int(action_probs[0].argmax().item())
+                confidence = float(action_probs[0, action].item())
 
-        # Apply shift(1) — no lookahead
-        actions = actions.shift(1).fillna(_HOLD).astype(int)
+                if confidence < self.confidence_threshold:
+                    continue
 
-        entries = actions == _BUY
-        exits = actions == _SELL
-        short_entries = actions == _SELL
-        short_exits = actions == _BUY
+                # Confirmation filters based on the current bar (i)
+                close = float(df["close"].iloc[i])
+                rsi_val = float(_rsi(df["close"]).iloc[i])
+                sma20 = float(_sma(df["close"]).iloc[i])
 
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
+                if action == _BUY:
+                    if self._apply_confirmation_filters("buy", close, rsi_val, sma20):
+                        entries.iloc[i] = True
+                elif action == _SELL:
+                    if self._apply_confirmation_filters("sell", close, rsi_val, sma20):
+                        exits.iloc[i] = True
+
+        return BacktestSignals(entries=entries, exits=exits)
