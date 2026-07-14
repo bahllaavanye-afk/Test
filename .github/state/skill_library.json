@@ -199,8 +199,13 @@
     "Verify market data",
     "Log UCB1 decisions",
     "Check trading halt",
-    "Validate order IDs"
+    "Validate order IDs",
+    "docstrings on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "docstrings on ml/models/itransformer.py: success \u2014 tests green",
+    "docstrings on ml/features/social_sentiment.py: success \u2014 tests green",
+    "docstrings on execution/advanced_orders.py: success \u2014 tests green",
+    "docstrings on risk/circuit_breaker.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T10:41:57.743780+00:00",
+  "last_updated": "2026-07-14T12:09:16.963795+00:00",
   "total": 200
 }
