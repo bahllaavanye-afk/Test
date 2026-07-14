@@ -199,8 +199,13 @@
     "Verify market data",
     "Log UCB1 decisions",
     "Check trading halt",
-    "Validate order IDs"
+    "Validate order IDs",
+    "optimization on brokers/tradestation.py: success \u2014 tests green",
+    "optimization on backtest/data_loader.py: success \u2014 tests green",
+    "optimization on tasks/task_queue.py: success \u2014 tests green",
+    "optimization on test/unit/test_walk_forward.py: success \u2014 tests green",
+    "optimization on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-14T17:12:17.834465+00:00",
+  "last_updated": "2026-07-14T17:15:48.425998+00:00",
   "total": 200
 }
