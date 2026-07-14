@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784062598.119835,
+    "last_updated": 1784066164.9577725,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784062598.1191144
+    "last_brain_update": 1784066164.9567626
   },
   "episodic": [
     {
@@ -1093,6 +1093,11 @@
       "summary": "A deployment failed due to resource limits, advising a retry in 24 hours. Separately, an autonomous PR modifying protected files had its automerge revoked, and an auto-fix attempt failed to apply a patch.",
       "item_count": 20,
       "ts": 1784062598.1136024
+    },
+    {
+      "summary": "The deployment failed due to a resource limitation, and two automated attempts to apply a fix were unsuccessful.",
+      "item_count": 20,
+      "ts": 1784066164.949511
     }
   ],
   "experiment_results": [
