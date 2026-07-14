@@ -22,7 +22,10 @@ Exports:
   iTransformer   — model class
   train(...)     — async training entry point matching train_lstm.py API
 """
+
 from __future__ import annotations
+
+from typing import Any, Dict, Iterable, Tuple
 
 try:
     import torch
@@ -47,18 +50,34 @@ except ImportError:  # pragma: no cover
     _HAS_SKLEARN = False
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
+import torch.optim as optim
+import torch.nn.modules.loss as loss_mod
 
 
 # ---------------------------------------------------------------------------
 # Inverted Encoder Layer
 # ---------------------------------------------------------------------------
 
+
 class InvertedEncoderLayer(_NNModule):
     """
     Single Pre-LN transformer layer where attention is computed over the
     variate (feature) dimension rather than the time dimension.
 
-    Input / output: (batch, n_variates, d_model)
+    The layer follows the Pre‑LayerNorm pattern:
+    1. LayerNorm → Multi‑head self‑attention (over variates) → Dropout → Residual
+    2. LayerNorm → Feed‑forward network → Dropout → Residual
+
+    Parameters
+    ----------
+    d_model: int
+        Dimensionality of the token embeddings.
+    n_heads: int
+        Number of attention heads.
+    d_ff: int
+        Hidden size of the feed‑forward network.
+    dropout: float, default 0.1
+        Dropout probability applied after attention and feed‑forward blocks.
     """
 
     def __init__(
@@ -89,17 +108,22 @@ class InvertedEncoderLayer(_NNModule):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Args:
-            x: (batch, n_variates, d_model)
-        Returns:
-            (batch, n_variates, d_model)
+        Parameters
+        ----------
+        x: torch.Tensor
+            Input tensor of shape ``(batch, n_variates, d_model)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of the same shape ``(batch, n_variates, d_model)``.
         """
-        # Self-attention over variate tokens (Pre-LN)
+        # Self‑attention over variate tokens (Pre‑LN)
         h = self.norm1(x)
         attn_out, _ = self.attn(h, h, h)
         x = x + self.drop1(attn_out)
 
-        # Feed-forward (Pre-LN)
+        # Feed‑forward (Pre‑LN)
         x = x + self.ffn(self.norm2(x))
         return x
 
@@ -108,13 +132,17 @@ class InvertedEncoderLayer(_NNModule):
 # iTransformer
 # ---------------------------------------------------------------------------
 
+
 class iTransformer(AbstractModel, _NNModule):
     """
-    iTransformer: inverted-attention transformer for multivariate time series.
+    iTransformer: inverted‑attention transformer for multivariate time series.
 
     Each variate (feature) is embedded from its full time series into a single
-    d_model token; transformer layers then learn cross-variate dependencies.
+    ``d_model`` token; transformer layers then learn cross‑variate dependencies.
+    The model can be trained with binary cross‑entropy loss and provides both
+    raw logits and probability predictions.
     """
+
     model_type = "itransformer"
 
     def __init__(
@@ -127,6 +155,25 @@ class iTransformer(AbstractModel, _NNModule):
         d_ff: int = 512,
         dropout: float = 0.1,
     ) -> None:
+        """
+        Parameters
+        ----------
+        n_features: int, default 27
+            Number of input features (variates).
+        seq_len: int, default 60
+            Expected length of the time dimension. Inputs longer than this are
+            truncated; shorter inputs are padded with zeros.
+        d_model: int, default 256
+            Dimensionality of the variate embeddings.
+        n_heads: int, default 8
+            Number of attention heads in each encoder layer.
+        n_layers: int, default 3
+            Number of stacked ``InvertedEncoderLayer`` modules.
+        d_ff: int, default 512
+            Hidden size of the feed‑forward network inside each encoder layer.
+        dropout: float, default 0.1
+            Dropout probability applied throughout the network.
+        """
         nn.Module.__init__(self)
         self.n_features = n_features
         self.seq_len = seq_len
@@ -139,7 +186,7 @@ class iTransformer(AbstractModel, _NNModule):
         # Step 1 — Variate embedding: Linear(seq_len → d_model) shared across variates
         self.variate_embed = nn.Linear(seq_len, d_model)
 
-        # Optional learnable variate-position embedding
+        # Optional learnable variate‑position embedding
         self.variate_pos = nn.Parameter(torch.zeros(1, n_features, d_model))
         nn.init.trunc_normal_(self.variate_pos, std=0.02)
 
@@ -160,6 +207,7 @@ class iTransformer(AbstractModel, _NNModule):
         self._init_weights()
 
     def _init_weights(self) -> None:
+        """Initialise linear layers with Xavier uniform and zero biases."""
         for module in self.modules():
             if isinstance(module, nn.Linear):
                 nn.init.xavier_uniform_(module.weight)
@@ -168,10 +216,15 @@ class iTransformer(AbstractModel, _NNModule):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Args:
-            x: (batch, seq_len, n_features)
-        Returns:
-            (batch,) — raw logits (apply sigmoid for probabilities)
+        Parameters
+        ----------
+        x: torch.Tensor
+            Input tensor of shape ``(batch, seq_len, n_features)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Raw logits of shape ``(batch,)``. Apply ``torch.sigmoid`` for probabilities.
         """
         B, T, F = x.shape
 
@@ -204,8 +257,29 @@ class iTransformer(AbstractModel, _NNModule):
     # AbstractModel interface
     # ------------------------------------------------------------------
 
-    def train_epoch(self, loader: DataLoader, optimizer, criterion) -> dict:
-        """Train for one epoch. Returns dict with 'loss' and 'accuracy'."""
+    def train_epoch(
+        self,
+        loader: DataLoader,
+        optimizer: optim.Optimizer,
+        criterion: loss_mod._Loss,
+    ) -> Dict[str, float]:
+        """
+        Train the model for a single epoch.
+
+        Parameters
+        ----------
+        loader: DataLoader
+            Iterable over ``(features, label)`` batches.
+        optimizer: torch.optim.Optimizer
+            Optimiser used to update model parameters.
+        criterion: torch.nn.modules.loss._Loss
+            Loss function, typically ``nn.BCEWithLogitsLoss`` for binary tasks.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the average ``'loss'`` and ``'accuracy'`` for the epoch.
+        """
         self.train()
         total_loss, correct, total = 0.0, 0, 0
         for X, y in loader:
@@ -224,10 +298,22 @@ class iTransformer(AbstractModel, _NNModule):
         return {"loss": total_loss / total, "accuracy": correct / total}
 
     def evaluate(self, loader: DataLoader) -> EvalMetrics:
-        """Evaluate model on a DataLoader. Returns EvalMetrics."""
+        """
+        Evaluate the model on a validation / test set.
+
+        Parameters
+        ----------
+        loader: DataLoader
+            Iterable over ``(features, label)`` batches.
+
+        Returns
+        -------
+        EvalMetrics
+            Aggregated evaluation metrics (loss, accuracy, and optionally AUC).
+        """
         self.eval()
-        all_logits = []
-        all_labels = []
+        all_logits: list[torch.Tensor] = []
+        all_labels: list[torch.Tensor] = []
         total_loss = 0.0
         total = 0
         criterion = nn.BCEWithLogitsLoss()
@@ -237,6 +323,7 @@ class iTransformer(AbstractModel, _NNModule):
                 logits = self.forward(X)
                 loss = criterion(logits, y.float())
                 total_loss += loss.item() * len(y)
+
                 all_logits.append(logits.detach())
                 all_labels.append(y.detach())
                 total += len(y)
@@ -245,33 +332,30 @@ class iTransformer(AbstractModel, _NNModule):
         labels_tensor = torch.cat(all_labels)
 
         probs = torch.sigmoid(logits_tensor)
-        preds = (probs > 0.5).float()
-        accuracy = (preds == labels_tensor.float()).sum().item() / total
+        preds = (probs > 0.5).long()
+        accuracy = (preds == labels_tensor.long()).float().mean().item()
 
         auc = None
         if _HAS_SKLEARN:
-            try:
-                auc = roc_auc_score(
-                    labels_tensor.cpu().numpy(),
-                    probs.cpu().numpy(),
-                )
-            except ValueError:
-                auc = float("nan")
+            auc = roc_auc_score(labels_tensor.cpu().numpy(), probs.cpu().numpy())
 
-        return EvalMetrics(
-            loss=total_loss / total,
-            accuracy=accuracy,
-            auc=auc,
-        )
+        return EvalMetrics(loss=total_loss / total, accuracy=accuracy, auc=auc)
 
     def predict_proba(self, X: torch.Tensor) -> torch.Tensor:
-        """Return probability predictions for input X."""
+        """
+        Generate probability predictions for the positive class.
+
+        Parameters
+        ----------
+        X: torch.Tensor
+            Input tensor of shape ``(batch, seq_len, n_features)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Probabilities in the range ``[0, 1]`` with shape ``(batch,)``.
+        """
         self.eval()
         with torch.no_grad():
             logits = self.forward(X)
             return torch.sigmoid(logits)
-
-
-# Registry/import alias — the strategy registry and tests expect `iTransformerPredictor`.
-# (Restored after an unvalidated rename to `iTransformer` broke the registry name.)
-iTransformerPredictor = iTransformer
