@@ -1,4 +1,11 @@
-"""Drawdown-based circuit breakers — halt trading at configurable thresholds."""
+"""Drawdown-based circuit breakers — halt trading at configurable thresholds.
+
+This module defines a `CircuitBreaker` dataclass that monitors equity drawdown
+and can automatically halt trading when a configurable drawdown threshold is
+exceeded. The breaker supports a confirmation period to reduce false positives
+and can optionally recover automatically when drawdown improves.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,6 +17,8 @@ from app.utils.logging import logger
 
 
 class BreakerState(str, Enum):
+    """Possible states of a circuit breaker."""
+
     NORMAL = "normal"
     HALTED = "halted"
 
@@ -20,9 +29,10 @@ class CircuitBreaker:
     Circuit breaker that monitors equity drawdown and halts trading when thresholds are breached.
 
     The breaker can be configured to require a consecutive number of drawdown breaches
-    (confirmation_period) before entering the HALTED state, reducing false positives.
+    (`confirmation_period`) before entering the HALTED state, reducing false positives.
     It can also automatically recover when the drawdown falls below a recovery threshold.
     """
+
     name: str
     max_drawdown_pct: float                     # e.g. 0.10 = 10%
     peak_equity: float = 0.0
@@ -42,11 +52,19 @@ class CircuitBreaker:
         """
         Update the breaker with the latest equity snapshot.
 
+        Args:
+            equity: The latest equity value (must be a numeric type).
+
         Returns:
-            bool: True if the breaker remains in NORMAL state, False if HALTED.
+            bool: ``True`` if the breaker remains in the NORMAL state after the update,
+            ``False`` if the breaker is HALTED.
         """
         if equity is None or not isinstance(equity, (int, float)):
-            logger.warning("Circuit breaker received invalid equity value", name=self.name, equity=equity)
+            logger.warning(
+                "Circuit breaker received invalid equity value",
+                name=self.name,
+                equity=equity,
+            )
             return not self.is_halted
 
         # Update peak and current equity
@@ -76,9 +94,17 @@ class CircuitBreaker:
             if self._breach_count >= self.confirmation_period:
                 self.state = BreakerState.HALTED
                 self.halted_at = datetime.now(timezone.utc)
-                reason = f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} (confirmed {self._breach_count}×)"
+                reason = (
+                    f"Drawdown {drawdown:.2%} >= threshold {self.max_drawdown_pct:.2%} "
+                    f"(confirmed {self._breach_count}×)"
+                )
                 self.halt_reasons.append(reason)
-                logger.error("Circuit breaker TRIPPED", name=self.name, drawdown=drawdown, threshold=self.max_drawdown_pct)
+                logger.error(
+                    "Circuit breaker TRIPPED",
+                    name=self.name,
+                    drawdown=drawdown,
+                    threshold=self.max_drawdown_pct,
+                )
                 return False
         else:
             # Reset breach counter when drawdown falls back below threshold
@@ -96,7 +122,11 @@ class CircuitBreaker:
         """
         Determine whether the breaker should automatically recover.
 
-        Recovery occurs when the current drawdown falls below `recovery_drawdown_pct`.
+        Recovery occurs when the current drawdown falls below ``recovery_drawdown_pct``.
+        If ``recovery_drawdown_pct`` is non‑positive, automatic recovery is disabled.
+
+        Returns:
+            bool: ``True`` if recovery conditions are met, otherwise ``False``.
         """
         if self.recovery_drawdown_pct <= 0.0:
             return False
@@ -104,7 +134,7 @@ class CircuitBreaker:
 
     def reset(self, equity: float) -> None:
         """
-        Manually reset the breaker to NORMAL state.
+        Manually reset the breaker to the NORMAL state.
 
         Args:
             equity: The equity level to set as the new peak.
