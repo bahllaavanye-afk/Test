@@ -75,7 +75,6 @@ class SmartOrderRouter:
             if fills:
                 total_qty = sum(f["qty"] for f in fills)
                 avg_price = sum(f["qty"] * f["price"] for f in fills) / max(total_qty, 1e-9)
-                from app.brokers.base import OrderResult
                 result = OrderResult(
                     order_id=f"rl_{request.symbol}",
                     symbol=request.symbol,
@@ -141,7 +140,6 @@ class SmartOrderRouter:
             if slice_qty < 1e-6:
                 continue
             # Use market slices — adding "limit" without a price causes broker rejection.
-            # AC's alpha comes from the optimal schedule, not from limit orders.
             slice_req = OrderRequest(
                 **{**asdict(request), "quantity": float(slice_qty), "order_type": "market", "limit_price": None}
             )
@@ -188,7 +186,8 @@ class SmartOrderRouter:
         )
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "ac_exec",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
+            symbol=request.symbol,
+            status="filled" if total_filled >= request.quantity * 0.99 else "partial",
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
