@@ -1,5 +1,6 @@
 """Kelly criterion position sizing with fractional Kelly for safety."""
 import numpy as np
+import unittest
 
 
 def kelly_fraction(win_rate: float, avg_win: float, avg_loss: float, fraction: float = 0.25) -> float:
@@ -30,3 +31,33 @@ def size_from_kelly(
     f = min(f, max_pct)
     dollar_size = equity * f
     return max(1, int(dollar_size / price))
+
+
+class TestKellyFunctions(unittest.TestCase):
+    def test_zero_avg_loss_returns_zero_fraction(self):
+        """When avg_loss is zero, Kelly fraction should be zero to avoid division errors."""
+        self.assertEqual(kelly_fraction(win_rate=0.6, avg_win=1.0, avg_loss=0.0), 0.0)
+
+    def test_full_win_rate_hits_hard_cap(self):
+        """With win_rate=1, full Kelly is 1; fractional Kelly should be capped at 20%."""
+        fraction = kelly_fraction(win_rate=1.0, avg_win=2.0, avg_loss=1.0)
+        self.assertAlmostEqual(fraction, 0.20, places=7)
+
+        # Verify size_from_kelly respects the capped fraction
+        equity = 1000.0
+        price = 10.0
+        shares = size_from_kelly(equity, 1.0, 2.0, 1.0, price)
+        expected_shares = int((equity * 0.20) / price)
+        self.assertEqual(shares, expected_shares)
+
+    def test_minimum_one_share_enforced(self):
+        """Even when dollar size is less than price, function should return at least one share."""
+        # Choose parameters that produce a very small dollar size
+        equity = 0.5
+        price = 1.0
+        shares = size_from_kelly(equity, win_rate=0.5, avg_win_pct=1.0, avg_loss_pct=1.0, price=price)
+        self.assertEqual(shares, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
