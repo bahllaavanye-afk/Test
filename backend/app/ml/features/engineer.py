@@ -1,7 +1,7 @@
 """
 Feature engineering pipeline for ML models.
 
-All features are computed without lookahead bias (shifts are applied where needed).
+All features are computed without look‑ahead bias (shifts are applied where needed).
 The resulting feature set is used both for model training and live inference.
 """
 
@@ -32,7 +32,7 @@ SOCIAL_SENTIMENT_FEATURE_COLS: List[str] = [
 ]
 
 _BASE_FEATURE_COLS: List[str] = [
-    # Price-based
+    # Price‑based
     "returns_1",
     "returns_5",
     "returns_10",
@@ -69,7 +69,7 @@ _BASE_FEATURE_COLS: List[str] = [
     "adx",
 ]
 
-# Extended feature list: base 27 + advanced + wavelet + multi-timeframe + social sentiment (crypto)
+# Extended feature list: base 27 + advanced + wavelet + multi‑timeframe + social sentiment (crypto)
 FEATURE_COLS: List[str] = (
     _BASE_FEATURE_COLS
     + ADVANCED_FEATURE_COLS
@@ -88,7 +88,7 @@ def engineer_features(
     social_sentiment: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
     """
-    Apply the full suite of feature engineering steps to an OHLCV DataFrame.
+    Apply the full suite of feature‑engineering steps to an OHLCV ``DataFrame``.
 
     Parameters
     ----------
@@ -227,8 +227,10 @@ def add_labels(
     """
     Append binary direction labels and a ``target`` alias for training.
 
-    The label is ``1`` when the future return over ``horizon`` bars exceeds ``threshold``,
-    otherwise ``0``.
+    The label is ``1`` when the forward return over ``horizon`` bars exceeds
+    ``threshold`` in absolute value; otherwise the label is ``0``. The function
+    also creates a ``target`` column that mirrors the binary label for downstream
+    convenience.
 
     Parameters
     ----------
@@ -242,11 +244,24 @@ def add_labels(
     Returns
     -------
     pd.DataFrame
-        Copy of ``df`` with ``label`` and ``target`` columns added, and rows with
-        undefined labels removed.
+        DataFrame with ``direction`` and ``target`` columns appended and rows
+        with missing forward returns removed.
     """
     df = df.copy()
-    future_return = df["close"].pct_change(horizon).shift(-horizon)
-    df["label"] = (future_return > threshold).astype(int)
-    df["target"] = df["label"]  # alias for create_sequences compatibility
-    return df.dropna(subset=["label"])
+
+    # Compute forward return and shift it so that the label aligns with the current row.
+    df["forward_return"] = df["close"].pct_change(periods=horizon).shift(-horizon)
+
+    # Binary direction label: 1 if absolute forward return exceeds threshold, else 0.
+    df["direction"] = (df["forward_return"].abs() > threshold).astype(int)
+
+    # Alias for compatibility with existing pipelines.
+    df["target"] = df["direction"]
+
+    # Remove rows where the forward return could not be computed (e.g., last ``horizon`` rows).
+    df = df.dropna(subset=["forward_return"]).reset_index(drop=True)
+
+    # Clean up the intermediate column.
+    df = df.drop(columns=["forward_return"])
+
+    return df
