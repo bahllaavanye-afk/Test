@@ -1,7 +1,5 @@
 {
   "skills": [
-    "**Real-time awareness**: Agents need to be aware of their current tasks and provide specific, first-person updates to maintain transparency and efficiency.",
-    "Verify dependency updates",
     "TRADING_MODE must always be paper \u2014 never set to live",
     "Monitor RAM usage",
     "**Strategies**: Backtest new strategy variants such as 'Apple Momentum Tilt' and 'AAPL Price Momentum Tilt' using historical price data in `/src/data/`.",
@@ -199,8 +197,10 @@
     "Test API keys",
     "Check dependency updates",
     "Verify data feeds",
-    "Check queue lengths"
+    "Check queue lengths",
+    "Check RAM usage",
+    "Test network latency"
   ],
-  "last_updated": "2026-07-14T22:32:52.729740+00:00",
+  "last_updated": "2026-07-14T23:50:49.814429+00:00",
   "total": 200
 }
