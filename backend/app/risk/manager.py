@@ -18,6 +18,15 @@ from app.risk.circuit_breaker import CircuitBreaker, BreakerState
 from app.utils.logging import logger
 
 
+# ----------------------------------------------------------------------
+# Strategy entry/exit filter thresholds – can be tuned per regime
+# ----------------------------------------------------------------------
+ENTRY_SIGNAL_THRESHOLD: float = 0.70  # Minimum signal strength to accept a new position
+MIN_VOLUME: int = 1_000               # Minimum daily volume required for entry
+CONFIRMATION_REQUIRED: bool = True   # Whether a secondary confirmation flag is required
+EXIT_SIGNAL_REQUIRED: bool = True    # Whether an explicit exit signal must be present for closing trades
+
+
 class RiskManagerError(Exception):
     """Base exception for RiskManager related errors."""
 
@@ -77,6 +86,9 @@ class RiskManager:
             name="arb", max_drawdown_pct=arb_drawdown_pct
         )
 
+    # ------------------------------------------------------------------
+    # Equity / position / returns updates
+    # ------------------------------------------------------------------
     def update_equity(self, equity: float) -> None:
         try:
             if not isinstance(equity, (int, float)):
@@ -129,8 +141,54 @@ class RiskManager:
                 exc_msg=str(exc),
                 exc_info=True,
             )
-            raise ReturnsUpdateError("Error updating returns") from exc
+            raise ReturnsUpdateError("Error updating returns history") from exc
 
+    # ------------------------------------------------------------------
+    # Internal helper: entry filters
+    # ------------------------------------------------------------------
+    def _entry_filters_pass(self, request: OrderRequest) -> tuple[bool, str]:
+        """
+        Apply tightened entry conditions.
+        Returns (True, "ok") if all filters pass, otherwise (False, reason).
+        """
+        # 1. Signal strength filter
+        signal_strength = getattr(request, "signal_strength", None)
+        if signal_strength is None:
+            return False, "missing signal_strength attribute"
+        if signal_strength < ENTRY_SIGNAL_THRESHOLD:
+            return False, f"signal_strength {signal_strength:.2f} below threshold {ENTRY_SIGNAL_THRESHOLD:.2f}"
+
+        # 2. Volume filter
+        daily_volume = getattr(request, "daily_volume", None)
+        if daily_volume is None:
+            return False, "missing daily_volume attribute"
+        if daily_volume < MIN_VOLUME:
+            return False, f"daily_volume {daily_volume} below minimum {MIN_VOLUME}"
+
+        # 3. Confirmation filter (optional secondary flag)
+        if CONFIRMATION_REQUIRED:
+            confirmation = getattr(request, "confirmation", None)
+            if not confirmation:
+                return False, "required confirmation flag not set"
+
+        return True, "ok"
+
+    # ------------------------------------------------------------------
+    # Internal helper: exit validation
+    # ------------------------------------------------------------------
+    def _exit_validation(self, request: OrderRequest) -> tuple[bool, str]:
+        """
+        For closing orders, ensure an explicit exit signal is present.
+        """
+        if request.side.lower() == "sell" or request.side.lower() == "close":
+            exit_signal = getattr(request, "exit_signal", None)
+            if EXIT_SIGNAL_REQUIRED and not exit_signal:
+                return False, "exit_signal required for closing position"
+        return True, "ok"
+
+    # ------------------------------------------------------------------
+    # Core order risk checks
+    # ------------------------------------------------------------------
     async def check_order(self, request: OrderRequest) -> RiskDecision:
         """Gate every order through risk checks. Returns RiskDecision."""
         try:
@@ -158,7 +216,23 @@ class RiskManager:
             if self._equity <= 0:
                 return RiskDecision(False, "equity is zero or negative — orders halted")
 
+            # ----------------------------------------------------------------
+            # Entry / exit validation
+            # ----------------------------------------------------------------
+            # Exit validation may reject a close order lacking proper signal.
+            exit_ok, exit_reason = self._exit_validation(request)
+            if not exit_ok:
+                return RiskDecision(False, f"Exit validation failed: {exit_reason}")
+
+            # Entry filters are only applied to opening orders.
+            if request.side.lower() in ("buy", "long"):
+                entry_ok, entry_reason = self._entry_filters_pass(request)
+                if not entry_ok:
+                    return RiskDecision(False, f"Entry filter failed: {entry_reason}")
+
+            # ----------------------------------------------------------------
             # Position size cap
+            # ----------------------------------------------------------------
             price = request.limit_price if request.limit_price is not None else 100.0
             if price == 0:
                 raise ZeroDivisionError("limit_price is zero, cannot compute position size")
@@ -174,7 +248,9 @@ class RiskManager:
                 )
                 return RiskDecision(True, "size capped", adj_qty)
 
+            # ----------------------------------------------------------------
             # Correlation cluster check
+            # ----------------------------------------------------------------
             if self._clusters:
                 allowed, reason = check_cluster_limits(
                     request.symbol,
@@ -202,6 +278,9 @@ class RiskManager:
             )
             raise OrderCheckError("Error checking order risk") from exc
 
+    # ------------------------------------------------------------------
+    # Kelly sizing helper
+    # ------------------------------------------------------------------
     def kelly_size(
         self,
         symbol: str,
@@ -217,7 +296,7 @@ class RiskManager:
                 avg_win_pct=avg_win_pct,
                 avg_loss_pct=avg_loss_pct,
                 price=price,
-                max_pct=self.max_position_pct,
+                symbol=symbol,
             )
         except Exception as exc:
             logger.error(
@@ -231,4 +310,4 @@ class RiskManager:
                 exc_msg=str(exc),
                 exc_info=True,
             )
-            raise KellySizingError("Error computing Kelly size") from exc
+            raise KellySizingError("Kelly sizing error") from exc
