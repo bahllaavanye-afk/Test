@@ -4,6 +4,7 @@ Splits large orders into N equal slices over duration minutes.
 Minimizes market impact for large positions.
 """
 import asyncio
+import time
 from dataclasses import asdict
 from typing import Any
 
@@ -32,11 +33,13 @@ class TWAPExecution:
         OrderResult
             Aggregated result of the TWAP execution.
         """
+        start_time = time.perf_counter()
         slice_qty = request.quantity / self.slices
         total_filled = 0.0
         total_cost = 0.0
         last_result: OrderResult | None = None
         consecutive_failures = 0
+        slices_executed = 0
 
         for i in range(self.slices):
             slice_req = OrderRequest(
@@ -49,6 +52,7 @@ class TWAPExecution:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
                 consecutive_failures = 0
+                slices_executed += 1
             except (BrokerError, ConnectionError, TimeoutError) as e:
                 consecutive_failures += 1
                 logger.warning(
@@ -73,6 +77,28 @@ class TWAPExecution:
                 await asyncio.sleep(self.sleep_seconds)
 
         avg_price = total_cost / total_filled if total_filled > 0 else None
+        execution_time = time.perf_counter() - start_time
+
+        # Calculate a simple P&L estimate if request provides a reference price
+        reference_price = getattr(request, "price", None)
+        pnl = None
+        if reference_price is not None and avg_price is not None:
+            side_multiplier = 1 if getattr(request, "side", "buy").lower() == "buy" else -1
+            pnl = side_multiplier * (reference_price - avg_price) * total_filled
+
+        logger.info(
+            f"TWAP execution completed for {request.symbol}",
+            extra={
+                "symbol": request.symbol,
+                "slices_executed": slices_executed,
+                "total_slices": self.slices,
+                "execution_time_seconds": execution_time,
+                "total_filled_qty": total_filled,
+                "average_fill_price": avg_price,
+                "pnl": pnl,
+            },
+        )
+
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "twap",
             status="filled"
