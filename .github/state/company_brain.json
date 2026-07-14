@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784062482.1645813,
+    "last_updated": 1784062598.119835,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784054232.0726438
+    "last_brain_update": 1784062598.1191144
   },
   "episodic": [
     {
@@ -1088,6 +1088,11 @@
       "summary": "The automated fix process repeatedly failed to apply a patch to a file, with three identical error messages indicating the patch could not be applied.",
       "item_count": 20,
       "ts": 1784054232.0663822
+    },
+    {
+      "summary": "A deployment failed due to resource limits, advising a retry in 24 hours. Separately, an autonomous PR modifying protected files had its automerge revoked, and an auto-fix attempt failed to apply a patch.",
+      "item_count": 20,
+      "ts": 1784062598.1136024
     }
   ],
   "experiment_results": [
