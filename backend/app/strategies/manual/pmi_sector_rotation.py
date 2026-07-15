@@ -144,19 +144,10 @@ class PMISectorRotationStrategy(AbstractStrategy):
         return BacktestSignals(entries=entries, exits=exits)
 
 
-# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
-# analyze() fetches external data; when the source is down/blocked it used to
-# raise out of the strategy. Contract: catch and return None so EVERY caller
-# (bot engine, StrategyRunner, backtests) is safe, not just the timeout-guarded desk.
-_unguarded_analyze = PMISectorRotationStrategy.analyze
+# ── Fail-soft guard (strategy contract) ──────────────────────────────────────
+# analyze() does blocking yfinance I/O whose retry sleeps a plain exception
+# guard can't time-bound; the shared hard-budget wrapper runs it in a worker
+# thread and returns None past STRATEGY_ANALYZE_BUDGET_S (default 3.5s).
+from app.strategies._failsoft import apply_hard_budget
 
-
-async def _failsoft_analyze(self, data, symbol: str = "SPY"):
-    try:
-        return await _unguarded_analyze(self, data, symbol)
-    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
-        print(f"pmi_sector_rotation: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
-        return None
-
-
-PMISectorRotationStrategy.analyze = _failsoft_analyze
+apply_hard_budget(PMISectorRotationStrategy, "pmi_sector_rotation")

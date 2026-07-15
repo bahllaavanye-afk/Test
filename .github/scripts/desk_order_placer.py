@@ -38,6 +38,11 @@ PNL_SNAPSHOT     = Stage.PNL_SNAPSHOT
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
+# yfinance-backed strategies run their fetch under a hard budget (see
+# app/strategies/_failsoft.py); on a live desk give them more room than the
+# 3.5s contract-test default — the desk's own 10s wait_for is the outer cap.
+os.environ.setdefault("STRATEGY_ANALYZE_BUDGET_S", "8")
+
 ALPACA_API_KEY    = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
 SLACK_BOT_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
@@ -168,6 +173,22 @@ DESKS: list[DeskConfig] = [
             "stat_arb_etf",
         ],
         notional_usd=600.0,
+        confidence_min=0.60,
+    ),
+    DeskConfig(
+        name="Commodities",
+        slack_channel="#desk-commodities",
+        # Commodity exposure via US-listed ETF proxies (no futures account needed):
+        # gold, silver, oil, natgas, agriculture, broad basket, miners, copper.
+        # Time-series momentum is THE documented commodity premium (Moskowitz-
+        # Ooi-Pedersen); Donchian breakout is the classic trend system for these.
+        symbols=["GLD", "SLV", "USO", "UNG", "DBA", "PDBC", "GDX", "CPER"],
+        strategy_names=[
+            "time_series_momentum", "cross_sectional_momentum",
+            "donchian_breakout", "mean_reversion", "supertrend",
+            "rsi2_pullback",
+        ],
+        notional_usd=400.0,
         confidence_min=0.60,
     ),
     DeskConfig(

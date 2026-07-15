@@ -1,6 +1,13 @@
 # QuantEdge — Improvements & Task Tracker
 
-- [ ] **[P0] Fix 18 quarantined strategies** (desk now guarded by a 10s per-strategy timeout — freezes impossible; remaining work is per-strategy fail-soft hygiene, remove from QUARANTINED as fixed) (contract-test audit 2026-07-11; the cause of desk freezes). Wrap fetches fail-soft w/ hard timeout, then remove from QUARANTINED in backend/tests/unit/test_strategy_contract.py. DESK-WIRED: ~~gamma_exposure, kalman_pairs, skew_arb, vrp_systematic, pead_sue~~ FIXED fail-soft 2026-07-11 (un-quarantined, contract-proven); credit_spread_income guarded but still slow offline (yfinance retries — stays quarantined); multi_factor_equity remains. Rest: lorentzian_knn, breakeven_inflation, dollar_carry, macro_risk_barometer, mvrv_zscore_timing, duration_momentum, yield_curve_momentum, pmi_sector_rotation, tlt_spy_rotation, yield_spread_reversion, basis_carry.
+> **Session 2026-07-15:** QUARANTINED emptied (hard-budget fail-soft); Commodities desk;
+> FF red-folder gate for FX; **AlpacaBroker restored** (improver PR #420 had truncated
+> 6 of 7 interface methods — improver now rejects shrunken/elided outputs, and
+> test_broker_interface.py guards all brokers); employee-health hard gate pages Discord;
+> tasks/ silent-except sweep; per-bot activity view (OA parity). Remaining open items
+> below are the live queue.
+
+- [x] **[P0] Fix 18 quarantined strategies** — DONE 2026-07-15: QUARANTINED is EMPTY. Final 6 (+5 latent) fixed via shared `app/strategies/_failsoft.apply_hard_budget` (detached-daemon-thread hard timeout; yfinance's curl_cffi bypasses socket kills, so this is the only real guard). Contract suite 115/115, 28s. ~~ (desk now guarded by a 10s per-strategy timeout — freezes impossible; remaining work is per-strategy fail-soft hygiene, remove from QUARANTINED as fixed) (contract-test audit 2026-07-11; the cause of desk freezes). Wrap fetches fail-soft w/ hard timeout, then remove from QUARANTINED in backend/tests/unit/test_strategy_contract.py. DESK-WIRED: ~~gamma_exposure, kalman_pairs, skew_arb, vrp_systematic, pead_sue~~ FIXED fail-soft 2026-07-11 (un-quarantined, contract-proven); credit_spread_income guarded but still slow offline (yfinance retries — stays quarantined); multi_factor_equity remains. Rest: lorentzian_knn, breakeven_inflation, dollar_carry, macro_risk_barometer, mvrv_zscore_timing, duration_momentum, yield_curve_momentum, pmi_sector_rotation, tlt_spy_rotation, yield_spread_reversion, basis_carry.
 
 
 - [x] **[P0] scripts/import_oa_bots.py** + ~~scrape OA PUBLIC leaderboard~~ INVALID: 'optionsalpha.com' 200s were a wrong-domain false positive; real site (optionalpha.com) redirects all bot pages to /login (verified 2026-07-11). Cookie or Cowork are the only paths — both built
@@ -16,23 +23,23 @@
 >   (chat sessions are ephemeral — only what's committed survives).
 > - **Slack:** notifications/visibility only — never the source of truth.
 
-_Last updated: 2026-06-29_
+_Last updated: 2026-07-15_
 
 ---
 
 ## Session 2026-06-29 — review backlog (see `docs/REVIEW_2026-06-29.md`)
 Queued for the autonomous loop / employees. Priority order top-to-bottom.
-- [ ] **[P0] OA Scout — auto-copy new Options Alpha bots daily** — workflow fetches the
+- [~] **[P0] OA Scout — auto-copy new Options Alpha bots daily** — BLOCKED on user unlock `OA_SESSION_COOKIE` (public pages auth-walled, verified 2026-07-11); importer + playbooks + issue template all built. — workflow fetches the
   public optionalpha.com template/library pages, diffs against .github/state/oa_library.json,
   LLM-parses any NEW bot into a BOT_TEMPLATES entry (delta/DTE/TP/entry window), opens a
   reward-gated PR, posts the find to #alpha-research. Runs daily + on CI events. Private
   account bots can't be scraped (auth) — screenshots remain the path for those.
-- [ ] **[P1] ForexFactory calendar feed** — ingest the public ff_calendar_thisweek.json into
+- [x] **[P1] ForexFactory calendar feed** — DONE 2026-07-15: red-folder gate in fx_desk.py (±30min blackout per pair currency, fail-open, live-verified 99 events). — ingest the public ff_calendar_thisweek.json into
   /market-data/forex-calendar and gate Macro/FX desk entries around red-folder events.
 - [ ] **[P2] TradingView/FxReplay/Tradezilla** — no public trade APIs (manual UIs);
   TradingView useful as charts + webhook-IN alerts (receiver endpoint), not for dummy
   trading automation. Document + build the webhook receiver only.
-- [ ] **[P0] Options Alpha dashboard parity in the frontend** — per-bot detail view in
+- [x] **[P0] Options Alpha dashboard parity in the frontend** — DONE 2026-07-15: per-bot P&L graph (shipped earlier), + GET /bots/{id}/activity with open-positions & trade-history tables in BotBuilder expanded row; settings editor existed. — per-bot detail view in
   BotBuilder: cumulative P&L graph (endpoint /bots/{id}/performance is LIVE), open
   positions table (orders with bot_id in raw_payload), trade history (Trades by
   strategy_name == bot.name), settings editor (PATCH /bots/{id}). Use LWEquityCurve.
@@ -42,7 +49,7 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
 - [ ] **[P1] Synthetic options backtester** — Black-Scholes pricer over underlying OHLCV +
   realized vol to approximate premium-structure backtests (no chain history yet); gate
   bot enablement on a passing synthetic backtest (paper-first stays).
-- [ ] **[P0] Discord per-channel routing via bot token** — notify.py posts everything through ONE
+- [x] **[P0] Discord per-channel routing via bot token** — DONE 2026-07-12 (notify.py bot-token routing + DiscordBot UA + webhook fallback). — notify.py posts everything through ONE
   webhook into #general with a [#channel] prefix; channels exist now, so resolve channel name → id
   via the bot token (GET /guilds/{id}/channels) and POST /channels/{id}/messages, webhook fallback.
   Embed author = employee name for per-employee identity. Kills the "all channels empty" state.
@@ -50,26 +57,26 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
   with per-employee persona prompts (slack_agent_team.py personas exist), not fixed templates;
   numbers stay deterministic, only the commentary is generated. Two-way: reply when @mentioned
   via the interactions endpoint.
-- [ ] **[P0] Forex desk** — add `market_type="forex"` strategies (carry, trend/momentum), register,
+- [x] **[P0] Forex desk** — DONE 2026-07-13 as the OANDA FX desk (fx_desk.py, 7 majors 24/5, practice orders) rather than backend strategies; superset of the ask. — add `market_type="forex"` strategies (carry, trend/momentum), register,
       add "Forex" to `_MARKET_TYPE_DESK`, route data_loader to `EURUSD=X` etc., + scheduled desk.
-- [ ] **[P0] Commodities desk** — add `market_type="commodity"` strategies (term-structure roll,
+- [x] **[P0] Commodities desk** — DONE 2026-07-15 via ETF proxies on the GitHub-Actions desk layer (GLD/SLV/USO/UNG/DBA/PDBC/GDX/CPER, TSMOM+Donchian+MR, regime-mapped, config guard tests). — add `market_type="commodity"` strategies (term-structure roll,
       momentum, gold/oil mean-reversion), register, add "Commodities" desk, route `GC=F`/`CL=F`.
-- [ ] **[P0] Render sleep** — external uptime pinger (UptimeRobot) or paid tier so in-app employees
+- [x] **[P0] Render sleep** — keep-alive workflow chained to CI events pings /health 24x7 (event-driven, no cron starvation). — external uptime pinger (UptimeRobot) or paid tier so in-app employees
       don't halt (`/health` returned 000 — backend asleep).
 - [~] **[P1] Audit & consolidate 86 workflows** — employee manifest shipped (`docs/WORKFLOWS.md`,
       via `scripts/gen_workflow_manifest.py`): 87 workflows / 70 scheduled, dup-families flagged
       (`slack-*`×10, `agent-*`×6, `render-*`×5, `strategy-*`×5). Next: actually dedupe the families.
 - [x] **[P1] Durable auto-merge** — `auto-merge.yml` lands `automerge`-labeled PRs once all checks
       pass (no human merge). Removes the last manual step for the autonomous loops/employees.
-- [ ] **[P1] Employee-health hard gate** — make the agent smoke test page on failure; verify
+- [x] **[P1] Employee-health hard gate** — DONE 2026-07-15: agent-health-check.yml no longer continue-on-error; critical findings fail the job AND page Discord #infra-alerts. — make the agent smoke test page on failure; verify
       `agent-health-*`/`system-status` actually alert when an employee is stale.
 - [x] **[P1] Reward-gate self-improvement** — `continuous_improver.py` now pushes a throwaway
       `improver/run-*` branch and opens an `automerge` PR instead of pushing to `main`. The full CI
       suite must pass before changes land (auto-merge.yml). Stops the unvalidated direct-to-main
       commits that broke the app 3× (slots=True, @root_validator, dead scheduler) in one session.
-- [ ] **[P1] Wire Alpaca crypto into `price_feed`** for live quotes (Binance still geo-blocked for live).
-- [ ] **[P1] Narrow 435 broad `except Exception`** — start with `tasks/`, `brokers/`, `llm`; add logging.
-- [ ] **[P1] Audit stale provider model IDs** in `llm_common` (Cerebras/NVIDIA).
+- [x] **[P1] Wire Alpaca crypto into `price_feed`** — DONE 2026-07-15: root cause was improver PR #420 truncating brokers/alpaca.py (6 of 7 interface methods deleted → AlpacaBroker un-instantiable → silent yfinance fallback) + stale exception imports. Restored, guarded by test_broker_interface.py. for live quotes (Binance still geo-blocked for live).
+- [~] **[P1] Narrow 435 broad `except Exception`** — tasks/ sweep DONE 2026-07-15 (every silent pass now logs); brokers/execution/risk money paths done earlier; remainder (llm, api) queued. — start with `tasks/`, `brokers/`, `llm`; add logging.
+- [x] **[P1] Audit stale provider model IDs** — done: Cerebras gpt-oss-120b + NVIDIA deepseek slug live-verified, both env-overridable (CEREBRAS_MODEL/NVIDIA_MODEL).
 - [ ] **[P2] ML employees inert on prod** — run with `[ml]` extra on a worker, or mark degraded.
 
 ---

@@ -136,8 +136,14 @@ You are improving existing code files. Rules:
 
 def improve_file(file_path: str, content: str, improvement_type: str,
                  improvement_desc: str, failure_context: str = "", skills: list[str] = []) -> str | None:
+    # NEVER truncate the input and then write back the LLM's "complete file":
+    # that is exactly how PR #420 destroyed brokers/alpaca.py — the model echoed
+    # the "... (truncated for brevity)" marker and 6 of 7 broker methods were
+    # deleted (silently: the stub still compiled). Files too big to fit go
+    # untouched instead of half-rewritten.
     if len(content) > 8000:
-        content = content[:8000] + "\n# ... (truncated for brevity)"
+        print(f"  · {file_path} is {len(content)} chars (> 8000) — skipped, whole-file rewrite unsafe")
+        return None
 
     skill_hint = ""
     if skills:
@@ -293,6 +299,20 @@ def main():
         if not syntax_check(improved):
             print(f"  ✗ Syntax check failed for {target}")
             record_failure(mem, target, "syntax check failed", improvement_type)
+            continue
+
+        # Truncation guard (the alpaca.py lesson): a "complete improved file"
+        # that shrank dramatically or contains elision markers is the model
+        # summarizing, not improving. Syntax checks can't catch deleted methods.
+        _elision_markers = ("truncated for brevity", "rest of the file", "rest of file",
+                            "remaining code unchanged", "... (unchanged")
+        if any(m in improved.lower() for m in _elision_markers):
+            print(f"  ✗ Elision marker in output for {target} — rejected")
+            record_failure(mem, target, "output contained elision marker", improvement_type)
+            continue
+        if len(improved) < 0.6 * len(original_content):
+            print(f"  ✗ Output shrank {len(original_content)} → {len(improved)} chars for {target} — rejected")
+            record_failure(mem, target, "output shrank >40% (likely truncation)", improvement_type)
             continue
 
         if improved.strip() == original_content.strip():

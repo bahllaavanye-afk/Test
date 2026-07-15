@@ -133,5 +133,5 @@ def _yf_publish_sync(symbol: str, cache) -> None:
             return_exceptions=True,
         ))
         loop.close()
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 — one symbol's tick lost, next cycle retries
+        logger.debug("yfinance publish failed", symbol=symbol, error=str(exc))

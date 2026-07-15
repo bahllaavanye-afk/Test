@@ -151,7 +151,40 @@ export interface BotPerformance {
   avg_hold_hours: number | null
 }
 
+export interface BotOpenPosition {
+  order_id: string
+  symbol: string
+  side: string
+  entry_price: number
+  notional: number
+  take_profit: number | null
+  stop_loss: number | null
+  opened_at: string | null
+}
+
+export interface BotTradeRecord {
+  symbol: string
+  side: string
+  entry_price: number
+  exit_price: number
+  quantity: number
+  realized_pnl: number
+  exit_reason: string | null
+  opened_at: string | null
+  closed_at: string | null
+}
+
+export interface BotActivity {
+  bot_id: string
+  bot_name: string
+  open_positions: BotOpenPosition[]
+  trade_history: BotTradeRecord[]
+}
+
 export const botsPerfApi = {
   performance: (id: string, days = 30) =>
     api.get<BotPerformance>(`/bots/${id}/performance?days=${days}`).then((r) => r.data),
+
+  activity: (id: string, limit = 25) =>
+    api.get<BotActivity>(`/bots/${id}/activity?limit=${limit}`).then((r) => r.data),
 }

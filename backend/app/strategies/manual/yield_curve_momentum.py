@@ -182,19 +182,10 @@ class YieldCurveMomentumStrategy(AbstractStrategy):
         )
 
 
-# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
-# analyze() fetches external data; when the source is down/blocked it used to
-# raise out of the strategy. Contract: catch and return None so EVERY caller
-# (bot engine, StrategyRunner, backtests) is safe, not just the timeout-guarded desk.
-_unguarded_analyze = YieldCurveMomentumStrategy.analyze
+# ── Fail-soft guard (strategy contract) ──────────────────────────────────────
+# analyze() does blocking yfinance I/O (curl_cffi — socket kills don't reach
+# it); the shared hard-budget wrapper runs it in a detached daemon thread and
+# returns None past STRATEGY_ANALYZE_BUDGET_S (default 3.5s).
+from app.strategies._failsoft import apply_hard_budget
 
-
-async def _failsoft_analyze(self, data, symbol: str = "SPY"):
-    try:
-        return await _unguarded_analyze(self, data, symbol)
-    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
-        print(f"yield_curve_momentum: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
-        return None
-
-
-YieldCurveMomentumStrategy.analyze = _failsoft_analyze
+apply_hard_budget(YieldCurveMomentumStrategy, "yield_curve_momentum")

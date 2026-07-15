@@ -120,5 +120,5 @@ class BotRunner:
         try:
             self._scheduler.remove_job(job_id)
             logger.debug("Bot unscheduled", bot_id=bot_id)
-        except Exception:
-            pass  # Job may not exist
+        except Exception as exc:  # noqa: BLE001 — job may simply not exist
+            logger.debug("Bot unschedule skipped", bot_id=bot_id, error=str(exc))
