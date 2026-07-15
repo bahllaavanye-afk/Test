@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Handle network errors",
-    "Test DB connections",
-    "Log API response codes",
     "Validate config files",
     "Verify dependency versions",
     "Log system memory",
@@ -199,8 +196,11 @@
     "Check CPU usage",
     "Test SQL queries",
     "Monitor RAM leaks",
-    "Track timeout errors"
+    "Track timeout errors",
+    "Check disk space",
+    "Verify SSL certs",
+    "Log exception types"
   ],
-  "last_updated": "2026-07-15T19:05:28.969959+00:00",
+  "last_updated": "2026-07-15T20:31:25.767632+00:00",
   "total": 200
 }
