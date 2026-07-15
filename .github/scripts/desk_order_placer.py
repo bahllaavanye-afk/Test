@@ -176,6 +176,22 @@ DESKS: list[DeskConfig] = [
         confidence_min=0.60,
     ),
     DeskConfig(
+        name="Commodities",
+        slack_channel="#desk-commodities",
+        # Commodity exposure via US-listed ETF proxies (no futures account needed):
+        # gold, silver, oil, natgas, agriculture, broad basket, miners, copper.
+        # Time-series momentum is THE documented commodity premium (Moskowitz-
+        # Ooi-Pedersen); Donchian breakout is the classic trend system for these.
+        symbols=["GLD", "SLV", "USO", "UNG", "DBA", "PDBC", "GDX", "CPER"],
+        strategy_names=[
+            "time_series_momentum", "cross_sectional_momentum",
+            "donchian_breakout", "mean_reversion", "supertrend",
+            "rsi2_pullback",
+        ],
+        notional_usd=400.0,
+        confidence_min=0.60,
+    ),
+    DeskConfig(
         name="International",
         slack_channel="#desk-equities",
         # Country-ETF rotation (docs/research/COUNTRY_DESKS_2026.md): documented
