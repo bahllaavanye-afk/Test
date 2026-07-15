@@ -6,9 +6,24 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-11._
+_Last updated: 2026-07-15._
 
-## ⚡ STATE AS OF 2026-07-11 (read this first)
+## ⚡ STATE AS OF 2026-07-15 (read this first)
+**8 desks** (Commodities added: 8 ETF proxies, TSMOM/Donchian/MR) + OANDA FX desk with a
+ForexFactory red-folder gate (stands aside ±30min around High-impact prints, fail-open).
+**QUARANTINED is EMPTY** — all 115 registry strategies pass the contract suite via the
+shared hard-budget fail-soft (`app/strategies/_failsoft.py`; yfinance uses curl_cffi, so
+socket kills don't reach it — the daemon-thread budget is the only real guard).
+**AlpacaBroker RESTORED**: improver PR #420 (Jul 9) truncated brokers/alpaca.py to a
+"(truncated for brevity)" stub — 6 of 7 interface methods deleted, class un-instantiable,
+backend silently on yfinance fallback. Also fixed the never-valid exception imports
+(alpaca.common.exceptions). Improver now rejects shrunken/elided LLM outputs and skips
+>8k-char files; `test_broker_interface.py` fails loudly if any broker goes abstract.
+Cash-aware sizing live (#578): orders capped to 95% of relevant buying power, $25 floor.
+Health hard gate: agent-health-check fails + pages #infra-alerts on critical findings.
+Per-bot detail view (OA parity): P&L graph + open positions + trade history in BotBuilder.
+
+## Previous state (2026-07-11)
 **Everything runs event-driven 24x7** — 21 team/research workflows + keep-alive chained to CI completions (cron starved; that was THE autonomy bug). 7 desks (incl. new International, 13 country ETFs). Signal ensembling live (agree→boost, conflict→stand aside). 8 advanced strategies deployed. Claude backstop capped $1/day (state/claude_budget.json). Per-employee brains in agent_memory.json employee_context.
 
 **🎉 FIRST TRADES PLACED 2026-07-12 07:59 UTC** — recovery flattened 22 orphaned positions (cash was -27,476) and the SAME run placed 2 real paper orders (UNI/USD + AAVE/USD, $755 notional, avellaneda_stoikov_mm conf 0.90/0.74). Desks are TRADING. Watch fill-tracking → Trades table → dashboard P&L now populate.
