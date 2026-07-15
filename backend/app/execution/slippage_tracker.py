@@ -5,13 +5,21 @@ IS = (fill_price - arrival_price) / arrival_price * 10000
 where arrival_price is the mid-price when the order was first submitted.
 """
 import uuid
+from datetime import datetime, timezone, timedelta
+
 import numpy as np
-from datetime import datetime, timezone
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+
 from app.brokers.base import OrderRequest, OrderResult
 from app.models.slippage import SlippageRecord
+from app.notifications.slack import slack
+from app.notifications.tracker import tracker
 from app.utils.logging import logger
+
+# Strategy logic thresholds
+MAX_SLIPPAGE_BPS = 50.0  # Upper bound for acceptable slippage
+MIN_SIGNAL_CONFIDENCE = 0.5  # Placeholder for future confidence checks
 
 
 class SlippageTracker:
@@ -23,6 +31,7 @@ class SlippageTracker:
         self._submit_times: dict[str, datetime] = {}
 
     async def record_signal_price(self, request: OrderRequest, signal_price: float) -> None:
+        """Store the price at which the strategy generated a signal."""
         key = f"{request.account_id}:{request.symbol}"
         self._signal_prices[key] = signal_price
 
@@ -32,6 +41,10 @@ class SlippageTracker:
         self._arrival_prices[key] = arrival_price
         self._submit_times[key] = datetime.now(timezone.utc)
 
+    def _validate_slippage(self, slippage_bps: float) -> bool:
+        """Return True if slippage is within acceptable bounds."""
+        return abs(slippage_bps) <= MAX_SLIPPAGE_BPS
+
     async def record_fill(
         self,
         request: OrderRequest,
@@ -40,6 +53,7 @@ class SlippageTracker:
     ) -> None:
         if not result.avg_fill_price:
             return
+
         key = f"{request.account_id}:{request.symbol}"
         signal_price = self._signal_prices.pop(key, None)
 
@@ -51,6 +65,7 @@ class SlippageTracker:
         if submit_time is not None:
             execution_duration_seconds = (fill_time - submit_time).total_seconds()
 
+        # Implementation Shortfall (bps)
         is_cost_bps: float | None = None
         if arrival_price and arrival_price > 0:
             if request.side == "buy":
@@ -58,6 +73,7 @@ class SlippageTracker:
             else:
                 is_cost_bps = (arrival_price - result.avg_fill_price) / arrival_price * 10_000
 
+        # VWAP shortfall (bps)
         vwap_shortfall_bps: float | None = None
         if period_vwap and period_vwap > 0:
             if request.side == "buy":
@@ -65,43 +81,44 @@ class SlippageTracker:
             else:
                 vwap_shortfall_bps = (period_vwap - result.avg_fill_price) / period_vwap * 10_000
 
+        # Slippage calculation
         if signal_price and result.avg_fill_price:
             if request.side == "buy":
-                slippage_bps = (result.avg_fill_price - signal_price) / signal_price * 10000
+                slippage_bps = (result.avg_fill_price - signal_price) / signal_price * 10_000
             else:
-                slippage_bps = (signal_price - result.avg_fill_price) / signal_price * 10000
+                slippage_bps = (signal_price - result.avg_fill_price) / signal_price * 10_000
 
-            logger.info(
-                "Slippage recorded",
-                symbol=request.symbol,
-                expected=signal_price,
-                fill=result.avg_fill_price,
+            slippage_ok = self._validate_slippage(slippage_bps)
+
+            log_payload = {
+                "symbol": request.symbol,
+                "expected": signal_price,
+                "fill": result.avg_fill_price,
+                "slippage_bps": round(slippage_bps, 2),
+                "is_cost_bps": round(is_cost_bps, 2) if is_cost_bps is not None else None,
+                "vwap_shortfall_bps": round(vwap_shortfall_bps, 2) if vwap_shortfall_bps is not None else None,
+                "duration_sec": round(execution_duration_seconds, 1) if execution_duration_seconds is not None else None,
+                "algo": request.execution_algo,
+            }
+
+            if slippage_ok:
+                logger.info("Slippage recorded", **log_payload)
+            else:
+                logger.warning("Slippage exceeds threshold", **log_payload)
+
+            tracker.record(
+                "order_filled",
+                "order",
+                f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
                 slippage_bps=round(slippage_bps, 2),
-                is_cost_bps=round(is_cost_bps, 2) if is_cost_bps is not None else None,
-                vwap_shortfall_bps=round(vwap_shortfall_bps, 2) if vwap_shortfall_bps is not None else None,
-                duration_sec=round(execution_duration_seconds, 1) if execution_duration_seconds is not None else None,
                 algo=request.execution_algo,
             )
-
-            from app.notifications.slack import slack
-            from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
             await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
-                algo=request.execution_algo,
-            )
-
-            from app.notifications.slack import slack
-            from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
-            await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+                request.symbol,
+                request.side,
+                request.quantity,
+                result.avg_fill_price,
+                slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
 
@@ -137,7 +154,6 @@ class SlippageTracker:
         if self.db is None:
             raise RuntimeError("DB session required for execution quality stats")
 
-        from datetime import timedelta
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         stmt = (
