@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Validate timestamps",
-    "Check system clocks",
-    "Use retry on timeouts",
-    "strategy_logic on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
     "Review LSTM models",
     "Parse agent_memory.json",
     "**UCB1 selection logic update**: `algo_agent` is updating the UCB1 selection logic in `src/bandit`. This update will help improve the trading agent's decision-making capabilities.",
@@ -199,8 +195,12 @@
     "Scan for file locks",
     "Deploy TFT architecture",
     "Verify market data",
-    "Test market data"
+    "Test market data",
+    "Log trade errors",
+    "Review agent memory",
+    "Validate queue length",
+    "Improve alpha decay"
   ],
-  "last_updated": "2026-07-15T04:54:31.885475+00:00",
+  "last_updated": "2026-07-15T05:13:32.336281+00:00",
   "total": 200
 }
