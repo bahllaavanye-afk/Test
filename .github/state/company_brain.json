@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784123975.2623594,
+    "last_updated": 1784128646.8833137,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,10 +62,10 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-14T15:15:07.528877+00:00",
+      "generated_at": "2026-07-15T15:16:46.682524+00:00",
       "signals": {
         "vix": {
-          "value": 16.38,
+          "value": 16.23,
           "trend": "flat"
         },
         "spy": {
@@ -75,39 +75,39 @@
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.03,
+          "ratio": 1.0274,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.335,
+          "hyg_lqd_momentum_20d": 1.384,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 6,
+          "sectors_above_sma20": 8,
           "total_sectors": 11,
-          "breadth_pct": 54.5
+          "breadth_pct": 72.7
         },
         "btc": {
-          "price": 64164,
-          "24h_pct": 2.25
+          "price": 65299,
+          "24h_pct": 1.68
         }
       },
-      "score": 3,
+      "score": 4,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "Bull regime with a strong SPY uptrend and tightening credit spreads supports risk-on positioning, though a flat yield curve and moderate breadth (6/11 sectors above 20-SMA) warrant selective exposure. Favour trend-following strategies today to capture momentum while avoiding overconcentration in lagging sectors."
+      "summary": "[LLM unavailable \u2014 all providers failed]"
     },
     "strategy_gates": {
       "directional": true,
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 3,
+    "opinion_score": 4,
     "macro_score": 2,
     "vix": 16.5,
     "market_scan_ts": 1784062482.1525936,
@@ -796,6 +796,18 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Utilities. Gaps: 8, Breakouts: 2, Risk flags: 0.",
       "ts": 1784062482.1668599
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 4,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1784128646.8856301
     }
   ],
   "github_insights": [
