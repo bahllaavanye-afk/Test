@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 from dataclasses import asdict
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 
@@ -45,7 +45,12 @@ class LimitFirstExecution:
 
     _signal_counter: int = 0
 
-    def __init__(self, broker: AbstractBroker, offset_bps: float = 5, fallback_seconds: int = 30) -> None:
+    def __init__(
+        self,
+        broker: AbstractBroker,
+        offset_bps: float = 5,
+        fallback_seconds: int = 30,
+    ) -> None:
         """
         Parameters
         ----------
@@ -122,7 +127,7 @@ class LimitFirstExecution:
             # Wait for fill, then fallback to market
             for _ in range(self.fallback_seconds):
                 await asyncio.sleep(1)
-                order_status = await self.broker.get_order(result.broker_order_id)
+                order_status: Dict[str, Any] = await self.broker.get_order(result.broker_order_id)
                 if order_status.get("status") in ("filled", "closed"):
                     result.status = "filled"
                     result.filled_qty = float(
