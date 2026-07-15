@@ -5,10 +5,9 @@ Minimizes market impact for large positions.
 """
 import asyncio
 from dataclasses import asdict
-from typing import Any
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
-from app.utils.exceptions import BrokerError  # lives in utils, NOT brokers.base (#298 broke this import)
+from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
 
 
