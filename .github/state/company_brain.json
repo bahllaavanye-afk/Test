@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784104061.6144133,
+    "last_updated": 1784113787.5710318,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,7 +153,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784066164.9567626
+    "last_brain_update": 1784113787.5705135
   },
   "episodic": [
     {
@@ -1099,6 +1099,11 @@
       "summary": "The deployment failed due to a resource limitation, and two automated attempts to apply a fix were unsuccessful.",
       "item_count": 20,
       "ts": 1784066164.949511
+    },
+    {
+      "summary": "An automated fix attempt repeatedly failed because the system could not apply the patch to the file.",
+      "item_count": 20,
+      "ts": 1784113787.5654473
     }
   ],
   "experiment_results": [
