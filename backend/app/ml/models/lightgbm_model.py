@@ -3,10 +3,15 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
+
 import json
-from pathlib import Path
+import traceback
 from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import torch
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
@@ -21,8 +26,6 @@ try:
     HAS_SHAP = True
 except ImportError:
     HAS_SHAP = False
-
-import torch
 
 
 @dataclass
@@ -55,24 +58,46 @@ class LightGBMClassifier(AbstractModel):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self._model is None:
             raise RuntimeError("Model not trained yet")
-        arr = x.numpy() if isinstance(x, torch.Tensor) else x
+        try:
+            arr = x.numpy() if isinstance(x, torch.Tensor) else x
+        except Exception as e:
+            logger.error("Failed to convert input to numpy array", exc_info=True)
+            raise ValueError("Invalid input tensor") from e
         if arr.ndim == 3:
             arr = arr[:, -1, :]  # use last timestep for flat features
-        return torch.tensor(self._model.predict(arr), dtype=torch.float32)
+        try:
+            preds = self._model.predict(arr)
+        except Exception as e:
+            logger.error("LightGBM prediction failed", exc_info=True)
+            raise RuntimeError("Prediction error") from e
+        return torch.tensor(preds, dtype=torch.float32)
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray,
-            X_val: np.ndarray | None = None, y_val: np.ndarray | None = None,
-            feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,
+        y_val: np.ndarray | None = None,
+        feature_names: list[str] | None = None,
+    ) -> dict:
         if not HAS_LGB:
             logger.warning("lightgbm not installed. Install: pip install lightgbm")
             return {"error": "lightgbm not installed"}
 
         self._feature_names = feature_names or [f"f{i}" for i in range(X_train.shape[1])]
-        train_set = lgb.Dataset(X_train, label=y_train, feature_name=self._feature_names)
+        try:
+            train_set = lgb.Dataset(X_train, label=y_train, feature_name=self._feature_names)
+        except Exception as e:
+            logger.error("Failed to create LightGBM training dataset", exc_info=True)
+            return {"error": "invalid training data"}
+
         valid_sets = [train_set]
         if X_val is not None and y_val is not None:
-            val_set = lgb.Dataset(X_val, label=y_val, reference=train_set)
-            valid_sets.append(val_set)
+            try:
+                val_set = lgb.Dataset(X_val, label=y_val, reference=train_set)
+                valid_sets.append(val_set)
+            except Exception as e:
+                logger.error("Failed to create LightGBM validation dataset", exc_info=True)
 
         params = {
             "objective": "binary",
@@ -88,12 +113,22 @@ class LightGBMClassifier(AbstractModel):
             "verbose": -1,
         }
         callbacks = [lgb.early_stopping(self.config.early_stopping_rounds), lgb.log_evaluation(50)]
-        self._model = lgb.train(
-            params, train_set,
-            num_boost_round=self.config.n_estimators,
-            valid_sets=valid_sets,
-            callbacks=callbacks,
-        )
+
+        try:
+            self._model = lgb.train(
+                params,
+                train_set,
+                num_boost_round=self.config.n_estimators,
+                valid_sets=valid_sets,
+                callbacks=callbacks,
+            )
+        except lgb.basic.LightGBMError as e:
+            logger.error("LightGBM training failed", exc_info=True)
+            return {"error": "lightgbm training error"}
+        except Exception as e:
+            logger.error("Unexpected error during LightGBM training", exc_info=True)
+            return {"error": "unexpected training error"}
+
         best_iter = self._model.best_iteration
         logger.info(f"LightGBM trained: best_iteration={best_iter}")
         return {"best_iteration": best_iter, "best_score": self._model.best_score}
@@ -123,12 +158,18 @@ class LightGBMClassifier(AbstractModel):
             Y.append(y.numpy())
         X = np.vstack(X)
         Y = np.concatenate(Y)
-        preds = self._model.predict(X)
+        try:
+            preds = self._model.predict(X)
+        except Exception as e:
+            logger.error("Prediction failed during evaluation", exc_info=True)
+            return EvalMetrics(accuracy=0.0, auc=0.0, sharpe=0.0)
+
         acc = float(((preds > 0.5) == (Y > 0.5)).mean())
         try:
             from sklearn.metrics import roc_auc_score
             auc = float(roc_auc_score(Y, preds))
-        except Exception:
+        except Exception as e:
+            logger.warning("AUC calculation failed, defaulting to 0.5", exc_info=True)
             auc = 0.5
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
@@ -144,24 +185,57 @@ class LightGBMClassifier(AbstractModel):
         if not HAS_SHAP or self._model is None:
             return None
         if self._shap_explainer is None:
-            self._shap_explainer = shap.TreeExplainer(self._model)
-        return self._shap_explainer.shap_values(X)
+            try:
+                self._shap_explainer = shap.TreeExplainer(self._model)
+            except Exception as e:
+                logger.error("Failed to create SHAP explainer", exc_info=True)
+                return None
+        try:
+            return self._shap_explainer.shap_values(X)
+        except Exception as e:
+            logger.error("SHAP value computation failed", exc_info=True)
+            return None
 
     def save(self, path: str, metadata: dict | None = None) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        if self._model:
-            self._model.save_model(path + ".lgb")
-        meta = {"model_type": self.model_type, "feature_names": self._feature_names, **(metadata or {})}
-        Path(path + ".json").write_text(json.dumps(meta, indent=2))
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            if self._model:
+                self._model.save_model(path + ".lgb")
+            meta = {"model_type": self.model_type, "feature_names": self._feature_names, **(metadata or {})}
+            Path(path + ".json").write_text(json.dumps(meta, indent=2))
+            logger.info(f"Model saved to {path}")
+        except OSError as e:
+            logger.error(f"Filesystem error while saving model to {path}", exc_info=True)
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error while saving model to {path}", exc_info=True)
+            raise
 
     @classmethod
     def load(cls, path: str) -> "LightGBMClassifier":
         obj = cls()
         if not HAS_LGB:
+            logger.warning("lightgbm not installed, cannot load model")
             return obj
-        obj._model = lgb.Booster(model_file=path + ".lgb")
+        try:
+            obj._model = lgb.Booster(model_file=path + ".lgb")
+        except FileNotFoundError as e:
+            logger.error(f"Model file not found: {path + '.lgb'}", exc_info=True)
+            return obj
+        except Exception as e:
+            logger.error(f"Failed to load LightGBM model from {path}", exc_info=True)
+            return obj
+
         meta_path = Path(path + ".json")
         if meta_path.exists():
-            meta = json.loads(meta_path.read_text())
-            obj._feature_names = meta.get("feature_names", [])
+            try:
+                meta = json.loads(meta_path.read_text())
+                obj._feature_names = meta.get("feature_names", [])
+            except json.JSONDecodeError as e:
+                logger.error(f"Corrupted metadata file: {meta_path}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Unexpected error reading metadata from {meta_path}", exc_info=True)
+        else:
+            logger.warning(f"Metadata file missing: {meta_path}")
+
         return obj
