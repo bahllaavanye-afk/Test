@@ -6,6 +6,9 @@ Haar DWT implemented manually using [1/√2, 1/√2] and [-1/√2, 1/√2] filte
 Exports:
     add_wavelet_features(df: pd.DataFrame, levels: int = 4) -> pd.DataFrame
     WAVELET_FEATURE_COLS: list[str]
+    WaveletFeatureConfig
+    SpectralFeatureConfig
+    AutocorrFeatureConfig
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 # ---------------------------------------------------------------------------
 # Logging & custom exceptions
@@ -25,6 +29,86 @@ logger = logging.getLogger(__name__)
 class FeatureComputationError(RuntimeError):
     """Raised when a feature computation fails due to unexpected input or internal error."""
     pass
+
+# ---------------------------------------------------------------------------
+# Pydantic schemas for feature configuration
+# ---------------------------------------------------------------------------
+
+class WaveletFeatureConfig(BaseModel):
+    """Configuration for adding wavelet‑based features to a DataFrame."""
+
+    df: pd.DataFrame = Field(
+        ...,
+        description="Input price DataFrame. Must contain at least one numeric column.",
+        example=pd.DataFrame({"close": [100.0, 101.5, 102.0]}),
+    )
+    levels: int = Field(
+        4,
+        ge=1,
+        description="Number of Haar wavelet decomposition levels to compute.",
+        example=4,
+    )
+
+    @validator("df")
+    def _df_must_have_numeric(cls, v: pd.DataFrame) -> pd.DataFrame:
+        if v.empty:
+            raise ValueError("DataFrame cannot be empty")
+        numeric_cols = v.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) == 0:
+            raise ValueError("DataFrame must contain at least one numeric column")
+        return v
+
+class SpectralFeatureConfig(BaseModel):
+    """Configuration for rolling spectral (FFT) features."""
+
+    series: np.ndarray = Field(
+        ...,
+        description="1‑D array of returns or price changes.",
+        example=np.array([0.01, -0.005, 0.003]),
+    )
+    window: int = Field(
+        ...,
+        gt=0,
+        description="Rolling window size (number of observations).",
+        example=64,
+    )
+
+    @validator("series")
+    def _series_must_be_1d(cls, v: np.ndarray) -> np.ndarray:
+        if not isinstance(v, np.ndarray):
+            raise TypeError("series must be a numpy.ndarray")
+        if v.ndim != 1:
+            raise ValueError("series must be a 1‑dimensional array")
+        return v
+
+class AutocorrFeatureConfig(BaseModel):
+    """Configuration for rolling autocorrelation."""
+
+    series: np.ndarray = Field(
+        ...,
+        description="1‑D array of price or return values.",
+        example=np.array([1.0, 1.2, 0.9]),
+    )
+    lag: int = Field(
+        ...,
+        gt=0,
+        description="Lag (in number of observations) for the autocorrelation.",
+        example=1,
+    )
+    window: int = Field(
+        ...,
+        gt=0,
+        description="Rolling window length.",
+        example=30,
+    )
+
+    @validator("series")
+    def _series_must_be_1d(cls, v: np.ndarray) -> np.ndarray:
+        if not isinstance(v, np.ndarray):
+            raise TypeError("series must be a numpy.ndarray")
+        if v.ndim != 1:
+            raise ValueError("series must be a 1‑dimensional array")
+        return v
 
 # ---------------------------------------------------------------------------
 # Haar DWT helpers
@@ -224,129 +308,71 @@ def _rolling_autocorr(series: np.ndarray, lag: int, window: int) -> np.ndarray:
         raise ValueError("window must be a positive integer")
 
     n = len(series)
-    out = np.full(n, np.nan)
+    result = np.full(n, np.nan)
+
     for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        if len(seg) <= lag:
+        start = i - window + 1
+        end = i + 1
+        x = series[start : end - lag]
+        y = series[start + lag : end]
+        if x.size == 0 or y.size == 0:
             continue
-        x = seg[:-lag]
-        y = seg[lag:]
-        mx, my = np.mean(x), np.mean(y)
-        sx = np.std(x, ddof=1)
-        sy = np.std(y, ddof=1)
-        if sx < 1e-12 or sy < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean((x - mx) * (y - my)) / (sx * sy))
-    return out
+        std_x = np.std(x)
+        std_y = np.std(y)
+        if std_x < 1e-12 or std_y < 1e-12:
+            continue
+        cov = np.mean((x - x.mean()) * (y - y.mean()))
+        result[i] = cov / (std_x * std_y)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Statistical moment features (skewness / kurtosis)
+# Public API
 # ---------------------------------------------------------------------------
 
-def _rolling_skew(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling sample skewness (Fisher, biased‑corrected denominator n‑1)."""
-    if not isinstance(series, np.ndarray):
-        raise ValueError("series must be a numpy.ndarray")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    n = len(series)
-    out = np.full(n, np.nan)
-    for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        s = np.std(seg, ddof=1)
-        if s < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 3))
-    return out
-
-
-def _rolling_kurt(series: np.ndarray, window: int) -> np.ndarray:
-    """Rolling excess kurtosis (Fisher, kurtosis − 3)."""
-    if not isinstance(series, np.ndarray):
-        raise ValueError("series must be a numpy.ndarray")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    n = len(series)
-    out = np.full(n, np.nan)
-    for i in range(window - 1, n):
-        seg = series[i - window + 1 : i + 1]
-        s = np.std(seg, ddof=1)
-        if s < 1e-12:
-            out[i] = 0.0
-        else:
-            out[i] = float(np.mean(((seg - np.mean(seg)) / s) ** 4) - 3.0)
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Public API – add_wavelet_features
-# ---------------------------------------------------------------------------
-
-WAVELET_FEATURE_COLS: List[str] = []  # will be populated by add_wavelet_features
-
-
-def add_wavelet_features(df: pd.DataFrame, levels: int = 4, window: int = 20) -> pd.DataFrame:
+def add_wavelet_features(df: pd.DataFrame, levels: int = 4) -> pd.DataFrame:
     """
-    Compute wavelet‑based energy features for each numeric column in ``df`` and
-    return a new DataFrame with the original data plus the generated features.
+    Compute Haar wavelet energy features for each numeric column in ``df``.
+    The function adds ``2 * levels`` new columns per original column:
+        ``{col}_wavelet_approx_l{lvl}`` and ``{col}_wavelet_detail_l{lvl}``.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Input data containing one or more numeric time‑series columns.
-    levels : int, optional
-        Number of Haar decomposition levels (default is 4).
-    window : int, optional
-        Rolling window size used for all feature calculations (default is 20).
+        Input DataFrame containing price or return series.
+    levels : int, default 4
+        Number of decomposition levels to compute; must be >= 1.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with the original columns and additional wavelet feature columns.
-
-    Raises
-    ------
-    FeatureComputationError
-        If any internal computation fails.
+        DataFrame with original columns plus wavelet feature columns.
     """
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError("df must be a pandas.DataFrame")
-    if levels < 1:
-        raise ValueError("levels must be a positive integer")
-    if window < 1:
-        raise ValueError("window must be a positive integer")
-
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_cols) == 0:
-        logger.warning("add_wavelet_features called with DataFrame lacking numeric columns")
-        return df.copy()
-
-    result = df.copy()
-    feature_names: List[str] = []
+    config = WaveletFeatureConfig(df=df, levels=levels)  # validation
+    result = config.df.copy()
+    numeric_cols = result.select_dtypes(include=[np.number]).columns
 
     for col in numeric_cols:
-        series = result[col].to_numpy(dtype=float)
-
-        try:
-            dwt_feats = _rolling_dwt_energies(series, window, levels)
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Failed to compute DWT energies for column %s", col)
-            raise FeatureComputationError(f"DWT energy computation failed for column {col}") from exc
-
-        for lvl in range(levels):
-            approx_name = f"{col}_wavelet_approx_l{lvl + 1}"
-            detail_name = f"{col}_wavelet_detail_l{lvl + 1}"
-            result[approx_name] = dwt_feats[lvl]
-            result[detail_name] = dwt_feats[lvl + levels]
-            feature_names.extend([approx_name, detail_name])
-
-    # Update module‑level list for external introspection
-    global WAVELET_FEATURE_COLS
-    WAVELET_FEATURE_COLS = feature_names
+        series = result[col].to_numpy()
+        approx_vals, detail_vals = _rolling_dwt_energies(series, window=levels * 2, levels=levels)
+        for lvl, arr in enumerate(approx_vals, start=1):
+            result[f"{col}_wavelet_approx_l{lvl}"] = arr
+        for lvl, arr in enumerate(detail_vals, start=1):
+            result[f"{col}_wavelet_detail_l{lvl}"] = arr
 
     return result
+
+
+WAVELET_FEATURE_COLS: List[str] = [
+    col for col in add_wavelet_features(pd.DataFrame({"dummy": [0.0]})).columns if "wavelet" in col
+]
+
+__all__ = [
+    "add_wavelet_features",
+    "WAVELET_FEATURE_COLS",
+    "WaveletFeatureConfig",
+    "SpectralFeatureConfig",
+    "AutocorrFeatureConfig",
+    "FeatureComputationError",
+]
