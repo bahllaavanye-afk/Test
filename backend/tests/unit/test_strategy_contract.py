@@ -33,15 +33,11 @@ from app.strategies import STRATEGY_REGISTRY  # noqa: E402
 # returning None. Quarantined = skipped here AND flagged in IMPROVEMENTS.md.
 # Fix = fail-soft fetch with a hard timeout, then REMOVE from this list.
 # Adding a name in a PR is a red flag; this list may only shrink.
-QUARANTINED: set[str] = {
-    # 2026-07-11: 11 more strategies fail-soft guarded and un-quarantined.
-    "credit_spread_income",   # guarded, but yfinance retry sleeps >5s offline
-    "multi_factor_equity",    # guarded; yfinance universe scan slow offline
-    "macro_risk_barometer",   # guarded; yfinance slow offline
-    "breakeven_inflation",    # guarded; yfinance slow offline
-    "duration_momentum",      # guarded; yfinance slow offline
-    "pmi_sector_rotation",    # guarded; yfinance slow offline
-}
+QUARANTINED: set[str] = set()
+# 2026-07-15: EMPTY. The last 6 (yfinance retry-sleeps offline) now go through
+# app/strategies/_failsoft.apply_hard_budget — analyze runs in a worker thread
+# and returns None past STRATEGY_ANALYZE_BUDGET_S (3.5s default), so the 5s
+# contract budget holds even when the blocking fetch can't be cancelled.
 
 PER_STRATEGY_TIMEOUT_S = 5.0
 
