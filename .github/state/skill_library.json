@@ -1,9 +1,5 @@
 {
   "skills": [
-    "TRADING_MODE must always be paper \u2014 never set to live",
-    "Monitor RAM usage",
-    "**Strategies**: Backtest new strategy variants such as 'Apple Momentum Tilt' and 'AAPL Price Momentum Tilt' using historical price data in `/src/data/`.",
-    "2. **Monitor Model Drift**: Regularly check and update machine learning models to prevent degradation and maintain performance.",
     "error_handling on risk/manager.py: success \u2014 tests green",
     "Implement early-stopping callbacks",
     "Extract config files",
@@ -199,8 +195,12 @@
     "Verify data feeds",
     "Check queue lengths",
     "Check RAM usage",
-    "Test network latency"
+    "Test network latency",
+    "Log trade IDs",
+    "Validate user inputs",
+    "Review API status",
+    "Refactor code paths"
   ],
-  "last_updated": "2026-07-14T23:50:49.814429+00:00",
+  "last_updated": "2026-07-15T02:04:48.643669+00:00",
   "total": 200
 }
