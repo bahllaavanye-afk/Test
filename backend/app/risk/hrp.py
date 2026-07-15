@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from app.utils.logging import logger
 from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
@@ -139,3 +140,51 @@ class HRPOptimizer:
             # problems (bad covariance, NaNs) — say so when it happens.
             logger.warning("HRP optimization failed — falling back to equal weights (%s)", exc)
             return pd.Series(1.0 / n, index=symbols)
+
+
+# ----------------------------------------------------------------------
+# Unit tests for HRPOptimizer – edge and boundary conditions
+# ----------------------------------------------------------------------
+
+
+def test_hrp_minimum_size():
+    """HRP should handle the minimal valid input (2 assets, 10 observations)."""
+    rng = np.random.default_rng(42)
+    data = pd.DataFrame(rng.standard_normal((10, 2)), columns=["A", "B"])
+    optimizer = HRPOptimizer()
+    weights = optimizer.compute_weights(data)
+
+    assert isinstance(weights, pd.Series)
+    assert np.isclose(weights.sum(), 1.0)
+    assert set(weights.index) == {"A", "B"}
+
+
+def test_hrp_all_nan_column_fallback():
+    """If any column is entirely NaN, optimizer should fall back to equal weights."""
+    rng = np.random.default_rng(0)
+    data = pd.DataFrame(
+        {
+            "A": rng.standard_normal(15),
+            "B": np.nan,  # completely missing column
+        }
+    )
+    optimizer = HRPOptimizer()
+    weights = optimizer.compute_weights(data)
+
+    # Expect equal weighting for the original two symbols
+    assert np.isclose(weights["A"], 0.5, atol=1e-8)
+    assert np.isclose(weights["B"], 0.5, atol=1e-8)
+
+
+def test_hrp_perfect_correlation():
+    """When assets are perfectly correlated, HRP should not raise errors and produce non‑negative weights."""
+    rng = np.random.default_rng(7)
+    base = rng.standard_normal(20)
+    data = pd.DataFrame({"A": base, "B": base * 2.0})  # correlation == 1
+    optimizer = HRPOptimizer()
+    weights = optimizer.compute_weights(data)
+
+    assert np.isclose(weights.sum(), 1.0)
+    # Weights must be non‑negative; the exact split is data‑dependent but should be valid
+    assert all(w >= 0 for w in weights)
+    assert set(weights.index) == {"A", "B"}
