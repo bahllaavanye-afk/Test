@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Here are 3 concise bullet points of the most important knowledge:",
-    "Optimize code quality",
-    "Refactor code paths",
-    "Check dependency versions",
     "Handle network errors",
     "Test DB connections",
     "Log API response codes",
@@ -199,8 +195,12 @@
     "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
     "Refactor memory logging",
     "Log trade volumes",
-    "Track network latency"
+    "Track network latency",
+    "Check CPU usage",
+    "Test SQL queries",
+    "Monitor RAM leaks",
+    "Track timeout errors"
   ],
-  "last_updated": "2026-07-15T17:45:55.923945+00:00",
+  "last_updated": "2026-07-15T19:05:28.969959+00:00",
   "total": 200
 }
