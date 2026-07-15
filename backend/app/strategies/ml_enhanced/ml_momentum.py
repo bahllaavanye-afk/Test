@@ -29,15 +29,15 @@ class MLMomentumStrategy(AbstractStrategy):
     It inherits from :class:`app.strategies.base.AbstractStrategy`.
     """
 
-    name = "ml_momentum"
-    display_name = "ML Momentum (LSTM + XGBoost Filter)"
-    market_type = "equity"
-    strategy_type = "ml_enhanced"
-    risk_bucket = "directional"
-    tick_interval_seconds = 3600.0
-    confidence_threshold = 0.65
+    name: str = "ml_momentum"
+    display_name: str = "ML Momentum (LSTM + XGBoost Filter)"
+    market_type: str = "equity"
+    strategy_type: str = "ml_enhanced"
+    risk_bucket: str = "directional"
+    tick_interval_seconds: float = 3600.0
+    confidence_threshold: float = 0.65
 
-    def __init__(self, params: Optional[Dict[str, Any]] = None):
+    def __init__(self, params: Optional[Dict[str, Any]] = None) -> None:
         """Create a new ``MLMomentumStrategy`` instance.
 
         Parameters
@@ -46,7 +46,7 @@ class MLMomentumStrategy(AbstractStrategy):
             Optional configuration parameters passed to the base strategy.
         """
         super().__init__(params)
-        self._base = MomentumStrategy(params)
+        self._base: MomentumStrategy = MomentumStrategy(params)
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """Generate a trading signal for a given symbol.
