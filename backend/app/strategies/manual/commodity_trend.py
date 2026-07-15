@@ -4,9 +4,12 @@ Long when a fast SMA is above a slow SMA *and* price clears the recent high —
 a trend‑confirmation filter on top of a breakout, suited to commodities' long
 directional runs. Exits when price breaks the recent low or the trend weakens.
 """
+import logging
+import time
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
+logger = logging.getLogger(__name__)
 
 class CommodityTrendStrategy(AbstractStrategy):
     name = "commodity_trend"
@@ -37,8 +40,15 @@ class CommodityTrendStrategy(AbstractStrategy):
 
         Returns a Signal with confidence scaled by the distance above the breakout.
         """
+        start_time = time.time()
+        signal: Signal | None = None
+
         required_cols = {"high", "low", "close"}
         if not required_cols.issubset(data.columns) or len(data) < self.slow + 5:
+            logger.info(
+                "CommodityTrendStrategy analyze: early exit",
+                extra={"signal_count": 0, "exec_time_ms": int((time.time() - start_time) * 1000), "pnl": None},
+            )
             return None
 
         close = data["close"]
@@ -57,6 +67,10 @@ class CommodityTrendStrategy(AbstractStrategy):
 
         # Guard against missing data
         if any(pd.isna(x) for x in (fast, slow, prev_fast, breakout_high)):
+            logger.info(
+                "CommodityTrendStrategy analyze: missing data",
+                extra={"signal_count": 0, "exec_time_ms": int((time.time() - start_time) * 1000), "pnl": None},
+            )
             return None
 
         # Entry filters
@@ -68,7 +82,7 @@ class CommodityTrendStrategy(AbstractStrategy):
             # Confidence grows with the gap above the breakout, capped at 0.80
             gap_ratio = (price - breakout_high) / max(breakout_high, 1e-8)
             confidence = min(0.80, 0.56 + gap_ratio * 4)
-            return Signal(
+            signal = Signal(
                 symbol=symbol,
                 side="buy",
                 confidence=confidence,
@@ -80,7 +94,17 @@ class CommodityTrendStrategy(AbstractStrategy):
                     "fast_sma": round(float(fast), 4),
                 },
             )
-        return None
+
+        exec_time_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "CommodityTrendStrategy analyze completed",
+            extra={
+                "signal_count": 1 if signal else 0,
+                "exec_time_ms": exec_time_ms,
+                "pnl": None,
+            },
+        )
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """Back‑test entry and exit signals with tighter filters.
@@ -95,6 +119,8 @@ class CommodityTrendStrategy(AbstractStrategy):
         * Close falls below recent low (exit_break window).
         * OR Fast SMA drops below Slow SMA (trend weakening).
         """
+        start_time = time.time()
+
         close = df["close"]
         fast_sma = close.rolling(self.fast).mean().shift(1)
         slow_sma = close.rolling(self.slow).mean().shift(1)
@@ -113,7 +139,19 @@ class CommodityTrendStrategy(AbstractStrategy):
         # Exit conditions
         exits = (close < exit_low) | (fast_sma < slow_sma)
 
-        return BacktestSignals(
+        backtest = BacktestSignals(
             entries=entries.fillna(False),
             exits=exits.fillna(False),
         )
+
+        exec_time_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "CommodityTrendStrategy backtest_signals completed",
+            extra={
+                "entry_signal_count": int(entries.sum()),
+                "exit_signal_count": int(exits.sum()),
+                "exec_time_ms": exec_time_ms,
+                "pnl": None,
+            },
+        )
+        return backtest
