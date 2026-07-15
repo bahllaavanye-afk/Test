@@ -4,6 +4,56 @@ from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
 
 
+def _validate_dataframe(
+    df: pd.DataFrame,
+    required_columns: set,
+    context: str = "DataFrame",
+) -> None:
+    """
+    Validate that ``df`` is a non‑empty :class:`pandas.DataFrame` containing the
+    specified ``required_columns``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to validate.
+    required_columns : set
+        Column names that must be present in ``df``.
+    context : str, optional
+        Human‑readable name used in error messages (default ``"DataFrame"``).
+
+    Raises
+    ------
+    ValueError
+        If ``df`` is not a DataFrame, is empty, or is missing required columns.
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError(f"{context} must be a pandas DataFrame.")
+    if df.empty:
+        raise ValueError(f"{context} cannot be empty.")
+    missing = required_columns - set(df.columns)
+    if missing:
+        raise ValueError(f"{context} is missing required columns: {', '.join(sorted(missing))}.")
+
+
+def _validate_symbol(symbol: str) -> None:
+    """
+    Validate that ``symbol`` is a non‑empty string.
+
+    Parameters
+    ----------
+    symbol : str
+        The ticker symbol to validate.
+
+    Raises
+    ------
+    ValueError
+        If ``symbol`` is not a string or is empty/whitespace.
+    """
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non‑empty string.")
+
+
 class EnsembleStrategy(AbstractStrategy):
     name = "ensemble"
     display_name = "Ensemble ML (LSTM + XGB + Lorentzian)"
@@ -19,17 +69,27 @@ class EnsembleStrategy(AbstractStrategy):
         Produce a trading signal based on the ML inference combined with
         price‑based confirmation filters.
 
-        Entry Conditions
-        ----------------
-        1. ML model predicts a directional move (up/down) with confidence >= threshold.
-        2. Current close price is above the SMA for a long signal, or below the SMA for a short.
-        3. Volume is above the median of the recent window (default 20 periods).
+        Parameters
+        ----------
+        data : pd.DataFrame
+            Historical price and volume data. Must contain ``close`` and ``volume`` columns.
+        symbol : str
+            The ticker symbol for which the signal is generated.
 
-        Exit Conditions
-        ----------------
-        A signal is not emitted if any of the above conditions fail, which the
-        back‑testing engine interprets as an exit for the active position.
+        Returns
+        -------
+        Signal | None
+            A populated :class:`Signal` if all entry conditions are met; otherwise ``None``.
+
+        Raises
+        ------
+        ValueError
+            If ``data`` or ``symbol`` are invalid.
         """
+        # Input validation
+        _validate_symbol(symbol)
+        _validate_dataframe(data, {"close", "volume"}, context="data")
+
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -38,10 +98,6 @@ class EnsembleStrategy(AbstractStrategy):
             if not ml_result or ml_result.get("prediction") == "neutral":
                 return None
             if ml_result.get("confidence", 0) < self.confidence_threshold:
-                return None
-
-            # Ensure we have price and volume data for confirmation
-            if "close" not in data.columns or "volume" not in data.columns:
                 return None
 
             # Compute SMA and median volume on the latest slice
@@ -82,19 +138,27 @@ class EnsembleStrategy(AbstractStrategy):
         """
         Generate entry and exit signals for back‑testing.
 
-        Expected DataFrame columns:
-        - 'close': price series
-        - 'volume': volume series
-        - 'ml_prediction': string ("up", "down", "neutral")
-        - 'ml_confidence': float (0‑1)
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame containing historical data and ML inference columns.
 
-        The method mirrors the runtime `analyze` logic but operates row‑wise.
+        Returns
+        -------
+        BacktestSignals
+            Object with boolean ``entries`` and ``exits`` series.
+
+        Raises
+        ------
+        ValueError
+            If ``df`` is invalid or missing required columns.
         """
-        required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
-        if not required_cols.issubset(df.columns):
-            # If required columns are missing, return empty signals to avoid crashes.
-            empty = pd.Series(False, index=df.index)
-            return BacktestSignals(entries=empty, exits=empty)
+        # Input validation
+        _validate_dataframe(
+            df,
+            {"close", "volume", "ml_prediction", "ml_confidence"},
+            context="df",
+        )
 
         # Compute rolling SMA and median volume
         sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
