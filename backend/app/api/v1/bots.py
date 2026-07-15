@@ -167,6 +167,76 @@ async def get_bot_performance(
     }
 
 
+@router.get("/{bot_id}/activity", response_model=dict)
+async def get_bot_activity(
+    bot_id: str,
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Option Alpha-style per-bot detail: open positions + recent trade history.
+
+    Open positions = this bot's still-open paper orders (raw_payload.bot_id,
+    written by the bot engine). Trade history = closed Trade rows attributed by
+    strategy_name == bot.name (same attribution the performance graph uses).
+    Honest: empty lists mean the bot hasn't traded — nothing is fabricated.
+    """
+    from app.models.order import Order
+    from app.models.trade import Trade
+
+    bot = await _get_user_bot(bot_id, current_user.id, db)
+    limit = max(1, min(limit, 100))
+
+    open_rows = (await db.execute(
+        select(Order)
+        .where(Order.status == "paper")
+        .order_by(Order.created_at.desc())
+        .limit(500)
+    )).scalars().all()
+    open_positions = [
+        {
+            "order_id": o.id,
+            "symbol": o.symbol,
+            "side": o.side,
+            "entry_price": float((o.raw_payload or {}).get("entry_price", 0) or 0),
+            "notional": float((o.raw_payload or {}).get("notional", 0) or 0),
+            "take_profit": float(o.take_profit_price) if o.take_profit_price is not None else None,
+            "stop_loss": float(o.stop_loss_price) if o.stop_loss_price is not None else None,
+            "opened_at": o.created_at.isoformat() if o.created_at else None,
+        }
+        for o in open_rows
+        if (o.raw_payload or {}).get("bot_id") == bot.id
+    ]
+
+    trades = (await db.execute(
+        select(Trade)
+        .where(Trade.strategy_name == bot.name)
+        .order_by(Trade.closed_at.desc())
+        .limit(limit)
+    )).scalars().all()
+    trade_history = [
+        {
+            "symbol": t.symbol,
+            "side": t.side,
+            "entry_price": float(t.entry_price),
+            "exit_price": float(t.exit_price),
+            "quantity": float(t.quantity),
+            "realized_pnl": round(float(t.realized_pnl or 0), 2),
+            "exit_reason": (t.raw_payload or {}).get("exit_reason"),
+            "opened_at": t.opened_at.isoformat() if t.opened_at else None,
+            "closed_at": t.closed_at.isoformat() if t.closed_at else None,
+        }
+        for t in trades
+    ]
+
+    return {
+        "bot_id": bot.id,
+        "bot_name": bot.name,
+        "open_positions": open_positions,
+        "trade_history": trade_history,
+    }
+
+
 @router.patch("/{bot_id}", response_model=BotOut)
 async def update_bot(
     bot_id: str,

@@ -1236,6 +1236,99 @@ function BotPerfPanel({ botId }: { botId: string }) {
   )
 }
 
+function BotActivityPanel({ botId }: { botId: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['bot-activity', botId],
+    queryFn: () => botsPerfApi.activity(botId),
+    staleTime: 30_000,
+  })
+
+  if (isLoading) return <div className="text-[#555] text-xs font-mono py-2">Loading activity…</div>
+  if (error || !data) return <div className="text-[#ff1744] text-xs font-mono py-2">Failed to load activity.</div>
+
+  const money = (v: number) =>
+    v.toLocaleString(undefined, { style: 'currency', currency: 'USD' })
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2 mt-3">
+      <div>
+        <div className="text-[#555] text-xs font-mono uppercase mb-1.5">
+          Open positions ({data.open_positions.length})
+        </div>
+        {data.open_positions.length === 0 ? (
+          <div className="text-[#555] text-xs font-mono">None — flat right now.</div>
+        ) : (
+          <table className="w-full text-xs font-mono border-collapse">
+            <thead>
+              <tr className="text-[#555] border-b border-[#1e1e1e]">
+                <th className="text-left py-1 pr-3">Symbol</th>
+                <th className="text-left py-1 pr-3">Side</th>
+                <th className="text-right py-1 pr-3">Entry</th>
+                <th className="text-right py-1 pr-3">TP</th>
+                <th className="text-right py-1 pr-3">SL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.open_positions.map((p) => (
+                <tr key={p.order_id} className="border-b border-[#111111]">
+                  <td className="py-1 pr-3 text-[#f5a623]">{p.symbol}</td>
+                  <td className={`py-1 pr-3 ${p.side === 'buy' ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>
+                    {p.side.toUpperCase()}
+                  </td>
+                  <td className="py-1 pr-3 text-right text-[#e8e8e8]">{p.entry_price ? money(p.entry_price) : '—'}</td>
+                  <td className="py-1 pr-3 text-right text-[#888]">{p.take_profit != null ? money(p.take_profit) : '—'}</td>
+                  <td className="py-1 pr-3 text-right text-[#888]">{p.stop_loss != null ? money(p.stop_loss) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <div>
+        <div className="text-[#555] text-xs font-mono uppercase mb-1.5">
+          Trade history (last {data.trade_history.length})
+        </div>
+        {data.trade_history.length === 0 ? (
+          <div className="text-[#555] text-xs font-mono">
+            No closed trades yet — history appears after the first round trip.
+          </div>
+        ) : (
+          <table className="w-full text-xs font-mono border-collapse">
+            <thead>
+              <tr className="text-[#555] border-b border-[#1e1e1e]">
+                <th className="text-left py-1 pr-3">Closed</th>
+                <th className="text-left py-1 pr-3">Symbol</th>
+                <th className="text-left py-1 pr-3">Side</th>
+                <th className="text-right py-1 pr-3">P/L</th>
+                <th className="text-left py-1 pr-3">Exit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.trade_history.map((t, i) => (
+                <tr key={`${t.symbol}-${t.closed_at}-${i}`} className="border-b border-[#111111]">
+                  <td className="py-1 pr-3 text-[#555]">
+                    {t.closed_at
+                      ? new Date(t.closed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : '—'}
+                  </td>
+                  <td className="py-1 pr-3 text-[#f5a623]">{t.symbol}</td>
+                  <td className={`py-1 pr-3 ${t.side === 'buy' ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>
+                    {t.side.toUpperCase()}
+                  </td>
+                  <td className={`py-1 pr-3 text-right ${t.realized_pnl >= 0 ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>
+                    {t.realized_pnl >= 0 ? '+' : ''}{money(t.realized_pnl)}
+                  </td>
+                  <td className="py-1 pr-3 text-[#888]">{t.exit_reason ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ListView({
   bots,
   isLoading,
@@ -1423,6 +1516,7 @@ function ListView({
                   <tr className="border-b border-[#111111]">
                     <td colSpan={7} className="px-3 pb-3 pt-1 bg-[#0d0d0d]">
                       <BotPerfPanel botId={bot.id} />
+                      <BotActivityPanel botId={bot.id} />
                     </td>
                   </tr>
                 )}
