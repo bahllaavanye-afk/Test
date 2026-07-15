@@ -10,9 +10,115 @@ from typing import Dict, List
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator, ValidationError
 
 from app.config import settings
 from app.utils.logging import logger
+
+# ----------------------------------------------------------------------
+# Pydantic schemas
+# ----------------------------------------------------------------------
+
+
+class BenchmarkRequest(BaseModel):
+    """Request parameters for benchmark curve retrieval."""
+
+    start: date = Field(
+        ...,
+        description="Inclusive start date for the benchmark series.",
+        example="2023-01-01",
+    )
+    end: date = Field(
+        ...,
+        description="Inclusive end date for the benchmark series.",
+        example="2023-12-31",
+    )
+
+    @validator("end")
+    def end_must_be_after_start(cls, v: date, values: dict) -> date:
+        """Validate that the end date is after the start date."""
+        start = values.get("start")
+        if start and v <= start:
+            raise ValueError("end date must be after start date")
+        return v
+
+
+class BenchmarkPoint(BaseModel):
+    """Single data point in a benchmark time‑series."""
+
+    date: date = Field(
+        ...,
+        description="Date of the data point.",
+        example="2023-01-02",
+    )
+    value: float = Field(
+        ...,
+        description="Normalized benchmark value (base 100).",
+        example=102.34,
+    )
+
+
+class BenchmarkCurve(BaseModel):
+    """Time‑series for a single benchmark ticker."""
+
+    ticker: str = Field(
+        ...,
+        description="Ticker symbol of the benchmark.",
+        example="SPY",
+    )
+    points: List[BenchmarkPoint] = Field(
+        ...,
+        description="Chronological list of data points for the ticker.",
+    )
+
+
+class BenchmarkResponse(BaseModel):
+    """Response payload containing all benchmark curves."""
+
+    curves: List[BenchmarkCurve] = Field(
+        ...,
+        description="Collection of benchmark curves keyed by ticker.",
+    )
+
+
+class BenchmarkStat(BaseModel):
+    """Static reference statistics for a benchmark."""
+
+    name: str = Field(
+        ...,
+        description="Human‑readable name of the benchmark.",
+        example="S&P 500",
+    )
+    annual_return: float = Field(
+        ...,
+        description="Average annual return (decimal, e.g., 0.10 for 10%).",
+        example=0.10,
+    )
+    sharpe: float = Field(
+        ...,
+        description="Sharpe ratio of the benchmark.",
+        example=0.47,
+    )
+    max_dd: float = Field(
+        ...,
+        description="Maximum drawdown (negative decimal).",
+        example=-0.57,
+    )
+
+
+class BenchmarkStatsResponse(BaseModel):
+    """Container for static benchmark reference statistics."""
+
+    stats: Dict[str, BenchmarkStat] = Field(
+        ...,
+        description="Mapping from ticker symbol to its reference statistics.",
+    )
+
+
+# ----------------------------------------------------------------------
+# Benchmark retrieval logic
+# ----------------------------------------------------------------------
+
 
 BENCHMARKS = {
     "SPY": {"name": "S&P 500", "color": "#2196F3"},
@@ -96,6 +202,13 @@ async def _fetch_ticker_bars(
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
+    # Validate request parameters using BenchmarkRequest schema
+    try:
+        _ = BenchmarkRequest(start=start, end=end)
+    except ValidationError as ve:
+        logger.warning("Invalid benchmark request parameters", extra={"errors": ve.errors()})
+        return {}
+
     if start >= end:
         logger.warning(
             "Invalid benchmark date range",
