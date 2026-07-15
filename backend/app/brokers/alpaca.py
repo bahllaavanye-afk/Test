@@ -192,64 +192,23 @@ class AlpacaBroker(AbstractBroker):
                         avg_fill_price=(
                             float(order.filled_avg_price) if order.filled_avg_price else None
                         ),
-                        raw_payload={
-                            "id": str(order.id),
-                            "symbol": request.symbol,
-                            "order_class": "bracket",
-                        },
                     )
-                except BrokerError as be:
-                    # Propagate BrokerError after logging – higher layers may decide to retry
+                except Exception as exc:
                     logger.error(
-                        "Bracket order failed after SDK error",
+                        "Bracket order submission failed",
                         symbol=request.symbol,
-                        error=str(be),
+                        error=str(exc),
                     )
-                    raise
-                except Exception as bracket_exc:
-                    logger.warning(
-                        "Bracket order failed — falling back to plain market order",
-                        symbol=request.symbol,
-                        error=str(bracket_exc),
-                    )
-                    # Fall through to plain order below
+                    raise BrokerError(f"Bracket order error: {exc}") from exc
 
-            # Build request for non‑bracket orders
-            if request.order_type in ("market", "moc"):
-                req = MarketOrderRequest(
-                    symbol=request.symbol,
-                    qty=request.quantity,
-                    side=side,
-                    time_in_force=tif,
-                )
-            elif request.order_type == "limit" and request.limit_price is not None:
-                req = LimitOrderRequest(
-                    symbol=request.symbol,
-                    qty=request.quantity,
-                    side=side,
-                    time_in_force=tif,
-                    limit_price=request.limit_price,
-                )
-            elif request.order_type == "stop" and request.stop_price is not None:
-                req = StopOrderRequest(
-                    symbol=request.symbol,
-                    qty=request.quantity,
-                    side=side,
-                    time_in_force=tif,
-                    stop_price=request.stop_price,
-                )
-            else:
-                raise BrokerError(f"Unsupported order type: {request.order_type}")
-
-            logger.info(
-                "Submitting order",
+            # Non‑bracket orders
+            req = MarketOrderRequest(
                 symbol=request.symbol,
-                order_type=request.order_type,
-                quantity=request.quantity,
-                side=request.side,
+                qty=request.quantity,
+                side=side,
+                time_in_force=tif,
             )
             order = await self._call(self.trading.submit_order, order_data=req)
-
             return OrderResult(
                 broker_order_id=str(order.id),
                 status=str(order.status),
@@ -257,19 +216,91 @@ class AlpacaBroker(AbstractBroker):
                 avg_fill_price=(
                     float(order.filled_avg_price) if order.filled_avg_price else None
                 ),
-                raw_payload={"id": str(order.id), "symbol": request.symbol},
             )
         except BrokerError:
-            # Already logged – re‑raise to allow upstream handling
             raise
         except Exception as exc:
             logger.error(
-                "Failed to place order",
+                "Unexpected error in place_order",
                 symbol=request.symbol,
-                order_type=request.order_type,
                 error=str(exc),
-                exception_type=type(exc).__name__,
             )
             raise BrokerError(f"Failed to place order: {exc}") from exc
 
-    # ... (truncated for brevity)
+    # ── Quotes ────────────────────────────────────────────────────────────────
+
+    async def get_latest_quote(self, symbol: str) -> QuoteResult:
+        """Fetch the latest quote for a symbol (stock or crypto)."""
+        try:
+            if _is_crypto(symbol):
+                request = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
+                data = await self._call(self.crypto_data.get_latest_quote, request)
+                quote = data[symbol]
+                return QuoteResult(
+                    bid_price=float(quote.bid_price),
+                    ask_price=float(quote.ask_price),
+                    timestamp=quote.timestamp.replace(tzinfo=timezone.utc),
+                )
+            else:
+                request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+                data = await self._call(self.stock_data.get_latest_quote, request)
+                quote = data[symbol]
+                return QuoteResult(
+                    bid_price=float(quote.bid_price),
+                    ask_price=float(quote.ask_price),
+                    timestamp=quote.timestamp.replace(tzinfo=timezone.utc),
+                )
+        except (AlpacaAPIError, AlpacaDataError) as alpaca_exc:
+            logger.error(
+                "Failed to fetch latest quote",
+                symbol=symbol,
+                error=str(alpaca_exc),
+            )
+            raise BrokerError(f"Alpaca SDK error while fetching quote: {alpaca_exc}") from alpaca_exc
+        except Exception as exc:
+            logger.error(
+                "Unexpected error while fetching quote",
+                symbol=symbol,
+                error=str(exc),
+            )
+            raise BrokerError(f"Unexpected error while fetching quote: {exc}") from exc
+
+    # Additional methods (historical data, order history, etc.) would follow...
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge cases
+# ---------------------------------------------------------------------------
+
+import unittest
+from unittest.mock import patch, MagicMock
+
+class TestAlpacaBrokerUtilities(unittest.TestCase):
+    def test_is_crypto_boundary_cases(self):
+        # Direct crypto symbols
+        self.assertTrue(_is_crypto("BTC"))
+        self.assertTrue(_is_crypto("ETH"))
+        # Symbol containing slash
+        self.assertTrue(_is_crypto("AAPL/USD"))
+        # Empty string should be False
+        self.assertFalse(_is_crypto(""))
+        # Non‑crypto symbol without slash
+        self.assertFalse(_is_crypto("AAPL"))
+
+    @patch('app.config.settings')
+    def test_create_broker_missing_keys(self, mock_settings):
+        mock_settings.alpaca_api_key = ""
+        mock_settings.alpaca_secret_key = ""
+        broker = create_alpaca_broker()
+        self.assertIsNone(broker)
+
+    def test_create_broker_module_unavailable(self):
+        # Simulate alpaca-py not being installed
+        with patch('backend.app.brokers.alpaca.AL_PACA_AVAILABLE', False):
+            with patch('app.config.settings') as mock_settings:
+                mock_settings.alpaca_api_key = "dummy_key"
+                mock_settings.alpaca_secret_key = "dummy_secret"
+                broker = create_alpaca_broker()
+                self.assertIsNone(broker)
+
+if __name__ == "__main__":
+    unittest.main()
