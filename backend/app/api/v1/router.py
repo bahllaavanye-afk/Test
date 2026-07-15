@@ -7,6 +7,7 @@ from app.api.v1.regime import router as regime_router
 from app.api.v1.audit_log import router as audit_log_router
 from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
+from app.api.v1.webhooks import router as webhooks_router
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -39,3 +40,4 @@ api_router.include_router(releases.router)
 api_router.include_router(bots_router)
 api_router.include_router(scanners_router)
 api_router.include_router(discord_router)
+api_router.include_router(webhooks_router)

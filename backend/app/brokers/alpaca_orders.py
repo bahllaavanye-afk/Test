@@ -296,8 +296,11 @@ async def submit_alpaca_multileg_order(
     for leg in legs:
         sym = await resolve_leg_symbol(account, underlying, leg)
         if not sym:
-            logger.info("mleg leg unresolved — degrading to alert",
-                        underlying=underlying, leg=str(leg)[:80])
+            # stdlib logger — kwargs like structlog's raise TypeError and would
+            # crash the caller exactly when the order needs handling (found by
+            # test_multileg_broker_rejection_returns_none).
+            logger.info("mleg leg unresolved — degrading to alert (%s %s)",
+                        underlying, str(leg)[:80])
             return None
         resolved.append({
             "symbol": sym,
@@ -318,9 +321,9 @@ async def submit_alpaca_multileg_order(
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(f"{base}/v2/orders", json=payload, headers=headers)
         if resp.status_code not in (200, 201):
-            logger.warning("mleg order rejected", status=resp.status_code, body=resp.text[:200])
+            logger.warning("mleg order rejected: %s %s", resp.status_code, resp.text[:200])
             return None
         result = resp.json()
-    logger.info("Alpaca multi-leg options order submitted",
-                order_id=result.get("id"), legs=len(resolved), underlying=underlying)
+    logger.info("Alpaca multi-leg options order submitted: id=%s legs=%d underlying=%s",
+                result.get("id"), len(resolved), underlying)
     return result

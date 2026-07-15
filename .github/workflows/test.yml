@@ -41,9 +41,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # No ref override: `ref: main` here meant this job NEVER tested the PR's
+      # agent scripts — every PR was judged on main's code (and a red main
+      # blocked every PR regardless of content). Found 2026-07-15 when a
+      # test_desk_config.py fix "didn't apply" on its own PR.
       - uses: actions/checkout@v4
-        with:
-          ref: main
 
       - uses: actions/setup-python@v5
         with:
