@@ -6,12 +6,15 @@ Free macro signal sources (no API key required for basic use):
   - Apewisdom Reddit WSB sentiment (free, no key)
 """
 from __future__ import annotations
-import asyncio
-import aiohttp
-from datetime import datetime, timezone, date, timedelta
-from typing import Optional
-from app.utils.logging import logger
 
+import asyncio
+from datetime import datetime, timezone
+from typing import Optional
+
+import aiohttp
+from aiohttp import ClientError
+
+from app.utils.logging import logger
 
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 APEWISDOM_URL = "https://apewisdom.io/api/v1.0/filter/all-stocks/page/1"
@@ -19,18 +22,41 @@ APEWISDOM_URL = "https://apewisdom.io/api/v1.0/filter/all-stocks/page/1"
 
 async def _fred_latest(series_id: str, api_key: str = "DEMO_KEY") -> Optional[float]:
     """Fetch latest value from FRED. DEMO_KEY allows 500 req/day — no registration needed."""
-    url = f"{FRED_BASE}?series_id={series_id}&api_key={api_key}&file_type=json&sort_order=desc&limit=1"
+    url = (
+        f"{FRED_BASE}?series_id={series_id}&api_key={api_key}"
+        f"&file_type=json&sort_order=desc&limit=1"
+    )
     try:
         async with aiohttp.ClientSession() as sess:
             async with sess.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status != 200:
+                    logger.warning(
+                        "FRED request failed",
+                        extra={"series_id": series_id, "status": resp.status},
+                    )
                     return None
                 data = await resp.json()
                 obs = data.get("observations", [])
-                if obs and obs[0]["value"] != ".":
+                if obs and obs[0].get("value") != ".":
                     return float(obs[0]["value"])
+    except (ClientError, asyncio.TimeoutError) as e:
+        logger.error(
+            "Network error while fetching FRED series",
+            extra={"series_id": series_id, "error": str(e)},
+            exc_info=True,
+        )
+    except ValueError as e:
+        logger.error(
+            "Data conversion error for FRED series",
+            extra={"series_id": series_id, "error": str(e)},
+            exc_info=True,
+        )
     except Exception as e:
-        logger.debug(f"FRED fetch {series_id}: {e}")
+        logger.error(
+            "Unexpected error in _fred_latest",
+            extra={"series_id": series_id, "error": str(e)},
+            exc_info=True,
+        )
     return None
 
 
@@ -49,6 +75,23 @@ async def get_macro_snapshot() -> dict:
         return_exceptions=True,
     )
 
+    # Log any exceptions that occurred during parallel fetches
+    for idx, result in enumerate(results):
+        if isinstance(result, Exception):
+            series_map = {
+                0: "T10Y2Y",
+                1: "VIXCLS",
+                2: "DFF",
+                3: "BAMLH0A0HYM2",
+                4: "DTWEXBGS",
+            }
+            logger.error(
+                "Error fetching macro series",
+                extra={"series_id": series_map.get(idx, "unknown"), "error": str(result)},
+                exc_info=True,
+            )
+            results[idx] = None
+
     yield_spread = results[0] if isinstance(results[0], float) else None
     vix = results[1] if isinstance(results[1], float) else None
     fed_funds = results[2] if isinstance(results[2], float) else None
@@ -60,10 +103,18 @@ async def get_macro_snapshot() -> dict:
     if yield_spread is not None:
         signals["yield_curve_inverted"] = yield_spread < 0
         signals["yield_spread_bps"] = round(yield_spread * 100, 1)
-        signals["yield_curve_signal"] = "risk_off" if yield_spread < -0.5 else "neutral" if yield_spread < 0.5 else "risk_on"
+        signals["yield_curve_signal"] = (
+            "risk_off"
+            if yield_spread < -0.5
+            else "neutral"
+            if yield_spread < 0.5
+            else "risk_on"
+        )
 
     if vix is not None:
-        signals["vix_regime"] = "fear" if vix > 30 else "elevated" if vix > 20 else "complacent"
+        signals["vix_regime"] = (
+            "fear" if vix > 30 else "elevated" if vix > 20 else "complacent"
+        )
         signals["vix_level"] = vix
 
     if hy_spread is not None:
@@ -85,8 +136,14 @@ async def get_macro_snapshot() -> dict:
         "hy_credit_spread": hy_spread,
         "usd_index": usd_index,
         "signals": signals,
-        "macro_score": macro_score,           # -3 to +3: positive = risk-on environment
-        "macro_bias": "risk_on" if macro_score >= 1 else "risk_off" if macro_score <= -1 else "neutral",
+        "macro_score": macro_score,  # -3 to +3: positive = risk-on environment
+        "macro_bias": (
+            "risk_on"
+            if macro_score >= 1
+            else "risk_off"
+            if macro_score <= -1
+            else "neutral"
+        ),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -100,20 +157,37 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
         async with aiohttp.ClientSession() as sess:
             async with sess.get(APEWISDOM_URL, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status != 200:
+                    logger.warning(
+                        "Apewisdom request failed",
+                        extra={"status": resp.status},
+                    )
                     return {"error": "Apewisdom unavailable", "results": []}
                 data = await resp.json()
                 results = data.get("results", [])
                 # Filter to requested tickers if specified
                 if tickers:
                     ticker_set = {t.upper() for t in tickers}
-                    results = [r for r in results if r.get("ticker", "").upper() in ticker_set]
+                    results = [
+                        r for r in results if r.get("ticker", "").upper() in ticker_set
+                    ]
                 return {
                     "results": results[:20],
                     "fetched_at": datetime.now(timezone.utc).isoformat(),
                     "source": "apewisdom.io (reddit wsb)",
                 }
+    except (ClientError, asyncio.TimeoutError) as e:
+        logger.error(
+            "Network error while fetching Apewisdom data",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
+        return {"error": str(e), "results": []}
     except Exception as e:
-        logger.debug(f"Apewisdom fetch error: {e}")
+        logger.error(
+            "Unexpected error in get_reddit_sentiment",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
         return {"error": str(e), "results": []}
 
 
