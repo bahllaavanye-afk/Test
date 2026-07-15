@@ -12,6 +12,7 @@ Pipeline:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -19,8 +20,9 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
-from app.tasks.free_llm_router import call_race, call_consensus
+from app.tasks.free_llm_router import call_race
 from app.tasks.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
@@ -31,22 +33,35 @@ RESULTS_DIR = EXPERIMENTS_DIR / "results"
 
 
 class ResearchPipeline:
+    _ideas_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+    _cache_lock = asyncio.Lock()
+    _cache_ttl_seconds = 30 * 60  # 30 minutes
+
     def __init__(self, redis_client: Any = None):
         self._memory = AgentMemory(redis_client) if redis_client else None
+        # Ensure config directory exists once per instance
+        CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
 
     async def run(self) -> None:
         logger.info("ResearchPipeline: starting 4h research cycle")
         try:
             context = await self._build_market_context()
             ideas = await self._generate_research_ideas(context)
+            if not ideas:
+                logger.info("ResearchPipeline: no ideas generated, aborting cycle")
+                return
             configs = await self._ideas_to_experiment_configs(ideas)
-            await self._queue_experiments(configs)
+            if configs:
+                await self._queue_experiments(configs)
             if self._memory:
-                await self._memory.write("research_findings", {
-                    "ideas_count": len(ideas),
-                    "configs_queued": len(configs),
-                    "ideas": ideas[:3],
-                })
+                await self._memory.write(
+                    "research_findings",
+                    {
+                        "ideas_count": len(ideas),
+                        "configs_queued": len(configs),
+                        "ideas": ideas[:3],
+                    },
+                )
             logger.info("ResearchPipeline: queued %d experiments", len(configs))
         except Exception as e:
             logger.exception("ResearchPipeline error: %s", e)
@@ -69,7 +84,17 @@ class ResearchPipeline:
             f"Recent LLM suggestions: {'; '.join(prev_ideas[:2])}"
         )
 
-    async def _generate_research_ideas(self, context: str) -> list[dict]:
+    async def _generate_research_ideas(self, context: str) -> List[Dict[str, Any]]:
+        """Generate ideas, using an in‑memory cache to avoid repeated LLM calls."""
+        cache_key = hashlib.sha256(context.encode()).hexdigest()
+        async with self._cache_lock:
+            cached = self._ideas_cache.get(cache_key)
+            if cached:
+                timestamp, ideas = cached
+                if time.time() - timestamp < self._cache_ttl_seconds:
+                    logger.debug("ResearchPipeline: using cached ideas")
+                    return ideas
+
         prompt = f"""You are a quantitative trading researcher.
 
 Market context: {context}
@@ -92,19 +117,20 @@ Respond as JSON array:
 
         try:
             content = response.content.strip()
-            # Extract JSON array
             start = content.find("[")
             end = content.rfind("]") + 1
             if start >= 0 and end > start:
-                return json.loads(content[start:end])
+                ideas = json.loads(content[start:end])
+                async with self._cache_lock:
+                    self._ideas_cache[cache_key] = (time.time(), ideas)
+                return ideas
         except Exception as e:
             logger.warning("ResearchPipeline: failed to parse LLM ideas: %s", e)
         return []
 
-    async def _ideas_to_experiment_configs(self, ideas: list[dict]) -> list[Path]:
+    async def _ideas_to_experiment_configs(self, ideas: List[Dict[str, Any]]) -> List[Path]:
         """Convert LLM ideas to YAML experiment configs."""
-        CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
-        configs = []
+        configs: List[Path] = []
 
         for idea in ideas[:2]:  # limit to 2 per cycle
             name = idea.get("name", f"auto_{int(time.time())}")
@@ -156,13 +182,13 @@ strategy:
   name: "ml_momentum"
   confidence_threshold: 0.60
 """
-            config_path.write_text(yaml_content)
+            config_path.write_text(yaml_content, encoding="utf-8")
             configs.append(config_path)
             logger.info("ResearchPipeline: created config %s", config_path.name)
 
         return configs
 
-    async def _queue_experiments(self, configs: list[Path]) -> None:
+    async def _queue_experiments(self, configs: List[Path]) -> None:
         """Fire-and-forget experiment runs as background subprocesses."""
         script = EXPERIMENTS_DIR / "run_experiment.py"
         if not script.exists():
