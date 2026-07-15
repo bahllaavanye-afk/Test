@@ -199,8 +199,13 @@
     "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
     "Refactor memory logging",
     "Log trade volumes",
-    "Track network latency"
+    "Track network latency",
+    "validation on risk/portfolio_optimizer.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on test/unit/test_bond_equity_rotation.py: success \u2014 tests green",
+    "validation on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "validation on ml/models/gemini_signal.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-15T14:46:07.044536+00:00",
+  "last_updated": "2026-07-15T16:19:16.881405+00:00",
   "total": 200
 }
