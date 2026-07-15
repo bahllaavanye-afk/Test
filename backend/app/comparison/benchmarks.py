@@ -86,7 +86,7 @@ async def _fetch_ticker_bars(
             extra={"ticker": ticker, "error": str(exc)},
         )
         return pd.Series(dtype=float)
-    except Exception as exc:  # pragma: no cover
+    except Exception:  # pragma: no cover
         logger.exception(
             "Unexpected error while fetching Alpaca bars",
             extra={"ticker": ticker},
@@ -116,40 +116,43 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
             return_exceptions=True,
         )
 
-    # Convert any exceptions returned by gather into empty Series and log them
-    series_list: List[pd.Series] = []
+    # Replace any exception with an empty Series and log it
+    series_dict: dict[str, pd.Series] = {}
     for ticker, result in zip(all_tickers, raw_series):
         if isinstance(result, Exception):
             logger.error(
                 "Error fetching ticker data",
                 extra={"ticker": ticker, "error": str(result)},
             )
-            series_list.append(pd.Series(dtype=float))
+            series_dict[ticker] = pd.Series(dtype=float)
         else:
-            series_list.append(result)
+            series_dict[ticker] = result
 
-    closes_dict: dict[str, pd.Series] = {
-        ticker: series
-        for ticker, series in zip(all_tickers, series_list)
-        if not series.empty
-    }
+    # Drop empty series early
+    series_dict = {t: s for t, s in series_dict.items() if not s.empty}
 
     result: dict[str, List[dict]] = {}
 
-    # Process individual benchmarks
-    for ticker in BENCHMARKS:
-        series = closes_dict.get(ticker)
-        if series is None or series.empty:
-            continue
-        normalized = (series.dropna() / series.iloc[0] * 100).round(2)
-        result[ticker] = [
-            {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
-        ]
+    # Vectorized processing for individual benchmarks
+    if BENCHMARKS:
+        # Build a DataFrame where each column is a ticker
+        bench_df = pd.concat(
+            [series_dict[t].rename(t) for t in BENCHMARKS if t in series_dict],
+            axis=1,
+        )
+        for ticker in bench_df.columns:
+            series = bench_df[ticker].dropna()
+            if series.empty:
+                continue
+            normalized = (series / series.iloc[0] * 100).round(2)
+            result[ticker] = [
+                {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
+            ]
 
     # All Weather: monthly rebalanced weighted portfolio
-    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
+    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in series_dict]
     if len(aw_tickers) >= 3:
-        aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
+        aw_frames = {t: series_dict[t].rename(t) for t in aw_tickers}
         aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
         weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
         weights = weights / weights.sum()  # renormalize if any tickers missing
