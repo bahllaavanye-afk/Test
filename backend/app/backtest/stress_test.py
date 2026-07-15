@@ -7,12 +7,27 @@ average across calm and turbulent regimes.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
+
+# Configure module logger
+logger = logging.getLogger(__name__)
+
+if not logger.handlers:
+    # Prevent duplicate handlers if root logger already configured elsewhere
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        fmt="%(asctime)s %(levelname)s %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 @dataclass
@@ -81,20 +96,33 @@ STRESS_SCENARIOS: list[StressScenario] = [
 @dataclass
 class StressResult:
     scenario: StressScenario
-    # None if the price data doesn't cover this period
+    # None if the price data doesn't cover this period or an error occurred
     metrics: BacktestMetrics | None
     period_covered: bool
     data_points: int
 
 
-def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
-    """Vectorized slice of a Series using .loc; returns None if input is None."""
+def _slice_series(
+    series: pd.Series | None,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.Series | None:
+    """Vectorized slice of a Series using .loc; returns None if input is None.
+
+    If .loc raises an unexpected exception (e.g., due to a non‑datetime index),
+    a boolean mask fallback is applied and the incident is logged.
+    """
     if series is None:
         return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
     try:
         return series.loc[start:end]
-    except Exception:
+    except (KeyError, TypeError, AttributeError) as e:
+        logger.warning(
+            "Series slicing with .loc failed for index type %s: %s. "
+            "Falling back to boolean mask.",
+            type(series.index).__name__,
+            e,
+        )
         mask = (series.index >= start) & (series.index <= end)
         return series.loc[mask]
 
@@ -115,6 +143,16 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
+    # Input validation
+    if not isinstance(signals, pd.Series):
+        raise TypeError("signals must be a pandas Series")
+    if not isinstance(prices, pd.Series):
+        raise TypeError("prices must be a pandas Series")
+    if opens is not None and not isinstance(opens, pd.Series):
+        raise TypeError("opens must be a pandas Series or None")
+    if volume is not None and not isinstance(volume, pd.Series):
+        raise TypeError("volume must be a pandas Series or None")
+
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
 
@@ -155,21 +193,40 @@ def run_stress_tests(
             )
             continue
 
-        metrics = run_backtest(
-            signals=s_signals,
-            prices=s_prices,
-            opens=s_opens,
-            volume=s_volume,
-            initial_equity=initial_equity,
-            commission_pct=commission_pct,
-            slippage_pct=slippage_pct,
-        )
+        try:
+            metrics = run_backtest(
+                signals=s_signals,
+                prices=s_prices,
+                opens=s_opens,
+                volume=s_volume,
+                initial_equity=initial_equity,
+                commission_pct=commission_pct,
+                slippage_pct=slippage_pct,
+            )
+        except (ValueError, TypeError) as e:
+            logger.error(
+                "Backtest execution failed for scenario '%s': %s",
+                scenario.name,
+                e,
+                exc_info=True,
+            )
+            metrics = None
+            period_covered = False
+        except Exception as e:
+            logger.exception(
+                "Unexpected error during backtest for scenario '%s'",
+                scenario.name,
+            )
+            metrics = None
+            period_covered = False
+        else:
+            period_covered = True
 
         results.append(
             StressResult(
                 scenario=scenario,
                 metrics=metrics,
-                period_covered=True,
+                period_covered=period_covered,
                 data_points=len(s_prices),
             )
         )
@@ -181,7 +238,7 @@ def stress_summary(results: list[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
+    Returns per‑scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
     out: dict = {}
