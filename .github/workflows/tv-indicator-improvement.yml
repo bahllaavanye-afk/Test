@@ -1,8 +1,11 @@
 name: TV Indicator SOTA Improvement (Agent Pool)
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
-    - cron: "0 */6 * * *"   # every 6 hours — pool of free agents improve indicators
+    - cron: "0 */6 * * *"   # backup — event chain is the real heartbeat (cron is starved on free tier)
   workflow_dispatch:
 
 concurrency:
@@ -26,15 +29,33 @@ jobs:
         with:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 50
+
+      # Event-chained off every CI completion (cron is starved), but this is a
+      # 20-minute LLM job — keep the intended ~6h cadence by skipping when a
+      # tv-improve commit already landed in the window.
+      - name: Cadence gate (~6h)
+        id: gate
+        run: |
+          recent=$(git log --since="6 hours ago" --grep="tv-improve" --oneline | wc -l)
+          if [ "$recent" -gt 0 ] && [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "ran ${recent}x in the last 6h — skipping chained trigger"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
         with:
           python-version: "3.11"
 
       - name: Install deps
+        if: steps.gate.outputs.skip != 'true'
         run: pip install uv --quiet && uv pip install --system 'requests>=2.32.0'
 
       - name: Run TV indicator improvement agent
+        if: steps.gate.outputs.skip != 'true'
         env:
           ANTHROPIC_API_KEY: "disabled"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
@@ -54,6 +75,7 @@ jobs:
         run: python .github/scripts/improve_tv_indicators.py
 
       - name: Validate improved strategies compile
+        if: steps.gate.outputs.skip != 'true'
         working-directory: backend
         env:
           PYTHONPATH: "."

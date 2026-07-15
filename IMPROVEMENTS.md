@@ -124,7 +124,7 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
       `run:` block scalars whose continuation lines lost their indentation. **Direct cause of
       "Slack dead except scheduled messages"** (deploy/health Slack posts never fired). Fixed;
       repo-wide workflow YAML lint now shows 0 broken.
-- [ ] **"TV Indicator SOTA" scheduled workflow** — still to investigate.
+- [x] **"TV Indicator SOTA" scheduled workflow** — investigated 2026-07-15: it was still cron-only (cron is starved on free tier → effectively never ran). Now event-chained to CI completions like the other 21 team workflows, with a ~6h cadence gate (git-log stamp) so the 20-min LLM job doesn't fire on every CI run.
 
 ## P1 — Issues the agents themselves flagged in Slack (live triage, 69/97 channels active)
 - [x] `#deploys` — **cross-user data leak**: verified closed — all core routers scope to
