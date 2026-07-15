@@ -199,8 +199,13 @@
     "Monitor GPU temps",
     "Refactor trade executor",
     "Implement type hints",
-    "Enhance error handling"
+    "Enhance error handling",
+    "error_handling on ml/models/lightgbm_model.py: success \u2014 tests green",
+    "error_handling on ml/features/macro_signals.py: success \u2014 tests green",
+    "error_handling on brokers/base.py: success \u2014 tests green",
+    "error_handling on tasks/task_queue.py: success \u2014 tests green",
+    "error_handling on test/unit/test_endpoint_smoke.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-15T12:50:37.859080+00:00",
+  "last_updated": "2026-07-15T13:19:38.237762+00:00",
   "total": 200
 }
