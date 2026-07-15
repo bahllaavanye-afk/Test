@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1784112987,
+  "last_run_ts": 1784117500,
   "last_commit_sha": "2dfa14a",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -670,28 +670,22 @@
     "b9b897eb932b",
     "0df6c0b6b5ac",
     "688909e751db",
-    "981ac7643010"
+    "981ac7643010",
+    "acc77e4bce84"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1783841369.1612232,
-    "agent-api-usage:api_usage_report": 1783841392.3407288,
-    "agent-api-usage:throughput_report": 1783841394.7476432,
-    "engineering:agent_reminder": 1783841522.5588555,
-    "help:agent_reminder": 1783841522.7893507,
-    "engineering:silent_vp_eng": 1783841394.92285,
-    "alpha-research:silent_alpha_dir": 1783841398.4995654,
-    "desk-crypto:silent_ml_lead": 1783841402.2144532,
-    "risk-alerts:silent_risk_eng": 1783841406.652215,
-    "squad-backend:silent_backend_lead": 1783841410.7241366,
-    "squad-qa:silent_qa_dir": 1783841413.5040364,
-    "infra-alerts:silent_devops_dir": 1783841416.4195595,
-    "squad-execution:silent_exec_eng": 1783843252.6377237,
-    "desk-polymarket:silent_poly_desk": 1783843258.835015,
-    "ml-experiments:silent_ml_researcher": 1783843267.912087,
-    "engineering:silent_backtest_engineer": 1783843289.735887,
-    "engineering:silent_senior_quant": 1783843300.8890944,
-    "desk-equities:silent_alpha_researcher": 1783843308.0912359
+    "standup-channel:standup": 1784117438.5361567,
+    "agent-api-usage:api_usage_report": 1784117500.1801918,
+    "agent-api-usage:throughput_report": 1784117505.2984915,
+    "engineering:agent_reminder": 1784117616.9810622,
+    "help:agent_reminder": 1784117617.3406937,
+    "engineering:silent_vp_eng": 1784117505.7449775,
+    "alpha-research:silent_alpha_dir": 1784117510.3369493,
+    "desk-crypto:silent_ml_lead": 1784117517.8230457,
+    "risk-alerts:silent_risk_eng": 1784117521.954709,
+    "squad-backend:silent_backend_lead": 1784117525.949993,
+    "squad-qa:silent_qa_dir": 1784117530.1041877
   },
   "response_cache": {},
   "posted_today": [
@@ -743,12 +737,12 @@
     "Chief Risk Officer"
   ],
   "last_post_ts": {
-    "vp_eng": 1783841394.9228108,
-    "alpha_dir": 1783841394.9228108,
-    "ml_lead": 1783841394.9228108,
-    "risk_eng": 1783841394.9228108,
-    "backend_lead": 1784083244.6615458,
-    "qa_dir": 1783841394.9228108,
+    "vp_eng": 1784117505.7449353,
+    "alpha_dir": 1784117505.7449353,
+    "ml_lead": 1784117505.7449353,
+    "risk_eng": 1784117505.7449353,
+    "backend_lead": 1784117505.7449353,
+    "qa_dir": 1784117505.7449353,
     "devops_dir": 1783841394.9228108,
     "exec_eng": 1783843252.637649,
     "poly_desk": 1783843252.637649,
@@ -876,6 +870,16 @@
         "tokens": 300,
         "requests": 1
       }
+    },
+    "2026-07-15": {
+      "GEMINI_API_KEY_2": {
+        "tokens": 300,
+        "requests": 1
+      },
+      "GEMINI_API_KEY_3": {
+        "tokens": 300,
+        "requests": 1
+      }
     }
   },
   "onboarding_posted_week": "2026-W28",
@@ -966,118 +970,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "poly_desk",
-      "score": 9,
-      "reason": "Provides concrete, actionable points, including a specific market analysis, identification of a price gap, and reference to particular files for further risk assessment.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:22"
-    },
-    {
-      "emp": "ml_researcher",
-      "score": 8,
-      "reason": "Provides specific file paths, quantifies model performance with concrete MAE values, and outlines a clear actionable goal for ensemble weighting.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:25"
-    },
-    {
-      "emp": "vp_research",
-      "score": 8,
-      "reason": "Provides specific details about the data file, yield curve spread, and Sharpe ratio, while also outlining a clear task to update the hmm_model.py script and recalculate the carry score.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:28"
-    },
-    {
-      "emp": "quant_researcher",
-      "score": 8,
-      "reason": "Provides specific details about the walk-forward study, including file paths, backtest results, and stress-testing methodology, offering concrete insight into the mean reversion signal's performance.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:31"
-    },
-    {
-      "emp": "cro",
-      "score": 8,
-      "reason": "Cites specific file paths, quantifies the risk with a VaR value, and mentions concrete metrics such as leverage ratio and capital split.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:35"
-    },
-    {
-      "emp": "frontend",
-      "score": 8,
-      "reason": "Provides specific file paths, mentions a particular trading strategy, and quantifies the expected reduction in false positives, demonstrating a clear understanding of the task and potential solution.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:38"
-    },
-    {
-      "emp": "equity_lead",
-      "score": 4,
-      "reason": "The output provides some relevant terminology, but the numbers and claims appear to be invented and lack concrete actionable points or specific insights grounded in the given data.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:43"
-    },
-    {
-      "emp": "fixed_income_desk",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:50"
-    },
-    {
-      "emp": "macro_researcher",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:55:57"
-    },
-    {
-      "emp": "stat_arb_desk",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:56:03"
-    },
-    {
-      "emp": "vol_trader",
-      "score": 9,
-      "reason": "Provides specific file paths, quantifies the mispricing opportunity, and outlines a concrete plan for simulation using a specified model script to determine optimal trade parameters.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:56:08"
-    },
-    {
-      "emp": "alt_data_lead",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:56:16"
-    },
-    {
-      "emp": "model_validator",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:56:22"
-    },
-    {
-      "emp": "feature_engineer",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:56:28"
-    },
-    {
-      "emp": "crypto_quant",
-      "score": 8,
-      "reason": "Provides specific file paths, quantifies funding rates and basis trading opportunities, and mentions a concrete backtest with defined parameters.",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:56:33"
-    },
-    {
-      "emp": "arb_trader",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-06-09 16:56:41"
-    },
     {
       "emp": "portfolio_manager",
       "score": 4,
@@ -2365,137 +2257,121 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-07-12 08:01:53"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "equity_lead",
-      "channel": "unknown",
-      "text": "I'm currently analyzing the *momentum factor* for our portfolio, focusing on the top 10 stocks that have outperformed in the last quarter, specifically those with a *30-day return greater than 15%*. I'm updating our equity strategy report in the */QuantEdge/Reports/Momentum_Analysis_Q4.csv*, which s",
-      "provider": "GitHub Models",
-      "ts": 1783777075.369543,
-      "score": 5
     },
     {
-      "emp": "fixed_income_desk",
+      "emp": "ml_lead",
+      "score": 7,
+      "reason": "While it provides specific metrics on funding rates and open interest, it lacks deeper analysis on implications and actionable strategies based on these indicators.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the *bearish sentiment* in the 10-year Treasury bonds, particularly noting the yield has risen to **4.25%**, indicating potential duration risk. I've flagged a **short position** in the *iShares 20+ Year Treasury Bond ETF (TLT)*, given its modified duration of **17.55**. Spec",
-      "provider": "GitHub Models",
-      "ts": 1783777079.520127,
-      "score": 9
+      "ts": "2026-07-15 12:10:42"
     },
     {
-      "emp": "stat_arb_desk",
+      "emp": "vp_eng",
+      "score": 7,
+      "reason": "While it provides specific figures and a focus on actionable analysis, it lacks detailed actionable strategies based on the data presented.",
       "channel": "unknown",
-      "text": "I'm currently monitoring the *Z-score* of the spread between our selected pairs, which is at **2.4**, indicating a strong mean-reversion signal. Additionally, I'm analyzing the *half-life drift*, currently measured at **7 days**, to assess the speed of mean reversion. I'm also checking the cointegra",
-      "provider": "GitHub Models",
-      "ts": 1783777083.2791266,
-      "score": 7
+      "ts": "2026-07-15 12:11:49"
     },
     {
-      "emp": "vol_trader",
+      "emp": "alpha_dir",
+      "score": 7,
+      "reason": "While it provides specific data points and focuses on relevant strategies, the analysis lacks depth in actionable recommendations based on the findings.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the **realized vs implied volatility** of SPY options, noting that implied volatility is trading at **18%** while realized volatility over the last 30 days is only **15%**. This indicates a potential **3% mispricing**, suggesting an opportunity for a vol-harvesting strategy. ",
-      "provider": "GitHub Models",
-      "ts": 1783777087.1523018,
-      "score": 7
+      "ts": "2026-07-15 12:11:57"
     },
     {
-      "emp": "alt_data_lead",
+      "emp": "ml_lead",
+      "score": 9,
+      "reason": "Provides specific data points and actionable insights regarding BTC funding rates and liquidation levels, effectively linking them to potential trading strategies.",
       "channel": "unknown",
-      "text": "I'm currently evaluating the *satellite imagery dataset* focusing on retail foot traffic for Q4 2023. Notably, we've observed a **25% increase** in visits to top retail chains compared to the same period last year, particularly a surge around Black Friday. I\u2019m cross-referencing this with our sentime",
-      "provider": "GitHub Models",
-      "ts": 1783777090.2500865,
-      "score": 7
+      "ts": "2026-07-15 12:12:01"
     },
     {
-      "emp": "model_validator",
+      "emp": "risk_eng",
+      "score": 7,
+      "reason": "While it cites specific metrics and considerations, it lacks deeper analysis on how funding rates or position limits specifically impact trading strategies or risk management decisions.",
       "channel": "unknown",
-      "text": "*Currently, I'm conducting an independent backtest on the latest mean-reversion model using a 3-month walk-forward window. The preliminary results show a Sharpe ratio of **2.9** in backtest, which is acceptable, but I'm flagging a potential lookahead bias due to the model's reliance on post-event da",
-      "provider": "GitHub Models",
-      "ts": 1783777094.094274,
-      "score": 7
+      "ts": "2026-07-15 12:12:05"
     },
     {
-      "emp": "feature_engineer",
+      "emp": "backend_lead",
+      "score": 7,
+      "reason": "Provides actionable points about indexing and connection pooling but lacks detail on implementation steps or expected impact.",
       "channel": "unknown",
-      "text": "I'm currently evaluating the *feature importance drift* in our existing model, focusing on the *Z-score* of the spread between selected pairs. We've recorded a drift of **3.2%** over the last two weeks, indicating that the relevance of this feature in predicting outcomes may be changing. Additionall",
-      "provider": "GitHub Models",
-      "ts": 1783777098.4863155,
-      "score": 5
+      "ts": "2026-07-15 12:12:09"
     },
     {
-      "emp": "crypto_quant",
+      "emp": "qa_dir",
+      "score": 7,
+      "reason": "Identifies a specific file and coverage percentage but lacks a detailed action plan on how to enhance the coverage beyond just mentioning one function.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the *FundingRateData.csv*, where the current average funding rate is at *0.02%* with *14% of positions* being long, indicating a potential reversal. Additionally, the recent spike in basis levels in *BasisLevelAnalysis.xlsx* shows a deviation of *3.5%*, suggesting an opportun",
-      "provider": "GitHub Models",
-      "ts": 1783777832.4706059,
-      "score": 7
+      "ts": "2026-07-15 12:12:13"
+    },
+    {
+      "emp": "devops_dir",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the risk with a 12% failure rate, and provides concrete, actionable points such as implementing caching strategies and stabilizing flaky tests.",
+      "channel": "unknown",
+      "ts": "2026-07-15 12:12:19"
+    },
+    {
+      "emp": "exec_eng",
+      "score": 2,
+      "reason": "Output lacks concrete insights and actionable points, only mentioning a generic investigation into response time without providing any specific findings or recommendations.",
+      "channel": "unknown",
+      "ts": "2026-07-15 12:12:28"
     },
     {
       "emp": "derivatives_desk",
+      "score": 7,
+      "reason": "Provides specific data on gamma exposure and open interest but lacks in-depth analysis or actionable trading strategies based on the findings.",
       "channel": "unknown",
-      "text": "I'm currently assessing the *EquityOptionsFlowData.csv*, where the **delta exposure** has shifted to **-1500**, suggesting increased dealer hedging in response to bearish pressure. Additionally, I've noted that **65% of recent options trades** are in puts, indicating heightened demand for downside p",
-      "provider": "GitHub Models",
-      "ts": 1783777836.2384202,
-      "score": 7
+      "ts": "2026-07-15 12:12:51"
     },
     {
       "emp": "arb_trader",
+      "score": 7,
+      "reason": "Identifies an arbitrage opportunity with specific metrics but lacks actionable execution steps and risk management details.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the *CrossExchangePricingData.csv*, where I identified a price discrepancy of **$1.50** between exchanges A and B on *XYZ ETF*. This indicates a potential arbitrage opportunity with an estimated edge of **1.2%**. I\u2019m assessing the execution risk based on the current liquidity",
-      "provider": "GitHub Models",
-      "ts": 1783777839.7259703,
-      "score": 7
+      "ts": "2026-07-15 12:12:53"
     },
     {
       "emp": "portfolio_manager",
+      "score": 7,
+      "reason": "While it provides specific data points regarding Sharpe ratio and drawdowns, it lacks concrete actionable steps or insights for portfolio adjustments.",
       "channel": "unknown",
-      "text": "I'm currently monitoring the aggregate portfolio risk and have identified a significant strategy correlation spike in our derivatives desk, where correlation coefficients have risen to **0.75** for the past week, indicating heightened risk among related instruments. The portfolio-level Sharpe ratio ",
-      "provider": "GitHub Models",
-      "ts": 1783777843.7507277,
-      "score": 7
+      "ts": "2026-07-15 12:13:00"
     },
     {
       "emp": "market_maker",
+      "score": 7,
+      "reason": "While it provides specific figures for spreads and inventory, it lacks actionable steps to mitigate adverse selection risk related to the skew.",
       "channel": "unknown",
-      "text": "I'm currently focused on *spread quoting* for active symbols. The current *bid-ask spread* for *ABC Corp* is **$0.15**, which is slightly wider than usual, indicating potential market volatility. Additionally, our inventory shows a skew with **70% long positions** and a rising adverse-flow signal as",
-      "provider": "GitHub Models",
-      "ts": 1783777847.6305935,
-      "score": 7
+      "ts": "2026-07-15 12:13:04"
     },
     {
       "emp": "regime_analyst",
+      "score": 5,
+      "reason": "While it identifies a risk-on environment and mentions volatility, it lacks specific actionable strategies beyond long equity positions and does not provide insights from the mentioned file.",
       "channel": "unknown",
-      "text": "*Currently, I am analyzing the latest data to evaluate our current market regime using the HMM regime classifier. The transition probabilities indicate a *risk-off* stance with a 70% probability of remaining in this regime, suggesting that we should **pause our aggressive long strategies** and consi",
-      "provider": "GitHub Models",
-      "ts": 1783777850.8694427,
-      "score": 7
+      "ts": "2026-07-15 12:13:10"
     },
     {
       "emp": "backtest_engineer",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "I'm currently finalizing the backtest results for our latest mean-reversion strategy using the *backtest_results/mean_reversion_strategy_2023.yml* file. The strategy achieved an annualized return of **15%** with a maximum drawdown of **8%** over the past 12 months. I am validating the transaction co",
-      "provider": "GitHub Models",
-      "ts": 1783777854.524399,
-      "score": 8
+      "ts": "2026-07-15 12:13:14"
     },
     {
-      "emp": "rl_trader",
+      "emp": "data_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "*I'm currently fine-tuning the **PPO** model for our RL-based execution strategy, using the `backtest_results/execution_strategy_2023.yml` file as a reference*. The model is showing a **25%** reduction in slippage cost compared to the baseline strategy, with a **0.85** Sharpe ratio on the `2022-01-0",
-      "provider": "litellm:groq",
-      "ts": 1783777862.3532486,
-      "score": 5
-    },
-    {
-      "emp": "data_engineer_2",
-      "channel": "unknown",
-      "text": "I am currently analyzing the *market data ingestion* process, focusing on the *S3 bucket performance for stored timestamps*. As of now, I've identified a *5% increase in feed latency* for the last hour, specifically affecting files in the */data/market_quotes/2023-10-02/* directory, where several ba",
-      "provider": "GitHub Models",
-      "ts": 1783778410.8951888,
-      "score": 6
-    },
+      "ts": "2026-07-15 12:13:31"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "crypto_defi_desk",
       "channel": "unknown",
@@ -2767,6 +2643,134 @@
       "provider": "Gemini(GEMINI_API_KEY_2)",
       "ts": 1783843313.0344558,
       "score": 5
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*Currently, I am analyzing the funding rate for BTC, which stands at 0.05%, indicating potential upward pressure as long positions are willing to pay a premium. Additionally, I'm monitoring the perpetual futures open interest, which shows a recent increase of 3.2% to $10.5 billion, suggesting growin",
+      "provider": "GitHub Models",
+      "ts": 1784117442.5599701,
+      "score": 7
+    },
+    {
+      "emp": "vp_eng",
+      "channel": "unknown",
+      "text": "*Currently, I am analyzing the funding rate for BTC, which stands at *0.05%*, indicating potential upward pressure as long positions are willing to pay a premium. Additionally, I'm monitoring the perpetual swap volume, which has surged to *$1.2 billion* in the last 24 hours, suggesting increased mar",
+      "provider": "GitHub Models",
+      "ts": 1784117509.8811264,
+      "score": 7
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "Currently, I am evaluating the **momentum signal** for our top five equities by analyzing the **10-day price changes** stored in `/data/equities/momentum_analysis.csv`. The average momentum score for these equities stands at **5.2%,** indicating a potential for continuation. Additionally, I am condu",
+      "provider": "GitHub Models",
+      "ts": 1784117517.4247355,
+      "score": 7
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*Currently, I am focusing on the funding rate for BTC, which is at *0.05%*, indicating substantial interest from long positions willing to pay a premium, suggesting potential upward price movement. Simultaneously, I am analyzing liquidation levels on perpetual futures from `/data/futures/liquidation",
+      "provider": "GitHub Models",
+      "ts": 1784117521.5261528,
+      "score": 9
+    },
+    {
+      "emp": "risk_eng",
+      "channel": "unknown",
+      "text": "*Currently, I am monitoring the funding rate for BTC, which is at *0.05%*, suggesting substantial interest from long positions willing to pay a premium, indicating potential upward price movement. I am also ensuring compliance with our risk management protocols, specifically checking the *position l",
+      "provider": "GitHub Models",
+      "ts": 1784117525.6124873,
+      "score": 7
+    },
+    {
+      "emp": "backend_lead",
+      "channel": "unknown",
+      "text": "*Currently, I am optimizing the async SQLAlchemy integration in our FastAPI service.* I've identified that the response time for our `/get_user_data` endpoint is averaging *350ms*, which can be improved by indexing the `user_id` column in the `users` table located in `/migrations/versions/`. I'm als",
+      "provider": "GitHub Models",
+      "ts": 1784117529.8848217,
+      "score": 7
+    },
+    {
+      "emp": "qa_dir",
+      "channel": "unknown",
+      "text": "*Currently, I am reviewing the pytest suite to identify critical gaps in our test coverage. The last report indicated that our coverage for `tests/test_user.py` is at *65%*, which is below our target of 80%. I'll be prioritizing adding tests for the `get_user_data()` function to enhance our coverage",
+      "provider": "GitHub Models",
+      "ts": 1784117533.60173,
+      "score": 7
+    },
+    {
+      "emp": "devops_dir",
+      "channel": "unknown",
+      "text": "*Currently focused on optimizing our GitHub Actions pipelines for faster deployment times. The average duration for our main CI pipeline located in `.github/workflows/ci.yml` is *2.5 minutes*, which I aim to reduce by implementing caching strategies for dependencies and parallelizing test jobs. Addi",
+      "provider": "GitHub Models",
+      "ts": 1784117539.5344958,
+      "score": 8
+    },
+    {
+      "emp": "exec_eng",
+      "channel": "unknown",
+      "text": "Currently, I am investigating the impact of the *350ms* average response time \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1784117548.708029,
+      "score": 2
+    },
+    {
+      "emp": "derivatives_desk",
+      "channel": "unknown",
+      "text": "Currently analyzing our gamma exposure using the latest options data, which shows a significant increase in open interest for $AAPL calls at the $150 strike, currently at *15,000 contracts*, indicating potential bullish sentiment. This aligns with the recent price movement where $AAPL has gained *3%",
+      "provider": "GitHub Models",
+      "ts": 1784117571.0150604,
+      "score": 7
+    },
+    {
+      "emp": "arb_trader",
+      "channel": "unknown",
+      "text": "Currently, I am monitoring the arbitrage opportunity arising from the price discrepancy between the *SPY ETF* and its *NAV*. The current spread is *$0.25*, with an estimated edge of *0.15%*, indicating a potential profit once executed. I am assessing the execution risk based on the average *volume o",
+      "provider": "GitHub Models",
+      "ts": 1784117573.828296,
+      "score": 7
+    },
+    {
+      "emp": "portfolio_manager",
+      "channel": "unknown",
+      "text": "*Currently analyzing portfolio risk metrics from the `portfolio_analysis.csv` file. The year-to-date Sharpe ratio stands at *1.25*, with a max drawdown of *8%*. Notably, I'm monitoring correlations between strategies, with a spike observed in the last 30 days, where the correlation exceeded *0.7* be",
+      "provider": "GitHub Models",
+      "ts": 1784117580.314149,
+      "score": 7
+    },
+    {
+      "emp": "market_maker",
+      "channel": "unknown",
+      "text": "*Currently, I'm assessing our current bid-ask spreads on active symbols, with the spread for $AAPL at *$0.30* and for $SPY at *$0.25*. I've also noted an inventory skew for $AAPL, which currently holds *60% long* versus *40% short*, raising potential adverse-selection risk if informed trading occurs",
+      "provider": "GitHub Models",
+      "ts": 1784117584.0669668,
+      "score": 7
+    },
+    {
+      "emp": "regime_analyst",
+      "channel": "unknown",
+      "text": "*Currently analyzing the HMM regime classifier, which indicates a transition to a risk-on environment with a probability of 0.75. The latest volatility regime shows an implied volatility of 18% for the next week, suggesting we should activate strategies focused on long equity positions. Specifically",
+      "provider": "GitHub Models",
+      "ts": 1784117590.2785366,
+      "score": 5
+    },
+    {
+      "emp": "backtest_engineer",
+      "channel": "unknown",
+      "text": "*Currently optimizing the backtesting framework to ensure zero lookahead bias in our strategy evaluations. I've updated the `walk_forward_config.yml` to adjust the rolling window size from 252 to 200 days, aiming to improve out-of-sample performance. Preliminary tests on the `performance_results.csv",
+      "provider": "GitHub Models",
+      "ts": 1784117594.8235157,
+      "score": 5
+    },
+    {
+      "emp": "data_lead",
+      "channel": "unknown",
+      "text": "Currently, I'm focused on optimizing our real-time data ingestion pipelines. I \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784117611.818088,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -2777,7 +2781,7 @@
     "risk_eng": "GitHub Models",
     "backend_lead": "GitHub Models",
     "qa_dir": "GitHub Models",
-    "exec_eng": "litellm:groq",
+    "exec_eng": "Gemini(GEMINI_API_KEY_2)",
     "poly_desk": "Gemini(GEMINI_API_KEY)",
     "ml_researcher": "Gemini(GEMINI_API_KEY_3)",
     "vp_research": "GitHub Models",
@@ -2805,14 +2809,14 @@
     "ml_infra": "GitHub Models",
     "senior_quant": "Gemini(GEMINI_API_KEY_3)",
     "regime_analyst": "GitHub Models",
-    "backtest_engineer": "Gemini(GEMINI_API_KEY)",
+    "backtest_engineer": "GitHub Models",
     "data_engineer_2": "GitHub Models",
     "infra_lead": "GitHub Models",
     "nlp_researcher": "GitHub Models",
     "research_ops": "GitHub Models",
     "latency_engineer": "GitHub Models",
     "frontend_lead": "GitHub Models",
-    "data_lead": "GitHub Models",
+    "data_lead": "Gemini(GEMINI_API_KEY)",
     "alpha_researcher": "Gemini(GEMINI_API_KEY_2)",
     "derivatives_desk": "GitHub Models",
     "crypto_defi_desk": "GitHub Models",
@@ -2820,17 +2824,17 @@
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781095580.7191632,
-    "GEMINI_API_KEY_2": 1783841392.4341512,
-    "GEMINI_API_KEY_3": 1783843249.559298,
+    "GEMINI_API_KEY_2": 1784117500.3699613,
+    "GEMINI_API_KEY_3": 1784117500.3699613,
     "gemini_fallback_engineering": 1783431335.8249903
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
-      "date": "2026-07-12",
+      "date": "2026-07-15",
       "used": 300
     },
     "GEMINI_API_KEY_3": {
-      "date": "2026-07-12",
+      "date": "2026-07-15",
       "used": 300
     }
   },
@@ -2850,6 +2854,10 @@
       "GEMINI_API_KEY_3": 300
     },
     "2026-07-12": {
+      "GEMINI_API_KEY_2": 300,
+      "GEMINI_API_KEY_3": 300
+    },
+    "2026-07-15": {
       "GEMINI_API_KEY_2": 300,
       "GEMINI_API_KEY_3": 300
     }
