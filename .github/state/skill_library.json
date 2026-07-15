@@ -199,8 +199,13 @@
     "Log trade errors",
     "Review agent memory",
     "Validate queue length",
-    "Improve alpha decay"
+    "Improve alpha decay",
+    "schemas on tasks/agent_memory.py: success \u2014 tests green",
+    "schemas on api/v1/regime.py: success \u2014 tests green",
+    "schemas on test/unit/test_registry_import_safe.py: success \u2014 tests green",
+    "schemas on strategies/manual/residual_momentum.py: success \u2014 tests green",
+    "schemas on ml/features/wavelet_features.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-15T05:13:32.336281+00:00",
+  "last_updated": "2026-07-15T07:29:06.060691+00:00",
   "total": 200
 }
