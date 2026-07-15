@@ -87,18 +87,6 @@ class StressResult:
     data_points: int
 
 
-def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
-    """Vectorized slice of a Series using .loc; returns None if input is None."""
-    if series is None:
-        return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
-    try:
-        return series.loc[start:end]
-    except Exception:
-        mask = (series.index >= start) & (series.index <= end)
-        return series.loc[mask]
-
-
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -118,16 +106,27 @@ def run_stress_tests(
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
 
+    # Build a DataFrame once to enable vectorized slicing
+    data = {"signals": signals, "prices": prices}
+    if opens is not None:
+        data["opens"] = opens
+    if volume is not None:
+        data["volume"] = volume
+    df = pd.DataFrame(data)
+
+    # Ensure the index is a DatetimeIndex for fast slicing
+    df.index = pd.to_datetime(df.index)
+
+    price_index = df["prices"].index
     results: list[StressResult] = []
 
-    # Convert once to pandas Timestamp for efficient comparison
-    price_index = prices.index
+    # Pre‑convert scenario dates to Timestamps to avoid repeated construction
+    scenario_bounds = [
+        (sc, pd.Timestamp(sc.start), pd.Timestamp(sc.end)) for sc in scenarios
+    ]
 
-    for scenario in scenarios:
-        start_ts = pd.Timestamp(scenario.start)
-        end_ts = pd.Timestamp(scenario.end)
-
-        # Fast check: if the scenario window does not intersect the price index, skip early
+    for scenario, start_ts, end_ts in scenario_bounds:
+        # Fast check: skip if the scenario window does not intersect the price index
         if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
             results.append(
                 StressResult(
@@ -139,27 +138,25 @@ def run_stress_tests(
             )
             continue
 
-        s_signals = _slice_series(signals, start_ts, end_ts)
-        s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+        slice_df = df.loc[start_ts:end_ts]
 
-        if s_prices is None or len(s_prices) < 5:
+        s_prices = slice_df["prices"]
+        if len(s_prices) < 5:
             results.append(
                 StressResult(
                     scenario=scenario,
                     metrics=None,
                     period_covered=False,
-                    data_points=len(s_prices) if s_prices is not None else 0,
+                    data_points=len(s_prices),
                 )
             )
             continue
 
         metrics = run_backtest(
-            signals=s_signals,
+            signals=slice_df["signals"],
             prices=s_prices,
-            opens=s_opens,
-            volume=s_volume,
+            opens=slice_df["opens"] if "opens" in slice_df.columns else None,
+            volume=slice_df["volume"] if "volume" in slice_df.columns else None,
             initial_equity=initial_equity,
             commission_pct=commission_pct,
             slippage_pct=slippage_pct,
@@ -181,7 +178,7 @@ def stress_summary(results: list[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
+    Returns per‑scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
     out: dict = {}
