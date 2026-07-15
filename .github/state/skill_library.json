@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Validate config files",
     "Verify dependency versions",
     "Log system memory",
     "Check db connections",
@@ -199,8 +198,9 @@
     "Track timeout errors",
     "Check disk space",
     "Verify SSL certs",
-    "Log exception types"
+    "Log exception types",
+    "Test API rate limits"
   ],
-  "last_updated": "2026-07-15T20:31:25.767632+00:00",
+  "last_updated": "2026-07-15T21:56:08.506742+00:00",
   "total": 200
 }
