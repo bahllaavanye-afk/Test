@@ -19,17 +19,19 @@ Modes:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 # ── Provider definitions ──────────────────────────────────────────────────────
+
 
 @dataclass
 class LLMProvider:
@@ -39,10 +41,10 @@ class LLMProvider:
     model: str
     max_tokens: int = 2048
     timeout: float = 30.0
-    headers_extra: dict = field(default_factory=dict)
+    headers_extra: Dict[str, Any] = field(default_factory=dict)
 
 
-PROVIDERS: list[LLMProvider] = [
+PROVIDERS: List[LLMProvider] = [
     LLMProvider(
         name="gemini",
         env_key="GEMINI_API_KEY",
@@ -103,17 +105,71 @@ class LLMResponse:
     tokens_used: int = 0
 
 
+# ── Global async HTTP client (reused across calls) ─────────────────────────────
+
+_client_lock = asyncio.Lock()
+_shared_client: httpx.AsyncClient | None = None
+
+
+async def _get_shared_client() -> httpx.AsyncClient:
+    """Return a lazily‑initialized shared AsyncClient."""
+    global _shared_client
+    async with _client_lock:
+        if _shared_client is None:
+            _shared_client = httpx.AsyncClient()
+        return _shared_client
+
+
+# ── Simple in‑memory cache for identical prompts ─────────────────────────────
+
+_CACHE_TTL_SECONDS = 300  # 5 minutes
+_response_cache: Dict[Tuple[str, str], Tuple[float, LLMResponse]] = {}
+_cache_lock = asyncio.Lock()
+
+
+def _make_cache_key(provider_name: str, messages: List[dict]) -> Tuple[str, str]:
+    """Create a hash‑stable cache key from provider name and message payload."""
+    # json.dumps with sort_keys guarantees deterministic ordering
+    payload_str = json.dumps(messages, sort_keys=True, separators=(",", ":"))
+    return provider_name, payload_str
+
+
+async def _get_cached_response(key: Tuple[str, str]) -> LLMResponse | None:
+    async with _cache_lock:
+        entry = _response_cache.get(key)
+        if entry:
+            timestamp, resp = entry
+            if time.time() - timestamp < _CACHE_TTL_SECONDS:
+                return resp
+            # stale entry – remove
+            del _response_cache[key]
+    return None
+
+
+async def _store_cached_response(key: Tuple[str, str], response: LLMResponse) -> None:
+    async with _cache_lock:
+        _response_cache[key] = (time.time(), response)
+
+
 # ── Core caller ───────────────────────────────────────────────────────────────
+
 
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
+    """Invoke a single provider; returns None on failure or missing API key."""
     api_key = os.getenv(provider.env_key, "")
     if not api_key or api_key in ("disabled", ""):
         return None
+
+    cache_key = _make_cache_key(provider.name, messages)
+    cached = await _get_cached_response(cache_key)
+    if cached:
+        logger.debug("Cache hit for provider %s", provider.name)
+        return cached
 
     payload = {
         "model": provider.model,
@@ -124,32 +180,49 @@ async def _call_provider(
 
     t0 = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=provider.timeout) as client:
-            resp = await client.post(
-                f"{provider.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            tokens = data.get("usage", {}).get("total_tokens", 0)
-            latency = (time.monotonic() - t0) * 1000
-            return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
-    except Exception as e:
+        client = await _get_shared_client()
+        resp = await client.post(
+            f"{provider.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                **provider.headers_extra,
+            },
+            json=payload,
+            timeout=provider.timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        tokens = data.get("usage", {}).get("total_tokens", 0)
+        latency = (time.monotonic() - t0) * 1000
+        result = LLMResponse(
+            provider=provider.name,
+            content=content,
+            latency_ms=latency,
+            tokens_used=tokens,
+        )
+        await _store_cached_response(cache_key, result)
+        return result
+    except Exception as e:  # pragma: no cover
         logger.debug("Provider %s failed: %s", provider.name, e)
         return None
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 async def call_race(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
 ) -> LLMResponse | None:
-    """Call all available providers in parallel; return the first successful response."""
+    """
+    Call all configured providers in parallel and return the first successful response.
+
+    Remaining pending calls are cancelled to free resources.
+    """
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
@@ -176,12 +249,16 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
-) -> list[LLMResponse]:
-    """Call all providers and return all successful responses for consensus analysis."""
+) -> List[LLMResponse]:
+    """
+    Call all configured providers and return the list of successful responses.
+
+    Useful for consensus‑based decision making.
+    """
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
@@ -193,6 +270,6 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
-    """Return names of providers with configured API keys."""
+def available_providers() -> List[str]:
+    """Return the names of providers that have a valid API key configured."""
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
