@@ -5,14 +5,14 @@ For each registered single-symbol strategy that consumes plain OHLCV, this asser
   * `backtest_signals()` returns clean boolean signals (no NaN),
   * no entry on bar 0 (a shifted signal can't fire on the first bar), and
   * **causality / truncation invariance** — entries on `df[:k]` must equal
-    `entries[:k]` on the full series; if removing the future changes the past, the
-    strategy peeked ahead.
+    `entries[:k]` on the full series; if removing the future changes the past,
+    the strategy peeked ahead.
 
 Strategies needing special data (multi-symbol, macro panels, etc.) are skipped
-gracefully. The handful with *known* lookahead debt are xfail-tracked below so the
+gracefully. The handful with known lookahead debt are xfail‑tracked below so the
 guard stays green while documenting them — but any NEW strategy that leaks the
-future fails hard. Survey that seeded this: 104/108 produce signals, 0 bar-0
-entries, 0 NaN, 4 lookahead, 1 non-binary.
+future fails hard. Survey that seeded this: 104/108 produce signals, 0 bar‑0
+entries, 0 NaN, 4 lookahead, 1 non‑binary.
 """
 from __future__ import annotations
 
@@ -23,8 +23,6 @@ import pytest
 from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
 
-# Known debt — tracked in GitHub issues (agent-fix-needed). xfail keeps CI green
-# while flagging them; if one is fixed it xpasses, prompting removal from the set.
 KNOWN_LOOKAHEAD = {
     "kalman_pairs",
     "macro_risk_barometer",
@@ -59,11 +57,11 @@ def _signals_or_skip(name: str):
         pytest.skip(f"{name}: disabled (optional dep missing)")
     try:
         inst = cls()
-    except Exception as e:  # needs constructor args (e.g. pairs) — out of scope here
+    except Exception as e:
         pytest.skip(f"{name}: not default-constructible ({e})")
     try:
         sig = inst.backtest_signals(_ohlcv())
-    except Exception as e:  # needs multi-symbol / special panels
+    except Exception as e:
         pytest.skip(f"{name}: backtest_signals needs special data ({e})")
     if not isinstance(sig, BacktestSignals):
         pytest.skip(f"{name}: not a plain-OHLCV BacktestSignals strategy")
