@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import time
+import unittest
 from itertools import combinations
 from typing import List
 
@@ -190,8 +191,6 @@ class CPCV:
         signals = signals.loc[common_idx]
         returns = returns.loc[common_idx]
 
-        signal_count = int(len(signals))
-
         sharpes: list[float] = []
         total_pnl = 0.0
 
@@ -222,15 +221,64 @@ class CPCV:
                 "is_overfit": dsr < 0.8 * mean_sr,
             }
 
-        exec_time = time.time() - start_time
-
-        logger.info(
-            "CPCV validation completed",
-            extra={
-                "signal_count": signal_count,
-                "execution_time_sec": exec_time,
-                "total_pnl": total_pnl,
-            },
+        logger.debug(
+            "CPCV validation completed in %.4f seconds",
+            time.time() - start_time,
         )
-
         return result
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+
+
+class TestCPCV(unittest.TestCase):
+    def test_split_insufficient_data_raises(self):
+        """When the index length is smaller than the number of folds, split should raise."""
+        cpcv = CPCV(n_splits=5, purge_days=0, embargo_days=0)
+        idx = pd.DatetimeIndex(pd.date_range("2020-01-01", periods=3, freq="D"))
+        with self.assertRaises(ValueError) as cm:
+            list(cpcv.split(idx))
+        self.assertIn("too short for", str(cm.exception))
+
+    def test_deflated_sharpe_empty_and_single(self):
+        """deflated_sharpe should handle empty list and single-element list correctly."""
+        cpcv = CPCV()
+        # Empty list returns 0.0
+        self.assertEqual(cpcv.deflated_sharpe([], n_trials=10), 0.0)
+        # Single element returns the element itself
+        self.assertAlmostEqual(cpcv.deflated_sharpe([1.23], n_trials=10), 1.23, places=6)
+
+    def test_split_zero_purge_embargo(self):
+        """With zero purge and embargo days, train set should contain all non‑test folds."""
+        cpcv = CPCV(n_splits=2, purge_days=0, embargo_days=0)
+        idx = pd.DatetimeIndex(pd.date_range("2021-01-01", periods=4, freq="D"))
+        splits = list(cpcv.split(idx))
+        # Expect two splits, each test fold size = 2
+        self.assertEqual(len(splits), 2)
+        train0, test0 = splits[0]
+        train1, test1 = splits[1]
+        self.assertCountEqual(test0, [0, 1])
+        self.assertCountEqual(test1, [2, 3])
+        # With no purge/embargo, train indices are the complementary set
+        self.assertCountEqual(train0, [2, 3])
+        self.assertCountEqual(train1, [0, 1])
+
+    def test_validate_mismatched_indices(self):
+        """validate should align signals and returns on their intersection without error."""
+        dates = pd.date_range("2022-01-01", periods=6, freq="D")
+        signals = pd.Series([1, -1, 0, 1, -1, 0], index=dates)
+        # Returns miss the first date
+        returns = pd.Series([0.01, -0.02, 0.015, -0.005, 0.02], index=dates[1:])
+        cpcv = CPCV(n_splits=2, purge_days=0, embargo_days=0)
+        result = cpcv.validate(signals, returns)
+        # After alignment, we have 5 common dates, fold size = 2 (since 5 // 2 = 2)
+        self.assertIn("fold_sharpes", result)
+        self.assertIsInstance(result["fold_sharpes"], list)
+        # Ensure the result dict contains the expected keys
+        for key in ("mean_sharpe", "deflated_sharpe", "is_overfit"):
+            self.assertIn(key, result)
+
+if __name__ == "__main__":
+    unittest.main(argv=["first-arg-is-ignored"], exit=False)
