@@ -122,3 +122,44 @@ def test_run_without_keys_exits_clean(monkeypatch, capsys):
     m.OANDA_ACCOUNT_ID = ""
     assert asyncio.run(m.run()) == 0
     assert "keys absent" in capsys.readouterr().out
+
+
+# ── ForexFactory red-folder gate ─────────────────────────────────────────────
+
+def _ev(country="USD", impact="High", offset_min=0, title="Non-Farm Payrolls"):
+    from datetime import datetime, timedelta, timezone
+    when = datetime.now(timezone.utc) + timedelta(minutes=offset_min)
+    return {"title": title, "country": country, "impact": impact,
+            "date": when.isoformat()}
+
+
+def test_blackout_blocks_pair_currency_inside_window():
+    assert fx.red_folder_blackout("EUR_USD", [_ev("USD", offset_min=10)],
+                                  window_min=30) == "Non-Farm Payrolls"
+    # the counter-currency triggers too
+    assert fx.red_folder_blackout("EUR_USD", [_ev("EUR", offset_min=-15)],
+                                  window_min=30) is not None
+
+
+def test_blackout_ignores_unrelated_currency_and_low_impact():
+    assert fx.red_folder_blackout("EUR_USD", [_ev("JPY", offset_min=5)],
+                                  window_min=30) is None
+    assert fx.red_folder_blackout("EUR_USD", [_ev("USD", impact="Medium", offset_min=5)],
+                                  window_min=30) is None
+    assert fx.red_folder_blackout("EUR_USD", [_ev("USD", impact="Holiday", offset_min=5)],
+                                  window_min=30) is None
+
+
+def test_blackout_ignores_events_outside_window_or_bad_dates():
+    assert fx.red_folder_blackout("EUR_USD", [_ev("USD", offset_min=90)],
+                                  window_min=30) is None
+    assert fx.red_folder_blackout("EUR_USD", [{"title": "x", "country": "USD",
+                                               "impact": "High", "date": "not-a-date"}],
+                                  window_min=30) is None
+
+
+def test_calendar_fetch_fails_open(monkeypatch, capsys):
+    monkeypatch.setattr("urllib.request.urlopen",
+                        lambda req, timeout=15: (_ for _ in ()).throw(OSError("feed down")))
+    assert fx.fetch_ff_calendar() == []
+    assert "gate inactive" in capsys.readouterr().out

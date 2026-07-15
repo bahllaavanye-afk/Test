@@ -40,6 +40,52 @@ MAX_ORDERS_PER_RUN = 3
 ANALYZE_TIMEOUT_S = 10.0       # same guard as the main desks
 _UA = "Mozilla/5.0 (X11; Linux x86_64) QuantEdge-FXDesk/1.0"
 
+# ── ForexFactory red-folder gate ─────────────────────────────────────────────
+# Daily-bar FX strategies have no edge through an NFP/CPI/rate-decision print —
+# spreads blow out and the candle is news, not signal. Skip any pair whose
+# currency has a High-impact event within ±FF_BLACKOUT_MIN minutes of now.
+# Fail-OPEN: if the free calendar feed is down, trade as before (a dead feed
+# must never silently halt the desk).
+FF_CALENDAR_URL = os.environ.get(
+    "FF_CALENDAR_URL", "https://nfs.faireconomy.media/ff_calendar_thisweek.json")
+FF_BLACKOUT_MIN = float(os.environ.get("FF_BLACKOUT_MIN", "30"))
+FF_CALENDAR_GATE = os.environ.get("FF_CALENDAR_GATE", "1").strip().lower() not in ("0", "false", "no")
+
+
+def fetch_ff_calendar() -> list[dict]:
+    """This week's ForexFactory calendar. [] on any failure (gate fails open)."""
+    req = urllib.request.Request(FF_CALENDAR_URL, headers={"User-Agent": _UA})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            events = json.loads(r.read())
+        return events if isinstance(events, list) else []
+    except Exception as exc:  # noqa: BLE001 — fail open, but say so
+        print(f"  ⚠ FF calendar fetch failed ({str(exc)[:80]}) — red-folder gate inactive", flush=True)
+        return []
+
+
+def red_folder_blackout(pair: str, events: list[dict],
+                        now: datetime | None = None,
+                        window_min: float | None = None) -> str | None:
+    """Title of a High-impact event within ±window for either pair currency, else None."""
+    now = now or datetime.now(timezone.utc)
+    window = (window_min if window_min is not None else FF_BLACKOUT_MIN) * 60
+    currencies = set(pair.split("_"))
+    for ev in events:
+        if str(ev.get("impact", "")).lower() != "high":
+            continue
+        if str(ev.get("country", "")).upper() not in currencies:
+            continue
+        try:
+            when = datetime.fromisoformat(str(ev.get("date", "")))
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if abs((when - now).total_seconds()) <= window:
+            return str(ev.get("title", "high-impact event"))
+    return None
+
 
 def fx_market_open(now: datetime | None = None) -> bool:
     """FX trades 24/5: closed from Fri 21:00 UTC to Sun 21:05 UTC."""
@@ -144,8 +190,14 @@ async def run() -> int:
     strategies = [(n, STRATEGY_REGISTRY[n]()) for n in STRATEGIES if STRATEGY_REGISTRY.get(n)]
     print(f"FX desk: {len(PAIRS)} pairs × {len(strategies)} strategies")
 
+    ff_events = fetch_ff_calendar() if FF_CALENDAR_GATE else []
+
     signals: list[dict] = []
     for pair in PAIRS:
+        blackout = red_folder_blackout(pair, ff_events)
+        if blackout:
+            print(f"  ⛔ {pair}: red-folder blackout ±{FF_BLACKOUT_MIN:.0f}min — {blackout}", flush=True)
+            continue
         df = fetch_candles(pair)
         if df is None:
             continue
