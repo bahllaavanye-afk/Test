@@ -4,6 +4,7 @@ Splits large orders into N equal slices over duration minutes.
 Minimizes market impact for large positions.
 """
 import asyncio
+import time
 from dataclasses import asdict
 from typing import Any
 
@@ -13,7 +14,7 @@ from app.utils.logging import logger
 
 
 class TWAPExecution:
-    def __init__(self, broker: AbstractBroker, slices: int = 10, duration_minutes: int = 30):
+    def __init__(self, broker: AbstractBroker, slices: int = 10, duration_minutes: int = 30) -> None:
         self.broker = broker
         self.slices = slices
         self.sleep_seconds = (duration_minutes * 60) / slices
@@ -32,6 +33,17 @@ class TWAPExecution:
         OrderResult
             Aggregated result of the TWAP execution.
         """
+        start_time = time.monotonic()
+        logger.info(
+            "Starting TWAP execution",
+            extra={
+                "symbol": request.symbol,
+                "total_quantity": request.quantity,
+                "slices": self.slices,
+                "duration_minutes": int(self.sleep_seconds * self.slices / 60),
+            },
+        )
+
         slice_qty = request.quantity / self.slices
         total_filled = 0.0
         total_cost = 0.0
@@ -49,6 +61,15 @@ class TWAPExecution:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
                 consecutive_failures = 0
+                logger.debug(
+                    "TWAP slice executed",
+                    extra={
+                        "symbol": request.symbol,
+                        "slice": i + 1,
+                        "filled_qty": result.filled_qty,
+                        "avg_fill_price": result.avg_fill_price,
+                    },
+                )
             except (BrokerError, ConnectionError, TimeoutError) as e:
                 consecutive_failures += 1
                 logger.warning(
@@ -73,6 +94,22 @@ class TWAPExecution:
                 await asyncio.sleep(self.sleep_seconds)
 
         avg_price = total_cost / total_filled if total_filled > 0 else None
+        execution_time = time.monotonic() - start_time
+        pnl = (avg_price * total_filled - total_cost) if avg_price is not None else None
+
+        logger.info(
+            "TWAP execution completed",
+            extra={
+                "symbol": request.symbol,
+                "total_filled_qty": total_filled,
+                "total_cost": total_cost,
+                "average_price": avg_price,
+                "execution_time_seconds": execution_time,
+                "pnl": pnl,
+                "status": "filled" if total_filled >= request.quantity * 0.95 else "partial",
+            },
+        )
+
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "twap",
             status="filled"
