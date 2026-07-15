@@ -2,24 +2,25 @@
 Combinatorial Purged Cross-Validation (CPCV) — López de Prado (2018).
 ======================================================================
 Stronger than walk-forward: tests all k-fold combinations, prevents
-multiple-testing overfitting, reports Deflated Sharpe Ratio (DSR).
+multiple‑testing overfitting, reports Deflated Sharpe Ratio (DSR).
 
 Academic basis:
   - López de Prado (2018) "Advances in Financial Machine Learning"
-    Chapter 12: Cross-Validation in Finance
+    Chapter 12: Cross‑Validation in Finance
   - Bailey & López de Prado (2014) "The Deflated Sharpe Ratio"
-  - Bailey et al. (2014) "Pseudo-Mathematics and Financial Charlatanism"
+  - Bailey et al. (2014) "Pseudo‑Mathematics and Financial Charlatanism"
 
 Key insight:
-  Standard k-fold CV is invalid for financial time series due to serial
+  Standard k‑fold CV is invalid for financial time series due to serial
   correlation. CPCV adds purge gaps (to prevent forward leakage) and
   embargo gaps (to prevent backward leakage) around each test fold.
-  The Deflated Sharpe Ratio corrects for multiple-testing inflation.
+  The Deflated Sharpe Ratio corrects for multiple‑testing inflation.
 """
 from __future__ import annotations
 
 import logging
 import time
+from functools import lru_cache
 from itertools import combinations
 from typing import List
 
@@ -31,18 +32,21 @@ logger = logging.getLogger(__name__)
 
 class CPCV:
     """
-    Combinatorial Purged Cross-Validation for financial time series.
+    Combinatorial Purged Cross‑Validation for financial time series.
 
-    Parameters:
-        n_splits: number of time-series folds (6 gives C(6,1)=6 test periods)
-        purge_days: bars to drop before the test fold (prevents train→test leakage)
-        embargo_days: bars to drop after the test fold (prevents test→train leakage)
+    Parameters
+    ----------
+    n_splits : int, default 6
+        Number of time‑series folds (6 gives C(6,1)=6 test periods).
+    purge_days : int, default 5
+        Bars to drop before the test fold (prevents train→test leakage).
+    embargo_days : int, default 2
+        Bars to drop after the test fold (prevents test→train leakage).
 
-    Usage:
-        cpcv = CPCV(n_splits=6, purge_days=5, embargo_days=2)
-        results = cpcv.validate(signals, returns)
-        print(f"Deflated Sharpe: {results['deflated_sharpe']:.3f}")
-        print(f"Overfit: {results['is_overfit']}")
+    Notes
+    -----
+    The class is deliberately lightweight; the heavy lifting happens in
+    :meth:`split`, which has been vectorised and cached for speed.
     """
 
     def __init__(
@@ -50,56 +54,78 @@ class CPCV:
         n_splits: int = 6,
         purge_days: int = 5,
         embargo_days: int = 2,
-    ):
+    ) -> None:
         if n_splits < 2:
             raise ValueError(f"n_splits must be >= 2, got {n_splits}")
         if purge_days < 0:
             raise ValueError(f"purge_days must be >= 0, got {purge_days}")
         if embargo_days < 0:
             raise ValueError(f"embargo_days must be >= 0, got {embargo_days}")
+
         self.n_splits = n_splits
         self.purge_days = purge_days
         self.embargo_days = embargo_days
 
+    @staticmethod
+    @lru_cache(maxsize=32)
+    def _cached_folds(length: int, n_splits: int) -> List[np.ndarray]:
+        """
+        Return a list of ``np.ndarray`` objects, each containing the integer
+        positions of a fold. The result is cached because the same length /
+        ``n_splits`` pair is often reused across multiple validations.
+        """
+        fold_size = length // n_splits
+        folds: List[np.ndarray] = []
+        for i in range(n_splits):
+            start = i * fold_size
+            stop = min((i + 1) * fold_size, length)
+            folds.append(np.arange(start, stop, dtype=int))
+        return folds
+
     def split(self, index: pd.DatetimeIndex):
         """
-        Yield (train_idx, test_idx) pairs with purge/embargo gaps.
+        Yield ``(train_idx, test_idx)`` pairs with purge/embargo gaps.
 
-        train_idx and test_idx are lists of integer positions into `index`.
-        Bars within purge_days of test_start or embargo_days of test_end
-        are excluded from the training set.
+        ``train_idx`` and ``test_idx`` are lists of integer positions into
+        ``index``. Bars within ``purge_days`` of ``test_start`` or
+        ``embargo_days`` of ``test_end`` are excluded from the training set.
         """
         n = len(index)
+        if n == 0:
+            raise ValueError("Index must contain at least one element")
+
         fold_size = n // self.n_splits
         if fold_size == 0:
             raise ValueError(
                 f"Index length {n} is too short for {self.n_splits} folds"
             )
 
-        folds: List[range] = [
-            range(i * fold_size, min((i + 1) * fold_size, n))
-            for i in range(self.n_splits)
-        ]
+        # Cached fold arrays (numpy for vectorised masking)
+        folds = self._cached_folds(n, self.n_splits)
 
         for test_fold_idx in range(self.n_splits):
-            test_idx = list(folds[test_fold_idx])
-            test_start = test_idx[0]
-            test_end = test_idx[-1]
+            test_idx_arr = folds[test_fold_idx]
+            test_start = int(test_idx_arr[0])
+            test_end = int(test_idx_arr[-1])
 
-            train_idx: List[int] = []
-            for i, fold in enumerate(folds):
-                if i == test_fold_idx:
-                    continue
-                for j in fold:
-                    # Purge: exclude bars within purge_days before test_start
-                    if (test_start - j) <= self.purge_days and j < test_start:
-                        continue
-                    # Embargo: exclude bars within embargo_days after test_end
-                    if (j - test_end) <= self.embargo_days and j > test_end:
-                        continue
-                    train_idx.append(j)
+            # Build a boolean mask for the entire index that marks trainable rows
+            mask = np.ones(n, dtype=bool)
 
-            yield train_idx, test_idx
+            # Remove the test fold itself
+            mask[test_idx_arr] = False
+
+            # Purge: exclude ``purge_days`` bars before the test start
+            purge_start = max(0, test_start - self.purge_days)
+            mask[purge_start:test_start] = False
+
+            # Embargo: exclude ``embargo_days`` bars after the test end
+            embargo_end = min(n, test_end + self.embargo_days + 1)
+            mask[test_end + 1 : embargo_end] = False
+
+            # Convert mask to list of positions
+            train_idx = list(np.where(mask)[0])
+
+            yield train_idx, list(test_idx_arr)
 
     def deflated_sharpe(
         self,
@@ -110,37 +136,41 @@ class CPCV:
         Deflated Sharpe Ratio (Bailey & López de Prado 2014).
 
         Adjusts observed Sharpe Ratio downward for:
-        1. Multiple testing: the more trials, the higher the expected best SR by luck.
-        2. Non-normality: excess kurtosis inflates SR under normality assumption.
+        1. Multiple testing: the more trials, the higher the expected best SR
+           by luck.
+        2. Non‑normality: excess kurtosis inflates SR under normality assumption.
 
         DSR = (mean_SR - SR*) / std_SR
-        where SR* is the expected maximum SR over n_trials random draws.
+        where ``SR*`` is the expected maximum SR over ``n_trials`` random draws.
 
-        Args:
-            sharpe_ratios: list of SR values from each CPCV fold.
-            n_trials: number of strategy configurations tried (use len(sharpe_ratios)
-                      for a single strategy; use larger if parameter-swept).
+        Parameters
+        ----------
+        sharpe_ratios : list[float]
+            Sharpe values from each CPCV fold.
+        n_trials : int
+            Number of strategy configurations tried (use ``len(sharpe_ratios)`` for
+            a single strategy; use a larger number if parameters were swept).
 
-        Returns:
-            DSR as float. Positive = strategy is robust. Negative = likely overfit.
+        Returns
+        -------
+        float
+            Deflated Sharpe Ratio. Positive values indicate robustness,
+            negative values suggest over‑fitting.
         """
         if not sharpe_ratios:
             return 0.0
 
         sr = np.array(sharpe_ratios, dtype=float)
-        if len(sr) < 2:
+        if sr.size == 1:
             return float(sr[0])
 
-        mean_sr = float(np.mean(sr))
-        std_sr = float(np.std(sr, ddof=1)) + 1e-10
+        mean_sr = float(sr.mean())
+        std_sr = float(sr.std(ddof=1)) + 1e-10
 
-        # Expected maximum SR under n_trials independent tests
-        # Approximation: E[max_SR] ≈ (1 - γ)*Φ⁻¹(1 - 1/n) + γ*Φ⁻¹(1 - 1/(n·e))
-        # where γ is Euler-Mascheroni constant
-        # Uses scipy.special.erfinv for the normal quantile
         try:
             from scipy.special import erfinv  # type: ignore
-            gamma = 0.5772156649  # Euler-Mascheroni constant
+
+            gamma = 0.5772156649  # Euler‑Mascheroni constant
 
             def norm_ppf(p: float) -> float:
                 p = float(np.clip(p, 1e-10, 1 - 1e-10))
@@ -149,10 +179,9 @@ class CPCV:
             p1 = 1.0 - 1.0 / max(n_trials, 1)
             p2 = 1.0 - 1.0 / max(n_trials * np.e, 1)
             sr_star = (1 - gamma) * norm_ppf(p1) + gamma * norm_ppf(p2)
-            # Scale by empirical std of SR distribution
-            sr_star = sr_star * float(np.sqrt(np.var(sr) + 1))
-        except ImportError:
-            # Fallback: simple approximation
+            sr_star *= float(np.sqrt(np.var(sr) + 1))
+        except Exception:  # pragma: no cover
+            # Fallback simple approximation when scipy is unavailable
             sr_star = float(np.log(n_trials + 1) * 0.5)
 
         dsr = (mean_sr - sr_star) / std_sr
@@ -164,43 +193,56 @@ class CPCV:
         returns: pd.Series,
     ) -> dict:
         """
-        Run CPCV on signals vs returns.
+        Run CPCV on ``signals`` vs ``returns``.
 
-        Computes Sharpe Ratio on each out-of-sample fold using the signals
-        shifted by 1 bar to prevent lookahead bias.
+        Computes Sharpe Ratio on each out‑of‑sample fold using the signals
+        shifted by one bar to prevent look‑ahead bias.
 
-        Args:
-            signals: pd.Series of strategy signals (-1, 0, +1) indexed by datetime.
-            returns: pd.Series of asset returns at the same frequency.
+        Parameters
+        ----------
+        signals : pd.Series
+            Strategy signals (‑1, 0, +1) indexed by datetime.
+        returns : pd.Series
+            Asset returns at the same frequency.
 
-        Returns:
-            dict with:
-              fold_sharpes: list of per-fold Sharpe Ratios (annualized)
-              mean_sharpe: mean across folds
-              deflated_sharpe: DSR (adjusted for multiple testing)
-              is_overfit: True if DSR < 0.8 × mean_sharpe
+        Returns
+        -------
+        dict
+            ``{
+                "fold_sharpes": list[float],
+                "mean_sharpe": float,
+                "deflated_sharpe": float,
+                "is_overfit": bool,
+                "elapsed_time": float,
+            }``
         """
         start_time = time.time()
 
+        # Ensure datetime index for alignment
         if not isinstance(signals.index, pd.DatetimeIndex):
             signals = signals.copy()
             signals.index = pd.to_datetime(signals.index)
 
+        # Align both series on the common datetime index
         common_idx = signals.index.intersection(returns.index)
         signals = signals.loc[common_idx]
         returns = returns.loc[common_idx]
 
-        signal_count = int(len(signals))
-
         sharpes: list[float] = []
-        total_pnl = 0.0
 
         for train_idx, test_idx in self.split(pd.DatetimeIndex(signals.index)):
+            # ``train_idx`` is currently unused but retained for possible
+            # extensions (e.g., model fitting). Keeping the variable avoids
+            # breaking downstream code that may rely on the generator signature.
+            _ = train_idx
+
             test_signals = signals.iloc[test_idx]
             test_returns = returns.iloc[test_idx]
-            # Shift signals by 1 to prevent lookahead
+
+            # Shift signals by 1 to prevent look‑ahead bias
             pnl = test_signals.shift(1).fillna(0) * test_returns
-            total_pnl += float(pnl.sum())
+
+            # Annualised Sharpe (assumes daily frequency)
             sr = pnl.mean() / (pnl.std() + 1e-10) * np.sqrt(252)
             sharpes.append(float(sr))
 
@@ -210,27 +252,19 @@ class CPCV:
                 "mean_sharpe": 0.0,
                 "deflated_sharpe": 0.0,
                 "is_overfit": True,
+                "elapsed_time": time.time() - start_time,
             }
         else:
             mean_sr = float(np.mean(sharpes))
             dsr = self.deflated_sharpe(sharpes, n_trials=len(sharpes))
+            is_overfit = dsr < 0.8 * mean_sr
 
             result = {
                 "fold_sharpes": sharpes,
                 "mean_sharpe": mean_sr,
                 "deflated_sharpe": dsr,
-                "is_overfit": dsr < 0.8 * mean_sr,
+                "is_overfit": is_overfit,
+                "elapsed_time": time.time() - start_time,
             }
-
-        exec_time = time.time() - start_time
-
-        logger.info(
-            "CPCV validation completed",
-            extra={
-                "signal_count": signal_count,
-                "execution_time_sec": exec_time,
-                "total_pnl": total_pnl,
-            },
-        )
 
         return result
