@@ -19,12 +19,13 @@ Setup (one-time, documented in docs/DISCORD_FALLBACK.md):
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timezone
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.utils.logging import logger
 
@@ -41,6 +42,12 @@ _PUBLIC_KEY_HEX = os.environ.get(
 _PING, _APPLICATION_COMMAND = 1, 2
 _PONG, _CHANNEL_MESSAGE = 1, 4
 _EPHEMERAL = 64
+
+# Simple in‑memory caches for expensive commands
+_STATUS_CACHE_TTL = 30  # seconds
+_PNL_CACHE_TTL = 60  # seconds
+_status_cache = {"value": None, "ts": 0}
+_pnl_cache = {"value": None, "ts": 0}
 
 
 def _verify_signature(signature_hex: str, timestamp: str, body: bytes) -> bool:
@@ -60,26 +67,41 @@ def _msg(text: str, ephemeral: bool = False) -> dict:
 
 
 async def _cmd_status() -> str:
+    """Return a short status string, using a cached aggregated DB query."""
+    now_ts = time.time()
+    if _status_cache["value"] is not None and now_ts - _status_cache["ts"] < _STATUS_CACHE_TTL:
+        return _status_cache["value"]
+
     from app.database import AsyncSessionLocal
     from app.models.bot import Bot
 
     async with AsyncSessionLocal() as db:
-        total = (await db.execute(select(func.count(Bot.id)).where(Bot.is_archived == False))).scalar_one()  # noqa: E712
-        enabled = (await db.execute(
-            select(func.count(Bot.id)).where(Bot.is_enabled == True, Bot.is_archived == False)  # noqa: E712
-        )).scalar_one()
-        ran = (await db.execute(
-            select(func.count(Bot.id)).where(Bot.run_count > 0, Bot.is_archived == False)  # noqa: E712
-        )).scalar_one()
+        stmt = (
+            select(
+                func.count(Bot.id).label("total"),
+                func.sum(case((Bot.is_enabled == True, 1), else_=0)).label("enabled"),
+                func.sum(case((Bot.run_count > 0, 1), else_=0)).label("ran"),
+            )
+            .where(Bot.is_archived == False)  # noqa: E712
+        )
+        result = await db.execute(stmt)
+        total, enabled, ran = result.one()
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
-    return (
+    status_msg = (
         f"**QuantEdge status** · {now}\n"
         f"🤖 Bots: {enabled}/{total} enabled, {ran} have executed\n"
         f"📈 Mode: paper · scheduler alive (this reply proves the API is awake)"
     )
+    _status_cache.update({"value": status_msg, "ts": now_ts})
+    return status_msg
 
 
 async def _cmd_pnl() -> str:
+    """Return P&L summary, cached for a short interval."""
+    now_ts = time.time()
+    if _pnl_cache["value"] is not None and now_ts - _pnl_cache["ts"] < _PNL_CACHE_TTL:
+        return _pnl_cache["value"]
+
     from app.api.v1.accounts import latest_total_equity
     from app.database import AsyncSessionLocal
     from app.models.position import Position
@@ -88,16 +110,20 @@ async def _cmd_pnl() -> str:
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     async with AsyncSessionLocal() as db:
         equity = await latest_total_equity(db)
-        n_closed, pnl_today = (await db.execute(
-            select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
-            .where(Trade.closed_at >= today_start)
-        )).one()
+        n_closed, pnl_today = (
+            await db.execute(
+                select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
+                .where(Trade.closed_at >= today_start)
+            )
+        ).one()
         open_count = (await db.execute(select(func.count(Position.id)))).scalar_one()
     arrow = "▲" if float(pnl_today) >= 0 else "▼"
-    return (
+    pnl_msg = (
         f"**P&L** {arrow} ${float(pnl_today):,.2f} today\n"
         f"💰 Equity: ${equity:,.2f} · closed today: {int(n_closed)} · open positions: {int(open_count)}"
     )
+    _pnl_cache.update({"value": pnl_msg, "ts": now_ts})
+    return pnl_msg
 
 
 async def _cmd_health() -> str:
@@ -131,13 +157,17 @@ async def _cmd_run_bot(name_query: str) -> str:
     if not q:
         return "Usage: `/run-bot name:<part of the bot's name>`"
     async with AsyncSessionLocal() as db:
-        bots = (await db.execute(
-            select(Bot).where(
-                Bot.is_enabled == True,  # noqa: E712
-                Bot.is_archived == False,  # noqa: E712
-                Bot.name.ilike(f"%{q}%"),
-            ).limit(2)
-        )).scalars().all()
+        bots = (
+            await db.execute(
+                select(Bot)
+                .where(
+                    Bot.is_enabled == True,  # noqa: E712
+                    Bot.is_archived == False,  # noqa: E712
+                    Bot.name.ilike(f"%{q}%"),
+                )
+                .limit(2)
+            )
+        ).scalars().all()
         if not bots:
             return f"No enabled bot matches `{q}`."
         if len(bots) > 1:
