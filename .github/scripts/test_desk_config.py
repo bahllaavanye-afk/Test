@@ -36,8 +36,16 @@ dop = _load()
 
 
 def _registry():
+    """Full backend strategy registry — needs the backend's heavy deps
+    (statsmodels etc.), which the lightweight test-agents CI job doesn't
+    install. Skip there; backend/tests/unit/test_desk_registry_sync.py runs
+    the same cross-check in the backend job where deps are guaranteed."""
     sys.path.insert(0, str(_BACKEND))
-    from app.strategies import STRATEGY_REGISTRY
+    try:
+        from app.strategies import STRATEGY_REGISTRY
+    except ModuleNotFoundError as exc:
+        pytest.skip(f"backend deps unavailable in this job ({exc.name}); "
+                    f"covered by backend test_desk_registry_sync.py")
     return STRATEGY_REGISTRY
 
 
