@@ -9,8 +9,72 @@ above its trend EMA, so we fade dips inside uptrends rather than catching fallin
 knives. Exit when CCI reaches the overbought band (reversion complete).
 """
 import pandas as pd
+from pydantic import BaseModel, Field, validator
+
 import app.ml.features.pandas_ta_compat as ta
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+
+class CCIReversionParams(BaseModel):
+    """Parameters for the CCI Reversion strategy.
+
+    Attributes
+    ----------
+    cci_period: int
+        Period length for the CCI calculation. Must be >= 1.
+        Example: 20
+    oversold: float
+        CCI value considered oversold. Must be negative and less than `overbought`.
+        Example: -100.0
+    overbought: float
+        CCI value considered overbought. Must be positive and greater than `oversold`.
+        Example: 100.0
+    trend_period: int
+        EMA period used as the trend filter. Must be >= 1.
+        Example: 50
+    """
+
+    cci_period: int = Field(
+        20,
+        ge=1,
+        description="Period length for the CCI calculation.",
+        example=20,
+    )
+    oversold: float = Field(
+        -100.0,
+        description="CCI threshold considered oversold (negative).",
+        example=-100.0,
+    )
+    overbought: float = Field(
+        100.0,
+        description="CCI threshold considered overbought (positive).",
+        example=100.0,
+    )
+    trend_period: int = Field(
+        50,
+        ge=1,
+        description="EMA period used as the trend filter.",
+        example=50,
+    )
+
+    @validator("oversold")
+    def oversold_must_be_negative(cls, v):
+        if v >= 0:
+            raise ValueError("oversold must be a negative value.")
+        return v
+
+    @validator("overbought")
+    def overbought_must_be_positive(cls, v):
+        if v <= 0:
+            raise ValueError("overbought must be a positive value.")
+        return v
+
+    @validator("oversold")
+    def oversold_less_than_overbought(cls, v, values):
+        overbought = values.get("overbought")
+        if overbought is not None and v >= overbought:
+            raise ValueError("oversold must be less than overbought.")
+        return v
 
 
 class CCIReversionStrategy(AbstractStrategy):
@@ -25,16 +89,17 @@ class CCIReversionStrategy(AbstractStrategy):
         "cci_period": 20,
         "oversold": -100.0,
         "overbought": 100.0,
-        "trend_period": 50,   # EMA trend filter — only buy dips in uptrends
+        "trend_period": 50,  # EMA trend filter — only buy dips in uptrends
     }
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        effective = {**self.DEFAULT_PARAMS, **(params or {})}
-        self.cci_period = effective["cci_period"]
-        self.oversold = effective["oversold"]
-        self.overbought = effective["overbought"]
-        self.trend_period = effective["trend_period"]
+        # Validate and apply defaults via Pydantic schema
+        self.params = CCIReversionParams(**(params or {}))
+        self.cci_period = self.params.cci_period
+        self.oversold = self.params.oversold
+        self.overbought = self.params.overbought
+        self.trend_period = self.params.trend_period
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         if not {"high", "low", "close"}.issubset(data.columns):
@@ -62,10 +127,15 @@ class CCIReversionStrategy(AbstractStrategy):
         if price > trend and cci_prev < self.oversold <= cci_now:
             depth = min(1.0, (self.oversold - cci_prev) / 200.0)
             confidence = min(0.84, 0.58 + max(depth, 0.0) * 0.25)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"cci": round(float(cci_now), 2), "trend": "up"})
+            return Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={"cci": round(float(cci_now), 2), "trend": "up"},
+            )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
