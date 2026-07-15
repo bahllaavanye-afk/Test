@@ -38,7 +38,11 @@ try:
         GetOrdersRequest,
     )
     from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus, OrderClass
-    from alpaca.trading.errors import APIError as AlpacaAPIError
+    # alpaca-py keeps ALL its exceptions in alpaca.common.exceptions — the old
+    # alpaca.trading.errors / alpaca.data.errors paths never existed in modern
+    # versions, so this whole block raised ImportError, ALPACA_AVAILABLE went
+    # False, and the module then crashed at TF_MAP with NameError: TimeFrame.
+    from alpaca.common.exceptions import APIError as AlpacaAPIError
     from alpaca.data.historical import StockHistoricalDataClient, CryptoHistoricalDataClient
     from alpaca.data.requests import (
         StockBarsRequest,
@@ -47,7 +51,7 @@ try:
         CryptoLatestQuoteRequest,
     )
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-    from alpaca.data.errors import DataError as AlpacaDataError
+    AlpacaDataError = AlpacaAPIError  # data client raises APIError too
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
@@ -61,14 +65,20 @@ except ImportError:
     ALPACA_BRACKET_AVAILABLE = False
 
 
-TF_MAP = {
-    "1m": TimeFrame(1, TimeFrameUnit.Minute),
-    "5m": TimeFrame(5, TimeFrameUnit.Minute),
-    "15m": TimeFrame(15, TimeFrameUnit.Minute),
-    "1h": TimeFrame(1, TimeFrameUnit.Hour),
-    "4h": TimeFrame(4, TimeFrameUnit.Hour),
-    "1d": TimeFrame(1, TimeFrameUnit.Day),
-}
+if ALPACA_AVAILABLE:
+    TF_MAP = {
+        "1m": TimeFrame(1, TimeFrameUnit.Minute),
+        "5m": TimeFrame(5, TimeFrameUnit.Minute),
+        "15m": TimeFrame(15, TimeFrameUnit.Minute),
+        "1h": TimeFrame(1, TimeFrameUnit.Hour),
+        "4h": TimeFrame(4, TimeFrameUnit.Hour),
+        "1d": TimeFrame(1, TimeFrameUnit.Day),
+    }
+else:
+    # Without alpaca-py the module must still IMPORT cleanly (AlpacaBroker
+    # raises at construction) — a bare TimeFrame here was a NameError that
+    # killed the whole module, which callers misread as "not installed".
+    TF_MAP = {}
 
 # Alpaca uses "BTC/USD" format for crypto
 CRYPTO_SUFFIXES = ("/USD", "/USDT", "/BTC", "/ETH")
@@ -272,4 +282,115 @@ class AlpacaBroker(AbstractBroker):
             )
             raise BrokerError(f"Failed to place order: {exc}") from exc
 
-    # ... (truncated for brevity)
+    # ── Restored 2026-07-15: PR #420 (autonomous improver) truncated this file
+    # at a "... (truncated for brevity)" marker, deleting 6 of the 7
+    # AbstractBroker methods. That made AlpacaBroker un-instantiable (abstract
+    # TypeError, silently caught) — the backend fell back to yfinance quotes and
+    # every AlpacaBroker order path was dead. Pre-#420 implementations below.
+
+    async def cancel_order(self, broker_order_id: str) -> bool:
+        try:
+            await self._call(self.trading.cancel_order_by_id,
+                             order_id=broker_order_id)
+            return True
+        except Exception as e:
+            logger.warning("Alpaca cancel_order failed", order_id=broker_order_id, error=str(e))
+            return False
+
+    async def get_order(self, broker_order_id: str) -> dict:
+        order = await self._call(self.trading.get_order_by_id, broker_order_id)
+        return {
+            "id": str(order.id),
+            "status": str(order.status),
+            "filled_qty": float(order.filled_qty or 0),
+        }
+
+    # ── Account / positions ───────────────────────────────────────────────────
+
+    async def get_positions(self) -> list[dict]:
+        positions = await self._call(self.trading.get_all_positions)
+        return [
+            {
+                "symbol": p.symbol,
+                "qty": float(p.qty),
+                "avg_cost": float(p.avg_entry_price),
+                "unrealized_pnl": float(p.unrealized_pl),
+                "market_value": float(p.market_value),
+                "side": "long" if float(p.qty) > 0 else "short",
+            }
+            for p in positions
+        ]
+
+    async def get_account(self) -> dict:
+        acct = await self._call(self.trading.get_account)
+        return {
+            "equity": float(acct.equity),
+            "cash": float(acct.cash),
+            "buying_power": float(acct.buying_power),
+            "portfolio_value": float(acct.portfolio_value),
+            "status": str(acct.status) if hasattr(acct, "status") else "ACTIVE",
+        }
+
+    # ── Market data — auto-routes equity vs crypto ────────────────────────────
+
+    async def get_quote(self, symbol: str) -> QuoteResult:
+        try:
+            if _is_crypto(symbol):
+                req = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
+                quotes = await self._call(self.crypto_data.get_crypto_latest_quote, req)
+                q = quotes[symbol]
+            else:
+                req = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+                quotes = await self._call(self.stock_data.get_stock_latest_quote, req)
+                q = quotes[symbol]
+            return QuoteResult(
+                symbol=symbol,
+                bid=float(q.bid_price),
+                ask=float(q.ask_price),
+                last=float(q.ask_price),
+                volume=None,
+            )
+        except Exception as e:
+            raise BrokerError(f"Alpaca quote failed for {symbol}: {e}")
+
+    async def get_historical(
+        self,
+        symbol: str,
+        interval: str = "1d",
+        limit: int = 500,
+    ) -> list[dict]:
+        tf = TF_MAP.get(interval, TimeFrame(1, TimeFrameUnit.Day))
+        try:
+            if _is_crypto(symbol):
+                req = CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
+                bars_resp = await self._call(self.crypto_data.get_crypto_bars, req)
+            else:
+                req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=tf, limit=limit)
+                bars_resp = await self._call(self.stock_data.get_stock_bars, req)
+
+            return [
+                {
+                    "ts":     bar.timestamp.isoformat(),
+                    "open":   float(bar.open),
+                    "high":   float(bar.high),
+                    "low":    float(bar.low),
+                    "close":  float(bar.close),
+                    "volume": float(bar.volume),
+                }
+                for bar in bars_resp[symbol]
+            ]
+        except Exception as e:
+            logger.warning("Alpaca get_historical failed", symbol=symbol, error=str(e))
+            return []
+
+
+async def validate_alpaca_connection(broker: "AlpacaBroker") -> bool:
+    """Returns True if Alpaca API responds with an ACTIVE account."""
+    try:
+        account = await broker.get_account()
+        if account and account.get("status", "").upper() in ("ACTIVE",):
+            logger.info("Alpaca connection OK", status=account.get("status"))
+            return True
+    except Exception as e:
+        logger.warning("Alpaca connection check failed", error=str(e))
+    return False
