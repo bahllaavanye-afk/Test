@@ -3,6 +3,8 @@ Reinforcement Learning Trader Strategy.
 Uses A3C-LSTM agent to generate buy/hold/sell signals.
 Falls back to RSI-based signals if no trained model is loaded.
 """
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
@@ -11,12 +13,11 @@ import pandas as pd
 try:
     import torch
     _TORCH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
-
 
 # Default path where a trained A3C-LSTM checkpoint is expected.
 _DEFAULT_MODEL_PATH = Path(__file__).parents[3] / "checkpoints" / "a3c_lstm_latest.pt"
@@ -39,7 +40,7 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
 def _build_feature_tensor(df: pd.DataFrame, seq_len: int = 30) -> torch.Tensor | None:
     """
     Build a (1, seq_len, n_features) tensor from the last `seq_len` rows
-    of an OHLCV DataFrame.  Returns None if df is too short.
+    of an OHLCV DataFrame. Returns None if df is too short.
     """
     if len(df) < seq_len + 1:
         return None
@@ -82,7 +83,7 @@ class RLTraderStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.60
 
-    # Feature dimension expected by the model.  Must match training config.
+    # Feature dimension expected by the model. Must match training config.
     N_FEATURES = 3
     SEQ_LEN = 30
 
@@ -106,7 +107,7 @@ class RLTraderStrategy(AbstractStrategy):
 
             self._agent = A3CLSTMAgent.load(str(self._model_path))
             self._agent.eval()
-        except Exception:
+        except Exception:  # pragma: no cover
             self._agent = None
 
     def _rsi_signal(self, df: pd.DataFrame, symbol: str) -> Signal | None:
@@ -157,12 +158,9 @@ class RLTraderStrategy(AbstractStrategy):
 
         # Pad or trim feature dimension to match model expectations
         if x.shape[-1] != self._agent.n_features:
-            # Pad with zeros to match training feature count
             pad_size = self._agent.n_features - x.shape[-1]
             if pad_size > 0:
-                x = torch.cat(
-                    [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                )
+                x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
             else:
                 x = x[..., : self._agent.n_features]
 
@@ -207,8 +205,8 @@ class RLTraderStrategy(AbstractStrategy):
             exits = (rsi_series > 70).fillna(False)
             return BacktestSignals(entries=entries, exits=exits)
 
-        actions = pd.Series(index=df.index, dtype=int)
-        actions[:] = _HOLD
+        entries = pd.Series(False, index=df.index)
+        exits = pd.Series(False, index=df.index)
 
         self._agent.eval()
         with torch.no_grad():
@@ -217,28 +215,26 @@ class RLTraderStrategy(AbstractStrategy):
                 x = _build_feature_tensor(window, seq_len=self.SEQ_LEN)
                 if x is None:
                     continue
+
+                # Align feature dimension with model
                 if x.shape[-1] != self._agent.n_features:
                     pad_size = self._agent.n_features - x.shape[-1]
                     if pad_size > 0:
-                        x = torch.cat(
-                            [x, torch.zeros(*x.shape[:2], pad_size)], dim=-1
-                        )
+                        x = torch.cat([x, torch.zeros(*x.shape[:2], pad_size)], dim=-1)
                     else:
                         x = x[..., : self._agent.n_features]
+
+                action = self._agent.select_action(x)
                 action_probs, _ = self._agent.forward(x)
-                actions.iloc[i] = int(action_probs[0].argmax().item())
+                confidence = float(action_probs[0, action].item())
 
-        # Apply shift(1) — no lookahead
-        actions = actions.shift(1).fillna(_HOLD).astype(int)
+                if confidence < self.confidence_threshold:
+                    continue
 
-        entries = actions == _BUY
-        exits = actions == _SELL
-        short_entries = actions == _SELL
-        short_exits = actions == _BUY
+                if action == _BUY:
+                    entries.iloc[i] = True
+                elif action == _SELL:
+                    exits.iloc[i] = True
 
-        return BacktestSignals(
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-        )
+        # Shift to avoid look‑ahead bias: signals are based on data up to i‑1
+        return BacktestSignals(entries=entries.shift(1).fillna(False), exits=exits.shift(1).fillna(False))
