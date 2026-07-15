@@ -77,3 +77,22 @@ def test_loss_cap_never_false_triggers_without_baseline():
     assert dop.daily_loss_cap_hit(0.0, 100_000.0) is False       # unknown equity
     assert dop.daily_loss_cap_hit(50_000.0, 0.0) is False        # no prior close
     assert dop.daily_loss_cap_hit(-1.0, -1.0) is False
+
+
+# ── Cash-aware sizing (the $378-requested-with-$215-available bug) ───────────
+
+def test_cash_cap_shrinks_order_to_available():
+    acct = {"non_marginable_buying_power": "215.73", "buying_power": "1000"}
+    assert dop.cash_capped_notional(378.0, "UNI/USD", acct) == pytest.approx(215.73 * 0.95)
+    assert dop.cash_capped_notional(378.0, "SPY", acct) == pytest.approx(378.0)  # equities use BP
+
+
+def test_cash_cap_returns_zero_below_min_order():
+    acct = {"non_marginable_buying_power": "20", "buying_power": "0"}
+    assert dop.cash_capped_notional(378.0, "UNI/USD", acct) == 0.0
+    assert dop.cash_capped_notional(378.0, "SPY", acct) == 0.0
+
+
+def test_cash_cap_leaves_affordable_orders_alone():
+    acct = {"non_marginable_buying_power": "100000", "buying_power": "100000"}
+    assert dop.cash_capped_notional(378.0, "BTC/USD", acct) == 378.0
