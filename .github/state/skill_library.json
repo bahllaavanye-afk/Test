@@ -199,8 +199,12 @@
     "Monitor GPU temps",
     "Refactor trade executor",
     "Implement type hints",
-    "Enhance error handling"
+    "Enhance error handling",
+    "docstrings on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "docstrings on ml/models/hawkes_arrival.py: success \u2014 tests green",
+    "docstrings on risk/correlation.py: success \u2014 tests green",
+    "docstrings on backtest/engine.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-15T11:11:15.788097+00:00",
+  "last_updated": "2026-07-15T12:51:46.631975+00:00",
   "total": 200
 }
