@@ -10,11 +10,13 @@ Both optimizers rely only on SciPy and pandas; no external portfolio library is 
 
 from __future__ import annotations
 
+import numbers
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import structlog
 from scipy.optimize import linprog
-from typing import Optional
 
 from app.risk.hrp import HRPOptimizer  # re-export for convenience
 
@@ -45,9 +47,11 @@ class CVaROptimizer:
         confidence: float, default 0.95
             Confidence level for CVaR (must be between 0.5 and 1.0 exclusive).
         """
+        if not isinstance(confidence, numbers.Real):
+            raise ValueError("confidence must be a numeric type")
         if not (0.5 < confidence < 1.0):
             raise ValueError("confidence must be in (0.5, 1.0)")
-        self.confidence = confidence
+        self.confidence = float(confidence)
 
     def compute_weights(
         self,
@@ -73,6 +77,18 @@ class CVaROptimizer:
             one.  If the optimisation fails or the input data are insufficient, equal
             weighting is returned as a safe fallback.
         """
+        # Input validation
+        if not isinstance(returns, pd.DataFrame):
+            raise ValueError("returns must be a pandas DataFrame")
+        if returns.empty:
+            raise ValueError("returns DataFrame must not be empty")
+        if returns.shape[1] == 0:
+            raise ValueError("returns DataFrame must contain at least one column")
+        if not all(issubclass(dt.type, np.number) for dt in returns.dtypes):
+            raise ValueError("returns DataFrame must contain numeric data only")
+        if target_return is not None and not isinstance(target_return, numbers.Real):
+            raise ValueError("target_return must be a numeric type if provided")
+
         symbols = list(returns.columns)
         n = len(symbols)
 
@@ -175,10 +191,25 @@ def optimize_portfolio(
     pd.Series
         Portfolio weights indexed by symbol and summing to one.
     """
+    # Input validation
+    if not isinstance(returns, pd.DataFrame):
+        raise ValueError("returns must be a pandas DataFrame")
+    if returns.empty:
+        raise ValueError("returns DataFrame must not be empty")
+    if not isinstance(method, str):
+        raise ValueError("method must be a string")
+    if not isinstance(confidence, numbers.Real):
+        raise ValueError("confidence must be a numeric type")
+    if not (0.5 < confidence < 1.0):
+        raise ValueError("confidence must be in (0.5, 1.0)")
+
+    method = method.lower()
     if method == "cvar":
         return CVaROptimizer(confidence=confidence).compute_weights(returns)
     if method == "equal":
         n = len(returns.columns)
+        if n == 0:
+            raise ValueError("cannot compute equal weights with zero columns")
         return pd.Series(1.0 / n, index=returns.columns)
     if method != "hrp":
         raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
