@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784145323.5835352,
+    "last_updated": 1784146259.265609,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,44 +109,44 @@
     },
     "opinion_score": 4,
     "macro_score": 3,
-    "vix": 15.77,
-    "market_scan_ts": 1784142162.5536296,
+    "vix": 15.66,
+    "market_scan_ts": 1784146259.2525105,
     "sector_leaders": [
       "Financials",
       "Healthcare",
-      "Utilities"
+      "Industrials"
     ],
     "sector_laggards": [
-      "Cons. Staples",
       "Tech",
+      "Cons. Staples",
       "Materials"
     ],
     "active_universe": [
       "BLK",
       "GS",
       "MS",
-      "ORCL",
       "META",
-      "XLF",
       "CRWD",
-      "BAC",
+      "ORCL",
+      "XLF",
       "PANW",
+      "BAC",
       "ABT",
       "JNJ",
       "WFC",
-      "XLV",
-      "TMO",
       "AAPL",
+      "XEL",
+      "EXC",
+      "TMO",
+      "XLV",
+      "NVDA",
       "JPM",
-      "XLI",
-      "C",
-      "MMM",
-      "NVDA"
+      "C"
     ],
     "top_momentum": [
       "PANW",
-      "CRWD",
       "META",
+      "CRWD",
       "TMO",
       "AAPL"
     ],
@@ -883,6 +883,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
       "ts": 1784142162.5666144
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Financials",
+        "Healthcare",
+        "Industrials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784146259.2681155
     }
   ],
   "github_insights": [
