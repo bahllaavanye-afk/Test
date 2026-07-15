@@ -19,7 +19,7 @@ import logging
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,12 @@ _MAX_STREAM_LEN = 5000
 
 TaskFn = Callable[..., Awaitable[None]]
 
+# Try to import a specific Redis exception for finer‑grained error handling.
+try:
+    from aioredis.exceptions import RedisError  # type: ignore
+except Exception:  # pragma: no cover
+    RedisError = Exception  # Fallback if the Redis client library differs.
+
 
 @dataclass
 class Task:
@@ -50,10 +56,15 @@ class Task:
     error: str = ""
 
     def to_redis(self) -> dict[str, str]:
-        return {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in asdict(self).items()}
+        """Serialize the task fields for storage in Redis Streams."""
+        return {
+            k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+            for k, v in asdict(self).items()
+        }
 
     @classmethod
     def from_redis(cls, fields: dict) -> "Task":
+        """Deserialize a Redis Stream entry back into a Task instance."""
         d: dict = {}
         for k, v in fields.items():
             try:
@@ -74,7 +85,7 @@ class TaskQueue:
 
     Drain order: critical → high → normal → low.
     Failed tasks are retried with exponential backoff (2^attempt seconds).
-    Tasks exceeding max_retries go to the dead-letter stream.
+    Tasks exceeding max_retries go to the dead‑letter stream.
     """
 
     def __init__(self, redis_client: Any) -> None:
@@ -97,6 +108,7 @@ class TaskQueue:
         max_retries: int = 3,
         delay_seconds: float = 0,
     ) -> str:
+        """Create a new task and push it onto the appropriate priority stream."""
         task_id = str(uuid.uuid4())
         task = Task(
             task_id=task_id,
@@ -109,15 +121,30 @@ class TaskQueue:
         key = f"{_QUEUE_PREFIX}{priority}"
         try:
             await self._r.xadd(key, task.to_redis(), maxlen=_MAX_STREAM_LEN, approximate=True)
-            logger.debug("TaskQueue.enqueue type=%s id=%s priority=%d", task_type, task_id, priority)
-        except Exception as e:
-            logger.warning("TaskQueue.enqueue failed: %s", e)
+            logger.debug(
+                "TaskQueue.enqueue",
+                extra={"type": task_type, "id": task_id, "priority": priority},
+            )
+        except RedisError as e:
+            logger.error(
+                "Redis error during enqueue",
+                exc_info=True,
+                extra={"type": task_type, "id": task_id, "priority": priority},
+            )
+        except Exception as e:  # pragma: no cover
+            logger.exception(
+                "Unexpected error during enqueue",
+                extra={"type": task_type, "id": task_id, "priority": priority},
+            )
         return task_id
 
     # ── Processing ────────────────────────────────────────────────────────────
 
     async def process_once(self) -> bool:
-        """Drain one task from the highest-priority non-empty queue. Returns True if a task ran."""
+        """
+        Drain one task from the highest‑priority non‑empty queue.
+        Returns True if a task was processed.
+        """
         for priority in (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW):
             key = f"{_QUEUE_PREFIX}{priority}"
             try:
@@ -127,12 +154,21 @@ class TaskQueue:
                 for _, messages in results:
                     for msg_id, fields in messages:
                         task = Task.from_redis(fields)
-                        # Delete from queue before processing (at-most-once delivery)
+                        # Delete from queue before processing (at‑most‑once delivery)
                         await self._r.xdel(key, msg_id)
                         await self._dispatch(task)
                         return True
-            except Exception as e:
-                logger.debug("TaskQueue.process_once error priority=%d: %s", priority, e)
+            except RedisError as e:
+                logger.error(
+                    "Redis error while processing queue",
+                    exc_info=True,
+                    extra={"priority": priority, "key": key},
+                )
+            except Exception as e:  # pragma: no cover
+                logger.exception(
+                    "Unexpected error while processing queue",
+                    extra={"priority": priority, "key": key},
+                )
         return False
 
     async def run_worker(self, poll_interval: float = 0.5) -> None:
@@ -143,14 +179,18 @@ class TaskQueue:
                 ran = await self.process_once()
                 if not ran:
                     await asyncio.sleep(poll_interval)
-            except Exception as e:
-                logger.error("TaskQueue worker error: %s", e)
+            except RedisError as e:
+                logger.error("Redis error in worker loop", exc_info=True)
+                await asyncio.sleep(2.0)
+            except Exception as e:  # pragma: no cover
+                logger.exception("Unexpected error in worker loop")
                 await asyncio.sleep(2.0)
 
     async def _dispatch(self, task: Task) -> None:
+        """Execute the handler for a task, handling retries and dead‑letter routing."""
         now = time.time()
         if task.scheduled_at > now:
-            # Re-enqueue with delay (use original priority)
+            # Re‑enqueue with delay (use original priority)
             delay = task.scheduled_at - now
             await asyncio.sleep(min(delay, 5.0))
             await self._requeue(task, delay=max(0, task.scheduled_at - time.time()))
@@ -158,7 +198,10 @@ class TaskQueue:
 
         handler = self._handlers.get(task.task_type)
         if handler is None:
-            logger.warning("TaskQueue: no handler for task_type=%s", task.task_type)
+            logger.warning(
+                "No handler registered for task_type",
+                extra={"task_type": task.task_type, "task_id": task.task_id},
+            )
             return
 
         try:
@@ -167,8 +210,13 @@ class TaskQueue:
             task.attempt += 1
             task.error = str(exc)
             logger.warning(
-                "TaskQueue task failed type=%s attempt=%d/%d: %s",
-                task.task_type, task.attempt, task.max_retries, exc,
+                "Task execution failed",
+                extra={
+                    "task_type": task.task_type,
+                    "task_id": task.task_id,
+                    "attempt": task.attempt,
+                    "max_retries": task.max_retries,
+                },
             )
             if task.attempt < task.max_retries:
                 backoff = 2 ** task.attempt
@@ -177,33 +225,73 @@ class TaskQueue:
                 await self._dead_letter(task)
 
     async def _requeue(self, task: Task, delay: float = 0) -> None:
+        """Place a task back onto its priority stream with an optional delay."""
         task.scheduled_at = time.time() + delay
         key = f"{_QUEUE_PREFIX}{task.priority}"
         try:
             await self._r.xadd(key, task.to_redis(), maxlen=_MAX_STREAM_LEN, approximate=True)
-        except Exception as e:
-            logger.debug("TaskQueue._requeue failed: %s", e)
+        except RedisError as e:
+            logger.error(
+                "Redis error during requeue",
+                exc_info=True,
+                extra={"task_id": task.task_id, "priority": task.priority},
+            )
+        except Exception as e:  # pragma: no cover
+            logger.exception(
+                "Unexpected error during requeue",
+                extra={"task_id": task.task_id, "priority": task.priority},
+            )
 
     async def _dead_letter(self, task: Task) -> None:
-        logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
+        """Move a permanently failed task to the dead‑letter stream."""
+        logger.error(
+            "Task permanently failed, moving to dead‑letter",
+            extra={"task_type": task.task_type, "task_id": task.task_id, "error": task.error},
+        )
         try:
             await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
-        except Exception:
-            pass
+        except RedisError as e:
+            logger.error(
+                "Redis error while writing to dead‑letter stream",
+                exc_info=True,
+                extra={"task_id": task.task_id},
+            )
+        except Exception:  # pragma: no cover
+            logger.exception("Unexpected error while writing to dead‑letter stream", extra={"task_id": task.task_id})
 
     # ── Monitoring ────────────────────────────────────────────────────────────
 
-    async def queue_depths(self) -> dict[str, int]:
-        depths = {}
+    async def queue_depths(self) -> Dict[str, int]:
+        """Return the length of each priority queue and the dead‑letter queue."""
+        depths: Dict[str, int] = {}
         for priority in range(4):
             key = f"{_QUEUE_PREFIX}{priority}"
             try:
                 depths[f"priority_{priority}"] = await self._r.xlen(key)
-            except Exception:
+            except RedisError as e:
+                logger.error(
+                    "Redis error while fetching queue depth",
+                    exc_info=True,
+                    extra={"priority": priority, "key": key},
+                )
+                depths[f"priority_{priority}"] = -1
+            except Exception:  # pragma: no cover
+                logger.exception(
+                    "Unexpected error while fetching queue depth",
+                    extra={"priority": priority, "key": key},
+                )
                 depths[f"priority_{priority}"] = -1
         try:
             depths["dead"] = await self._r.xlen(_DEAD_KEY)
-        except Exception:
+        except RedisError as e:
+            logger.error(
+                "Redis error while fetching dead‑letter depth",
+                exc_info=True,
+                extra={"key": _DEAD_KEY},
+            )
+            depths["dead"] = -1
+        except Exception:  # pragma: no cover
+            logger.exception("Unexpected error while fetching dead‑letter depth", extra={"key": _DEAD_KEY})
             depths["dead"] = -1
         return depths
 
@@ -214,10 +302,12 @@ _queue: TaskQueue | None = None
 
 
 def get_task_queue(redis_client: Any | None = None) -> TaskQueue:
+    """Retrieve a singleton TaskQueue instance, creating it on first use."""
     global _queue
     if _queue is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _queue = TaskQueue(redis_client)
     return _queue
