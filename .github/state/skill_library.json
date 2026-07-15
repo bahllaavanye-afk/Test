@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Review LSTM models",
-    "Parse agent_memory.json",
-    "**UCB1 selection logic update**: `algo_agent` is updating the UCB1 selection logic in `src/bandit`. This update will help improve the trading agent's decision-making capabilities.",
-    "* **Investor Pipeline Monitoring**: The `investor_pipeline` agent is monitoring the investor pipeline and tracking queue sizes in the `/quantedge/investor_pipeline/monitor.py` script.",
-    "monitoring on brokers/alpaca_orders.py: success \u2014 tests green",
     "ALLOW_PAID_APIS must always be False \u2014 never change this",
     "Verify dependency versions",
     "Test edge cases",
@@ -199,8 +194,13 @@
     "Log trade errors",
     "Review agent memory",
     "Validate queue length",
-    "Improve alpha decay"
+    "Improve alpha decay",
+    "Check thread counts",
+    "Monitor GPU temps",
+    "Refactor trade executor",
+    "Implement type hints",
+    "Enhance error handling"
   ],
-  "last_updated": "2026-07-15T05:13:32.336281+00:00",
+  "last_updated": "2026-07-15T07:27:57.009297+00:00",
   "total": 200
 }
