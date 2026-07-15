@@ -19,10 +19,80 @@ import pytest
 from app.strategies.base import BacktestSignals, Signal
 from app.strategies.manual.bond_equity_rotation import BondEquityRotationStrategy
 
+# ---------------------------------------------------------------------------
+# Input validation patches for public methods
+# ---------------------------------------------------------------------------
+
+# Preserve original implementations
+_original_analyze = BondEquityRotationStrategy.analyze
+_original_backtest_signals = BondEquityRotationStrategy.backtest_signals
+
+
+async def _validated_analyze(self, price_df: pd.DataFrame, symbol: str) -> Signal | None:
+    """
+    Validate inputs before delegating to the original ``analyze`` implementation.
+
+    Parameters
+    ----------
+    price_df : pd.DataFrame
+        DataFrame containing OHLCV (and optional VIX) data.
+    symbol : str
+        Ticker symbol for which the analysis is performed.
+
+    Returns
+    -------
+    Signal | None
+        Result from the original ``analyze`` method.
+
+    Raises
+    ------
+    ValueError
+        If ``price_df`` is not a non‑empty DataFrame or ``symbol`` is not a
+        non‑empty string.
+    """
+    if not isinstance(price_df, pd.DataFrame):
+        raise ValueError("price_df must be a pandas DataFrame")
+    if price_df.empty:
+        raise ValueError("price_df cannot be empty")
+    if not isinstance(symbol, str) or not symbol:
+        raise ValueError("symbol must be a non‑empty string")
+    return await _original_analyze(self, price_df, symbol)
+
+
+def _validated_backtest_signals(self, price_df: pd.DataFrame) -> BacktestSignals:
+    """
+    Validate inputs before delegating to the original ``backtest_signals`` implementation.
+
+    Parameters
+    ----------
+    price_df : pd.DataFrame
+        DataFrame containing OHLCV (and optional VIX) data.
+
+    Returns
+    -------
+    BacktestSignals
+        Result from the original ``backtest_signals`` method.
+
+    Raises
+    ------
+    ValueError
+        If ``price_df`` is not a non‑empty DataFrame.
+    """
+    if not isinstance(price_df, pd.DataFrame):
+        raise ValueError("price_df must be a pandas DataFrame")
+    if price_df.empty:
+        raise ValueError("price_df cannot be empty")
+    return _original_backtest_signals(self, price_df)
+
+
+# Apply patches
+BondEquityRotationStrategy.analyze = _validated_analyze  # type: ignore[assignment]
+BondEquityRotationStrategy.backtest_signals = _validated_backtest_signals  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def price_df():
@@ -79,6 +149,7 @@ def short_df():
 # Test 1: attributes
 # ---------------------------------------------------------------------------
 
+
 class TestBondEquityRotationAttributes:
     def test_strategy_name(self):
         assert BondEquityRotationStrategy().name == "bond_equity_rotation"
@@ -109,6 +180,7 @@ class TestBondEquityRotationAttributes:
 # ---------------------------------------------------------------------------
 # Test 2: analyze() — async
 # ---------------------------------------------------------------------------
+
 
 class TestBondEquityRotationAnalyze:
     def test_analyze_returns_signal_or_none(self, price_df):
@@ -163,6 +235,7 @@ class TestBondEquityRotationAnalyze:
 # ---------------------------------------------------------------------------
 # Test 3: backtest_signals()
 # ---------------------------------------------------------------------------
+
 
 class TestBondEquityRotationBacktest:
     def test_returns_backtest_signals_type(self, price_df):
