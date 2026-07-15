@@ -28,8 +28,10 @@ jobs:
           git config user.email "health-bot@quantedge.ai"
           git config user.name "QuantEdge Health Bot"
 
+      # HARD GATE (IMPROVEMENTS P1): the monitor exits 1 on critical findings,
+      # but continue-on-error kept this job green — "it was red but unwatched"
+      # by construction. Now a critical finding fails the job and pages Discord.
       - name: Run health check
-        continue-on-error: true
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 }}
@@ -37,7 +39,30 @@ jobs:
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/agent_health_monitor.py --dry-run
 
+      - name: Page Discord on critical findings
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL_INFRA_ALERTS: ${{ secrets.DISCORD_WEBHOOK_URL_INFRA_ALERTS }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, ".github/scripts")
+          try:
+              from notify import discord_post
+              discord_post(
+                  "infra-alerts",
+                  "🚨 **Agent health check CRITICAL** — an employee/channel/LLM is down or stale. "
+                  f"Report: {os.environ.get('GITHUB_SERVER_URL','')}/{os.environ.get('GITHUB_REPOSITORY','')}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}",
+                  username="QuantEdge Health Bot",
+              )
+          except Exception as e:
+              print(f"notify failed: {e}")
+          PY
+
       - name: Update heartbeat
+        if: always()
         run: |
           python - <<'PY'
           import json, datetime
@@ -51,6 +76,7 @@ jobs:
           PY
 
       - name: Commit heartbeat
+        if: always()
         continue-on-error: true
         run: |
           git add .github/state/agent_memory.json

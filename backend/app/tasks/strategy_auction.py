@@ -232,8 +232,9 @@ class StrategyAuction:
             if raw:
                 allocations = json.loads(raw)
                 return float(allocations.get(strategy_name, 0.0))
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — equal-share fallback below
+            logger.debug("auction: allocation read failed for %s, using equal share: %s",
+                         strategy_name, exc)
         # Default: equal share if no auction has run yet
         return self._total_capital / max(len(self._bids), 1)
 

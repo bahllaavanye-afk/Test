@@ -84,8 +84,8 @@ class EquityScanner:
         if self._broker:
             try:
                 return await self._broker.get_bars(symbol, "1Day", limit=days)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 — fall through to free endpoint
+                logger.debug("scanner: broker bars failed for %s, falling back: %s", symbol, exc)
         # Fallback: yfinance-style free endpoint
         try:
             end = date.today()

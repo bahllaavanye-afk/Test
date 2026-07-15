@@ -153,5 +153,5 @@ Be concise. Each suggestion under 2 sentences."""
 
         try:
             await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — subscribers just miss one regime tick
+            logger.debug("self-improving loop: regime publish failed: %s", exc)

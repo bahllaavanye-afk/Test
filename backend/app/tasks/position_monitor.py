@@ -156,14 +156,14 @@ class PositionMonitor:
                 raw_regime = await self.redis.get("market:regime")
                 if raw_regime is not None:
                     regime = int(raw_regime)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 — exits run context-blind without regime
+                logger.debug("position monitor: regime read failed", error=str(exc))
             try:
                 raw_vix = await self.redis.get("market:vix")
                 if raw_vix is not None:
                     vix = float(raw_vix)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 — exits run context-blind without vix
+                logger.debug("position monitor: vix read failed", error=str(exc))
 
         # 4. Build context dict for exit strategies
         context = {
@@ -297,8 +297,9 @@ class PositionMonitor:
             position_id = position.get("id") or symbol
             try:
                 await self.redis.delete(f"pos_exit:{position_id}")
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 — stale exit config lingers
+                logger.debug("position monitor: exit-config cleanup failed",
+                             position_id=position_id, error=str(exc))
 
     async def _update_peak_price(self, position_id: str, current_price: float) -> None:
         """Update trailing stop peak price in Redis."""
