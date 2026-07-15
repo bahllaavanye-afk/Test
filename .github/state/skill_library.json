@@ -199,8 +199,13 @@
     "Monitor GPU temps",
     "Refactor trade executor",
     "Implement type hints",
-    "Enhance error handling"
+    "Enhance error handling",
+    "error_handling on ml/features/alternative.py: success \u2014 tests green",
+    "error_handling on execution/iceberg.py: success \u2014 tests green",
+    "error_handling on risk/correlation_monitor.py: success \u2014 tests green",
+    "error_handling on backtest/stress_test.py: success \u2014 tests green",
+    "error_handling on api/v1/pipeline.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-15T12:50:37.859080+00:00",
+  "last_updated": "2026-07-15T13:12:53.242108+00:00",
   "total": 200
 }
