@@ -12,6 +12,8 @@ import json
 import numpy as np
 import pandas as pd
 import urllib.request
+from typing import Optional
+
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 
 BINANCE_KLINES_URL = (
@@ -20,16 +22,29 @@ BINANCE_KLINES_URL = (
 )
 
 
-def _fetch_binance_klines(symbol: str = "BTCUSDT") -> pd.DataFrame | None:
+def _fetch_binance_klines(symbol: str = "BTCUSDT") -> Optional[pd.DataFrame]:
     """Fetch last 25 hourly klines from Binance public REST."""
     try:
         url = BINANCE_KLINES_URL.format(symbol=symbol)
         with urllib.request.urlopen(url, timeout=5) as resp:
             raw = json.loads(resp.read())
-        df = pd.DataFrame(raw, columns=[
-            "open_time", "open", "high", "low", "close", "volume",
-            "close_time", "quote_vol", "trades", "taker_base", "taker_quote", "ignore"
-        ])
+        df = pd.DataFrame(
+            raw,
+            columns=[
+                "open_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_vol",
+                "trades",
+                "taker_base",
+                "taker_quote",
+                "ignore",
+            ],
+        )
         df["close"] = df["close"].astype(float)
         df["volume"] = df["volume"].astype(float)
         return df
@@ -43,10 +58,10 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
     market_type = "crypto"
     strategy_type = "manual"
     risk_bucket = "directional"
-    tick_interval_seconds = 3600.0   # hourly
+    tick_interval_seconds = 3600.0  # hourly
 
-    SPIKE_MULTIPLIER = 3.0   # volume spike threshold vs 24h average
-    LOOKBACK_HOURS = 24      # hours for average volume calculation
+    SPIKE_MULTIPLIER = 3.0  # volume spike threshold vs 24h average
+    LOOKBACK_HOURS = 24  # hours for average volume calculation
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
@@ -54,8 +69,10 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
         self.spike_multiplier = p.get("spike_multiplier", self.SPIKE_MULTIPLIER)
         self.lookback_hours = p.get("lookback_hours", self.LOOKBACK_HOURS)
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        if "close" not in data.columns:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str) -> Signal | None:
+        """Analyze incoming data and generate a trading signal if conditions are met."""
+        # Guard against None or empty inputs
+        if data is None or data.empty or "close" not in data.columns:
             return None
 
         # Try live Binance data first
@@ -65,16 +82,28 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
 
         live_df = _fetch_binance_klines(binance_symbol)
 
-        if live_df is not None and len(live_df) >= self.lookback_hours + 1:
+        # Determine which DataFrame to use
+        if live_df is not None and len(live_df) >= self.lookback_hours + 2:
             volume = live_df["volume"]
             close_prices = live_df["close"]
-        elif "volume" in data.columns and len(data) >= self.lookback_hours + 1:
+        elif "volume" in data.columns and len(data) >= self.lookback_hours + 2:
             volume = data["volume"]
             close_prices = data["close"]
         else:
             return None
 
-        avg_vol = float(volume.iloc[-self.lookback_hours - 1:-1].mean())
+        # Ensure we have enough non-NaN values for calculations
+        if volume.isna().any() or close_prices.isna().any():
+            return None
+
+        # Compute average volume over the lookback period (excluding the current hour)
+        start_idx = -self.lookback_hours - 1
+        end_idx = -1
+        avg_vol_series = volume.iloc[start_idx:end_idx]
+        if avg_vol_series.empty:
+            return None
+        avg_vol = float(avg_vol_series.mean())
+
         current_vol = float(volume.iloc[-1])
         prev_close = float(close_prices.iloc[-2])
         current_close = float(close_prices.iloc[-1])
@@ -83,15 +112,10 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
             return None
 
         vol_ratio = current_vol / avg_vol
-        price_change = (current_close - prev_close) / prev_close
+        price_change = (current_close - prev_close) / prev_close if prev_close != 0 else 0.0
 
         if vol_ratio > self.spike_multiplier:
-            # Volume spike detected — trade in direction of price move
-            if price_change > 0:
-                side = "buy"
-            else:
-                side = "sell"
-
+            side = "buy" if price_change > 0 else "sell"
             confidence = min(0.85, 0.60 + (vol_ratio - self.spike_multiplier) * 0.05)
             return Signal(
                 symbol=symbol,
@@ -107,25 +131,41 @@ class CryptoWhaleMomentumStrategy(AbstractStrategy):
             )
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, df: pd.DataFrame | None) -> BacktestSignals:
+        """Generate backtest signals from historical data."""
+        if df is None or df.empty:
+            # Return empty boolean Series to maintain API contract
+            empty_series = pd.Series(dtype=bool)
+            return BacktestSignals(
+                entries=empty_series,
+                exits=empty_series,
+                short_entries=empty_series,
+                short_exits=empty_series,
+            )
+
         close = df["close"]
         ret = close.pct_change()
 
         if "volume" in df.columns:
             vol = df["volume"]
-            avg_vol = vol.rolling(self.lookback_hours).mean()
-            vol_ratio = (vol / avg_vol.replace(0, np.nan)).shift(1)
+            avg_vol = vol.rolling(self.lookback_hours, min_periods=1).mean()
+            # Avoid division by zero; replace zeros with NaN before division
+            avg_vol = avg_vol.replace(0, np.nan)
+            vol_ratio = (vol / avg_vol).shift(1)
             ret_s = ret.shift(1)
         else:
             # Fallback: use absolute return as volume proxy
-            vol_ratio = (ret.abs() / ret.abs().rolling(self.lookback_hours).mean()).shift(1)
+            abs_ret = ret.abs()
+            avg_abs_ret = abs_ret.rolling(self.lookback_hours, min_periods=1).mean()
+            avg_abs_ret = avg_abs_ret.replace(0, np.nan)
+            vol_ratio = (abs_ret / avg_abs_ret).shift(1)
             ret_s = ret.shift(1)
 
         spike = vol_ratio > self.spike_multiplier
 
-        entries = spike & (ret_s > 0)       # spike + up move
+        entries = spike & (ret_s > 0)  # spike + up move
         exits = ~spike
-        short_entries = spike & (ret_s < 0) # spike + down move
+        short_entries = spike & (ret_s < 0)  # spike + down move
         short_exits = ~spike
 
         return BacktestSignals(
