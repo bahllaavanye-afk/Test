@@ -11,15 +11,29 @@ same way the rest of the suite does — through a real TestClient request.
 """
 from __future__ import annotations
 
+import logging
+from typing import List
+
 import pytest
 from starlette.testclient import TestClient
 
 from app.main import app
 
+# Configure a module‑level logger for structured error output.
+_logger = logging.getLogger(__name__)
+_handler = logging.StreamHandler()
+_formatter = logging.Formatter(
+    fmt='%(asctime)s %(levelname)s %(name)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+_handler.setFormatter(_formatter)
+_logger.addHandler(_handler)
+_logger.setLevel(logging.INFO)
+
 _client = TestClient(app, raise_server_exceptions=False)
 
 # Must-exist GET endpoints. Unauthenticated → 401/403 is acceptable; 404/500 is a bug.
-CRITICAL_GETS = [
+CRITICAL_GETS: List[str] = [
     "/health",
     "/api/v1/leaderboard/entries",   # regressed to 404 once — guard it
     "/api/v1/leaderboard/summary",
@@ -34,9 +48,41 @@ CRITICAL_GETS = [
 ]
 
 
+def _perform_get(path: str):
+    """Execute a GET request against the test client with robust error handling.
+
+    Args:
+        path: The endpoint path to request.
+
+    Returns:
+        The Starlette response object.
+
+    Raises:
+        AssertionError: If the request raises an unexpected exception.
+    """
+    try:
+        response = _client.get(path)
+        return response
+    except Exception as exc:  # pragma: no cover – defensive programming
+        # Log the exception with a structured payload for easier debugging.
+        _logger.error(
+            "Error during GET request",
+            extra={
+                "path": path,
+                "exception_type": exc.__class__.__name__,
+                "exception_message": str(exc),
+            },
+        )
+        raise AssertionError(f"GET {path} raised an unexpected exception: {exc}") from exc
+
+
 @pytest.mark.parametrize("path", CRITICAL_GETS)
-def test_critical_get_resolves(path):
-    resp = _client.get(path)
+def test_critical_get_resolves(path: str) -> None:
+    resp = _perform_get(path)
+
+    # Explicit checks with clear failure messages.
     assert resp.status_code != 404, f"GET {path} → 404 (router mounted but no handler?)"
     assert resp.status_code != 500, f"GET {path} → 500 (handler errored on a basic GET)"
-    assert resp.status_code in (200, 401, 403, 422), f"GET {path} → unexpected {resp.status_code}"
+    assert resp.status_code in (200, 401, 403, 422), (
+        f"GET {path} → unexpected status code {resp.status_code}"
+    )
