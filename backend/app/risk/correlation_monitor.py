@@ -6,11 +6,13 @@ auto-reduce the smaller one (by total_pnl) by 50% until correlation drops below 
 This prevents correlated drawdowns — the #1 unaddressed risk in multi-strategy bots.
 """
 from __future__ import annotations
+
 import asyncio
 from collections import deque, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict, Tuple, List
+
 import numpy as np
 
 from app.utils.logging import logger
@@ -21,7 +23,7 @@ class CorrelationAlert:
     strategy_a: str
     strategy_b: str
     correlation: float
-    action: str             # 'reduce_b' | 'reduce_a' | 'monitor'
+    action: str  # 'reduce_b' | 'reduce_a' | 'monitor'
     reduced_strategy: Optional[str]
     timestamp: datetime
 
@@ -45,101 +47,159 @@ class CrossStrategyCorrelationMonitor:
 
     def __init__(
         self,
-        window: int = 5,                   # rolling 5 bars
+        window: int = 5,  # rolling 5 bars
         kill_threshold: float = 0.70,
         resume_threshold: float = 0.50,
         scan_interval: int = 60,
-    ):
+    ) -> None:
         self.window = window
         self.kill_threshold = kill_threshold
         self.resume_threshold = resume_threshold
         self.scan_interval = scan_interval
-        self._returns: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=window))
-        self._reduced: set[str] = set()    # strategies currently halved
+        self._returns: Dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=window))
+        self._reduced: set[str] = set()  # strategies currently halved
         self._alerts: deque[CorrelationAlert] = deque(maxlen=200)
         self._running = False
 
     def record_return(self, strategy: str, ret: float) -> None:
-        self._returns[strategy].append(ret)
+        """Record a new return for a given strategy."""
+        try:
+            self._returns[strategy].append(ret)
+        except Exception as exc:  # pragma: no cover
+            logger.exception(
+                "Failed to record return",
+                extra={"strategy": strategy, "return": ret, "error": str(exc)},
+            )
+            raise
 
-    def correlation_matrix(self) -> dict[tuple[str, str], float]:
+    def correlation_matrix(self) -> dict[Tuple[str, str], float]:
+        """Calculate pairwise correlation for strategies with sufficient data."""
         strategies = [s for s, r in self._returns.items() if len(r) >= 3]
-        result: dict[tuple[str, str], float] = {}
+        result: dict[Tuple[str, str], float] = {}
         for i, s_a in enumerate(strategies):
-            for s_b in strategies[i+1:]:
-                r_a = list(self._returns[s_a])
-                r_b = list(self._returns[s_b])
-                min_len = min(len(r_a), len(r_b))
-                if min_len < 3:
-                    continue
-                r_a, r_b = r_a[-min_len:], r_b[-min_len:]
-                if np.std(r_a) == 0 or np.std(r_b) == 0:
-                    continue
-                corr = float(np.corrcoef(r_a, r_b)[0, 1])
-                result[(s_a, s_b)] = corr
+            for s_b in strategies[i + 1 :]:
+                try:
+                    r_a = list(self._returns[s_a])
+                    r_b = list(self._returns[s_b])
+                    min_len = min(len(r_a), len(r_b))
+                    if min_len < 3:
+                        continue
+                    r_a, r_b = r_a[-min_len:], r_b[-min_len:]
+                    if np.std(r_a) == 0 or np.std(r_b) == 0:
+                        continue
+                    corr = float(np.corrcoef(r_a, r_b)[0, 1])
+                    result[(s_a, s_b)] = corr
+                except ValueError as ve:
+                    logger.error(
+                        "Correlation calculation error",
+                        extra={"strategy_a": s_a, "strategy_b": s_b, "error": str(ve)},
+                    )
+                except Exception as exc:  # pragma: no cover
+                    logger.exception(
+                        "Unexpected error during correlation matrix computation",
+                        extra={"strategy_a": s_a, "strategy_b": s_b, "error": str(exc)},
+                    )
         return result
 
-    def scan(self) -> list[CorrelationAlert]:
+    def scan(self) -> List[CorrelationAlert]:
+        """Scan the correlation matrix and generate alerts if thresholds are crossed."""
         matrix = self.correlation_matrix()
-        new_alerts = []
+        new_alerts: List[CorrelationAlert] = []
         for (s_a, s_b), corr in matrix.items():
-            if corr > self.kill_threshold:
-                # reduce the strategy with fewer returns recorded (proxy for smaller)
-                smaller = s_b if len(self._returns[s_a]) >= len(self._returns[s_b]) else s_a
-                if smaller not in self._reduced:
-                    self._reduced.add(smaller)
-                    alert = CorrelationAlert(
-                        strategy_a=s_a, strategy_b=s_b, correlation=corr,
-                        action=f"reduce_{smaller.split('_')[0]}",
-                        reduced_strategy=smaller,
-                        timestamp=datetime.now(timezone.utc),
-                    )
-                    self._alerts.append(alert)
-                    new_alerts.append(alert)
-                    logger.warning(
-                        f"CORR KILL-SWITCH: {s_a}↔{s_b} corr={corr:.2f} > {self.kill_threshold}. "
-                        f"Halving {smaller}."
-                    )
-            elif corr < self.resume_threshold:
-                # re-enable if corr dropped
-                for s in (s_a, s_b):
-                    if s in self._reduced:
-                        self._reduced.discard(s)
-                        logger.info(f"CORR RESUME: {s} correlation normalized (corr={corr:.2f})")
+            try:
+                if corr > self.kill_threshold:
+                    # Reduce the strategy with fewer returns recorded (proxy for smaller)
+                    smaller = s_b if len(self._returns[s_a]) >= len(self._returns[s_b]) else s_a
+                    if smaller not in self._reduced:
+                        self._reduced.add(smaller)
+                        alert = CorrelationAlert(
+                            strategy_a=s_a,
+                            strategy_b=s_b,
+                            correlation=corr,
+                            action=f"reduce_{smaller.split('_')[0]}",
+                            reduced_strategy=smaller,
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        self._alerts.append(alert)
+                        new_alerts.append(alert)
+                        logger.warning(
+                            "CORR KILL-SWITCH triggered",
+                            extra={
+                                "strategy_a": s_a,
+                                "strategy_b": s_b,
+                                "correlation": corr,
+                                "threshold": self.kill_threshold,
+                                "reduced_strategy": smaller,
+                            },
+                        )
+                elif corr < self.resume_threshold:
+                    # Re‑enable if correlation dropped
+                    for s in (s_a, s_b):
+                        if s in self._reduced:
+                            self._reduced.discard(s)
+                            logger.info(
+                                "CORR RESUME",
+                                extra={
+                                    "strategy": s,
+                                    "correlation": corr,
+                                    "threshold": self.resume_threshold,
+                                },
+                            )
+            except Exception as exc:  # pragma: no cover
+                logger.exception(
+                    "Error processing correlation pair",
+                    extra={"strategy_a": s_a, "strategy_b": s_b, "correlation": corr, "error": str(exc)},
+                )
         return new_alerts
 
     def is_reduced(self, strategy: str) -> bool:
+        """Check if a strategy is currently under reduced sizing."""
         return strategy in self._reduced
 
     def sizing_multiplier(self, strategy: str) -> float:
+        """Return the sizing multiplier for a given strategy."""
         return 0.5 if strategy in self._reduced else 1.0
 
-    def recent_alerts(self, limit: int = 20) -> list[dict]:
+    def recent_alerts(self, limit: int = 20) -> List[dict]:
+        """Return the most recent alerts as dictionaries."""
         return [a.to_dict() for a in list(self._alerts)[-limit:]]
 
-    def matrix_as_list(self) -> list[dict]:
+    def matrix_as_list(self) -> List[dict]:
+        """Represent the correlation matrix as a list of dictionaries."""
         return [
             {"strategy_a": k[0], "strategy_b": k[1], "correlation": round(v, 3)}
             for k, v in self.correlation_matrix().items()
         ]
 
     async def run_forever(self) -> None:
+        """Continuously scan at the configured interval."""
         self._running = True
         while self._running:
             try:
                 alerts = self.scan()
                 if alerts:
                     from app.notifications.tracker import tracker
+
                     for a in alerts:
                         tracker.record(
-                            "correlation_kill_switch", "risk",
+                            "correlation_kill_switch",
+                            "risk",
                             f"Halved {a.reduced_strategy}: corr {a.correlation:.2f} with {a.strategy_a}↔{a.strategy_b}",
                         )
-            except Exception as e:
-                logger.error(f"CorrelationMonitor scan error: {e}")
+            except (ValueError, RuntimeError) as e:
+                logger.error(
+                    "Correlation monitor scan failed",
+                    extra={"error": str(e)},
+                )
+            except Exception as exc:  # pragma: no cover
+                logger.exception(
+                    "Unexpected error in correlation monitor run loop",
+                    extra={"error": str(exc)},
+                )
             await asyncio.sleep(self.scan_interval)
 
     def stop(self) -> None:
+        """Stop the monitoring loop."""
         self._running = False
 
 
