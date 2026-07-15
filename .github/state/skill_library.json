@@ -199,8 +199,13 @@
     "Monitor GPU temps",
     "Refactor trade executor",
     "Implement type hints",
-    "Enhance error handling"
+    "Enhance error handling",
+    "cleanup on api/v1/router.py: success \u2014 tests green",
+    "cleanup on test/unit/test_correlation.py: success \u2014 tests green",
+    "cleanup on strategies/manual/crypto_adaptive_trend.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/rl_trader.py: success \u2014 tests green",
+    "cleanup on ml/models/lightgbm_model.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-15T07:27:57.009297+00:00",
+  "last_updated": "2026-07-15T09:30:15.005338+00:00",
   "total": 200
 }
