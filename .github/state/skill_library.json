@@ -199,8 +199,11 @@
     "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
     "Refactor memory logging",
     "Log trade volumes",
-    "Track network latency"
+    "Track network latency",
+    "test_cases on risk/kelly.py: success \u2014 tests green",
+    "test_cases on comparison/engine.py: success \u2014 tests green",
+    "test_cases on test/unit/test_workflow_scripts.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-15T14:46:07.044536+00:00",
+  "last_updated": "2026-07-15T14:48:41.868646+00:00",
   "total": 200
 }
