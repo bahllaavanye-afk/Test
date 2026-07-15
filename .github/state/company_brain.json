@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784143409.3681083,
+    "last_updated": 1784145323.5835352,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,8 +151,8 @@
       "AAPL"
     ],
     "risk_flags": [],
-    "risk_status": "alert",
-    "last_brain_update": 1784141141.4506586
+    "risk_status": "normal",
+    "last_brain_update": 1784145323.582942
   },
   "episodic": [
     {
@@ -1205,6 +1205,11 @@
       "summary": "The deployment failed due to a resource limit error, advising a retry in 24 hours, and two automatic patch attempts also failed.",
       "item_count": 20,
       "ts": 1784141141.4434936
+    },
+    {
+      "summary": "The auto-fix process repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
+      "item_count": 20,
+      "ts": 1784145323.5755086
     }
   ],
   "experiment_results": [
