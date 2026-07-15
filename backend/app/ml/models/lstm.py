@@ -26,6 +26,9 @@ except ImportError:  # pragma: no cover
     nn = None     # type: ignore[assignment]
     optim = None  # type: ignore[assignment]
 
+if not _TORCH_AVAILABLE:  # pragma: no cover
+    raise ImportError("PyTorch is required for LSTMPredictor but is not installed.")
+
 import numpy as np
 from sklearn.metrics import roc_auc_score
 from typing import Iterable, Tuple, Dict
@@ -212,6 +215,10 @@ class LSTMPredictor(AbstractModel, nn.Module):
                 all_logits.append(logits)
                 all_labels.append(y)
                 total += len(y)
+
+        if total == 0:
+            return EvalMetrics(accuracy=0.0, auc=0.5, sharpe=0.0, loss=0.0)
+
         logits_cat = torch.cat(all_logits).numpy()
         labels_cat = torch.cat(all_labels).numpy()
         probs = 1 / (1 + np.exp(-logits_cat))
