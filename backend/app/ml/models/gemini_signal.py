@@ -8,7 +8,9 @@ No GPU, no model files needed — inference runs in Google's cloud.
 The signal is computed by:
 1. Summarizing recent OHLCV + technical indicators as a structured prompt
 2. Asking Gemini to reason about market regime and direction probability
-3. Returning a calibrated probability (0.0–1.0) for upward price movement
+3. Returning a calibrated probability (0.0–1.0) for upward price movement,
+   with additional confidence and regime filters applied to tighten entry
+   conditions and improve exit decisions.
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ import re
 import json
 import asyncio
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -48,6 +50,9 @@ Respond with ONLY this JSON (no other text):
 {{"direction_prob_up": <float 0.0-1.0>, "confidence": <"low"|"medium"|"high">, "regime": <"trending"|"ranging"|"volatile">}}"""
 
 
+# --------------------------------------------------------------------------- #
+# Technical summary generation
+# --------------------------------------------------------------------------- #
 def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     """Compute a compact technical summary for Gemini."""
     close = df["close"].astype(float)
@@ -71,11 +76,14 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     if "high" in df.columns and "low" in df.columns:
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        tr = pd.concat([
-            high - low,
-            (high - close.shift()).abs(),
-            (low - close.shift()).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
     else:
         atr = float(close.rolling(14).std().iloc[-1]) if n >= 14 else 0.0
@@ -84,27 +92,58 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     vol_ratio = 1.0
     if "volume" in df.columns:
         vol = df["volume"].astype(float)
-        avg_vol = float(vol.rolling(20).mean().iloc[-1]) if n >= 20 else float(vol.mean())
+        avg_vol = (
+            float(vol.rolling(20).mean().iloc[-1])
+            if n >= 20
+            else float(vol.mean())
+        )
         vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9)
 
-    high_20 = float(df["high"].astype(float).rolling(20).max().iloc[-1]) if "high" in df.columns and n >= 20 else price
-    low_20 = float(df["low"].astype(float).rolling(20).min().iloc[-1]) if "low" in df.columns and n >= 20 else price
+    high_20 = (
+        float(df["high"].astype(float).rolling(20).max().iloc[-1])
+        if "high" in df.columns and n >= 20
+        else price
+    )
+    low_20 = (
+        float(df["low"].astype(float).rolling(20).min().iloc[-1])
+        if "low" in df.columns and n >= 20
+        else price
+    )
     range_pct = (high_20 - low_20) / (low_20 + 1e-9)
 
     ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if n >= 50 else price
-    trend = "uptrend" if price > ema50 else "downtrend" if price < ema50 * 0.98 else "neutral"
+    trend = (
+        "uptrend"
+        if price > ema50
+        else "downtrend"
+        if price < ema50 * 0.98
+        else "neutral"
+    )
 
     return _ANALYSIS_TEMPLATE.format(
-        symbol=symbol, interval=interval, n=n, price=price,
-        ret5=ret5, ret20=ret20, rsi=rsi, vs_sma=vs_sma,
-        atr_pct=atr_pct, vol_ratio=vol_ratio, range_pct=range_pct, trend=trend,
+        symbol=symbol,
+        interval=interval,
+        n=n,
+        price=price,
+        ret5=ret5,
+        ret20=ret20,
+        rsi=rsi,
+        vs_sma=vs_sma,
+        atr_pct=atr_pct,
+        vol_ratio=vol_ratio,
+        range_pct=range_pct,
+        trend=trend,
     )
 
 
+# --------------------------------------------------------------------------- #
+# Gemini API wrapper
+# --------------------------------------------------------------------------- #
 def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
     """Synchronous Gemini call returning parsed JSON dict."""
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
@@ -114,21 +153,144 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
         response = model.generate_content(prompt)
         text = response.text.strip() if response.text else ""
 
-        # Extract JSON
-        m = re.search(r'\{.*?"direction_prob_up".*?\}', text, re.DOTALL)
+        # Extract JSON payload
+        m = re.search(r"\{.*?\"direction_prob_up\".*?\}", text, re.DOTALL)
         if m:
             return json.loads(m.group(0))
     except ImportError:
-        pass
+        logger.debug("GeminiSignalEngine: google.generativeai not installed")
     except Exception as e:
         logger.debug("Gemini signal call failed", error=str(e))
     return {}
 
 
+# --------------------------------------------------------------------------- #
+# Signal post‑processing helpers
+# --------------------------------------------------------------------------- #
+# Thresholds for tightening entry conditions
+_CONFIDENCE_LEVELS = {"high", "medium"}  # low confidence is filtered out
+_MAX_ATR_PCT = 0.03          # discard signals in very volatile environments
+_MIN_VOL_RATIO = 1.0        # require volume at least equal to recent average
+_RSI_UPPER = 70.0           # avoid over‑bought entries
+_RSI_LOWER = 30.0           # avoid over‑sold entries
+_VS_SMA_UPPER = 0.05        # price too far above SMA may indicate overextension
+_VS_SMA_LOWER = -0.05       # price too far below SMA may indicate oversold
+
+def _apply_entry_filters(result: dict[str, Any], df: pd.DataFrame) -> Optional[float]:
+    """
+    Apply confirmation filters to the raw Gemini output.
+    Returns a clipped probability if all filters pass, otherwise None.
+    """
+    # Basic existence checks
+    prob = result.get("direction_prob_up")
+    confidence = result.get("confidence")
+    regime = result.get("regime")
+    if prob is None or confidence not in _CONFIDENCE_LEVELS:
+        logger.debug(
+            "GeminiSignalEngine: filtered out due to missing prob or low confidence",
+            confidence=confidence,
+        )
+        return None
+
+    # Technical confirmation filters
+    close = df["close"].astype(float)
+    price = float(close.iloc[-1])
+
+    # RSI filter
+    delta = close.diff()
+    gain = delta.clip(lower=0).ewm(span=14, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(span=14, adjust=False).mean()
+    rs = gain / (loss + 1e-9)
+    rsi = float(100 - 100 / (1 + rs.iloc[-1]))
+    if rsi > _RSI_UPPER or rsi < _RSI_LOWER:
+        logger.debug("GeminiSignalEngine: RSI filter rejected", rsi=rsi)
+        return None
+
+    # ATR volatility filter
+    if "high" in df.columns and "low" in df.columns:
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
+    else:
+        atr = float(close.rolling(14).std().iloc[-1]) if len(close) >= 14 else 0.0
+    atr_pct = atr / (price + 1e-9)
+    if atr_pct > _MAX_ATR_PCT:
+        logger.debug("GeminiSignalEngine: ATR filter rejected", atr_pct=atr_pct)
+        return None
+
+    # Volume filter
+    if "volume" in df.columns:
+        vol = df["volume"].astype(float)
+        avg_vol = (
+            float(vol.rolling(20).mean().iloc[-1])
+            if len(vol) >= 20
+            else float(vol.mean())
+        )
+        vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9)
+        if vol_ratio < _MIN_VOL_RATIO:
+            logger.debug(
+                "GeminiSignalEngine: volume filter rejected", vol_ratio=vol_ratio
+            )
+            return None
+
+    # Price vs SMA filter
+    sma20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else price
+    vs_sma = (price - sma20) / (sma20 + 1e-9)
+    if vs_sma > _VS_SMA_UPPER or vs_sma < _VS_SMA_LOWER:
+        logger.debug(
+            "GeminiSignalEngine: price‑vs‑SMA filter rejected", vs_sma=vs_sma
+        )
+        return None
+
+    # Regime‑trend consistency check
+    if regime == "trending":
+        # Expect a clear trend from the technical summary
+        ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
+        if price > ema50 * 1.02:
+            # Strong uptrend, ensure prob reflects it
+            pass
+        elif price < ema50 * 0.98:
+            # Strong downtrend, probability should be low; we still accept
+            pass
+        else:
+            logger.debug(
+                "GeminiSignalEngine: regime‑trend mismatch", regime=regime, price=price, ema50=ema50
+            )
+            return None
+
+    # All filters passed – return clipped probability
+    return float(np.clip(prob, 0.0, 1.0))
+
+
+def _should_exit_position(current_prob: float, prev_prob: Optional[float]) -> bool:
+    """
+    Simple exit rule: exit when the upward probability drops
+    significantly (e.g., >20% drop) or flips sign.
+    """
+    if prev_prob is None:
+        return False
+    # Exit if probability falls below 0.4 or drops more than 20% relative
+    if current_prob < 0.4 or (prev_prob - current_prob) / prev_prob > 0.20:
+        return True
+    return False
+
+
+# --------------------------------------------------------------------------- #
+# Engine class
+# --------------------------------------------------------------------------- #
 class GeminiSignalEngine:
     """
-    Wraps Gemini API as an ML-style signal generator.
-    Implements the AbstractModel interface (predict method returns probability).
+    Wraps Gemini API as an ML‑style signal generator.
+    Implements the AbstractModel interface (predict method returns probability)
+    with additional confirmation filters to tighten entry conditions.
     """
     model_type = "gemini_signal"
 
@@ -142,13 +304,17 @@ class GeminiSignalEngine:
         if not self._available:
             logger.debug("GeminiSignalEngine: no API key — signals disabled")
 
+        # Store last probability to enable simple exit logic
+        self._last_prob: Optional[float] = None
+
     @property
     def is_available(self) -> bool:
         return self._available
 
     async def predict_proba(self, df: pd.DataFrame, symbol: str, interval: str = "1d") -> float | None:
         """
-        Returns probability of upward price movement (0.0–1.0), or None if unavailable.
+        Returns probability of upward price movement (0.0–1.0) after applying
+        confirmation filters, or None if unavailable or filters reject the signal.
         """
         if not self._available or df is None or len(df) < 20:
             return None
@@ -157,9 +323,11 @@ class GeminiSignalEngine:
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _call_gemini_json, prompt, self._key)
 
-        prob = result.get("direction_prob_up")
+        prob = _apply_entry_filters(result, df)
         if prob is not None:
-            return float(np.clip(prob, 0.0, 1.0))
+            # Update last probability for exit decisions
+            self._last_prob = prob
+            return prob
         return None
 
     def predict_proba_sync(self, df: pd.DataFrame, symbol: str, interval: str = "1d") -> float | None:
@@ -168,8 +336,24 @@ class GeminiSignalEngine:
             return None
         prompt = _compute_summary(df, symbol, interval)
         result = _call_gemini_json(prompt, self._key)
-        prob = result.get("direction_prob_up")
-        return float(np.clip(prob, 0.0, 1.0)) if prob is not None else None
+        prob = _apply_entry_filters(result, df)
+        if prob is not None:
+            self._last_prob = prob
+            return prob
+        return None
+
+    def should_exit(self, df: pd.DataFrame, symbol: str, interval: str = "1d") -> bool:
+        """
+        Determines whether an open position should be exited based on the
+        latest probability and a simple decay/flip rule.
+        """
+        current_prob = self.predict_proba_sync(df, symbol, interval)
+        if current_prob is None:
+            # If we cannot obtain a fresh probability, fall back to previous state
+            current_prob = self._last_prob
+        exit_flag = _should_exit_position(current_prob or 0.0, self._last_prob)
+        self._last_prob = current_prob
+        return exit_flag
 
 
 # Module-level singleton
