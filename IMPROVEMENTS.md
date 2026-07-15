@@ -36,14 +36,14 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
   account bots can't be scraped (auth) — screenshots remain the path for those.
 - [x] **[P1] ForexFactory calendar feed** — DONE 2026-07-15: red-folder gate in fx_desk.py (±30min blackout per pair currency, fail-open, live-verified 99 events). — ingest the public ff_calendar_thisweek.json into
   /market-data/forex-calendar and gate Macro/FX desk entries around red-folder events.
-- [ ] **[P2] TradingView/FxReplay/Tradezilla** — no public trade APIs (manual UIs);
+- [x] **[P2] TradingView/FxReplay/Tradezilla** — DONE 2026-07-15: POST /webhooks/tradingview receiver (secret-gated, disabled-without-secret, normalizes alerts, /recent ring buffer, Redis fan-out; receives only — never trades). FxReplay/Tradezilla have no APIs — documented, closed. — no public trade APIs (manual UIs);
   TradingView useful as charts + webhook-IN alerts (receiver endpoint), not for dummy
   trading automation. Document + build the webhook receiver only.
 - [x] **[P0] Options Alpha dashboard parity in the frontend** — DONE 2026-07-15: per-bot P&L graph (shipped earlier), + GET /bots/{id}/activity with open-positions & trade-history tables in BotBuilder expanded row; settings editor existed. — per-bot detail view in
   BotBuilder: cumulative P&L graph (endpoint /bots/{id}/performance is LIVE), open
   positions table (orders with bot_id in raw_payload), trade history (Trades by
   strategy_name == bot.name), settings editor (PATCH /bots/{id}). Use LWEquityCurve.
-- [ ] **[P0] Alpaca multi-leg options orders** — Alpaca paper supports options + multi-leg;
+- [x] **[P0] Alpaca multi-leg options orders** — implementation existed (submit_alpaca_multileg_order, OCC symbols, delta picking, engine-wired) but had ZERO tests; 2026-07-15 added 8 tests which caught a real crash (structlog-style kwargs on a stdlib logger — a broker REJECTION crashed the caller instead of returning None). Fixed. — Alpaca paper supports options + multi-leg;
   extend brokers/alpaca_orders.py with the legs order shape so every oa_* bot fills REAL
   option legs with existing keys. Kills the TradeStation dependency.
 - [ ] **[P1] Synthetic options backtester** — Black-Scholes pricer over underlying OHLCV +
@@ -77,7 +77,7 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
 - [x] **[P1] Wire Alpaca crypto into `price_feed`** — DONE 2026-07-15: root cause was improver PR #420 truncating brokers/alpaca.py (6 of 7 interface methods deleted → AlpacaBroker un-instantiable → silent yfinance fallback) + stale exception imports. Restored, guarded by test_broker_interface.py. for live quotes (Binance still geo-blocked for live).
 - [~] **[P1] Narrow 435 broad `except Exception`** — tasks/ sweep DONE 2026-07-15 (every silent pass now logs); brokers/execution/risk money paths done earlier; remainder (llm, api) queued. — start with `tasks/`, `brokers/`, `llm`; add logging.
 - [x] **[P1] Audit stale provider model IDs** — done: Cerebras gpt-oss-120b + NVIDIA deepseek slug live-verified, both env-overridable (CEREBRAS_MODEL/NVIDIA_MODEL).
-- [ ] **[P2] ML employees inert on prod** — run with `[ml]` extra on a worker, or mark degraded.
+- [x] **[P2] ML employees inert on prod** — already handled honestly: /health reports torch availability with non-critical 'degrades gracefully' status; ML strategies fail-soft. No further action. — run with `[ml]` extra on a worker, or mark degraded.
 
 ---
 
@@ -108,7 +108,7 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
 - [~] **Provider keys** — as of 2026-06-24, **3 work live** (Groq, Cerebras via gpt-oss-120b,
       NVIDIA via current model). Gemini=quota(429, recovers), DeepSeek=balance(402). Optional:
       add free SambaNova/Together/Hyperbolic keys to Doppler for more headroom. *(Drop key in Doppler; I wire the rest.)*
-- [ ] **Make the agent "smoke test" a hard gate** that pages on failure (it was red but unwatched).
+- [x] **Make the agent "smoke test" a hard gate** — smoke-test.yml pages Discord #ci-failures on failure; agent-health-check.yml hard-gated 2026-07-15 (fails + pages #infra-alerts on critical findings).
 
 ## P1 — Real bugs found this session
 - [x] **`/ws/prices` all-symbols bug:** subscribed to literal topic `prices:*` but the feed
