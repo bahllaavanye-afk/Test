@@ -188,7 +188,92 @@ class SmartOrderRouter:
         )
         return OrderResult(
             broker_order_id=last_result.broker_order_id if last_result else "ac_exec",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
+            status="filled" if total_filled >= request.quantity * 0.99 else "partial",
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
+
+
+# -------------------------------------------------------------------------
+# Unit tests for SmartOrderRouter boundary conditions
+# -------------------------------------------------------------------------
+import pytest
+
+# Minimal mock of OrderRequest sufficient for _select_algorithm tests
+class _MockOrderRequest:
+    def __init__(
+        self,
+        quantity: float,
+        limit_price: float | None = None,
+        stop_price: float | None = None,
+        order_type: str = "market",
+        execution_algo: str | None = None,
+        metadata: dict | None = None,
+    ):
+        self.quantity = quantity
+        self.limit_price = limit_price
+        self.stop_price = stop_price
+        self.order_type = order_type
+        self.execution_algo = execution_algo
+        self.metadata = metadata or {}
+
+    # asdict is used on the request; provide a compatible method
+    def __iter__(self):
+        return iter(self.__dict__.items())
+
+    def __repr__(self):
+        return f"<MockOrderRequest qty={self.quantity} limit={self.limit_price}>"
+
+
+def test_select_algorithm_exact_100k_falls_to_twap_when_rl_unavailable(monkeypatch):
+    """When estimated USD equals 100,000 and RL execution is unavailable,
+    the router should select TWAP."""
+    monkeypatch.setattr(
+        "backend.app.execution.smart_router._RL_EXEC_AVAILABLE", False, raising=False
+    )
+    request = _MockOrderRequest(quantity=2000, limit_price=50)  # 2000 * 50 = 100,000
+    router = SmartOrderRouter(broker=None)  # broker not needed for selection
+    algo = router._select_algorithm(request)
+    assert algo == "twap"
+
+
+def test_select_algorithm_exact_100k_uses_rl_when_available(monkeypatch):
+    """When RL execution is available, an order of exactly 100,000 USD
+    should be routed to the RL algorithm."""
+    monkeypatch.setattr(
+        "backend.app.execution.smart_router._RL_EXEC_AVAILABLE", True, raising=False
+    )
+    request = _MockOrderRequest(quantity=2000, limit_price=50)  # 100,000 USD
+    router = SmartOrderRouter(broker=None)
+    algo = router._select_algorithm(request)
+    assert algo == "rl_exec"
+
+
+def test_select_algorithm_boundary_5k_returns_almgren_chriss():
+    """Orders with estimated USD exactly at the lower bound (5,000) should
+    be routed to the Almgren‑Chriss algorithm."""
+    request = _MockOrderRequest(quantity=100, limit_price=50)  # 5,000 USD
+    router = SmartOrderRouter(broker=None)
+    algo = router._select_algorithm(request)
+    assert algo == "almgren_chriss"
+
+
+def test_select_algorithm_explicit_override():
+    """When an explicit execution_algo is supplied, it should be respected
+    regardless of estimated order size."""
+    request = _MockOrderRequest(
+        quantity=1,
+        limit_price=1,
+        execution_algo="limit_first",
+    )
+    router = SmartOrderRouter(broker=None)
+    algo = router._select_algorithm(request)
+    assert algo == "limit_first"
+
+
+def test_select_algorithm_fallback_to_market():
+    """If none of the conditions match, the router should fall back to a market order."""
+    request = _MockOrderRequest(quantity=10, limit_price=None, order_type="market")
+    router = SmartOrderRouter(broker=None)
+    algo = router._select_algorithm(request)
+    assert algo == "market"
