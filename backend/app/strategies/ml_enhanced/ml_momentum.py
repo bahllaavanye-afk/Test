@@ -13,6 +13,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.strategies.manual.momentum import MomentumStrategy
@@ -20,6 +21,39 @@ from app.ml.inference import get_inference_service
 
 
 logger = logging.getLogger(__name__)
+
+
+class MLMomentumParams(BaseModel):
+    """Configuration parameters for :class:`MLMomentumStrategy`.
+
+    Attributes
+    ----------
+    confidence_threshold: float
+        Minimum combined confidence required to emit a signal. Must be in the
+        range ``0 < value <= 1``. Example: ``0.65``.
+    tick_interval_seconds: float
+        Length of a single tick in seconds. Example: ``3600.0`` (1 hour).
+    """
+
+    confidence_threshold: float = Field(
+        0.65,
+        description="Minimum combined confidence required to emit a signal.",
+        example=0.65,
+        ge=0.0,
+        le=1.0,
+    )
+    tick_interval_seconds: float = Field(
+        3600.0,
+        description="Length of a single tick in seconds.",
+        example=3600.0,
+        gt=0.0,
+    )
+
+    @validator("confidence_threshold")
+    def _validate_confidence(cls, v: float) -> float:
+        if not (0.0 < v <= 1.0):
+            raise ValueError("confidence_threshold must be > 0 and <= 1")
+        return v
 
 
 class MLMomentumStrategy(AbstractStrategy):
@@ -44,7 +78,11 @@ class MLMomentumStrategy(AbstractStrategy):
         ----------
         params : dict | None, optional
             Optional configuration parameters passed to the base strategy.
+            The dict is validated against :class:`MLMomentumParams`.
         """
+        # Validate incoming parameters if provided
+        if params is not None:
+            MLMomentumParams(**params)  # will raise ValidationError on invalid input
         super().__init__(params)
         self._base = MomentumStrategy(params)
 
