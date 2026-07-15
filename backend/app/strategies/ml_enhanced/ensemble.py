@@ -1,7 +1,11 @@
 """Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+import logging
+import time
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
+
+logger = logging.getLogger(__name__)
 
 
 class EnsembleStrategy(AbstractStrategy):
@@ -30,6 +34,8 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        start_time = time.time()
+        signal_generated = False
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -65,6 +71,7 @@ class EnsembleStrategy(AbstractStrategy):
             if latest_vol < median_vol:
                 return None
 
+            signal_generated = True
             return Signal(
                 symbol=symbol,
                 side="buy" if ml_result["prediction"] == "up" else "sell",
@@ -74,9 +81,20 @@ class EnsembleStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata=ml_result,
             )
-        except Exception:
-            # In production we would log the exception; for now we silently ignore.
+        except Exception as e:
+            logger.exception("EnsembleStrategy analyze exception", exc_info=e)
             return None
+        finally:
+            elapsed = time.time() - start_time
+            logger.info(
+                "EnsembleStrategy analyze completed",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": signal_generated,
+                    "execution_time_seconds": elapsed,
+                    "pnl": None,  # Placeholder; actual P&L computed downstream
+                },
+            )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -90,10 +108,15 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
+        start_time = time.time()
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
             empty = pd.Series(False, index=df.index)
+            logger.info(
+                "BacktestSignals generation aborted due to missing columns",
+                extra={"missing_columns": list(required_cols - set(df.columns))},
+            )
             return BacktestSignals(entries=empty, exits=empty)
 
         # Compute rolling SMA and median volume
@@ -111,16 +134,22 @@ class EnsembleStrategy(AbstractStrategy):
         long_entry = is_up & conf_ok & price_above_sma & vol_ok
         short_entry = is_down & conf_ok & price_below_sma & vol_ok
 
-        entries = long_entry | short_entry
+        entries = (long_entry | short_entry).astype(bool)
 
         # Exit when any of the entry conditions become false for the current side.
         # For simplicity we treat the opposite side as an exit signal.
         exit_long = (~price_above_sma) | (~vol_ok) | (df["ml_prediction"] == "down")
         exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
-        exits = exit_long | exit_short
+        exits = (exit_long | exit_short).astype(bool)
 
-        # Align boolean Series with BacktestSignals expectations
-        entries = entries.astype(bool)
-        exits = exits.astype(bool)
+        elapsed = time.time() - start_time
+        logger.info(
+            "BacktestSignals generation completed",
+            extra={
+                "entry_signal_count": int(entries.sum()),
+                "exit_signal_count": int(exits.sum()),
+                "execution_time_seconds": elapsed,
+            },
+        )
 
         return BacktestSignals(entries=entries, exits=exits)
