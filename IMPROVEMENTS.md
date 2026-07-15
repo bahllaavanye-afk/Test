@@ -1,5 +1,7 @@
 # QuantEdge — Improvements & Task Tracker
 
+- [ ] **[P2] Unblock the 10 data-source-blocked strategies** (strategy-scout 2026-07-15; every WIRABLE strategy now trades — coverage 53→103): each needs a feed, not a desk: covered_call (share inventory), funding_rate_arb + crypto_basis_roll + dex_cex_arb (geo-permitted derivatives/DEX data), token_unlock_fade (unlock calendar), news_momentum (headline feed), earnings_accruals (fundamentals), micro_cap_momentum (small-cap universe), moc_auction_imbalance + order_flow_imbalance (intraday/L2 data).
+
 > **Session 2026-07-15:** QUARANTINED emptied (hard-budget fail-soft); Commodities desk;
 > FF red-folder gate for FX; **AlpacaBroker restored** (improver PR #420 had truncated
 > 6 of 7 interface methods — improver now rejects shrunken/elided outputs, and

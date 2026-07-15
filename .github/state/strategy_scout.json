@@ -1,0 +1,62 @@
+{
+  "unwired": [
+    "covered_call",
+    "crypto_basis_roll",
+    "dex_cex_arb",
+    "earnings_accruals",
+    "funding_rate_arb",
+    "micro_cap_momentum",
+    "moc_auction_imbalance",
+    "news_momentum",
+    "order_flow_imbalance",
+    "token_unlock_fade"
+  ],
+  "coverage": [
+    [
+      "Equities",
+      26,
+      30
+    ],
+    [
+      "Crypto",
+      14,
+      20
+    ],
+    [
+      "Options",
+      17,
+      8
+    ],
+    [
+      "Polymarket",
+      8,
+      1
+    ],
+    [
+      "Macro/FX",
+      16,
+      14
+    ],
+    [
+      "StatArb",
+      8,
+      12
+    ],
+    [
+      "Commodities",
+      10,
+      12
+    ],
+    [
+      "TV Indicators",
+      12,
+      10
+    ],
+    [
+      "International",
+      8,
+      19
+    ]
+  ],
+  "last_run": "2026-07-15T13:58:00.126429+00:00"
+}
