@@ -2,15 +2,17 @@
 XGBoost binary classifier with Optuna hyperparameter optimization.
 SHAP-based explainability built in.
 """
-import numpy as np
 import json
 from pathlib import Path
-from sklearn.metrics import roc_auc_score, accuracy_score
+
+import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 
 try:
-    import xgboost as xgb
     import shap
+    import xgboost as xgb
     XGB_AVAILABLE = True
 except ImportError:
     XGB_AVAILABLE = False
@@ -39,16 +41,40 @@ class XGBoostClassifier(AbstractModel):
         self._explainer = None
         self.feature_names: list[str] = []
 
+    def _to_numpy(self, data):
+        """Convert tensors or array‑like objects to a NumPy array."""
+        if data is None:
+            raise ValueError("Input data cannot be None")
+        if hasattr(data, "numpy"):
+            data = data.numpy()
+        arr = np.asarray(data)
+        if arr.size == 0:
+            return np.empty((0, 0))
+        return arr
+
     def forward(self, x) -> np.ndarray:
-        if hasattr(x, "numpy"):
-            x = x.numpy()
+        x = self._to_numpy(x)
+        if x.size == 0:
+            return np.array([])
         return self.model.predict_proba(x)[:, 1]
 
     def fit(self, X_train, y_train, X_val, y_val, feature_names: list[str] | None = None) -> dict:
+        X_train = self._to_numpy(X_train)
+        y_train = self._to_numpy(y_train)
+        X_val = self._to_numpy(X_val)
+        y_val = self._to_numpy(y_val)
+
+        if X_train.size == 0 or y_train.size == 0:
+            raise ValueError("Training data cannot be empty")
+        if X_val.size == 0 or y_val.size == 0:
+            raise ValueError("Validation data cannot be empty")
+
         if feature_names:
             self.feature_names = feature_names
+
         self.model.fit(
-            X_train, y_train,
+            X_train,
+            y_train,
             eval_set=[(X_val, y_val)],
             verbose=False,
         )
@@ -60,17 +86,24 @@ class XGBoostClassifier(AbstractModel):
         }
 
     def train_epoch(self, loader, optimizer=None, criterion=None) -> dict:
-        # XGBoost uses fit() directly, not epoch-based training
+        # XGBoost uses fit() directly, not epoch‑based training
         return {"loss": 0.0, "accuracy": 0.0}
 
     def evaluate(self, loader) -> EvalMetrics:
         all_probs, all_labels = [], []
         for X, y in loader:
-            probs = self.forward(X.numpy() if hasattr(X, "numpy") else X)
+            probs = self.forward(X)
             all_probs.append(probs)
-            all_labels.append(y.numpy() if hasattr(y, "numpy") else y)
-        probs_cat = np.concatenate(all_probs)
-        labels_cat = np.concatenate(all_labels)
+            all_labels.append(self._to_numpy(y))
+        if not all_probs:
+            return EvalMetrics(accuracy=0.0, auc=0.5, sharpe=0.0)
+
+        probs_cat = np.concatenate(all_probs) if all_probs else np.array([])
+        labels_cat = np.concatenate(all_labels) if all_labels else np.array([])
+
+        if probs_cat.size == 0:
+            return EvalMetrics(accuracy=0.0, auc=0.5, sharpe=0.0)
+
         preds = (probs_cat > 0.5).astype(int)
         acc = float(accuracy_score(labels_cat, preds))
         try:
@@ -80,18 +113,24 @@ class XGBoostClassifier(AbstractModel):
         return EvalMetrics(accuracy=acc, auc=auc, sharpe=0.0)
 
     def get_feature_importance(self) -> dict[str, float]:
-        """Return SHAP-based feature importance."""
+        """Return SHAP‑based feature importance."""
         if self._explainer is None:
             self._explainer = shap.TreeExplainer(self.model)
-        importance = dict(zip(
-            self.feature_names or [f"f{i}" for i in range(len(self.model.feature_importances_))],
-            self.model.feature_importances_.tolist()
-        ))
+
+        # Guard against mismatched lengths between provided names and model importances
+        importances = self.model.feature_importances_.tolist()
+        if self.feature_names and len(self.feature_names) != len(importances):
+            names = self.feature_names[: len(importances)]
+        else:
+            names = self.feature_names or [f"f{i}" for i in range(len(importances))]
+
+        importance = dict(zip(names, importances))
         return dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
 
     def predict_proba(self, X) -> np.ndarray:
-        if hasattr(X, "numpy"):
-            X = X.numpy()
+        X = self._to_numpy(X)
+        if X.size == 0:
+            return np.array([])
         return self.model.predict_proba(X)[:, 1]
 
     def save(self, path: str, metadata: dict | None = None) -> None:
