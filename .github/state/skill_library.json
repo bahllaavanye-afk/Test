@@ -1,8 +1,5 @@
 {
   "skills": [
-    "* Models in the ml/models directory are showing progress, with recent checks passing on **ensemble_model.py** (schemas), **hawkes_arrival.py** (error handling), and **itransformer.py** (cleanup).",
-    "Log exceptions in ml/models",
-    "* **Conservative Allocation**: Maintain a 70/30 arb/directional allocation policy for optimal risk management. Allocation sizes should not exceed 75% of the total position size.",
     "Validate user input",
     "Refactor trade executor",
     "Check trading halt",
@@ -199,8 +196,11 @@
     "Based on the collective knowledge from the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Check DB connections",
     "Check data types",
-    "Handle SQL errors"
+    "Handle SQL errors",
+    "Test thread safety",
+    "Check file paths",
+    "Scan for deadlock"
   ],
-  "last_updated": "2026-07-16T14:31:40.639632+00:00",
+  "last_updated": "2026-07-16T19:03:57.320830+00:00",
   "total": 200
 }
