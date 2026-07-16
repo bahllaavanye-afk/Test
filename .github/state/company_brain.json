@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784225316.4241126,
+    "last_updated": 1784225979.0286314,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784221883.8416955
+    "last_brain_update": 1784225979.0279477
   },
   "episodic": [
     {
@@ -1125,6 +1125,34 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 6, Breakouts: 0, Risk flags: 0.",
       "ts": 1784225316.4269829
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free tier limit (100/day). Upgrade to Pro or implement deployment batching to avoid repeated failures.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784225970.6134198
+    },
+    {
+      "lesson": "Auto-fix skipped for per-desk performance attribution due to multi-layer complexity. Break feature into smaller, independently deployable modules to enable automated patching.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784225970.6165838
+    },
+    {
+      "lesson": "Auto-fix failed to apply a patch. Investigate patch format, CI/CD pipeline, or integration test gaps to prevent future failures.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784225970.6195357
+    },
+    {
+      "lesson": "Symbol Scout feature blocked by missing specification. Prioritize requirements gathering and write a concrete GitHub issue before attempting automation.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784225970.622466
     }
   ],
   "github_insights": [
@@ -1487,6 +1515,11 @@
       "summary": "The deployment failed due to resource limits, advising a retry in 24 hours, and an automated fix attempt also failed to apply a patch.",
       "item_count": 20,
       "ts": 1784221883.8338459
+    },
+    {
+      "summary": "A deployment failed due to resource limits, and automated fixes were either skipped as too complex or failed to apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784225979.019506
     }
   ],
   "experiment_results": [
