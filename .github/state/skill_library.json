@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Check data types",
     "error_handling on risk/manager.py: success \u2014 tests green",
     "Verify API keys",
     "Log network errors",
@@ -199,8 +198,9 @@
     "Test API rate limits",
     "Test config files",
     "Log system restarts",
-    "Check dependency libs"
+    "Check dependency libs",
+    "Test network ping"
   ],
-  "last_updated": "2026-07-15T23:59:53.022029+00:00",
+  "last_updated": "2026-07-16T03:27:01.591293+00:00",
   "total": 200
 }
