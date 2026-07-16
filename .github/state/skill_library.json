@@ -199,8 +199,13 @@
     "Based on the collective knowledge from the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Check DB connections",
     "Check data types",
-    "Handle SQL errors"
+    "Handle SQL errors",
+    "optimization on backtest/stress_test.py: success \u2014 tests green",
+    "optimization on comparison/benchmarks.py: success \u2014 tests green",
+    "optimization on api/v1/monitoring.py: success \u2014 tests green",
+    "optimization on strategies/manual/duration_momentum.py: success \u2014 tests green",
+    "optimization on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T14:31:40.639632+00:00",
+  "last_updated": "2026-07-16T17:45:48.423144+00:00",
   "total": 200
 }
