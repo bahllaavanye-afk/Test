@@ -1,6 +1,8 @@
 """Walk-forward validation: train on N years, test on M months, roll forward."""
 
 from __future__ import annotations
+import logging
+import time
 import pandas as pd
 from dataclasses import dataclass, field
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -9,6 +11,8 @@ TIMEFRAME_TRAIN = 2  # years of training data
 TIMEFRAME_TEST = 6  # months of testing data
 
 MAX_EQUIITY = 100_000
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class WalkForwardResult:
@@ -38,22 +42,45 @@ def walk_forward(
         train = prices.iloc[i - train_bars:i]
         test = prices.iloc[i:i + test_bars]
 
+        start_date = str(test.index[0].date())
+        end_date = str(test.index[-1].date())
+
         try:
             test_signals = signals_fn(train, test)
+            signal_count = len(test_signals)
+
+            start_time = time.perf_counter()
             metrics = run_backtest(test_signals, test, initial_equity=equity_carry)
+            exec_time = time.perf_counter() - start_time
+
             equity_carry = metrics.equity_curve[-1]["equity"] if metrics.equity_curve else equity_carry
 
             result.windows.append({
-                "start": str(test.index[0].date()),
-                "end": str(test.index[-1].date()),
+                "start": start_date,
+                "end": end_date,
                 "sharpe": metrics.sharpe,
                 "max_drawdown": metrics.max_drawdown,
                 "total_return": metrics.total_return,
                 "num_trades": metrics.num_trades,
             })
             result.combined_equity.extend(metrics.equity_curve)
+
+            logger.info(
+                "Walk-forward window completed",
+                extra={
+                    "start": start_date,
+                    "end": end_date,
+                    "signal_count": signal_count,
+                    "execution_time_sec": round(exec_time, 4),
+                    "pnl": round(metrics.total_return, 4),
+                },
+            )
         except Exception as e:
-            result.windows.append({"start": str(test.index[0].date()), "end": str(test.index[-1].date()), "error": str(e)})
+            result.windows.append({"start": start_date, "end": end_date, "error": str(e)})
+            logger.exception(
+                "Error processing walk-forward window",
+                extra={"start": start_date, "end": end_date, "error": str(e)},
+            )
 
         i += test_bars
 
@@ -61,4 +88,13 @@ def walk_forward(
     dds = [w["max_drawdown"] for w in result.windows if "max_drawdown" in w]
     result.avg_sharpe = round(sum(sharpes) / len(sharpes), 4) if sharpes else 0.0
     result.avg_drawdown = round(sum(dds) / len(dds), 4) if dds else 0.0
+
+    logger.info(
+        "Walk-forward validation completed",
+        extra={
+            "average_sharpe": result.avg_sharpe,
+            "average_drawdown": result.avg_drawdown,
+            "total_windows": len(result.windows),
+        },
+    )
     return result
