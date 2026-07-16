@@ -199,8 +199,13 @@
     "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Refactor predict.py",
     "Based on the collective knowledge from the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Check DB connections"
+    "Check DB connections",
+    "constants on backtest/walk_forward.py: success \u2014 tests green",
+    "constants on tasks/research_pipeline.py: success \u2014 tests green",
+    "constants on api/v1/trades.py: success \u2014 tests green",
+    "constants on test/unit/test_circuit_breaker.py: success \u2014 tests green",
+    "constants on ml/models/lorentzian_knn.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T05:59:15.845137+00:00",
+  "last_updated": "2026-07-16T06:15:01.635333+00:00",
   "total": 200
 }
