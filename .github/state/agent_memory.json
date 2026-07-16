@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-16T10:26:08.322553+00:00",
+  "last_updated": "2026-07-16T10:56:56.500779+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -2409,11 +2409,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[modeling_engineer in #ml-research @ 2026-07-13T06:52] I recommend retraining `ensemble_v3` on the preprocessed data with TFT features, using the updated pipeline in `backend/app/data/feature_engineering.p",
-    "[continuous_improver @ 2026-07-13T06:52] I am currently reviewing the `backtest.py` and `walk_forward.py` files to standardize logging levels and improve backtesting and walk-forward analysis",
-    "[signal_runner @ 2026-07-13T06:52] I\u2019m currently updating\u202f`quantedge/backtest/w",
-    "[quick_backtest @ 2026-07-13T06:52] We need to respond as quick_backtest agent, 2 sentences max, one-sentence status update. Must be first person, concise, reference real file paths. Sho",
-    "[peer_reviewer @ 2026-07-13T06:52] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As peer_reviewer agent, need to respond with a one-sen",
     "[frontend_design @ 2026-07-13T06:52] I\u2019m currently refactoring\u202fsrc/components/ChartContainer.tsx\u202fto fully",
     "[token_monitor @ 2026-07-13T06:52] I am currently reviewing the `backtest.py` and `walk_forward.py` files to identify areas for improvement in backtesting and walk-forward analysis, wit",
     "[system_watchdog in #risk @ 2026-07-13T11:10] I'm currently investigating API responsiveness. According to agent_memory.json, API availability shows 95% uptime in the last cycle, with a peak laten",
@@ -2608,7 +2603,12 @@
     "[desk_trader @ 2026-07-16T10:08] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the desk_trader agent, we need to respond in first ",
     "[system_watchdog @ 2026-07-16T10:08] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As system_watchdog agent, we need to respond in first ",
     "[ml_trainer @ 2026-07-16T10:08] I'm currently reviewing the models in `backend/app/ml/models` to refactor `predict.py` and ensure seamless integration with the QuantEdge platform.",
-    "[standup_agent @ 2026-07-16T10:08] I'm currently aggregating the latest agent learnings and risk updates from `agent_memory.json` to prepare today's standup post for #general on Slack."
+    "[standup_agent @ 2026-07-16T10:08] I'm currently aggregating the latest agent learnings and risk updates from `agent_memory.json` to prepare today's standup post for #general on Slack.",
+    "[continuous_improver @ 2026-07-16T10:56] strategy_logic on test/unit/test_risk.py: tests=pass",
+    "[continuous_improver @ 2026-07-16T10:56] strategy_logic on strategies/manual/poly_late_resolution.py: tests=pass",
+    "[continuous_improver @ 2026-07-16T10:56] strategy_logic on strategies/ml_enhanced/ml_pca_arb.py: tests=pass",
+    "[continuous_improver @ 2026-07-16T10:56] strategy_logic on execution/iceberg.py: tests=pass",
+    "[continuous_improver @ 2026-07-16T10:56] strategy_logic on risk/var.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -2857,6 +2857,18 @@
       "reason": "syntax check failed",
       "improvement_type": "error_handling",
       "timestamp": "2026-07-09T13:01:55.668088+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/hmm_regime.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-07-16T10:56:47.984825+00:00"
+    },
+    {
+      "file": "backend/app/ml/features/wavelet_features.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-07-16T10:56:47.984942+00:00"
     }
   ],
   "improvement_stats": {
@@ -2886,9 +2898,9 @@
       "test_pass": 10
     },
     "strategy_logic": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     },
     "schemas": {
       "successes": 5,
