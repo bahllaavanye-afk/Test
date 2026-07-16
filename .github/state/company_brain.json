@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784211068.9887772,
+    "last_updated": 1784211698.0959022,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784198097.9382498
+    "last_brain_update": 1784211698.0952659
   },
   "episodic": [
     {
@@ -997,6 +997,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784198088.9697464
+    },
+    {
+      "lesson": "Auto-fix failures indicate CI/CD pipeline fragility; manual intervention is needed to apply patches, slowing development.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784211684.6266687
+    },
+    {
+      "lesson": "Architectural changes for multi-leg order infrastructure are critical to enable options-desk income structures; prioritize design and implementation.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784211684.6294248
+    },
+    {
+      "lesson": "Skipping complex fixes due to architectural dependencies creates technical debt and execution risk; allocate dedicated engineering resources.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784211684.6320245
+    },
+    {
+      "lesson": "Vercel deployment links may indicate environment issues; verify CI/CD stability to avoid production disruptions.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784211684.6477954
     }
   ],
   "github_insights": [
@@ -1344,6 +1372,11 @@
       "summary": "The automated fix attempts were either skipped due to complexity (e.g., implementing per-desk logic or the issue description) or failed because the patch could not be applied.",
       "item_count": 20,
       "ts": 1784198097.9325354
+    },
+    {
+      "summary": "The automated fix attempts failed due to inability to apply patches, or were skipped because the issue was too complex for automated resolution.",
+      "item_count": 20,
+      "ts": 1784211698.088029
     }
   ],
   "experiment_results": [
