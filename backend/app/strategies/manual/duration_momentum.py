@@ -24,22 +24,25 @@ Documented Sharpe: 0.6-1.0 in fixed income (Brooks & Moskowitz 2017)
 
 from __future__ import annotations
 
+import functools
 import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 _DURATION_ETFS = {
-    "SHY":  2.0,    # duration ~2y
-    "IEF":  7.5,    # duration ~7.5y
-    "TLT":  17.0,   # duration ~17y
-    "TIPS": 7.0,    # inflation-linked ~7y
+    "SHY": 2.0,    # duration ~2y
+    "IEF": 7.5,    # duration ~7.5y
+    "TLT": 17.0,   # duration ~17y
+    "TIPS": 7.0,   # inflation-linked ~7y
 }
 _MOMENTUM_DAYS = 63   # 3 months
-_REBAL_DAYS    = 21   # 1 month
+_REBAL_DAYS = 21      # 1 month
 
 
+@functools.lru_cache(maxsize=32)
 def _fetch_yf(symbol: str, period: str = "2y") -> pd.Series | None:
+    """Fetch adjusted close series from yfinance with caching."""
     try:
         import yfinance as yf
         hist = yf.Ticker(symbol).history(period=period, auto_adjust=True)
@@ -47,7 +50,8 @@ def _fetch_yf(symbol: str, period: str = "2y") -> pd.Series | None:
             return None
         closes = hist["Close"].dropna()
         closes.index = pd.to_datetime(closes.index).tz_localize(None)
-        return closes
+        # Return a copy to avoid accidental mutation of cached object
+        return closes.copy()
     except Exception:
         return None
 
@@ -72,7 +76,8 @@ class DurationMomentumStrategy(AbstractStrategy):
         self.momentum_days = int(p.get("momentum_days", _MOMENTUM_DAYS))
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        series = {}
+        # Gather recent price series for each ETF; early exit if insufficient data
+        series: dict[str, pd.Series] = {}
         for etf in _DURATION_ETFS:
             s = _fetch_yf(etf)
             if s is not None and len(s) >= self.momentum_days:
@@ -81,8 +86,11 @@ class DurationMomentumStrategy(AbstractStrategy):
         if len(series) < 2:
             return None
 
-        returns = {etf: float(s.iloc[-1] / s.iloc[-self.momentum_days] - 1)
-                   for etf, s in series.items()}
+        # Compute 3‑month total return for each ETF
+        returns = {
+            etf: float(s.iloc[-1] / s.iloc[-self.momentum_days] - 1)
+            for etf, s in series.items()
+        }
 
         ranked = sorted(returns.items(), key=lambda x: x[1], reverse=True)
         best_etf, best_ret = ranked[0]
@@ -135,7 +143,7 @@ class DurationMomentumStrategy(AbstractStrategy):
         mom = close.pct_change(self.momentum_days)
 
         entries = (mom.shift(1) > 0.01).fillna(False)
-        exits   = (mom.shift(1) < 0.00).fillna(False)
+        exits = (mom.shift(1) < 0.00).fillna(False)
 
         return BacktestSignals(entries=entries, exits=exits)
 
