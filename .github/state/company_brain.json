@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784211698.0959022,
+    "last_updated": 1784215503.9898014,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,25 +62,25 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-15T15:16:46.682524+00:00",
+      "generated_at": "2026-07-16T15:24:33.268815+00:00",
       "signals": {
         "vix": {
-          "value": 16.23,
+          "value": 15.95,
           "trend": "flat"
         },
         "spy": {
-          "price": 752.63,
-          "sma50": 741.41,
-          "sma200": 692.04,
+          "price": 753.35,
+          "sma50": 742.86,
+          "sma200": 693.03,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0274,
+          "ratio": 1.0245,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.384,
+          "hyg_lqd_momentum_20d": 1.349,
           "signal": "tightening"
         },
         "breadth": {
@@ -89,8 +89,8 @@
           "breadth_pct": 72.7
         },
         "btc": {
-          "price": 65299,
-          "24h_pct": 1.68
+          "price": 64525,
+          "24h_pct": -1.12
         }
       },
       "score": 4,
@@ -100,7 +100,7 @@
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "[LLM unavailable \u2014 all providers failed]"
+      "summary": "**Morning Brief:** Markets remain in a bull regime with a strong SPY uptrend, low and stable VIX at 15.95, and broad participation (8/11 sectors above 20-SMA), while tightening credit spreads reinforce risk-on sentiment despite a flat yield curve. **Tactical implication:** Favor trend-following strategies today to capitalize on sustained directional momentum."
     },
     "strategy_gates": {
       "directional": true,
@@ -1025,6 +1025,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784211684.6477954
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 4,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "**Morning Brief:** Markets remain in a bull regime with a strong SPY uptrend, low and stable VIX at 15.95, and broad participation (8/11 sectors above 20-SMA), while tightening credit spreads reinforce risk-on sentiment despite a flat yield curve. **Tactical implication:** Favor trend-following strategies today to capitalize on sustained directional momentum.",
+      "ts": 1784215503.9914606
     }
   ],
   "github_insights": [
