@@ -80,6 +80,22 @@ def request_obj() -> OrderRequest:
     )
 
 
+@pytest.fixture
+def odd_quantity_request() -> OrderRequest:
+    """Order request with an odd quantity to test rounding behavior."""
+    return OrderRequest(
+        account_id="test",
+        symbol="AAPL",
+        side="buy",
+        order_type="market",
+        quantity=101,
+        limit_price=None,
+        stop_price=None,
+        time_in_force="GTC",
+        execution_algo="auto",
+    )
+
+
 @pytest.mark.asyncio
 async def test_twap_slices_evenly(request_obj: OrderRequest) -> None:
     """TWAP should split the total quantity evenly across slices."""
@@ -91,6 +107,29 @@ async def test_twap_slices_evenly(request_obj: OrderRequest) -> None:
     assert len(broker.placed) == 2, "TWAP must place exactly two slice orders"
     assert abs(broker.placed[0].quantity - 50) < 0.01, "First slice quantity should be half of total"
     assert result.filled_qty > 0, "Result should report filled quantity"
+
+
+@pytest.mark.asyncio
+async def test_twap_odd_quantity_distribution(odd_quantity_request: OrderRequest) -> None:
+    """TWAP should correctly distribute an odd total quantity across slices without loss."""
+    broker = MockBroker()
+    twap = TWAPExecution(broker, slices=2, duration_minutes=0.001)
+    await twap.execute(odd_quantity_request)
+
+    assert len(broker.placed) == 2, "Exactly two slice orders should be placed"
+    total_placed_qty = sum(order.quantity for order in broker.placed)
+    assert abs(total_placed_qty - odd_quantity_request.quantity) < 1e-6, "Sum of slice quantities must equal original quantity"
+
+
+@pytest.mark.asyncio
+async def test_twap_single_slice(request_obj: OrderRequest) -> None:
+    """When slices=1, TWAP should place a single order equal to the total quantity."""
+    broker = MockBroker()
+    twap = TWAPExecution(broker, slices=1, duration_minutes=0.001)
+    await twap.execute(request_obj)
+
+    assert len(broker.placed) == 1, "Single slice should result in one order"
+    assert broker.placed[0].quantity == request_obj.quantity, "Order quantity should match the request quantity"
 
 
 @pytest.mark.asyncio
@@ -123,6 +162,21 @@ async def test_limit_first_fallback_to_market(request_obj: OrderRequest) -> None
 
 
 @pytest.mark.asyncio
+async def test_limit_first_zero_fallback_immediate_market(request_obj: OrderRequest) -> None:
+    """With fallback_seconds=0, the fallback market order should be placed immediately after the limit order."""
+    broker = MockBrokerNoFill()
+    lf = LimitFirstExecution(broker, offset_bps=5, fallback_seconds=0.0)
+
+    result = await lf.execute(request_obj)
+
+    assert len(broker.placed) == 2, "Both limit and immediate market orders should be placed"
+    assert broker.placed[0].order_type == "limit", "First order must be a limit order"
+    assert broker.placed[1].order_type == "market", "Second order must be a market order"
+    assert result.status == "filled", "Result should be filled after immediate fallback"
+    assert result.filled_qty == request_obj.quantity, "Quantity should be fully filled by market order"
+
+
+@pytest.mark.asyncio
 async def test_twap_exit_logic(request_obj: OrderRequest) -> None:
     """TWAP should respect the total duration and not exceed it."""
     broker = MockBroker()
@@ -139,5 +193,4 @@ async def test_twap_exit_logic(request_obj: OrderRequest) -> None:
     assert elapsed <= duration_minutes * 1.1, "TWAP execution should not significantly exceed the duration"
     assert len(broker.placed) == slices, "TWAP must place the configured number of slices"
     assert result.filled_qty > 0, "Result should contain filled quantity"
-
 """End of test_execution.py"""
