@@ -199,8 +199,13 @@
     "Handle SQL errors",
     "Test thread safety",
     "Check file paths",
-    "Scan for deadlock"
+    "Scan for deadlock",
+    "edge_cases on api/v1/discord_interactions.py: success \u2014 tests green",
+    "edge_cases on test/unit/test_broker_interface.py: success \u2014 tests green",
+    "edge_cases on strategies/manual/options_gamma_scalp.py: success \u2014 tests green",
+    "edge_cases on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "edge_cases on ml/features/alternative.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T19:03:57.320830+00:00",
+  "last_updated": "2026-07-16T20:26:10.344356+00:00",
   "total": 200
 }
