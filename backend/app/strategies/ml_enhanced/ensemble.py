@@ -1,7 +1,12 @@
 """Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+import logging
+import time
+
 import pandas as pd
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
+
+logger = logging.getLogger(__name__)
 
 
 class EnsembleStrategy(AbstractStrategy):
@@ -30,6 +35,8 @@ class EnsembleStrategy(AbstractStrategy):
         A signal is not emitted if any of the above conditions fail, which the
         back‑testing engine interprets as an exit for the active position.
         """
+        start_time = time.monotonic()
+        generated_signal: Signal | None = None
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
@@ -65,7 +72,7 @@ class EnsembleStrategy(AbstractStrategy):
             if latest_vol < median_vol:
                 return None
 
-            return Signal(
+            generated_signal = Signal(
                 symbol=symbol,
                 side="buy" if ml_result["prediction"] == "up" else "sell",
                 confidence=ml_result["confidence"],
@@ -74,9 +81,22 @@ class EnsembleStrategy(AbstractStrategy):
                 risk_bucket=self.risk_bucket,
                 metadata=ml_result,
             )
-        except Exception:
-            # In production we would log the exception; for now we silently ignore.
+            return generated_signal
+        except Exception as e:
+            # Log the exception with stack trace for debugging.
+            logger.exception("EnsembleStrategy analyze encountered an error")
             return None
+        finally:
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            logger.info(
+                "EnsembleStrategy analyze completed",
+                extra={
+                    "symbol": symbol,
+                    "signal_generated": bool(generated_signal),
+                    "execution_time_ms": int(elapsed_ms),
+                    "pnl": None,
+                },
+            )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
@@ -90,10 +110,19 @@ class EnsembleStrategy(AbstractStrategy):
 
         The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
+        start_time = time.monotonic()
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
             # If required columns are missing, return empty signals to avoid crashes.
             empty = pd.Series(False, index=df.index)
+            logger.info(
+                "Backtest signals generated with missing columns",
+                extra={
+                    "entries": 0,
+                    "execution_time_ms": int((time.monotonic() - start_time) * 1000),
+                    "pnl": None,
+                },
+            )
             return BacktestSignals(entries=empty, exits=empty)
 
         # Compute rolling SMA and median volume
@@ -122,5 +151,16 @@ class EnsembleStrategy(AbstractStrategy):
         # Align boolean Series with BacktestSignals expectations
         entries = entries.astype(bool)
         exits = exits.astype(bool)
+
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        signal_count = int(entries.sum())
+        logger.info(
+            "Backtest signals generated",
+            extra={
+                "entries": signal_count,
+                "execution_time_ms": int(elapsed_ms),
+                "pnl": None,
+            },
+        )
 
         return BacktestSignals(entries=entries, exits=exits)
