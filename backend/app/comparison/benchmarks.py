@@ -128,6 +128,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         else:
             series_list.append(result)
 
+    # Build a dict of non‑empty series
     closes_dict: dict[str, pd.Series] = {
         ticker: series
         for ticker, series in zip(all_tickers, series_list)
@@ -136,15 +137,21 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     result: dict[str, List[dict]] = {}
 
-    # Process individual benchmarks
-    for ticker in BENCHMARKS:
-        series = closes_dict.get(ticker)
-        if series is None or series.empty:
-            continue
-        normalized = (series.dropna() / series.iloc[0] * 100).round(2)
-        result[ticker] = [
-            {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
-        ]
+    # Vectorized processing for individual benchmarks
+    if BENCHMARKS:
+        df = pd.DataFrame(closes_dict)
+        for ticker in BENCHMARKS:
+            if ticker not in df.columns:
+                continue
+            series = df[ticker].dropna()
+            if series.empty:
+                continue
+            start_val = series.iloc[0]
+            normalized = (df[ticker] / start_val * 100).round(2).dropna()
+            result[ticker] = [
+                {"date": idx.date().isoformat(), "value": float(val)}
+                for idx, val in normalized.items()
+            ]
 
     # All Weather: monthly rebalanced weighted portfolio
     aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
@@ -157,7 +164,8 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         aw_ret = (monthly_returns * weights).sum(axis=1)
         aw_equity = (1 + aw_ret).cumprod() * 100
         result["ALL_WEATHER"] = [
-            {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
+            {"date": idx.date().isoformat(), "value": round(float(v), 2)}
+            for idx, v in aw_equity.items()
         ]
 
     # Cache the result for future identical requests
