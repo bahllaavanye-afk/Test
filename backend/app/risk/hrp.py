@@ -91,7 +91,31 @@ class HRPOptimizer:
         Returns:
             pd.Series of portfolio weights summing to 1.0, indexed by symbol.
             Falls back to equal weights if data is insufficient or degenerate.
+
+        Raises:
+            ValueError: If `returns` is not a valid pandas DataFrame or contains
+                non‑numeric columns or infinite values.
         """
+        # ---- Input validation ----
+        if not isinstance(returns, pd.DataFrame):
+            raise ValueError("`returns` must be a pandas DataFrame.")
+        if returns.empty:
+            raise ValueError("`returns` DataFrame is empty.")
+        if returns.shape[1] == 0:
+            raise ValueError("`returns` DataFrame must contain at least one column.")
+        # Ensure all columns are numeric
+        non_numeric_cols = [
+            col for col in returns.columns
+            if not np.issubdtype(returns[col].dtype, np.number)
+        ]
+        if non_numeric_cols:
+            raise ValueError(
+                f"`returns` contains non‑numeric columns: {non_numeric_cols}"
+            )
+        # Disallow infinite values (NaNs are handled later)
+        if np.isinf(returns.values).any():
+            raise ValueError("`returns` contains infinite values.")
+
         symbols = list(returns.columns)
         n = len(symbols)
 
