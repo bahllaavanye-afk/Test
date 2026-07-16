@@ -199,8 +199,13 @@
     "Based on the collective knowledge from the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Check DB connections",
     "Check data types",
-    "Handle SQL errors"
+    "Handle SQL errors",
+    "test_cases on execution/almgren_chriss.py: success \u2014 tests green",
+    "test_cases on brokers/binance.py: success \u2014 tests green",
+    "test_cases on comparison/benchmarks.py: success \u2014 tests green",
+    "test_cases on tasks/self_improving_loop.py: success \u2014 tests green",
+    "test_cases on test/unit/test_execution.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T12:00:11.140577+00:00",
+  "last_updated": "2026-07-16T14:34:35.862172+00:00",
   "total": 200
 }
