@@ -199,8 +199,11 @@
     "Test thread safety",
     "Check file paths",
     "Scan for deadlock",
-    "Check system clocks"
+    "Check system clocks",
+    "monitoring on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "monitoring on brokers/polymarket.py: success \u2014 tests green",
+    "monitoring on backtest/walk_forward.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T22:54:12.773716+00:00",
+  "last_updated": "2026-07-16T23:56:51.212823+00:00",
   "total": 200
 }
