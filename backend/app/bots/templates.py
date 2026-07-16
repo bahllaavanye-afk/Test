@@ -940,4 +940,187 @@ BOT_TEMPLATES: dict[str, dict] = {
         },
         "exit_rules": [{"type": "time_exit", "hours": 240}],
     },
+
+    # ── Best-known Options Alpha flagship bots (2026-07-15) ──────────────────
+    # Curated from OA's PUBLIC docs/podcast/workshop material — these are their
+    # most-cited templates and famous community structures. Full account copies
+    # of private leaderboard bots remain blocked on OA_SESSION_COOKIE
+    # (docs/playbooks/OA_BOT_COPY.md); nothing here is fabricated performance —
+    # they start disabled like every template, paper-first.
+    "oa_best_0dte_be_ic": {
+        "name": "OA 0DTE Breakeven Iron Condor",
+        "description": "OA's flagship template: 0DTE SPY iron condor sized so max loss ≈ collected credit (breakeven geometry). Sell 10Δ call+put, buy wings ~5 points out, enter shortly after the open, hard-close before the bell. TP 25%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "13:45", "end_time": "13:55"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2,
+            "take_profit_pct": 25,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.10, "dte": 0, "ratio": 1},
+                {"side": "buy",  "option_type": "call", "delta": 0.04, "dte": 0, "ratio": 1},
+                {"side": "sell", "option_type": "put",  "delta": 0.10, "dte": 0, "ratio": 1},
+                {"side": "buy",  "option_type": "put",  "delta": 0.04, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 6}],
+    },
+    "oa_best_short_put_ladder": {
+        "name": "OA SPY Short Put Ladder 30-45 DTE",
+        "description": "OA's laddered income workhorse: sell a 16Δ put 30-45 DTE every week so expirations stagger; TP 50% of credit, exit at 21 DTE regardless (avoids gamma week).",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "time_window", "start_time": "14:35", "end_time": "15:35"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 3,
+            "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.16, "dte": 38, "ratio": 1},
+                {"side": "buy",  "option_type": "put", "delta": 0.05, "dte": 38, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 408}],   # ~17 days → out by 21 DTE
+    },
+    "oa_best_black_swan_hedge": {
+        "name": "OA Black Swan Hedge",
+        "description": "OA's famous tail hedge: perpetually hold far-OTM SPY puts (~5Δ, 60-90 DTE), rolled monthly. Costs a small bleed; pays asymmetrically in a crash. Sized tiny on purpose.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 0.5,
+            "legs": [
+                {"side": "buy", "option_type": "put", "delta": 0.05, "dte": 75, "ratio": 2},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 1080}],  # roll ~45 days
+    },
+    "oa_best_112_front_ratio": {
+        "name": "OA 1-1-2 Put Front Ratio",
+        "description": "The community-famous 1-1-2: buy a ~25Δ put debit spread, finance it by selling 2× ~5Δ puts further down, net credit. Wins in up, flat, and mildly down tape. 45-60 DTE, managed at 21 DTE.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "no_position"},
+            {"type": "time_window", "start_time": "14:35", "end_time": "16:00"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2,
+            "take_profit_pct": 50,
+            "legs": [
+                {"side": "buy",  "option_type": "put", "delta": 0.25, "dte": 52, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.20, "dte": 52, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.05, "dte": 52, "ratio": 2},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 744}],   # ~31 days → out by 21 DTE
+    },
+    "oa_best_rhino_butterfly": {
+        "name": "OA Rhino — Broken Wing Put Butterfly",
+        "description": "The Rhino (M3-family) income structure widely used on OA: 40-50 DTE broken-wing put butterfly below the market, negative delta hedged by the upper wing. TP 10% of margin, out by 14 DTE.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 3,
+            "take_profit_pct": 10,
+            "legs": [
+                {"side": "buy",  "option_type": "put", "delta": 0.30, "dte": 45, "ratio": 1},
+                {"side": "sell", "option_type": "put", "delta": 0.22, "dte": 45, "ratio": 2},
+                {"side": "buy",  "option_type": "put", "delta": 0.10, "dte": 45, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 744}],
+    },
+    "oa_best_weekly_diagonal": {
+        "name": "OA Weekly Call Diagonal",
+        "description": "OA template: buy a ~70Δ call 45+ DTE, sell a ~30Δ call 7 DTE against it weekly (poor man's covered call). Income while long trend.",
+        "symbol": "QQQ",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "price_vs_ma", "ma_period": 50, "operator": "above"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 3,
+            "legs": [
+                {"side": "buy",  "option_type": "call", "delta": 0.70, "dte": 60, "ratio": 1},
+                {"side": "sell", "option_type": "call", "delta": 0.30, "dte": 7,  "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 336}],
+    },
+    "oa_best_strangle_16d": {
+        "name": "OA 16Δ Short Strangle (defined-risk)",
+        "description": "The classic premium harvest, wrapped defined-risk for paper safety: sell 16Δ call+put 45 DTE, buy 5Δ wings (an iron condor with strangle-like width). TP 50%, out at 21 DTE.",
+        "symbol": "IWM",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2.5,
+            "take_profit_pct": 50,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.16, "dte": 45, "ratio": 1},
+                {"side": "buy",  "option_type": "call", "delta": 0.05, "dte": 45, "ratio": 1},
+                {"side": "sell", "option_type": "put",  "delta": 0.16, "dte": 45, "ratio": 1},
+                {"side": "buy",  "option_type": "put",  "delta": 0.05, "dte": 45, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 576}],   # 24 days → out by 21 DTE
+    },
+    "oa_best_slow_steady_ic": {
+        "name": "OA Slow & Steady Iron Condor",
+        "description": "OA docs template: monthly 20Δ iron condor on low-beta underlying, wide wings, TP 25%, never hold past 21 DTE. Built for consistency over yield.",
+        "symbol": "DIA",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1d"},
+        "conditions": [
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2,
+            "take_profit_pct": 25,
+            "legs": [
+                {"side": "sell", "option_type": "call", "delta": 0.20, "dte": 40, "ratio": 1},
+                {"side": "buy",  "option_type": "call", "delta": 0.08, "dte": 40, "ratio": 1},
+                {"side": "sell", "option_type": "put",  "delta": 0.20, "dte": 40, "ratio": 1},
+                {"side": "buy",  "option_type": "put",  "delta": 0.08, "dte": 40, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 456}],
+    },
 }

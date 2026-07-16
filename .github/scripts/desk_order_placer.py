@@ -1,6 +1,6 @@
 """
 Desk Order Placer — runs every 15 minutes during market hours.
-Version: 2.0 — 6 desks, 59 strategies, real paper orders via Alpaca.
+Version: 3.0 — 9 desks (incl. TV Indicators + Commodities), ~100 wired strategies, real paper orders via Alpaca.
 
 For each asset-class desk, fetches live OHLCV from Alpaca paper API,
 runs the relevant strategies' analyze(), and places real paper orders
@@ -67,7 +67,13 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Equities",
         slack_channel="#desk-equities",
-        symbols=["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "JPM"],
+        # Scaled 10 -> 30 (2026-07-15): megacaps + liquid large-caps across
+        # sectors. Bars come batched (comma-separated symbols=, chunk 20), so
+        # more symbols costs one extra API call, not 20.
+        symbols=["SPY", "QQQ", "IWM", "DIA",
+                 "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "JPM",
+                 "AMD", "AVGO", "NFLX", "CRM", "COST", "UNH", "XOM", "CVX",
+                 "JNJ", "PG", "HD", "BAC", "WMT", "DIS", "V", "MA", "LLY", "ORCL"],
         strategy_names=[
             "momentum", "mean_reversion", "breakout", "rsi_macd", "supertrend",
             "cross_sectional_momentum", "opening_range_breakout", "vwap_reversion",
@@ -79,6 +85,11 @@ DESKS: list[DeskConfig] = [
             # overnight-drift anomaly.
             "hmm_regime", "rsi2_pullback", "donchian_breakout",
             "low_volatility", "overnight_return",
+            # 2026-07-15 scale-up: contract-passing strategies that were in the
+            # registry but wired to NO desk (60 found by the audit).
+            "cci_reversion", "fifty_two_week_high", "triple_barrier_momentum",
+            "ml_momentum", "ml_mean_reversion", "ml_breakout", "ensemble",
+            "event_driven_gap", "open_close_revert",
         ],
         notional_usd=500.0,
         confidence_min=0.60,
@@ -94,6 +105,10 @@ DESKS: list[DeskConfig] = [
             "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD",
             "LTC/USD", "DOGE/USD", "LINK/USD", "UNI/USD",
             "AAVE/USD", "BCH/USD", "DOT/USD", "XRP/USD",
+            # 2026-07-15 scale-up to the rest of Alpaca's US pairs; an unlisted
+            # pair simply returns no bars and is skipped (fail-soft, logged).
+            "SHIB/USD", "SUSHI/USD", "YFI/USD", "GRT/USD",
+            "CRV/USD", "MKR/USD", "XTZ/USD", "BAT/USD",
         ],
         # basis_carry / funding_rate_arb (Binance 451 geo-block from US
         # runners) and mvrv_zscore_timing (CoinGecko now requires an API key)
@@ -107,6 +122,10 @@ DESKS: list[DeskConfig] = [
             # Advanced additions verified to run on Alpaca daily bars:
             # Avellaneda-Stoikov market-making, Donchian breakout, RSI-2 pullback.
             "avellaneda_stoikov_mm", "donchian_breakout", "rsi2_pullback",
+            # 2026-07-15 scale-up (previously unwired; all fail-soft guarded —
+            # a missing data source degrades to None, never noise or a crash):
+            "crypto_whale_momentum", "liquidation_cascade_fade",
+            "funding_settlement_timer", "mvrv_zscore_timing",
         ],
         notional_usd=300.0,
         confidence_min=0.60,
@@ -115,7 +134,7 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Options",
         slack_channel="#desk-options",
-        symbols=["SPY", "QQQ", "AAPL", "TSLA", "NVDA"],
+        symbols=["SPY", "QQQ", "AAPL", "TSLA", "NVDA", "IWM", "AMD", "META"],
         # Income structures (wheel/condor/credit-spread — the Options Alpha core,
         # see docs/research/OPTIONS_ALPHA_DEEP_2026.md §3) trade the underlying as
         # a directional proxy until real multi-leg routing lands. They need
@@ -131,6 +150,11 @@ DESKS: list[DeskConfig] = [
             # strategy (verified to fire on daily bars), complementing the
             # premium-selling income structures above.
             "vol_carry_short",
+            # 2026-07-15 scale-up: sentiment/flow + income structures that were
+            # never desk-wired. covered_call stays out (needs share inventory).
+            "options_pcr_reversal", "put_call_ratio_contrarian",
+            "earnings_iv_crush", "options_gamma_scalp",
+            "long_call_momentum", "cash_secured_put",
         ],
         notional_usd=400.0,
         confidence_min=0.60,
@@ -142,6 +166,9 @@ DESKS: list[DeskConfig] = [
         strategy_names=[
             "polymarket_sentiment_momentum", "poly_binary_arb",
             "poly_calibration_arb", "poly_late_resolution",
+            # 2026-07-15 scale-up (previously unwired):
+            "poly_market_maker", "poly_liquidity_provision",
+            "poly_time_value_fade", "poly_cross_market_hedge",
         ],
         notional_usd=100.0,
         confidence_min=0.60,
@@ -152,11 +179,18 @@ DESKS: list[DeskConfig] = [
         # INDA/EPI/SMIN = India sleeve (docs/research/INDIA_GLOBAL_SOTA_2026.md §1):
         # NSE is the largest derivatives market globally and Indian equities carry a
         # documented momentum premium — tradable today as US ETFs on Alpaca, no new broker.
-        symbols=["GLD", "TLT", "UUP", "EWJ", "EEM", "INDA", "EPI", "SMIN"],
+        symbols=["GLD", "TLT", "UUP", "EWJ", "EEM", "INDA", "EPI", "SMIN",
+                 # 2026-07-15 scale-up: full rates/credit/inflation ETF complex
+                 "IEF", "SHY", "LQD", "HYG", "TIP", "DBC"],
         strategy_names=[
             "cross_asset_carry", "sector_rotation", "time_series_momentum",
             "intraday_fomc_momentum", "pead_sue", "multi_factor_equity",
             "analyst_revision_momentum",
+            # 2026-07-15 scale-up: the whole macro/rates family was unwired.
+            # All hard-budget guarded (yfinance) — slow/absent data -> None.
+            "bond_equity_rotation", "central_bank_window", "macro_risk_barometer",
+            "breakeven_inflation", "duration_momentum", "pmi_sector_rotation",
+            "yield_curve_momentum", "yield_spread_reversion", "tlt_spy_rotation",
         ],
         notional_usd=400.0,
         confidence_min=0.60,
@@ -164,13 +198,17 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="StatArb",
         slack_channel="#desk-stat-arb",
-        symbols=["SPY", "QQQ", "IWM", "GLD", "TLT"],
+        symbols=["SPY", "QQQ", "IWM", "GLD", "TLT",
+                 # 2026-07-15 scale-up: sector/region ETFs widen the pair pool
+                 "XLF", "XLK", "XLE", "EFA", "EEM", "DIA", "MDY"],
         strategy_names=[
             "pairs_trading", "pca_stat_arb", "kalman_pairs",
             "triangular_arb", "stablecoin_depeg_arb",
             # ETF statistical-arbitrage (verified to run) — market-neutral,
             # fits the stat-arb desk directly.
             "stat_arb_etf",
+            # 2026-07-15 scale-up (previously unwired):
+            "ml_pca_arb", "lorentzian_knn",
         ],
         notional_usd=600.0,
         confidence_min=0.60,
@@ -182,13 +220,36 @@ DESKS: list[DeskConfig] = [
         # gold, silver, oil, natgas, agriculture, broad basket, miners, copper.
         # Time-series momentum is THE documented commodity premium (Moskowitz-
         # Ooi-Pedersen); Donchian breakout is the classic trend system for these.
-        symbols=["GLD", "SLV", "USO", "UNG", "DBA", "PDBC", "GDX", "CPER"],
+        symbols=["GLD", "SLV", "USO", "UNG", "DBA", "PDBC", "GDX", "CPER",
+                 # 2026-07-15 scale-up: platinum, uranium, grains
+                 "PPLT", "URA", "CORN", "WEAT"],
         strategy_names=[
             "time_series_momentum", "cross_sectional_momentum",
             "donchian_breakout", "mean_reversion", "supertrend",
             "rsi2_pullback",
+            # 2026-07-15 scale-up: the dedicated commodity family was unwired.
+            "commodity_momentum", "commodity_reversion", "commodity_trend",
+            "basis_carry",
         ],
         notional_usd=400.0,
+        confidence_min=0.60,
+    ),
+    DeskConfig(
+        name="TV Indicators",
+        slack_channel="#desk-tv-indicators",
+        # The 12 TradingView-community indicator strategies (maintained by the
+        # tv-indicator-improvement agent) finally get a venue — they were in
+        # the registry, contract-tested, SOTA-upgraded on a schedule... and
+        # wired to no desk. Liquid megacap subset; bars are shared with the
+        # Equities desk fetch (same batch), so this desk adds no API cost.
+        symbols=["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMD", "META", "AMZN"],
+        strategy_names=[
+            "ema_stack_tv", "squeeze_pro_tv", "wave_trend_tv", "hull_suite_tv",
+            "supertrend_rsi_tv", "kama_roc_tv", "vwap_bands_tv",
+            "ichimoku_cloud_tv", "macd_divergence_tv", "adx_dmi_tv",
+            "stoch_rsi_macd_tv", "elliott_wave_proxy_tv",
+        ],
+        notional_usd=300.0,
         confidence_min=0.60,
     ),
     DeskConfig(
@@ -197,10 +258,14 @@ DESKS: list[DeskConfig] = [
         # Country-ETF rotation (docs/research/COUNTRY_DESKS_2026.md): documented
         # country momentum/reversal premia, tradable on Alpaca US-listed ETFs.
         symbols=["EWJ", "FXI", "EWY", "EWT", "EWZ", "EWW", "EWC",
-                 "EWU", "EWG", "EWQ", "EZA", "EIDO", "VNM"],
+                 "EWU", "EWG", "EWQ", "EZA", "EIDO", "VNM",
+                 # 2026-07-15 scale-up: AU, SG, TH, PL, AR, MY
+                 "EWA", "EWS", "THD", "EPOL", "ARGT", "EWM"],
         strategy_names=[
             "cross_sectional_momentum", "time_series_momentum",
             "mean_reversion", "low_volatility", "sector_rotation",
+            # 2026-07-15 scale-up:
+            "ichimoku_cloud_tv", "triple_barrier_momentum", "fifty_two_week_high",
         ],
         notional_usd=400.0,
         confidence_min=0.60,
@@ -678,6 +743,60 @@ _STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "pca_stat_arb":              [0, 1, 2],
     "kalman_pairs":              [0, 1, 2],
     "stablecoin_depeg_arb":      [0, 1, 2],
+    "ml_pca_arb":                [1],         # residual reversion — range
+    "lorentzian_knn":            [1, 2],
+    # 2026-07-15 scale-up — TV indicator suite
+    "ema_stack_tv":              [2],
+    "hull_suite_tv":             [2],
+    "ichimoku_cloud_tv":         [2],
+    "supertrend_rsi_tv":         [2],
+    "adx_dmi_tv":                [2],
+    "kama_roc_tv":               [2],
+    "squeeze_pro_tv":            [2],         # volatility breakout
+    "wave_trend_tv":             [1, 2],
+    "macd_divergence_tv":        [1],
+    "stoch_rsi_macd_tv":         [1],
+    "vwap_bands_tv":             [1],
+    "elliott_wave_proxy_tv":     [1, 2],
+    # 2026-07-15 scale-up — equities
+    "cci_reversion":             [1],
+    "fifty_two_week_high":       [2],         # 52w-high momentum anomaly
+    "triple_barrier_momentum":   [2],
+    "ml_momentum":               [2],
+    "ml_mean_reversion":         [1],
+    "ml_breakout":               [2],
+    "ensemble":                  [0, 1, 2],   # blends members per regime
+    "event_driven_gap":          [1, 2],
+    "open_close_revert":         [1],
+    # 2026-07-15 scale-up — crypto
+    "crypto_whale_momentum":     [2],
+    "funding_settlement_timer":  [0, 1, 2],
+    # 2026-07-15 scale-up — options flow/sentiment
+    "options_pcr_reversal":      [0, 1],      # contrarian at fear extremes
+    "put_call_ratio_contrarian": [0, 1],
+    "earnings_iv_crush":         [0, 1, 2],   # event-driven, regime-agnostic
+    "options_gamma_scalp":       [1],         # range harvesting
+    "long_call_momentum":        [2],
+    "cash_secured_put":          [1, 2],      # premium selling — not in bear
+    # 2026-07-15 scale-up — polymarket
+    "poly_market_maker":         [0, 1, 2],
+    "poly_liquidity_provision":  [0, 1, 2],
+    "poly_time_value_fade":      [0, 1, 2],
+    "poly_cross_market_hedge":   [0, 1, 2],
+    # 2026-07-15 scale-up — macro/rates
+    "bond_equity_rotation":      [1, 2],
+    "central_bank_window":       [0, 1, 2],
+    "macro_risk_barometer":      [0, 1, 2],
+    "breakeven_inflation":       [1, 2],
+    "duration_momentum":         [2],
+    "pmi_sector_rotation":       [1, 2],
+    "yield_curve_momentum":      [2],
+    "yield_spread_reversion":    [1],
+    "tlt_spy_rotation":          [1, 2],
+    # 2026-07-15 scale-up — commodities
+    "commodity_momentum":        [2],
+    "commodity_reversion":       [1],
+    "commodity_trend":           [2],
 }
 _DEFAULT_REGIMES = [0, 1, 2]
 

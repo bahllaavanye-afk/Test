@@ -1,0 +1,81 @@
+name: Strategy Scout — keep every desk supplied with strategies
+
+# Closes the "strategies written but never traded" loop (2026-07-15 audit
+# found 60 of 113 unwired). Reports unwired strategies + desk coverage +
+# rotating build-next research ideas to #desk-research, and appends to
+# IMPROVEMENTS.md when the unwired set changes.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  schedule:
+    - cron: "23 8 * * 1,4"   # backup — Mon+Thu; event chain is the heartbeat
+  workflow_dispatch: {}
+
+concurrency:
+  group: strategy-scout
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 50
+
+      # Needs the full backend registry (heavy deps) — keep it to ~2 runs/week
+      # even though it's chained to every CI completion.
+      - name: Cadence gate (~3 days)
+        id: gate
+        run: |
+          recent=$(git log --since="3 days ago" --grep="strategy-scout" --oneline | wc -l)
+          if [ "$recent" -gt 0 ] && [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "scouted ${recent}x in the last 3 days — skipping chained trigger"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install backend deps (registry import needs them)
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          pip install uv --quiet
+          uv pip install --system \
+            'numpy>=1.26.0' 'pandas>=2.2.0' 'scipy>=1.14.0' \
+            'scikit-learn>=1.5.0' 'statsmodels>=0.14.0' \
+            'pydantic>=2.10.0' 'pydantic-settings>=2.6.0' \
+            'sqlalchemy[asyncio]>=2.0.36' 'structlog>=24.4.0' \
+            'yfinance>=0.2.40' 'requests>=2.32.0' --quiet
+
+      - name: Run Strategy Scout
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python .github/scripts/strategy_scout.py
+
+      - name: Commit state + IMPROVEMENTS updates
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          git config user.email "scout-bot@quantedge.ai"
+          git config user.name "QuantEdge Strategy Scout"
+          git add .github/state/strategy_scout.json IMPROVEMENTS.md
+          git diff --cached --quiet || git commit -m "chore(strategy-scout): coverage report $(date -u +%Y-%m-%d) [skip ci]"
+          for i in 1 2 3 4; do
+            git pull --rebase --quiet origin main && git push origin main && break || sleep $((i*2))
+          done
