@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784172169.2536433,
+    "last_updated": 1784172917.7051976,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784160293.176409
+    "last_brain_update": 1784172917.7046864
   },
   "episodic": [
     {
@@ -913,6 +913,34 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 4, Breakouts: 2, Risk flags: 0.",
       "ts": 1784148787.7984297
+    },
+    {
+      "lesson": "Auto-fix failures are occurring repeatedly; investigate the root cause in the patch generation pipeline or ML model.",
+      "category": "ml",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784172913.6933184
+    },
+    {
+      "lesson": "Deployment is blocked by a free-tier daily limit; upgrade to a Pro plan or implement usage monitoring to avoid production downtime.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784172913.6954799
+    },
+    {
+      "lesson": "Multiple auto-fix failures indicate a systemic issue; prioritize a review of the automated patching logic and test coverage.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784172913.6974788
+    },
+    {
+      "lesson": "Rate limiting on deployments suggests a need for capacity planning; consider optimizing build frequency or moving to a paid tier.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784172913.6994653
     }
   ],
   "github_insights": [
@@ -1245,6 +1273,11 @@
       "summary": "The automated fix attempts either failed to apply a patch or were skipped due to excessive complexity, as the issue spans multiple areas.",
       "item_count": 20,
       "ts": 1784160293.16852
+    },
+    {
+      "summary": "Multiple automated attempts to apply a patch to a file failed, with the auto-fix tool reporting each time that it could not apply the patch.",
+      "item_count": 20,
+      "ts": 1784172917.6988258
     }
   ],
   "experiment_results": [
