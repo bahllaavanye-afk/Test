@@ -1,7 +1,8 @@
 """Risk management endpoints."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.risk import RiskRule, RiskEvent
@@ -10,8 +11,21 @@ from app.models.trade import Trade
 from pydantic import BaseModel, ConfigDict
 import uuid
 from datetime import datetime, timezone
+import numpy as np
 
 router = APIRouter(prefix="/risk", tags=["risk"])
+
+
+async def _fetch_recent_pnl(db: AsyncSession, limit: int = 252) -> list[float]:
+    """Fetch recent realized PnL values, falling back to synthetic data if none are available."""
+    result = await db.execute(
+        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(limit)
+    )
+    pnl = [float(row[0]) for row in result.all() if row[0] is not None]
+    if not pnl:
+        np.random.seed(42)
+        pnl = list(np.random.normal(80, 500, limit))
+    return pnl
 
 
 @router.get("/")
@@ -88,7 +102,6 @@ async def delete_risk_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from fastapi import HTTPException
     rule = await db.get(RiskRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -103,7 +116,6 @@ async def list_events(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(RiskEvent)
         .options(selectinload(RiskEvent.rule))
@@ -128,15 +140,17 @@ async def get_circuit_breaker_status(
     current_user: User = Depends(get_current_user),
 ):
     """Return current circuit breaker state for the dashboard."""
-    # Check if any halt_all rules have been triggered recently
-    from sqlalchemy import desc
     result = await db.execute(
         select(RiskEvent)
         .order_by(desc(RiskEvent.triggered_at))
         .limit(1)
     )
     latest = result.scalar_one_or_none()
-    is_tripped = latest is not None and latest.resolved_at is None and latest.action_taken in ("halt_all", "halt_bucket")
+    is_tripped = (
+        latest is not None
+        and latest.resolved_at is None
+        and latest.action_taken in ("halt_all", "halt_bucket")
+    )
     return {
         "status": "tripped" if is_tripped else "normal",
         "tripped": is_tripped,
@@ -153,15 +167,8 @@ async def get_var(
 ):
     """Compute portfolio VaR and CVaR from recent trade returns."""
     from app.risk.var import historical_var
-    result = await db.execute(
-        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
-    )
-    pnl_list = [float(row[0]) for row in result.all() if row[0] is not None]
-    if not pnl_list:
-        # Use synthetic returns for demo
-        import numpy as np
-        np.random.seed(42)
-        pnl_list = list(np.random.normal(0.001, 0.015, 252))
+
+    pnl_list = await _fetch_recent_pnl(db)
     returns = [p / portfolio_value for p in pnl_list]
     var_result = historical_var(returns, portfolio_value, method)
     return var_result.to_dict()
@@ -175,18 +182,10 @@ async def get_factor_exposure(
 ):
     """Factor exposure analysis: market beta, momentum, low-vol."""
     from app.risk.factor_exposure import compute_factor_exposure
-    import numpy as np
 
-    result = await db.execute(
-        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
-    )
-    pnl_list = [float(row[0]) for row in result.all() if row[0] is not None]
-    if not pnl_list:
-        np.random.seed(42)
-        pnl_list = list(np.random.normal(80, 500, 252))
-
+    pnl_list = await _fetch_recent_pnl(db)
     port_returns = [p / portfolio_value for p in pnl_list]
-    # Approximate SPY returns (actual would come from market data cache)
+
     np.random.seed(99)
     spy_returns = list(np.random.normal(0.0004, 0.012, len(port_returns)))
 
@@ -203,14 +202,8 @@ async def get_drawdown_recovery(
 ):
     """Estimate drawdown recovery time via Monte Carlo."""
     from app.risk.drawdown_recovery import estimate_recovery
-    import numpy as np
-    result = await db.execute(
-        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
-    )
-    pnl_list = [float(row[0]) for row in result.all() if row[0] is not None]
-    if not pnl_list:
-        np.random.seed(42)
-        pnl_list = list(np.random.normal(80, 500, 252))
+
+    pnl_list = await _fetch_recent_pnl(db)
     returns = [p / portfolio_value for p in pnl_list]
     estimate = estimate_recovery(returns, current_drawdown_pct / 100.0)
     return estimate.to_dict()
