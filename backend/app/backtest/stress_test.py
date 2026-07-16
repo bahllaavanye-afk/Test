@@ -2,7 +2,7 @@
 Historical stress testing — overlay a strategy's signals on known crisis periods.
 
 Tests how a strategy would have performed during the most severe market dislocations,
-revealing tail-risk exposure that standard backtests can understate when they
+revealing tail‑risk exposure that standard backtests can understate when they
 average across calm and turbulent regimes.
 """
 from __future__ import annotations
@@ -88,10 +88,10 @@ class StressResult:
 
 
 def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
-    """Vectorized slice of a Series using .loc; returns None if input is None."""
+    """Slice a Series by inclusive start/end timestamps. Returns None if series is None."""
     if series is None:
         return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
+    # .loc works for DatetimeIndex; fall back to boolean mask for other index types
     try:
         return series.loc[start:end]
     except Exception:
@@ -112,7 +112,7 @@ def run_stress_tests(
     """
     Run the strategy through each stress scenario window.
 
-    Only scenarios where the price series has ≥ 5 data points are evaluated;
+    Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
     if scenarios is None:
@@ -120,14 +120,13 @@ def run_stress_tests(
 
     results: list[StressResult] = []
 
-    # Convert once to pandas Timestamp for efficient comparison
+    # Pre‑compute Timestamp objects for each scenario to avoid repeated conversion
+    scenario_ts = [(sc, pd.Timestamp(sc.start), pd.Timestamp(sc.end)) for sc in scenarios]
+
     price_index = prices.index
 
-    for scenario in scenarios:
-        start_ts = pd.Timestamp(scenario.start)
-        end_ts = pd.Timestamp(scenario.end)
-
-        # Fast check: if the scenario window does not intersect the price index, skip early
+    for scenario, start_ts, end_ts in scenario_ts:
+        # Fast check: skip if the scenario window does not intersect the price index
         if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
             results.append(
                 StressResult(
@@ -139,11 +138,8 @@ def run_stress_tests(
             )
             continue
 
-        s_signals = _slice_series(signals, start_ts, end_ts)
+        # Slice price series first; if insufficient data, skip slicing other inputs
         s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
-
         if s_prices is None or len(s_prices) < 5:
             results.append(
                 StressResult(
@@ -154,6 +150,11 @@ def run_stress_tests(
                 )
             )
             continue
+
+        # Slice remaining series only when the price window is valid
+        s_signals = _slice_series(signals, start_ts, end_ts)
+        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
+        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
 
         metrics = run_backtest(
             signals=s_signals,
@@ -181,7 +182,7 @@ def stress_summary(results: list[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
+    Returns per‑scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
     out: dict = {}
