@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784217278.3655827,
+    "last_updated": 1784218477.3601778,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,9 +108,9 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 4,
-    "macro_score": 3,
-    "vix": 15.91,
-    "market_scan_ts": 1784215691.0412157,
+    "macro_score": 4,
+    "vix": 16.03,
+    "market_scan_ts": 1784218477.3453996,
     "sector_leaders": [
       "Healthcare",
       "Financials",
@@ -125,30 +125,30 @@
       "ABT",
       "UNH",
       "ORCL",
-      "GS",
       "BLK",
-      "GE",
+      "GS",
       "NOW",
       "XLV",
       "WFC",
-      "META",
-      "AAPL",
-      "XLK",
       "TSLA",
       "BAC",
+      "MPC",
+      "AAPL",
+      "MS",
+      "XLK",
       "XLF",
       "JNJ",
+      "META",
+      "LLY",
       "GOOGL",
-      "MS",
-      "NVDA",
-      "PANW"
+      "INTU"
     ],
     "top_momentum": [
       "PANW",
+      "MPC",
       "CRWD",
       "ABT",
-      "TMO",
-      "META"
+      "TMO"
     ],
     "risk_flags": [],
     "risk_status": "normal",
@@ -1052,6 +1052,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Healthcare, Financials. Gaps: 6, Breakouts: 0, Risk flags: 0.",
       "ts": 1784215691.0586839
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 4,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Energy"
+      ],
+      "gap_count": 5,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 5, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784218477.3629787
     }
   ],
   "github_insights": [
