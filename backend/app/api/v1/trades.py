@@ -12,7 +12,20 @@ from app.models.account import Account
 from app.models.trade import Trade
 from app.models.user import User
 
-router = APIRouter(prefix="/trades", tags=["trades"])
+# Constants
+ROUTER_PREFIX = "/trades"
+ROUTER_TAGS = ["trades"]
+DEFAULT_LIMIT = 50
+MIN_LIMIT = 1
+MAX_LIMIT = 500
+
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+ALLOWED_SIDES = {SIDE_BUY, SIDE_SELL}
+ERROR_INVALID_SIDE = f"side must be either '{SIDE_BUY}' or '{SIDE_SELL}'"
+ERROR_INVALID_QUANTITY = "quantity must be greater than 0"
+
+router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
 class TradeOut(BaseModel):
@@ -76,8 +89,8 @@ class TradeOut(BaseModel):
     @classmethod
     def validate_side(cls, v: str) -> str:
         """Ensure side is either 'buy' or 'sell'."""
-        if v not in {"buy", "sell"}:
-            raise ValueError("side must be either 'buy' or 'sell'")
+        if v not in ALLOWED_SIDES:
+            raise ValueError(ERROR_INVALID_SIDE)
         return v
 
     @field_validator("quantity")
@@ -85,13 +98,13 @@ class TradeOut(BaseModel):
     def validate_quantity(cls, v: float) -> float:
         """Quantity must be a positive number."""
         if v <= 0:
-            raise ValueError("quantity must be greater than 0")
+            raise ValueError(ERROR_INVALID_QUANTITY)
         return v
 
 
 @router.get("/", response_model=list[TradeOut])
 async def list_trades(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(DEFAULT_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
@@ -115,7 +128,7 @@ async def list_trades(
     out: list[TradeOut] = []
     for t in trades:
         fill_price: float | None
-        if t.side == "buy":
+        if t.side == SIDE_BUY:
             fill_price = float(t.entry_price) if t.entry_price is not None else None
         else:
             fill_price = float(t.exit_price) if t.exit_price is not None else None
