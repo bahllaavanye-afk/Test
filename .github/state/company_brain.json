@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784229832.065111,
+    "last_updated": 1784230863.9420738,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784225979.0279477
+    "last_brain_update": 1784230863.941398
   },
   "episodic": [
     {
@@ -1535,6 +1535,11 @@
       "summary": "A deployment failed due to resource limits, and automated fixes were either skipped as too complex or failed to apply a patch to the file.",
       "item_count": 20,
       "ts": 1784225979.019506
+    },
+    {
+      "summary": "The team lead revoked automerge on an autonomous PR that modifies protected files, and auto-fix attempts failed due to inability to apply patches.",
+      "item_count": 20,
+      "ts": 1784230863.9324372
     }
   ],
   "experiment_results": [
