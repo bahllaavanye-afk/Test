@@ -10,6 +10,7 @@ from app.models.user import User
 from app.utils.security import encrypt_secret, decrypt_secret
 from app.utils.logging import logger
 from pydantic import BaseModel, ConfigDict
+import uuid
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -26,7 +27,8 @@ async def latest_total_equity(db: AsyncSession) -> float:
 
     account_ids = (
         (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
-        .scalars().all()
+        .scalars()
+        .all()
     )
     total = 0.0
     for acc_id in account_ids:
@@ -70,6 +72,32 @@ class AccountEquityOut(BaseModel):
     pattern_day_trader: bool | None
 
 
+def _validate_uuid(value: str, field_name: str = "value") -> None:
+    """Validate that a string is a proper UUID."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} must be a non‑empty string")
+    try:
+        uuid.UUID(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a valid UUID") from exc
+
+
+def _validate_account_create(body: AccountCreate) -> None:
+    """Validate fields of AccountCreate."""
+    if not body.broker or not body.broker.strip():
+        raise ValueError("broker must be a non‑empty string")
+    if not body.label or not body.label.strip():
+        raise ValueError("label must be a non‑empty string")
+    if body.mode not in {"paper", "live"}:
+        raise ValueError("mode must be either 'paper' or 'live'")
+    if not body.api_key or not body.api_key.strip():
+        raise ValueError("api_key must be a non‑empty string")
+    if not body.api_secret or not body.api_secret.strip():
+        raise ValueError("api_secret must be a non‑empty string")
+    if not isinstance(body.extra_config, dict):
+        raise ValueError("extra_config must be a dictionary")
+
+
 @router.get("/", response_model=list[AccountOut])
 async def list_accounts(
     db: AsyncSession = Depends(get_db),
@@ -86,6 +114,8 @@ async def create_account(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
+    _validate_account_create(body)
+
     account = Account(
         user_id=current_user.id,
         broker=body.broker,
@@ -126,6 +156,8 @@ async def get_account_equity(
     current_user: User = Depends(get_current_user),
 ):
     """Return live equity, buying power, and day-trade count from Alpaca."""
+    _validate_uuid(account_id, "account_id")
+
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
     )
@@ -137,6 +169,7 @@ async def get_account_equity(
         raise HTTPException(400, "Live equity is only available for Alpaca accounts with stored credentials")
 
     from app.brokers.alpaca_orders import get_alpaca_account
+
     try:
         data = await get_alpaca_account(account)
     except Exception as e:
@@ -148,10 +181,13 @@ async def get_account_equity(
         cash=float(data.get("cash", 0)),
         buying_power=float(data.get("buying_power", 0)),
         portfolio_value=float(data.get("portfolio_value", 0)),
-        day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
-        pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
+        day_trade_count=int(data["daytrade_count"])
+        if data.get("daytrade_count") is not None
+        else None,
+        pattern_day_trader=bool(data.get("pattern_day_trader"))
+        if data.get("pattern_day_trader") is not None
+        else None,
     )
-
 
 
 @router.delete("/{account_id}")
@@ -160,6 +196,8 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _validate_uuid(account_id, "account_id")
+
     result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
     account = result.scalar_one_or_none()
     if not account:
