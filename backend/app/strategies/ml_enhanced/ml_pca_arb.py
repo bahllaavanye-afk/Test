@@ -63,49 +63,67 @@ class MLPCAStatArbStrategy(AbstractStrategy):
 
         Falls back to None (no trade) when ML is unavailable.
         """
-        # Step 1: get base PCA signal
-        base_signal = await self._base.analyze(data, symbol)
+        base_signal = await self._get_base_signal(data, symbol)
         if base_signal is None:
             return None
 
-        # Step 2: apply ML filter
-        if not _INFERENCE_AVAILABLE:
-            # ML service not installed — skip silently
+        ml_result = await self._get_ml_result(data, symbol)
+        if not self._is_ml_result_acceptable(ml_result, base_signal):
             return None
 
+        blended_confidence = self._blend_confidence(
+            base_signal.confidence, ml_result["confidence"]
+        )
+        base_signal.confidence = blended_confidence
+        base_signal.strategy_name = self.name
+        base_signal.strategy_type = self.strategy_type
+        base_signal.metadata["ml_confidence"] = ml_result["confidence"]
+        return base_signal
+
+    async def _get_base_signal(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Retrieve the underlying PCA signal."""
+        return await self._base.analyze(data, symbol)
+
+    async def _get_ml_result(self, data: pd.DataFrame, symbol: str) -> dict | None:
+        """Query the ML inference service; returns a dict with 'confidence' and 'prediction'."""
+        if not _INFERENCE_AVAILABLE:
+            return None
         try:
             inference = _get_inference_service()
             ml_result = await inference.predict(data, symbol)
             if ml_result is None:
                 return None
-
-            ml_confidence: float = float(ml_result.get("confidence", 0.0))
-            ml_prediction: str = ml_result.get("prediction", "neutral")
-
-            if ml_confidence < self._ml_threshold:
-                return None
-            if ml_prediction == "neutral":
-                return None
-
-            # Direction agreement check
-            direction_ok = (
-                (ml_prediction == "up" and base_signal.side == "buy")
-                or (ml_prediction == "down" and base_signal.side == "sell")
-            )
-            if not direction_ok:
-                return None
-
-            # Blend confidences
-            blended = min(0.95, (base_signal.confidence + ml_confidence) / 2)
-            base_signal.confidence = blended
-            base_signal.strategy_name = self.name
-            base_signal.strategy_type = self.strategy_type
-            base_signal.metadata["ml_confidence"] = ml_confidence
-            return base_signal
-
+            # Normalise fields
+            confidence = float(ml_result.get("confidence", 0.0))
+            prediction = ml_result.get("prediction", "neutral")
+            return {"confidence": confidence, "prediction": prediction}
         except Exception:
-            # ML service raised an error — degrade gracefully
             return None
+
+    def _is_ml_result_acceptable(self, ml_result: dict | None, base_signal: Signal) -> bool:
+        """Validate ML confidence, prediction, and directional agreement."""
+        if ml_result is None:
+            return False
+        if ml_result["confidence"] < self._ml_threshold:
+            return False
+        if ml_result["prediction"] == "neutral":
+            return False
+        return self._direction_agrees(ml_result["prediction"], base_signal)
+
+    @staticmethod
+    def _direction_agrees(ml_prediction: str, base_signal: Signal) -> bool:
+        """Check that ML prediction direction matches the PCA signal side."""
+        return (
+            (ml_prediction == "up" and base_signal.side == "buy")
+            or (ml_prediction == "down" and base_signal.side == "sell")
+        )
+
+    @staticmethod
+    def _blend_confidence(base_conf: float, ml_conf: float) -> float:
+        """
+        Blend PCA and ML confidences, capping the result at 0.95.
+        """
+        return min(0.95, (base_conf + ml_conf) / 2)
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
