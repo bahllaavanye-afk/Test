@@ -199,8 +199,13 @@
     "Handle SQL errors",
     "Test thread safety",
     "Check file paths",
-    "Scan for deadlock"
+    "Scan for deadlock",
+    "schemas on tasks/backtest_worker.py: success \u2014 tests green",
+    "schemas on test/unit/test_cross_desk_fields.py: success \u2014 tests green",
+    "schemas on strategies/manual/pairs_trading.py: success \u2014 tests green",
+    "schemas on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "schemas on execution/twap.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T19:03:57.320830+00:00",
+  "last_updated": "2026-07-16T19:05:46.512141+00:00",
   "total": 200
 }
