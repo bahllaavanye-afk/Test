@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Optional
 
 import httpx
 import numpy as np
@@ -21,8 +22,11 @@ _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
 
 
-def _to_binance_symbol(symbol: str) -> str:
-    """Convert 'BTC-USD' or 'BTC/USDT' to 'BTCUSDT'."""
+def _to_binance_symbol(symbol: Optional[str]) -> str:
+    """Convert 'BTC-USD' or 'BTC/USDT' to 'BTCUSDT'.
+    Returns an empty string for falsy inputs."""
+    if not symbol:
+        return ""
     return symbol.replace("-", "").replace("/", "").upper()
 
 
@@ -34,16 +38,20 @@ class BinanceFundingRateFeatures:
 
     async def get_funding_rate_history(
         self,
-        symbol: str,
+        symbol: Optional[str],
         limit: int = 500,
     ) -> pd.DataFrame:
         """
         GET /fapi/v1/fundingRate
 
         Returns DataFrame with columns: [ts, funding_rate] sorted ascending.
-        Returns empty DataFrame on any error.
+        Returns empty DataFrame on any error or invalid input.
         """
+        if not symbol or limit <= 0:
+            return pd.DataFrame()
         bn_sym = _to_binance_symbol(symbol)
+        if not bn_sym:
+            return pd.DataFrame()
         url = f"{_FAPI_BASE}/fapi/v1/fundingRate"
         params = {"symbol": bn_sym, "limit": min(limit, 1000)}
         try:
@@ -59,6 +67,7 @@ class BinanceFundingRateFeatures:
                     "funding_rate": float(r["fundingRate"]),
                 }
                 for r in data
+                if "fundingTime" in r and "fundingRate" in r
             ]
             df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
             return df
@@ -67,7 +76,7 @@ class BinanceFundingRateFeatures:
 
     async def get_open_interest_hist(
         self,
-        symbol: str,
+        symbol: Optional[str],
         period: str = "1d",
         limit: int = 500,
     ) -> pd.DataFrame:
@@ -75,10 +84,14 @@ class BinanceFundingRateFeatures:
         GET /futures/data/openInterestHist
 
         Returns DataFrame with columns: [ts, open_interest, open_interest_value].
-        Returns empty DataFrame on any error.
+        Returns empty DataFrame on any error or invalid input.
         Valid periods: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d
         """
+        if not symbol or limit <= 0:
+            return pd.DataFrame()
         bn_sym = _to_binance_symbol(symbol)
+        if not bn_sym:
+            return pd.DataFrame()
         url = f"{_FUTURES_DATA_BASE}/futures/data/openInterestHist"
         params = {"symbol": bn_sym, "period": period, "limit": min(limit, 500)}
         try:
@@ -95,6 +108,7 @@ class BinanceFundingRateFeatures:
                     "open_interest_value": float(r["sumOpenInterestValue"]),
                 }
                 for r in data
+                if "timestamp" in r and "sumOpenInterest" in r and "sumOpenInterestValue" in r
             ]
             df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
             return df
@@ -102,7 +116,7 @@ class BinanceFundingRateFeatures:
             return pd.DataFrame()
 
     async def compute_features_async(
-        self, symbol: str, df: pd.DataFrame
+        self, symbol: Optional[str], df: Optional[pd.DataFrame]
     ) -> pd.DataFrame:
         """
         Add funding rate and open interest features to an OHLCV DataFrame.
@@ -114,7 +128,13 @@ class BinanceFundingRateFeatures:
           oi_momentum         — 7-day OI momentum (current / MA7 - 1)
 
         Missing data → NaN (not filled with fake values).
+        Returns an empty DataFrame if inputs are invalid.
         """
+        if not isinstance(df, pd.DataFrame) or df.empty or not symbol:
+            # Return a DataFrame with the expected columns but no rows
+            result = pd.DataFrame(columns=ALTERNATIVE_FEATURE_COLS)
+            return result
+
         df = df.copy()
         for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
             df[col] = np.nan
@@ -135,8 +155,8 @@ class BinanceFundingRateFeatures:
             else:
                 idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
 
-            for i, ts in enumerate(idx):
-                ts_day = ts.normalize()
+            for i in range(min(len(df), len(idx))):
+                ts_day = idx[i]
                 if ts_day in fr_df.index:
                     df.iloc[i, df.columns.get_loc("funding_rate")] = float(
                         fr_df.loc[ts_day, "funding_rate"]
@@ -156,8 +176,8 @@ class BinanceFundingRateFeatures:
             else:
                 idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
 
-            for i, ts in enumerate(idx):
-                ts_day = ts.normalize()
+            for i in range(min(len(df), len(idx))):
+                ts_day = idx[i]
                 if ts_day in oi_df.index:
                     df.iloc[i, df.columns.get_loc("oi_change_pct")] = float(
                         oi_df.loc[ts_day, "oi_change_pct"]
@@ -168,22 +188,22 @@ class BinanceFundingRateFeatures:
 
         return df
 
-    def compute_features(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
+    def compute_features(self, symbol: Optional[str], df: Optional[pd.DataFrame]) -> pd.DataFrame:
         """Sync wrapper — runs the async version via asyncio."""
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                # Already inside an event loop (e.g., FastAPI) — create a task
+                # Already inside an event loop (e.g., FastAPI) — create a thread pool task
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(
-                        asyncio.run, self.compute_features_async(symbol, df)
-                    )
+                    future = pool.submit(asyncio.run, self.compute_features_async(symbol, df))
                     return future.result(timeout=30)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
         except Exception:
-            df = df.copy()
+            # Gracefully fallback to a DataFrame with NaNs
+            df = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
             for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
                 df[col] = np.nan
             return df
@@ -199,13 +219,17 @@ ALTERNATIVE_FEATURE_COLS = [
 _binance_features = BinanceFundingRateFeatures()
 
 
-def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
+def add_alternative_features(df: Optional[pd.DataFrame], symbol: str = "") -> pd.DataFrame:
     """
     Add Binance alternative data features for crypto symbols.
-    For non-crypto symbols, adds columns filled with NaN.
+    For non-crypto symbols or invalid inputs, adds columns filled with NaN.
     """
+    if not isinstance(df, pd.DataFrame):
+        # Return an empty DataFrame with the expected feature columns
+        return pd.DataFrame(columns=ALTERNATIVE_FEATURE_COLS)
+
     is_crypto = any(
-        kw in symbol.upper()
+        kw in (symbol or "").upper()
         for kw in ("BTC", "ETH", "BNB", "SOL", "XRP", "USDT", "USDC", "CRYPTO")
     )
     if is_crypto and symbol:
