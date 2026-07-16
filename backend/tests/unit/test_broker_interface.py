@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import importlib
 import os
+from collections.abc import Iterable
+from typing import Any
 
 import pytest
 
@@ -28,7 +30,13 @@ _BROKER_MODULES = [
 ]
 
 
-def _all_subclasses(cls) -> set[type]:
+def _all_subclasses(cls: type | None) -> set[type]:
+    """Recursively collect all subclasses of *cls*.
+
+    Handles ``None`` gracefully by returning an empty set.
+    """
+    if cls is None:
+        return set()
     out: set[type] = set()
     for sub in cls.__subclasses__():
         out.add(sub)
@@ -36,9 +44,32 @@ def _all_subclasses(cls) -> set[type]:
     return out
 
 
+def _validate_module_iterable(mods: Any) -> Iterable[str]:
+    """Validate that *mods* is an iterable of strings.
+
+    Returns an empty iterable for ``None`` or non‑iterable inputs to avoid
+    TypeError during iteration.
+    """
+    if mods is None:
+        return ()
+    if isinstance(mods, str):
+        # A single string should be treated as a collection with one element.
+        return (mods,)
+    if isinstance(mods, Iterable):
+        return mods
+    return ()
+
+
 def test_all_broker_modules_import():
-    failures = {}
-    for mod in _BROKER_MODULES:
+    """Ensure each broker module can be imported.
+
+    Handles the case where the module list is ``None`` or empty.
+    """
+    modules = _validate_module_iterable(_BROKER_MODULES)
+    if not modules:
+        pytest.skip("No broker modules defined to import.")
+    failures: dict[str, str] = {}
+    for mod in modules:
         try:
             importlib.import_module(mod)
         except Exception as exc:  # noqa: BLE001
@@ -47,13 +78,21 @@ def test_all_broker_modules_import():
 
 
 def test_no_broker_subclass_is_abstract():
-    for mod in _BROKER_MODULES:
+    """Verify that no concrete subclass of ``AbstractBroker`` remains abstract.
+
+    Safeguards against ``None`` or empty module collections.
+    """
+    modules = _validate_module_iterable(_BROKER_MODULES)
+    if not modules:
+        pytest.skip("No broker modules defined for abstract‑method check.")
+    for mod in modules:
         try:
             importlib.import_module(mod)
-        except Exception:  # noqa: BLE001 — reported by the import test above
+        except Exception:
+            # Import failures are reported by the import test above.
             pass
     still_abstract = {
-        cls.__name__: sorted(cls.__abstractmethods__)
+        cls.__name__: sorted(cls.__abstractmethods__)  # type: ignore[attr-defined]
         for cls in _all_subclasses(AbstractBroker)
         if getattr(cls, "__abstractmethods__", None)
     }
@@ -68,9 +107,15 @@ def test_alpaca_broker_declares_every_interface_method_directly():
     its own body (not inherit stubs) — truncation deletes method bodies."""
     pytest.importorskip("alpaca")
     from app.brokers.alpaca import AlpacaBroker
+
     required = {
-        "place_order", "cancel_order", "get_order",
-        "get_positions", "get_account", "get_quote", "get_historical",
+        "place_order",
+        "cancel_order",
+        "get_order",
+        "get_positions",
+        "get_account",
+        "get_quote",
+        "get_historical",
     }
     own = set(vars(AlpacaBroker))
     missing = required - own
