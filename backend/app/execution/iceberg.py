@@ -3,19 +3,22 @@ Iceberg execution: show only small visible quantity, refill as each slice fills.
 Prevents large orders from moving the market by hiding true size.
 """
 from __future__ import annotations
+
 import asyncio
 from dataclasses import asdict
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
 
 class IcebergExecution:
-    def __init__(self, broker: AbstractBroker, visible_pct: float = 0.10, refill_delay_seconds: int = 5):
+    def __init__(self, broker: AbstractBroker, visible_pct: float = 0.10, refill_delay_seconds: int = 5) -> None:
         self.broker = broker
         self.visible_pct = visible_pct
         self.refill_delay_seconds = refill_delay_seconds
 
     async def execute(self, request: OrderRequest) -> OrderResult:
+        # Determine the visible slice size, ensuring at least a minimal quantity.
         visible_qty = max(1.0, request.quantity * self.visible_pct)
         remaining = request.quantity
         total_filled = 0.0
