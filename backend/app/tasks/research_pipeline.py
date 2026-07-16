@@ -19,15 +19,45 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from app.tasks.free_llm_router import call_race, call_consensus
 from app.tasks.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
 
+# Directory constants
 EXPERIMENTS_DIR = Path(__file__).parent.parent.parent.parent / "experiments"
 CONFIGS_DIR = EXPERIMENTS_DIR / "configs"
 RESULTS_DIR = EXPERIMENTS_DIR / "results"
+
+# Default configuration constants
+DEFAULT_TEMPERATURE = 0.5
+DEFAULT_MAX_TOKENS = 800
+DEFAULT_IDEA_LIMIT = 2
+DEFAULT_MODEL = "lstm"
+DEFAULT_SYMBOL = "BTC/USDT"
+DEFAULT_INTERVAL = "1h"
+DEFAULT_FEATURES = ["rsi_14", "macd", "bb_width"]
+DEFAULT_TRAIN_START = "2022-01-01"
+DEFAULT_TRAIN_END = "2023-12-31"
+DEFAULT_VAL_START = "2024-01-01"
+DEFAULT_VAL_END = "2024-06-30"
+DEFAULT_TEST_START = "2024-07-01"
+DEFAULT_TEST_END = "2024-12-31"
+DEFAULT_HIDDEN_SIZE = 128
+DEFAULT_NUM_LAYERS = 2
+DEFAULT_DROPOUT = 0.3
+DEFAULT_BIDIRECTIONAL = True
+DEFAULT_EPOCHS = 50
+DEFAULT_BATCH_SIZE = 256
+DEFAULT_LR = 0.001
+DEFAULT_EARLY_STOPPING_PATIENCE = 8
+DEFAULT_CONFIDENCE_THRESHOLD = 0.60
+DEFAULT_HEALTH_RATIO = 0.5
+DEFAULT_REGIME = "unknown"
+DEFAULT_CONTEXT_PLACEHOLDER = "Unknown market regime. Assume neutral conditions."
+DEFAULT_EXPERIMENT_NAME_PREFIX = "auto_"
 
 
 class ResearchPipeline:
@@ -42,11 +72,14 @@ class ResearchPipeline:
             configs = await self._ideas_to_experiment_configs(ideas)
             await self._queue_experiments(configs)
             if self._memory:
-                await self._memory.write("research_findings", {
-                    "ideas_count": len(ideas),
-                    "configs_queued": len(configs),
-                    "ideas": ideas[:3],
-                })
+                await self._memory.write(
+                    "research_findings",
+                    {
+                        "ideas_count": len(ideas),
+                        "configs_queued": len(configs),
+                        "ideas": ideas[:3],
+                    },
+                )
             logger.info("ResearchPipeline: queued %d experiments", len(configs))
         except Exception as e:
             logger.exception("ResearchPipeline error: %s", e)
@@ -54,13 +87,13 @@ class ResearchPipeline:
     async def _build_market_context(self) -> str:
         """Build a short market context string from memory (if available)."""
         if not self._memory:
-            return "Unknown market regime. Assume neutral conditions."
+            return DEFAULT_CONTEXT_PLACEHOLDER
         regime_data = await self._memory.get_latest("market_regime")
         platform_data = await self._memory.get_latest("platform_health")
         recent_suggestions = await self._memory.read_recent("llm_suggestions", n=3)
 
-        regime = regime_data.get("regime", "unknown") if regime_data else "unknown"
-        health = platform_data.get("health_ratio", 0.5) if platform_data else 0.5
+        regime = regime_data.get("regime", DEFAULT_REGIME) if regime_data else DEFAULT_REGIME
+        health = platform_data.get("health_ratio", DEFAULT_HEALTH_RATIO) if platform_data else DEFAULT_HEALTH_RATIO
         prev_ideas = [s.get("suggestion", "")[:100] for s in recent_suggestions]
 
         return (
@@ -84,15 +117,14 @@ Respond as JSON array:
 
         response = await call_race(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=800,
+            temperature=DEFAULT_TEMPERATURE,
+            max_tokens=DEFAULT_MAX_TOKENS,
         )
         if not response:
             return []
 
         try:
             content = response.content.strip()
-            # Extract JSON array
             start = content.find("[")
             end = content.rfind("]") + 1
             if start >= 0 and end > start:
@@ -106,12 +138,12 @@ Respond as JSON array:
         CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
         configs = []
 
-        for idea in ideas[:2]:  # limit to 2 per cycle
-            name = idea.get("name", f"auto_{int(time.time())}")
-            model = idea.get("model", "lstm")
-            symbol = idea.get("symbol", "BTC/USDT")
-            interval = idea.get("interval", "1h")
-            features = idea.get("features", ["rsi_14", "macd", "bb_width"])
+        for idea in ideas[:DEFAULT_IDEA_LIMIT]:
+            name = idea.get("name", f"{DEFAULT_EXPERIMENT_NAME_PREFIX}{int(time.time())}")
+            model = idea.get("model", DEFAULT_MODEL)
+            symbol = idea.get("symbol", DEFAULT_SYMBOL)
+            interval = idea.get("interval", DEFAULT_INTERVAL)
+            features = idea.get("features", DEFAULT_FEATURES)
 
             config_path = CONFIGS_DIR / f"{name}.yaml"
             if config_path.exists():
@@ -127,34 +159,34 @@ experiment:
   interval: "{interval}"
 
 data:
-  train_start: "2022-01-01"
-  train_end: "2023-12-31"
-  val_start: "2024-01-01"
-  val_end: "2024-06-30"
-  test_start: "2024-07-01"
-  test_end: "2024-12-31"
+  train_start: "{DEFAULT_TRAIN_START}"
+  train_end: "{DEFAULT_TRAIN_END}"
+  val_start: "{DEFAULT_VAL_START}"
+  val_end: "{DEFAULT_VAL_END}"
+  test_start: "{DEFAULT_TEST_START}"
+  test_end: "{DEFAULT_TEST_END}"
 
 features:
   technical: {json.dumps(features)}
   lookback: 60
 
 model_params:
-  hidden_size: 128
-  num_layers: 2
-  dropout: 0.3
-  bidirectional: true
+  hidden_size: {DEFAULT_HIDDEN_SIZE}
+  num_layers: {DEFAULT_NUM_LAYERS}
+  dropout: {DEFAULT_DROPOUT}
+  bidirectional: {str(DEFAULT_BIDIRECTIONAL).lower()}
 
 training:
-  epochs: 50
-  batch_size: 256
-  lr: 0.001
+  epochs: {DEFAULT_EPOCHS}
+  batch_size: {DEFAULT_BATCH_SIZE}
+  lr: {DEFAULT_LR}
   optimizer: "adamw"
   scheduler: "cosine"
-  early_stopping_patience: 8
+  early_stopping_patience: {DEFAULT_EARLY_STOPPING_PATIENCE}
 
 strategy:
   name: "ml_momentum"
-  confidence_threshold: 0.60
+  confidence_threshold: {DEFAULT_CONFIDENCE_THRESHOLD}
 """
             config_path.write_text(yaml_content)
             configs.append(config_path)
