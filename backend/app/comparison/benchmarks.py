@@ -173,3 +173,91 @@ def get_benchmark_stats() -> dict:
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case handling
+# --------------------------------------------------------------------------- #
+
+def _make_series(ticker: str) -> pd.Series:
+    """Helper to create a deterministic series for testing."""
+    dates = pd.date_range(start="2022-01-01", periods=3, freq="D", tz="UTC")
+    values = pd.Series([100.0, 101.0, 102.0], index=dates, name=ticker)
+    return values
+
+
+async def _run_async(fn, *args, **kwargs):
+    """Utility to run an async function in a synchronous test context."""
+    return await fn(*args, **kwargs)
+
+
+def test_fetch_benchmark_curves_invalid_range():
+    """Boundary test: start date equal to or after end date returns empty dict."""
+    from datetime import date
+
+    start = date(2022, 1, 1)
+    # start == end
+    result_eq = asyncio.run(_run_async(fetch_benchmark_curves, start, start))
+    assert result_eq == {}
+
+    # start > end
+    end = date(2021, 12, 31)
+    result_gt = asyncio.run(_run_async(fetch_benchmark_curves, start, end))
+    assert result_gt == {}
+
+
+def test_fetch_benchmark_curves_all_weather_insufficient_tickers(monkeypatch):
+    """Edge case: fewer than three All Weather components should omit ALL_WEATHER."""
+    from datetime import date
+
+    start = date(2022, 1, 1)
+    end = date(2022, 1, 10)
+
+    async def mock_fetch(client, ticker, start, end):
+        # Provide data only for two of the All Weather tickers
+        if ticker in ("TLT", "IEF"):
+            return _make_series(ticker)
+        return pd.Series(dtype=float)
+
+    monkeypatch.setattr(
+        "backend.app.comparison.benchmarks._fetch_ticker_bars", mock_fetch
+    )
+    # Clear cache to isolate test
+    _benchmark_cache.clear()
+
+    result = asyncio.run(_run_async(fetch_benchmark_curves, start, end))
+    assert "ALL_WEATHER" not in result
+    # No standard benchmarks are provided, so result should be empty
+    assert result == {}
+
+
+def test_fetch_benchmark_curves_cache_behavior(monkeypatch):
+    """Verify that repeated calls with identical dates hit the in‑memory cache."""
+    from datetime import date
+
+    start = date(2022, 1, 1)
+    end = date(2022, 1, 10)
+
+    call_counter = {"count": 0}
+
+    async def mock_fetch(client, ticker, start, end):
+        call_counter["count"] += 1
+        return pd.Series(dtype=float)
+
+    monkeypatch.setattr(
+        "backend.app.comparison.benchmarks._fetch_ticker_bars", mock_fetch
+    )
+    _benchmark_cache.clear()
+
+    # First call populates cache
+    _ = asyncio.run(_run_async(fetch_benchmark_curves, start, end))
+    first_call_count = call_counter["count"]
+
+    # Second call should retrieve cached result without invoking mock_fetch
+    _ = asyncio.run(_run_async(fetch_benchmark_curves, start, end))
+    second_call_count = call_counter["count"]
+
+    assert first_call_count > 0
+    assert second_call_count == first_call_count  # No additional fetches
+
+# End of file
