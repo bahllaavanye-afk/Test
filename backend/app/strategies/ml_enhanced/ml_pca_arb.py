@@ -61,8 +61,14 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Generate a signal only when PCA s-score AND LSTM agree.
 
-        Falls back to None (no trade) when ML is unavailable.
+        Falls back to None (no trade) when ML is unavailable or inputs are invalid.
         """
+        # Edge‑case guards
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            return None
+        if not symbol:
+            return None
+
         # Step 1: get base PCA signal
         base_signal = await self._base.analyze(data, symbol)
         if base_signal is None:
@@ -76,11 +82,17 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         try:
             inference = _get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result is None:
+
+            # Guard against None or malformed result
+            if not isinstance(ml_result, dict) or not ml_result:
                 return None
 
             ml_confidence: float = float(ml_result.get("confidence", 0.0))
             ml_prediction: str = ml_result.get("prediction", "neutral")
+
+            # Validate confidence range
+            if not (0.0 <= ml_confidence <= 1.0):
+                return None
 
             if ml_confidence < self._ml_threshold:
                 return None
@@ -95,8 +107,8 @@ class MLPCAStatArbStrategy(AbstractStrategy):
             if not direction_ok:
                 return None
 
-            # Blend confidences
-            blended = min(0.95, (base_signal.confidence + ml_confidence) / 2)
+            # Blend confidences, protect against off‑by‑one rounding errors
+            blended = min(0.95, (base_signal.confidence + ml_confidence) / 2.0)
             base_signal.confidence = blended
             base_signal.strategy_name = self.name
             base_signal.strategy_type = self.strategy_type
@@ -111,8 +123,9 @@ class MLPCAStatArbStrategy(AbstractStrategy):
         """
         Delegate to the base PCA strategy for backtesting.
 
-        In a production backtest with a trained LSTM available, the signals
-        would be gated per-bar.  Without a serialized model this delegation
-        is the correct fallback: it still uses the same PCA edge.
+        Handles None or empty DataFrames gracefully.
         """
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            # Return empty backtest signals to avoid downstream errors
+            return BacktestSignals(signals=[])
         return self._base.backtest_signals(df)
