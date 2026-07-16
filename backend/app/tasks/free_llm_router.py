@@ -23,13 +23,14 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, List
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 # ── Provider definitions ──────────────────────────────────────────────────────
+
 
 @dataclass
 class LLMProvider:
@@ -42,7 +43,7 @@ class LLMProvider:
     headers_extra: dict = field(default_factory=dict)
 
 
-PROVIDERS: list[LLMProvider] = [
+PROVIDERS: List[LLMProvider] = [
     LLMProvider(
         name="gemini",
         env_key="GEMINI_API_KEY",
@@ -103,26 +104,55 @@ class LLMResponse:
     tokens_used: int = 0
 
 
-# ── Core caller ───────────────────────────────────────────────────────────────
+# ── Helper functions ────────────────────────────────────────────────────────
 
-async def _call_provider(
-    provider: LLMProvider,
-    messages: list[dict],
-    temperature: float = 0.3,
-    max_tokens: int | None = None,
-) -> LLMResponse | None:
-    api_key = os.getenv(provider.env_key, "")
-    if not api_key or api_key in ("disabled", ""):
-        return None
 
-    payload = {
+def _build_payload(provider: LLMProvider, messages: List[dict], temperature: float, max_tokens: int | None) -> dict:
+    """Construct the JSON payload for a provider request."""
+    return {
         "model": provider.model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens or provider.max_tokens,
     }
 
-    t0 = time.monotonic()
+
+def _make_request(provider: LLMProvider, api_key: str, payload: dict) -> httpx.Response:
+    """Execute the HTTP request against the provider's endpoint."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    client = httpx.AsyncClient(timeout=provider.timeout)
+    return client.post(f"{provider.base_url}/chat/completions", headers=headers, json=payload)
+
+
+async def _process_response(resp: httpx.Response, provider_name: str, start_time: float) -> LLMResponse:
+    """Parse the HTTP response and create an LLMResponse object."""
+    resp.raise_for_status()
+    data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+    tokens = data.get("usage", {}).get("total_tokens", 0)
+    latency = (time.monotonic() - start_time) * 1000
+    return LLMResponse(provider=provider_name, content=content, latency_ms=latency, tokens_used=tokens)
+
+
+# ── Core caller ───────────────────────────────────────────────────────────────
+
+
+async def _call_provider(
+    provider: LLMProvider,
+    messages: List[dict],
+    temperature: float = 0.3,
+    max_tokens: int | None = None,
+) -> LLMResponse | None:
+    """Invoke a single LLM provider and return its response, or None on failure."""
+    api_key = os.getenv(provider.env_key, "")
+    if not api_key or api_key in ("disabled", ""):
+        return None
+
+    payload = _build_payload(provider, messages, temperature, max_tokens)
+    start = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=provider.timeout) as client:
             resp = await client.post(
@@ -130,12 +160,7 @@ async def _call_provider(
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json=payload,
             )
-            resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            tokens = data.get("usage", {}).get("total_tokens", 0)
-            latency = (time.monotonic() - t0) * 1000
-            return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
+        return await _process_response(resp, provider.name, start)
     except Exception as e:
         logger.debug("Provider %s failed: %s", provider.name, e)
         return None
@@ -143,8 +168,9 @@ async def _call_provider(
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 async def call_race(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
@@ -176,11 +202,11 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
-) -> list[LLMResponse]:
+) -> List[LLMResponse]:
     """Call all providers and return all successful responses for consensus analysis."""
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
@@ -193,6 +219,6 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
+def available_providers() -> List[str]:
     """Return names of providers with configured API keys."""
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
