@@ -8,7 +8,20 @@
 
 _Last updated: 2026-07-15._
 
-## ⚡ STATE AS OF 2026-07-15 (read this first)
+## ⚡ STATE AS OF 2026-07-15 PM (read this first)
+**SCALE-UP LANDED: 53→103 wired strategies, 9 desks.** New TV Indicators desk (12 TV
+strategies, #desk-tv-indicators). Universes: Equities 30 syms, Crypto 20 pairs, Options 8,
+Macro/FX 14 (full rates/credit complex), StatArb 12, Commodities 12, International 19.
+Every wirable registry strategy now trades; the 10 leftovers are data-source-blocked
+(documented in strategy_scout.KNOWN_EXCLUSIONS). **Strategy Scout** (workflow, event-
+chained, 3-day gate) re-audits registry-vs-desks every run, posts to #desk-research,
+appends to IMPROVEMENTS.md when new strategies appear, and rotates build-next ideas from
+a 15-item research backlog — "always finding new strategies" is now automated.
+**BOT_TEMPLATES 49→57**: added OA's flagship public bots (0DTE breakeven IC, short put
+ladder, Black Swan hedge, 1-1-2, Rhino BWB, weekly diagonal, 16Δ strangle defined-risk,
+Slow&Steady IC). Private leaderboard copies still blocked on OA_SESSION_COOKIE.
+
+## Earlier 2026-07-15 state
 **8 desks** (Commodities added: 8 ETF proxies, TSMOM/Donchian/MR) + OANDA FX desk with a
 ForexFactory red-folder gate (stands aside ±30min around High-impact prints, fail-open).
 **QUARANTINED is EMPTY** — all 115 registry strategies pass the contract suite via the

@@ -1,5 +1,13 @@
 # QuantEdge — Improvements & Task Tracker
 
+## New queue (added 2026-07-15, scale-up session)
+- [ ] **[P1] Per-desk performance attribution + auto-pruning** — weekly P&L by desk × strategy from the Trades table; auto-deactivate the bottom decile after 100+ signals (the flip side of "always add strategies" is "always cut losers").
+- [ ] **[P1] Route Options-desk income structures through REAL multi-leg orders** — submit_alpaca_multileg_order is tested and engine-wired for bots; the desk still trades underlying proxies. Wheel/condor/credit-spread should place actual defined-risk spreads.
+- [ ] **[P1] Symbol Scout** — sibling of Strategy Scout: scan Alpaca's /v2/assets for newly tradable, liquid symbols (and crypto pairs) and propose universe additions; also validate the 8 new crypto pairs are listed (unlisted ones fail soft but should be pruned).
+- [ ] **[P2] TV-desk hit-rate tracking** — per-indicator win rate after close; drop any TV strategy under 45% after 100 signals (they're community indicators, not vetted premia).
+- [ ] **[P2] Polymarket desk trades a SPY proxy** — wire py-clob-client paper flow so poly_* strategies act on real prediction-market prices instead.
+- [ ] **[P2] Research backlog → registry pipeline** — Strategy Scout rotates 15 build-next ideas; connect it to the autonomous strategy generator so the top idea gets drafted as a PR'd strategy each week.
+
 - [ ] **[P2] Unblock the 10 data-source-blocked strategies** (strategy-scout 2026-07-15; every WIRABLE strategy now trades — coverage 53→103): each needs a feed, not a desk: covered_call (share inventory), funding_rate_arb + crypto_basis_roll + dex_cex_arb (geo-permitted derivatives/DEX data), token_unlock_fade (unlock calendar), news_momentum (headline feed), earnings_accruals (fundamentals), micro_cap_momentum (small-cap universe), moc_auction_imbalance + order_flow_imbalance (intraday/L2 data).
 
 > **Session 2026-07-15:** QUARANTINED emptied (hard-budget fail-soft); Commodities desk;
