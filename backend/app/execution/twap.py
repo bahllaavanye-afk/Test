@@ -7,16 +7,70 @@ import asyncio
 from dataclasses import asdict
 from typing import Any
 
+from pydantic import BaseModel, Field, validator
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.exceptions import BrokerError  # lives in utils, NOT brokers.base (#298 broke this import)
 from app.utils.logging import logger
 
 
+class TWAPParameters(BaseModel):
+    """
+    Configuration parameters for a TWAP execution.
+
+    Attributes
+    ----------
+    slices : int
+        Number of equal slices to split the order into.
+        Must be a positive integer (≥ 1). Example: 10.
+    duration_minutes : int
+        Total duration in minutes over which the slices are executed.
+        Must be a positive integer. Example: 30.
+    """
+    slices: int = Field(
+        ...,
+        description="Number of equal slices to split the order into.",
+        ge=1,
+        example=10,
+    )
+    duration_minutes: int = Field(
+        ...,
+        description="Total duration in minutes for the TWAP execution.",
+        gt=0,
+        example=30,
+    )
+
+    @validator("slices")
+    def _validate_slices(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("slices must be at least 1")
+        return v
+
+    @validator("duration_minutes")
+    def _validate_duration(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("duration_minutes must be positive")
+        return v
+
+
 class TWAPExecution:
     def __init__(self, broker: AbstractBroker, slices: int = 10, duration_minutes: int = 30):
+        """
+        Initialise a TWAP execution engine.
+
+        Parameters
+        ----------
+        broker : AbstractBroker
+            Broker implementation used to place individual slice orders.
+        slices : int, optional
+            Number of equal slices to split the order into. Default is 10.
+        duration_minutes : int, optional
+            Total duration in minutes for the TWAP execution. Default is 30.
+        """
+        params = TWAPParameters(slices=slices, duration_minutes=duration_minutes)
         self.broker = broker
-        self.slices = slices
-        self.sleep_seconds = (duration_minutes * 60) / slices
+        self.slices = params.slices
+        self.sleep_seconds = (params.duration_minutes * 60) / params.slices
 
     async def execute(self, request: OrderRequest) -> OrderResult:
         """
