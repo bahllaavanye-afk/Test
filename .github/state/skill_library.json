@@ -199,8 +199,13 @@
     "Based on the collective knowledge from the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Check DB connections",
     "Check data types",
-    "Handle SQL errors"
+    "Handle SQL errors",
+    "validation on risk/hrp.py: success \u2014 tests green",
+    "validation on brokers/base.py: success \u2014 tests green",
+    "validation on backtest/walk_forward.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on api/v1/accounts.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T14:31:40.639632+00:00",
+  "last_updated": "2026-07-16T16:16:40.597502+00:00",
   "total": 200
 }
