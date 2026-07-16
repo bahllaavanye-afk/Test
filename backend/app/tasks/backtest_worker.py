@@ -1,21 +1,42 @@
 """
-Backtest worker — polls for queued BacktestRun rows every 30 s and executes them.
+Backtest worker module.
 
-Runs as a background asyncio task started from main.py lifespan.
-Uses yfinance for free OHLCV data — no broker keys required.
+This module defines asynchronous tasks that continuously poll the database for
+queued ``BacktestRun`` entries, execute the associated backtest, and store the
+results.  It runs as a background task started from ``main.py`` and uses
+``yfinance`` for free OHLCV data, so no broker credentials are required.
 """
+
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
 
+import pandas as pd
 from sqlalchemy import select
+
 from app.utils.logging import logger
 
 
 async def run_backtest_job(run_id: str) -> None:
-    """Fetch one queued BacktestRun, execute it, write results back to DB."""
+    """
+    Execute a single backtest run.
+
+    The function retrieves a ``BacktestRun`` record with the given ``run_id``.
+    If the run is in the ``queued`` state, it is marked as ``running`` and the
+    associated OHLCV data is fetched.  The selected strategy is instantiated,
+    its signals are generated (supporting both synchronous and asynchronous
+    implementations), and the backtest is performed via ``run_backtest``.  Upon
+    completion a ``BacktestResult`` row is inserted and the run status is set
+    to ``completed``.  Any exception is caught, logged, and the run status is
+    updated to ``failed``.
+
+    Parameters
+    ----------
+    run_id: str
+        The primary‑key identifier of the ``BacktestRun`` to process.
+    """
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun, BacktestResult
     from app.backtest.engine import run_backtest
@@ -29,7 +50,8 @@ async def run_backtest_job(run_id: str) -> None:
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
-        # capture fields before session closes
+
+        # Capture fields before the session is closed
         symbol = run.symbol
         start_date = run.start_date
         end_date = run.end_date
@@ -38,7 +60,12 @@ async def run_backtest_job(run_id: str) -> None:
         initial_equity = (run.params or {}).get("initial_equity", 100_000.0)
 
     try:
-        df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
+        df = await fetch_ohlcv(
+            symbol=symbol,
+            start=start_date,
+            end=end_date,
+            interval=interval,
+        )
         if df.empty:
             raise ValueError(f"No OHLCV data for {symbol} ({start_date}–{end_date})")
 
@@ -47,15 +74,18 @@ async def run_backtest_job(run_id: str) -> None:
             raise ValueError(f"Unknown strategy: {strategy_name}")
 
         strategy = StratClass()
-        # backtest_signals may be sync or async depending on the strategy
+
+        # ``backtest_signals`` may be sync or async depending on the strategy
         import inspect
         from app.strategies.base import BacktestSignals as _BSig
+
         _result = strategy.backtest_signals(df)
         raw_signals = (await _result) if inspect.isawaitable(_result) else _result
 
-        # Convert BacktestSignals → pd.Series[int] expected by run_backtest
+        # Convert ``BacktestSignals`` → ``pd.Series[int]`` expected by ``run_backtest``
         if isinstance(raw_signals, _BSig):
-            import numpy as np
+            import numpy as np  # noqa: F401  (kept for potential future use)
+
             sig = pd.Series(0, index=df.index, dtype=int)
             sig[raw_signals.entries.astype(bool)] = 1
             sig[raw_signals.exits.astype(bool)] = 0
@@ -63,7 +93,7 @@ async def run_backtest_job(run_id: str) -> None:
                 sig[raw_signals.short_entries.astype(bool)] = -1
             signals_series = sig
         else:
-            signals_series = raw_signals  # already a pd.Series
+            signals_series = raw_signals  # already a ``pd.Series``
 
         metrics = run_backtest(
             signals=signals_series,
@@ -94,6 +124,7 @@ async def run_backtest_job(run_id: str) -> None:
                 )
                 db.add(result)
                 await db.commit()
+
         logger.info(
             f"Backtest {run_id} complete",
             sharpe=round(metrics.sharpe, 2),
@@ -112,7 +143,15 @@ async def run_backtest_job(run_id: str) -> None:
 
 
 async def backtest_worker_loop() -> None:
-    """Poll for queued BacktestRun rows every 30 s and run them concurrently."""
+    """
+    Continuously poll for queued backtest runs and launch workers.
+
+    The loop runs indefinitely, querying the ``BacktestRun`` table every 30
+    seconds for rows whose ``status`` is ``queued``.  Up to five pending runs are
+    fetched at a time and each is processed concurrently via ``run_backtest_job``.
+    Any database or runtime errors are logged, and the loop then sleeps before
+    the next poll.
+    """
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun
 
