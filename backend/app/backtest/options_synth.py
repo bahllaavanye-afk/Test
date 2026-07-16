@@ -1,19 +1,21 @@
-"""Synthetic options backtester — score option-spread bot templates on history.
+"""Synthetic options backtester — score option‑spread bot templates on history.
 
 We have years of underlying OHLCV but no historical option chains, so spreads
-are repriced with Black-Scholes using realized vol as the IV proxy (HV20 ×
-IV_PREMIUM, the variance-risk-premium markup). This is the standard research
+are repriced with Black‑Scholes using realized vol as the IV proxy (HV20 ×
+IV_PREMIUM, the variance‑risk‑premium markup). This is the standard research
 approximation; it captures theta/delta/vega mechanics and regime behavior but
-NOT skew dynamics or bid/ask — results are for RANKING templates against each
-other, not for promising returns. Every consumer must carry that caveat.
+**NOT** skew dynamics or bid/ask — results are for **RANKING** templates against
+each other, not for promising returns. Every consumer must carry that caveat.
 
-Pure numpy/math (no scipy): norm CDF via math.erf, inverse CDF via the
-Acklam approximation. Deterministic; fully unit-testable.
+Pure ``numpy``/``math`` (no ``scipy``): norm CDF via ``math.erf``, inverse CDF via
+the Acklam approximation. Deterministic; fully unit‑testable.
 """
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any, List, Optional
 
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
@@ -22,11 +24,31 @@ MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
 
 
 def norm_cdf(x: float) -> float:
+    """Cumulative distribution function of the standard normal distribution.
+
+    Args:
+        x: The quantile at which to evaluate the CDF.
+
+    Returns:
+        The probability that a standard normal variable is ≤ ``x``.
+    """
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 def norm_ppf(p: float) -> float:
-    """Acklam's inverse-normal approximation (|err| < 1.15e-9)."""
+    """Inverse of the standard normal CDF (percent‑point function).
+
+    Uses Acklam's rational approximation with absolute error < 1.15e‑9.
+
+    Args:
+        p: Probability in the open interval (0, 1).
+
+    Returns:
+        The z‑score such that ``norm_cdf(z) == p``.
+
+    Raises:
+        ValueError: If ``p`` is not in the interval (0, 1).
+    """
     if not 0.0 < p < 1.0:
         raise ValueError("p must be in (0,1)")
     a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
@@ -52,8 +74,27 @@ def norm_ppf(p: float) -> float:
            (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
 
 
-def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
-             r: float = RISK_FREE) -> float:
+def bs_price(
+    S: float,
+    K: float,
+    T: float,
+    sigma: float,
+    option_type: str,
+    r: float = RISK_FREE,
+) -> float:
+    """Black‑Scholes price for a European option.
+
+    Args:
+        S: Spot price of the underlying.
+        K: Strike price.
+        T: Time to expiry in years.
+        sigma: Volatility (annualised).
+        option_type: ``'c'`` for call, otherwise treated as put.
+        r: Risk‑free rate (annualised). Defaults to ``RISK_FREE``.
+
+    Returns:
+        The theoretical option price.
+    """
     T = max(T, MIN_T)
     sigma = max(sigma, 1e-4)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
@@ -63,16 +104,55 @@ def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
     return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
 
 
-def bs_delta(S: float, K: float, T: float, sigma: float, option_type: str,
-             r: float = RISK_FREE) -> float:
+def bs_delta(
+    S: float,
+    K: float,
+    T: float,
+    sigma: float,
+    option_type: str,
+    r: float = RISK_FREE,
+) -> float:
+    """Black‑Scholes delta of a European option.
+
+    Args:
+        S: Spot price.
+        K: Strike price.
+        T: Time to expiry in years.
+        sigma: Volatility (annualised).
+        option_type: ``'c'`` for call, otherwise treated as put.
+        r: Risk‑free rate. Defaults to ``RISK_FREE``.
+
+    Returns:
+        The option delta.
+    """
     T = max(T, MIN_T)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
     return norm_cdf(d1) if option_type.startswith("c") else norm_cdf(d1) - 1.0
 
 
-def strike_from_delta(S: float, target_delta: float, T: float, sigma: float,
-                      option_type: str, r: float = RISK_FREE) -> float:
-    """Invert BS delta → strike (calls: Δ=N(d1); puts: |Δ|=N(-d1))."""
+def strike_from_delta(
+    S: float,
+    target_delta: float,
+    T: float,
+    sigma: float,
+    option_type: str,
+    r: float = RISK_FREE,
+) -> float:
+    """Calculate the strike that yields a given Black‑Scholes delta.
+
+    For calls the relationship is ``Δ = N(d1)``; for puts ``|Δ| = N(-d1)``.
+
+    Args:
+        S: Spot price.
+        target_delta: Desired delta (positive for both calls and puts).
+        T: Time to expiry in years.
+        sigma: Volatility (annualised).
+        option_type: ``'c'`` for call, otherwise put.
+        r: Risk‑free rate. Defaults to ``RISK_FREE``.
+
+    Returns:
+        The strike price that produces the requested delta.
+    """
     T = max(T, MIN_T)
     p = target_delta if option_type.startswith("c") else 1.0 - target_delta
     d1 = norm_ppf(p)
@@ -81,32 +161,85 @@ def strike_from_delta(S: float, target_delta: float, T: float, sigma: float,
 
 @dataclass
 class _Leg:
+    """Single leg of an option spread.
+
+    Attributes:
+        sign: +1 for a long (buy) leg, -1 for a short (sell) leg.
+        option_type: ``'c'`` for call, ``'p'`` for put.
+        strike: Strike price of the leg.
+        ratio: Quantity multiplier for the leg.
+    """
     sign: int          # +1 buy, -1 sell
     option_type: str
     strike: float
     ratio: int
 
 
-def _net_value(legs: list[_Leg], S: float, T: float, sigma: float) -> float:
-    return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
+def _net_value(
+    legs: List[_Leg],
+    S: float,
+    T: float,
+    sigma: float,
+) -> float:
+    """Calculate the net present value of a collection of option legs.
+
+    Args:
+        legs: List of ``_Leg`` objects defining the spread.
+        S: Current underlying price.
+        T: Time to expiry in years.
+        sigma: Volatility (annualised).
+
+    Returns:
+        The aggregated option price (positive for net credit, negative for net debit).
+    """
+    return sum(
+        l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type)
+        for l in legs
+    )
 
 
-def backtest_template(template: dict, closes: list[float],
-                      trading_days_per_entry: int = 1) -> dict:
-    """Walk daily closes; open the template's spread whenever flat, manage exits.
+def backtest_template(
+    template: dict,
+    closes: List[float],
+    trading_days_per_entry: int = 1,
+) -> dict:
+    """Back‑test a synthetic‑option spread template over a price series.
 
-    Entry uses HV20×IV_PREMIUM as sigma and resolves strikes from leg deltas.
-    Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
-    plus expiry settlement. Returns ranking metrics — see module caveat.
+    The function walks through daily closing prices, opens the spread when the
+    portfolio is flat, and manages exits based on take‑profit, stop‑loss, or
+    expiry. Volatility is estimated as ``HV20 × IV_PREMIUM`` and used as the
+    Black‑Scholes sigma. Strikes are derived from leg deltas when not explicitly
+    provided.
+
+    Args:
+        template: Dictionary describing the spread (includes ``action`` and
+            optional ``exit_rules``).
+        closes: Chronological list of underlying closing prices.
+        trading_days_per_entry: Number of days to wait before opening a new
+            position after a flat state (currently unused but retained for API
+            compatibility).
+
+    Returns:
+        A dictionary of ranking metrics:
+            * ``trades`` – number of completed trades.
+            * ``win_rate`` – proportion of winning trades (``None`` if no trades).
+            * ``total_pnl`` – cumulative profit and loss.
+            * ``avg_pnl`` – average P&L per trade (``None`` if no trades).
+            * ``max_drawdown`` – maximum peak‑to‑trough drawdown.
+            * ``method`` – description of the synthetic‑BS methodology.
     """
     action = template["action"]
-    tp_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "take_profit"), 50) or 50
-    sl_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "stop_loss"), None)
+    tp_pct = next(
+        (r["value"] for r in template.get("exit_rules", []) if r["type"] == "take_profit"),
+        50,
+    ) or 50
+    sl_pct = next(
+        (r["value"] for r in template.get("exit_rules", []) if r["type"] == "stop_loss"),
+        None,
+    )
 
-    trades: list[float] = []
-    pos: list[_Leg] | None = None
+    trades: List[float] = []
+    pos: Optional[List[_Leg]] = None
     entry_net = 0.0
     days_held = 0
     dte = max(int(action["legs"][0].get("dte", 30)), 0)
@@ -125,18 +258,40 @@ def backtest_template(template: dict, closes: list[float],
                 if lg.get("strike"):
                     K = float(lg["strike"])
                 else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
-                                int(lg.get("ratio", 1))))
+                    K = strike_from_delta(
+                        S,
+                        float(lg.get("delta") or 0.5),
+                        T0,
+                        sigma,
+                        lg["option_type"],
+                    )
+                pos.append(
+                    _Leg(
+                        +1 if lg["side"] == "buy" else -1,
+                        lg["option_type"],
+                        K,
+                        int(lg.get("ratio", 1)),
+                    )
+                )
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
             continue
 
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
-        cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
-                                   else (l.strike - S), 0.0) for l in pos)
+        cur = (
+            _net_value(pos, S, T_rem, sigma)
+            if T_rem > 0
+            else sum(
+                l.sign
+                * l.ratio
+                * max(
+                    (S - l.strike) if l.option_type.startswith("c") else (l.strike - S),
+                    0.0,
+                )
+                for l in pos
+            )
+        )
         pnl = (cur - entry_net) * MULTIPLIER
         base = max(abs(entry_net) * MULTIPLIER, 1.0)
 
@@ -155,6 +310,7 @@ def backtest_template(template: dict, closes: list[float],
         cum += t
         peak = max(peak, cum)
         mdd = max(mdd, peak - cum)
+
     return {
         "trades": n,
         "win_rate": round(wins / n, 4) if n else None,
