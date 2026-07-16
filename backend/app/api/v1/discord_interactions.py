@@ -19,6 +19,7 @@ Setup (one-time, documented in docs/DISCORD_FALLBACK.md):
 from __future__ import annotations
 
 import os
+import json as _json
 from datetime import datetime, timezone
 
 from cryptography.exceptions import InvalidSignature
@@ -52,7 +53,10 @@ def _verify_signature(signature_hex: str, timestamp: str, body: bytes) -> bool:
         return False
 
 
-def _msg(text: str, ephemeral: bool = False) -> dict:
+def _msg(text: str | None, ephemeral: bool = False) -> dict:
+    """Create a Discord message payload, safely handling None text."""
+    if text is None:
+        text = ""
     data: dict = {"content": text[:1990]}
     if ephemeral:
         data["flags"] = _EPHEMERAL
@@ -114,8 +118,8 @@ async def _cmd_health() -> str:
         from app.tasks.scheduler import get_scheduler
 
         sched = get_scheduler()
-        n = len(sched.get_jobs()) if sched.running else 0
-        checks.append(f"✅ scheduler: {n} jobs" if sched.running else "🔴 scheduler: not running")
+        n = len(sched.get_jobs()) if sched and getattr(sched, "running", False) else 0
+        checks.append(f"✅ scheduler: {n} jobs" if getattr(sched, "running", False) else "🔴 scheduler: not running")
     except Exception as exc:
         checks.append(f"🔴 scheduler: {str(exc)[:60]}")
     checks.append("✅ discord: you're reading this")
@@ -144,11 +148,14 @@ async def _cmd_run_bot(name_query: str) -> str:
             return f"Ambiguous — matches: {', '.join(b.name for b in bots)}. Be more specific."
         bot = bots[0]
         result = await BotEngine().evaluate(bot, db)
-    fired = "🔥 FIRED" if result.fired else "💤 held"
+    if result is None:
+        return f"⚠️ Bot evaluation failed for `{bot.name}`."
+    fired = "🔥 FIRED" if getattr(result, "fired", False) else "💤 held"
+    orders_created = getattr(result, "orders_created", []) or []
     return (
         f"**{bot.name}** ({bot.symbol}) → {fired}\n"
-        f"signal: `{result.signal}` · {result.reason}\n"
-        f"orders created: {len(result.orders_created or [])} (paper)"
+        f"signal: `{getattr(result, 'signal', 'N/A')}` · {getattr(result, 'reason', '')}\n"
+        f"orders created: {len(orders_created)} (paper)"
     )
 
 
@@ -162,18 +169,30 @@ async def discord_interactions(request: Request):
         # 401 is required by Discord's endpoint validation for bad signatures
         raise HTTPException(status_code=401, detail="invalid request signature")
 
-    import json as _json
+    try:
+        payload = _json.loads(body)
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="invalid JSON payload")
 
-    payload = _json.loads(body)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="payload must be a JSON object")
+
     itype = payload.get("type")
-
     if itype == _PING:
         return {"type": _PONG}
 
     if itype == _APPLICATION_COMMAND:
         data = payload.get("data") or {}
         name = (data.get("name") or "").lower()
-        options = {o.get("name"): o.get("value") for o in (data.get("options") or [])}
+        raw_options = data.get("options") or []
+        # Safely build options dict, ignoring malformed entries
+        options = {}
+        for opt in raw_options:
+            if isinstance(opt, dict):
+                opt_name = opt.get("name")
+                opt_value = opt.get("value")
+                if opt_name is not None:
+                    options[opt_name] = opt_value
         try:
             if name == "status":
                 return _msg(await _cmd_status())
