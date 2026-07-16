@@ -1,5 +1,4 @@
 """AlgoAgent UCB1 selection tests."""
-import pytest
 from app.tasks.algo_agent import AlgoAgent, AlgoCandidate
 
 
