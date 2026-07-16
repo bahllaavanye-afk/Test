@@ -83,7 +83,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -159,3 +164,62 @@ class BinanceBroker(AbstractBroker):
             except Exception as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
                 raise BrokerError(f"Binance ticker fetch error: {e}")
+
+
+# =========================
+# Unit tests for BinanceBroker
+# =========================
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+class TestBinanceBroker(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Patch the ccxt.binance constructor to return a mock exchange
+        self.exchange_mock = MagicMock()
+        self.exchange_mock.set_sandbox_mode = MagicMock()
+        self.exchange_mock.fetch_ohlcv = AsyncMock(return_value=[[1609459200000, 1, 2, 0.5, 1.5, 1000]])
+        self.exchange_mock.fetch_tickers = AsyncMock(return_value={"BTC/USDT": {"bid": 50000}})
+        self.exchange_mock.create_market_order = AsyncMock(return_value={"id": "123", "status": "open", "filled": 0, "average": None})
+        self.exchange_mock.create_limit_order = AsyncMock(return_value={"id": "124", "status": "open", "filled": 0, "average": None})
+        self.exchange_mock.iso8601 = MagicMock(return_value="2021-01-01T00:00:00Z")
+        self.exchange_patch = patch("ccxt.async_support.binance", return_value=self.exchange_mock)
+        self.exchange_patch.start()
+
+        self.broker = BinanceBroker(api_key="key", secret="secret", testnet=True)
+
+    async def asyncTearDown(self):
+        self.exchange_patch.stop()
+        await self.broker.close()
+
+    async def test_get_historical_invalid_interval_fallback(self):
+        """Invalid interval should fallback to default '1d'."""
+        await self.broker.get_historical(symbol="BTC/USDT", interval="invalid")
+        self.exchange_mock.fetch_ohlcv.assert_awaited_once_with("BTC/USDT", "1d", limit=500)
+
+    async def test_get_all_tickers_caching(self):
+        """Second call within TTL should return cached data without invoking fetch_tickers."""
+        first = await self.broker.get_all_tickers(cache_ttl=5)
+        second = await self.broker.get_all_tickers(cache_ttl=5)
+        self.assertIs(first, second)  # same object indicates caching
+        self.exchange_mock.fetch_tickers.assert_awaited_once()
+
+    async def test_place_order_limit_without_price_falls_back_to_market(self):
+        """When limit_price is None, limit order should be treated as market order."""
+        request = OrderRequest(
+            symbol="BTC/USDT",
+            side="buy",
+            quantity=0.001,
+            order_type="limit",
+            limit_price=None,
+        )
+        result = await self.broker.place_order(request)
+        self.exchange_mock.create_market_order.assert_awaited_once_with(
+            "BTC/USDT", "buy", 0.001
+        )
+        self.exchange_mock.create_limit_order.assert_not_awaited()
+        self.assertEqual(result.broker_order_id, "123")
+
+
+if __name__ == "__main__":
+    unittest.main()
