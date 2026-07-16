@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import List, Dict
 
 
 @dataclass(slots=True)
@@ -50,15 +50,15 @@ class AbstractBroker(ABC):
         """Cancel an open order. Returns True if cancelled."""
 
     @abstractmethod
-    async def get_order(self, broker_order_id: str) -> dict:
+    async def get_order(self, broker_order_id: str) -> Dict:
         """Get current status of an order."""
 
     @abstractmethod
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[Dict]:
         """Return all open positions."""
 
     @abstractmethod
-    async def get_account(self) -> dict:
+    async def get_account(self) -> Dict:
         """Return account balance and equity."""
 
     @abstractmethod
@@ -68,5 +68,5 @@ class AbstractBroker(ABC):
     @abstractmethod
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
-    ) -> list[dict]:
+    ) -> List[Dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
