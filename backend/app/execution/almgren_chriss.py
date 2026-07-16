@@ -1,28 +1,35 @@
 """
-Almgren-Chriss optimal execution trajectory.
-Minimizes implementation shortfall by balancing market impact vs timing risk.
+Almgren–Chriss optimal execution trajectory.
 
-Used for orders $5k-$100k. Returns optimal slice schedule.
-
-Reference: Almgren & Chriss (2000) "Optimal execution of portfolio transactions"
+This module provides a simple implementation of the Almgren‑Chriss (2000) model
+for optimal execution. It computes a schedule that minimizes the expected
+implementation shortfall while balancing market impact against timing risk.
+The model is suitable for order sizes roughly between $5k and $100k.
 """
+
 import numpy as np
+from typing import Dict
 
 
 class AlmgrenChriss:
     """
-    Optimal execution using Almgren-Chriss (2000) model.
+    Optimal execution using the Almgren‑Chriss (2000) model.
 
-    Parameters:
-        sigma: daily volatility of asset (e.g. 0.02 = 2%)
-        eta: temporary impact coefficient (default 2.5e-7)
-        gamma: permanent impact coefficient (default 2.5e-8)
-        risk_aversion: lambda parameter (default 1e-6)
+    Parameters
+    ----------
+    sigma : float
+        Daily volatility of the asset (e.g., 0.02 for 2%).
+    eta : float, optional
+        Temporary impact coefficient. Default is 2.5e-7.
+    gamma : float, optional
+        Permanent impact coefficient. Default is 2.5e-8.
+    risk_aversion : float, optional
+        Risk‑aversion (lambda) parameter. Default is 1e-6.
 
-    Usage:
-        ac = AlmgrenChriss(sigma=0.02)
-        schedule = ac.optimal_trajectory(shares=10000, T=30, n_slices=10)
-        # Returns array of shares to trade at each time slice
+    Notes
+    -----
+    The model assumes a continuous‑time setting and derives a closed‑form
+    sinh‑weighted trajectory for the optimal trade schedule.
     """
 
     def __init__(
@@ -31,7 +38,16 @@ class AlmgrenChriss:
         eta: float = 2.5e-7,
         gamma: float = 2.5e-8,
         risk_aversion: float = 1e-6,
-    ):
+    ) -> None:
+        """
+        Initialise the Almgren‑Chriss model with market and risk parameters.
+
+        Raises
+        ------
+        ValueError
+            If any of the required parameters are non‑positive where positivity
+            is required.
+        """
         if sigma <= 0:
             raise ValueError(f"sigma must be positive, got {sigma}")
         if eta <= 0:
@@ -45,13 +61,28 @@ class AlmgrenChriss:
 
     def optimal_trajectory(self, shares: float, T: float, n_slices: int) -> np.ndarray:
         """
-        Returns array of shape (n_slices,) with shares to trade per slice.
+        Compute the optimal trade schedule.
 
-        T is total execution time in minutes.
-        Uses sinh-weighted trajectory (Almgren-Chriss closed-form solution).
+        Parameters
+        ----------
+        shares : float
+            Total number of shares to liquidate.
+        T : float
+            Total execution time in minutes.
+        n_slices : int
+            Number of discrete time slices (must be positive).
 
-        The trajectory minimises E[cost] + lambda * Var[cost] subject to
-        liquidating all `shares` within time T.
+        Returns
+        -------
+        np.ndarray
+            Array of shape ``(n_slices,)`` containing the number of shares to
+            trade in each slice.
+
+        Notes
+        -----
+        The closed‑form solution uses a sinh‑weighted trajectory. When the
+        denominator becomes near‑zero, the method falls back to a uniform (TWAP)
+        schedule.
         """
         if n_slices <= 0:
             raise ValueError(f"n_slices must be positive, got {n_slices}")
@@ -65,7 +96,7 @@ class AlmgrenChriss:
         # Optimal holdings at each time step
         denom = np.sinh(kappa * T)
         if abs(denom) < 1e-15:
-            # Near-zero kappa: TWAP fallback (uniform slicing)
+            # Near‑zero kappa: TWAP fallback (uniform slicing)
             holdings = shares * (1.0 - t / T)
         else:
             holdings = shares * np.sinh(kappa * (T - t)) / denom
@@ -74,15 +105,27 @@ class AlmgrenChriss:
         trades = -np.diff(holdings)
         return trades
 
-    def expected_cost(self, shares: float, T: float, n_slices: int) -> dict:
+    def expected_cost(self, shares: float, T: float, n_slices: int) -> Dict[str, float]:
         """
-        Returns expected market impact cost breakdown.
+        Estimate the expected implementation shortfall cost breakdown.
 
-        Keys:
-            temporary_impact: cost from temporary (transient) price impact
-            permanent_impact: cost from permanent price impact
-            timing_risk: variance cost from price uncertainty over execution
-            total: sum of all three components
+        Parameters
+        ----------
+        shares : float
+            Total number of shares to liquidate.
+        T : float
+            Total execution time in minutes.
+        n_slices : int
+            Number of discrete time slices.
+
+        Returns
+        -------
+        dict
+            Mapping with the following keys (all values are ``float``):
+            - ``temporary_impact``: Cost from temporary (transient) price impact.
+            - ``permanent_impact``: Cost from permanent price impact.
+            - ``timing_risk``: Variance cost from price uncertainty over execution.
+            - ``total``: Sum of the three components.
         """
         trades = self.optimal_trajectory(shares, T, n_slices)
         tau = T / n_slices
