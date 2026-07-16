@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Verify dependency versions",
-    "Log system memory",
-    "Check db connections",
     "Check data types",
     "error_handling on risk/manager.py: success \u2014 tests green",
     "Verify API keys",
@@ -199,8 +196,11 @@
     "Check disk space",
     "Verify SSL certs",
     "Log exception types",
-    "Test API rate limits"
+    "Test API rate limits",
+    "Test config files",
+    "Log system restarts",
+    "Check dependency libs"
   ],
-  "last_updated": "2026-07-15T21:56:08.506742+00:00",
+  "last_updated": "2026-07-15T23:59:53.022029+00:00",
   "total": 200
 }
