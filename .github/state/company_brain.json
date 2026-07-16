@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784215503.9898014,
+    "last_updated": 1784215691.0559144,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,46 +109,46 @@
     },
     "opinion_score": 4,
     "macro_score": 3,
-    "vix": 15.67,
-    "market_scan_ts": 1784148787.7825594,
+    "vix": 15.91,
+    "market_scan_ts": 1784215691.0412157,
     "sector_leaders": [
-      "Financials",
       "Healthcare",
-      "Industrials"
+      "Financials",
+      "Energy"
     ],
     "sector_laggards": [
-      "Tech",
-      "Cons. Staples",
-      "Materials"
+      "Cons. Disc.",
+      "Materials",
+      "Tech"
     ],
     "active_universe": [
-      "BLK",
-      "MS",
-      "GS",
-      "ORCL",
-      "META",
-      "CRWD",
-      "XLF",
-      "PANW",
-      "BAC",
       "ABT",
-      "JPM",
-      "JNJ",
-      "WFC",
-      "AAPL",
-      "TMO",
+      "UNH",
+      "ORCL",
+      "GS",
+      "BLK",
+      "GE",
+      "NOW",
       "XLV",
+      "WFC",
+      "META",
+      "AAPL",
+      "XLK",
+      "TSLA",
+      "BAC",
+      "XLF",
+      "JNJ",
+      "GOOGL",
+      "MS",
       "NVDA",
-      "V",
-      "MMM",
-      "UPS"
+      "PANW"
     ],
     "top_momentum": [
       "PANW",
-      "META",
       "CRWD",
+      "ABT",
       "TMO",
-      "AAPL"
+      "META"
     ],
     "risk_flags": [],
     "risk_status": "normal",
@@ -1037,6 +1037,21 @@
       },
       "lesson": "**Morning Brief:** Markets remain in a bull regime with a strong SPY uptrend, low and stable VIX at 15.95, and broad participation (8/11 sectors above 20-SMA), while tightening credit spreads reinforce risk-on sentiment despite a flat yield curve. **Tactical implication:** Favor trend-following strategies today to capitalize on sustained directional momentum.",
       "ts": 1784215503.9914606
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Healthcare",
+        "Financials",
+        "Energy"
+      ],
+      "gap_count": 6,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Healthcare, Financials. Gaps: 6, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784215691.0586839
     }
   ],
   "github_insights": [
