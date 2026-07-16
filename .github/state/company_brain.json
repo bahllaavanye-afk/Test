@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784235111.9937665,
+    "last_updated": 1784238330.2649412,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784234112.6648128
+    "last_brain_update": 1784238330.264041
   },
   "episodic": [
     {
@@ -1198,6 +1198,34 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=4). Leading: Financials, Healthcare. Gaps: 6, Breakouts: 1, Risk flags: 0.",
       "ts": 1784235111.9958022
+    },
+    {
+      "lesson": "Vercel free tier deployment limit (100/day) is blocking releases; upgrade plan or batch deployments to avoid interruptions.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784238298.241488
+    },
+    {
+      "lesson": "Automated fixes fail on multi-module changes; break per-desk attribution feature into smaller, single-module PRs to stay under auto-fix limits.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784238298.244674
+    },
+    {
+      "lesson": "Per-desk performance attribution and auto-pruning require new data models, APIs, frontend components, and background jobs \u2014 plan phased rollout with clear milestones.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784238298.247727
+    },
+    {
+      "lesson": "Auto-fix patch failures indicate code conflicts or environment mismatches; consider manual review and CI pipeline improvements for complex features.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784238298.251716
     }
   ],
   "github_insights": [
@@ -1575,6 +1603,11 @@
       "summary": "Two issues were discussed: a deployment failure due to resource limits (\"try again in 24 hours\"), and an autonomous PR that modified protected files and had its auto-fix fail, leading to a team lead review and revoked automerge.",
       "item_count": 20,
       "ts": 1784234112.6559277
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784238330.2562373
     }
   ],
   "experiment_results": [
