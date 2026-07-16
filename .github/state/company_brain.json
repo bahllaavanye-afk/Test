@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784148787.795912,
+    "last_updated": 1784160293.1769907,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784145323.582942
+    "last_brain_update": 1784160293.176409
   },
   "episodic": [
     {
@@ -1240,6 +1240,11 @@
       "summary": "The auto-fix process repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1784145323.5755086
+    },
+    {
+      "summary": "The automated fix attempts either failed to apply a patch or were skipped due to excessive complexity, as the issue spans multiple areas.",
+      "item_count": 20,
+      "ts": 1784160293.16852
     }
   ],
   "experiment_results": [
