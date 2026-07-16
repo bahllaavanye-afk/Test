@@ -199,8 +199,13 @@
     "Test thread safety",
     "Check file paths",
     "Scan for deadlock",
-    "Check system clocks"
+    "Check system clocks",
+    "cleanup on test/unit/test_algo_agent.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "cleanup on ml/features/normalization.py: success \u2014 tests green",
+    "cleanup on execution/iceberg.py: success \u2014 tests green",
+    "cleanup on backtest/walk_forward.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-16T20:25:23.269903+00:00",
+  "last_updated": "2026-07-16T21:33:02.618570+00:00",
   "total": 200
 }
