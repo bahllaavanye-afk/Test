@@ -29,8 +29,8 @@ from app.strategies import STRATEGY_REGISTRY  # noqa: E402
 
 # CONTRACT DEBT (2026-07-11 audit: 97/115 clean): these strategies either do
 # BLOCKING network I/O inside analyze() (hang the desk loop when the source is
-# slow/unreachable — the observed 2-minute desk freezes) or raise instead of
-# returning None. Quarantined = skipped here AND flagged in IMPROVEMENTS.md.
+# slow/unreachable — the observed 2-minute desk freezes) or raise instead
+# of returning None. Quarantined = skipped here AND flagged in IMPROVEMENTS.md.
 # Fix = fail-soft fetch with a hard timeout, then REMOVE from this list.
 # Adding a name in a PR is a red flag; this list may only shrink.
 QUARANTINED: set[str] = set()
@@ -97,8 +97,10 @@ def test_strategy_honors_contract(name: str, no_network):
     except asyncio.TimeoutError:
         pytest.fail(f"{name}: analyze() exceeded {PER_STRATEGY_TIMEOUT_S}s (hang)")
     except Exception as exc:  # noqa: BLE001
-        pytest.fail(f"{name}: analyze() raised {type(exc).__name__}: {str(exc)[:120]} "
-                    f"— strategies must catch and return None")
+        pytest.fail(
+            f"{name}: analyze() raised {type(exc).__name__}: {str(exc)[:120]} "
+            f"— strategies must catch and return None"
+        )
         return
 
     if sig is None:
@@ -107,6 +109,65 @@ def test_strategy_honors_contract(name: str, no_network):
     assert side in ("buy", "sell"), f"{name}: bad side {side!r}"
     conf = getattr(sig, "confidence", None)
     assert conf is not None and 0.0 <= float(conf) <= 1.0, f"{name}: bad confidence {conf!r}"
+
+
+@pytest.mark.parametrize("name", _LOADED)
+def test_strategy_analyze_none_inputs(name: str, no_network):
+    """Ensure strategies gracefully handle None inputs without raising."""
+    if name in QUARANTINED:
+        pytest.skip("quarantined")
+    cls = STRATEGY_REGISTRY[name]
+    strat = cls()
+    async def run():
+        return await asyncio.wait_for(strat.analyze(None, None), PER_STRATEGY_TIMEOUT_S)
+    try:
+        result = asyncio.run(run())
+    except Exception as exc:  # noqa: BLE001
+        pytest.fail(f"{name}: analyze(None, None) raised {type(exc).__name__}: {exc}")
+    else:
+        assert result is None, f"{name}: expected None for None inputs, got {result}"
+
+
+@pytest.mark.parametrize("name", _LOADED)
+def test_strategy_analyze_empty_dataframe(name: str, no_network):
+    """Verify that an empty DataFrame does not cause crashes or unexpected signals."""
+    if name in QUARANTINED:
+        pytest.skip("quarantined")
+    cls = STRATEGY_REGISTRY[name]
+    strat = cls()
+    empty_df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    async def run():
+        return await asyncio.wait_for(strat.analyze(empty_df, "SPY"), PER_STRATEGY_TIMEOUT_S)
+    try:
+        result = asyncio.run(run())
+    except Exception as exc:  # noqa: BLE001
+        pytest.fail(f"{name}: analyze(empty_df) raised {type(exc).__name__}: {exc}")
+    else:
+        # An empty input should result in None, not a malformed signal
+        assert result is None, f"{name}: expected None for empty DataFrame, got {result}"
+
+
+@pytest.mark.parametrize("name", _LOADED)
+def test_strategy_analyze_one_row_dataframe(name: str, no_network):
+    """Check off‑by‑one handling: a single‑row DataFrame should be processed without error."""
+    if name in QUARANTINED:
+        pytest.skip("quarantined")
+    cls = STRATEGY_REGISTRY[name]
+    strat = cls()
+    one_row_df = _bars(1)
+    async def run():
+        return await asyncio.wait_for(strat.analyze(one_row_df, "SPY"), PER_STRATEGY_TIMEOUT_S)
+    try:
+        result = asyncio.run(run())
+    except Exception as exc:  # noqa: BLE001
+        pytest.fail(f"{name}: analyze(one_row_df) raised {type(exc).__name__}: {exc}")
+    else:
+        # Result may be None or a valid signal; if a signal, validate its fields
+        if result is not None:
+            side = str(getattr(result, "side", "")).lower()
+            assert side in ("buy", "sell"), f"{name}: bad side {side!r}"
+            conf = getattr(result, "confidence", None)
+            assert conf is not None and 0.0 <= float(conf) <= 1.0, f"{name}: bad confidence {conf!r}"
 
 
 def test_quarantine_names_are_real():
