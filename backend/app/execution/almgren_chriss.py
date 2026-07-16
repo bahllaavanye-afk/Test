@@ -7,6 +7,7 @@ Used for orders $5k-$100k. Returns optimal slice schedule.
 Reference: Almgren & Chriss (2000) "Optimal execution of portfolio transactions"
 """
 import numpy as np
+import unittest
 
 
 class AlmgrenChriss:
@@ -98,3 +99,48 @@ class AlmgrenChriss:
             "timing_risk": float(timing_risk),
             "total": float(temp_impact + perm_impact + timing_risk),
         }
+
+
+class TestAlmgrenChrissEdgeCases(unittest.TestCase):
+    """Unit tests targeting boundary and edge conditions."""
+
+    def test_single_slice_liquidation(self):
+        """n_slices=1 should liquidate the entire position in one trade."""
+        ac = AlmgrenChriss()
+        shares = 1000.0
+        T = 30.0
+        trades = ac.optimal_trajectory(shares=shares, T=T, n_slices=1)
+        self.assertEqual(trades.shape, (1,))
+        self.assertAlmostEqual(trades.sum(), shares, places=10)
+
+    def test_zero_risk_aversion_uniform_slicing(self):
+        """When risk aversion (lambda) is zero, trajectory falls back to uniform TWAP."""
+        ac = AlmgrenChriss(risk_aversion=0.0)
+        shares = 1200.0
+        T = 10.0
+        n_slices = 4
+        trades = ac.optimal_trajectory(shares=shares, T=T, n_slices=n_slices)
+        expected = np.full(n_slices, shares / n_slices)
+        np.testing.assert_allclose(trades, expected, rtol=1e-12)
+
+    def test_zero_shares_returns_zero_trades(self):
+        """A zero share order should result in zero trade amounts regardless of other parameters."""
+        ac = AlmgrenChriss()
+        trades = ac.optimal_trajectory(shares=0.0, T=20.0, n_slices=5)
+        self.assertTrue(np.allclose(trades, 0.0))
+
+    def test_invalid_parameters_raise(self):
+        """Negative sigma, eta, or non‑positive n_slices/T should raise ValueError."""
+        with self.assertRaises(ValueError):
+            AlmgrenChriss(sigma=-0.01)
+        with self.assertRaises(ValueError):
+            AlmgrenChriss(eta=-1e-7)
+        ac = AlmgrenChriss()
+        with self.assertRaises(ValueError):
+            ac.optimal_trajectory(shares=1000, T=10, n_slices=0)
+        with self.assertRaises(ValueError):
+            ac.optimal_trajectory(shares=1000, T=-5, n_slices=5)
+
+
+if __name__ == "__main__":
+    unittest.main()
