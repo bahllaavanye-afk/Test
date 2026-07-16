@@ -10,6 +10,28 @@ compresses extreme differences, preventing rare events from dominating.
 Features used (same as original TV indicator):
   RSI(14), CCI(20), ADX(20), EMA delta (fast vs slow), SMA delta
 """
+
+# Constants
+RSI_LENGTH = 14
+CCI_LENGTH = 20
+ADX_LENGTH = 20
+EMA_FAST_SPAN = 9
+EMA_SLOW_SPAN = 21
+EMA_LONG_SPAN = 200
+EPSILON = 1e-9
+
+DEFAULT_RSI_VALUE = 0.5
+DEFAULT_CCI_VALUE = 0.0
+DEFAULT_ADX_VALUE = 0.5
+
+DEFAULT_K = 8
+DEFAULT_LOOKBACK = 2000
+DEFAULT_SUBSAMPLE = 4
+
+FEATURE_NAMES = ["rsi_14", "cci_20", "adx_20", "ema_fast_delta", "ema_slow_delta"]
+ADX_COLUMN_NAME = "ADX_20"
+
+# Try to import torch; flag availability
 try:
     import torch
     import torch.nn as nn
@@ -18,14 +40,12 @@ except ImportError:
     _TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
+
 import numpy as np
 import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
 from sklearn.metrics import roc_auc_score
 from app.ml.models.base_model import AbstractModel, EvalMetrics
-
-
-LORENTZIAN_FEATURES = ["rsi_14", "cci_20", "adx_20", "ema_fast_delta", "ema_slow_delta"]
 
 
 def lorentzian_distance(x, y):
@@ -42,19 +62,19 @@ def compute_lorentzian_features(df: pd.DataFrame) -> pd.DataFrame:
     low = df.get("low", close)
 
     df = df.copy()
-    rsi = ta.rsi(close, length=14)
-    cci = ta.cci(high, low, close, length=20)
-    adx_df = ta.adx(high, low, close, length=20)
+    rsi = ta.rsi(close, length=RSI_LENGTH)
+    cci = ta.cci(high, low, close, length=CCI_LENGTH)
+    adx_df = ta.adx(high, low, close, length=ADX_LENGTH)
 
-    df["rsi_14"] = (rsi / 100.0) if rsi is not None else 0.5
-    df["cci_20"] = (cci / 200.0).clip(-1, 1) if cci is not None else 0.0
-    df["adx_20"] = (adx_df["ADX_20"] / 100.0) if (adx_df is not None and "ADX_20" in adx_df.columns) else 0.5
+    df["rsi_14"] = (rsi / 100.0) if rsi is not None else DEFAULT_RSI_VALUE
+    df["cci_20"] = (cci / 200.0).clip(-1, 1) if cci is not None else DEFAULT_CCI_VALUE
+    df["adx_20"] = (adx_df[ADX_COLUMN_NAME] / 100.0) if (adx_df is not None and ADX_COLUMN_NAME in adx_df.columns) else DEFAULT_ADX_VALUE
 
-    ema_fast = close.ewm(span=9).mean()
-    ema_slow = close.ewm(span=21).mean()
-    ema_200 = close.ewm(span=200).mean()
-    df["ema_fast_delta"] = (ema_fast - ema_slow) / (close + 1e-9)
-    df["ema_slow_delta"] = (ema_slow - ema_200) / (close + 1e-9)
+    ema_fast = close.ewm(span=EMA_FAST_SPAN).mean()
+    ema_slow = close.ewm(span=EMA_SLOW_SPAN).mean()
+    ema_long = close.ewm(span=EMA_LONG_SPAN).mean()
+    df["ema_fast_delta"] = (ema_fast - ema_slow) / (close + EPSILON)
+    df["ema_slow_delta"] = (ema_slow - ema_long) / (close + EPSILON)
 
     return df
 
@@ -66,7 +86,7 @@ class LorentzianKNN(AbstractModel):
     """
     model_type = "lorentzian_knn"
 
-    def __init__(self, k: int = 8, lookback: int = 2000, subsample: int = 4):
+    def __init__(self, k: int = DEFAULT_K, lookback: int = DEFAULT_LOOKBACK, subsample: int = DEFAULT_SUBSAMPLE):
         if not _TORCH_AVAILABLE:
             raise ImportError("torch is required for LorentzianKNN — install with `pip install torch`")
         self.k = k
@@ -122,8 +142,13 @@ class LorentzianKNN(AbstractModel):
         from pathlib import Path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "wb") as f:
-            pickle.dump({"library_X": self._library_X, "library_y": self._library_y,
-                         "k": self.k, "lookback": self.lookback, "model_type": self.model_type}, f)
+            pickle.dump({
+                "library_X": self._library_X,
+                "library_y": self._library_y,
+                "k": self.k,
+                "lookback": self.lookback,
+                "model_type": self.model_type,
+            }, f)
 
     @classmethod
     def load(cls, path: str) -> "LorentzianKNN":
