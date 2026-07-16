@@ -17,7 +17,77 @@ Market neutral: long one leg, short the other (dollar-neutral).
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.stattools import coint
+from pydantic import BaseModel, Field, root_validator, validator, ValidationError
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+
+class PairsTradingParams(BaseModel):
+    """Configuration parameters for the Pairs Trading strategy."""
+
+    lookback: int = Field(
+        ...,
+        description="Number of historical bars used for rolling calculations.",
+        ge=1,
+        example=252,
+    )
+    z_entry: float = Field(
+        ...,
+        description="Z‑score threshold to open a position.",
+        gt=0,
+        example=2.0,
+    )
+    z_exit: float = Field(
+        ...,
+        description="Z‑score threshold to close a position.",
+        ge=0,
+        example=0.5,
+    )
+    stop_z: float = Field(
+        4.0,
+        description="Z‑score threshold at which trading is halted due to risk.",
+        gt=0,
+        example=4.0,
+    )
+    coint_pvalue: float = Field(
+        0.05,
+        description="Maximum p‑value accepted for the Engle‑Granger cointegration test.",
+        gt=0,
+        lt=1,
+        example=0.05,
+    )
+    min_half_life: int | None = Field(
+        None,
+        description="Minimum acceptable half‑life of the spread (in bars).",
+        ge=1,
+        example=5,
+    )
+    max_half_life: int | None = Field(
+        None,
+        description="Maximum acceptable half‑life of the spread (in bars).",
+        ge=1,
+        example=126,
+    )
+
+    @root_validator
+    def check_half_life_range(cls, values):
+        min_hl, max_hl = values.get("min_half_life"), values.get("max_half_life")
+        if min_hl is not None and max_hl is not None and min_hl > max_hl:
+            raise ValueError("min_half_life must be less than or equal to max_half_life")
+        return values
+
+    @validator("z_exit")
+    def exit_less_than_entry(cls, v, values):
+        entry = values.get("z_entry")
+        if entry is not None and v >= entry:
+            raise ValueError("z_exit must be less than z_entry")
+        return v
+
+    @validator("z_entry")
+    def entry_less_than_stop(cls, v, values):
+        stop = values.get("stop_z")
+        if stop is not None and v >= stop:
+            raise ValueError("z_entry must be less than stop_z")
+        return v
 
 
 class PairsTradingStrategy(AbstractStrategy):
@@ -43,20 +113,29 @@ class PairsTradingStrategy(AbstractStrategy):
         "z_exit": 0.5,
         "min_half_life": 5,
         "max_half_life": 126,
+        "stop_z": 4.0,
+        "coint_pvalue": 0.05,
     }
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
-        effective = {**self.DEFAULT_PARAMS, **(params or {})}
-        self.lookback = effective["lookback"]
-        self.entry_z = effective["z_entry"]
-        self.exit_z = effective["z_exit"]
-        self.stop_z = params.get("stop_z", 4.0) if params else 4.0
-        self.coint_pvalue = params.get("coint_pvalue", 0.05) if params else 0.05
+        # Merge user supplied values with defaults before validation
+        merged = {**self.DEFAULT_PARAMS, **(params or {})}
+        try:
+            validated = PairsTradingParams(**merged)
+        except ValidationError as exc:
+            raise ValueError(f"Invalid pairs trading parameters: {exc}") from exc
+
+        self.lookback = validated.lookback
+        self.entry_z = validated.z_entry
+        self.exit_z = validated.z_exit
+        self.stop_z = validated.stop_z
+        self.coint_pvalue = validated.coint_pvalue
+        self.min_half_life = validated.min_half_life
+        self.max_half_life = validated.max_half_life
 
     def _compute_spread(self, price_a: pd.Series, price_b: pd.Series, lookback: int) -> tuple[pd.Series, float]:
-        """Compute hedge ratio via OLS regression and return z-scored spread."""
-        # Use last lookback bars for hedge ratio
+        """Compute hedge ratio via OLS regression and return z‑scored spread."""
         y = price_a.iloc[-lookback:]
         x = price_b.iloc[-lookback:]
         hedge_ratio = np.cov(y, x)[0, 1] / np.var(x)
@@ -75,7 +154,7 @@ class PairsTradingStrategy(AbstractStrategy):
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         # data expected to have MultiIndex columns: (symbol, field)
-        # or be called per-pair. Here we handle simple case: data has 'close_a', 'close_b'
+        # or be called per‑pair. Here we handle simple case: data has 'close_a', 'close_b'
         if "close_a" not in data.columns or "close_b" not in data.columns:
             return None
         if len(data) < self.lookback + 10:
@@ -90,7 +169,6 @@ class PairsTradingStrategy(AbstractStrategy):
             return None  # spread too wide — risk of cointegration breakdown
 
         if latest_z > self.entry_z:
-            # Spread too high: short A, long B
             confidence = min(0.95, (latest_z - self.entry_z) / (self.stop_z - self.entry_z) * 0.8 + 0.6)
             return Signal(
                 symbol=symbol,
@@ -102,7 +180,6 @@ class PairsTradingStrategy(AbstractStrategy):
                 metadata={"z_score": float(latest_z), "hedge_ratio": hedge_ratio, "leg": "A"},
             )
         elif latest_z < -self.entry_z:
-            # Spread too low: long A, short B
             confidence = min(0.95, (-latest_z - self.entry_z) / (self.stop_z - self.entry_z) * 0.8 + 0.6)
             return Signal(
                 symbol=symbol,
@@ -138,7 +215,6 @@ class PairsTradingStrategy(AbstractStrategy):
             spread_std = spread_window.std()
             if spread_std < 1e-9:
                 continue
-            # Use last bar of the window (iloc[i-1]) to avoid lookahead into bar i
             spread_i = price_a.iloc[i - 1] - hedge * price_b.iloc[i - 1]
             z = (spread_i - spread_mean) / spread_std
             if z < -self.entry_z:
@@ -152,7 +228,6 @@ class PairsTradingStrategy(AbstractStrategy):
         exits = signals == 0
         short_entries = signals < -0.5
         short_exits = exits.copy()
-        stop = abs(signals) > self.stop_z if False else pd.Series(False, index=df.index)
 
         return BacktestSignals(
             entries=entries.fillna(False),
