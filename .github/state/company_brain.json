@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784278610.1480258,
+    "last_updated": 1784285174.4499745,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784278610.1472502
+    "last_brain_update": 1784285174.4494023
   },
   "episodic": [
     {
@@ -1254,6 +1254,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784250677.9833527
+    },
+    {
+      "lesson": "Auto-fix failures indicate a systemic issue in patch application logic or the CI/CD pipeline; investigate and fix the auto-fix mechanism to prevent repeated failures.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784285142.4305162
+    },
+    {
+      "lesson": "Issues with vague descriptions are being skipped as 'too complex'; implement mandatory issue templates with concrete failure details to enable automated resolution.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784285142.4332402
+    },
+    {
+      "lesson": "The complexity threshold for auto-fix skipping may be too low, causing legitimate complex issues to be ignored; review and adjust the threshold or improve automated analysis for such cases.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784285142.4357088
+    },
+    {
+      "lesson": "Multiple auto-fix failures and skips suggest a need for better error handling and fallback procedures in the automated fix pipeline to avoid silent failures.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784285142.4389238
     }
   ],
   "github_insights": [
@@ -1651,6 +1679,11 @@
       "summary": "The automated bot attempted to apply a patch to a file but failed, and this error occurred twice.",
       "item_count": 20,
       "ts": 1784278610.1383042
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784285174.4427116
     }
   ],
   "experiment_results": [
