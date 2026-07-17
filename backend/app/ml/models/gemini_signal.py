@@ -48,63 +48,123 @@ Respond with ONLY this JSON (no other text):
 {{"direction_prob_up": <float 0.0-1.0>, "confidence": <"low"|"medium"|"high">, "regime": <"trending"|"ranging"|"volatile">}}"""
 
 
+def _safe_last(series: pd.Series, fallback: float = 0.0) -> float:
+    """Return the last non‑NaN value of a series, or fallback if none exist."""
+    if series.empty:
+        return fallback
+    val = series.iloc[-1]
+    if pd.isna(val):
+        # try to find previous valid entry
+        val = series.dropna().iloc[-1] if not series.dropna().empty else fallback
+    return float(val)
+
+
 def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     """Compute a compact technical summary for Gemini."""
+    if df is None or df.empty:
+        logger.debug("Empty DataFrame supplied to _compute_summary")
+        return ""
+
+    # Ensure required columns exist; if missing, create zero-filled series
+    required_cols = ["close", "high", "low", "volume"]
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = 0.0
+
     close = df["close"].astype(float)
     n = len(close)
-    price = float(close.iloc[-1])
 
+    price = _safe_last(close, fallback=0.0)
+
+    # 5‑ and 20‑bar returns
     ret5 = float(close.pct_change(5).iloc[-1]) if n >= 5 else 0.0
     ret20 = float(close.pct_change(20).iloc[-1]) if n >= 20 else 0.0
 
-    # RSI
+    # RSI calculation (14‑period)
     delta = close.diff()
     gain = delta.clip(lower=0).ewm(span=14, adjust=False).mean()
     loss = (-delta.clip(upper=0)).ewm(span=14, adjust=False).mean()
     rs = gain / (loss + 1e-9)
-    rsi = float(100 - 100 / (1 + rs.iloc[-1]))
+    rsi = float(100 - 100 / (1 + rs.iloc[-1])) if not rs.empty else 0.0
 
+    # 20‑period SMA
     sma20 = float(close.rolling(20).mean().iloc[-1]) if n >= 20 else price
     vs_sma = (price - sma20) / (sma20 + 1e-9)
 
-    # ATR
+    # ATR calculation
     if "high" in df.columns and "low" in df.columns:
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        tr = pd.concat([
-            high - low,
-            (high - close.shift()).abs(),
-            (low - close.shift()).abs(),
-        ], axis=1).max(axis=1)
-        atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1]) if not tr.empty else 0.0
     else:
         atr = float(close.rolling(14).std().iloc[-1]) if n >= 14 else 0.0
     atr_pct = atr / (price + 1e-9)
 
+    # Volume ratio
     vol_ratio = 1.0
     if "volume" in df.columns:
         vol = df["volume"].astype(float)
-        avg_vol = float(vol.rolling(20).mean().iloc[-1]) if n >= 20 else float(vol.mean())
-        vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9)
+        avg_vol = (
+            float(vol.rolling(20).mean().iloc[-1])
+            if n >= 20
+            else float(vol.mean()) if not vol.empty
+            else 0.0
+        )
+        vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9) if avg_vol != 0 else 0.0
 
-    high_20 = float(df["high"].astype(float).rolling(20).max().iloc[-1]) if "high" in df.columns and n >= 20 else price
-    low_20 = float(df["low"].astype(float).rolling(20).min().iloc[-1]) if "low" in df.columns and n >= 20 else price
+    # Recent high/low range over last 20 bars
+    high_20 = (
+        float(df["high"].astype(float).rolling(20).max().iloc[-1])
+        if "high" in df.columns and n >= 20
+        else price
+    )
+    low_20 = (
+        float(df["low"].astype(float).rolling(20).min().iloc[-1])
+        if "low" in df.columns and n >= 20
+        else price
+    )
     range_pct = (high_20 - low_20) / (low_20 + 1e-9)
 
+    # EMA50 trend
     ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if n >= 50 else price
-    trend = "uptrend" if price > ema50 else "downtrend" if price < ema50 * 0.98 else "neutral"
+    if price > ema50:
+        trend = "uptrend"
+    elif price < ema50 * 0.98:
+        trend = "downtrend"
+    else:
+        trend = "neutral"
 
     return _ANALYSIS_TEMPLATE.format(
-        symbol=symbol, interval=interval, n=n, price=price,
-        ret5=ret5, ret20=ret20, rsi=rsi, vs_sma=vs_sma,
-        atr_pct=atr_pct, vol_ratio=vol_ratio, range_pct=range_pct, trend=trend,
+        symbol=symbol,
+        interval=interval,
+        n=n,
+        price=price,
+        ret5=ret5,
+        ret20=ret20,
+        rsi=rsi,
+        vs_sma=vs_sma,
+        atr_pct=atr_pct,
+        vol_ratio=vol_ratio,
+        range_pct=range_pct,
+        trend=trend,
     )
 
 
 def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
     """Synchronous Gemini call returning parsed JSON dict."""
+    if not prompt:
+        return {}
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
@@ -115,11 +175,11 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
         text = response.text.strip() if response.text else ""
 
         # Extract JSON
-        m = re.search(r'\{.*?"direction_prob_up".*?\}', text, re.DOTALL)
+        m = re.search(r"\{.*?\"direction_prob_up\".*?\}", text, re.DOTALL)
         if m:
             return json.loads(m.group(0))
     except ImportError:
-        pass
+        logger.debug("google-generativeai package not installed")
     except Exception as e:
         logger.debug("Gemini signal call failed", error=str(e))
     return {}
@@ -154,6 +214,9 @@ class GeminiSignalEngine:
             return None
 
         prompt = _compute_summary(df, symbol, interval)
+        if not prompt:
+            return None
+
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _call_gemini_json, prompt, self._key)
 
@@ -166,7 +229,11 @@ class GeminiSignalEngine:
         """Synchronous version for use outside async context."""
         if not self._available or df is None or len(df) < 20:
             return None
+
         prompt = _compute_summary(df, symbol, interval)
+        if not prompt:
+            return None
+
         result = _call_gemini_json(prompt, self._key)
         prob = result.get("direction_prob_up")
         return float(np.clip(prob, 0.0, 1.0)) if prob is not None else None
