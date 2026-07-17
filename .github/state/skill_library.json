@@ -199,8 +199,13 @@
     "Validate market hours",
     "Verify network connectivity",
     "Scan for dependency updates",
-    "Test database connections"
+    "Test database connections",
+    "error_handling on ml/features/alternative.py: success \u2014 tests green",
+    "error_handling on risk/factor_exposure.py: success \u2014 tests green",
+    "error_handling on comparison/engine.py: success \u2014 tests green",
+    "error_handling on tasks/price_feed.py: success \u2014 tests green",
+    "error_handling on api/v1/scanners.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-17T12:41:44.240690+00:00",
+  "last_updated": "2026-07-17T13:22:17.598780+00:00",
   "total": 200
 }
