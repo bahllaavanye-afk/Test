@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from pydantic import BaseModel, Field, validator
+
 ROOT = Path(__file__).resolve().parents[3]
 LLM_COMMON = ROOT / ".github" / "scripts" / "llm_common.py"
 AGENT_TEAM = ROOT / ".github" / "scripts" / "slack_agent_team.py"
@@ -55,3 +57,46 @@ def test_employees_are_zero_spend_by_default():
     src = _src(AGENT_TEAM)
     assert re.search(r'ALLOW_PAID_APIS[^\n]*=\s*False', src), \
         "employees must default ALLOW_PAID_APIS = False"
+
+
+class LLMBackstopConfig(BaseModel):
+    """Configuration schema for the Claude backstop model used in routing.
+
+    Attributes
+    ----------
+    model_name: str
+        Name of the Claude backstop model. Must be a Haiku variant.
+    tier: str
+        Tier that enables the backstop. Accepted values are ``"hard"`` or ``"auto"``.
+    allowed: bool
+        Flag indicating whether the backstop is permitted.
+    """
+    model_name: str = Field(
+        ...,
+        description="Name of the Claude backstop model.",
+        example="claude-3-haiku-20240307",
+    )
+    tier: str = Field(
+        ...,
+        description="Tier for the backstop usage.",
+        example="hard",
+    )
+    allowed: bool = Field(
+        ...,
+        description="Whether the backstop is allowed.",
+        example=True,
+    )
+
+    @validator("model_name")
+    def ensure_haiku(cls, v: str) -> str:
+        """Validate that the model name contains 'haiku' (case‑insensitive)."""
+        if "haiku" not in v.lower():
+            raise ValueError("Backstop model must be a Haiku variant")
+        return v
+
+    @validator("tier")
+    def validate_tier(cls, v: str) -> str:
+        """Validate that the tier is either 'hard' or 'auto'."""
+        if v not in {"hard", "auto"}:
+            raise ValueError('Tier must be "hard" or "auto"')
+        return v
