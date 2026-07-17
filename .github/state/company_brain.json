@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784296509.4098818,
+    "last_updated": 1784296918.9030514,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784289990.8298845
+    "last_brain_update": 1784296918.9020936
   },
   "episodic": [
     {
@@ -1310,6 +1310,27 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784289958.8170526
+    },
+    {
+      "lesson": "Automated patch application is failing repeatedly; investigate root cause (e.g., merge conflicts, syntax changes) and consider manual review or improving patch generation logic.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784296892.2797935
+    },
+    {
+      "lesson": "Feature request for per-desk performance attribution requires new schema, engine changes, and pruning logic \u2013 prioritize as a strategic enhancement and break into incremental deliverables.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784296892.2831216
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free-tier rate limit (100/day). Upgrade to Pro plan or consolidate deployments to avoid critical path delays.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784296892.2873454
     }
   ],
   "github_insights": [
@@ -1717,6 +1738,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784289990.8216877
+    },
+    {
+      "summary": "The automated fixes failed to apply patches in two cases and were skipped in another due to complexity, all related to a feature request.",
+      "item_count": 20,
+      "ts": 1784296918.8949385
     }
   ],
   "experiment_results": [
