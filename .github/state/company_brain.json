@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784318843.4865465,
+    "last_updated": 1784320322.1510215,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784316694.248428
+    "last_brain_update": 1784320322.1501997
   },
   "episodic": [
     {
@@ -1489,6 +1489,34 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784318843.4900236
+    },
+    {
+      "lesson": "Deployment failing due to Vercel free-tier daily limit of 100 deploys. Upgrade to Pro or implement deploy batching to avoid blocking.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784320290.1226518
+    },
+    {
+      "lesson": "Autonomous PR modifying protected file `backend/app/brokers/base.py` was revoked. Need stricter guardrails or mandatory human review for critical paths to prevent repeat of past breakage.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784320290.127643
+    },
+    {
+      "lesson": "Multiple auto-fix patches failed to apply, indicating fragile CI/CD automation or inconsistent code state. Investigate patch generation and application process.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784320290.131401
+    },
+    {
+      "lesson": "Previous autonomous edit (#298) broke main, yet similar risky PRs are still attempted. Strengthen automated testing and rollback mechanisms for high-risk files.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784320290.1350017
     }
   ],
   "github_insights": [
@@ -1916,6 +1944,11 @@
       "summary": "Multiple auto-fix attempts failed because the patches could not be applied to the file.",
       "item_count": 20,
       "ts": 1784316694.2378626
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784320322.1402788
     }
   ],
   "experiment_results": [
