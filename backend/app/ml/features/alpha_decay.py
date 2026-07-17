@@ -36,6 +36,34 @@ class AlphaDecayTracker:
     # Horizons to measure IC at: 1h, 4h, 1d, 5d, 20d
     HORIZONS: list[int] = [1, 4, 24, 120, 480]
 
+    def _validate_inputs(
+        self,
+        signals: pd.Series | None,
+        prices: pd.DataFrame | None,
+        strategy_name: str | None,
+    ) -> None:
+        """Validate core inputs, raising informative errors for edge cases."""
+        if signals is None:
+            raise ValueError("signals cannot be None")
+        if not isinstance(signals, pd.Series):
+            raise TypeError("signals must be a pandas Series")
+        if signals.empty:
+            raise ValueError("signals Series is empty")
+
+        if prices is None:
+            raise ValueError("prices cannot be None")
+        if not isinstance(prices, pd.DataFrame):
+            raise TypeError("prices must be a pandas DataFrame")
+        if prices.empty:
+            raise ValueError("prices DataFrame is empty")
+        if "close" not in prices.columns:
+            raise ValueError("prices DataFrame must contain a 'close' column")
+
+        if strategy_name is None:
+            raise ValueError("strategy_name cannot be None")
+        if not isinstance(strategy_name, str):
+            raise TypeError("strategy_name must be a string")
+
     def compute_ic_profile(
         self,
         signals: pd.Series,
@@ -52,14 +80,28 @@ class AlphaDecayTracker:
 
         Returns:
             DecayProfile with IC at each horizon and fitted half-life in hours.
-            Raises ValueError if prices has no 'close' column.
         """
-        if "close" not in prices.columns:
-            raise ValueError("prices DataFrame must contain a 'close' column")
+        # Defensive validation – ensures graceful handling of None / empty inputs.
+        try:
+            self._validate_inputs(signals, prices, strategy_name)
+        except (ValueError, TypeError) as exc:
+            # Return an empty profile instead of propagating the exception,
+            # allowing downstream code to continue with a neutral decay model.
+            return DecayProfile(
+                strategy_name=strategy_name or "unknown",
+                ic_0=0.0,
+                half_life_hours=float("inf"),
+                horizons={},
+            )
 
         ics: dict[int, float] = {}
 
         for h in self.HORIZONS:
+            # Guard against horizons larger than the series length which would
+            # produce entirely NaN forward returns.
+            if h <= 0 or h > len(prices):
+                continue
+
             fwd_ret = prices["close"].pct_change(h).shift(-h)
             common = signals.index.intersection(fwd_ret.index)
             if len(common) < 30:
@@ -76,6 +118,7 @@ class AlphaDecayTracker:
             if not np.isnan(ic_val):
                 ics[h] = float(ic_val)
 
+        # If insufficient data points were gathered, return a neutral profile.
         if len(ics) < 2:
             return DecayProfile(
                 strategy_name=strategy_name,
@@ -101,7 +144,7 @@ class AlphaDecayTracker:
             ic_0, lam = float(popt[0]), float(popt[1])
             half_life = np.log(2) / lam if lam > 0 else float("inf")
         except Exception:
-            ic_0 = float(ic_arr[0]) if len(ic_arr) > 0 else 0.0
+            ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
             half_life = float("inf")
 
         return DecayProfile(
@@ -129,10 +172,14 @@ class AlphaDecayTracker:
             Adjusted confidence in [0, 1].  Returns base_confidence unchanged
             when half-life is infinite (signal does not decay).
         """
+        # Clamp inputs to sensible ranges.
+        base_confidence = max(0.0, min(1.0, float(base_confidence)))
+        staleness_hours = max(0.0, float(staleness_hours))
+
         if profile.half_life_hours == float("inf") or profile.half_life_hours <= 0:
-            return float(base_confidence)
+            return base_confidence
 
         decay = np.exp(
             -staleness_hours * np.log(2) / profile.half_life_hours
         )
-        return float(base_confidence * max(float(decay), 0.0))
+        return float(base_confidence * max(decay, 0.0))
