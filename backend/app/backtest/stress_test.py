@@ -7,12 +7,16 @@ average across calm and turbulent regimes.
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -115,8 +119,17 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
+    start_time = time.perf_counter()
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
+
+    logger.info(
+        "Starting stress tests",
+        extra={
+            "signal_count": len(signals),
+            "scenario_count": len(scenarios),
+        },
+    )
 
     results: list[StressResult] = []
 
@@ -129,6 +142,10 @@ def run_stress_tests(
 
         # Fast check: if the scenario window does not intersect the price index, skip early
         if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+            logger.info(
+                f"Scenario '{scenario.name}' skipped: no price data in window",
+                extra={"scenario": scenario.name, "covered": False},
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -145,6 +162,14 @@ def run_stress_tests(
         s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
 
         if s_prices is None or len(s_prices) < 5:
+            logger.info(
+                f"Scenario '{scenario.name}' skipped: insufficient data points",
+                extra={
+                    "scenario": scenario.name,
+                    "data_points": len(s_prices) if s_prices is not None else 0,
+                    "covered": False,
+                },
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -155,6 +180,7 @@ def run_stress_tests(
             )
             continue
 
+        exec_start = time.perf_counter()
         metrics = run_backtest(
             signals=s_signals,
             prices=s_prices,
@@ -163,6 +189,21 @@ def run_stress_tests(
             initial_equity=initial_equity,
             commission_pct=commission_pct,
             slippage_pct=slippage_pct,
+        )
+        exec_end = time.perf_counter()
+
+        logger.info(
+            f"Scenario '{scenario.name}' completed",
+            extra={
+                "scenario": scenario.name,
+                "data_points": len(s_prices),
+                "execution_time_sec": round(exec_end - exec_start, 4),
+                "total_return_pct": round(metrics.total_return * 100, 2),
+                "max_drawdown_pct": round(metrics.max_drawdown * 100, 2),
+                "sharpe": metrics.sharpe,
+                "win_rate": metrics.win_rate,
+                "num_trades": metrics.num_trades,
+            },
         )
 
         results.append(
@@ -174,6 +215,11 @@ def run_stress_tests(
             )
         )
 
+    total_time = time.perf_counter() - start_time
+    logger.info(
+        "Stress testing completed",
+        extra={"total_execution_time_sec": round(total_time, 4), "result_count": len(results)},
+    )
     return results
 
 
