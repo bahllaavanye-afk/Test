@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784300878.610649,
+    "last_updated": 1784302713.3604083,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784296918.9020936
+    "last_brain_update": 1784302713.3596084
   },
   "episodic": [
     {
@@ -1358,6 +1358,34 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Healthcare, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784300878.6139417
+    },
+    {
+      "lesson": "Auto-fix patch application failures are recurring, indicating a need to improve patch generation or validate target file state before applying.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784302704.005565
+    },
+    {
+      "lesson": "Complex features like per-desk performance attribution are being skipped by auto-fix, delaying critical functionality and requiring human intervention.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784302704.010062
+    },
+    {
+      "lesson": "Frequent auto-fix failures risk accumulating unresolved issues, increasing technical debt and operational overhead.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784302704.0134268
+    },
+    {
+      "lesson": "The auto-fix system's complexity threshold should be recalibrated to better handle multi-layer changes and reduce manual triage.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784302704.0167615
     }
   ],
   "github_insights": [
@@ -1770,6 +1798,11 @@
       "summary": "The automated fixes failed to apply patches in two cases and were skipped in another due to complexity, all related to a feature request.",
       "item_count": 20,
       "ts": 1784296918.8949385
+    },
+    {
+      "summary": "The auto-fix failed multiple times because patches could not be applied, and one fix was skipped due to complexity when implementing per-desk functionality.",
+      "item_count": 20,
+      "ts": 1784302713.3517144
     }
   ],
   "experiment_results": [
