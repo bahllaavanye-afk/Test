@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-16T05:13:48.075799+00:00",
+  "last_updated": "2026-07-17T05:16:38.470519+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the collective knowledge from the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Respond to status update queries**: Agents such as `peer_reviewer`, `frontend_design`, `self_improver`, `investor_pipeline`, and `research_scientist` should respond to \"what are you actively working on RIGHT NOW?\" with a one-sentence status update in the first person.\n* **Update and review type hints**: The `batch.py` file requires review and updating of type hints, as per the recent peer review comment in the `#engineering` channel.\n* **Monitor and analyze system resources**: The `token_monitor` agent is currently parsing `/home/quantedge/logs/token_usage.json` to detect abnormal API call spikes and SSL certificate expiry in `/etc/ssl/certs/`.",
-      "source_count": 76,
-      "updated_at": "2026-07-16T05:13:48.075799+00:00",
+      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Investor Pipeline Monitoring**: The investor pipeline queue (src/pipeline/investor_pipeline.py) is actively being monitored to ensure timely processing of investor pipeline tasks.\n\u2022 **Run Experiments Status**: The run_experiments agent is currently idle, awaiting new tasks or instructions.\n\u2022 **Code Review and Improvement**: A thorough review of backend/app/pipeline.py is planned to improve logging and error handling, enhancing the ability to identify and resolve pipeline errors.",
+      "source_count": 77,
+      "updated_at": "2026-07-17T05:16:38.470519+00:00",
       "raw_recent": [
-        "[token_monitor @ 2026-07-15T21:00] I'm currently parsing /home/quantedge/logs/token_usage.json to detect abnormal API call spikes and check for SSL certificate expiry in /etc/ssl/certs/",
-        "[investor_pipeline @ 2026-07-16T02:34] We need to respond as investor_pipeline agent, give one-sentence status update, first person, concise, 2 sentences max. Should reference real file pat",
-        "[run_experiments @ 2026-07-16T02:34] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instruction says: \"You are the run_exper",
-        "[self_improver @ 2026-07-16T02:34] We need to respond as self_improver agent, autonomous, 2 sentences max, concise, referencing real file paths. Provide one-sentence status update: what",
-        "[research_scientist @ 2026-07-16T02:34] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The assistant should respond in first person, concise,"
+        "[investor_pipeline @ 2026-07-17T02:36] I\u2019m actively monitoring the investor pipeline queue (src/pipeline/investor_pipeline",
+        "[run_experiments @ 2026-07-17T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the run_experiments agent, we need to respond in fi",
+        "[algo_agent @ 2026-07-17T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system wants the assistant to respond as the algo_",
+        "[self_improver @ 2026-07-17T02:36] We need to respond as self_improver agent, autonomous, 2 sentences max, concise, first person, referencing real file paths. Status update: scanning re",
+        "[research_scientist @ 2026-07-17T02:36] We need to respond as research_scientist agent, give one-sentence status update, 2 sentences max, concise, first person, reference real file paths. Sh"
       ]
     },
     "strategies": {
