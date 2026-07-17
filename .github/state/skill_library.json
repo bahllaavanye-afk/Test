@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Validate inputs",
-    "Test DB queries",
-    "Based on the latest 10 agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Test edge cases",
     "error_handling on risk/factor_exposure.py: success \u2014 tests green",
     "Review thread safety",
     "Scan for orphaned threads",
@@ -199,8 +195,12 @@
     "Handle SQL errors",
     "Test SQL queries",
     "Test API keys",
-    "**System Monitoring**: System resources are being actively scanned by `standup_agent` via thread counts in `/sys/fs/cgroup/cpu/thread_counts` and GPU temps in `/sys/class/drm/`."
+    "**System Monitoring**: System resources are being actively scanned by `standup_agent` via thread counts in `/sys/fs/cgroup/cpu/thread_counts` and GPU temps in `/sys/class/drm/`.",
+    "Check thread timeouts",
+    "Track config changes",
+    "Refactor code for quality",
+    "Improve logging handling"
   ],
-  "last_updated": "2026-07-17T05:16:38.470519+00:00",
+  "last_updated": "2026-07-17T05:27:03.786937+00:00",
   "total": 200
 }
