@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Sequence
 
 import numpy as np
 
@@ -95,6 +95,51 @@ def _interpret(fe: FactorExposure) -> str:
     return ", ".join(parts) if parts else "Balanced factor exposure"
 
 
+def _default_exposure() -> FactorExposure:
+    """Create a safe default FactorExposure used when inputs are invalid."""
+    return FactorExposure(
+        market_beta=1.0,
+        momentum_loading=0.0,
+        low_vol_loading=0.0,
+        size_loading=0.0,
+        r_squared=0.0,
+        alpha_annualized=0.0,
+        tracking_error=0.02,
+    )
+
+
+def _validate_series(series: Optional[Sequence[float]], name: str) -> Optional[np.ndarray]:
+    """Validate that a series is non‑empty and convertible to a NumPy array.
+
+    Returns ``None`` if the series is ``None``, empty, or cannot be converted.
+    """
+    if series is None:
+        return None
+    if not isinstance(series, (list, tuple, np.ndarray)):
+        logger.warning(
+            "Invalid type for %s; expected list/tuple/ndarray",
+            name,
+            extra={"type": type(series)},
+        )
+        return None
+    if len(series) == 0:
+        logger.warning("%s is empty; it will be ignored", name)
+        return None
+    try:
+        arr = np.array(series, dtype=float)
+        if np.isnan(arr).any():
+            logger.warning("%s contains NaN values; they will be treated as missing", name)
+            return None
+        return arr
+    except Exception as e:  # pragma: no cover
+        logger.error(
+            "Failed to convert %s to NumPy array",
+            name,
+            extra={"error": str(e)},
+        )
+        return None
+
+
 def compute_factor_exposure(
     portfolio_returns: List[float],
     spy_returns: List[float],
@@ -126,50 +171,55 @@ def compute_factor_exposure(
     FactorExposure
         The regression coefficients and diagnostics wrapped in a ``FactorExposure`` instance.
     """
-    n = min(len(portfolio_returns), len(spy_returns))
+    # Basic validation of mandatory inputs
+    if not portfolio_returns or not spy_returns:
+        logger.warning(
+            "Missing mandatory return series; returning default exposure",
+            extra={"portfolio_len": len(portfolio_returns) if portfolio_returns else 0,
+                   "spy_len": len(spy_returns) if spy_returns else 0},
+        )
+        return _default_exposure()
+
+    # Convert mandatory series to NumPy arrays (validation ensures non‑empty)
+    y_arr = _validate_series(portfolio_returns, "portfolio_returns")
+    x_market_arr = _validate_series(spy_returns, "spy_returns")
+    if y_arr is None or x_market_arr is None:
+        return _default_exposure()
+
+    # Determine usable sample size
+    n = min(len(y_arr), len(x_market_arr))
     if n < 20:
         logger.warning(
             "Insufficient data for factor exposure calculation",
             extra={"required_min": 20, "available": n},
         )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        return _default_exposure()
 
+    # Prepare regression matrices
+    col_names = ["alpha", "market"]
     try:
-        y = np.array(portfolio_returns[-n:], dtype=float)
-        X_cols = [np.ones(n, dtype=float), np.array(spy_returns[-n:], dtype=float)]
-        col_names = ["alpha", "market"]
-
-        if momentum_factor and len(momentum_factor) >= n:
-            X_cols.append(np.array(momentum_factor[-n:], dtype=float))
+        y = y_arr[-n:]
+        X_cols = [np.ones(n, dtype=float), x_market_arr[-n:]]
+        # Optional momentum factor
+        mom_arr = _validate_series(momentum_factor, "momentum_factor")
+        if mom_arr is not None and len(mom_arr) >= n:
+            X_cols.append(mom_arr[-n:])
             col_names.append("momentum")
-        if low_vol_factor and len(low_vol_factor) >= n:
-            X_cols.append(np.array(low_vol_factor[-n:], dtype=float))
+        # Optional low‑vol factor
+        low_vol_arr = _validate_series(low_vol_factor, "low_vol_factor")
+        if low_vol_arr is not None and len(low_vol_arr) >= n:
+            X_cols.append(low_vol_arr[-n:])
             col_names.append("low_vol")
 
         X = np.column_stack(X_cols)
-    except (ValueError, TypeError) as e:
+    except Exception as e:  # pragma: no cover
         logger.error(
             "Failed to construct regression matrices",
             extra={"error": str(e), "n": n, "col_names": col_names},
         )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        return _default_exposure()
 
+    # Perform OLS regression
     try:
         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
     except np.linalg.LinAlgError as e:
@@ -177,32 +227,17 @@ def compute_factor_exposure(
             "Linear algebra error during OLS regression",
             extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
         )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
-    except Exception as e:
+        return _default_exposure()
+    except Exception as e:  # pragma: no cover
         logger.exception(
             "Unexpected error during factor exposure regression",
             extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
         )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        return _default_exposure()
 
-    alpha_daily = float(coeffs[0])
-    market_beta = float(coeffs[1])
+    # Extract coefficients safely
+    alpha_daily = float(coeffs[0]) if len(coeffs) > 0 else 0.0
+    market_beta = float(coeffs[1]) if len(coeffs) > 1 else 0.0
     momentum_loading = float(coeffs[2]) if len(coeffs) > 2 else 0.0
     low_vol_loading = float(coeffs[3]) if len(coeffs) > 3 else 0.0
 
@@ -218,7 +253,7 @@ def compute_factor_exposure(
         momentum_loading=momentum_loading,
         low_vol_loading=low_vol_loading,
         size_loading=0.0,   # would need SMB factor data
-        r_squared=max(0, r_squared),
+        r_squared=max(0.0, r_squared),
         alpha_annualized=alpha_daily * 252,
         tracking_error=tracking_error,
     )
