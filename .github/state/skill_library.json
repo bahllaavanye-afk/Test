@@ -199,8 +199,13 @@
     "Improve logging handling",
     "Check data feed latency",
     "Monitor GPU memory usage",
-    "Verify trade confirmation"
+    "Verify trade confirmation",
+    "strategy_logic on test/unit/test_bot_market_types.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/rsi_macd.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "strategy_logic on ml/features/technical.py: success \u2014 tests green",
+    "strategy_logic on execution/vwap.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-17T09:53:27.810650+00:00",
+  "last_updated": "2026-07-17T10:17:20.479323+00:00",
   "total": 200
 }

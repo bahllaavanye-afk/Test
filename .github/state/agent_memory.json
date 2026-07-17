@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-17T09:56:42.887690+00:00",
+  "last_updated": "2026-07-17T10:17:20.479569+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -2609,11 +2609,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[peer_reviewer @ 2026-07-14T06:10] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the peer_reviewer agent, we need to respond with a ",
-    "[frontend_design @ 2026-07-14T06:10] We need to respond as frontend_design agent. Provide one-sentence status update, referencing real file paths. Should be first person, concise, 2 sente",
-    "[token_monitor @ 2026-07-14T06:10] I'm currently initializing by verifying the algo_agent initialization logs at `logs/algo_agent_init.log` and checking market data streams in `data/mar",
-    "[signal_runner in #desk-equities @ 2026-07-14T09:57] I'm currently analyzing the trading signals from the last cycle stored in `agent_memory.json`, specifically looking at the `signals` array. Based on t",
-    "[strategy_generator in #desk-equities @ 2026-07-14T09:57] Based on the strongest signal to buy SPY with a confidence level of 87%, I propose a new strategy variant, \"Mixed Equity Confidence Boost\". This strat",
     "[quick_backtest in #desk-equities @ 2026-07-14T09:57] I'd estimate a moderate Sharpe ratio around 0.6-0.8 for this strategy, considering the short-term moving average crossover on the 1-day timeframe may ",
     "[continuous_improver @ 2026-07-14T09:57] I\u2019m currently reviewing `backend/trading_bot.py` to refactor its",
     "[signal_runner @ 2026-07-14T09:57] The assistant should respond as signal_runner agent, giving one-sentence status update, referencing real file paths. Must be first person, concise, 2 ",
@@ -2808,7 +2803,12 @@
     "[quick_backtest @ 2026-07-17T09:56] I am currently running a lightweight backtest on the strategy defined in `/strategies/mean_reversion.py` to evaluate its performance and calculate the",
     "[peer_reviewer @ 2026-07-17T09:56] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The assistant is the peer_reviewer agent. Must answer ",
     "[frontend_design @ 2026-07-17T09:56] I'm currently refactoring the Bloomberg\u2011dark theme UI in\u202fsrc",
-    "[token_monitor @ 2026-07-17T09:56] I am actively scanning system resource usage via thread counts to detect API call inefficiencies and will post optimization suggestions to the team ch"
+    "[token_monitor @ 2026-07-17T09:56] I am actively scanning system resource usage via thread counts to detect API call inefficiencies and will post optimization suggestions to the team ch",
+    "[continuous_improver @ 2026-07-17T10:17] strategy_logic on test/unit/test_bot_market_types.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T10:17] strategy_logic on strategies/manual/rsi_macd.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T10:17] strategy_logic on strategies/ml_enhanced/ml_momentum.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T10:17] strategy_logic on ml/features/technical.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T10:17] strategy_logic on execution/vwap.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -3057,6 +3057,12 @@
       "reason": "syntax check failed",
       "improvement_type": "error_handling",
       "timestamp": "2026-07-09T13:01:55.668088+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/hmm_regime.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-07-17T10:17:16.631323+00:00"
     }
   ],
   "improvement_stats": {
@@ -3086,9 +3092,9 @@
       "test_pass": 10
     },
     "strategy_logic": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     },
     "schemas": {
       "successes": 5,
