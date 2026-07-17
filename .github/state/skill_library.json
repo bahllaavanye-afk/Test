@@ -199,8 +199,11 @@
     "Test DNS resolution",
     "Check disk space",
     "Log trade timeouts",
-    "Test queue lengths"
+    "Test queue lengths",
+    "monitoring on strategies/manual/intraday_seasonality.py: success \u2014 tests green",
+    "monitoring on execution/vwap.py: success \u2014 tests green",
+    "monitoring on risk/portfolio_optimizer.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-17T22:13:18.769894+00:00",
+  "last_updated": "2026-07-17T23:22:35.544352+00:00",
   "total": 200
 }
