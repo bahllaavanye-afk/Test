@@ -199,8 +199,13 @@
     "Test database connections",
     "Test SSL certificates",
     "Test DNS resolution",
-    "Check disk space"
+    "Check disk space",
+    "schemas on comparison/benchmarks.py: success \u2014 tests green",
+    "schemas on api/v1/integrations.py: success \u2014 tests green",
+    "schemas on test/unit/test_llm_cost_policy.py: success \u2014 tests green",
+    "schemas on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "schemas on risk/hrp.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-17T19:01:35.965923+00:00",
+  "last_updated": "2026-07-17T19:03:18.101148+00:00",
   "total": 200
 }
