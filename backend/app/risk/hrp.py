@@ -15,27 +15,26 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from scipy.cluster.hierarchy import linkage, leaves_list
+from scipy.spatial.distance import squareform
 
 from app.utils.logging import logger
-from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
-from scipy.spatial.distance import squareform
 
 
 def _corr_to_distance(corr: pd.DataFrame) -> np.ndarray:
-    """Convert correlation matrix to distance matrix: d = sqrt(0.5*(1-rho))."""
+    """Convert correlation matrix to distance matrix: d = sqrt(0.5*(1‑rho))."""
     dist = np.sqrt(0.5 * (1.0 - corr.values))
     np.fill_diagonal(dist, 0.0)
     return dist
 
 
 def _get_quasi_diag(link: np.ndarray) -> list[int]:
-    """Sort clustered items by the dendrogram leaf order (quasi-diagonalisation)."""
-    root, _ = to_tree(link, rd=True)
+    """Return the leaf order from the hierarchical clustering dendrogram."""
     return leaves_list(link).tolist()
 
 
 def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
-    """Minimum-variance portfolio variance for a sub-cluster."""
+    """Minimum‑variance portfolio variance for a sub‑cluster."""
     sub_cov = cov.iloc[items, items].values
     n = len(items)
     if n == 1:
@@ -52,10 +51,10 @@ def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
 
     while items_to_bisect:
         items_to_bisect = [
-            i[j:k]
-            for i in items_to_bisect
-            for j, k in ((0, len(i) // 2), (len(i) // 2, len(i)))
-            if len(i) > 1
+            segment[j:k]
+            for segment in items_to_bisect
+            for j, k in ((0, len(segment) // 2), (len(segment) // 2, len(segment)))
+            if len(segment) > 1
         ]
         for i in range(0, len(items_to_bisect), 2):
             if i + 1 >= len(items_to_bisect):
@@ -98,13 +97,12 @@ class HRPOptimizer:
         if n < 2 or len(returns) < 10:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
-        # Drop columns with all-NaN and fill remaining NaN with 0
+        # Drop columns with all‑NaN and fill remaining NaN with 0
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
         if returns_clean.shape[1] < 2:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         symbols_clean = list(returns_clean.columns)
-        n_clean = len(symbols_clean)
 
         try:
             corr = returns_clean.corr().clip(-0.9999, 0.9999)
@@ -119,7 +117,7 @@ class HRPOptimizer:
             # sorted_items contains indices into symbols_clean
             weights_raw = _recursive_bisect(cov, sorted_items)
 
-            # Re-index back to original symbols
+            # Re‑index back to original symbols
             result = pd.Series(0.0, index=symbols)
             for idx, sym in enumerate(symbols_clean):
                 if idx in weights_raw.index:
@@ -135,7 +133,7 @@ class HRPOptimizer:
             return result
 
         except Exception as exc:  # noqa: BLE001
-            # Silently degrading the optimizer to equal weights hid real input
-            # problems (bad covariance, NaNs) — say so when it happens.
-            logger.warning("HRP optimization failed — falling back to equal weights (%s)", exc)
+            logger.warning(
+                "HRP optimization failed — falling back to equal weights (%s)", exc
+            )
             return pd.Series(1.0 / n, index=symbols)
