@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784327444.8952518,
+    "last_updated": 1784331245.152558,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,8 +151,8 @@
       "ABT"
     ],
     "risk_flags": [],
-    "risk_status": "normal",
-    "last_brain_update": 1784327444.8943574
+    "risk_status": "alert",
+    "last_brain_update": 1784331245.1516752
   },
   "episodic": [
     {
@@ -1588,6 +1588,41 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784327441.3244014
+    },
+    {
+      "lesson": "Upgrade Vercel plan to Pro to remove the 100 deployments per day limit and prevent blocking of deployments.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784331244.013172
+    },
+    {
+      "lesson": "Investigate and fix the root cause of repeated auto-fix failures to reduce manual intervention and deployment errors.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784331244.018378
+    },
+    {
+      "lesson": "Implement a deployment rate limiter or queuing mechanism to stay within free tier limits while maintaining workflow.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784331244.022143
+    },
+    {
+      "lesson": "Add monitoring and alerting for deployment failures and auto-fix errors to enable rapid response.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784331244.0259564
+    },
+    {
+      "lesson": "Review and improve the auto-fix patch generation logic to handle conflicts and edge cases more robustly.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784331244.0296907
     }
   ],
   "github_insights": [
@@ -2030,6 +2065,11 @@
       "summary": "The deployment failed due to resource limits, with an error suggesting retrying after 24 hours, and an automated fix attempt also failed because it could not apply a patch to the file.",
       "item_count": 20,
       "ts": 1784327444.8855932
+    },
+    {
+      "summary": "The deployment failed due to resource limits, and automated fixes were unsuccessful.",
+      "item_count": 20,
+      "ts": 1784331245.1427934
     }
   ],
   "experiment_results": [
