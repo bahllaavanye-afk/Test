@@ -9,11 +9,27 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Sequence
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+class FactorExposureError(Exception):
+    """Base class for all factor‑exposure related errors."""
+
+
+class InsufficientDataError(FactorExposureError):
+    """Raised when not enough data points are supplied for regression."""
+
+
+class RegressionMatrixError(FactorExposureError):
+    """Raised when the regression design matrix cannot be built."""
+
+
+class RegressionComputationError(FactorExposureError):
+    """Raised when the OLS regression fails due to linear‑algebra issues."""
 
 
 @dataclass
@@ -95,6 +111,37 @@ def _interpret(fe: FactorExposure) -> str:
     return ", ".join(parts) if parts else "Balanced factor exposure"
 
 
+def _validate_series(name: str, series: Sequence[float]) -> np.ndarray:
+    """Validate that a series is a 1‑dimensional numeric sequence.
+
+    Parameters
+    ----------
+    name : str
+        Identifier used for logging.
+    series : Sequence[float]
+        Input series to validate.
+
+    Returns
+    -------
+    np.ndarray
+        The validated series as a NumPy array.
+
+    Raises
+    ------
+    TypeError
+        If the input is not a sequence of numbers.
+    """
+    if not isinstance(series, (list, tuple, np.ndarray)):
+        raise TypeError(f"{name} must be a list, tuple, or np.ndarray")
+    try:
+        arr = np.array(series, dtype=float)
+        if arr.ndim != 1:
+            raise ValueError(f"{name} must be one‑dimensional")
+        return arr
+    except Exception as e:
+        raise TypeError(f"{name} contains non‑numeric data: {e}") from e
+
+
 def compute_factor_exposure(
     portfolio_returns: List[float],
     spy_returns: List[float],
@@ -126,39 +173,36 @@ def compute_factor_exposure(
     FactorExposure
         The regression coefficients and diagnostics wrapped in a ``FactorExposure`` instance.
     """
-    n = min(len(portfolio_returns), len(spy_returns))
-    if n < 20:
-        logger.warning(
-            "Insufficient data for factor exposure calculation",
-            extra={"required_min": 20, "available": n},
-        )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
-
     try:
-        y = np.array(portfolio_returns[-n:], dtype=float)
-        X_cols = [np.ones(n, dtype=float), np.array(spy_returns[-n:], dtype=float)]
+        # Basic validation
+        y = _validate_series("portfolio_returns", portfolio_returns)
+        spy = _validate_series("spy_returns", spy_returns)
+
+        n = min(len(y), len(spy))
+        if n < 20:
+            raise InsufficientDataError(f"Only {n} data points available; need at least 20")
+
+        # Build design matrix
+        X_cols = [np.ones(n, dtype=float), spy[-n:]]
         col_names = ["alpha", "market"]
 
-        if momentum_factor and len(momentum_factor) >= n:
-            X_cols.append(np.array(momentum_factor[-n:], dtype=float))
-            col_names.append("momentum")
-        if low_vol_factor and len(low_vol_factor) >= n:
-            X_cols.append(np.array(low_vol_factor[-n:], dtype=float))
-            col_names.append("low_vol")
+        if momentum_factor is not None:
+            momentum = _validate_series("momentum_factor", momentum_factor)
+            if len(momentum) >= n:
+                X_cols.append(momentum[-n:])
+                col_names.append("momentum")
+
+        if low_vol_factor is not None:
+            low_vol = _validate_series("low_vol_factor", low_vol_factor)
+            if len(low_vol) >= n:
+                X_cols.append(low_vol[-n:])
+                col_names.append("low_vol")
 
         X = np.column_stack(X_cols)
-    except (ValueError, TypeError) as e:
-        logger.error(
-            "Failed to construct regression matrices",
-            extra={"error": str(e), "n": n, "col_names": col_names},
+    except InsufficientDataError as e:
+        logger.warning(
+            "Insufficient data for factor exposure calculation",
+            extra={"required_min": 20, "available": n if 'n' in locals() else 0, "error": str(e)},
         )
         return FactorExposure(
             market_beta=1.0,
@@ -169,6 +213,19 @@ def compute_factor_exposure(
             alpha_annualized=0.0,
             tracking_error=0.02,
         )
+    except (TypeError, ValueError) as e:
+        logger.error(
+            "Invalid input data for factor exposure",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
+        raise RegressionMatrixError("Failed to validate input series") from e
+    except Exception as e:
+        logger.exception(
+            "Unexpected error during input validation",
+            extra={"error": str(e)},
+        )
+        raise RegressionMatrixError("Unexpected validation error") from e
 
     try:
         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
@@ -177,29 +234,13 @@ def compute_factor_exposure(
             "Linear algebra error during OLS regression",
             extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
         )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        raise RegressionComputationError("OLS regression failed") from e
     except Exception as e:
         logger.exception(
             "Unexpected error during factor exposure regression",
             extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
         )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
+        raise RegressionComputationError("Unexpected regression error") from e
 
     alpha_daily = float(coeffs[0])
     market_beta = float(coeffs[1])
