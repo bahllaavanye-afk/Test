@@ -70,11 +70,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
@@ -92,3 +94,107 @@ class StrategyComparisonEngine:
             is_significant=(p_val < 0.05),
             winner=winner,
         )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge cases
+# ---------------------------------------------------------------------------
+import unittest
+from unittest.mock import AsyncMock, patch
+from datetime import datetime, timedelta
+
+
+class DummyMetrics:
+    """Simple stand‑in for BacktestMetrics used in tests."""
+
+    def __init__(self, sharpe: float, equity_curve: list[dict]):
+        self.sharpe = sharpe
+        self.equity_curve = equity_curve
+
+
+class TestStrategyComparisonEngine(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.engine = StrategyComparisonEngine()
+        self.start_date = date(2023, 1, 1)
+        self.end_date = date(2023, 1, 31)
+        # Minimal signal series – content irrelevant due to mocking
+        self.manual_signals = pd.Series([1, 0, 1])
+        self.ml_signals = pd.Series([0, 1, 0])
+        self.prices = pd.Series([100, 101, 102])
+
+    async def _run_engine(self, manual_metrics, ml_metrics, mock_ttest=None):
+        """Helper to patch dependencies and execute run_comparison."""
+        async_fetch = AsyncMock(return_value={"dummy": "benchmark"})
+        with patch("app.backtest.engine.run_backtest") as mock_run_backtest, \
+                patch("app.comparison.benchmarks.fetch_benchmark_curves", async_fetch), \
+                patch("app.comparison.benchmarks.get_benchmark_stats", return_value={"dummy": "stats"}):
+            mock_run_backtest.side_effect = [manual_metrics, ml_metrics]
+            if mock_ttest:
+                with patch.object(stats, "ttest_ind", mock_ttest):
+                    result = await self.engine.run_comparison(
+                        self.manual_signals,
+                        self.ml_signals,
+                        self.prices,
+                        "test_strategy",
+                        "TEST",
+                        "1d",
+                        self.start_date,
+                        self.end_date,
+                    )
+            else:
+                result = await self.engine.run_comparison(
+                    self.manual_signals,
+                    self.ml_signals,
+                    self.prices,
+                    "test_strategy",
+                    "TEST",
+                    "1d",
+                    self.start_date,
+                    self.end_date,
+                )
+        return result
+
+    async def test_ttest_fallback_when_insufficient_data(self):
+        """When return series length <= 10, t‑stat should be 0 and p‑value 1."""
+        # Equity curve of length 5 → pct_change yields 4 points (<10)
+        equity_curve = [{"equity": v} for v in [100, 105, 110, 115, 120]]
+        manual_metrics = DummyMetrics(sharpe=1.0, equity_curve=equity_curve)
+        ml_metrics = DummyMetrics(sharpe=1.2, equity_curve=equity_curve)
+
+        result = await self._run_engine(manual_metrics, ml_metrics)
+
+        self.assertEqual(result.t_statistic, 0.0)
+        self.assertEqual(result.p_value, 1.0)
+        self.assertFalse(result.is_significant)
+
+    async def test_winner_neither_when_improvement_below_threshold(self):
+        """If Sharpe improvement is less than 0.1, winner should be 'neither'."""
+        # Use longer equity curve to bypass t‑test length check
+        dates = pd.date_range(self.start_date, periods=15, freq="D")
+        equity_curve = [{"equity": 100 + i} for i in range(15)]
+        manual_metrics = DummyMetrics(sharpe=1.00, equity_curve=equity_curve)
+        ml_metrics = DummyMetrics(sharpe=1.05, equity_curve=equity_curve)  # diff = 0.05
+
+        result = await self._run_engine(manual_metrics, ml_metrics)
+
+        self.assertAlmostEqual(result.ml_improvement_sharpe, 0.05, places=4)
+        self.assertEqual(result.winner, "neither")
+
+    async def test_significance_flag_when_pvalue_below_threshold(self):
+        """If p‑value < 0.05, is_significant should be True and winner reflect Sharpe."""
+        equity_curve = [{"equity": 100 + i} for i in range(20)]
+        manual_metrics = DummyMetrics(sharpe=0.8, equity_curve=equity_curve)
+        ml_metrics = DummyMetrics(sharpe=1.2, equity_curve=equity_curve)
+
+        # Mock t‑test to return a low p‑value
+        mock_ttest = lambda a, b: (0.5, 0.01)
+
+        result = await self._run_engine(manual_metrics, ml_metrics, mock_ttest=mock_ttest)
+
+        self.assertTrue(result.is_significant)
+        self.assertAlmostEqual(result.p_value, 0.01, places=6)
+        self.assertEqual(result.winner, "ml")
+
+
+if __name__ == "__main__":
+    unittest.main()
