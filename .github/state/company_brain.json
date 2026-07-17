@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784316079.1492305,
+    "last_updated": 1784316694.2492461,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784311303.3046987
+    "last_brain_update": 1784316694.248428
   },
   "episodic": [
     {
@@ -1896,6 +1896,11 @@
       "summary": "The auto-fix failed because the patch could not be applied to the file, as indicated by two repeated error messages.",
       "item_count": 20,
       "ts": 1784311303.298286
+    },
+    {
+      "summary": "Multiple auto-fix attempts failed because the patches could not be applied to the file.",
+      "item_count": 20,
+      "ts": 1784316694.2378626
     }
   ],
   "experiment_results": [
