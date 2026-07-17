@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784323940.1067402,
+    "last_updated": 1784327444.8952518,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784323940.1059012
+    "last_brain_update": 1784327444.8943574
   },
   "episodic": [
     {
@@ -1560,6 +1560,34 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784323929.1618223
+    },
+    {
+      "lesson": "Deployment blocked by free-tier daily limit (100 deploys). Upgrade to Vercel Pro or implement deployment batching to avoid rate limiting.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784327441.31206
+    },
+    {
+      "lesson": "Auto-fix failed because patch exceeded 50-line limit. Break changes into smaller, incremental patches or increase CI/CD patch size threshold.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784327441.3169444
+    },
+    {
+      "lesson": "Auto-fix skipped for Symbol Scout feature due to complexity and lack of context. Manual implementation required; improve feature specification with code references and smaller sub-tasks.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784327441.3206646
+    },
+    {
+      "lesson": "Validation failure in auto-fix (size limit) indicates need for stricter CI/CD checks on patch size before applying auto-fixes.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784327441.3244014
     }
   ],
   "github_insights": [
@@ -1997,6 +2025,11 @@
       "summary": "An automated bot failed to apply a patch to a file, and the auto-fix was aborted because the proposed changes (58 lines) exceeded the 50-line limit.",
       "item_count": 20,
       "ts": 1784323940.0971048
+    },
+    {
+      "summary": "The deployment failed due to resource limits, with an error suggesting retrying after 24 hours, and an automated fix attempt also failed because it could not apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784327444.8855932
     }
   ],
   "experiment_results": [
