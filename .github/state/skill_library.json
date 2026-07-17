@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Refactor trade executor",
-    "Check trading halt",
-    "Monitor CPU usage",
-    "strategy_logic on risk/circuit_breaker.py: success \u2014 tests green",
-    "Monitor API uptime",
-    "Validate algo params",
     "Test API rate limits",
     "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Review agent memory",
@@ -199,8 +193,14 @@
     "Test thread safety",
     "Check file paths",
     "Scan for deadlock",
-    "Check system clocks"
+    "Check system clocks",
+    "Validate user input",
+    "Log system events",
+    "Monitor queue size",
+    "Retrain models",
+    "Monitor drift",
+    "Prioritize thread safety"
   ],
-  "last_updated": "2026-07-16T23:55:42.318233+00:00",
+  "last_updated": "2026-07-17T02:28:48.106877+00:00",
   "total": 200
 }
