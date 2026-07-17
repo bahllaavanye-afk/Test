@@ -36,12 +36,22 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
     tick_interval_seconds = 86_400.0  # daily rebalance
 
     # Alpaca crypto symbols for the tracked universe (spot, no perps needed)
-    UNIVERSE = ["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "LINK/USD",
-                "DOT/USD", "MATIC/USD", "ALGO/USD", "UNI/USD", "AAVE/USD"]
+    UNIVERSE = [
+        "BTC/USD",
+        "ETH/USD",
+        "SOL/USD",
+        "AVAX/USD",
+        "LINK/USD",
+        "DOT/USD",
+        "MATIC/USD",
+        "ALGO/USD",
+        "UNI/USD",
+        "AAVE/USD",
+    ]
 
-    TARGET_VOL = 0.40     # 40% annualized vol target
-    MIN_SIGNAL = 0.30     # minimum composite signal to enter (0–1 scale)
-    STOP_MULT  = 3.0      # stop loss as multiple of daily ATR
+    TARGET_VOL = 0.40  # 40% annualized vol target
+    MIN_SIGNAL = 0.30  # minimum composite signal to enter (0–1 scale)
+    STOP_MULT = 3.0  # stop loss as multiple of daily ATR
 
     DEFAULT_PARAMS = {
         "fast_ema": 21,
@@ -61,6 +71,22 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         self.target_vol = float(p.get("target_vol", self.TARGET_VOL))
         self.min_signal = float(p.get("min_signal", self.MIN_SIGNAL))
 
+    @staticmethod
+    def _validate_dataframe(df: pd.DataFrame | None, min_rows: int = 260) -> bool:
+        """Return True if df is usable for calculations."""
+        if df is None or not isinstance(df, pd.DataFrame):
+            return False
+        if df.empty:
+            return False
+        if "close" not in df.columns:
+            return False
+        if len(df) < min_rows:
+            return False
+        # Ensure there is at least some non‑null close data
+        if df["close"].dropna().empty:
+            return False
+        return True
+
     def description(self) -> str:
         return (
             "Multi-horizon time-series momentum on crypto with adaptive vol targeting. "
@@ -69,9 +95,9 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        false_series = pd.Series(False, index=df.index)
-
-        if "close" not in df.columns or len(df) < 260:
+        # Guard against None / malformed inputs
+        if not self._validate_dataframe(df):
+            false_series = pd.Series(False, index=df.index if isinstance(df, pd.DataFrame) else [])
             return BacktestSignals(
                 entries=false_series,
                 exits=false_series,
@@ -83,8 +109,8 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         log_ret = np.log(close / close.shift(1))
 
         # ── Multi-horizon TSMOM signals ──────────────────────────────────────
-        mom_21  = (close / close.shift(21)  - 1).rank(pct=True)  # 1M
-        mom_63  = (close / close.shift(63)  - 1).rank(pct=True)  # 3M
+        mom_21 = (close / close.shift(21) - 1).rank(pct=True)  # 1M
+        mom_63 = (close / close.shift(63) - 1).rank(pct=True)  # 3M
         mom_252 = (close / close.shift(252) - 1).rank(pct=True)  # 12M
 
         # Equal-weight composite → maps to [-1, 1]
@@ -100,10 +126,10 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
         # shift(1): yesterday's signal determines today's position
         sig_prev = sized_signal.shift(1)
 
-        entries       = (sig_prev > self.min_signal).fillna(False).astype(bool)
-        exits         = (sig_prev <= 0.0).fillna(True).astype(bool)
+        entries = (sig_prev > self.min_signal).fillna(False).astype(bool)
+        exits = (sig_prev <= 0.0).fillna(True).astype(bool)
         short_entries = (sig_prev < -self.min_signal).fillna(False).astype(bool)
-        short_exits   = (sig_prev >= 0.0).fillna(True).astype(bool)
+        short_exits = (sig_prev >= 0.0).fillna(True).astype(bool)
 
         return BacktestSignals(
             entries=entries,
@@ -114,23 +140,32 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
 
     async def analyze(self, df: pd.DataFrame, symbol: str) -> Signal | None:
         """Live signal — uses same logic as backtest_signals on recent bars."""
-        if "close" not in df.columns or len(df) < 260:
+        if not self._validate_dataframe(df, min_rows=260):
             return None
 
         close = df["close"].astype(float)
         log_ret = np.log(close / close.shift(1))
 
-        mom_21  = (close.iloc[-1] / close.iloc[-22]  - 1) if len(close) > 22  else 0.0
-        mom_63  = (close.iloc[-1] / close.iloc[-64]  - 1) if len(close) > 64  else 0.0
-        mom_252 = (close.iloc[-1] / close.iloc[-253] - 1) if len(close) > 253 else 0.0
+        # Ensure enough data for each horizon; use >= to avoid off‑by‑one errors
+        mom_21 = (
+            (close.iloc[-1] / close.iloc[-22] - 1) if len(close) >= 22 else 0.0
+        )
+        mom_63 = (
+            (close.iloc[-1] / close.iloc[-64] - 1) if len(close) >= 64 else 0.0
+        )
+        mom_252 = (
+            (close.iloc[-1] / close.iloc[-253] - 1) if len(close) >= 253 else 0.0
+        )
 
-        # Rank using last 252-bar cross-section
-        moms = [mom_21, mom_63, mom_252]
-        composite_raw = sum(moms) / 3.0
+        # Composite signal (soft‑ranked)
+        composite_raw = (mom_21 + mom_63 + mom_252) / 3.0
         composite = (np.tanh(composite_raw * 5) + 1) / 2  # soft [0,1]
         raw_signal = composite * 2 - 1
 
-        rv_21 = log_ret.iloc[-21:].std() * np.sqrt(365) if len(log_ret) >= 21 else 0.40
+        # Volatility scaling
+        rv_21 = (
+            log_ret.iloc[-21:].std() * np.sqrt(365) if len(log_ret) >= 21 else self.target_vol
+        )
         vol_scalar = min(self.target_vol / max(rv_21, 0.05), 3.0)
         sized_signal = raw_signal * vol_scalar
 
@@ -151,5 +186,9 @@ class CryptoAdaptiveTrendStrategy(AbstractStrategy):
             target_price=current_price,
             stop_loss=current_price * (0.85 if side == "buy" else 1.15),
             take_profit=None,
-            metadata={"composite_signal": round(sized_signal, 4), "rv_21d": round(rv_21, 4), "order_type": "market"},
+            metadata={
+                "composite_signal": round(sized_signal, 4),
+                "rv_21d": round(rv_21, 4),
+                "order_type": "market",
+            },
         )
