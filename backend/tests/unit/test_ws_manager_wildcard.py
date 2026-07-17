@@ -21,42 +21,57 @@ class _FakeWS:
         self.sent.append(message)
 
 
-@pytest.mark.asyncio
-async def test_wildcard_subscriber_receives_concrete_topic():
-    m = ConnectionManager()
-    all_sub, one_sub = _FakeWS(), _FakeWS()
-    await m.connect(all_sub, "prices:*")
-    await m.connect(one_sub, "prices:AAPL")
+@pytest.fixture
+async def manager() -> ConnectionManager:
+    """Provide a fresh ConnectionManager for each test."""
+    return ConnectionManager()
 
-    await m.broadcast("prices:AAPL", {"symbol": "AAPL", "last": 1.0})
+
+@pytest.fixture
+def fake_ws() -> _FakeWS:
+    """Factory for a fresh _FakeWS instance."""
+    return _FakeWS()
+
+
+@pytest.fixture
+def dead_ws() -> _FakeWS:
+    """Factory for a dead WebSocket that raises on send."""
+    class _Dead(_FakeWS):
+        async def send_text(self, message: str) -> None:
+            raise RuntimeError("connection closed")
+    return _Dead()
+
+
+@pytest.mark.asyncio
+async def test_wildcard_subscriber_receives_concrete_topic(manager: ConnectionManager, fake_ws):
+    all_sub = fake_ws()
+    one_sub = fake_ws()
+    await manager.connect(all_sub, "prices:*")
+    await manager.connect(one_sub, "prices:AAPL")
+
+    await manager.broadcast("prices:AAPL", {"symbol": "AAPL", "last": 1.0})
     assert len(all_sub.sent) == 1, "wildcard subscriber must receive prices:AAPL"
     assert len(one_sub.sent) == 1, "exact-topic subscriber must still receive its symbol"
 
     # A different symbol reaches the wildcard, not the AAPL-only socket.
-    await m.broadcast("prices:TSLA", {"symbol": "TSLA", "last": 2.0})
+    await manager.broadcast("prices:TSLA", {"symbol": "TSLA", "last": 2.0})
     assert len(all_sub.sent) == 2
     assert len(one_sub.sent) == 1
 
 
 @pytest.mark.asyncio
-async def test_wildcard_is_prefix_scoped():
+async def test_wildcard_is_prefix_scoped(manager: ConnectionManager, fake_ws):
     """A ``prices:*`` subscriber must NOT receive a different prefix's broadcasts."""
-    m = ConnectionManager()
-    price_sub = _FakeWS()
-    await m.connect(price_sub, "prices:*")
-    await m.broadcast("alerts:risk", {"msg": "VaR breach"})
+    price_sub = fake_ws()
+    await manager.connect(price_sub, "prices:*")
+    await manager.broadcast("alerts:risk", {"msg": "VaR breach"})
     assert price_sub.sent == []
 
 
 @pytest.mark.asyncio
-async def test_dead_socket_is_purged():
-    class _Dead(_FakeWS):
-        async def send_text(self, message: str) -> None:
-            raise RuntimeError("connection closed")
-
-    m = ConnectionManager()
-    dead = _Dead()
-    await m.connect(dead, "prices:*")
-    await m.broadcast("prices:AAPL", {"symbol": "AAPL"})
+async def test_dead_socket_is_purged(manager: ConnectionManager, dead_ws):
+    dead = dead_ws()
+    await manager.connect(dead, "prices:*")
+    await manager.broadcast("prices:AAPL", {"symbol": "AAPL"})
     # Purged from every topic set so it is not retried forever.
-    assert all(dead not in s for s in m._connections.values())
+    assert all(dead not in s for s in manager._connections.values())
