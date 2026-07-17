@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Iterable, List
 
 import pandas as pd
 
@@ -25,7 +26,7 @@ class StressScenario:
 
 
 # Canonical crisis windows used by institutional risk teams
-STRESS_SCENARIOS: list[StressScenario] = [
+STRESS_SCENARIOS: List[StressScenario] = [
     StressScenario(
         "gfc",
         "GFC 2008",
@@ -99,6 +100,56 @@ def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timesta
         return series.loc[mask]
 
 
+def _validate_series(name: str, series: pd.Series | None, allow_none: bool = False) -> None:
+    """Validate that an object is a pandas Series with a DatetimeIndex."""
+    if series is None:
+        if not allow_none:
+            raise ValueError(f"'{name}' must be a pandas Series, not None.")
+        return
+    if not isinstance(series, pd.Series):
+        raise ValueError(f"'{name}' must be a pandas Series, got {type(series)}.")
+    if not isinstance(series.index, (pd.DatetimeIndex, pd.PeriodIndex)):
+        raise ValueError(f"'{name}' index must be a DatetimeIndex or PeriodIndex, got {type(series.index)}.")
+    if series.empty:
+        raise ValueError(f"'{name}' Series must contain at least one data point.")
+
+
+def _validate_positive_number(name: str, value: float, allow_zero: bool = False) -> None:
+    """Validate that a numeric value is positive (or non‑negative if allowed)."""
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"'{name}' must be a number, got {type(value)}.")
+    if allow_zero:
+        if value < 0:
+            raise ValueError(f"'{name}' must be non‑negative, got {value}.")
+    else:
+        if value <= 0:
+            raise ValueError(f"'{name}' must be positive, got {value}.")
+
+
+def _validate_percentage(name: str, value: float) -> None:
+    """Validate that a percentage is between 0 and 1 inclusive."""
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"'{name}' must be a number, got {type(value)}.")
+    if not (0 <= value <= 1):
+        raise ValueError(f"'{name}' must be between 0 and 1 inclusive, got {value}.")
+
+
+def _validate_scenarios(scenarios: Iterable[StressScenario] | None) -> List[StressScenario]:
+    """Validate and normalise the scenarios argument."""
+    if scenarios is None:
+        return STRESS_SCENARIOS
+    if not isinstance(scenarios, Iterable):
+        raise ValueError("scenarios must be an iterable of StressScenario objects.")
+    validated: List[StressScenario] = []
+    for s in scenarios:
+        if not isinstance(s, StressScenario):
+            raise ValueError(f"All items in scenarios must be StressScenario instances, got {type(s)}.")
+        if s.start > s.end:
+            raise ValueError(f"Scenario '{s.name}' has start date after end date.")
+        validated.append(s)
+    return validated
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -115,15 +166,23 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
-    if scenarios is None:
-        scenarios = STRESS_SCENARIOS
+    # Input validation
+    _validate_series("signals", signals)
+    _validate_series("prices", prices)
+    _validate_series("opens", opens, allow_none=True)
+    _validate_series("volume", volume, allow_none=True)
+    _validate_positive_number("initial_equity", initial_equity)
+    _validate_percentage("commission_pct", commission_pct)
+    _validate_percentage("slippage_pct", slippage_pct)
+
+    validated_scenarios = _validate_scenarios(scenarios)
 
     results: list[StressResult] = []
 
     # Convert once to pandas Timestamp for efficient comparison
     price_index = prices.index
 
-    for scenario in scenarios:
+    for scenario in validated_scenarios:
         start_ts = pd.Timestamp(scenario.start)
         end_ts = pd.Timestamp(scenario.end)
 
@@ -184,6 +243,12 @@ def stress_summary(results: list[StressResult]) -> dict:
     Returns per-scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
+    if not isinstance(results, list):
+        raise ValueError("results must be a list of StressResult objects.")
+    for idx, r in enumerate(results):
+        if not isinstance(r, StressResult):
+            raise ValueError(f"Item at index {idx} in results is not a StressResult, got {type(r)}.")
+
     out: dict = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
