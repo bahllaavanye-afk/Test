@@ -10,6 +10,7 @@ from typing import Dict, List
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.utils.logging import logger
@@ -36,6 +37,98 @@ def _alpaca_headers() -> dict:
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
+
+
+class BenchmarkPoint(BaseModel):
+    """Single point of a benchmark equity curve."""
+
+    date: date = Field(
+        ...,
+        description="Date of the observation (ISO 8601 format).",
+        example="2023-01-02",
+    )
+    value: float = Field(
+        ...,
+        description="Benchmark value normalized to 100 at the start date.",
+        example=102.45,
+        ge=0,
+    )
+
+    @validator("date")
+    def date_not_in_future(cls, v: date) -> date:
+        """Ensure the date is not in the future."""
+        if v > datetime.now(timezone.utc).date():
+            raise ValueError("date cannot be in the future")
+        return v
+
+
+class BenchmarkSeries(BaseModel):
+    """Series of benchmark points for a single ticker."""
+
+    ticker: str = Field(
+        ...,
+        description="Ticker symbol representing the benchmark.",
+        example="SPY",
+    )
+    points: List[BenchmarkPoint] = Field(
+        ...,
+        description="Chronologically ordered list of benchmark points.",
+    )
+
+    @validator("points")
+    def points_sorted(cls, v: List[BenchmarkPoint]) -> List[BenchmarkPoint]:
+        """Ensure points are sorted by date."""
+        if any(v[i].date > v[i + 1].date for i in range(len(v) - 1)):
+            raise ValueError("benchmark points must be sorted by date")
+        return v
+
+
+class BenchmarkResponse(BaseModel):
+    """Full benchmark response mapping tickers to their equity curves."""
+
+    data: Dict[str, List[BenchmarkPoint]] = Field(
+        ...,
+        description="Mapping from ticker symbol to a list of benchmark points.",
+        example={
+            "SPY": [
+                {"date": "2023-01-02", "value": 100.0},
+                {"date": "2023-01-03", "value": 100.45},
+            ]
+        },
+    )
+
+
+class BenchmarkStatsItem(BaseModel):
+    """Static reference statistics for a benchmark."""
+
+    name: str = Field(..., description="Human‑readable name of the benchmark.", example="S&P 500")
+    annual_return: float = Field(
+        ...,
+        description="Annualized return expressed as a decimal.",
+        example=0.10,
+        ge=-1,
+        le=10,
+    )
+    sharpe: float = Field(
+        ...,
+        description="Sharpe ratio of the benchmark.",
+        example=0.47,
+    )
+    max_dd: float = Field(
+        ...,
+        description="Maximum drawdown expressed as a decimal (negative).",
+        example=-0.57,
+        le=0,
+    )
+
+
+class BenchmarkStatsResponse(BaseModel):
+    """Container for benchmark reference statistics."""
+
+    stats: Dict[str, BenchmarkStatsItem] = Field(
+        ...,
+        description="Mapping from ticker symbol to its static reference statistics.",
+    )
 
 
 async def _fetch_ticker_bars(
