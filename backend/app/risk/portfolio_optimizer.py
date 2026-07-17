@@ -10,6 +10,7 @@ Both optimizers rely only on SciPy and pandas; no external portfolio library is 
 
 from __future__ import annotations
 
+import time
 import numpy as np
 import pandas as pd
 import structlog
@@ -73,11 +74,20 @@ class CVaROptimizer:
             one.  If the optimisation fails or the input data are insufficient, equal
             weighting is returned as a safe fallback.
         """
+        start_time = time.time()
         symbols = list(returns.columns)
         n = len(symbols)
 
         # Basic sanity checks – fall back to equal weighting if data are too sparse.
         if n < 2 or len(returns) < 20:
+            duration = time.time() - start_time
+            logger.info(
+                "CVaROptimizer fallback: insufficient data",
+                method="cvar",
+                signal_count=n,
+                execution_time=duration,
+                reason="insufficient_assets_or_observations",
+            )
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         # Clean data: drop completely empty columns and replace remaining NaNs with zero.
@@ -142,14 +152,41 @@ class CVaROptimizer:
                 out = pd.Series(0.0, index=symbols)
                 for i, sym in enumerate(symbols_clean):
                     out[sym] = float(w[i])
+
+                # Compute optional metrics for logging.
+                duration = time.time() - start_time
+                portfolio_returns = returns_clean.values @ w
+                exp_return = float(portfolio_returns.mean())
+                cvar_value = -np.percentile(portfolio_returns, (1.0 - alpha) * 100)
+
+                logger.info(
+                    "CVaROptimizer completed",
+                    method="cvar",
+                    signal_count=n_clean,
+                    execution_time=duration,
+                    expected_return=exp_return,
+                    cvar=cvar_value,
+                )
                 return out
         except Exception as exc:  # pragma: no cover
+            duration = time.time() - start_time
             logger.warning(
                 "CVaROptimizer.optimize failed, falling back to equal weight",
+                method="cvar",
+                signal_count=n,
+                execution_time=duration,
                 error=str(exc),
             )
 
         # Fallback: equal weighting across the original symbols.
+        duration = time.time() - start_time
+        logger.info(
+            "CVaROptimizer fallback: optimisation failed",
+            method="cvar",
+            signal_count=n,
+            execution_time=duration,
+            reason="linprog_failure",
+        )
         return pd.Series(1.0 / n, index=symbols)
 
 
@@ -175,11 +212,23 @@ def optimize_portfolio(
     pd.Series
         Portfolio weights indexed by symbol and summing to one.
     """
+    start_time = time.time()
+    signal_count = len(returns.columns)
+
     if method == "cvar":
-        return CVaROptimizer(confidence=confidence).compute_weights(returns)
-    if method == "equal":
-        n = len(returns.columns)
-        return pd.Series(1.0 / n, index=returns.columns)
-    if method != "hrp":
-        raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
-    return HRPOptimizer().compute_weights(returns)
+        result = CVaROptimizer(confidence=confidence).compute_weights(returns)
+    elif method == "equal":
+        result = pd.Series(1.0 / signal_count, index=returns.columns)
+    else:
+        if method != "hrp":
+            raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
+        result = HRPOptimizer().compute_weights(returns)
+
+    duration = time.time() - start_time
+    logger.info(
+        "optimize_portfolio completed",
+        method=method,
+        signal_count=signal_count,
+        execution_time=duration,
+    )
+    return result
