@@ -1,8 +1,5 @@
 {
   "skills": [
-    "error_handling on risk/factor_exposure.py: success \u2014 tests green",
-    "Review thread safety",
-    "Scan for orphaned threads",
     "Here are three concise bullet points of the most important, actionable knowledge:",
     "Handle SSL errors",
     "**Low-latency optimization**: Currently binding the `src/strategies/predict.py` process to dedicated CPU cores as part of low-latency performance enhancement.",
@@ -199,8 +196,11 @@
     "Check thread timeouts",
     "Track config changes",
     "Refactor code for quality",
-    "Improve logging handling"
+    "Improve logging handling",
+    "Check data feed latency",
+    "Monitor GPU memory usage",
+    "Verify trade confirmation"
   ],
-  "last_updated": "2026-07-17T07:33:01.481612+00:00",
+  "last_updated": "2026-07-17T09:53:27.810650+00:00",
   "total": 200
 }
