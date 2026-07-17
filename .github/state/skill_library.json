@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Refactor memory logging",
-    "Validate API inputs",
     "**Peer Review**: The `batch.py` file under `backend/app` requires review for type hints implementation, specifically for potential exception handling improvements.",
     "Test DNS resolve",
     "* **Review and improve potential concurrent issues**: The `queue_length_validation` in `backend/app/skills/utilities.py` requires a priority review to mitigate potential issues.",
@@ -199,8 +197,10 @@
     "Test database connections",
     "Test SSL certificates",
     "Test DNS resolution",
-    "Check disk space"
+    "Check disk space",
+    "Log trade timeouts",
+    "Test queue lengths"
   ],
-  "last_updated": "2026-07-17T19:01:35.965923+00:00",
+  "last_updated": "2026-07-17T20:26:09.756880+00:00",
   "total": 200
 }
