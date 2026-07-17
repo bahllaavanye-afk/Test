@@ -6,6 +6,8 @@ from app.ml.inference import get_inference_service
 
 
 class MLBreakoutStrategy(AbstractStrategy):
+    """Combines a traditional breakout strategy with ML predictions."""
+
     name = "ml_breakout"
     display_name = "ML Breakout (Volume + Ensemble)"
     market_type = "equity"
@@ -18,20 +20,31 @@ class MLBreakoutStrategy(AbstractStrategy):
         self._base = BreakoutStrategy(params)
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Generate a signal, augmenting it with ML confidence when applicable."""
         base_signal = await self._base.analyze(data, symbol)
         if not base_signal:
             return None
+
         try:
             inference = get_inference_service()
             ml_result = await inference.predict(data, symbol)
-            if ml_result and ml_result["confidence"] > 0.65 and ml_result["prediction"] == "up":
-                base_signal.confidence = min(0.92, (base_signal.confidence + ml_result["confidence"]) / 2)
+            if (
+                ml_result
+                and ml_result["confidence"] > 0.65
+                and ml_result["prediction"] == "up"
+            ):
+                base_signal.confidence = min(
+                    0.92, (base_signal.confidence + ml_result["confidence"]) / 2
+                )
                 base_signal.strategy_name = self.name
                 base_signal.strategy_type = self.strategy_type
                 return base_signal
         except Exception:
+            # Preserve the base signal if ML inference fails.
             return base_signal
+
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        """Delegate backtesting to the underlying breakout strategy."""
         return self._base.backtest_signals(df)
