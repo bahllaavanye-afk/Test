@@ -13,12 +13,14 @@ Acklam approximation. Deterministic; fully unit-testable.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
 MULTIPLIER = 100        # options contract multiplier
 MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
+SQRT_252 = math.sqrt(252)
 
 
 def norm_cdf(x: float) -> float:
@@ -56,8 +58,9 @@ def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
     T = max(T, MIN_T)
     sigma = max(sigma, 1e-4)
-    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
-    d2 = d1 - sigma * math.sqrt(T)
+    sqrt_T = math.sqrt(T)
+    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * sqrt_T)
+    d2 = d1 - sigma * sqrt_T
     if option_type.startswith("c"):
         return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
     return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
@@ -66,7 +69,8 @@ def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
 def bs_delta(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
     T = max(T, MIN_T)
-    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
+    sqrt_T = math.sqrt(T)
+    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * sqrt_T)
     return norm_cdf(d1) if option_type.startswith("c") else norm_cdf(d1) - 1.0
 
 
@@ -111,11 +115,35 @@ def backtest_template(template: dict, closes: list[float],
     days_held = 0
     dte = max(int(action["legs"][0].get("dte", 30)), 0)
 
+    # Initialise rolling log‑return window (20 periods = 20 days)
+    ret_window = deque(maxlen=20)
+    sum_ret = 0.0
+    sum_sq_ret = 0.0
+    # Pre‑fill window using the first 20 returns (indices 1..20)
+    for i in range(1, 21):
+        r = math.log(closes[i] / closes[i - 1])
+        ret_window.append(r)
+        sum_ret += r
+        sum_sq_ret += r * r
+
     for i in range(21, len(closes)):
         S = closes[i]
-        rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
-        mean = sum(rets) / len(rets)
-        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
+
+        # Update rolling statistics with new return
+        new_ret = math.log(closes[i] / closes[i - 1])
+        if len(ret_window) == ret_window.maxlen:
+            old_ret = ret_window.popleft()
+            sum_ret -= old_ret
+            sum_sq_ret -= old_ret * old_ret
+        ret_window.append(new_ret)
+        sum_ret += new_ret
+        sum_sq_ret += new_ret * new_ret
+
+        n = len(ret_window)
+        mean = sum_ret / n
+        # Unbiased variance estimator
+        var = (sum_sq_ret - (sum_ret * sum_ret) / n) / (n - 1) if n > 1 else 0.0
+        hv = math.sqrt(var) * SQRT_252
         sigma = max(hv * IV_PREMIUM, 0.05)
 
         if pos is None:
@@ -126,7 +154,8 @@ def backtest_template(template: dict, closes: list[float],
                     K = float(lg["strike"])
                 else:
                     K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
+                pos.append(_Leg(+1 if lg["side"] == "buy" else -1,
+                                lg["option_type"], K,
                                 int(lg.get("ratio", 1))))
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
@@ -134,9 +163,15 @@ def backtest_template(template: dict, closes: list[float],
 
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
-        cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
-                                   else (l.strike - S), 0.0) for l in pos)
+        if T_rem > 0:
+            cur = _net_value(pos, S, T_rem, sigma)
+        else:
+            cur = sum(
+                l.sign * l.ratio *
+                max((S - l.strike) if l.option_type.startswith("c")
+                    else (l.strike - S), 0.0)
+                for l in pos
+            )
         pnl = (cur - entry_net) * MULTIPLIER
         base = max(abs(entry_net) * MULTIPLIER, 1.0)
 
