@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import unittest
 
 
 class OrderBookFeatures:
@@ -165,3 +166,48 @@ def add_microstructure_features(
 
 
 MICROSTRUCTURE_FEATURE_COLS = ["lob_imbalance", "spread_bps"]
+
+
+class TestOrderBookFeatures(unittest.TestCase):
+    """Edge‑case unit tests for OrderBookFeatures."""
+
+    def setUp(self) -> None:
+        self.features = OrderBookFeatures()
+
+    def test_compute_imbalance_empty_sides(self) -> None:
+        """Empty bid or ask side should yield zero imbalance."""
+        self.assertEqual(self.features.compute_imbalance([], [(100.0, 10.0)]), 0.0)
+        self.assertEqual(self.features.compute_imbalance([(99.5, 10.0)], []), 0.0)
+
+    def test_compute_imbalance_levels_exceed_available(self) -> None:
+        """When `levels` exceeds available depth, function should use all available entries."""
+        bids = [(100.0, 5.0), (99.5, 3.0)]
+        asks = [(100.5, 2.0), (101.0, 4.0)]
+        # bid_vol = 5+3 = 8, ask_vol = 2+4 = 6, imbalance = (8-6)/(8+6) = 2/14 = 0.142857...
+        expected = (8.0 - 6.0) / (8.0 + 6.0)
+        self.assertAlmostEqual(
+            self.features.compute_imbalance(bids, asks, levels=5), expected, places=7
+        )
+
+    def test_compute_spread_bps_invalid_inputs(self) -> None:
+        """Invalid price inputs (non‑positive or ask <= bid) should return zero."""
+        self.assertEqual(self.features.compute_spread_bps(0.0, 100.0), 0.0)
+        self.assertEqual(self.features.compute_spread_bps(100.0, -1.0), 0.0)
+        self.assertEqual(self.features.compute_spread_bps(100.0, 100.0), 0.0)
+        self.assertEqual(self.features.compute_spread_bps(101.0, 100.0), 0.0)
+
+    def test_compute_kyle_lambda_insufficient_data(self) -> None:
+        """Less than 5 observations should result in zero lambda."""
+        price_changes = np.array([0.01, -0.02, 0.015])
+        signed_volumes = np.array([100, -150, 200])
+        self.assertEqual(self.features.compute_kyle_lambda(price_changes, signed_volumes), 0.0)
+
+    def test_compute_kyle_lambda_zero_variance(self) -> None:
+        """When signed volume variance is near zero, lambda should be zero to avoid division errors."""
+        price_changes = np.array([0.01, -0.02, 0.015, 0.005, -0.01])
+        signed_volumes = np.array([100, 100, 100, 100, 100])  # zero variance
+        self.assertEqual(self.features.compute_kyle_lambda(price_changes, signed_volumes), 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
