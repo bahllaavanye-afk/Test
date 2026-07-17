@@ -21,12 +21,16 @@ Academic reference:
 """
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+logger = logging.getLogger(__name__)
 
 
 class IntradaySeasonality(AbstractStrategy):
@@ -56,6 +60,7 @@ class IntradaySeasonality(AbstractStrategy):
         self.secondary_start: int = int(p.get("secondary_start", self.DEFAULT_SECONDARY_START))
         self.secondary_end: int = int(p.get("secondary_end", self.DEFAULT_SECONDARY_END))
         self.secondary_hours: range = range(self.secondary_start, self.secondary_end)
+        self.signal_counter: int = 0
 
     def description(self) -> str:
         return (
@@ -74,6 +79,7 @@ class IntradaySeasonality(AbstractStrategy):
         """
         Check current UTC hour and emit BUY when entering a peak window.
         """
+        start_time = time.perf_counter()
         now_utc = datetime.now(timezone.utc)
         utc_hour = now_utc.hour
         utc_minute = now_utc.minute
@@ -85,9 +91,11 @@ class IntradaySeasonality(AbstractStrategy):
         if current_price <= 0:
             raise ValueError(f"IntradaySeasonality: invalid price {current_price}")
 
+        signal: Signal | None = None
+
         # Primary: enter at 21:45 to capture the 22:00 peak
         if utc_hour == 21 and utc_minute >= 45:
-            return Signal(
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -104,8 +112,8 @@ class IntradaySeasonality(AbstractStrategy):
             )
 
         # Primary: exit at 22:15
-        if utc_hour == 22 and utc_minute >= 15:
-            return Signal(
+        elif utc_hour == 22 and utc_minute >= 15:
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -121,8 +129,8 @@ class IntradaySeasonality(AbstractStrategy):
             )
 
         # Secondary: enter European session at 07:00
-        if utc_hour == 7 and utc_minute < 15:
-            return Signal(
+        elif utc_hour == 7 and utc_minute < 15:
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -137,8 +145,8 @@ class IntradaySeasonality(AbstractStrategy):
             )
 
         # Secondary: exit European session at 15:00
-        if utc_hour == 15 and utc_minute < 15:
-            return Signal(
+        elif utc_hour == 15 and utc_minute < 15:
+            signal = Signal(
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
@@ -152,13 +160,40 @@ class IntradaySeasonality(AbstractStrategy):
                 },
             )
 
-        return None
+        exec_ms = (time.perf_counter() - start_time) * 1000
+
+        if signal is not None:
+            self.signal_counter += 1
+            logger.info(
+                "IntradaySeasonality signal generated",
+                extra={
+                    "strategy": self.name,
+                    "signal_side": signal.side,
+                    "confidence": signal.confidence,
+                    "utc_hour": signal.metadata.get("utc_hour"),
+                    "utc_minute": signal.metadata.get("utc_minute"),
+                    "execution_ms": exec_ms,
+                    "signal_count": self.signal_counter,
+                },
+            )
+        else:
+            logger.info(
+                "IntradaySeasonality no signal",
+                extra={
+                    "strategy": self.name,
+                    "execution_ms": exec_ms,
+                    "signal_count": self.signal_counter,
+                },
+            )
+
+        return signal
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
         Use 1-hour OHLCV bars. Signal = +1 during peak/secondary hours, 0 otherwise.
         Index must be a DatetimeIndex with UTC timezone (or timezone-naive UTC).
         """
+        start_time = time.perf_counter()
         false_series = pd.Series(False, index=df.index)
         default = BacktestSignals(
             entries=false_series,
@@ -168,10 +203,17 @@ class IntradaySeasonality(AbstractStrategy):
         )
 
         if "close" not in df.columns or len(df) < 24:
+            logger.info(
+                "IntradaySeasonality backtest skipped due to insufficient data",
+                extra={"strategy": self.name, "execution_ms": (time.perf_counter() - start_time) * 1000},
+            )
             return default
 
-        # Ensure DatetimeIndex
         if not isinstance(df.index, pd.DatetimeIndex):
+            logger.info(
+                "IntradaySeasonality backtest skipped due to non-DatetimeIndex",
+                extra={"strategy": self.name, "execution_ms": (time.perf_counter() - start_time) * 1000},
+            )
             return default
 
         idx = df.index
@@ -182,18 +224,29 @@ class IntradaySeasonality(AbstractStrategy):
 
         utc_hours = pd.Series(idx.hour, index=df.index)
 
-        # In-window: peak hours or secondary hours
         in_peak = utc_hours.isin(self.peak_hours)
         in_secondary = utc_hours.isin(list(self.secondary_hours))
         in_window = in_peak | in_secondary
 
-        # Entry: first bar entering the window
-        # shift(1) to prevent lookahead — yesterday's signal drives today's trade
         in_window_lag = in_window.shift(1).fillna(False).astype(bool)
         not_in_window_lag = (~in_window).shift(1).fillna(True).astype(bool)
 
         entries = in_window_lag
         exits = not_in_window_lag
+
+        exec_ms = (time.perf_counter() - start_time) * 1000
+        entry_count = int(entries.sum())
+        exit_count = int(exits.sum())
+
+        logger.info(
+            "IntradaySeasonality backtest completed",
+            extra={
+                "strategy": self.name,
+                "entries": entry_count,
+                "exits": exit_count,
+                "execution_ms": exec_ms,
+            },
+        )
 
         return BacktestSignals(
             entries=entries,
