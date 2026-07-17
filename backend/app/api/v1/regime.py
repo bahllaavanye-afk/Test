@@ -4,8 +4,19 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
 from app.risk.correlation_monitor import correlation_monitor
+from collections import Counter
+from cachetools import TTLCache, cached
 
 router = APIRouter(prefix="/regime", tags=["regime"])
+
+# Cache regime states for a short period to avoid repeated heavy computation
+_states_cache = TTLCache(maxsize=1, ttl=5)
+
+
+@cached(_states_cache)
+def _fetch_all_states():
+    """Fetch all regime states with a TTL cache."""
+    return regime_monitor.all_states()
 
 
 @router.get("/current")
@@ -15,9 +26,9 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     Returns the most common regime (bull/bear/sideways mapped from detector enums)
     and average confidence. Falls back to safe defaults when no data is available.
     """
-    states = regime_monitor.all_states()
+    states = _fetch_all_states()
     if not states:
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return {"regime": "unknown", "confidence": 0.0, "updated_at": None, "symbol_count": 0}
 
     # Map detector regimes → frontend-friendly labels
     _label_map = {
@@ -27,7 +38,6 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         "unknown": "unknown",
     }
 
-    from collections import Counter
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
@@ -55,7 +65,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 @router.get("/states")
 async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
-    return regime_monitor.all_states()
+    return _fetch_all_states()
 
 
 @router.get("/states/{symbol}")
