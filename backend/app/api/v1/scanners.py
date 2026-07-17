@@ -72,10 +72,17 @@ async def get_scan_results(
         else:
             results = await PolymarketScanner().scan()
 
-        out = [ScanResultOut(
-            symbol=r.symbol, desk=r.desk, score=r.score,
-            signals=r.signals, side=r.side, data=r.data,
-        ) for r in results[:20]]
+        out = [
+            ScanResultOut(
+                symbol=r.symbol,
+                desk=r.desk,
+                score=r.score,
+                signals=r.signals,
+                side=r.side,
+                data=r.data,
+            )
+            for r in results[:20]
+        ]
         return ScanResponse(desk=desk, results=out, cached=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
