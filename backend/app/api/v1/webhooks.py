@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -23,15 +23,24 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 # Ring buffer of the most recent alerts (process-local; visibility, not storage
 # of record). A dead Redis must not break the receiver.
-_RECENT_ALERTS: list[dict] = []
+_RECENT_ALERTS: List[Dict[str, Any]] = []
 _MAX_RECENT = 200
 
 
-def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort normalization of TradingView's free-form alert JSON."""
+def _normalize(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Best‑effort normalization of TradingView's free‑form alert JSON.
+
+    Handles ``None`` or empty payloads gracefully by returning a dict with
+    ``None`` values for all fields.
+    """
+    if not payload:
+        payload = {}
+
+    symbol = str(payload.get("ticker") or payload.get("symbol") or "").upper()
+    side = str(payload.get("action") or payload.get("side") or "").lower()
     return {
-        "symbol": str(payload.get("ticker") or payload.get("symbol") or "").upper() or None,
-        "side": (str(payload.get("action") or payload.get("side") or "").lower() or None),
+        "symbol": symbol or None,
+        "side": side or None,
         "price": _float_or_none(payload.get("price") or payload.get("close")),
         "strategy": payload.get("strategy") or payload.get("indicator"),
         "message": str(payload.get("message") or payload.get("comment") or "")[:500] or None,
@@ -39,7 +48,7 @@ def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _float_or_none(v: Any) -> float | None:
+def _float_or_none(v: Any) -> Optional[float]:
     try:
         return float(v) if v is not None else None
     except (TypeError, ValueError):
@@ -60,25 +69,37 @@ async def receive_tradingview_alert(request: Request) -> dict:
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
     except Exception:  # noqa: BLE001 — malformed body is a client error
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="Body must be a JSON object.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Body must be a JSON object.",
+        )
 
     if str(payload.get("secret") or "") != secret:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Bad or missing webhook secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bad or missing webhook secret.",
+        )
 
     alert = _normalize(payload)
     _RECENT_ALERTS.append(alert)
+    # Keep only the most recent _MAX_RECENT alerts.
     del _RECENT_ALERTS[:-_MAX_RECENT]
-    logger.info("tradingview alert received",
-                symbol=alert["symbol"], side=alert["side"], strategy=str(alert["strategy"])[:40])
 
-    # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
+    logger.info(
+        "tradingview alert received",
+        symbol=alert["symbol"],
+        side=alert["side"],
+        strategy=str(alert["strategy"])[:40],
+    )
+
+    # Best‑effort fan‑out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
+
         r = get_redis()
         if r is not None:
             import json as _json
+
             await r.publish("tradingview:alerts", _json.dumps(alert))
     except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
         logger.debug("tradingview alert: redis publish skipped", error=str(exc))
@@ -88,6 +109,17 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 @router.get("/tradingview/recent")
 async def recent_tradingview_alerts(limit: int = 50) -> dict:
-    """Most recent received alerts (process-local ring buffer)."""
-    limit = max(1, min(limit, _MAX_RECENT))
-    return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
+    """Most recent received alerts (process‑local ring buffer).
+
+    Handles ``None`` or out‑of‑range values for ``limit`` gracefully.
+    """
+    if limit is None:
+        limit = 0
+    # Allow a limit of 0 to return an empty list; otherwise clamp to [1, _MAX_RECENT].
+    if limit <= 0:
+        effective_limit = 0
+    else:
+        effective_limit = max(1, min(limit, _MAX_RECENT))
+
+    alerts_slice = _RECENT_ALERTS[-effective_limit:] if effective_limit else []
+    return {"alerts": alerts_slice[::-1], "count": len(_RECENT_ALERTS)}
