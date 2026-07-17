@@ -6,7 +6,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.audit_log import AuditLog
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict, ConfigDict
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
@@ -32,6 +32,16 @@ async def list_audit_log(
     current_user: User = Depends(get_current_user),
 ):
     """Return the last N audit events for the authenticated user."""
+    # Input validation
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
+    if limit < 1 or limit > 500:
+        raise ValueError("limit must be between 1 and 500 inclusive")
+    if db is None or not isinstance(db, AsyncSession):
+        raise ValueError("A valid database session must be provided")
+    if current_user is None or not isinstance(current_user, User):
+        raise ValueError("A valid authenticated user must be provided")
+
     result = await db.execute(
         select(AuditLog)
         .where(AuditLog.user_id == current_user.id)
