@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784320322.1510215,
+    "last_updated": 1784321203.7950804,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,7 +60,7 @@
     "autopilot_best_oos_sharpe": 1.181,
     "autopilot_best_blended": 0.4151,
     "autopilot_overfit_count": 0,
-    "market_regime": "neutral",
+    "market_regime": "bull",
     "market_opinion": {
       "generated_at": "2026-07-17T15:04:15.510112+00:00",
       "signals": {
@@ -108,9 +108,9 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 4,
-    "macro_score": 1,
-    "vix": 18.38,
-    "market_scan_ts": 1784318843.4682248,
+    "macro_score": 2,
+    "vix": 18.77,
+    "market_scan_ts": 1784321203.7749338,
     "sector_leaders": [
       "Healthcare",
       "Energy",
@@ -122,33 +122,33 @@
       "Tech"
     ],
     "active_universe": [
+      "NFLX",
       "ABT",
-      "KO",
+      "PANW",
+      "ORCL",
       "QQQ",
+      "ADBE",
       "XLK",
       "MPC",
-      "C",
-      "XLP",
       "AAPL",
-      "XLE",
+      "C",
+      "AVGO",
+      "CRWD",
       "XOM",
+      "META",
+      "WFC",
       "MS",
-      "UNH",
-      "BAC",
+      "NVDA",
       "XLF",
-      "SHY",
-      "MRK",
-      "IWM",
       "SPY",
-      "DIA",
-      "XLU"
+      "UNH"
     ],
     "top_momentum": [
       "MPC",
-      "ABT",
-      "ABBV",
-      "AAPL",
-      "MRK"
+      "PANW",
+      "ADBE",
+      "CRWD",
+      "ABT"
     ],
     "risk_flags": [],
     "risk_status": "normal",
@@ -1517,6 +1517,21 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1784320290.1350017
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Healthcare",
+        "Energy",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784321203.7987595
     }
   ],
   "github_insights": [
