@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import unittest
 
 from app.utils.logging import logger
 from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
@@ -139,3 +140,46 @@ class HRPOptimizer:
             # problems (bad covariance, NaNs) — say so when it happens.
             logger.warning("HRP optimization failed — falling back to equal weights (%s)", exc)
             return pd.Series(1.0 / n, index=symbols)
+
+
+class TestHRPOptimizerEdgeCases(unittest.TestCase):
+    """Unit tests targeting boundary conditions for HRPOptimizer."""
+
+    def setUp(self) -> None:
+        self.optimizer = HRPOptimizer()
+
+    def test_minimum_rows_and_assets(self):
+        """Optimizer should handle the exact minimum of 2 assets and 10 rows."""
+        rng = np.random.default_rng(0)
+        data = rng.normal(size=(10, 2))
+        df = pd.DataFrame(data, columns=["A", "B"])
+        weights = self.optimizer.compute_weights(df)
+        self.assertEqual(len(weights), 2)
+        self.assertTrue(np.isclose(weights.sum(), 1.0))
+        self.assertFalse(weights.isna().any())
+
+    def test_all_nan_column_fallback(self):
+        """Columns that are all NaN should receive zero weight after fallback."""
+        rng = np.random.default_rng(1)
+        data = rng.normal(size=(12, 2))
+        df = pd.DataFrame(data, columns=["X", "Y"])
+        df["Z"] = np.nan  # All NaN column
+        weights = self.optimizer.compute_weights(df)
+        # Z should have zero weight, X and Y should sum to 1
+        self.assertAlmostEqual(weights["Z"], 0.0)
+        self.assertTrue(np.isclose(weights["X"] + weights["Y"], 1.0))
+
+    def test_perfect_correlation_handling(self):
+        """Identical returns (perfect correlation) should not cause division errors."""
+        rng = np.random.default_rng(2)
+        base = rng.normal(size=15)
+        df = pd.DataFrame({"P": base, "Q": base})  # Perfect correlation
+        weights = self.optimizer.compute_weights(df)
+        self.assertEqual(len(weights), 2)
+        self.assertTrue(np.isclose(weights.sum(), 1.0))
+        # Both assets should receive roughly equal weight
+        self.assertTrue(np.isclose(weights["P"], weights["Q"], atol=1e-4))
+
+
+if __name__ == "__main__":
+    unittest.main(argv=["first-arg-is-ignored"], exit=False)
