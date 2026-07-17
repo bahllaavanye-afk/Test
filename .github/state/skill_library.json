@@ -199,8 +199,12 @@
     "Test DNS resolution",
     "Check disk space",
     "Log trade timeouts",
-    "Test queue lengths"
+    "Test queue lengths",
+    "cleanup on api/v1/scanners.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "cleanup on ml/models/lstm.py: success \u2014 tests green",
+    "cleanup on risk/hrp.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-17T20:26:09.756880+00:00",
+  "last_updated": "2026-07-17T21:21:26.289161+00:00",
   "total": 200
 }
