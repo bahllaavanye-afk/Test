@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-17T07:33:01.481612+00:00",
+  "last_updated": "2026-07-17T08:05:37.171299+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -2585,11 +2585,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[self_improver @ 2026-07-14T02:28] We need to respond as self_improver agent, autonomous, 2 sentences max, first person, concise, referencing real file paths. Must give one-sentence sta",
-    "[research_scientist @ 2026-07-14T02:28] I'm currently reviewing the latest arXiv pre\u2011prints and extracting feature ideas into `research/alpha_extraction/feature_engineering.py`",
-    "[modeling_engineer @ 2026-07-14T02:28] [LLM unavailable \u2014 all providers failed]",
-    "[signal_runner in #desk-equities @ 2026-07-14T06:10] *I'm currently extracting trading signal data from the last cycle stored in agent/memory/agent_memory.json and processing the signals array.*\n\nThe str",
-    "[strategy_generator in #desk-equities @ 2026-07-14T06:10] Given the strong 'buy QQQ' signal with a confidence of 0.85, my proposal for a new strategy variant is to backtest a combination of the Stochastic Osc",
     "[quick_backtest in #desk-equities @ 2026-07-14T06:10] #desk-equities\n\nI'd suggest an 80/20 historical backtest ratio, covering a period from 2012 to 2022 to estimate a Sharpe ratio of approximately 1.2. C",
     "[continuous_improver @ 2026-07-14T06:10] I am currently reviewing the `trading_bot.py` script in the `/quantedge/backend` directory to identify areas for improvement in code quality and optim",
     "[signal_runner @ 2026-07-14T06:10] The user asks for a one-sentence status update: what am I actively working on right now? As the signal_runner agent, need to respond in first person, ",
@@ -2784,7 +2779,12 @@
     "[quick_backtest @ 2026-07-17T06:15] We need to respond as quick_backtest agent, giving one-sentence status update, referencing real file paths. Must be concise, 2 sentences max, but they",
     "[peer_reviewer @ 2026-07-17T06:15] I",
     "[frontend_design @ 2026-07-17T06:15] I am currently scanning system resources via `/sys/fs/cgroup/cpu/thread_counts` and `/sys/class/drm/` to monitor CPU thread counts and GPU temperature",
-    "[token_monitor @ 2026-07-17T06:15] I am actively scanning system resources via thread counts in `/sys/fs/cgroup/cpu/thread_counts` and GPU temps in `/sys/class/drm/` to track API usage "
+    "[token_monitor @ 2026-07-17T06:15] I am actively scanning system resources via thread counts in `/sys/fs/cgroup/cpu/thread_counts` and GPU temps in `/sys/class/drm/` to track API usage ",
+    "[continuous_improver @ 2026-07-17T08:05] edge_cases on tasks/bot_runner.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T08:05] edge_cases on api/v1/webhooks.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T08:05] edge_cases on strategies/manual/crypto_adaptive_trend.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T08:05] edge_cases on ml/features/alpha_decay.py: tests=pass",
+    "[continuous_improver @ 2026-07-17T08:05] edge_cases on risk/factor_exposure.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -3033,6 +3033,30 @@
       "reason": "syntax check failed",
       "improvement_type": "error_handling",
       "timestamp": "2026-07-09T13:01:55.668088+00:00"
+    },
+    {
+      "file": "backend/tests/unit/test_pca_stat_arb.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-07-17T08:05:31.906259+00:00"
+    },
+    {
+      "file": "backend/app/strategies/ml_enhanced/lorentzian_knn.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-07-17T08:05:34.107403+00:00"
+    },
+    {
+      "file": "backend/app/ml/models/patch_tst.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-07-17T08:05:34.107528+00:00"
+    },
+    {
+      "file": "backend/app/execution/rl_exec.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "edge_cases",
+      "timestamp": "2026-07-17T08:05:35.511218+00:00"
     }
   ],
   "improvement_stats": {
@@ -3075,6 +3099,11 @@
       "successes": 10,
       "failures": 0,
       "test_pass": 10
+    },
+    "edge_cases": {
+      "successes": 5,
+      "failures": 0,
+      "test_pass": 5
     }
   },
   "last_health_check": "2026-07-17T06:05:47.440444+00:00"
