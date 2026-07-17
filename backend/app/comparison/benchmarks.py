@@ -28,6 +28,9 @@ ALPACA_DATA_URL = "https://data.alpaca.markets"
 # simple in‑memory cache for benchmark results keyed by (start, end)
 _benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
 
+# per‑ticker cache to avoid redundant network calls
+_ticker_cache: dict[tuple[str, date, date], pd.Series] = {}
+
 
 @functools.lru_cache(maxsize=1)
 def _alpaca_headers() -> dict:
@@ -45,6 +48,11 @@ async def _fetch_ticker_bars(
     Fetch daily close prices for a single ticker from Alpaca.
     Returns a pd.Series indexed by date, or an empty Series on failure.
     """
+    cache_key = (ticker.upper(), start, end)
+    if cache_key in _ticker_cache:
+        # Return a copy to protect cached data from accidental mutation
+        return _ticker_cache[cache_key].copy()
+
     sym = ticker.upper()
     start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
     end_str = datetime.combine(end, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -72,6 +80,8 @@ async def _fetch_ticker_bars(
         series = pd.Series(closes, index=dates, name=ticker)
         # De‑duplicate any same‑day entries (take last)
         series = series[~series.index.duplicated(keep="last")]
+        # Cache the clean series for future calls
+        _ticker_cache[cache_key] = series.copy()
         return series
 
     except httpx.HTTPError as exc:
@@ -86,7 +96,7 @@ async def _fetch_ticker_bars(
             extra={"ticker": ticker, "error": str(exc)},
         )
         return pd.Series(dtype=float)
-    except Exception as exc:  # pragma: no cover
+    except Exception:  # pragma: no cover
         logger.exception(
             "Unexpected error while fetching Alpaca bars",
             extra={"ticker": ticker},
