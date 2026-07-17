@@ -11,11 +11,16 @@ All API calls are async. For sync contexts, use compute_features_sync().
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import logging
 from datetime import datetime, timezone
+from typing import List
 
 import httpx
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
@@ -51,19 +56,46 @@ class BinanceFundingRateFeatures:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
-            if not data:
-                return pd.DataFrame()
-            rows = [
-                {
-                    "ts": pd.to_datetime(int(r["fundingTime"]), unit="ms", utc=True),
-                    "funding_rate": float(r["fundingRate"]),
-                }
-                for r in data
-            ]
-            df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
-            return df
-        except Exception:
+        except httpx.HTTPError as exc:
+            logger.error(
+                "HTTP error while fetching funding rate history",
+                exc_info=True,
+                extra={"symbol": symbol, "url": url, "params": params},
+            )
             return pd.DataFrame()
+        except ValueError as exc:
+            logger.error(
+                "Invalid JSON response for funding rate history",
+                exc_info=True,
+                extra={"symbol": symbol, "url": url},
+            )
+            return pd.DataFrame()
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error while fetching funding rate history",
+                extra={"symbol": symbol, "url": url},
+            )
+            return pd.DataFrame()
+
+        if not data:
+            return pd.DataFrame()
+        rows = []
+        for r in data:
+            try:
+                rows.append(
+                    {
+                        "ts": pd.to_datetime(int(r["fundingTime"]), unit="ms", utc=True),
+                        "funding_rate": float(r["fundingRate"]),
+                    }
+                )
+            except (KeyError, ValueError, TypeError) as exc:
+                logger.warning(
+                    "Malformed funding rate entry skipped",
+                    exc_info=True,
+                    extra={"entry": r, "symbol": symbol},
+                )
+        df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
+        return df
 
     async def get_open_interest_hist(
         self,
@@ -86,20 +118,47 @@ class BinanceFundingRateFeatures:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
-            if not data:
-                return pd.DataFrame()
-            rows = [
-                {
-                    "ts": pd.to_datetime(int(r["timestamp"]), unit="ms", utc=True),
-                    "open_interest": float(r["sumOpenInterest"]),
-                    "open_interest_value": float(r["sumOpenInterestValue"]),
-                }
-                for r in data
-            ]
-            df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
-            return df
-        except Exception:
+        except httpx.HTTPError as exc:
+            logger.error(
+                "HTTP error while fetching open interest history",
+                exc_info=True,
+                extra={"symbol": symbol, "url": url, "params": params},
+            )
             return pd.DataFrame()
+        except ValueError as exc:
+            logger.error(
+                "Invalid JSON response for open interest history",
+                exc_info=True,
+                extra={"symbol": symbol, "url": url},
+            )
+            return pd.DataFrame()
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error while fetching open interest history",
+                extra={"symbol": symbol, "url": url},
+            )
+            return pd.DataFrame()
+
+        if not data:
+            return pd.DataFrame()
+        rows = []
+        for r in data:
+            try:
+                rows.append(
+                    {
+                        "ts": pd.to_datetime(int(r["timestamp"]), unit="ms", utc=True),
+                        "open_interest": float(r["sumOpenInterest"]),
+                        "open_interest_value": float(r["sumOpenInterestValue"]),
+                    }
+                )
+            except (KeyError, ValueError, TypeError) as exc:
+                logger.warning(
+                    "Malformed open interest entry skipped",
+                    exc_info=True,
+                    extra={"entry": r, "symbol": symbol},
+                )
+        df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
+        return df
 
     async def compute_features_async(
         self, symbol: str, df: pd.DataFrame
@@ -115,78 +174,99 @@ class BinanceFundingRateFeatures:
 
         Missing data → NaN (not filled with fake values).
         """
-        df = df.copy()
-        for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
-            df[col] = np.nan
+        try:
+            df = df.copy()
+            for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
+                df[col] = np.nan
 
-        fr_df, oi_df = await asyncio.gather(
-            self.get_funding_rate_history(symbol, limit=500),
-            self.get_open_interest_hist(symbol, period="1d", limit=500),
-        )
+            fr_df, oi_df = await asyncio.gather(
+                self.get_funding_rate_history(symbol, limit=500),
+                self.get_open_interest_hist(symbol, period="1d", limit=500),
+            )
 
-        # Merge funding rate
-        if not fr_df.empty:
-            fr_df = fr_df.set_index("ts")
-            fr_df = fr_df.resample("D").last()  # one value per day
-            fr_df["funding_rate_ma7"] = fr_df["funding_rate"].rolling(7).mean()
+            # Merge funding rate
+            if not fr_df.empty:
+                fr_df = fr_df.set_index("ts")
+                fr_df = fr_df.resample("D").last()  # one value per day
+                fr_df["funding_rate_ma7"] = fr_df["funding_rate"].rolling(7).mean()
 
-            if hasattr(df.index, "tz") and df.index.tz is not None:
-                idx = df.index.normalize()
-            else:
-                idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
+                if hasattr(df.index, "tz") and df.index.tz is not None:
+                    idx = df.index.normalize()
+                else:
+                    idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
 
-            for i, ts in enumerate(idx):
-                ts_day = ts.normalize()
-                if ts_day in fr_df.index:
-                    df.iloc[i, df.columns.get_loc("funding_rate")] = float(
-                        fr_df.loc[ts_day, "funding_rate"]
-                    )
-                    df.iloc[i, df.columns.get_loc("funding_rate_ma7")] = float(
-                        fr_df.loc[ts_day, "funding_rate_ma7"]
-                    )
+                for i, ts in enumerate(idx):
+                    ts_day = ts.normalize()
+                    if ts_day in fr_df.index:
+                        df.iloc[i, df.columns.get_loc("funding_rate")] = float(
+                            fr_df.loc[ts_day, "funding_rate"]
+                        )
+                        df.iloc[i, df.columns.get_loc("funding_rate_ma7")] = float(
+                            fr_df.loc[ts_day, "funding_rate_ma7"]
+                        )
 
-        # Merge OI
-        if not oi_df.empty:
-            oi_df = oi_df.set_index("ts").resample("D").last()
-            oi_df["oi_change_pct"] = oi_df["open_interest"].pct_change() * 100
-            oi_df["oi_momentum"] = oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
+            # Merge OI
+            if not oi_df.empty:
+                oi_df = oi_df.set_index("ts").resample("D").last()
+                oi_df["oi_change_pct"] = oi_df["open_interest"].pct_change() * 100
+                oi_df["oi_momentum"] = oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
 
-            if hasattr(df.index, "tz") and df.index.tz is not None:
-                idx = df.index.normalize()
-            else:
-                idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
+                if hasattr(df.index, "tz") and df.index.tz is not None:
+                    idx = df.index.normalize()
+                else:
+                    idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
 
-            for i, ts in enumerate(idx):
-                ts_day = ts.normalize()
-                if ts_day in oi_df.index:
-                    df.iloc[i, df.columns.get_loc("oi_change_pct")] = float(
-                        oi_df.loc[ts_day, "oi_change_pct"]
-                    )
-                    df.iloc[i, df.columns.get_loc("oi_momentum")] = float(
-                        oi_df.loc[ts_day, "oi_momentum"]
-                    )
-
-        return df
+                for i, ts in enumerate(idx):
+                    ts_day = ts.normalize()
+                    if ts_day in oi_df.index:
+                        df.iloc[i, df.columns.get_loc("oi_change_pct")] = float(
+                            oi_df.loc[ts_day, "oi_change_pct"]
+                        )
+                        df.iloc[i, df.columns.get_loc("oi_momentum")] = float(
+                            oi_df.loc[ts_day, "oi_momentum"]
+                        )
+            return df
+        except Exception as exc:
+            logger.exception(
+                "Error computing alternative features",
+                extra={"symbol": symbol},
+            )
+            df = df.copy()
+            for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
+                df[col] = np.nan
+            return df
 
     def compute_features(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
         """Sync wrapper — runs the async version via asyncio."""
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                # Already inside an event loop (e.g., FastAPI) — create a task
-                import concurrent.futures
+                # Already inside an event loop (e.g., FastAPI) — create a thread pool task
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(
-                        asyncio.run, self.compute_features_async(symbol, df)
-                    )
+                    future = pool.submit(asyncio.run, self.compute_features_async(symbol, df))
                     return future.result(timeout=30)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
-        except Exception:
-            df = df.copy()
-            for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
-                df[col] = np.nan
-            return df
+        except RuntimeError as exc:
+            # No running loop in this thread
+            logger.debug("No running event loop, creating a new one")
+            return asyncio.run(self.compute_features_async(symbol, df))
+        except (asyncio.TimeoutError, concurrent.futures.TimeoutError) as exc:
+            logger.error(
+                "Timeout while computing alternative features",
+                exc_info=True,
+                extra={"symbol": symbol},
+            )
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error in compute_features sync wrapper",
+                extra={"symbol": symbol},
+            )
+        # Fallback: return dataframe with NaNs
+        df = df.copy()
+        for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
+            df[col] = np.nan
+        return df
 
 
 ALTERNATIVE_FEATURE_COLS = [
@@ -211,6 +291,10 @@ def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame
     if is_crypto and symbol:
         return _binance_features.compute_features(symbol, df)
 
+    logger.debug(
+        "Non-crypto symbol or empty symbol provided; adding NaN alternative feature columns",
+        extra={"symbol": symbol},
+    )
     df = df.copy()
     for col in ALTERNATIVE_FEATURE_COLS:
         df[col] = np.nan
