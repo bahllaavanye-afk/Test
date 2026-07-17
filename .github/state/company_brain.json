@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784238330.2649412,
+    "last_updated": 1784250683.7839072,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784238330.264041
+    "last_brain_update": 1784250683.7831893
   },
   "episodic": [
     {
@@ -1226,6 +1226,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784238298.251716
+    },
+    {
+      "lesson": "Slack agent run failed due to message_limit_exceeded or dead token \u2014 posts not reaching workspace; investigate Slack API quota and rotate tokens immediately.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784250677.972796
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free tier daily limit (100 deploys/day); upgrade to Pro plan or implement deployment batching to avoid interruption.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784250677.9760506
+    },
+    {
+      "lesson": "Auto-fix skipped for per-desk performance attribution feature because it required changes across multiple modules exceeding 50-line limit; decompose into smaller, incremental PRs.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784250677.9791431
+    },
+    {
+      "lesson": "Duplicate Vercel deployment links suggest possible race condition or repeated triggers; audit deployment pipeline for redundant invocations.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784250677.9833527
     }
   ],
   "github_insights": [
@@ -1608,6 +1636,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784238330.2562373
+    },
+    {
+      "summary": "The Slack agent failed due to a message limit quota, and a deployment error indicates resource limits, suggesting a 24-hour wait is needed.",
+      "item_count": 20,
+      "ts": 1784250683.7769203
     }
   ],
   "experiment_results": [
