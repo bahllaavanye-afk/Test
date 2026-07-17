@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784258738.626804,
+    "last_updated": 1784270216.970616,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784250683.7831893
+    "last_brain_update": 1784270216.969908
   },
   "episodic": [
     {
@@ -1641,6 +1641,11 @@
       "summary": "The Slack agent failed due to a message limit quota, and a deployment error indicates resource limits, suggesting a 24-hour wait is needed.",
       "item_count": 20,
       "ts": 1784250683.7769203
+    },
+    {
+      "summary": "The auto-fix tool failed to apply patches to some files and skipped another due to excessive complexity, indicating that manual intervention is required.",
+      "item_count": 20,
+      "ts": 1784270216.9603896
     }
   ],
   "experiment_results": [
