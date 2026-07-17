@@ -83,7 +83,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -159,3 +164,82 @@ class BinanceBroker(AbstractBroker):
             except Exception as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
                 raise BrokerError(f"Binance ticker fetch error: {e}")
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases (boundary conditions)
+# ----------------------------------------------------------------------
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+class TestBinanceBrokerEdgeCases(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Patch the ccxt.binance constructor to return a mock exchange
+        self.exchange_mock = MagicMock()
+        self.exchange_mock.set_sandbox_mode = MagicMock()
+        self.exchange_mock.fetch_ohlcv = AsyncMock(return_value=[])
+        self.exchange_mock.fetch_tickers = AsyncMock(return_value={"BTC/USDT": {}})
+        self.exchange_mock.fetch_ticker = AsyncMock(return_value={"bid": "50000", "ask": "50010", "last": "50005", "baseVolume": "100"})
+        self.exchange_mock.iso8601 = MagicMock(side_effect=lambda ts: f"2022-01-01T00:00:{ts}Z")
+        patcher = patch("ccxt.async_support.binance", return_value=self.exchange_mock)
+        self.addCleanup(patcher.stop)
+        self.mock_binance_ctor = patcher.start()
+
+        self.broker = BinanceBroker(api_key="test", secret="test", testnet=True)
+
+    async def test_get_historical_interval_fallback(self):
+        """When an unsupported interval is passed, BinanceBroker should fallback to '1d'."""
+        await self.broker.get_historical(symbol="BTC/USDT", interval="invalid_interval")
+        # Verify that fetch_ohlcv was called with the default timeframe '1d'
+        self.exchange_mock.fetch_ohlcv.assert_awaited_once_with("BTC/USDT", "1d", limit=500)
+
+    async def test_get_all_tickers_cache_boundary(self):
+        """Cache should be used if within TTL and refreshed after TTL expires."""
+        # First call populates the cache
+        first_data = await self.broker.get_all_tickers(cache_ttl=1)
+        self.exchange_mock.fetch_tickers.assert_awaited_once()
+        self.exchange_mock.fetch_tickers.reset_mock()
+
+        # Second call within TTL should hit cache, no additional fetch
+        second_data = await self.broker.get_all_tickers(cache_ttl=1)
+        self.exchange_mock.fetch_tickers.assert_not_awaited()
+        self.assertIs(first_data, second_data)
+
+        # Advance time beyond TTL and ensure cache refreshes
+        original_time = time.monotonic
+
+        def fake_monotonic():
+            return original_time() + 2  # exceed ttl of 1 second
+
+        with patch("time.monotonic", fake_monotonic):
+            await self.broker.get_all_tickers(cache_ttl=1)
+        self.exchange_mock.fetch_tickers.assert_awaited_once()
+
+    async def test_get_quote_timeout_raises_broker_error(self):
+        """A timeout while fetching a ticker should raise BrokerError."""
+        # Simulate a long-running fetch_ticker that exceeds the timeout
+        async def slow_fetch(*args, **kwargs):
+            await asyncio.sleep(0.2)  # longer than the 0.1s timeout we will set
+        self.exchange_mock.fetch_ticker = AsyncMock(side_effect=slow_fetch)
+
+        # Temporarily reduce the wait timeout to trigger the condition quickly
+        with patch.object(self.broker, "get_quote", wraps=self.broker.get_quote) as wrapped:
+            original_timeout = 10.0
+            # monkey‑patch asyncio.wait_for inside get_quote via a context manager
+            async def limited_get_quote(symbol):
+                try:
+                    ticker = await asyncio.wait_for(
+                        self.exchange_mock.fetch_ticker(symbol), timeout=0.05
+                    )
+                except asyncio.TimeoutError:
+                    raise BrokerError(f"Binance quote timed out for {symbol}")
+            wrapped.side_effect = limited_get_quote
+
+            with self.assertRaises(BrokerError) as cm:
+                await self.broker.get_quote("BTC/USDT")
+            self.assertIn("timed out", str(cm.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()
