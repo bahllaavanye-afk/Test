@@ -11,7 +11,7 @@ versus immediate market execution.
 import asyncio
 import logging
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Optional
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
@@ -205,3 +205,114 @@ class LimitFirstExecution:
             },
         )
         return result
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case behavior
+# --------------------------------------------------------------------------- #
+
+import unittest
+
+@dataclass
+class Quote:
+    bid: float
+    ask: float
+
+
+class MockBroker(AbstractBroker):
+    """
+    Minimal mock broker used for unit testing the LimitFirstExecution strategy.
+    It records placed orders and can be configured to raise exceptions or
+    control quote data.
+    """
+
+    def __init__(self):
+        self.placed_orders = []
+        self.quote = Quote(bid=100.0, ask=101.0)
+        self.raise_on_get_quote = False
+
+    async def get_quote(self, symbol: str) -> Quote:
+        if self.raise_on_get_quote:
+            raise RuntimeError("quote retrieval failed")
+        return self.quote
+
+    async def place_order(self, order: OrderRequest) -> OrderResult:
+        """
+        Simulate an immediate fill for any order. The returned OrderResult
+        mimics the attributes used by the execution logic.
+        """
+        # Record the order for later inspection
+        self.placed_orders.append(order)
+
+        # Build a lightweight result object
+        class SimpleResult:
+            def __init__(self, status, broker_order_id, filled_qty, filled_price):
+                self.status = status
+                self.broker_order_id = broker_order_id
+                self.filled_qty = filled_qty
+                self.filled_price = filled_price
+                # ``avg_price`` is sometimes accessed; keep it in sync
+                self.avg_price = filled_price
+
+        # Immediate fill simulation
+        filled_price = order.limit_price if order.order_type == "limit" else self.quote.ask
+        return SimpleResult(
+            status="filled",
+            broker_order_id=len(self.placed_orders) - 1,
+            filled_qty=order.quantity,
+            filled_price=filled_price,
+        )
+
+    async def get_order(self, broker_order_id: int) -> dict:
+        """
+        Return a filled status for the given order ID.
+        """
+        return {"status": "filled", "filled_qty": self.placed_orders[broker_order_id].quantity}
+
+    async def cancel_order(self, broker_order_id: int) -> None:
+        """No‑op for the mock."""
+        return None
+
+
+class TestLimitFirstExecution(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.broker = MockBroker()
+        self.request = OrderRequest(symbol="TEST", side="buy", quantity=10)
+
+    async def test_zero_fallback_seconds_immediate_market_fallback(self):
+        """When fallback_seconds is 0 the limit order should be cancelled immediately
+        and a market order placed."""
+        exec = LimitFirstExecution(self.broker, offset_bps=5, fallback_seconds=0)
+        result = await exec.execute(self.request)
+
+        # The last placed order must be a market order
+        self.assertEqual(self.broker.placed_orders[-1].order_type, "market")
+        self.assertEqual(result.status, "filled")
+
+    async def test_zero_offset_bps_limit_price_equals_reference(self):
+        """With offset_bps set to 0 the limit price should match the reference price."""
+        exec = LimitFirstExecution(self.broker, offset_bps=0, fallback_seconds=1)
+        # Ensure a known quote
+        self.broker.quote = Quote(bid=100.0, ask=101.0)
+
+        result = await exec.execute(self.request)
+
+        limit_order = self.broker.placed_orders[0]
+        # For a buy, limit price = ask - 0 = ask
+        self.assertAlmostEqual(limit_order.limit_price, 101.0)
+        self.assertEqual(result.status, "filled")
+
+    async def test_exception_in_get_quote_falls_back_to_market(self):
+        """If retrieving the quote raises, execution should fall back to a market order."""
+        self.broker.raise_on_get_quote = True
+        exec = LimitFirstExecution(self.broker, offset_bps=5, fallback_seconds=30)
+
+        result = await exec.execute(self.request)
+
+        # The final order should be a market order
+        self.assertEqual(self.broker.placed_orders[-1].order_type, "market")
+        self.assertEqual(result.status, "filled")
+
+
+if __name__ == "__main__":
+    unittest.main()
