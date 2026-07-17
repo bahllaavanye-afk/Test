@@ -1,24 +1,26 @@
 """Synthetic options backtester — score option-spread bot templates on history.
 
 We have years of underlying OHLCV but no historical option chains, so spreads
-are repriced with Black-Scholes using realized vol as the IV proxy (HV20 ×
-IV_PREMIUM, the variance-risk-premium markup). This is the standard research
+are repriced with Black‑Scholes using realized vol as the IV proxy (HV20 ×
+IV_PREMIUM, the variance‑risk‑premium markup). This is the standard research
 approximation; it captures theta/delta/vega mechanics and regime behavior but
 NOT skew dynamics or bid/ask — results are for RANKING templates against each
 other, not for promising returns. Every consumer must carry that caveat.
 
 Pure numpy/math (no scipy): norm CDF via math.erf, inverse CDF via the
-Acklam approximation. Deterministic; fully unit-testable.
+Acklam approximation. Deterministic; fully unit‑testable.
 """
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
 MULTIPLIER = 100        # options contract multiplier
 MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
+_SQRT_252 = math.sqrt(252)
 
 
 def norm_cdf(x: float) -> float:
@@ -56,8 +58,9 @@ def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
     T = max(T, MIN_T)
     sigma = max(sigma, 1e-4)
-    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
-    d2 = d1 - sigma * math.sqrt(T)
+    sqrt_T = math.sqrt(T)
+    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * sqrt_T)
+    d2 = d1 - sigma * sqrt_T
     if option_type.startswith("c"):
         return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
     return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
@@ -66,7 +69,8 @@ def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
 def bs_delta(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
     T = max(T, MIN_T)
-    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
+    sqrt_T = math.sqrt(T)
+    d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * sqrt_T)
     return norm_cdf(d1) if option_type.startswith("c") else norm_cdf(d1) - 1.0
 
 
@@ -111,34 +115,69 @@ def backtest_template(template: dict, closes: list[float],
     days_held = 0
     dte = max(int(action["legs"][0].get("dte", 30)), 0)
 
+    # Prepare rolling volatility (20‑day log‑returns)
+    ret_window = deque(maxlen=20)
+    sum_ret = 0.0
+    sum_sq_ret = 0.0
+    # Initialise the window with the first 20 returns (indices 1..20)
+    for i in range(1, 21):
+        r = math.log(closes[i] / closes[i - 1])
+        ret_window.append(r)
+        sum_ret += r
+        sum_sq_ret += r * r
+
+    # Cache frequently used locals
+    mult = MULTIPLIER
+    sqrt252 = _SQRT_252
+    action_legs = action["legs"]
+
     for i in range(21, len(closes)):
         S = closes[i]
-        rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
-        mean = sum(rets) / len(rets)
-        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
+
+        # Update rolling returns
+        new_ret = math.log(closes[i] / closes[i - 1])
+        if len(ret_window) == ret_window.maxlen:
+            old_ret = ret_window.popleft()
+            sum_ret -= old_ret
+            sum_sq_ret -= old_ret * old_ret
+        ret_window.append(new_ret)
+        sum_ret += new_ret
+        sum_sq_ret += new_ret * new_ret
+
+        n_ret = len(ret_window)
+        mean_ret = sum_ret / n_ret
+        # Variance with Bessel's correction
+        var_ret = (sum_sq_ret - sum_ret * mean_ret) / (n_ret - 1) if n_ret > 1 else 0.0
+        hv = math.sqrt(var_ret) * sqrt252
         sigma = max(hv * IV_PREMIUM, 0.05)
 
         if pos is None:
             T0 = max(dte, 1) / 365.0
             pos = []
-            for lg in action["legs"]:
+            for lg in action_legs:
                 if lg.get("strike"):
                     K = float(lg["strike"])
                 else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
-                                int(lg.get("ratio", 1))))
+                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma,
+                                          lg["option_type"])
+                pos.append(_Leg(+1 if lg["side"] == "buy" else -1,
+                                lg["option_type"], K, int(lg.get("ratio", 1))))
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
             continue
 
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
-        cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
-                                   else (l.strike - S), 0.0) for l in pos)
-        pnl = (cur - entry_net) * MULTIPLIER
-        base = max(abs(entry_net) * MULTIPLIER, 1.0)
+        if T_rem > 0:
+            cur = _net_value(pos, S, T_rem, sigma)
+        else:
+            cur = sum(
+                l.sign * l.ratio *
+                max((S - l.strike) if l.option_type.startswith("c") else (l.strike - S), 0.0)
+                for l in pos
+            )
+        pnl = (cur - entry_net) * mult
+        base = max(abs(entry_net) * mult, 1.0)
 
         expired = days_held >= max(dte, 1)
         hit_tp = pnl >= (tp_pct / 100.0) * base
@@ -150,11 +189,12 @@ def backtest_template(template: dict, closes: list[float],
     n = len(trades)
     wins = sum(1 for t in trades if t > 0)
     total = sum(trades)
-    cum, peak, mdd = 0.0, 0.0, 0.0
+    cum = peak = mdd = 0.0
     for t in trades:
         cum += t
         peak = max(peak, cum)
         mdd = max(mdd, peak - cum)
+
     return {
         "trades": n,
         "win_rate": round(wins / n, 4) if n else None,
