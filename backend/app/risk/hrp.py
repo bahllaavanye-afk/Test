@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
 from scipy.cluster.hierarchy import linkage, to_tree, leaves_list
@@ -71,40 +72,120 @@ def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
     return weights
 
 
+class HRPConfig(BaseModel):
+    """
+    Configuration for the HRP optimizer.
+
+    Attributes
+    ----------
+    min_assets: int
+        Minimum number of distinct assets required for HRP to run.
+        Must be at least 2.
+    min_rows: int
+        Minimum number of historical return observations required.
+        Must be at least 1.
+    """
+
+    min_assets: int = Field(
+        2,
+        description="Minimum number of assets required for hierarchical risk parity.",
+        example=5,
+        ge=2,
+    )
+    min_rows: int = Field(
+        10,
+        description="Minimum number of return observations (rows) required.",
+        example=20,
+        ge=1,
+    )
+
+    @validator("min_assets")
+    def check_min_assets(cls, v: int) -> int:
+        if v < 2:
+            raise ValueError("min_assets must be >= 2")
+        return v
+
+    @validator("min_rows")
+    def check_min_rows(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("min_rows must be >= 1")
+        return v
+
+
+class HRPWeights(BaseModel):
+    """
+    Output schema for HRP portfolio weights.
+
+    Attributes
+    ----------
+    weights: dict[str, float]
+        Mapping from asset symbols to their portfolio weight.
+        The weights should sum to approximately 1.0.
+    """
+
+    weights: dict[str, float] = Field(
+        ...,
+        description="Portfolio weights keyed by asset symbol.",
+        example={"AAPL": 0.25, "MSFT": 0.25, "GOOG": 0.25, "AMZN": 0.25},
+    )
+
+    @validator("weights")
+    def sum_to_one(cls, v: dict[str, float]) -> dict[str, float]:
+        total = sum(v.values())
+        if not np.isclose(total, 1.0, atol=1e-4):
+            raise ValueError(f"Weights must sum to 1.0 (got {total:.6f})")
+        return v
+
+
 class HRPOptimizer:
     """
     Hierarchical Risk Parity portfolio optimizer.
 
-    Usage:
-        hrp = HRPOptimizer()
-        weights = hrp.compute_weights(returns_df)  # returns pd.Series indexed by symbol
+    Usage
+    -----
+    >>> optimizer = HRPOptimizer()
+    >>> weights = optimizer.compute_weights(returns_df)  # returns pd.Series indexed by symbol
     """
+
+    def __init__(self, config: HRPConfig | None = None) -> None:
+        """
+        Initialise the optimizer.
+
+        Parameters
+        ----------
+        config: HRPConfig | None
+            Optional configuration object. If omitted, defaults are used.
+        """
+        self.config = config or HRPConfig()
 
     def compute_weights(self, returns: pd.DataFrame) -> pd.Series:
         """
         Compute HRP weights for a universe of assets.
 
-        Args:
-            returns: DataFrame of asset returns, columns = symbols, rows = dates.
-                     Must have at least 2 assets and 10 rows.
+        Parameters
+        ----------
+        returns: pd.DataFrame
+            DataFrame of asset returns, columns = symbols, rows = dates.
+            Must have at least ``config.min_assets`` assets and ``config.min_rows`` rows.
 
-        Returns:
-            pd.Series of portfolio weights summing to 1.0, indexed by symbol.
+        Returns
+        -------
+        pd.Series
+            Portfolio weights summing to 1.0, indexed by symbol.
             Falls back to equal weights if data is insufficient or degenerate.
         """
         symbols = list(returns.columns)
         n = len(symbols)
 
-        if n < 2 or len(returns) < 10:
+        if n < self.config.min_assets or len(returns) < self.config.min_rows:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         # Drop columns with all-NaN and fill remaining NaN with 0
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
-        if returns_clean.shape[1] < 2:
+        if returns_clean.shape[1] < self.config.min_assets:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         symbols_clean = list(returns_clean.columns)
-        n_clean = len(symbols_clean)
 
         try:
             corr = returns_clean.corr().clip(-0.9999, 0.9999)
