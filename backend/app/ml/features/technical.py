@@ -12,6 +12,12 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+
+In addition, basic entry/exit signal columns are added.  The signals are
+constructed from a combination of the computed indicators and are
+intended to provide tighter entry conditions and simple exit filters.
+All signal logic uses only information available up to the current bar,
+so it is safe for live‑trading pipelines.
 """
 
 from __future__ import annotations
@@ -54,6 +60,17 @@ def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
             exc_info=exc,
         )
         return None
+
+
+def _get_series(df: pd.DataFrame, name: str, default: float = 0.0) -> pd.Series:
+    """
+    Retrieve a column from ``df`` if it exists, otherwise return a series
+    filled with ``default`` values.  This utility prevents KeyError when
+    optional indicator columns are missing due to earlier failures.
+    """
+    if name in df.columns:
+        return df[name]
+    return pd.Series(default, index=df.index)
 
 
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -179,5 +196,65 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # ------------------------------------------------------------------
+    # Signal generation – tighter entry conditions with confirmation filters
+    # ------------------------------------------------------------------
+    # Helper series (fallback to zeros/False if a column is missing)
+    ema21_diff = _get_series(df, "ema_21_diff")
+    rsi14 = _get_series(df, "rsi_14")
+    macd_hist = _get_series(df, "macd_hist")
+    stoch_k = _get_series(df, "stoch_k")
+    stoch_d = _get_series(df, "stoch_d")
+    volume_ratio = _get_series(df, "volume_ratio")
+    close_shift = close.shift(1)
+
+    # Long entry: price above EMA, low RSI, positive MACD histogram,
+    # bullish stochastic crossover, and above‑average volume.
+    long_entry = (
+        (ema21_diff > 0) &
+        (rsi14 < 0.30) &
+        (macd_hist > 0) &
+        (stoch_k > stoch_d) &
+        (volume_ratio > 1.0)
+    )
+    df["long_entry"] = long_entry.astype(int)
+
+    # Short entry: opposite of long entry with stricter thresholds.
+    short_entry = (
+        (ema21_diff < 0) &
+        (rsi14 > 0.70) &
+        (macd_hist < 0) &
+        (stoch_k < stoch_d) &
+        (volume_ratio < 1.0)
+    )
+    df["short_entry"] = short_entry.astype(int)
+
+    # Exit logic – triggered when opposite momentum appears or when price
+    # moves sharply against the position (1 % move in either direction).
+    exit_long = (
+        (rsi14 > 0.60) |
+        (macd_hist < 0) |
+        (close < close_shift * 0.99)
+    )
+    df["exit_long"] = exit_long.astype(int)
+
+    exit_short = (
+        (rsi14 < 0.40) |
+        (macd_hist > 0) |
+        (close > close_shift * 1.01)
+    )
+    df["exit_short"] = exit_short.astype(int)
+
+    # Combined signal: 1 = long, -1 = short, 0 = flat.
+    # Preference is given to exit signals first.
+    combined_signal = (
+        -df["exit_short"] +
+        df["exit_long"] +
+        df["long_entry"] -
+        df["short_entry"]
+    )
+    # Clip to -1, 0, 1
+    df["signal"] = combined_signal.clip(-1, 1)
 
     return df
