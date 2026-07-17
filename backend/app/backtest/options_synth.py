@@ -13,6 +13,7 @@ Acklam approximation. Deterministic; fully unit-testable.
 from __future__ import annotations
 
 import math
+import unittest
 from dataclasses import dataclass
 
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
@@ -163,3 +164,70 @@ def backtest_template(template: dict, closes: list[float],
         "max_drawdown": round(mdd, 2),
         "method": "synthetic-BS (HV20×1.1 IV proxy) — ranking signal, not a return promise",
     }
+
+
+class TestOptionsSynth(unittest.TestCase):
+    """Edge‑case unit tests for the synthetic options backtester."""
+
+    def test_norm_ppf_invalid_bounds(self):
+        """norm_ppf must reject p ≤ 0 or p ≥ 1."""
+        with self.assertRaises(ValueError):
+            norm_ppf(0.0)
+        with self.assertRaises(ValueError):
+            norm_ppf(1.0)
+        with self.assertRaises(ValueError):
+            norm_ppf(-0.1)
+        with self.assertRaises(ValueError):
+            norm_ppf(1.5)
+
+    def test_norm_ppf_near_bounds(self):
+        """Values extremely close to 0 or 1 should still produce finite results."""
+        low = norm_ppf(1e-12)
+        high = norm_ppf(1 - 1e-12)
+        self.assertTrue(math.isfinite(low))
+        self.assertTrue(math.isfinite(high))
+        self.assertLess(low, -6)   # far left tail
+        self.assertGreater(high, 6)  # far right tail
+
+    def test_bs_price_minimum_T_and_sigma(self):
+        """Zero time‑to‑expiry and zero volatility are clamped to MIN_T and 1e‑4."""
+        price = bs_price(S=100, K=100, T=0.0, sigma=0.0, option_type="call")
+        # With T clamped, price should be close to intrinsic value (≈0) plus small time value
+        self.assertTrue(price > 0)
+        # Ensure the function does not raise and respects clamping
+        self.assertGreaterEqual(price, 0)
+
+    def test_strike_from_delta_put(self):
+        """strike_from_delta should correctly invert delta for a put option."""
+        S = 100
+        sigma = 0.2
+        T = 30 / 365.0
+        target_delta = 0.25  # typical put delta magnitude
+        strike = strike_from_delta(S, target_delta, T, sigma, option_type="put")
+        # Verify that the resulting delta (via bs_delta) matches the target within tolerance
+        delta = bs_delta(S, strike, T, sigma, option_type="put")
+        self.assertAlmostEqual(abs(delta), target_delta, places=4)
+
+    def test_backtest_template_no_trades(self):
+        """When price series is flat, no exit conditions should fire, resulting in zero trades."""
+        template = {
+            "action": {
+                "legs": [
+                    {"side": "buy", "option_type": "call", "delta": 0.5, "ratio": 1}
+                ]
+            },
+            "exit_rules": [
+                {"type": "take_profit", "value": 50},
+                {"type": "stop_loss", "value": 20}
+            ]
+        }
+        # Generate a flat price series longer than the initial look‑back window
+        flat_prices = [100.0] * 50
+        result = backtest_template(template, flat_prices)
+        self.assertEqual(result["trades"], 0)
+        self.assertIsNone(result["win_rate"])
+        self.assertEqual(result["total_pnl"], 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
