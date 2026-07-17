@@ -1,6 +1,9 @@
 """Continuous price ingestion from brokers → Redis cache → WebSocket broadcast."""
 from __future__ import annotations
+
 import asyncio
+from time import perf_counter
+
 from app.redis_client import get_redis, price_cache
 from app.ws.manager import manager
 from app.utils.logging import logger
@@ -47,6 +50,7 @@ async def run_price_feed(broker, symbols: list[str]) -> None:
     cache = price_cache
     logger.info("Price feed started", symbols=len(symbols), batch_size=BATCH_SIZE)
     while True:
+        cycle_start = perf_counter()
         # Process symbols in parallel batches
         for i in range(0, len(symbols), BATCH_SIZE):
             batch = symbols[i : i + BATCH_SIZE]
@@ -54,6 +58,14 @@ async def run_price_feed(broker, symbols: list[str]) -> None:
                 *[_fetch_and_publish(broker, sym, cache) for sym in batch],
                 return_exceptions=True,
             )
+        cycle_elapsed = perf_counter() - cycle_start
+        logger.info(
+            "Price feed cycle completed",
+            symbols_processed=len(symbols),
+            execution_time=cycle_elapsed,
+            signal_count=len(symbols),
+            pnl=0,  # P&L not applicable at feed level; placeholder for monitoring consistency
+        )
         await asyncio.sleep(POLL_INTERVAL)
 
 
@@ -107,6 +119,7 @@ async def _yfinance_price_feed(symbols: list[str]) -> None:
     """Poll yfinance every 60 s and publish last-close prices to Redis + WebSocket."""
     cache = price_cache
     while True:
+        cycle_start = perf_counter()
         for sym in symbols:
             try:
                 await asyncio.get_running_loop().run_in_executor(
@@ -114,6 +127,14 @@ async def _yfinance_price_feed(symbols: list[str]) -> None:
                 )
             except Exception as exc:
                 logger.debug("yfinance price feed error", symbol=sym, error=str(exc))
+        cycle_elapsed = perf_counter() - cycle_start
+        logger.info(
+            "yfinance price feed cycle completed",
+            symbols_processed=len(symbols),
+            execution_time=cycle_elapsed,
+            signal_count=len(symbols),
+            pnl=0,  # Placeholder; actual P&L calculation occurs downstream
+        )
         await asyncio.sleep(60)
 
 
