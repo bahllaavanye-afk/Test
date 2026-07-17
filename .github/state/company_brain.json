@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784308705.3219616,
+    "last_updated": 1784311303.3053315,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784302713.3596084
+    "last_brain_update": 1784311303.3046987
   },
   "episodic": [
     {
@@ -1416,6 +1416,34 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784308705.3253555
+    },
+    {
+      "lesson": "Multiple auto-fix failures indicate code issues requiring manual intervention; investigate and fix broken patches.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784311296.7211542
+    },
+    {
+      "lesson": "Deployment blocked by free-tier rate limit (100/day); upgrade to Pro or reduce deployment frequency to avoid blocking.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784311296.7249784
+    },
+    {
+      "lesson": "'Symbol Scout' feature lacks context for automated resolution; assign developer to clarify requirements and fix missing/broken functionality.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784311296.7276437
+    },
+    {
+      "lesson": "Auto-fix skipped due to complexity suggests need for improved automated tooling or manual code review process.",
+      "category": "code",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784311296.7303367
     }
   ],
   "github_insights": [
@@ -1833,6 +1861,11 @@
       "summary": "The auto-fix failed multiple times because patches could not be applied, and one fix was skipped due to complexity when implementing per-desk functionality.",
       "item_count": 20,
       "ts": 1784302713.3517144
+    },
+    {
+      "summary": "The auto-fix failed because the patch could not be applied to the file, as indicated by two repeated error messages.",
+      "item_count": 20,
+      "ts": 1784311303.298286
     }
   ],
   "experiment_results": [
