@@ -132,3 +132,54 @@ def historical_var(
         },
     )
     return result
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ----------------------------------------------------------------------
+import unittest
+
+
+class TestHistoricalVar(unittest.TestCase):
+    def test_insufficient_data_returns_default(self):
+        """When fewer than 10 observations are provided, default conservative values should be used."""
+        returns = [0.01, -0.02, 0.005]  # only 3 observations
+        portfolio = 1_000_000
+        result = historical_var(returns, portfolio)
+        self.assertEqual(result.method, "default_insufficient_data")
+        self.assertEqual(result.n_observations, 3)
+        self.assertAlmostEqual(result.var_95, 0.02)
+        self.assertAlmostEqual(result.var_99_usd, portfolio * 0.03)
+
+    def test_all_zero_returns_yield_zero_var(self):
+        """A series of zero returns should produce zero VaR and CVaR."""
+        returns = [0.0] * 20
+        portfolio = 500_000
+        result = historical_var(returns, portfolio, method="historical")
+        self.assertEqual(result.method, "historical")
+        self.assertEqual(result.var_95, 0.0)
+        self.assertEqual(result.var_99, 0.0)
+        self.assertEqual(result.cvar_95, 0.0)
+        self.assertEqual(result.cvar_99, 0.0)
+
+    def test_boundary_percentile_behavior(self):
+        """Verify that VaR correctly reflects the 5th and 1st percentiles when the data
+        contains values exactly at those thresholds."""
+        # Construct a symmetric series where the 5th percentile is -0.20 and the 1st percentile is -0.30
+        returns = np.concatenate([
+            np.full(1, -0.30),   # ensures 1% percentile at -0.30
+            np.full(4, -0.20),   # ensures 5% percentile at -0.20
+            np.linspace(-0.10, 0.10, 15)
+        ]).tolist()
+        portfolio = 100_000
+        result = historical_var(returns, portfolio, method="historical")
+        # VaR should be the absolute value of the negative percentiles
+        self.assertAlmostEqual(result.var_95, 0.20, places=6)
+        self.assertAlmostEqual(result.var_99, 0.30, places=6)
+        # CVaR should be greater than or equal to VaR (since it averages deeper losses)
+        self.assertGreaterEqual(result.cvar_95, result.var_95)
+        self.assertGreaterEqual(result.cvar_99, result.var_99)
+
+
+if __name__ == "__main__":
+    unittest.main()
