@@ -199,8 +199,13 @@
     "Monitor queue size",
     "Retrain models",
     "Monitor drift",
-    "Prioritize thread safety"
+    "Prioritize thread safety",
+    "test_cases on ml/features/microstructure.py: success \u2014 tests green",
+    "test_cases on execution/limit_first.py: success \u2014 tests green",
+    "test_cases on risk/var.py: success \u2014 tests green",
+    "test_cases on backtest/options_synth.py: success \u2014 tests green",
+    "test_cases on comparison/engine.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-17T02:28:48.106877+00:00",
+  "last_updated": "2026-07-17T02:45:56.331732+00:00",
   "total": 200
 }
