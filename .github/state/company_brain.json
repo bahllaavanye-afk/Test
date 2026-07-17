@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784285174.4499745,
+    "last_updated": 1784289990.8306265,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784285174.4494023
+    "last_brain_update": 1784289990.8298845
   },
   "episodic": [
     {
@@ -1282,6 +1282,34 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784285142.4389238
+    },
+    {
+      "lesson": "Free tier deployment limit reached; consider upgrading to Vercel Pro or batching deployments to avoid daily cap.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784289958.8021662
+    },
+    {
+      "lesson": "Investigate root cause of repeated auto-fix failures (patch format or environment mismatch) to stabilize CI/CD pipeline.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784289958.8054123
+    },
+    {
+      "lesson": "Enforce structured issue templates to ensure sufficient details for automated fixes and reduce skipped patches.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784289958.8095112
+    },
+    {
+      "lesson": "Implement manual review process for complex issues that automated fixes cannot resolve to prevent stalled deployments.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784289958.8170526
     }
   ],
   "github_insights": [
@@ -1684,6 +1712,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784285174.4427116
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784289990.8216877
     }
   ],
   "experiment_results": [
