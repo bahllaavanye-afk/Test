@@ -13,6 +13,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.strategies.manual.momentum import MomentumStrategy
@@ -20,6 +21,46 @@ from app.ml.inference import get_inference_service
 
 
 logger = logging.getLogger(__name__)
+
+
+class StrategyParams(BaseModel):
+    """Configuration parameters for :class:`MLMomentumStrategy`.
+
+    Attributes
+    ----------
+    confidence_threshold: float
+        Minimum combined confidence required to emit a signal.
+        Must be between 0 and 1 (inclusive). Example: ``0.65``.
+    tick_interval_seconds: float
+        Interval in seconds between strategy ticks. Must be positive.
+        Example: ``3600.0``.
+    """
+
+    confidence_threshold: float = Field(
+        0.65,
+        description="Minimum combined confidence required to emit a signal.",
+        example=0.65,
+        ge=0.0,
+        le=1.0,
+    )
+    tick_interval_seconds: float = Field(
+        3600.0,
+        description="Interval in seconds between strategy ticks.",
+        example=3600.0,
+        gt=0,
+    )
+
+    @validator("confidence_threshold")
+    def _validate_confidence(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("confidence_threshold must be between 0 and 1")
+        return v
+
+    @validator("tick_interval_seconds")
+    def _validate_tick_interval(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("tick_interval_seconds must be positive")
+        return v
 
 
 class MLMomentumStrategy(AbstractStrategy):
@@ -34,8 +75,10 @@ class MLMomentumStrategy(AbstractStrategy):
     market_type = "equity"
     strategy_type = "ml_enhanced"
     risk_bucket = "directional"
-    tick_interval_seconds = 3600.0
+
+    # Default values; may be overridden by validated params at runtime.
     confidence_threshold = 0.65
+    tick_interval_seconds = 3600.0
 
     def __init__(self, params: Optional[Dict[str, Any]] = None):
         """Create a new ``MLMomentumStrategy`` instance.
@@ -44,7 +87,17 @@ class MLMomentumStrategy(AbstractStrategy):
         ----------
         params : dict | None, optional
             Optional configuration parameters passed to the base strategy.
+            Supported keys are ``confidence_threshold`` and ``tick_interval_seconds``.
         """
+        params = params or {}
+        # Validate and apply strategy‑specific parameters.
+        validated_params = StrategyParams(**params)
+
+        # Override instance attributes with validated values.
+        self.confidence_threshold = validated_params.confidence_threshold
+        self.tick_interval_seconds = validated_params.tick_interval_seconds
+
+        # Preserve original behavior for the underlying momentum strategy.
         super().__init__(params)
         self._base = MomentumStrategy(params)
 
