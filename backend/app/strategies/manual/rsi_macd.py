@@ -35,7 +35,8 @@ class RSIMACDStrategy(AbstractStrategy):
         self.macd_signal = effective["macd_signal"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        if len(data) < self.macd_slow + self.macd_signal + 5:
+        # Ensure enough history for MACD and confirmation checks
+        if len(data) < self.macd_slow + self.macd_signal + 6:
             return None
 
         close = data["close"]
@@ -45,30 +46,77 @@ class RSIMACDStrategy(AbstractStrategy):
         if rsi is None or macd_df is None:
             return None
 
-        # Use previous bar's values (iloc[-2]) to avoid lookahead bias —
-        # today's close isn't known until EOD, so we trade on yesterday's signal.
+        # Use previous bar's values (iloc[-2]) to avoid look‑ahead bias
         rsi_val = rsi.iloc[-2]
+        rsi_prev = rsi.iloc[-3]
+
         macd_val = macd_df["MACD_12_26_9"].iloc[-2]
         macd_sig = macd_df["MACDs_12_26_9"].iloc[-2]
         macd_prev = macd_df["MACD_12_26_9"].iloc[-3]
         macd_sig_prev = macd_df["MACDs_12_26_9"].iloc[-3]
 
+        # Basic MACD cross detection
         macd_crossover_up = macd_val > macd_sig and macd_prev <= macd_sig_prev
         macd_crossover_down = macd_val < macd_sig and macd_prev >= macd_sig_prev
 
-        if rsi_val < self.rsi_oversold and macd_crossover_up:
-            confidence = min(0.85, 0.60 + (self.rsi_oversold - rsi_val) / self.rsi_oversold * 0.3)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"rsi": round(rsi_val, 2), "macd_crossover": "up"})
+        # Histogram confirmation (strength of momentum)
+        macd_hist = macd_val - macd_sig
+        macd_hist_prev = macd_prev - macd_sig_prev
+        hist_strength_up = macd_hist > 0 and macd_hist > macd_hist_prev
+        hist_strength_down = macd_hist < 0 and macd_hist < macd_hist_prev
 
-        if rsi_val > self.rsi_overbought and macd_crossover_down:
-            confidence = min(0.85, 0.60 + (rsi_val - self.rsi_overbought) / (100 - self.rsi_overbought) * 0.3)
-            return Signal(symbol=symbol, side="sell", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"rsi": round(rsi_val, 2), "macd_crossover": "down"})
+        # Tightened entry: require RSI moving away from extreme and histogram strength
+        if (
+            rsi_val < self.rsi_oversold
+            and rsi_val > rsi_prev  # RSI rising from oversold
+            and macd_crossover_up
+            and hist_strength_up
+        ):
+            confidence = min(
+                0.85,
+                0.60
+                + (self.rsi_oversold - rsi_val) / self.rsi_oversold * 0.25
+                + (macd_hist / (abs(macd_sig) + 1e-6)) * 0.10,
+            )
+            return Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={
+                    "rsi": round(rsi_val, 2),
+                    "macd_crossover": "up",
+                    "macd_hist": round(macd_hist, 4),
+                },
+            )
+
+        if (
+            rsi_val > self.rsi_overbought
+            and rsi_val < rsi_prev  # RSI falling from overbought
+            and macd_crossover_down
+            and hist_strength_down
+        ):
+            confidence = min(
+                0.85,
+                0.60
+                + (rsi_val - self.rsi_overbought) / (100 - self.rsi_overbought) * 0.25
+                + (abs(macd_hist) / (abs(macd_sig) + 1e-6)) * 0.10,
+            )
+            return Signal(
+                symbol=symbol,
+                side="sell",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={
+                    "rsi": round(rsi_val, 2),
+                    "macd_crossover": "down",
+                    "macd_hist": round(macd_hist, 4),
+                },
+            )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
@@ -80,16 +128,41 @@ class RSIMACDStrategy(AbstractStrategy):
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
+        # Shifted series to respect look‑ahead bias
         rsi_s = rsi.shift(1)
-        macd_s = macd_df["MACD_12_26_9"].shift(1)
-        macd_sig_s = macd_df["MACDs_12_26_9"].shift(1)
-        macd_cross_up = (macd_s > macd_sig_s) & (macd_df["MACD_12_26_9"].shift(2) <= macd_df["MACDs_12_26_9"].shift(2))
-        macd_cross_dn = (macd_s < macd_sig_s) & (macd_df["MACD_12_26_9"].shift(2) >= macd_df["MACDs_12_26_9"].shift(2))
+        rsi_prev = rsi.shift(2)
 
-        entries = (rsi_s < self.rsi_oversold) & macd_cross_up
-        exits = rsi_s > 50
-        short_entries = (rsi_s > self.rsi_overbought) & macd_cross_dn
-        short_exits = rsi_s < 50
+        macd = macd_df["MACD_12_26_9"]
+        macd_sig = macd_df["MACDs_12_26_9"]
+        macd_s = macd.shift(1)
+        macd_sig_s = macd_sig.shift(1)
+
+        macd_cross_up = (macd_s > macd_sig_s) & (macd.shift(2) <= macd_sig.shift(2))
+        macd_cross_down = (macd_s < macd_sig_s) & (macd.shift(2) >= macd_sig.shift(2))
+
+        macd_hist = macd - macd_sig
+        macd_hist_s = macd_hist.shift(1)
+
+        hist_strength_up = (macd_hist_s > 0) & (macd_hist_s > macd_hist.shift(2))
+        hist_strength_down = (macd_hist_s < 0) & (macd_hist_s < macd_hist.shift(2))
+
+        # Entry filters: RSI extremum + directional move + histogram strength
+        entries = (
+            (rsi_s < self.rsi_oversold)
+            & (rsi_s > rsi_prev)
+            & macd_cross_up
+            & hist_strength_up
+        )
+        short_entries = (
+            (rsi_s > self.rsi_overbought)
+            & (rsi_s < rsi_prev)
+            & macd_cross_down
+            & hist_strength_down
+        )
+
+        # Exit when opposite MACD crossover or RSI re‑crosses mid‑line
+        exits = macd_cross_down | (rsi_s > 55)
+        short_exits = macd_cross_up | (rsi_s < 45)
 
         return BacktestSignals(
             entries=entries.fillna(False),
