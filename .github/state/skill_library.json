@@ -199,8 +199,12 @@
     "Test DNS resolution",
     "Check disk space",
     "Log trade timeouts",
-    "Test queue lengths"
+    "Test queue lengths",
+    "strategy_logic on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "strategy_logic on execution/almgren_chriss.py: success \u2014 tests green",
+    "strategy_logic on risk/circuit_breaker.py: success \u2014 tests green",
+    "strategy_logic on comparison/engine.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-17T21:20:36.417520+00:00",
+  "last_updated": "2026-07-17T22:14:52.615561+00:00",
   "total": 200
 }
