@@ -1,10 +1,5 @@
 {
   "skills": [
-    "**Peer Review**: The `batch.py` file under `backend/app` requires review for type hints implementation, specifically for potential exception handling improvements.",
-    "Test DNS resolve",
-    "* **Review and improve potential concurrent issues**: The `queue_length_validation` in `backend/app/skills/utilities.py` requires a priority review to mitigate potential issues.",
-    "Log API responses",
-    "Improve alpha decay",
     "Scan for timeouts",
     "Check RAM usage",
     "Optimize log tracking",
@@ -199,8 +194,13 @@
     "Test DNS resolution",
     "Check disk space",
     "Log trade timeouts",
-    "Test queue lengths"
+    "Test queue lengths",
+    "Monitor RAM levels",
+    "Test firewall rules",
+    "Review dependency updates",
+    "Scan for code improvements",
+    "Parse model performance"
   ],
-  "last_updated": "2026-07-17T23:22:21.351847+00:00",
+  "last_updated": "2026-07-18T00:53:40.919611+00:00",
   "total": 200
 }
