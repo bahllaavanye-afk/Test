@@ -12,9 +12,21 @@ from app.api.v1.options import (
     _median,
 )
 
+# Constants extracted from magic numbers / hardcoded strings
+YEAR_MONTH_PREFIX = "2026-01-"
+HIST_SIZE = 30
+HIST_START = 0.10
+HIST_STEP = 0.01
+CURRENT_TOP = 0.50
+CURRENT_BOTTOM = 0.05
+CURRENT_MID = 0.25
+EXPECTED_RANK_LOWER = 45.0
+EXPECTED_RANK_UPPER = 60.0
+HIST_REPEATED_VALUE = 0.2
+
 
 def _history(values: list[float]) -> dict[str, float]:
-    return {f"2026-01-{i + 1:02d}": v for i, v in enumerate(values)}
+    return {f"{YEAR_MONTH_PREFIX}{i + 1:02d}": v for i, v in enumerate(values)}
 
 
 class TestMedian:
@@ -30,22 +42,22 @@ class TestMedian:
 
 class TestIVRankFromHistory:
     def test_thin_history_returns_none(self):
-        hist = _history([0.2] * (_IV_HIST_MIN_POINTS - 1))
+        hist = _history([HIST_REPEATED_VALUE] * (_IV_HIST_MIN_POINTS - 1))
         assert _iv_rank_from_history(0.25, hist) is None
 
     def test_none_iv_returns_none(self):
-        hist = _history([0.2] * (_IV_HIST_MIN_POINTS + 5))
+        hist = _history([HIST_REPEATED_VALUE] * (_IV_HIST_MIN_POINTS + 5))
         assert _iv_rank_from_history(None, hist) is None
 
     def test_current_at_top_of_range_is_100(self):
-        hist = _history([0.10 + i * 0.01 for i in range(30)])  # 0.10 … 0.39
-        assert _iv_rank_from_history(0.50, hist) == 100.0
+        hist = _history([HIST_START + i * HIST_STEP for i in range(HIST_SIZE)])
+        assert _iv_rank_from_history(CURRENT_TOP, hist) == 100.0
 
     def test_current_at_bottom_of_range_is_0(self):
-        hist = _history([0.10 + i * 0.01 for i in range(30)])
-        assert _iv_rank_from_history(0.05, hist) == 0.0
+        hist = _history([HIST_START + i * HIST_STEP for i in range(HIST_SIZE)])
+        assert _iv_rank_from_history(CURRENT_BOTTOM, hist) == 0.0
 
     def test_midrange_rank(self):
-        hist = _history([0.10 + i * 0.01 for i in range(30)])
-        rank = _iv_rank_from_history(0.25, hist)
-        assert rank is not None and 45.0 <= rank <= 60.0
+        hist = _history([HIST_START + i * HIST_STEP for i in range(HIST_SIZE)])
+        rank = _iv_rank_from_history(CURRENT_MID, hist)
+        assert rank is not None and EXPECTED_RANK_LOWER <= rank <= EXPECTED_RANK_UPPER
