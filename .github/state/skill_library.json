@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Test API rate limits",
-    "cleanup on api/v1/leaderboard.py: success \u2014 tests green",
     "Check dependency updates",
     "Verify thread counts",
     "Test network latency",
@@ -199,8 +197,10 @@
     "Verify OS updates",
     "Test DB connections",
     "Restart on crash",
-    "Ping external IPs"
+    "Ping external IPs",
+    "Check port bindings",
+    "Validate config files"
   ],
-  "last_updated": "2026-07-18T15:52:44.969050+00:00",
+  "last_updated": "2026-07-18T16:53:46.931791+00:00",
   "total": 200
 }
