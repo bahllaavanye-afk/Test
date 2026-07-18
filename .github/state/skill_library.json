@@ -199,8 +199,11 @@
     "Restart on crash",
     "Ping external IPs",
     "Check port bindings",
-    "Validate config files"
+    "Validate config files",
+    "constants on comparison/engine.py: success \u2014 tests green",
+    "constants on strategies/manual/commodity_reversion.py: success \u2014 tests green",
+    "constants on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T18:58:11.589208+00:00",
+  "last_updated": "2026-07-18T18:59:44.566032+00:00",
   "total": 200
 }
