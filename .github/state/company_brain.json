@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784413136.3054655,
+    "last_updated": 1784413920.1692224,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784410442.6509366
+    "last_brain_update": 1784413920.1684525
   },
   "episodic": [
     {
@@ -1838,11 +1838,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The discussion indicates that an automated fix attempt failed twice because the patch could not be applied to the file.",
-      "item_count": 20,
-      "ts": 1783364909.9019272
-    },
-    {
       "summary": "The automated fix was skipped due to complexity of the repository content,",
       "item_count": 20,
       "ts": 1783381491.575648
@@ -2336,6 +2331,11 @@
       "summary": "Deployment failed due to a resource limit error, and subsequent auto-fix attempts were aborted because the changes exceeded the 50-line limit and the patch could not be applied.",
       "item_count": 20,
       "ts": 1784410442.6412568
+    },
+    {
+      "summary": "The deployment failed due to resource limitations, with an error suggesting to retry in 24 hours. The workflow run is referenced at the provided link.",
+      "item_count": 20,
+      "ts": 1784413920.1593559
     }
   ],
   "experiment_results": [
