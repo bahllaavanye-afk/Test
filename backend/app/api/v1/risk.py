@@ -1,5 +1,5 @@
 """Risk management endpoints."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -89,6 +89,7 @@ async def delete_risk_rule(
     current_user: User = Depends(get_current_user),
 ):
     from fastapi import HTTPException
+
     rule = await db.get(RiskRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -104,6 +105,7 @@ async def list_events(
     current_user: User = Depends(get_current_user),
 ):
     from sqlalchemy.orm import selectinload
+
     result = await db.execute(
         select(RiskEvent)
         .options(selectinload(RiskEvent.rule))
@@ -130,13 +132,18 @@ async def get_circuit_breaker_status(
     """Return current circuit breaker state for the dashboard."""
     # Check if any halt_all rules have been triggered recently
     from sqlalchemy import desc
+
     result = await db.execute(
         select(RiskEvent)
         .order_by(desc(RiskEvent.triggered_at))
         .limit(1)
     )
     latest = result.scalar_one_or_none()
-    is_tripped = latest is not None and latest.resolved_at is None and latest.action_taken in ("halt_all", "halt_bucket")
+    is_tripped = (
+        latest is not None
+        and latest.resolved_at is None
+        and latest.action_taken in ("halt_all", "halt_bucket")
+    )
     return {
         "status": "tripped" if is_tripped else "normal",
         "tripped": is_tripped,
@@ -152,7 +159,12 @@ async def get_var(
     current_user: User = Depends(get_current_user),
 ):
     """Compute portfolio VaR and CVaR from recent trade returns."""
+    if portfolio_value <= 0:
+        raise HTTPException(
+            status_code=400, detail="portfolio_value must be positive"
+        )
     from app.risk.var import historical_var
+
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
     )
@@ -160,6 +172,7 @@ async def get_var(
     if not pnl_list:
         # Use synthetic returns for demo
         import numpy as np
+
         np.random.seed(42)
         pnl_list = list(np.random.normal(0.001, 0.015, 252))
     returns = [p / portfolio_value for p in pnl_list]
@@ -204,6 +217,7 @@ async def get_drawdown_recovery(
     """Estimate drawdown recovery time via Monte Carlo."""
     from app.risk.drawdown_recovery import estimate_recovery
     import numpy as np
+
     result = await db.execute(
         select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
     )
@@ -214,3 +228,75 @@ async def get_drawdown_recovery(
     returns = [p / portfolio_value for p in pnl_list]
     estimate = estimate_recovery(returns, current_drawdown_pct / 100.0)
     return estimate.to_dict()
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import pytest
+import httpx
+
+@pytest.fixture
+def test_app():
+    """Create a FastAPI app instance with overridden DB dependency for isolated testing."""
+    from backend.main import app
+
+    async def mock_get_db():
+        class MockResult:
+            def __init__(self, data=None):
+                self._data = data or []
+
+            def scalars(self):
+                return self
+
+            def all(self):
+                return self._data
+
+            def __iter__(self):
+                return iter(self._data)
+
+        class MockSession:
+            async def execute(self, *args, **kwargs):
+                return MockResult()
+
+            async def commit(self):
+                pass
+
+            async def refresh(self, *args, **kwargs):
+                pass
+
+        return MockSession()
+
+    app.dependency_overrides[get_db] = mock_get_db
+    yield app
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_get_var_zero_portfolio(test_app):
+    """Portfolio value of zero should be rejected with a 400 error."""
+    async with httpx.AsyncClient(app=test_app, base_url="http://test") as client:
+        response = await client.get("/risk/var?portfolio_value=0")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "portfolio_value must be positive"
+
+
+@pytest.mark.anyio
+async def test_list_events_zero_limit(test_app):
+    """Requesting zero events should return an empty list without error."""
+    async with httpx.AsyncClient(app=test_app, base_url="http://test") as client:
+        response = await client.get("/risk/events?limit=0")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@pytest.mark.anyio
+async def test_circuit_breaker_no_events(test_app):
+    """When no risk events exist, circuit breaker status should be normal."""
+    async with httpx.AsyncClient(app=test_app, base_url="http://test") as client:
+        response = await client.get("/risk/circuit-breaker")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "normal"
+    assert data["tripped"] is False
+    assert data["last_event_at"] is None
