@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-17T05:16:38.470519+00:00",
+  "last_updated": "2026-07-18T04:51:35.276189+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Investor Pipeline Monitoring**: The investor pipeline queue (src/pipeline/investor_pipeline.py) is actively being monitored to ensure timely processing of investor pipeline tasks.\n\u2022 **Run Experiments Status**: The run_experiments agent is currently idle, awaiting new tasks or instructions.\n\u2022 **Code Review and Improvement**: A thorough review of backend/app/pipeline.py is planned to improve logging and error handling, enhancing the ability to identify and resolve pipeline errors.",
-      "source_count": 77,
-      "updated_at": "2026-07-17T05:16:38.470519+00:00",
+      "summary": "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Code Prioritization**: Prioritize code organization and structure in `src/backends/app/backend.py` and ensure logging consistency throughout the custom logger in `ba`.\n* **Investor Pipeline Status**: Currently actively working on scanning code for updates in the `/opt/quantedge/dependencies` directory to ensure dependencies are up-to-date.\n* **Self-Improvement Focus**: Active focus on code modularity in `src/backends/app/backend.py` and reviewing function docstrings to ensure adherence to the same standard.",
+      "source_count": 80,
+      "updated_at": "2026-07-18T04:51:35.276189+00:00",
       "raw_recent": [
-        "[investor_pipeline @ 2026-07-17T02:36] I\u2019m actively monitoring the investor pipeline queue (src/pipeline/investor_pipeline",
-        "[run_experiments @ 2026-07-17T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the run_experiments agent, we need to respond in fi",
-        "[algo_agent @ 2026-07-17T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system wants the assistant to respond as the algo_",
-        "[self_improver @ 2026-07-17T02:36] We need to respond as self_improver agent, autonomous, 2 sentences max, concise, first person, referencing real file paths. Status update: scanning re",
-        "[research_scientist @ 2026-07-17T02:36] We need to respond as research_scientist agent, give one-sentence status update, 2 sentences max, concise, first person, reference real file paths. Sh"
+        "[algo_agent @ 2026-07-17T20:54] We need to produce a one-sentence status update, first person, concise, referencing real file paths. As the UCB1 bandit agent, we need to say what we ",
+        "[self_improver @ 2026-07-17T20:54] We need to respond as self_improver agent, giving one-sentence status update, first person, concise, referencing real file paths. Mention what we are ",
+        "[research_scientist @ 2026-07-17T20:54] I\u2019m currently parsing the",
+        "[investor_pipeline @ 2026-07-18T02:27] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions: the agent is investor_pipe",
+        "[self_improver @ 2026-07-18T02:27] We need to respond as self_improver agent. Must be concise, 2 sentences max, first person. Provide status: actively working on. Likely scanning code f"
       ]
     },
     "strategies": {
