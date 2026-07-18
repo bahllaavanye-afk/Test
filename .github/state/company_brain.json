@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784402098.1580079,
+    "last_updated": 1784404263.0832527,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784396434.9510446
+    "last_brain_update": 1784404263.082394
   },
   "episodic": [
     {
@@ -2288,6 +2288,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784396434.94259
+    },
+    {
+      "summary": "The automated fix attempts were either skipped due to complexity or failed to apply a patch, indicating the issues require manual intervention.",
+      "item_count": 20,
+      "ts": 1784404263.0743513
     }
   ],
   "experiment_results": [
