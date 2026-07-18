@@ -1,11 +1,28 @@
 """Market regime and cross-strategy correlation endpoints."""
+from collections import Counter
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
 from app.risk.correlation_monitor import correlation_monitor
 
-router = APIRouter(prefix="/regime", tags=["regime"])
+# Constants
+ROUTER_PREFIX: str = "/regime"
+ROUTER_TAGS: list[str] = ["regime"]
+
+DEFAULT_REGIME: str = "unknown"
+LABEL_MAP: dict[str, str] = {
+    "trending": "bull",
+    "mean_reverting": "sideways",
+    "high_vol": "bear",
+    "unknown": "unknown",
+}
+CONFIDENCE_PRECISION: int = 3
+
+DEFAULT_ALERT_LIMIT: int = 10
+MAX_ALERT_LIMIT: int = 50
+
+router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
 @router.get("/current")
@@ -17,24 +34,15 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     """
     states = regime_monitor.all_states()
     if not states:
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return {"regime": DEFAULT_REGIME, "confidence": 0.0, "updated_at": None}
 
-    # Map detector regimes → frontend-friendly labels
-    _label_map = {
-        "trending": "bull",
-        "mean_reverting": "sideways",
-        "high_vol": "bear",
-        "unknown": "unknown",
-    }
-
-    from collections import Counter
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
 
     for sym_state in states.values():
-        raw = sym_state.get("regime", "unknown")
-        label = _label_map.get(raw, "unknown")
+        raw = sym_state.get("regime", DEFAULT_REGIME)
+        label = LABEL_MAP.get(raw, DEFAULT_REGIME)
         label_counts[label] += 1
         confidences.append(sym_state.get("confidence", 0.0))
         updated = sym_state.get("updated_at")
@@ -42,7 +50,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
             latest_updated = updated
 
     overall_regime = label_counts.most_common(1)[0][0]
-    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    avg_confidence = round(sum(confidences) / len(confidences), CONFIDENCE_PRECISION) if confidences else 0.0
 
     return {
         "regime": overall_regime,
@@ -72,10 +80,10 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
     return {
         "matrix": correlation_monitor.matrix_as_list(),
         "reduced_strategies": list(correlation_monitor._reduced),
-        "recent_alerts": correlation_monitor.recent_alerts(10),
+        "recent_alerts": correlation_monitor.recent_alerts(DEFAULT_ALERT_LIMIT),
     }
 
 
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
-    return correlation_monitor.recent_alerts(50)
+    return correlation_monitor.recent_alerts(MAX_ALERT_LIMIT)
