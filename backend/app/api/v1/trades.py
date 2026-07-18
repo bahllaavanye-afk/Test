@@ -12,7 +12,16 @@ from app.models.account import Account
 from app.models.trade import Trade
 from app.models.user import User
 
-router = APIRouter(prefix="/trades", tags=["trades"])
+# Constants
+DEFAULT_LIMIT = 50
+MIN_LIMIT = 1
+MAX_LIMIT = 500
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+ROUTER_PREFIX = "/trades"
+ROUTER_TAG = "trades"
+
+router = APIRouter(prefix=ROUTER_PREFIX, tags=[ROUTER_TAG])
 
 
 class TradeOut(BaseModel):
@@ -76,7 +85,7 @@ class TradeOut(BaseModel):
     @classmethod
     def validate_side(cls, v: str) -> str:
         """Ensure side is either 'buy' or 'sell'."""
-        if v not in {"buy", "sell"}:
+        if v not in {SIDE_BUY, SIDE_SELL}:
             raise ValueError("side must be either 'buy' or 'sell'")
         return v
 
@@ -91,7 +100,7 @@ class TradeOut(BaseModel):
 
 @router.get("/", response_model=list[TradeOut])
 async def list_trades(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(DEFAULT_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
@@ -115,7 +124,7 @@ async def list_trades(
     out: list[TradeOut] = []
     for t in trades:
         fill_price: float | None
-        if t.side == "buy":
+        if t.side == SIDE_BUY:
             fill_price = float(t.entry_price) if t.entry_price is not None else None
         else:
             fill_price = float(t.exit_price) if t.exit_price is not None else None
