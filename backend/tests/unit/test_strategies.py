@@ -16,8 +16,10 @@ def ohlcv():
     open_ = close * (1 + rng.normal(0, 0.001, n))
     volume = rng.integers(100_000, 1_000_000, n)
     idx = pd.date_range("2024-01-01", periods=n, freq="1D")
-    return pd.DataFrame({"open": open_, "high": high, "low": low,
-                         "close": close, "volume": volume}, index=idx)
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
+        index=idx,
+    )
 
 
 def test_registry_not_empty():
@@ -35,9 +37,16 @@ def test_strategy_has_required_attrs(name):
     assert hasattr(inst, "risk_bucket")
 
 
-@pytest.mark.parametrize("name", [
-    "momentum", "mean_reversion", "rsi_macd", "breakout", "supertrend",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "momentum",
+        "mean_reversion",
+        "rsi_macd",
+        "breakout",
+        "supertrend",
+    ],
+)
 def test_strategy_backtest_signals(name, ohlcv):
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
