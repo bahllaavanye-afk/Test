@@ -199,8 +199,13 @@
     "Log error states",
     "Verify OS updates",
     "Test DB connections",
-    "Restart on crash"
+    "Restart on crash",
+    "test_cases on risk/hrp.py: success \u2014 tests green",
+    "test_cases on brokers/alpaca_headers.py: success \u2014 tests green",
+    "test_cases on backtest/walk_forward.py: success \u2014 tests green",
+    "test_cases on comparison/engine.py: success \u2014 tests green",
+    "test_cases on api/v1/risk.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T13:27:04.252339+00:00",
+  "last_updated": "2026-07-18T14:51:57.242143+00:00",
   "total": 200
 }
