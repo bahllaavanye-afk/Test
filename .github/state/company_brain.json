@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784389040.9361758,
+    "last_updated": 1784392539.313091,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,8 +151,8 @@
       "ABT"
     ],
     "risk_flags": [],
-    "risk_status": "alert",
-    "last_brain_update": 1784389040.9352367
+    "risk_status": "normal",
+    "last_brain_update": 1784392539.3121474
   },
   "episodic": [
     {
@@ -1735,6 +1735,34 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1784389037.3796694
+    },
+    {
+      "lesson": "Slack agent integration is failing due to quota exhaustion (`message_limit_exceeded`) or token issues, blocking team notifications and run logs.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784392529.5589342
+    },
+    {
+      "lesson": "Deployment pipeline hit the Vercel free-tier daily limit (100 deploys), preventing new releases for 24 hours unless upgraded to Pro.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784392529.5638163
+    },
+    {
+      "lesson": "Auto-fix patches are failing repeatedly (3 failures) \u2014 likely due to incompatible diffs or missing context in the patch generation process.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784392529.6018941
+    },
+    {
+      "lesson": "Multiple automated processes (Slack bot, deployments, auto-fix) are hitting resource or logic limits, indicating a need for quota monitoring and fallback strategies.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784392529.6054797
     }
   ],
   "github_insights": [
@@ -2222,6 +2250,11 @@
       "summary": "The auto-fix failed three times because the system could not apply the patch to the file.",
       "item_count": 20,
       "ts": 1784389040.9258423
+    },
+    {
+      "summary": "Slack agent-team runs failed due to a message limit quota, deployment failed with a resource limit error (retry in 24 hours), and an auto-fix attempt also failed to apply a patch.",
+      "item_count": 20,
+      "ts": 1784392539.3036208
     }
   ],
   "experiment_results": [
