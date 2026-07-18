@@ -1,6 +1,9 @@
 """Kelly criterion position sizing with fractional Kelly for safety."""
+import time
+import logging
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
 def kelly_fraction(win_rate: float, avg_win: float, avg_loss: float, fraction: float = 0.25) -> float:
     """
@@ -26,7 +29,26 @@ def size_from_kelly(
     kelly_fraction_pct: float = 0.25,
 ) -> int:
     """Return integer share count sized by Kelly criterion, capped at max_pct of equity."""
+    start_time = time.time()
     f = kelly_fraction(win_rate, avg_win_pct, avg_loss_pct, kelly_fraction_pct)
     f = min(f, max_pct)
     dollar_size = equity * f
-    return max(1, int(dollar_size / price))
+    share_count = max(1, int(dollar_size / price))
+    elapsed_ms = (time.time() - start_time) * 1000
+
+    logger.info(
+        "size_from_kelly executed",
+        extra={
+            "signal_count": 1,
+            "execution_time_ms": elapsed_ms,
+            "equity": equity,
+            "win_rate": win_rate,
+            "avg_win_pct": avg_win_pct,
+            "avg_loss_pct": avg_loss_pct,
+            "price": price,
+            "kelly_fraction": f,
+            "dollar_size": dollar_size,
+            "share_count": share_count,
+        },
+    )
+    return share_count
