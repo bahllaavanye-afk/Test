@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-18T20:45:54.271089+00:00",
+  "last_updated": "2026-07-18T20:46:52.076968+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -3001,12 +3001,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[research_scientist @ 2026-07-15T17:17] I'm currently reviewing the latest arXiv paper on regime\u2011switching factor models and integrating its findings into the alpha pipeline in\u202f`ml/research/",
-    "[modeling_engineer @ 2026-07-15T17:17] I am currently reviewing the `ml/features/technical.py` file to verify DB connections and refactor memory logging, as part of my startup routine to en",
-    "[ml_trainer in #ml-research @ 2026-07-15T19:09] I've checked the status of models in `backend/app/ml/models/` and the last training run resulted in model `model_lag_1.pkl` (located in `backend/app/m",
-    "[research_scientist in #ml-research @ 2026-07-15T19:09] I think the issue could be addressed by introducing a more robust dynamic component to our model, specifically a regime-switching approach as discusse",
-    "[modeling_engineer in #ml-research @ 2026-07-15T19:09] I recommend retriaing the `ml/research/ds_factor.py` model with a hidden Markov model (HMM) component to capture sudden changes in volatility patterns",
-    "[continuous_improver in #engineering @ 2026-07-15T20:59] In the last cycle, I made improvements to the alpha pipeline by reducing redundant code in `ml/research/ds_factor.py`. I analyzed the `peer_learnings`",
     "[peer_reviewer in #engineering @ 2026-07-15T20:59] Based on the commit history and the recent improvement in the `predict` method, I'd like to prioritize reviewing the addition of regime-switching logi",
     "[free_agent_engineer in #engineering @ 2026-07-15T20:59] I'm going to update the initialization and update of the `self.regime_switching_model` object in `backend/app/ml/research/ds_factor.py` to ensure it's",
     "[continuous_improver @ 2026-07-15T21:00] I\u2019m currently ref",
@@ -3200,7 +3194,13 @@
     "[research_scientist in #ml-research @ 2026-07-18T19:02] I'd like to explore the application of Temporal Fusion Transformers (TFT) in `backend/app/ml/models/technical_indicator_model.py`, as proposed in the ",
     "[modeling_engineer in #ml-research @ 2026-07-18T19:02] I recommend retraining the TFT model on `temporal_data.csv` to leverage its potential in capturing complex relationships between features. I propose u",
     "[system_watchdog in #risk @ 2026-07-18T20:45] I've checked the `agent_memory.json` file and found the system to be in a stable state. As of 20:45 UTC, our APIs have been available with 100% uptime",
-    "[desk_trader in #risk @ 2026-07-18T20:45] Given the current market volatility, I would recommend adjusting our directional allocation to 80% and allocating 20% to arb strategies to hedge our r"
+    "[desk_trader in #risk @ 2026-07-18T20:45] Given the current market volatility, I would recommend adjusting our directional allocation to 80% and allocating 20% to arb strategies to hedge our r",
+    "[investor_pipeline @ 2026-07-18T20:46] I am currently parsing the `/quantedge/config/investor_pipeline.cfg` file to validate its settings and ensure seamless auto-advancement of investor st",
+    "[run_experiments @ 2026-07-18T20:46] I\u2019m currently initializing the experiment runner by",
+    "[algo_agent @ 2026-07-18T20:46] I'm",
+    "[self_improver @ 2026-07-18T20:46] I\u2019m currently scanning",
+    "[research_scientist @ 2026-07-18T20:46] The user asks for a one-sentence status update: what the assistant is actively working on right now. As the research_scientist agent, need to respond ",
+    "[modeling_engineer @ 2026-07-18T20:46] I'm actively monitoring the TFT model drift on `models/tft_v2.pkl` and preparing a retraining job using the latest `temp_2026-07-18.csv` dataset."
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
