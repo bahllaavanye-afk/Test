@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +32,18 @@ class AgentMemory:
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
-        """Append an observation to a topic list with a timestamp."""
+        """Append an observation to a topic list with a timestamp.
+
+        Uses a pipeline to reduce round‑trip latency.
+        """
         payload = json.dumps({"ts": time.time(), **data})
         key = f"{_PREFIX}{topic}"
         try:
-            await self._r.lpush(key, payload)
-            await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
-        except Exception as e:
+            pipe = self._r.pipeline()
+            pipe.lpush(key, payload)
+            pipe.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            await pipe.execute()
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
 
     async def set_latest(self, topic: str, data: dict) -> None:
@@ -47,37 +52,53 @@ class AgentMemory:
         payload = json.dumps({"ts": time.time(), **data})
         try:
             await self._r.set(key, payload)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.set_latest failed for topic %s: %s", topic, e)
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
-        """Return up to n most-recent observations for a topic."""
+    async def read_recent(self, topic: str, n: int = 50) -> List[dict]:
+        """Return up to n most‑recent observations for a topic.
+
+        Performs an early exit when n is non‑positive.
+        """
+        if n <= 0:
+            return []
         key = f"{_PREFIX}{topic}"
         try:
             items = await self._r.lrange(key, 0, n - 1)
             return [json.loads(i) for i in items]
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.read_recent failed for topic %s: %s", topic, e)
             return []
 
     async def get_latest(self, topic: str) -> dict | None:
-        """Return the latest single-value for a topic."""
+        """Return the latest single‑value for a topic."""
         key = f"{_PREFIX}latest:{topic}"
         try:
             val = await self._r.get(key)
             return json.loads(val) if val else None
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.get_latest failed for topic %s: %s", topic, e)
             return None
 
-    async def read_all_topics(self) -> list[str]:
-        """List all memory topics currently stored."""
+    async def read_all_topics(self) -> List[str]:
+        """List all memory topics currently stored.
+
+        Uses SCAN to avoid blocking the Redis server on large keyspaces.
+        """
         try:
             pattern = f"{_PREFIX}*"
+            # Prefer async scan_iter if available; fallback to keys().
+            scan_iter = getattr(self._r, "scan_iter", None)
+            if callable(scan_iter):
+                topics = []
+                async for key in scan_iter(match=pattern):
+                    topics.append(key.removeprefix(_PREFIX))
+                return topics
+            # Fallback (less efficient) path
             keys = await self._r.keys(pattern)
             return [k.removeprefix(_PREFIX) for k in keys]
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.read_all_topics failed: %s", e)
             return []
