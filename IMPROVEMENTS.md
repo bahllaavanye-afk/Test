@@ -1,5 +1,17 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🚨 DEEP REVIEW 2026-07-18 PM — why "nothing is working" was TRUE on the live site
+Root cause of almost everything: **render.yaml `autoDeploy: false`** — merges never
+deployed. The live backend was a weeks-old build (29/57 templates, new endpoints 404,
+bot scheduler dead since Jul 5, only 2 bots ever ran). FIXED this session: CI now has a
+`deploy` job (green main → Render deploy → poll to live → page on failure) and bot
+seeding is ADDITIVE (new templates become site bots on next boot). Remaining from the
+evidence:
+- [ ] **[P0] Verify post-deploy revival chain** — after the first auto-deploy: /health shows the new build; 57 bots on site; bot last_run_at advancing (scheduler alive); paper orders → check_bot_exits → Trades rows → leaderboard non-empty → perf weighting/pruning engage. Each link was dead on the old build.
+- [ ] **[P0] Multi-agent discussions are 2-second canned exchanges** — 3 "messages" in 2s means no real LLM calls (log evidence: run 29652961586 references lib/api/json.rs, a Rust path not in this repo); no visible Discord delivery line. Make discussions call llm_routed() for real, post to Discord via notify, and FAIL LOUD when providers are down instead of emitting filler. Same audit for team-lead-issues + daily-employee-review.
+- [ ] **[P0] Desk fills → backend Trades attribution** — the GitHub-Actions desks trade on Alpaca but the backend DB had zero closed trades; order_sync/fill attribution must ingest desk orders (client_order_id prefix qe-*) so dashboards/leaderboard reflect REAL desk activity, not just bot paper-sims.
+- [ ] **[P1] Employee individual memory depth** — employee_context exists in agent_memory.json and grows, but verify each named employee accrues per-conversation memory and that it's surfaced in their Discord posts (recall-before-post is wired; confirm on live runs).
+
 ## New queue (added 2026-07-18, OA-backend session)
 - [ ] **[P1] Tradier sandbox options-data adapter** — free real chains WITH ORATS-computed greeks/IV (see docs/research/OA_BACKEND_STACK_2026.md): real delta-based strikes for desk mleg spreads, real IV rank replacing the HV proxy. Requires free TRADIER_SANDBOX_TOKEN secret (user signup, no card).
 - [ ] **[P1] SmartPricing-style laddered repricing** — extend _ensure_filled's one-shot cancel-replace into an OA-style ladder: post at mid, step limit toward market every ~7s (3 steps), then market out; measure in the slippage dashboard.
