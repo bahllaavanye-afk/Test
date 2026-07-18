@@ -67,6 +67,8 @@ class TurnOfMonthStrategy(AbstractStrategy):
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         window = _in_tom_window(pd.DatetimeIndex(df.index))
-        entries = (window & ~window.shift(1).fillna(False)).astype(bool)
-        exits = (~window & window.shift(1).fillna(False)).astype(bool)
+        # .shift(1): trade on the NEXT bar after the window state is known —
+        # repo-wide no-lookahead rule (and no entry on bar 0 by construction).
+        entries = (window & ~window.shift(1).fillna(False)).shift(1).fillna(False).astype(bool)
+        exits = (~window & window.shift(1).fillna(False)).shift(1).fillna(False).astype(bool)
         return BacktestSignals(entries=entries, exits=exits)
