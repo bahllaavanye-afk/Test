@@ -199,8 +199,13 @@
     "Check port bindings",
     "Validate config files",
     "Monitor CPU usage",
-    "Verify timezone sync"
+    "Verify timezone sync",
+    "strategy_logic on test/unit/test_llm_observability.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "strategy_logic on ml/models/foundation_model.py: success \u2014 tests green",
+    "strategy_logic on ml/features/normalization.py: success \u2014 tests green",
+    "strategy_logic on execution/almgren_chriss.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T21:13:18.721890+00:00",
+  "last_updated": "2026-07-18T22:14:01.500004+00:00",
   "total": 200
 }

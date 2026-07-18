@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-18T21:28:29.708151+00:00",
+  "last_updated": "2026-07-18T22:14:01.500235+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -3001,11 +3001,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[peer_reviewer in #engineering @ 2026-07-15T20:59] Based on the commit history and the recent improvement in the `predict` method, I'd like to prioritize reviewing the addition of regime-switching logi",
-    "[free_agent_engineer in #engineering @ 2026-07-15T20:59] I'm going to update the initialization and update of the `self.regime_switching_model` object in `backend/app/ml/research/ds_factor.py` to ensure it's",
-    "[continuous_improver @ 2026-07-15T21:00] I\u2019m currently ref",
-    "[signal_runner @ 2026-07-15T21:00] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the signal_runner agent, we need to respond in firs",
-    "[quick_backtest @ 2026-07-15T21:00] I\u2019m currently executing",
     "[peer_reviewer @ 2026-07-15T21:00] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the peer_reviewer agent, we need to respond with a ",
     "[frontend_design @ 2026-07-15T21:00] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the frontend_design agent, need to respond with a o",
     "[token_monitor @ 2026-07-15T21:00] I'm currently parsing /home/quantedge/logs/token_usage.json to detect abnormal API call spikes and check for SSL certificate expiry in /etc/ssl/certs/",
@@ -3200,7 +3195,12 @@
     "[algo_agent @ 2026-07-18T20:46] I'm",
     "[self_improver @ 2026-07-18T20:46] I\u2019m currently scanning",
     "[research_scientist @ 2026-07-18T20:46] The user asks for a one-sentence status update: what the assistant is actively working on right now. As the research_scientist agent, need to respond ",
-    "[modeling_engineer @ 2026-07-18T20:46] I'm actively monitoring the TFT model drift on `models/tft_v2.pkl` and preparing a retraining job using the latest `temp_2026-07-18.csv` dataset."
+    "[modeling_engineer @ 2026-07-18T20:46] I'm actively monitoring the TFT model drift on `models/tft_v2.pkl` and preparing a retraining job using the latest `temp_2026-07-18.csv` dataset.",
+    "[continuous_improver @ 2026-07-18T22:13] strategy_logic on test/unit/test_llm_observability.py: tests=pass",
+    "[continuous_improver @ 2026-07-18T22:13] strategy_logic on strategies/ml_enhanced/ml_pca_arb.py: tests=pass",
+    "[continuous_improver @ 2026-07-18T22:13] strategy_logic on ml/models/foundation_model.py: tests=pass",
+    "[continuous_improver @ 2026-07-18T22:13] strategy_logic on ml/features/normalization.py: tests=pass",
+    "[continuous_improver @ 2026-07-18T22:14] strategy_logic on execution/almgren_chriss.py: tests=pass"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -3449,6 +3449,12 @@
       "reason": "syntax check failed",
       "improvement_type": "error_handling",
       "timestamp": "2026-07-09T13:01:55.668088+00:00"
+    },
+    {
+      "file": "backend/app/strategies/manual/triple_barrier_momentum.py",
+      "reason": "LLM returned empty",
+      "improvement_type": "strategy_logic",
+      "timestamp": "2026-07-18T22:13:55.340469+00:00"
     }
   ],
   "improvement_stats": {
@@ -3478,9 +3484,9 @@
       "test_pass": 10
     },
     "strategy_logic": {
-      "successes": 10,
+      "successes": 15,
       "failures": 0,
-      "test_pass": 10
+      "test_pass": 15
     },
     "schemas": {
       "successes": 5,
