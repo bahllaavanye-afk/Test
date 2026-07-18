@@ -22,9 +22,17 @@ _DESK_MOD = Path(__file__).parents[3] / ".github" / "scripts" / "desk_order_plac
 
 
 def _load_desks():
+    """Load the desk definition module safely.
+
+    Returns:
+        The loaded module, or None if the module cannot be loaded.
+    """
     if not _DESK_MOD.exists():
         pytest.skip("desk_order_placer.py not present in this checkout")
     spec = importlib.util.spec_from_file_location("dop_sync_test", _DESK_MOD)
+    if spec is None or spec.loader is None:
+        # Unable to create a module spec; treat as missing.
+        pytest.skip("Unable to load desk_order_placer.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)  # type: ignore[union-attr]
     return m
@@ -34,10 +42,12 @@ def test_every_desk_strategy_exists_in_registry():
     from app.strategies import STRATEGY_REGISTRY
 
     dop = _load_desks()
+    # Guard against None or missing attributes.
+    desks = getattr(dop, "DESKS", []) or []
     missing = {
-        f"{d.name}/{s}"
-        for d in dop.DESKS
-        for s in d.strategy_names
+        f"{getattr(d, 'name', '<unknown>')}/{s}"
+        for d in desks
+        for s in getattr(d, "strategy_names", []) or []
         if STRATEGY_REGISTRY.get(s) is None
     }
     assert not missing, f"desks reference unknown/unloadable strategies: {sorted(missing)}"
@@ -50,7 +60,10 @@ def test_fx_desk_strategies_exist_in_registry():
     if not fx_mod.exists():
         pytest.skip("fx_desk.py not present")
     spec = importlib.util.spec_from_file_location("fx_sync_test", fx_mod)
+    if spec is None or spec.loader is None:
+        pytest.skip("Unable to load fx_desk.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)  # type: ignore[union-attr]
-    missing = [s for s in m.STRATEGIES if STRATEGY_REGISTRY.get(s) is None]
+    strategies = getattr(m, "STRATEGIES", []) or []
+    missing = [s for s in strategies if STRATEGY_REGISTRY.get(s) is None]
     assert not missing, f"FX desk references unknown strategies: {missing}"
