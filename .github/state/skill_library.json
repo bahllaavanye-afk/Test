@@ -199,8 +199,13 @@
     "Log error states",
     "Verify OS updates",
     "Test DB connections",
-    "Restart on crash"
+    "Restart on crash",
+    "error_handling on ml/models/lightgbm_model.py: success \u2014 tests green",
+    "error_handling on execution/twap.py: success \u2014 tests green",
+    "error_handling on risk/kelly.py: success \u2014 tests green",
+    "error_handling on brokers/polymarket.py: success \u2014 tests green",
+    "error_handling on test/unit/test_reward_gate.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T13:27:04.252339+00:00",
+  "last_updated": "2026-07-18T13:56:09.868631+00:00",
   "total": 200
 }
