@@ -26,7 +26,6 @@ Strategy:
   - Rebalance monthly, equal-weight, ~6-month holding period.
 """
 
-import asyncio
 from datetime import date, timedelta
 
 import httpx
