@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Review API status",
     "Test API rate limits",
     "cleanup on api/v1/leaderboard.py: success \u2014 tests green",
     "Check dependency updates",
@@ -199,8 +198,9 @@
     "Log error states",
     "Verify OS updates",
     "Test DB connections",
-    "Restart on crash"
+    "Restart on crash",
+    "Ping external IPs"
   ],
-  "last_updated": "2026-07-18T13:27:04.252339+00:00",
+  "last_updated": "2026-07-18T15:52:44.969050+00:00",
   "total": 200
 }
