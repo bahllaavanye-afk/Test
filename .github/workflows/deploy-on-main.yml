@@ -56,6 +56,22 @@ jobs:
           done
           echo "✗ deploy timed out after 15m"; exit 1
 
+      - name: Fetch Render failure events (diagnosis in CI log)
+        if: failure()
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          echo "── Render service events (newest first) ──"
+          curl -sS "https://api.render.com/v1/services/$RENDER_SERVICE_ID/events?limit=20" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            | python3 -c "
+          import json, sys
+          for e in json.load(sys.stdin):
+              ev = e.get('event', e)
+              print(ev.get('timestamp',''), ev.get('type',''), '-', json.dumps(ev.get('details',{}))[:300])
+          " || echo "(events fetch failed)"
+
       - name: Page Discord on deploy failure
         if: failure()
         env:

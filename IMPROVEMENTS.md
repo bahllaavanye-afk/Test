@@ -1,5 +1,7 @@
 # QuantEdge — Improvements & Task Tracker
 
+- [ ] **[P0] Render deploys fail at STARTUP (update_failed)** — found 2026-07-18: the deploy pipeline works end-to-end (build succeeds), but the new app fails to boot, so Render keeps the weeks-old build live — THIS is the true staleness root cause (autoDeploy:false only hid it). deploy-on-main.yml now dumps Render service events on failure; read the next failed run's CI log for the boot error (likely alembic migration vs Supabase, a missing prod dep, or startup-timeout on free tier) and fix start.sh/boot path. The 30-min smoke stays red until fixed.
+
 ## 🚨 DEEP REVIEW 2026-07-18 PM — why "nothing is working" was TRUE on the live site
 Root cause of almost everything: **render.yaml `autoDeploy: false`** — merges never
 deployed. The live backend was a weeks-old build (29/57 templates, new endpoints 404,
