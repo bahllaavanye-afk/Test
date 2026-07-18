@@ -199,8 +199,13 @@
     "Check port bindings",
     "Validate config files",
     "Monitor CPU usage",
-    "Verify timezone sync"
+    "Verify timezone sync",
+    "cleanup on test/unit/test_strategies.py: success \u2014 tests green",
+    "cleanup on strategies/manual/rsi2_pullback.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "cleanup on ml/models/base_model.py: success \u2014 tests green",
+    "cleanup on backtest/monte_carlo.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T21:13:18.721890+00:00",
+  "last_updated": "2026-07-18T21:22:35.591902+00:00",
   "total": 200
 }
