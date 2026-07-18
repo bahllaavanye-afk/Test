@@ -1264,6 +1264,25 @@ async def main() -> None:
                     print(f"    ⚠ {sym}: only {len(df)} bars (<50) — dropped", flush=True)
             tracker.set_output(bars_fetched=bars_fetched, symbols=symbols_fetched)
 
+            # ── Polymarket REAL data (2026-07-18): the desk ran on an SPY
+            # proxy; Gamma+CLOB market data is public. Feed the top markets'
+            # hourly price bars and point the desk at them. Fail-soft: any
+            # feed problem keeps the SPY proxy (never an empty desk).
+            for _i, _d in enumerate(active_desks):
+                if _d.name != "Polymarket":
+                    continue
+                try:
+                    import polymarket_data
+                    _pm = await asyncio.to_thread(polymarket_data.desk_feed, 6)
+                    if _pm:
+                        bars_cache.update(_pm)
+                        active_desks[_i] = _d._replace(symbols=list(_pm.keys()))
+                        print(f"  ✓ Polymarket desk on REAL data: {len(_pm)} live markets", flush=True)
+                    else:
+                        print("  · Polymarket feed empty — desk stays on SPY proxy", flush=True)
+                except Exception as _exc:  # noqa: BLE001
+                    print(f"  · Polymarket feed failed ({str(_exc)[:80]}) — SPY proxy kept", flush=True)
+
         # Detect market regime from SPY bars (0=bear, 1=sideways, 2=bull)
         _REGIME_NAMES = {0: "bear", 1: "sideways", 2: "bull"}
         spy_df = bars_cache.get("SPY")
@@ -1439,6 +1458,14 @@ async def main() -> None:
                 _df = bars_cache.get(symbol)
                 if _df is not None and len(_df) > 0:
                     limit_price = float(_df["close"].iloc[-1])
+                # Polymarket symbols are REAL market data but execution needs
+                # py-clob-client signing (queued) — log the signal, never send
+                # a "PM:..." symbol to Alpaca.
+                if symbol.startswith("PM:"):
+                    print(f"  ◆ {strategy.name} on {symbol[:44]!r}: {signal.side.upper()} "
+                          f"conf={conf:.2f} — REAL Polymarket signal (execution pending py-clob)",
+                          flush=True)
+                    continue
                 # Options-desk income structures place REAL defined-risk
                 # spreads (order_class=mleg); anything unresolvable falls back
                 # to the underlying proxy below — never partial legs.
