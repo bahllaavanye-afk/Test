@@ -199,8 +199,13 @@
     "Check port bindings",
     "Validate config files",
     "Monitor CPU usage",
-    "Verify timezone sync"
+    "Verify timezone sync",
+    "monitoring on strategies/manual/poly_late_resolution.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "monitoring on execution/iceberg.py: success \u2014 tests green",
+    "monitoring on risk/correlation.py: success \u2014 tests green",
+    "monitoring on tasks/backtest_worker.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T21:13:18.721890+00:00",
+  "last_updated": "2026-07-18T23:25:02.158014+00:00",
   "total": 200
 }
