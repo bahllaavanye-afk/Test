@@ -70,11 +70,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
@@ -92,3 +94,119 @@ class StrategyComparisonEngine:
             is_significant=(p_val < 0.05),
             winner=winner,
         )
+
+
+# ==============================
+# Unit Tests for Edge Cases
+# ==============================
+import unittest
+from unittest.mock import patch, MagicMock
+
+
+class MockMetrics:
+    """Simple mock mimicking BacktestMetrics with required attributes."""
+    def __init__(self, equity_curve, sharpe):
+        self.equity_curve = equity_curve
+        self.sharpe = sharpe
+
+
+class TestStrategyComparisonEngine(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.engine = StrategyComparisonEngine()
+        # Minimal series to satisfy function signatures
+        self.signals = pd.Series([1, 0, 1])
+        self.prices = pd.Series([100, 101, 102])
+
+    @patch("app.comparison.engine.fetch_benchmark_curves")
+    @patch("app.comparison.engine.get_benchmark_stats")
+    @patch("app.comparison.engine.run_backtest")
+    async def test_ttest_fallback_when_series_too_short(
+        self, mock_run_backtest, mock_get_stats, mock_fetch_curves
+    ):
+        """When return series length <=10, engine should fallback to t_stat=0.0, p_val=1.0."""
+        # Create equity curves with only 5 points each
+        equity_curve = [{"equity": v} for v in [100_000, 100_500, 101_000, 101_500, 102_000]]
+        mock_metrics = MockMetrics(equity_curve, sharpe=1.0)
+        mock_run_backtest.return_value = mock_metrics
+
+        mock_fetch_curves.return_value = {}
+        mock_get_stats.return_value = {}
+
+        result = await self.engine.run_comparison(
+            manual_signals=self.signals,
+            ml_signals=self.signals,
+            prices=self.prices,
+            strategy_name="test_strategy",
+            symbol="TEST",
+            interval="1d",
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 1, 10),
+        )
+
+        self.assertEqual(result.t_statistic, 0.0)
+        self.assertEqual(result.p_value, 1.0)
+        self.assertFalse(result.is_significant)
+
+    @patch("app.comparison.engine.fetch_benchmark_curves")
+    @patch("app.comparison.engine.get_benchmark_stats")
+    @patch("app.comparison.engine.run_backtest")
+    async def test_winner_neither_when_sharpe_difference_small(
+        self, mock_run_backtest, mock_get_stats, mock_fetch_curves
+    ):
+        """If Sharpe difference is less than 0.1, winner should be 'neither'."""
+        equity_curve = [{"equity": v} for v in np.linspace(100_000, 110_000, 15)]
+        manual_metrics = MockMetrics(equity_curve, sharpe=1.00)
+        ml_metrics = MockMetrics(equity_curve, sharpe=1.05)  # diff = 0.05 < 0.1
+        # run_backtest called twice: first for manual, then for ml
+        mock_run_backtest.side_effect = [manual_metrics, ml_metrics]
+
+        mock_fetch_curves.return_value = {}
+        mock_get_stats.return_value = {}
+
+        result = await self.engine.run_comparison(
+            manual_signals=self.signals,
+            ml_signals=self.signals,
+            prices=self.prices,
+            strategy_name="edge_case_strategy",
+            symbol="EDG",
+            interval="1d",
+            start_date=date(2023, 2, 1),
+            end_date=date(2023, 2, 20),
+        )
+
+        self.assertEqual(result.winner, "neither")
+        self.assertAlmostEqual(result.ml_improvement_sharpe, 0.05, places=4)
+
+    @patch("app.comparison.engine.fetch_benchmark_curves")
+    @patch("app.comparison.engine.get_benchmark_stats")
+    @patch("app.comparison.engine.run_backtest")
+    async def test_winner_ml_when_sharpe_significantly_higher(
+        self, mock_run_backtest, mock_get_stats, mock_fetch_curves
+    ):
+        """When ML Sharpe exceeds manual by >=0.1, winner should be 'ml'."""
+        equity_curve = [{"equity": v} for v in np.linspace(100_000, 120_000, 30)]
+        manual_metrics = MockMetrics(equity_curve, sharpe=0.90)
+        ml_metrics = MockMetrics(equity_curve, sharpe=1.20)  # diff = 0.30
+        mock_run_backtest.side_effect = [manual_metrics, ml_metrics]
+
+        mock_fetch_curves.return_value = {}
+        mock_get_stats.return_value = {}
+
+        result = await self.engine.run_comparison(
+            manual_signals=self.signals,
+            ml_signals=self.signals,
+            prices=self.prices,
+            strategy_name="ml_advantage",
+            symbol="MLA",
+            interval="1d",
+            start_date=date(2023, 3, 1),
+            end_date=date(2023, 3, 31),
+        )
+
+        self.assertEqual(result.winner, "ml")
+        self.assertGreater(result.ml_improvement_sharpe, 0.1)
+        # Ensure statistical significance flag reflects p-value
+        self.assertIsInstance(result.is_significant, bool)
+
+if __name__ == "__main__":
+    unittest.main()
