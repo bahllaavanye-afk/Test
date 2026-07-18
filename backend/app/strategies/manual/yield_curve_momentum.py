@@ -32,16 +32,16 @@ import pandas as pd
 
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
-_LONG_DURATION  = "TLT"   # 20Y Treasury — inverse of long-end rates
-_MID_DURATION   = "IEF"   # 7-10Y Treasury
-_SHORT_DURATION = "SHY"   # 1-3Y Treasury — inverse of short-end rates
-_EQUITY_ETF     = "SPY"
+_LONG_DURATION = "TLT"   # 20Y Treasury — inverse of long-end rates
+_MID_DURATION = "IEF"    # 7-10Y Treasury
+_SHORT_DURATION = "SHY"  # 1-3Y Treasury — inverse of short-end rates
+_EQUITY_ETF = "SPY"
 
-_LOOKBACK_DAYS  = 252
-_MOMENTUM_DAYS  = 20
-_ENTRY_Z        = 0.30
-_EXIT_Z         = -0.50
-_STOP_Z         = -1.20
+_LOOKBACK_DAYS = 252
+_MOMENTUM_DAYS = 20
+_ENTRY_Z = 0.30
+_EXIT_Z = -0.50
+_STOP_Z = -1.20
 
 
 def _fetch_yf(symbol: str, period: str = "3y") -> pd.Series | None:
@@ -89,19 +89,58 @@ class YieldCurveMomentumStrategy(AbstractStrategy):
         std = series.rolling(window, min_periods=window // 2).std()
         return (series - mean) / std.clip(lower=1e-8)
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    def _fetch_price_series(self) -> tuple[pd.Series | None, pd.Series | None]:
+        """Retrieve TLT and SHY price series."""
         tlt = _fetch_yf(_LONG_DURATION)
         shy = _fetch_yf(_SHORT_DURATION)
-        if tlt is None or shy is None:
-            return None
+        return tlt, shy
 
+    def _compute_features(
+        self,
+        tlt: pd.Series,
+        shy: pd.Series,
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
+        """Calculate spread ratio, its rolling z‑score, and momentum."""
         df = pd.DataFrame({"tlt": tlt, "shy": shy}).dropna()
-        if len(df) < self.lookback:
-            return None
-
         ratio = df["tlt"] / df["shy"].clip(lower=1e-8)
         zscore = self._rolling_zscore(ratio, self.lookback)
         momentum = ratio.pct_change(self.momentum_days)
+        return ratio, zscore, momentum
+
+    def _build_signal(
+        self,
+        symbol: str,
+        side: str,
+        confidence: float,
+        regime: str,
+        z_now: float,
+        mom_now: float,
+        tlt_price: float,
+        shy_price: float,
+    ) -> Signal:
+        """Create a Signal instance with consistent metadata."""
+        return Signal(
+            symbol=symbol,
+            side=side,
+            confidence=round(confidence, 4),
+            strategy_name=self.name,
+            strategy_type=self.strategy_type,
+            risk_bucket=self.risk_bucket,
+            metadata={
+                "regime": regime,
+                "spread_zscore": round(z_now, 4),
+                "slope_momentum_20d": round(mom_now, 4),
+                "tlt_price": round(tlt_price, 2),
+                "shy_price": round(shy_price, 2),
+            },
+        )
+
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        tlt, shy = self._fetch_price_series()
+        if tlt is None or shy is None:
+            return None
+
+        ratio, zscore, momentum = self._compute_features(tlt, shy)
 
         if zscore.empty or np.isnan(zscore.iloc[-1]):
             return None
@@ -110,40 +149,32 @@ class YieldCurveMomentumStrategy(AbstractStrategy):
         mom_now = float(momentum.iloc[-1]) if not np.isnan(momentum.iloc[-1]) else 0.0
         trade_sym = symbol if symbol in (_EQUITY_ETF, _LONG_DURATION, _SHORT_DURATION) else _EQUITY_ETF
 
+        # Entry condition
         if z_now > self.entry_z and mom_now > 0:
             confidence = min(0.90, 0.60 + abs(z_now) * 0.10)
-            return Signal(
+            return self._build_signal(
                 symbol=trade_sym,
                 side="buy",
-                confidence=round(confidence, 4),
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                metadata={
-                    "regime": "curve_steepening",
-                    "spread_zscore": round(z_now, 4),
-                    "slope_momentum_20d": round(mom_now, 4),
-                    "tlt_price": round(float(df["tlt"].iloc[-1]), 2),
-                    "shy_price": round(float(df["shy"].iloc[-1]), 2),
-                },
+                confidence=confidence,
+                regime="curve_steepening",
+                z_now=z_now,
+                mom_now=mom_now,
+                tlt_price=float(ratio.index[-1]) if False else float(tlt.iloc[-1]),
+                shy_price=float(shy.iloc[-1]),
             )
 
+        # Stop/defensive condition
         if z_now < self.stop_z:
             confidence = min(0.90, 0.60 + abs(z_now + self.stop_z) * 0.10)
-            return Signal(
+            return self._build_signal(
                 symbol=trade_sym,
                 side="sell",
-                confidence=round(confidence, 4),
-                strategy_name=self.name,
-                strategy_type=self.strategy_type,
-                risk_bucket=self.risk_bucket,
-                metadata={
-                    "regime": "curve_inverted",
-                    "spread_zscore": round(z_now, 4),
-                    "slope_momentum_20d": round(mom_now, 4),
-                    "tlt_price": round(float(df["tlt"].iloc[-1]), 2),
-                    "shy_price": round(float(df["shy"].iloc[-1]), 2),
-                },
+                confidence=confidence,
+                regime="curve_inverted",
+                z_now=z_now,
+                mom_now=mom_now,
+                tlt_price=float(tlt.iloc[-1]),
+                shy_price=float(shy.iloc[-1]),
             )
 
         return None
