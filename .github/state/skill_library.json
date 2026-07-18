@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Check dependency updates",
-    "Verify thread counts",
     "Test network latency",
     "strategy_logic on execution/advanced_orders.py: success \u2014 tests green",
     "Verify SSL certs",
@@ -199,8 +197,10 @@
     "Restart on crash",
     "Ping external IPs",
     "Check port bindings",
-    "Validate config files"
+    "Validate config files",
+    "Monitor CPU usage",
+    "Verify timezone sync"
   ],
-  "last_updated": "2026-07-18T18:58:11.589208+00:00",
+  "last_updated": "2026-07-18T20:04:56.783715+00:00",
   "total": 200
 }
