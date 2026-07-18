@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784375780.9617705,
+    "last_updated": 1784380146.9645097,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784375780.9608543
+    "last_brain_update": 1784380146.9635694
   },
   "episodic": [
     {
@@ -1679,6 +1679,34 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1784368464.5997603
+    },
+    {
+      "lesson": "Vercel free tier deployment limit reached (100/day). Upgrade to Pro or throttle deployments to avoid blocking releases.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784380114.9331448
+    },
+    {
+      "lesson": "Slack agent run failed due to `message_limit_exceeded` or expired token. Verify Slack workspace quota and refresh OAuth token; add retry/alert logic.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784380114.9387367
+    },
+    {
+      "lesson": "Multiple auto-fix failures indicate patch application issues. Review the auto-fix pipeline for incorrect diffs or missing dependencies; consider manual fixes as fallback.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784380114.9428966
+    },
+    {
+      "lesson": "Recurring rate-limit errors (Vercel, Slack) suggest need for centralized monitoring of API quotas and proactive upgrade or throttling strategy.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784380114.9469311
     }
   ],
   "github_insights": [
@@ -2156,6 +2184,11 @@
       "summary": "The auto-fix process repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1784375780.9527955
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784380146.9528594
     }
   ],
   "experiment_results": [
