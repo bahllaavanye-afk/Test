@@ -205,3 +205,23 @@ class OpeningRangeBreakoutStrategy(AbstractStrategy):
             short_entries=short_entries.astype(bool),
             short_exits=short_exits.astype(bool),
         )
+
+
+# ── Fail-soft guard (strategy contract) ───────────────────────────────────────
+# analyze() fetches intraday bars via httpx AFTER a time-of-day gate — so the
+# contract test only exercised the fetch when CI ran during US market hours,
+# where a blocked/failed network raised ConnectError out of the strategy
+# (caught 2026-07-18, a latent time-dependent flake). Contract: catch and
+# return None so every caller is safe.
+_unguarded_analyze = OpeningRangeBreakoutStrategy.analyze
+
+
+async def _failsoft_analyze(self, data, symbol: str = "SPY"):
+    try:
+        return await _unguarded_analyze(self, data, symbol)
+    except Exception as exc:  # noqa: BLE001 — no-setup is the honest answer
+        print(f"opening_range_breakout: analyze fail-soft -> None ({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+
+OpeningRangeBreakoutStrategy.analyze = _failsoft_analyze

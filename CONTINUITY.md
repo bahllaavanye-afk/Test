@@ -8,7 +8,17 @@
 
 _Last updated: 2026-07-15._
 
-## ⚡ STATE AS OF 2026-07-15 PM (read this first)
+## ⚡ STATE AS OF 2026-07-18 (read this first)
+All queue P1s+P2s from the scale-up session are DONE except Polymarket CLOB (needs
+POLYMARKET_PRIVATE_KEY wiring — queued). Landed since 07-15: auto-pruning (leaderboard
+weight 0.0 at ≥20 trades/neg P&L/sharpe<-0.5, PLUS hit-rate rule ≥100 trades/losing/
+win<45%); Symbol Scout (validates desk universes vs /v2/assets, proposes new pairs/ETFs,
+runs in strategy-scout workflow); Options desk places REAL defined-risk mleg spreads for
+wheel/condor/credit-spread/CSP/vol-carry (moneyness strikes ~35 DTE, never-partial-legs,
+proxy fallback); research→registry pipeline (scout seeds strategy_generator's prompt via
+state/research_seed.json).
+
+## Previous state (2026-07-15 PM)
 **SCALE-UP LANDED: 53→103 wired strategies, 9 desks.** New TV Indicators desk (12 TV
 strategies, #desk-tv-indicators). Universes: Equities 30 syms, Crypto 20 pairs, Options 8,
 Macro/FX 14 (full rates/credit complex), StatArb 12, Commodities 12, International 19.

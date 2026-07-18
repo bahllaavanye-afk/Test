@@ -86,3 +86,26 @@ def test_missing_sharpe_never_prunes(monkeypatch):
         {"strategy": "nosharpe", "trades": 50, "total_pnl": -500.0, "pnl_sharpe": None},
     ])
     assert dop._fetch_performance_weights()["nosharpe"] == dop._WEIGHT_MIN
+
+
+def test_hitrate_rule_prunes_large_sample_coin_toss(monkeypatch):
+    # 100+ trades, losing, sub-45% accuracy → pruned even with mild sharpe
+    _mock_leaderboard(monkeypatch, [
+        {"strategy": "coin_toss", "trades": 120, "total_pnl": -200.0,
+         "pnl_sharpe": -0.1, "win_rate": 0.41},
+    ])
+    assert dop._fetch_performance_weights()["coin_toss"] == 0.0
+
+
+def test_hitrate_rule_needs_big_sample_and_losses(monkeypatch):
+    _mock_leaderboard(monkeypatch, [
+        # low win rate but small sample → not pruned
+        {"strategy": "small_n", "trades": 60, "total_pnl": -100.0,
+         "pnl_sharpe": -0.1, "win_rate": 0.40},
+        # low win rate but PROFITABLE (big winners, small losers) → never pruned
+        {"strategy": "trend_rider", "trades": 150, "total_pnl": 900.0,
+         "pnl_sharpe": 0.8, "win_rate": 0.38},
+    ])
+    w = dop._fetch_performance_weights()
+    assert w["small_n"] == dop._WEIGHT_MIN
+    assert w["trend_rider"] > 1.0

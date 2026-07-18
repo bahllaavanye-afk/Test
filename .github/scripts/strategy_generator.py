@@ -152,12 +152,33 @@ def _call_claude(prompt: str) -> str:
         return ""
 
 
+def _research_seed_hint() -> str:
+    """Priority direction from Strategy Scout's research backlog (reads
+    state/research_seed.json). Empty string when no seed exists."""
+    import json as _json
+    from pathlib import Path as _Path
+    seed_file = _Path(__file__).parent.parent / "state" / "research_seed.json"
+    try:
+        seed = _json.loads(seed_file.read_text())
+        return (
+            "\n\nPRIORITY RESEARCH DIRECTION (from the firm's research backlog — "
+            "build this next):\n"
+            f"- {seed['key']}: {seed['description']} (target desk: {seed['desk']})\n"
+            "If this premium cannot be implemented with only the OHLCV DataFrame "
+            "provided, implement the nearest feasible variant and say so in the "
+            "module docstring.\n"
+        )
+    except Exception:  # noqa: BLE001 — no seed -> generator stays free-form
+        return ""
+
+
 def _generate_strategy_code(market_type: str, existing: list[str]) -> str:
     prompt = _BASE_PROMPT.format(
         existing=", ".join(existing[:20]),
         market_type=market_type,
     )
     # Try Gemini first, fall back to Claude
+    prompt += _research_seed_hint()
     code = _call_gemini(prompt)
     if not code:
         code = _call_claude(prompt)

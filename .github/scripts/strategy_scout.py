@@ -160,6 +160,16 @@ def main() -> int:
     digest = build_digest(unwired, coverage, ideas)
     print(digest)
 
+    # Research → registry pipeline: hand the top rotating idea to the strategy
+    # generator as its priority direction (state/research_seed.json).
+    seed_file = REPO_ROOT / ".github" / "state" / "research_seed.json"
+    seed_file.parent.mkdir(parents=True, exist_ok=True)
+    key, desk, desc = ideas[0]
+    seed_file.write_text(json.dumps({
+        "key": key, "desk": desk, "description": desc,
+        "set_at": datetime.now(timezone.utc).isoformat(),
+    }, indent=2))
+
     # state / idempotence: only touch IMPROVEMENTS.md when the unwired set CHANGED
     prev: dict = {}
     try:
