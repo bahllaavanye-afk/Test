@@ -56,7 +56,7 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
 - [x] **[P0] Alpaca multi-leg options orders** — implementation existed (submit_alpaca_multileg_order, OCC symbols, delta picking, engine-wired) but had ZERO tests; 2026-07-15 added 8 tests which caught a real crash (structlog-style kwargs on a stdlib logger — a broker REJECTION crashed the caller instead of returning None). Fixed. — Alpaca paper supports options + multi-leg;
   extend brokers/alpaca_orders.py with the legs order shape so every oa_* bot fills REAL
   option legs with existing keys. Kills the TradeStation dependency.
-- [ ] **[P1] Synthetic options backtester** — Black-Scholes pricer over underlying OHLCV +
+- [x] **[P1] Synthetic options backtester** — DONE 2026-07-18: app/backtest/options_synthetic.py (BS pricer, realized-vol IV proxy, spread backtests mirroring the desk's mleg structures; limits stated honestly — no skew, conservative for short premium). 9 tests: put-call parity, defined-risk cap, theta harvest in flat tape, crash bleed. Original ask: Black-Scholes pricer over underlying OHLCV +
   realized vol to approximate premium-structure backtests (no chain history yet); gate
   bot enablement on a passing synthetic backtest (paper-first stays).
 - [x] **[P0] Discord per-channel routing via bot token** — DONE 2026-07-12 (notify.py bot-token routing + DiscordBot UA + webhook fallback). — notify.py posts everything through ONE
@@ -185,4 +185,4 @@ Queued for the autonomous loop / employees. Priority order top-to-bottom.
 ## Housekeeping
 - [ ] Deprecations: pytest-asyncio `event_loop_policy` fixture, Starlette `TestClient`+httpx,
       now-unused `passlib`.
-- [ ] Audit stale provider model IDs/endpoints in `llm_common` (Cerebras/NVIDIA).
+- [x] Audit stale provider model IDs/endpoints in `llm_common` — duplicate of the 2026-06-29 item, done: live-verified + env-overridable (CEREBRAS_MODEL/NVIDIA_MODEL).
