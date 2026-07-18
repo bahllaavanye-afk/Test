@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 import numpy as np
 
@@ -222,3 +222,97 @@ def compute_factor_exposure(
         alpha_annualized=alpha_daily * 252,
         tracking_error=tracking_error,
     )
+
+
+def generate_trade_signal(
+    exposure: FactorExposure,
+    vix: float,
+    spy_recent_returns: List[float],
+    *,
+    min_vix: float = 20.0,
+    momentum_thresh: float = 0.2,
+    beta_thresh: float = 0.8,
+    r2_thresh: float = 0.5,
+    alpha_thresh: float = 0.02,
+) -> Tuple[str, str]:
+    """Generate a trade signal based on factor exposure and market conditions.
+
+    The function returns a tuple ``(signal, reason)`` where ``signal`` is one of
+    ``'LONG'``, ``'SHORT'`` or ``'FLAT'``.  The decision logic is deliberately
+    tighter than a naïve exposure check:
+
+    * **Entry (LONG)** – requires strong market beta, a positive momentum tilt,
+      a good fit (R²), low VIX, and a recent up‑trend in SPY.
+    * **Entry (SHORT)** – allows a short position when the portfolio shows
+      high market beta, a significant negative momentum tilt, and a recent
+      down‑trend in SPY.
+    * **Exit (FLAT)** – forces flat exposure when annualised alpha falls below
+      a modest threshold.
+    * **Hold (FLAT)** – otherwise no actionable signal is produced.
+
+    Parameters
+    ----------
+    exposure : FactorExposure
+        The computed factor exposure.
+    vix : float
+        Current VIX level.
+    spy_recent_returns : list[float]
+        Recent SPY returns (e.g., last 5‑10 days) used to gauge short‑term trend.
+    min_vix : float, optional
+        Upper bound for VIX to consider a low‑vol environment (default 20.0).
+    momentum_thresh : float, optional
+        Minimum absolute momentum loading to qualify for an entry (default 0.2).
+    beta_thresh : float, optional
+        Minimum market beta for a confident directional view (default 0.8).
+    r2_thresh : float, optional
+        Minimum R² for a reliable regression (default 0.5).
+    alpha_thresh : float, optional
+        Minimum annualised alpha to stay in a position (default 0.02 i.e., 2 %).
+
+    Returns
+    -------
+    Tuple[str, str]
+        ``signal`` indicating the desired position and ``reason`` describing the
+        rationale.
+    """
+    # Compute recent SPY trend; fall back gracefully if insufficient data.
+    recent_trend = 0.0
+    if spy_recent_returns:
+        recent_window = spy_recent_returns[-5:]  # use last 5 days if available
+        recent_trend = float(np.mean(recent_window))
+
+    reasons: List[str] = []
+
+    # LONG entry criteria (bullish regime)
+    if (
+        exposure.market_beta >= beta_thresh
+        and exposure.momentum_loading >= momentum_thresh
+        and exposure.r_squared >= r2_thresh
+        and vix <= min_vix
+        and recent_trend > 0
+    ):
+        reasons.append(
+            "Entry: high beta, positive momentum, strong R², low VIX, SPY uptrend"
+        )
+        return "LONG", "; ".join(reasons)
+
+    # SHORT entry criteria (mean‑reversion tilt)
+    if (
+        exposure.market_beta >= beta_thresh
+        and exposure.momentum_loading <= -momentum_thresh
+        and recent_trend < 0
+    ):
+        reasons.append(
+            "Entry: high beta, negative momentum, SPY downtrend"
+        )
+        return "SHORT", "; ".join(reasons)
+
+    # Exit if alpha deteriorates
+    if exposure.alpha_annualized < alpha_thresh:
+        reasons.append(
+            f"Exit: alpha {exposure.alpha_annualized:.2%} below threshold {alpha_thresh:.2%}"
+        )
+        return "FLAT", "; ".join(reasons)
+
+    # Default to flat / hold
+    return "FLAT", "No clear signal"
