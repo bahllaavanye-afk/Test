@@ -37,28 +37,43 @@ class VolCarryShortStrategy(AbstractStrategy):
         self.vix_spike_exit = p.get("vix_spike_exit", self.VIX_SPIKE_EXIT)
         self.contango_min = p.get("contango_min", self.CONTANGO_MIN)
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    async def analyze(self, data: pd.DataFrame | None, symbol: str) -> Signal | None:
+        # Defensive checks for None or malformed DataFrame
+        if not isinstance(data, pd.DataFrame) or data.empty:
+            return None
         if "close" not in data.columns or len(data) < 10:
             return None
 
         close = data["close"]
+        # Ensure we have a valid last price
+        if close.isna().all():
+            return None
         current_price = float(close.iloc[-1])
 
-        # VIX data check
-        if "vix_close" in data.columns:
-            vix_current = float(data["vix_close"].iloc[-1])
+        # VIX data check / proxy
+        if "vix_close" in data.columns and not data["vix_close"].isna().all():
+            vix_series = data["vix_close"]
+            vix_current = float(vix_series.iloc[-1])
         else:
-            # Proxy via 20-day realized vol
+            # Proxy via 20‑day realized volatility
             ret = close.pct_change().dropna()
             if len(ret) < 20:
                 return None
             vix_current = float(ret.rolling(20).std().iloc[-1] * np.sqrt(252) * 100)
 
-        # Term structure: vix3m vs vix1m
+        # Term‑structure calculation
         if "vix3m" in data.columns and "vix_close" in data.columns:
-            contango = (float(data["vix3m"].iloc[-1]) - float(data["vix_close"].iloc[-1])) / float(data["vix_close"].iloc[-1])
+            front = data["vix_close"]
+            back = data["vix3m"]
+            # Guard against division by zero or NaN
+            front_last = float(front.iloc[-1])
+            back_last = float(back.iloc[-1])
+            if front_last == 0 or np.isnan(front_last) or np.isnan(back_last):
+                contango = 0.0
+            else:
+                contango = (back_last - front_last) / front_last
         else:
-            # Proxy: use ratio of 20-day vs 5-day realized vol
+            # Proxy: ratio of 20‑day vs 5‑day realized vol
             ret = close.pct_change().dropna()
             if len(ret) < 20:
                 return None
@@ -95,23 +110,38 @@ class VolCarryShortStrategy(AbstractStrategy):
             )
         return None
 
-    def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+    def backtest_signals(self, df: pd.DataFrame | None) -> BacktestSignals:
+        # Defensive handling for None or empty inputs
+        if not isinstance(df, pd.DataFrame) or df.empty or "close" not in df.columns:
+            # Return empty signals to avoid breaking backtest pipelines
+            empty = pd.Series([], dtype=bool)
+            return BacktestSignals(
+                entries=empty,
+                exits=empty,
+                short_entries=empty,
+                short_exits=empty,
+            )
+
         close = df["close"]
         ret = close.pct_change()
 
-        if "vix_close" in df.columns:
+        # VIX series (real or proxy)
+        if "vix_close" in df.columns and not df["vix_close"].isna().all():
             vix = df["vix_close"]
         else:
             vix = ret.rolling(20).std() * np.sqrt(252) * 100
 
-        if "vix3m" in df.columns:
-            contango = ((df["vix3m"] - df["vix_close"]) / df["vix_close"])
+        # Contango series
+        if "vix3m" in df.columns and "vix_close" in df.columns:
+            # Avoid division by zero
+            front = df["vix_close"].replace(0, np.nan)
+            contango = (df["vix3m"] - front) / front
         else:
             rv5 = ret.rolling(5).std() * np.sqrt(252) * 100
             rv20 = ret.rolling(20).std() * np.sqrt(252) * 100
             contango = (rv20 - rv5) / rv5.replace(0, np.nan)
 
-        # Shift to avoid lookahead
+        # Shift to avoid look‑ahead bias
         vix_s = vix.shift(1)
         contango_s = contango.shift(1)
 
