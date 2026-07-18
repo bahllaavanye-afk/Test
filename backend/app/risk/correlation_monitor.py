@@ -6,11 +6,13 @@ auto-reduce the smaller one (by total_pnl) by 50% until correlation drops below 
 This prevents correlated drawdowns — the #1 unaddressed risk in multi-strategy bots.
 """
 from __future__ import annotations
+
 import asyncio
 from collections import deque, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+
 import numpy as np
 
 from app.utils.logging import logger
@@ -21,7 +23,7 @@ class CorrelationAlert:
     strategy_a: str
     strategy_b: str
     correlation: float
-    action: str             # 'reduce_b' | 'reduce_a' | 'monitor'
+    action: str  # 'reduce_b' | 'reduce_a' | 'monitor'
     reduced_strategy: Optional[str]
     timestamp: datetime
 
@@ -45,7 +47,7 @@ class CrossStrategyCorrelationMonitor:
 
     def __init__(
         self,
-        window: int = 5,                   # rolling 5 bars
+        window: int = 5,  # rolling 5 bars
         kill_threshold: float = 0.70,
         resume_threshold: float = 0.50,
         scan_interval: int = 60,
@@ -55,7 +57,7 @@ class CrossStrategyCorrelationMonitor:
         self.resume_threshold = resume_threshold
         self.scan_interval = scan_interval
         self._returns: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=window))
-        self._reduced: set[str] = set()    # strategies currently halved
+        self._reduced: set[str] = set()  # strategies currently halved
         self._alerts: deque[CorrelationAlert] = deque(maxlen=200)
         self._running = False
 
@@ -66,7 +68,7 @@ class CrossStrategyCorrelationMonitor:
         strategies = [s for s, r in self._returns.items() if len(r) >= 3]
         result: dict[tuple[str, str], float] = {}
         for i, s_a in enumerate(strategies):
-            for s_b in strategies[i+1:]:
+            for s_b in strategies[i + 1 :]:
                 r_a = list(self._returns[s_a])
                 r_b = list(self._returns[s_b])
                 min_len = min(len(r_a), len(r_b))
@@ -79,33 +81,53 @@ class CrossStrategyCorrelationMonitor:
                 result[(s_a, s_b)] = corr
         return result
 
+    # --------------------------------------------------------------------- #
+    # Helper methods for scan logic
+    # --------------------------------------------------------------------- #
+    def _determine_smaller(self, s_a: str, s_b: str) -> str:
+        """Return the strategy with fewer recorded returns (proxy for smaller PnL)."""
+        return s_b if len(self._returns[s_a]) >= len(self._returns[s_b]) else s_a
+
+    def _process_kill(self, s_a: str, s_b: str, corr: float) -> list[CorrelationAlert]:
+        """Handle correlation exceeding kill threshold."""
+        alerts: list[CorrelationAlert] = []
+        smaller = self._determine_smaller(s_a, s_b)
+        if smaller not in self._reduced:
+            self._reduced.add(smaller)
+            alert = CorrelationAlert(
+                strategy_a=s_a,
+                strategy_b=s_b,
+                correlation=corr,
+                action=f"reduce_{smaller.split('_')[0]}",
+                reduced_strategy=smaller,
+                timestamp=datetime.now(timezone.utc),
+            )
+            self._alerts.append(alert)
+            alerts.append(alert)
+            logger.warning(
+                f"CORR KILL-SWITCH: {s_a}↔{s_b} corr={corr:.2f} > {self.kill_threshold}. "
+                f"Halving {smaller}."
+            )
+        return alerts
+
+    def _process_resume(self, s_a: str, s_b: str, corr: float) -> None:
+        """Handle correlation dropping below resume threshold."""
+        for s in (s_a, s_b):
+            if s in self._reduced:
+                self._reduced.discard(s)
+                logger.info(f"CORR RESUME: {s} correlation normalized (corr={corr:.2f})")
+
+    # --------------------------------------------------------------------- #
+    # Public scan method
+    # --------------------------------------------------------------------- #
     def scan(self) -> list[CorrelationAlert]:
         matrix = self.correlation_matrix()
-        new_alerts = []
+        new_alerts: list[CorrelationAlert] = []
         for (s_a, s_b), corr in matrix.items():
             if corr > self.kill_threshold:
-                # reduce the strategy with fewer returns recorded (proxy for smaller)
-                smaller = s_b if len(self._returns[s_a]) >= len(self._returns[s_b]) else s_a
-                if smaller not in self._reduced:
-                    self._reduced.add(smaller)
-                    alert = CorrelationAlert(
-                        strategy_a=s_a, strategy_b=s_b, correlation=corr,
-                        action=f"reduce_{smaller.split('_')[0]}",
-                        reduced_strategy=smaller,
-                        timestamp=datetime.now(timezone.utc),
-                    )
-                    self._alerts.append(alert)
-                    new_alerts.append(alert)
-                    logger.warning(
-                        f"CORR KILL-SWITCH: {s_a}↔{s_b} corr={corr:.2f} > {self.kill_threshold}. "
-                        f"Halving {smaller}."
-                    )
+                new_alerts.extend(self._process_kill(s_a, s_b, corr))
             elif corr < self.resume_threshold:
-                # re-enable if corr dropped
-                for s in (s_a, s_b):
-                    if s in self._reduced:
-                        self._reduced.discard(s)
-                        logger.info(f"CORR RESUME: {s} correlation normalized (corr={corr:.2f})")
+                self._process_resume(s_a, s_b, corr)
         return new_alerts
 
     def is_reduced(self, strategy: str) -> bool:
@@ -130,9 +152,11 @@ class CrossStrategyCorrelationMonitor:
                 alerts = self.scan()
                 if alerts:
                     from app.notifications.tracker import tracker
+
                     for a in alerts:
                         tracker.record(
-                            "correlation_kill_switch", "risk",
+                            "correlation_kill_switch",
+                            "risk",
                             f"Halved {a.reduced_strategy}: corr {a.correlation:.2f} with {a.strategy_a}↔{a.strategy_b}",
                         )
             except Exception as e:
