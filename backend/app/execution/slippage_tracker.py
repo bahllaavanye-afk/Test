@@ -5,13 +5,17 @@ IS = (fill_price - arrival_price) / arrival_price * 10000
 where arrival_price is the mid-price when the order was first submitted.
 """
 import uuid
+from datetime import datetime, timezone, timedelta
+
 import numpy as np
-from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
+
 from app.brokers.base import OrderRequest, OrderResult
 from app.models.slippage import SlippageRecord
 from app.utils.logging import logger
+from app.notifications.slack import slack
+from app.notifications.tracker import tracker
 
 
 class SlippageTracker:
@@ -40,6 +44,7 @@ class SlippageTracker:
     ) -> None:
         if not result.avg_fill_price:
             return
+
         key = f"{request.account_id}:{request.symbol}"
         signal_price = self._signal_prices.pop(key, None)
 
@@ -67,9 +72,9 @@ class SlippageTracker:
 
         if signal_price and result.avg_fill_price:
             if request.side == "buy":
-                slippage_bps = (result.avg_fill_price - signal_price) / signal_price * 10000
+                slippage_bps = (result.avg_fill_price - signal_price) / signal_price * 10_000
             else:
-                slippage_bps = (signal_price - result.avg_fill_price) / signal_price * 10000
+                slippage_bps = (signal_price - result.avg_fill_price) / signal_price * 10_000
 
             logger.info(
                 "Slippage recorded",
@@ -83,25 +88,19 @@ class SlippageTracker:
                 algo=request.execution_algo,
             )
 
-            from app.notifications.slack import slack
-            from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
-            await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+            tracker.record(
+                "order_filled",
+                "order",
+                f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
+                slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
-
-            from app.notifications.slack import slack
-            from app.notifications.tracker import tracker
-            tracker.record("order_filled", "order",
-                            f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
-                            slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
             await slack.notify_order_filled(
-                request.symbol, request.side, request.quantity,
-                result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
+                request.symbol,
+                request.side,
+                request.quantity,
+                result.avg_fill_price,
+                slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
 
@@ -137,7 +136,6 @@ class SlippageTracker:
         if self.db is None:
             raise RuntimeError("DB session required for execution quality stats")
 
-        from datetime import timedelta
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         stmt = (
