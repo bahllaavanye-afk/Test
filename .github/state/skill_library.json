@@ -199,8 +199,13 @@
     "Check CPU temps",
     "Detect deadlocks",
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Check RAM overflow"
+    "Check RAM overflow",
+    "cleanup on test/unit/test_cross_desk_fields.py: success \u2014 tests green",
+    "cleanup on strategies/manual/fifty_two_week_high.py: success \u2014 tests green",
+    "cleanup on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "cleanup on execution/slippage_tracker.py: success \u2014 tests green",
+    "cleanup on risk/factor_exposure.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T08:17:03.599527+00:00",
+  "last_updated": "2026-07-18T09:55:20.428396+00:00",
   "total": 200
 }
