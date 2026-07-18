@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784348058.263004,
+    "last_updated": 1784355614.5638728,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784348058.2617562
+    "last_brain_update": 1784355614.5629895
   },
   "episodic": [
     {
@@ -2108,6 +2108,11 @@
       "summary": "A bot attempted to auto-fix a file but was unable to apply the patch, reporting the failure twice.",
       "item_count": 20,
       "ts": 1784348058.2504044
+    },
+    {
+      "summary": "The automated bot attempted to apply fixes but failed due to a patch application error, and skipped two other fixes deemed too complex\u2014one related to implementing per-desk logic and another based on the issue description.",
+      "item_count": 20,
+      "ts": 1784355614.554891
     }
   ],
   "experiment_results": [
