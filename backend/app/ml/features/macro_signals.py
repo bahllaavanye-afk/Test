@@ -8,7 +8,8 @@ Free macro signal sources (no API key required for basic use):
 from __future__ import annotations
 import asyncio
 import aiohttp
-from datetime import datetime, timezone, date, timedelta
+import time
+from datetime import datetime, timezone
 from typing import Optional
 from app.utils.logging import logger
 
@@ -39,6 +40,8 @@ async def get_macro_snapshot() -> dict:
     Fetch key macro indicators. All free, no API key.
     Returns dict with latest values + derived signals.
     """
+    start_time = time.monotonic()
+
     # Fetch in parallel
     results = await asyncio.gather(
         _fred_latest("T10Y2Y"),       # 10Y-2Y yield curve spread (negative = inverted = recession risk)
@@ -60,7 +63,9 @@ async def get_macro_snapshot() -> dict:
     if yield_spread is not None:
         signals["yield_curve_inverted"] = yield_spread < 0
         signals["yield_spread_bps"] = round(yield_spread * 100, 1)
-        signals["yield_curve_signal"] = "risk_off" if yield_spread < -0.5 else "neutral" if yield_spread < 0.5 else "risk_on"
+        signals["yield_curve_signal"] = (
+            "risk_off" if yield_spread < -0.5 else "neutral" if yield_spread < 0.5 else "risk_on"
+        )
 
     if vix is not None:
         signals["vix_regime"] = "fear" if vix > 30 else "elevated" if vix > 20 else "complacent"
@@ -77,6 +82,15 @@ async def get_macro_snapshot() -> dict:
         macro_score += 1 if vix < 20 else -1 if vix > 30 else 0
     if hy_spread is not None:
         macro_score += 1 if hy_spread < 3.5 else -1 if hy_spread > 6.0 else 0
+
+    execution_time = time.monotonic() - start_time
+    logger.info(
+        "Macro snapshot fetched",
+        signal_count=len(signals),
+        execution_time=execution_time,
+        macro_score=macro_score,
+        macro_bias="risk_on" if macro_score >= 1 else "risk_off" if macro_score <= -1 else "neutral",
+    )
 
     return {
         "yield_spread_10y2y": yield_spread,
@@ -96,6 +110,7 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
     Fetch WallStreetBets / Reddit sentiment from Apewisdom (free, no key required).
     Returns top mentioned tickers + mention count + sentiment score.
     """
+    start_time = time.monotonic()
     try:
         async with aiohttp.ClientSession() as sess:
             async with sess.get(APEWISDOM_URL, timeout=aiohttp.ClientTimeout(total=5)) as resp:
@@ -107,6 +122,12 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
                 if tickers:
                     ticker_set = {t.upper() for t in tickers}
                     results = [r for r in results if r.get("ticker", "").upper() in ticker_set]
+                execution_time = time.monotonic() - start_time
+                logger.info(
+                    "Reddit sentiment fetched",
+                    result_count=len(results),
+                    execution_time=execution_time,
+                )
                 return {
                     "results": results[:20],
                     "fetched_at": datetime.now(timezone.utc).isoformat(),
