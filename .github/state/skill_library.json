@@ -199,8 +199,13 @@
     "Verify OS updates",
     "Test DB connections",
     "Restart on crash",
-    "Ping external IPs"
+    "Ping external IPs",
+    "refactor on execution/limit_first.py: success \u2014 tests green",
+    "refactor on risk/factor_exposure.py: success \u2014 tests green",
+    "refactor on brokers/binance.py: success \u2014 tests green",
+    "refactor on comparison/engine.py: success \u2014 tests green",
+    "refactor on test/unit/test_broker_interface.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T15:52:44.969050+00:00",
+  "last_updated": "2026-07-18T15:54:06.030512+00:00",
   "total": 200
 }
