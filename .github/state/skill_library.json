@@ -199,8 +199,13 @@
     "Verify data feeds",
     "Check CPU temps",
     "Detect deadlocks",
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:"
+    "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
+    "constants on comparison/benchmarks.py: success \u2014 tests green",
+    "constants on api/v1/trades.py: success \u2014 tests green",
+    "constants on test/unit/test_iv_rank_history.py: success \u2014 tests green",
+    "constants on strategies/ml_enhanced/ml_mean_reversion.py: success \u2014 tests green",
+    "constants on ml/models/gemini_signal.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T04:51:35.276189+00:00",
+  "last_updated": "2026-07-18T06:02:39.584988+00:00",
   "total": 200
 }
