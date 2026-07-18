@@ -25,8 +25,13 @@ logger = logging.getLogger(__name__)
 class MLMomentumStrategy(AbstractStrategy):
     """ML‑enhanced momentum strategy.
 
-    The strategy wraps the classic momentum logic and applies an ML filter.
-    It inherits from :class:`app.strategies.base.AbstractStrategy`.
+    This strategy wraps the classic momentum logic and applies an ML filter.
+    It inherits from :class:`app.strategies.base.AbstractStrategy` and delegates
+    most of the signal generation to :class:`MomentumStrategy`.  After obtaining
+    a base signal, the strategy queries the ML inference service; if the ML
+    prediction aligns with the base signal and the confidence exceeds the
+    configured threshold, the signal confidence is adjusted and the enriched
+    signal is returned.
     """
 
     name = "ml_momentum"
@@ -37,7 +42,7 @@ class MLMomentumStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.65
 
-    def __init__(self, params: Optional[Dict[str, Any]] = None):
+    def __init__(self, params: Optional[Dict[str, Any]] = None) -> None:
         """Create a new ``MLMomentumStrategy`` instance.
 
         Parameters
