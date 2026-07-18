@@ -15,12 +15,37 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
 MULTIPLIER = 100        # options contract multiplier
 MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
 
+DEFAULT_LOOKBACK = 21
+HIST_WINDOW = 20
+TRADING_DAYS_PER_YEAR = 252
 
+PL_LOW = 0.02425
+PL_HIGH = 1 - PL_LOW
+
+SIGMA_MIN = 1e-4
+SIGMA_FLOOR = 0.05
+
+DEFAULT_DTE = 30
+MIN_DTE = 1
+
+DEFAULT_TP_PCT = 50
+CALL_PREFIX = "c"
+TAKE_PROFIT = "take_profit"
+STOP_LOSS = "stop_loss"
+
+MIN_BASE = 1.0
+
+# ----------------------------------------------------------------------
+# Helper functions
+# ----------------------------------------------------------------------
 def norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
@@ -37,7 +62,7 @@ def norm_ppf(p: float) -> float:
          -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00]
     d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
          3.754408661907416e+00]
-    plow, phigh = 0.02425, 1 - 0.02425
+    plow, phigh = PL_LOW, PL_HIGH
     if p < plow:
         q = math.sqrt(-2 * math.log(p))
         return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
@@ -55,10 +80,10 @@ def norm_ppf(p: float) -> float:
 def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
     T = max(T, MIN_T)
-    sigma = max(sigma, 1e-4)
+    sigma = max(sigma, SIGMA_MIN)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
-    if option_type.startswith("c"):
+    if option_type.startswith(CALL_PREFIX):
         return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
     return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
 
@@ -67,14 +92,14 @@ def bs_delta(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
     T = max(T, MIN_T)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
-    return norm_cdf(d1) if option_type.startswith("c") else norm_cdf(d1) - 1.0
+    return norm_cdf(d1) if option_type.startswith(CALL_PREFIX) else norm_cdf(d1) - 1.0
 
 
 def strike_from_delta(S: float, target_delta: float, T: float, sigma: float,
                       option_type: str, r: float = RISK_FREE) -> float:
     """Invert BS delta → strike (calls: Δ=N(d1); puts: |Δ|=N(-d1))."""
     T = max(T, MIN_T)
-    p = target_delta if option_type.startswith("c") else 1.0 - target_delta
+    p = target_delta if option_type.startswith(CALL_PREFIX) else 1.0 - target_delta
     d1 = norm_ppf(p)
     return S * math.exp((r + sigma ** 2 / 2) * T - d1 * sigma * math.sqrt(T))
 
@@ -101,25 +126,25 @@ def backtest_template(template: dict, closes: list[float],
     """
     action = template["action"]
     tp_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "take_profit"), 50) or 50
+                   if r["type"] == TAKE_PROFIT), DEFAULT_TP_PCT) or DEFAULT_TP_PCT
     sl_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "stop_loss"), None)
+                   if r["type"] == STOP_LOSS), None)
 
     trades: list[float] = []
     pos: list[_Leg] | None = None
     entry_net = 0.0
     days_held = 0
-    dte = max(int(action["legs"][0].get("dte", 30)), 0)
+    dte = max(int(action["legs"][0].get("dte", DEFAULT_DTE)), 0)
 
-    for i in range(21, len(closes)):
+    for i in range(DEFAULT_LOOKBACK, len(closes)):
         S = closes[i]
-        rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
+        rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - HIST_WINDOW + 1, i + 1)]
         mean = sum(rets) / len(rets)
-        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
-        sigma = max(hv * IV_PREMIUM, 0.05)
+        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(TRADING_DAYS_PER_YEAR)
+        sigma = max(hv * IV_PREMIUM, SIGMA_FLOOR)
 
         if pos is None:
-            T0 = max(dte, 1) / 365.0
+            T0 = max(dte, MIN_DTE) / 365.0
             pos = []
             for lg in action["legs"]:
                 if lg.get("strike"):
@@ -135,12 +160,12 @@ def backtest_template(template: dict, closes: list[float],
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
         cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
+            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith(CALL_PREFIX)
                                    else (l.strike - S), 0.0) for l in pos)
         pnl = (cur - entry_net) * MULTIPLIER
-        base = max(abs(entry_net) * MULTIPLIER, 1.0)
+        base = max(abs(entry_net) * MULTIPLIER, MIN_BASE)
 
-        expired = days_held >= max(dte, 1)
+        expired = days_held >= max(dte, MIN_DTE)
         hit_tp = pnl >= (tp_pct / 100.0) * base
         hit_sl = sl_pct is not None and pnl <= -(sl_pct / 100.0) * base
         if hit_tp or hit_sl or expired:
