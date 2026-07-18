@@ -65,6 +65,9 @@ async def run_backtest_job(run_id: str) -> None:
         else:
             signals_series = raw_signals  # already a pd.Series
 
+        # Record start time for execution duration measurement
+        exec_start = datetime.now(timezone.utc)
+
         metrics = run_backtest(
             signals=signals_series,
             prices=df["close"],
@@ -72,6 +75,10 @@ async def run_backtest_job(run_id: str) -> None:
             volume=df["volume"],
             initial_equity=initial_equity,
         )
+
+        exec_end = datetime.now(timezone.utc)
+        exec_seconds = (exec_end - exec_start).total_seconds()
+        signal_count = int((signals_series != 0).sum())
 
         async with AsyncSessionLocal() as db:
             run = await db.get(BacktestRun, run_id)
@@ -96,6 +103,9 @@ async def run_backtest_job(run_id: str) -> None:
                 await db.commit()
         logger.info(
             f"Backtest {run_id} complete",
+            signal_count=signal_count,
+            execution_time_seconds=round(exec_seconds, 3),
+            total_return=round(metrics.total_return, 6),
             sharpe=round(metrics.sharpe, 2),
             ret=f"{metrics.total_return:.1%}",
         )
