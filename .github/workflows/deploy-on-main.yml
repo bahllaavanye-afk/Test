@@ -1,0 +1,66 @@
+name: Deploy on main
+
+# The deploy job inside test.yml never fires: CI is dispatched on agent
+# BRANCHES by the event chain — its newest run on branch=main is from May.
+# This workflow hosts the deploy where it belongs: on: push to main. Anything
+# reaching main already passed CI on its PR (reward gate), so deploying on
+# push is safe. Same-commit dedupe, poll to live, page Discord on failure.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-on-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Trigger Render deploy and poll to live
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "render creds absent — cannot deploy"; exit 1
+          fi
+          last=$(curl -sS "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys?limit=1" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print((d[0].get('deploy',{}) if d else {}).get('commit',{}).get('id',''))" || true)
+          if [ "$last" = "$GITHUB_SHA" ]; then
+            echo "newest deploy is already $GITHUB_SHA — nothing to do"; exit 0
+          fi
+          resp=$(curl -sS -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
+            --data '{"clearCache":"do_not_clear"}')
+          id=$(printf '%s' "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" || true)
+          [ -z "$id" ] && { echo "deploy trigger failed: $resp"; exit 1; }
+          echo "deploy $id triggered — polling"
+          for i in $(seq 1 60); do
+            sleep 15
+            st=$(curl -sS "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$id" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" || echo "")
+            echo "[$i] $st"
+            case "$st" in
+              live) echo "✓ deploy live"; exit 0 ;;
+              build_failed|update_failed|canceled|deactivated) echo "✗ deploy $st"; exit 1 ;;
+            esac
+          done
+          echo "✗ deploy timed out after 15m"; exit 1
+
+      - name: Page Discord on deploy failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          curl -sS -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" \
+            --data "{\"content\": \"🚨 **Render deploy FAILED on main** — site still serves the previous build. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\", \"username\": \"QuantEdge Deploy\"}" || true
