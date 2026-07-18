@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784383876.966033,
+    "last_updated": 1784389040.9361758,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784380146.9635694
+    "last_brain_update": 1784389040.9352367
   },
   "episodic": [
     {
@@ -1707,6 +1707,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784380114.9469311
+    },
+    {
+      "lesson": "Repeated auto-fix failures suggest instability in the CI/CD pipeline or code formatting rules that prevent patches from applying cleanly.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784389037.3661187
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free-tier rate limit (100/day); consider upgrading to Pro plan or batching deployments to avoid interruptions.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784389037.371565
+    },
+    {
+      "lesson": "The `bs_price` function in `options_synthetic.py` does not validate the `kind` parameter, allowing invalid inputs to silently use the put formula instead of raising an error.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784389037.3756652
+    },
+    {
+      "lesson": "Missing validation in the synthetic options backtester could produce incorrect pricing for invalid option types, leading to flawed backtest results and potential trading losses.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784389037.3796694
     }
   ],
   "github_insights": [
@@ -2189,6 +2217,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784380146.9528594
+    },
+    {
+      "summary": "The auto-fix failed three times because the system could not apply the patch to the file.",
+      "item_count": 20,
+      "ts": 1784389040.9258423
     }
   ],
   "experiment_results": [
