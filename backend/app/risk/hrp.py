@@ -13,6 +13,7 @@ Steps:
 """
 from __future__ import annotations
 
+import unittest
 import numpy as np
 import pandas as pd
 
@@ -139,3 +140,49 @@ class HRPOptimizer:
             # problems (bad covariance, NaNs) — say so when it happens.
             logger.warning("HRP optimization failed — falling back to equal weights (%s)", exc)
             return pd.Series(1.0 / n, index=symbols)
+
+
+class TestHRPOptimizerEdgeCases(unittest.TestCase):
+    """Edge‑case unit tests for HRPOptimizer."""
+
+    def setUp(self) -> None:
+        self.optimizer = HRPOptimizer()
+
+    def test_insufficient_rows_fallback(self) -> None:
+        """When fewer than 10 observations are provided, equal weights should be returned."""
+        df = pd.DataFrame(np.random.randn(5, 3), columns=["A", "B", "C"])
+        weights = self.optimizer.compute_weights(df)
+        expected = np.full(3, 1 / 3)
+        self.assertTrue(np.allclose(weights.values, expected))
+        self.assertAlmostEqual(weights.sum(), 1.0)
+
+    def test_all_nan_column_fallback(self) -> None:
+        """Columns that are all NaN are dropped; if that leaves <2 assets, fallback to equal weights."""
+        data = {
+            "A": np.random.randn(10),
+            "B": [np.nan] * 10,
+            "C": np.random.randn(10),
+        }
+        df = pd.DataFrame(data)
+        weights = self.optimizer.compute_weights(df)
+        expected = np.full(3, 1 / 3)  # fallback uses original symbol count
+        self.assertTrue(np.allclose(weights.values, expected))
+        self.assertAlmostEqual(weights.sum(), 1.0)
+
+    def test_perfect_correlation_handling(self) -> None:
+        """Perfectly correlated assets should not cause division‑by‑zero errors and yield a valid allocation."""
+        df = pd.DataFrame(
+            {
+                "A": np.arange(10, dtype=float),
+                "B": np.arange(10, dtype=float) * 2,
+            }
+        )
+        weights = self.optimizer.compute_weights(df)
+        self.assertEqual(weights.shape[0], 2)
+        self.assertAlmostEqual(weights.sum(), 1.0)
+        # With perfect correlation the optimizer typically splits weight evenly.
+        self.assertTrue(np.allclose(weights.values, np.full(2, 0.5), atol=1e-6))
+
+
+if __name__ == "__main__":
+    unittest.main()
