@@ -36,10 +36,19 @@ class AlphaDecayTracker:
     # Horizons to measure IC at: 1h, 4h, 1d, 5d, 20d
     HORIZONS: list[int] = [1, 4, 24, 120, 480]
 
+    def _empty_profile(self, strategy_name: str) -> DecayProfile:
+        """Utility to return a default empty profile."""
+        return DecayProfile(
+            strategy_name=strategy_name,
+            ic_0=0.0,
+            half_life_hours=float("inf"),
+            horizons={},
+        )
+
     def compute_ic_profile(
         self,
-        signals: pd.Series,
-        prices: pd.DataFrame,
+        signals: pd.Series | None,
+        prices: pd.DataFrame | None,
         strategy_name: str,
     ) -> DecayProfile:
         """
@@ -52,21 +61,38 @@ class AlphaDecayTracker:
 
         Returns:
             DecayProfile with IC at each horizon and fitted half-life in hours.
-            Raises ValueError if prices has no 'close' column.
+            Returns an empty profile if inputs are invalid or insufficient data.
         """
+        # Guard against None or empty inputs
+        if signals is None or prices is None:
+            return self._empty_profile(strategy_name)
+
+        if not isinstance(signals, pd.Series) or not isinstance(prices, pd.DataFrame):
+            raise TypeError("signals must be a pd.Series and prices must be a pd.DataFrame")
+
+        if signals.empty or prices.empty:
+            return self._empty_profile(strategy_name)
+
         if "close" not in prices.columns:
             raise ValueError("prices DataFrame must contain a 'close' column")
 
         ics: dict[int, float] = {}
 
         for h in self.HORIZONS:
+            # pct_change with a horizon larger than the series length yields all NaNs;
+            # guard against that by checking the resulting series length.
             fwd_ret = prices["close"].pct_change(h).shift(-h)
+            if fwd_ret.empty:
+                continue
+
             common = signals.index.intersection(fwd_ret.index)
+            # Require a minimal overlap to produce a reliable IC estimate.
             if len(common) < 30:
                 continue
 
             s = signals.loc[common].dropna()
             r = fwd_ret.loc[s.index].dropna()
+            # Align after dropping NaNs to avoid off‑by‑one mismatches.
             s = s.loc[r.index]
 
             if len(s) < 20:
@@ -76,6 +102,7 @@ class AlphaDecayTracker:
             if not np.isnan(ic_val):
                 ics[h] = float(ic_val)
 
+        # If we have fewer than two valid horizons, we cannot fit a decay curve.
         if len(ics) < 2:
             return DecayProfile(
                 strategy_name=strategy_name,
@@ -101,7 +128,7 @@ class AlphaDecayTracker:
             ic_0, lam = float(popt[0]), float(popt[1])
             half_life = np.log(2) / lam if lam > 0 else float("inf")
         except Exception:
-            ic_0 = float(ic_arr[0]) if len(ic_arr) > 0 else 0.0
+            ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
             half_life = float("inf")
 
         return DecayProfile(
@@ -132,7 +159,10 @@ class AlphaDecayTracker:
         if profile.half_life_hours == float("inf") or profile.half_life_hours <= 0:
             return float(base_confidence)
 
+        # Negative staleness does not make sense; treat it as zero.
+        staleness = max(staleness_hours, 0.0)
+
         decay = np.exp(
-            -staleness_hours * np.log(2) / profile.half_life_hours
+            -staleness * np.log(2) / profile.half_life_hours
         )
         return float(base_confidence * max(float(decay), 0.0))
