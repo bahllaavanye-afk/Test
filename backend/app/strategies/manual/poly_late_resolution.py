@@ -1,9 +1,15 @@
 """Polymarket late-resolution arbitrage strategy."""
 from __future__ import annotations
+
+import logging
+import time
 from datetime import datetime, timezone
+
 import pandas as pd
+
 try:
     import httpx
+
     _HTTPX = True
 except ImportError:
     _HTTPX = False
@@ -11,6 +17,8 @@ except ImportError:
 from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
 
 CLOB_BASE = "https://clob.polymarket.com"
+
+logger = logging.getLogger(__name__)
 
 
 class PolymarketLateResolution(AbstractStrategy):
@@ -86,55 +94,77 @@ class PolymarketLateResolution(AbstractStrategy):
         Scan Polymarket markets for near-certain contracts close to resolution.
         data is not used directly — strategy fetches live CLOB data.
         """
-        markets = await self._fetch_markets()
-        for market in markets:
-            end_date = market.get("end_date_iso") or market.get("end_date", "")
-            if not end_date:
-                continue
-            hours_left = self._hours_to_resolution(end_date)
-            if hours_left <= 0 or hours_left > self.max_hours:
-                continue
-
-            tokens = market.get("tokens", [])
-            for token in tokens:
-                if token.get("outcome", "").upper() != "YES":
+        start_time = time.monotonic()
+        signal: Signal | None = None
+        try:
+            markets = await self._fetch_markets()
+            for market in markets:
+                end_date = market.get("end_date_iso") or market.get("end_date", "")
+                if not end_date:
                     continue
-                price = float(token.get("price", 0))
-                if price < self.min_price or price >= 0.99:
+                hours_left = self._hours_to_resolution(end_date)
+                if hours_left <= 0 or hours_left > self.max_hours:
                     continue
 
-                token_id = token.get("token_id", "")
-                history = await self._fetch_price_history(token_id)
-                if len(history) >= 2:
-                    old_price = float(history[0].get("p", price))
-                    trend = price - old_price
-                    if trend < self.min_trend:
+                tokens = market.get("tokens", [])
+                for token in tokens:
+                    if token.get("outcome", "").upper() != "YES":
+                        continue
+                    price = float(token.get("price", 0))
+                    if price < self.min_price or price >= 0.99:
                         continue
 
-                expected_return = (1.0 - price) / price
-                return Signal(
-                    strategy_name=self.name,
-                    strategy_type=self.strategy_type,
-                    risk_bucket=self.risk_bucket,
-                    symbol=market.get("question", "POLY_MARKET"),
-                    side="buy",
-                    confidence=price,
-                    metadata={
-                        "market_id": market.get("condition_id"),
-                        "token_id": token_id,
-                        "price": price,
-                        "hours_to_resolution": round(hours_left, 2),
-                        "expected_return_pct": round(expected_return * 100, 2),
-                        "order_type": "limit",
-                    },
-                )
-        return None
+                    token_id = token.get("token_id", "")
+                    history = await self._fetch_price_history(token_id)
+                    if len(history) >= 2:
+                        old_price = float(history[0].get("p", price))
+                        trend = price - old_price
+                        if trend < self.min_trend:
+                            continue
+
+                    expected_return = (1.0 - price) / price
+                    signal = Signal(
+                        strategy_name=self.name,
+                        strategy_type=self.strategy_type,
+                        risk_bucket=self.risk_bucket,
+                        symbol=market.get("question", "POLY_MARKET"),
+                        side="buy",
+                        confidence=price,
+                        metadata={
+                            "market_id": market.get("condition_id"),
+                            "token_id": token_id,
+                            "price": price,
+                            "hours_to_resolution": round(hours_left, 2),
+                            "expected_return_pct": round(expected_return * 100, 2),
+                            "order_type": "limit",
+                        },
+                    )
+                    # Return first qualifying signal
+                    return signal
+            return None
+        finally:
+            duration = time.monotonic() - start_time
+            signal_count = 1 if signal else 0
+            expected_ret = (
+                signal.metadata.get("expected_return_pct")
+                if signal
+                else None
+            )
+            logger.info(
+                "PolymarketLateResolution analyze completed",
+                extra={
+                    "signal_count": signal_count,
+                    "duration_seconds": round(duration, 3),
+                    "expected_return_pct": expected_ret,
+                },
+            )
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
         Proxy backtest: buy when close > min_price (near-certain YES contract proxy).
         In real use, this strategy is live-only (resolution date is the key input).
         """
+        start_time = time.monotonic()
         false_series = pd.Series(False, index=df.index)
         default = BacktestSignals(
             entries=false_series,
@@ -142,11 +172,24 @@ class PolymarketLateResolution(AbstractStrategy):
         )
 
         if "close" not in df.columns or len(df) < 2:
+            logger.info(
+                "PolymarketLateResolution backtest_signals completed",
+                extra={"entries": 0, "exits": 0, "duration_seconds": round(time.monotonic() - start_time, 3)},
+            )
             return default
 
         close = df["close"].astype(float)
         entries = (close.shift(1) > self.min_price).fillna(False).astype(bool)
         exits = (close.shift(1) >= 0.99).fillna(False).astype(bool)
+
+        logger.info(
+            "PolymarketLateResolution backtest_signals completed",
+            extra={
+                "entries": int(entries.sum()),
+                "exits": int(exits.sum()),
+                "duration_seconds": round(time.monotonic() - start_time, 3),
+            },
+        )
 
         return BacktestSignals(
             entries=entries,
