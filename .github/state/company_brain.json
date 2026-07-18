@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784331245.152558,
+    "last_updated": 1784336738.5905728,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784331245.1516752
+    "last_brain_update": 1784336738.5894783
   },
   "episodic": [
     {
@@ -1623,6 +1623,34 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784331244.0296907
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free tier daily limit (100/day). Upgrade to Pro or throttle deployment frequency to avoid delays.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784336718.1669254
+    },
+    {
+      "lesson": "Repeated auto-fix failures suggest underlying code or CI/CD misconfiguration. Investigate patch generation and apply manual fixes to unblock pipeline.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784336718.172246
+    },
+    {
+      "lesson": "Free tier rate limit introduces unpredictable deployment risk for rapid iteration cycles. Evaluate cost-benefit of Pro upgrade to maintain velocity.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784336718.17616
+    },
+    {
+      "lesson": "Multiple auto-fix failures without resolution indicate need for improved automated testing or human-in-the-loop verification before deployment.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784336718.1799824
     }
   ],
   "github_insights": [
@@ -2070,6 +2098,11 @@
       "summary": "The deployment failed due to resource limits, and automated fixes were unsuccessful.",
       "item_count": 20,
       "ts": 1784331245.1427934
+    },
+    {
+      "summary": "The discussion reports a deployment failure due to resource limits, with a suggestion to retry in 24 hours, and notes that an automated fix attempt failed to apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784336738.5803807
     }
   ],
   "experiment_results": [
