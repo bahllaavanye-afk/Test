@@ -676,6 +676,131 @@ async def _ensure_filled(order: dict | None, symbol: str, side: str,
     return replacement or order
 
 
+# ── Real multi-leg options routing (Options desk income structures) ──────────
+# IMPROVEMENTS 2026-07-15: wheel/condor/credit-spread traded the UNDERLYING as
+# a directional proxy. Alpaca paper supports real mleg orders on the same keys
+# (proven by the bot engine + backend tests) — so income signals now place
+# actual defined-risk spreads. Strikes are picked by MONEYNESS vs spot (no
+# greeks needed → one /v2/options/contracts call per option type). Everything
+# fails soft back to the underlying proxy: a spread that can't be fully
+# resolved places NO partial legs.
+
+MLEG_DTE_TARGET = 35
+MLEG_DTE_WINDOW = (25, 50)
+
+# structure spec: list of (option_type, side, moneyness). side_hint picks the
+# put or call wing for directional credit spreads.
+_MLEG_STRUCTURES: dict[str, dict] = {
+    "credit_spread_income": {
+        "buy":  [("put", "sell", 0.96), ("put", "buy", 0.92)],      # bull put
+        "sell": [("call", "sell", 1.04), ("call", "buy", 1.08)],    # bear call
+    },
+    "iron_condor": {
+        "any": [("put", "sell", 0.95), ("put", "buy", 0.91),
+                ("call", "sell", 1.05), ("call", "buy", 1.09)],
+    },
+    "vol_carry_short": {
+        "any": [("put", "sell", 0.95), ("put", "buy", 0.91),
+                ("call", "sell", 1.05), ("call", "buy", 1.09)],
+    },
+    "cash_secured_put": {
+        "buy": [("put", "sell", 0.95), ("put", "buy", 0.90)],       # defined-risk CSP
+    },
+    "wheel": {
+        "buy": [("put", "sell", 0.95), ("put", "buy", 0.90)],       # wheel entry leg
+    },
+}
+
+
+def _income_leg_spec(strategy_name: str, side: str) -> list[tuple[str, str, float]] | None:
+    """Leg spec for an income structure signal, or None if not mleg-routed."""
+    struct = _MLEG_STRUCTURES.get(strategy_name)
+    if not struct:
+        return None
+    return struct.get(side) or struct.get("any")
+
+
+def _pick_contract(contracts: list[dict], target_strike: float, target_expiry: str) -> dict | None:
+    """Nearest strike, then nearest expiry. Pure (unit-tested)."""
+    best, best_key = None, None
+    for c in contracts:
+        try:
+            strike = float(c["strike_price"])
+            exp = str(c.get("expiration_date", ""))
+        except (KeyError, TypeError, ValueError):
+            continue
+        key = (abs(strike - target_strike), abs((datetime.fromisoformat(exp)
+               - datetime.fromisoformat(target_expiry)).days) if exp else 999)
+        if best_key is None or key < best_key:
+            best, best_key = c, key
+    return best
+
+
+async def _resolve_income_legs(underlying: str, spot: float,
+                               spec: list[tuple[str, str, float]]) -> list[dict] | None:
+    """Resolve every leg to a real OCC contract, or None (never partial)."""
+    today = datetime.now(timezone.utc).date()
+    exp_gte = (today + timedelta(days=MLEG_DTE_WINDOW[0])).isoformat()
+    exp_lte = (today + timedelta(days=MLEG_DTE_WINDOW[1])).isoformat()
+    target_exp = (today + timedelta(days=MLEG_DTE_TARGET)).isoformat()
+
+    by_type: dict[str, list[dict]] = {}
+    for opt_type in {t for t, _, _ in spec}:
+        strikes = [spot * m for t, _, m in spec if t == opt_type]
+        try:
+            resp = await _alpaca_get("/v2/options/contracts", {
+                "underlying_symbols": underlying, "status": "active", "type": opt_type,
+                "expiration_date_gte": exp_gte, "expiration_date_lte": exp_lte,
+                "strike_price_gte": f"{min(strikes) * 0.97:.2f}",
+                "strike_price_lte": f"{max(strikes) * 1.03:.2f}",
+                "limit": "300",
+            })
+            by_type[opt_type] = resp.get("option_contracts") or []
+        except Exception as exc:  # noqa: BLE001 — no contracts -> proxy fallback
+            print(f"    ⚠ contracts fetch failed for {underlying} {opt_type}: {str(exc)[:80]}", flush=True)
+            return None
+
+    legs: list[dict] = []
+    for opt_type, side, moneyness in spec:
+        pick = _pick_contract(by_type.get(opt_type, []), spot * moneyness, target_exp)
+        if not pick or not pick.get("symbol"):
+            print(f"    ⚠ no {opt_type} contract near {spot * moneyness:.0f} — proxy fallback", flush=True)
+            return None
+        legs.append({
+            "symbol": pick["symbol"],
+            "ratio_qty": "1",
+            "side": side,
+            "position_intent": "sell_to_open" if side == "sell" else "buy_to_open",
+        })
+    return legs
+
+
+async def _place_income_spread(underlying: str, strategy_name: str, side: str,
+                               spot: float) -> dict | None:
+    """Place a real defined-risk spread for an income signal. None -> caller
+    falls back to the underlying proxy. Fixed 1 contract (paper-first sizing;
+    a spread's risk is its width, not Kelly notional)."""
+    spec = _income_leg_spec(strategy_name, side)
+    if not spec or spot <= 0:
+        return None
+    legs = await _resolve_income_legs(underlying, spot, spec)
+    if not legs:
+        return None
+    body = {
+        "order_class": "mleg",
+        "qty": "1",
+        "type": "market",
+        "time_in_force": "day",
+        "legs": legs,
+    }
+    try:
+        out = await _alpaca_post("/v2/orders", body)
+        return out if out and out.get("id") else None
+    except Exception as exc:  # noqa: BLE001 — rejection reasons print upstream
+        print(f"    ⚠ mleg order failed: {str(exc)[:100]}", flush=True)
+        return None
+
+
 # ── Regime detection (SPY-based heuristic, no Redis dependency) ───────────────
 # Mirrors the logic in backend/app/tasks/regime_monitor.py for use in CI.
 # 0 = bear, 1 = sideways, 2 = bull
@@ -1297,6 +1422,27 @@ async def main() -> None:
                 _df = bars_cache.get(symbol)
                 if _df is not None and len(_df) > 0:
                     limit_price = float(_df["close"].iloc[-1])
+                # Options-desk income structures place REAL defined-risk
+                # spreads (order_class=mleg); anything unresolvable falls back
+                # to the underlying proxy below — never partial legs.
+                if desk.name == "Options" and strategy.name in _MLEG_STRUCTURES and limit_price:
+                    spread = await _place_income_spread(symbol, strategy.name,
+                                                        signal.side, limit_price)
+                    if spread:
+                        print(f"  ► {strategy.name}/{symbol} — REAL {len(spread.get('legs', []) or [])}-leg "
+                              f"spread {spread['id']} ({spread.get('status', '?')})", flush=True)
+                        record = {
+                            "desk": desk.name, "strategy": strategy.name,
+                            "symbol": symbol, "side": signal.side,
+                            "notional": 0.0, "confidence": conf,
+                            "order_id": spread["id"], "client_order_id": coid,
+                            "order_type": "mleg", "status": spread.get("status", "?"),
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                        }
+                        all_orders.append(record)
+                        desk_orders_map.setdefault(desk.name, []).append(record)
+                        continue
+                    print(f"    · mleg unavailable for {strategy.name}/{symbol} — using underlying proxy", flush=True)
                 print(
                     f"  ► {strategy.name}/{symbol} signal={signal.side.upper()} "
                     f"conf={conf:.2f} — placing ${kelly_notional:.0f} limit-first order",

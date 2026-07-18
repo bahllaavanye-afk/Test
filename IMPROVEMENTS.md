@@ -2,7 +2,7 @@
 
 ## New queue (added 2026-07-15, scale-up session)
 - [x] **[P1] Per-desk performance attribution + auto-pruning** — DONE 2026-07-16: the live-leaderboard weighting now prunes proven losers to 0.0 (≥20 trades, negative P&L, sharpe<-0.5 → desk skips the strategy entirely; auto-revives when stats recover). 5 tests incl. missing-sharpe-never-prunes.
-- [ ] **[P1] Route Options-desk income structures through REAL multi-leg orders** — submit_alpaca_multileg_order is tested and engine-wired for bots; the desk still trades underlying proxies. Wheel/condor/credit-spread should place actual defined-risk spreads.
+- [x] **[P1] Route Options-desk income structures through REAL multi-leg orders** — DONE 2026-07-18: wheel/condor/credit-spread/CSP/vol-carry signals now place actual defined-risk mleg spreads (moneyness-picked strikes ~35 DTE via /v2/options/contracts, 1 contract, day). Unresolvable legs place NOTHING and fall back to the underlying proxy. 9 tests incl. never-partial-spread.
 - [x] **[P1] Symbol Scout** — DONE 2026-07-16: symbol_scout.py validates every desk symbol against /v2/assets (dead symbols get loud + queued), proposes unwired tradable crypto pairs + curated liquid ETFs; runs in the strategy-scout workflow; 6 tests.
 - [ ] **[P2] TV-desk hit-rate tracking** — per-indicator win rate after close; drop any TV strategy under 45% after 100 signals (they're community indicators, not vetted premia).
 - [ ] **[P2] Polymarket desk trades a SPY proxy** — wire py-clob-client paper flow so poly_* strategies act on real prediction-market prices instead.
