@@ -73,6 +73,16 @@ class CVaROptimizer:
             one.  If the optimisation fails or the input data are insufficient, equal
             weighting is returned as a safe fallback.
         """
+        # Guard against None or non‑DataFrame inputs.
+        if returns is None or not isinstance(returns, pd.DataFrame):
+            logger.warning("CVaROptimizer received invalid returns input; returning empty series")
+            return pd.Series(dtype=float)
+
+        # Guard against empty DataFrames.
+        if returns.empty or returns.shape[1] == 0:
+            logger.warning("CVaROptimizer received empty returns; returning empty series")
+            return pd.Series(dtype=float)
+
         symbols = list(returns.columns)
         n = len(symbols)
 
@@ -85,6 +95,14 @@ class CVaROptimizer:
         symbols_clean = list(returns_clean.columns)
         n_clean = len(symbols_clean)
         T = len(returns_clean)
+
+        # Guard against the case where cleaning removes all assets or observations.
+        if n_clean == 0 or T == 0:
+            logger.warning(
+                "CVaROptimizer: no usable assets or observations after cleaning; returning equal weights"
+            )
+            return pd.Series(1.0 / max(n, 1), index=symbols)
+
         R = returns_clean.values  # shape (T, n_clean)
 
         alpha = self.confidence
@@ -175,10 +193,17 @@ def optimize_portfolio(
     pd.Series
         Portfolio weights indexed by symbol and summing to one.
     """
+    # Defensive handling for None or empty inputs.
+    if returns is None or not isinstance(returns, pd.DataFrame) or returns.empty:
+        logger.warning("optimize_portfolio received invalid or empty returns; returning empty series")
+        return pd.Series(dtype=float)
+
     if method == "cvar":
         return CVaROptimizer(confidence=confidence).compute_weights(returns)
     if method == "equal":
         n = len(returns.columns)
+        if n == 0:
+            return pd.Series(dtype=float)
         return pd.Series(1.0 / n, index=returns.columns)
     if method != "hrp":
         raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
