@@ -76,6 +76,14 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         feature columns. If a particular indicator cannot be computed,
         its column is omitted and the error is logged.
     """
+    if df is None:
+        raise ValueError("Input DataFrame cannot be None.")
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Input must be a pandas DataFrame.")
+    if df.empty:
+        # Return an empty copy to preserve the interface contract.
+        return df.copy()
+
     if "close" not in df.columns:
         raise ValueError("Input DataFrame must contain a 'close' column.")
 
@@ -85,8 +93,17 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     low = df.get("low", close)
     volume = df.get("volume", pd.Series(1, index=df.index))
 
+    # Guard against completely empty series after column extraction.
+    if close.empty:
+        return df
+
+    row_count = len(df)
+
     # --- Returns ---
     for n in [1, 5, 10, 21]:
+        if n >= row_count:
+            # Not enough data points for this lag; skip to avoid all‑NaN column.
+            continue
         try:
             df[f"returns_{n}"] = close.pct_change(n)
         except Exception as exc:  # pragma: no cover
@@ -96,14 +113,18 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     try:
         log_ret = np.log(close / close.shift(1))
         for n in [5, 21, 63]:
-            df[f"vol_{n}"] = log_ret.rolling(n).std() * np.sqrt(252)
+            if n > row_count:
+                continue
+            df[f"vol_{n}"] = log_ret.rolling(n, min_periods=1).std() * np.sqrt(252)
     except Exception as exc:  # pragma: no cover
         _logger.error("Failed to compute volatility features", exc_info=exc)
 
     # --- EMA distance (normalized) ---
     for span in [9, 21, 50]:
+        if span > row_count:
+            continue
         try:
-            ema = close.ewm(span=span).mean()
+            ema = close.ewm(span=span, adjust=False).mean()
             df[f"ema_{span}_diff"] = (close - ema) / (ema + 1e-9)
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute EMA distance for span %d", span, exc_info=exc)
@@ -149,7 +170,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- Volume ratio ---
     try:
-        vol_ma = volume.rolling(20).mean()
+        vol_ma = volume.rolling(20, min_periods=1).mean()
         df["volume_ratio"] = volume / (vol_ma + 1e-9)
     except Exception as exc:  # pragma: no cover
         _logger.error("Failed to compute volume ratio", exc_info=exc)
