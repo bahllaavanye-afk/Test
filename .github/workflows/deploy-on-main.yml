@@ -60,6 +60,7 @@ jobs:
         if: failure()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
           curl -sS -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" \
             --data "{\"content\": \"🚨 **Render deploy FAILED on main** — site still serves the previous build. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\", \"username\": \"QuantEdge Deploy\"}" || true
