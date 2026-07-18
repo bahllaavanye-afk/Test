@@ -11,6 +11,7 @@ import asyncio
 import json
 import random
 import uuid
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -61,6 +62,7 @@ class SelfImprover:
 
     async def _evaluate(self, strategy: str, symbol: str, params: dict) -> float:
         """Run a quick backtest with the given params. Returns Sharpe."""
+        start_time = time.perf_counter()
         try:
             import pandas as pd
             import yfinance as yf
@@ -72,8 +74,14 @@ class SelfImprover:
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False,
+                ),
             )
             if hist is None or len(hist) < 60:
                 return 0.0
@@ -93,9 +101,29 @@ class SelfImprover:
             if signals is None or (hasattr(signals, "__len__") and len(signals) < 30):
                 return 0.0
 
-            sig_series = signals if hasattr(signals, "values") else pd.Series(signals, index=hist.index)
+            sig_series = (
+                signals
+                if hasattr(signals, "values")
+                else pd.Series(signals, index=hist.index)
+            )
             metrics = run_backtest(sig_series, close)
-            return float(metrics.sharpe)
+
+            sharpe = float(metrics.sharpe)
+            signal_count = len(signals) if hasattr(signals, "__len__") else None
+            pnl = getattr(metrics, "pnl", None)
+            exec_time = time.perf_counter() - start_time
+
+            logger.info(
+                "Self-improver evaluation",
+                strategy=strategy,
+                symbol=symbol,
+                params=params,
+                sharpe=sharpe,
+                signal_count=signal_count,
+                exec_time=exec_time,
+                pnl=pnl,
+            )
+            return sharpe
         except Exception as e:
             logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
             return 0.0
@@ -130,7 +158,9 @@ class SelfImprover:
                 "params": best_iter_params,
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
+                "improvement_pct": round(
+                    (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
+                ),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
@@ -163,8 +193,14 @@ class SelfImprover:
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
         # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        TARGETS = [
+            ("momentum", "SPY"),
+            ("momentum", "QQQ"),
+            ("mean_reversion", "AAPL"),
+            ("rsi_macd", "MSFT"),
+            ("breakout", "NVDA"),
+            ("supertrend", "SPY"),
+        ]
 
         while self._running:
             self._iteration += 1
@@ -175,7 +211,12 @@ class SelfImprover:
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                    )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
