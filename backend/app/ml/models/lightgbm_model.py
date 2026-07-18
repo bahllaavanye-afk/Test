@@ -3,10 +3,15 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
+
 import json
 from pathlib import Path
 from dataclasses import dataclass
+from typing import Iterable, Tuple
+
+import numpy as np
+import torch
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
@@ -21,8 +26,6 @@ try:
     HAS_SHAP = True
 except ImportError:
     HAS_SHAP = False
-
-import torch
 
 
 @dataclass
@@ -47,22 +50,63 @@ class LightGBMClassifier(AbstractModel):
     model_type = "lightgbm"
 
     def __init__(self, config: LightGBMConfig | None = None):
+        if config is not None and not isinstance(config, LightGBMConfig):
+            raise ValueError("config must be a LightGBMConfig instance or None")
         self.config = config or LightGBMConfig()
         self._model: "lgb.Booster | None" = None
         self._feature_names: list[str] = []
         self._shap_explainer = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor):
+            raise ValueError("Input x must be a torch.Tensor")
         if self._model is None:
             raise RuntimeError("Model not trained yet")
-        arr = x.numpy() if isinstance(x, torch.Tensor) else x
+        arr = x.numpy()
         if arr.ndim == 3:
             arr = arr[:, -1, :]  # use last timestep for flat features
         return torch.tensor(self._model.predict(arr), dtype=torch.float32)
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray,
-            X_val: np.ndarray | None = None, y_val: np.ndarray | None = None,
-            feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,
+        y_val: np.ndarray | None = None,
+        feature_names: list[str] | None = None,
+    ) -> dict:
+        if not isinstance(X_train, np.ndarray):
+            raise ValueError("X_train must be a numpy.ndarray")
+        if not isinstance(y_train, np.ndarray):
+            raise ValueError("y_train must be a numpy.ndarray")
+        if X_train.ndim != 2:
+            raise ValueError("X_train must be a 2‑dimensional array")
+        if y_train.ndim != 1:
+            raise ValueError("y_train must be a 1‑dimensional array")
+        if X_train.shape[0] != y_train.shape[0]:
+            raise ValueError("Number of rows in X_train must match length of y_train")
+        if X_val is not None:
+            if not isinstance(X_val, np.ndarray):
+                raise ValueError("X_val must be a numpy.ndarray if provided")
+            if X_val.ndim != 2:
+                raise ValueError("X_val must be a 2‑dimensional array")
+            if X_val.shape[1] != X_train.shape[1]:
+                raise ValueError("X_val must have the same number of columns as X_train")
+        if y_val is not None:
+            if not isinstance(y_val, np.ndarray):
+                raise ValueError("y_val must be a numpy.ndarray if provided")
+            if y_val.ndim != 1:
+                raise ValueError("y_val must be a 1‑dimensional array")
+            if X_val is None:
+                raise ValueError("y_val provided without X_val")
+            if X_val.shape[0] != y_val.shape[0]:
+                raise ValueError("Number of rows in X_val must match length of y_val")
+        if feature_names is not None:
+            if not isinstance(feature_names, list) or not all(isinstance(n, str) for n in feature_names):
+                raise ValueError("feature_names must be a list of strings")
+            if len(feature_names) != X_train.shape[1]:
+                raise ValueError("Length of feature_names must match number of columns in X_train")
+
         if not HAS_LGB:
             logger.warning("lightgbm not installed. Install: pip install lightgbm")
             return {"error": "lightgbm not installed"}
@@ -89,7 +133,8 @@ class LightGBMClassifier(AbstractModel):
         }
         callbacks = [lgb.early_stopping(self.config.early_stopping_rounds), lgb.log_evaluation(50)]
         self._model = lgb.train(
-            params, train_set,
+            params,
+            train_set,
             num_boost_round=self.config.n_estimators,
             valid_sets=valid_sets,
             callbacks=callbacks,
@@ -98,29 +143,47 @@ class LightGBMClassifier(AbstractModel):
         logger.info(f"LightGBM trained: best_iteration={best_iter}")
         return {"best_iteration": best_iter, "best_score": self._model.best_score}
 
-    def train_epoch(self, loader, optimizer, criterion) -> dict:
+    def train_epoch(self, loader: Iterable[Tuple[torch.Tensor, torch.Tensor]], optimizer, criterion) -> dict:
         # Collect all data and do a full LightGBM fit
+        if not hasattr(loader, "__iter__"):
+            raise ValueError("loader must be an iterable yielding (x, y) tuples")
         X, Y = [], []
-        for x, y in loader:
+        for batch in loader:
+            if not isinstance(batch, (list, tuple)) or len(batch) != 2:
+                raise ValueError("Each loader element must be a (x, y) pair")
+            x, y = batch
+            if not isinstance(x, torch.Tensor) or not isinstance(y, torch.Tensor):
+                raise ValueError("x and y must be torch.Tensor instances")
             arr = x.numpy()
             if arr.ndim == 3:
                 arr = arr[:, -1, :]
             X.append(arr)
             Y.append(y.numpy())
+        if not X:
+            raise ValueError("loader yielded no data")
         X = np.vstack(X)
         Y = np.concatenate(Y)
         return self.fit(X, Y)
 
-    def evaluate(self, loader) -> EvalMetrics:
+    def evaluate(self, loader: Iterable[Tuple[torch.Tensor, torch.Tensor]]) -> EvalMetrics:
         if self._model is None:
             return EvalMetrics(accuracy=0.5, auc=0.5, sharpe=0.0)
+        if not hasattr(loader, "__iter__"):
+            raise ValueError("loader must be an iterable yielding (x, y) tuples")
         X, Y = [], []
-        for x, y in loader:
+        for batch in loader:
+            if not isinstance(batch, (list, tuple)) or len(batch) != 2:
+                raise ValueError("Each loader element must be a (x, y) pair")
+            x, y = batch
+            if not isinstance(x, torch.Tensor) or not isinstance(y, torch.Tensor):
+                raise ValueError("x and y must be torch.Tensor instances")
             arr = x.numpy()
             if arr.ndim == 3:
                 arr = arr[:, -1, :]
             X.append(arr)
             Y.append(y.numpy())
+        if not X:
+            raise ValueError("loader yielded no data")
         X = np.vstack(X)
         Y = np.concatenate(Y)
         preds = self._model.predict(X)
@@ -141,6 +204,10 @@ class LightGBMClassifier(AbstractModel):
         return {n: round(float(v) / total, 4) for n, v in zip(names, imp)}
 
     def shap_values(self, X: np.ndarray) -> np.ndarray | None:
+        if not isinstance(X, np.ndarray):
+            raise ValueError("X must be a numpy.ndarray")
+        if X.ndim != 2:
+            raise ValueError("X must be a 2‑dimensional array")
         if not HAS_SHAP or self._model is None:
             return None
         if self._shap_explainer is None:
@@ -148,6 +215,10 @@ class LightGBMClassifier(AbstractModel):
         return self._shap_explainer.shap_values(X)
 
     def save(self, path: str, metadata: dict | None = None) -> None:
+        if not isinstance(path, str) or not path:
+            raise ValueError("path must be a non‑empty string")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict if provided")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         if self._model:
             self._model.save_model(path + ".lgb")
@@ -156,6 +227,8 @@ class LightGBMClassifier(AbstractModel):
 
     @classmethod
     def load(cls, path: str) -> "LightGBMClassifier":
+        if not isinstance(path, str) or not path:
+            raise ValueError("path must be a non‑empty string")
         obj = cls()
         if not HAS_LGB:
             return obj
