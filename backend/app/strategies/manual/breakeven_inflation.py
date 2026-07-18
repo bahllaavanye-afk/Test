@@ -24,6 +24,9 @@ Documented Sharpe: 0.7-1.1 (TIPS strategies literature, PIMCO 2020)
 
 from __future__ import annotations
 
+import time
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
 
@@ -36,8 +39,20 @@ _GOLD_ETF    = "GLD"
 _MOMENTUM_DAYS = 20
 _THRESHOLD     = 0.003   # 0.3% momentum to trigger signal
 
+# Simple in‑memory cache for yfinance data
+_CACHE_TTL = 300  # seconds
+_CACHE: dict[str, Tuple[float, pd.Series]] = {}
+
 
 def _fetch_yf(symbol: str, period: str = "3y") -> pd.Series | None:
+    """Fetch close prices for a symbol using yfinance with a short‑lived cache."""
+    now = time.time()
+    cached = _CACHE.get(symbol)
+    if cached:
+        ts, series = cached
+        if now - ts < _CACHE_TTL:
+            return series
+
     try:
         import yfinance as yf
         hist = yf.Ticker(symbol).history(period=period, auto_adjust=True)
@@ -45,6 +60,8 @@ def _fetch_yf(symbol: str, period: str = "3y") -> pd.Series | None:
             return None
         closes = hist["Close"].dropna()
         closes.index = pd.to_datetime(closes.index).tz_localize(None)
+        # Store in cache
+        _CACHE[symbol] = (now, closes)
         return closes
     except Exception:
         return None
