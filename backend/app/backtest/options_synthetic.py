@@ -26,11 +26,26 @@ def _norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
+def _validate_option_kind(kind: str) -> None:
+    if kind not in {"call", "put"}:
+        raise ValueError(f"Invalid option kind '{kind}'. Expected 'call' or 'put'.")
+
+
+def _validate_option_side(side: str) -> None:
+    if side not in {"buy", "sell"}:
+        raise ValueError(f"Invalid option side '{side}'. Expected 'buy' or 'sell'.")
+
+
 def bs_price(spot: float, strike: float, t_years: float, sigma: float,
              kind: str, rate: float = 0.04) -> float:
     """Black-Scholes European price. At/past expiry returns intrinsic."""
-    if spot <= 0 or strike <= 0:
-        raise ValueError("spot and strike must be positive")
+    if spot <= 0:
+        raise ValueError("spot must be positive")
+    if strike <= 0:
+        raise ValueError("strike must be positive")
+    _validate_option_kind(kind)
+    if rate < 0:
+        raise ValueError("rate must be non‑negative")
     intrinsic = max(spot - strike, 0.0) if kind == "call" else max(strike - spot, 0.0)
     if t_years <= 0 or sigma <= 0:
         return intrinsic
@@ -43,6 +58,10 @@ def bs_price(spot: float, strike: float, t_years: float, sigma: float,
 
 def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
     """Annualized close-to-close realized vol — the IV proxy."""
+    if not isinstance(close, pd.Series):
+        raise ValueError("close must be a pandas Series")
+    if window <= 0:
+        raise ValueError("window must be a positive integer")
     rets = np.log(close / close.shift(1))
     return rets.rolling(window).std() * math.sqrt(TRADING_DAYS)
 
@@ -54,26 +73,31 @@ class SpreadLeg:
     moneyness: float   # strike = moneyness * entry spot
 
 
-@dataclass
-class SpreadBacktestResult:
-    trades: int
-    wins: int
-    total_pnl: float
-    avg_pnl: float
-    win_rate: float | None
-    max_loss: float
-    pnl_series: list[float]
-
-    @property
-    def summary(self) -> str:
-        wr = f"{self.win_rate:.0%}" if self.win_rate is not None else "—"
-        return (f"{self.trades} trades, win {wr}, total {self.total_pnl:+.2f}, "
-                f"avg {self.avg_pnl:+.3f}, worst {self.max_loss:+.2f} (per 1x spread, mid fills)")
+def _validate_spread_leg(leg: SpreadLeg) -> None:
+    _validate_option_kind(leg.kind)
+    _validate_option_side(leg.side)
+    if leg.moneyness <= 0:
+        raise ValueError("moneyness must be positive")
 
 
 def price_spread(spot: float, legs: list[SpreadLeg], strikes: list[float],
                  t_years: float, sigma: float) -> float:
     """Signed value of the spread to its HOLDER (long premium positive)."""
+    if spot <= 0:
+        raise ValueError("spot must be positive")
+    if t_years < 0:
+        raise ValueError("t_years must be non‑negative")
+    if sigma < 0:
+        raise ValueError("sigma must be non‑negative")
+    if len(legs) != len(strikes):
+        raise ValueError("legs and strikes must have the same length")
+    if not legs:
+        raise ValueError("legs list cannot be empty")
+    for leg in legs:
+        _validate_spread_leg(leg)
+    for strike in strikes:
+        if strike <= 0:
+            raise ValueError("strike values must be positive")
     value = 0.0
     for leg, strike in zip(legs, strikes):
         p = bs_price(spot, strike, t_years, sigma, leg.kind)
@@ -84,18 +108,36 @@ def price_spread(spot: float, legs: list[SpreadLeg], strikes: list[float],
 def backtest_spread(df: pd.DataFrame, legs: list[SpreadLeg],
                     entry_mask: pd.Series | None = None,
                     dte: int = 35, hold_days: int = 21,
-                    vol_window: int = 20) -> SpreadBacktestResult:
+                    vol_window: int = 20) -> "SpreadBacktestResult":
     """Open the spread on each entry date, close by re-pricing hold_days later.
 
     entry_mask defaults to weekly entries (every 5th bar). P&L per unit spread:
     (exit value - entry value) — a net-credit structure enters at negative
     value, so decay toward zero is profit, exactly like the real book.
     """
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("df must be a pandas DataFrame")
+    if "close" not in df.columns:
+        raise ValueError("df must contain a 'close' column")
+    if dte <= 0:
+        raise ValueError("dte must be a positive integer")
+    if hold_days <= 0:
+        raise ValueError("hold_days must be a positive integer")
+    if vol_window <= 0:
+        raise ValueError("vol_window must be a positive integer")
+    for leg in legs:
+        _validate_spread_leg(leg)
+
     close = df["close"].astype(float)
     vol = realized_vol(close, vol_window)
     if entry_mask is None:
         entry_mask = pd.Series(False, index=df.index)
         entry_mask.iloc[vol_window::5] = True
+    else:
+        if not isinstance(entry_mask, pd.Series):
+            raise ValueError("entry_mask must be a pandas Series")
+        if not entry_mask.index.equals(df.index):
+            raise ValueError("entry_mask index must match df index")
 
     pnls: list[float] = []
     n = len(df)
@@ -123,6 +165,23 @@ def backtest_spread(df: pd.DataFrame, legs: list[SpreadLeg],
         max_loss=round(float(min(pnls)), 4) if pnls else 0.0,
         pnl_series=[round(float(p), 4) for p in pnls],
     )
+
+
+@dataclass
+class SpreadBacktestResult:
+    trades: int
+    wins: int
+    total_pnl: float
+    avg_pnl: float
+    win_rate: float | None
+    max_loss: float
+    pnl_series: list[float]
+
+    @property
+    def summary(self) -> str:
+        wr = f"{self.win_rate:.0%}" if self.win_rate is not None else "—"
+        return (f"{self.trades} trades, win {wr}, total {self.total_pnl:+.2f}, "
+                f"avg {self.avg_pnl:+.3f}, worst {self.max_loss:+.2f} (per 1x spread, mid fills)")
 
 
 # Ready-made structures mirroring the Options desk's mleg specs
