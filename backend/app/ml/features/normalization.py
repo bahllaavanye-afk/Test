@@ -4,6 +4,11 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
+# Constants
+FILE_MODE_WRITE = "wb"
+FILE_MODE_READ = "rb"
+SCALER_NOT_FITTED_ERROR = "Scaler not fitted — call fit() first"
+
 
 class FeatureScaler:
     """Wrapper around StandardScaler with save/load for inference."""
@@ -19,7 +24,7 @@ class FeatureScaler:
 
     def transform(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
         if not self.fitted:
-            raise RuntimeError("Scaler not fitted — call fit() first")
+            raise RuntimeError(SCALER_NOT_FITTED_ERROR)
         return self.scaler.transform(X)
 
     def fit_transform(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
@@ -27,13 +32,13 @@ class FeatureScaler:
 
     def save(self, path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb") as f:
+        with open(path, FILE_MODE_WRITE) as f:
             pickle.dump(self.scaler, f)
 
     @classmethod
     def load(cls, path: str) -> "FeatureScaler":
         instance = cls()
-        with open(path, "rb") as f:
+        with open(path, FILE_MODE_READ) as f:
             instance.scaler = pickle.load(f)
         instance.fitted = True
         return instance
