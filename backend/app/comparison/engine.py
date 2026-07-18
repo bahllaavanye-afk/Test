@@ -4,6 +4,7 @@ compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
 import asyncio
+import time
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -47,6 +48,8 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        start_time = time.perf_counter()
+
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
@@ -70,11 +73,28 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        execution_time = time.perf_counter() - start_time
+        manual_signal_count = len(manual_signals)
+        ml_signal_count = len(ml_signals)
+
+        # Compute P&L as final equity minus initial equity
+        manual_final_eq = manual_eq.iloc[-1] if not manual_eq.empty else initial_equity
+        ml_final_eq = ml_eq.iloc[-1] if not ml_eq.empty else initial_equity
+        manual_pnl = manual_final_eq - initial_equity
+        ml_pnl = ml_final_eq - initial_equity
+
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+            manual_signal_count=manual_signal_count,
+            ml_signal_count=ml_signal_count,
+            execution_time_sec=round(execution_time, 4),
+            manual_pnl=round(manual_pnl, 2),
+            ml_pnl=round(ml_pnl, 2),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
