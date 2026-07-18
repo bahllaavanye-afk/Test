@@ -199,8 +199,13 @@
     "Test firewall rules",
     "Review dependency updates",
     "Scan for code improvements",
-    "Parse model performance"
+    "Parse model performance",
+    "refactor on risk/correlation_monitor.py: success \u2014 tests green",
+    "refactor on brokers/base.py: success \u2014 tests green",
+    "refactor on tasks/backtest_worker.py: success \u2014 tests green",
+    "refactor on strategies/manual/yield_curve_momentum.py: success \u2014 tests green",
+    "refactor on strategies/ml_enhanced/ensemble.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T00:53:40.919611+00:00",
+  "last_updated": "2026-07-18T03:52:54.470253+00:00",
   "total": 200
 }
