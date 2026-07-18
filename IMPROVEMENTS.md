@@ -1,5 +1,9 @@
 # QuantEdge — Improvements & Task Tracker
 
+## New queue (added 2026-07-18, OA-backend session)
+- [ ] **[P1] Tradier sandbox options-data adapter** — free real chains WITH ORATS-computed greeks/IV (see docs/research/OA_BACKEND_STACK_2026.md): real delta-based strikes for desk mleg spreads, real IV rank replacing the HV proxy. Requires free TRADIER_SANDBOX_TOKEN secret (user signup, no card).
+- [ ] **[P1] SmartPricing-style laddered repricing** — extend _ensure_filled's one-shot cancel-replace into an OA-style ladder: post at mid, step limit toward market every ~7s (3 steps), then market out; measure in the slippage dashboard.
+
 ## New queue (added 2026-07-15, scale-up session)
 - [x] **[P1] Per-desk performance attribution + auto-pruning** — DONE 2026-07-16: the live-leaderboard weighting now prunes proven losers to 0.0 (≥20 trades, negative P&L, sharpe<-0.5 → desk skips the strategy entirely; auto-revives when stats recover). 5 tests incl. missing-sharpe-never-prunes.
 - [x] **[P1] Route Options-desk income structures through REAL multi-leg orders** — DONE 2026-07-18: wheel/condor/credit-spread/CSP/vol-carry signals now place actual defined-risk mleg spreads (moneyness-picked strikes ~35 DTE via /v2/options/contracts, 1 contract, day). Unresolvable legs place NOTHING and fall back to the underlying proxy. 9 tests incl. never-partial-spread.
