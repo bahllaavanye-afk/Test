@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784407323.2919078,
+    "last_updated": 1784410442.651959,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784407323.290943
+    "last_brain_update": 1784410442.6509366
   },
   "episodic": [
     {
@@ -1791,14 +1791,37 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784396402.9380555
+    },
+    {
+      "lesson": "Vercel free-tier deployment limit (100/day) exceeded, blocking deployments. Upgrade to Pro plan or implement deployment batching.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784410436.1567457
+    },
+    {
+      "lesson": "Auto-fix aborted due to patch size exceeding 50-line limit. Increase limit or split changes into smaller patches.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784410436.1620605
+    },
+    {
+      "lesson": "Auto-fix patch application failures indicate code conflicts or malformed patches. Investigate patch generation logic and add conflict resolution.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784410436.1662166
+    },
+    {
+      "lesson": "Repeated deployment failures suggest systemic resource contention. Monitor deployment frequency and consider CI/CD pipeline improvements.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784410436.170377
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize two GitHub PR/issue discussions. The input shows two sections: one for commit `54681c3` and one for `efcf653`. Both have \"Python version 3.11.15\" and \"Installed packages (head 50)\" but the actual package lists are truncated (only \"P\" shown). The user likely wants a concise summary of these debug outputs. Since the content is minimal, the summary should note that both are CI debug logs showing Python",
-      "item_count": 20,
-      "ts": 1783346583.403962
-    },
     {
       "summary": "The discussion indicates that an automated fix attempt failed twice because the patch could not be applied to the file.",
       "item_count": 20,
@@ -2293,6 +2316,11 @@
       "summary": "A deployment failed due to resource limits, and automated attempts to fix the issue were both skipped (too complex) and later failed (unable to apply patch).",
       "item_count": 20,
       "ts": 1784407323.2822273
+    },
+    {
+      "summary": "Deployment failed due to a resource limit error, and subsequent auto-fix attempts were aborted because the changes exceeded the 50-line limit and the patch could not be applied.",
+      "item_count": 20,
+      "ts": 1784410442.6412568
     }
   ],
   "experiment_results": [
