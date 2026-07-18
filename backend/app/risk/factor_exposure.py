@@ -186,20 +186,6 @@ def compute_factor_exposure(
             alpha_annualized=0.0,
             tracking_error=0.02,
         )
-    except Exception as e:
-        logger.exception(
-            "Unexpected error during factor exposure regression",
-            extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
-        )
-        return FactorExposure(
-            market_beta=1.0,
-            momentum_loading=0.0,
-            low_vol_loading=0.0,
-            size_loading=0.0,
-            r_squared=0.0,
-            alpha_annualized=0.0,
-            tracking_error=0.02,
-        )
 
     alpha_daily = float(coeffs[0])
     market_beta = float(coeffs[1])
