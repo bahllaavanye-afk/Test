@@ -96,6 +96,46 @@ def main() -> int:
     status, _ = _req("GET", "/analytics/tearsheet?days=90", token)
     check("analytics/tearsheet no 500", status != 500, f"HTTP {status}")
 
+    # ── Staleness + liveness (the 2026-07-18 lessons) ────────────────────────
+    # 1. DEPLOY PARITY: the live template count must match the repo's. For two
+    #    weeks the site served a stale build (29/57 templates) while CI was
+    #    green — this makes a stale deploy fail the smoke within 30 minutes.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _repo = _Path(__file__).resolve().parents[2]
+        _sys.path.insert(0, str(_repo / "backend"))
+        import os as _os
+        _os.environ.setdefault("SECRET_KEY", "s" * 64)
+        _os.environ.setdefault("DATABASE_URL", "")
+        from app.bots.templates import BOT_TEMPLATES as _REPO_TEMPLATES
+        status, live_t = _req("GET", "/bots/templates")
+        live_n = len(live_t) if isinstance(live_t, dict) else -1
+        check("deploy parity: live templates == repo templates",
+              status == 200 and live_n == len(_REPO_TEMPLATES),
+              f"live={live_n} repo={len(_REPO_TEMPLATES)} (mismatch = STALE DEPLOY)")
+    except Exception as exc:  # noqa: BLE001 — parity check must not hide other failures
+        check("deploy parity: live templates == repo templates", False, f"check errored: {exc}")
+
+    # 2. SCHEDULER LIVENESS: enabled bots must actually tick. The scheduler was
+    #    dead from Jul 5-18 (2 of 29 bots ever ran) and nothing alerted.
+    status, bots = _req("GET", "/bots/", token)
+    if status == 200 and isinstance(bots, list) and any(b.get("is_enabled") for b in bots):
+        from datetime import datetime, timedelta, timezone
+        newest = max((b.get("last_run_at") or "" for b in bots), default="")
+        fresh = False
+        if newest:
+            try:
+                ts = datetime.fromisoformat(newest.replace("Z", "+00:00"))
+                fresh = datetime.now(timezone.utc) - ts < timedelta(hours=24)
+            except ValueError:
+                pass
+        check("bot scheduler alive (a bot ran in the last 24h)", fresh,
+              f"newest last_run_at={newest or 'NEVER'}")
+    else:
+        check("bot scheduler alive (a bot ran in the last 24h)", False,
+              f"bots endpoint HTTP {status}")
+
     return _summary()
 
 
