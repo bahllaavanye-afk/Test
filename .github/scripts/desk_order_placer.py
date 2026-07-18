@@ -831,6 +831,13 @@ def _inject_iv_rank(df) -> None:
 
 _WEIGHT_MAX = 1.3
 _WEIGHT_MIN = 0.6
+# Auto-pruning (IMPROVEMENTS 2026-07-15): with REAL adverse evidence a strategy
+# stops trading entirely (weight 0.0) instead of limping at 0.6x — the flip
+# side of "always add strategies" is "always cut proven losers". Evidence bar
+# is deliberately high; a pruned strategy revives automatically if its live
+# stats recover (weights re-fetch every run).
+_PRUNE_MIN_TRADES = 20
+_PRUNE_SHARPE_BELOW = -0.5
 _API_BASE = os.environ.get("QUANTEDGE_API_URL", "https://quantedge-api-agb8.onrender.com").rstrip("/")
 
 
@@ -856,13 +863,18 @@ def _fetch_performance_weights() -> dict[str, float]:
         return {}
 
     weights: dict[str, float] = {}
+    pruned: list[str] = []
     for s in strategies:
         n = int(s.get("trades") or 0)
         if n < 5:
             continue  # not enough evidence to re-weight
         pnl = float(s.get("total_pnl") or 0)
         sharpe = s.get("pnl_sharpe")
-        if pnl > 0 and (sharpe or 0) > 0:
+        if (n >= _PRUNE_MIN_TRADES and pnl < 0
+                and float(sharpe if sharpe is not None else 0) < _PRUNE_SHARPE_BELOW):
+            w = 0.0
+            pruned.append(s.get("strategy", ""))
+        elif pnl > 0 and (sharpe or 0) > 0:
             w = min(_WEIGHT_MAX, 1.0 + min(float(sharpe) * 0.15, 0.3))
         elif pnl < 0:
             w = _WEIGHT_MIN
@@ -871,6 +883,9 @@ def _fetch_performance_weights() -> dict[str, float]:
         weights[s.get("strategy", "")] = round(w, 3)
     if weights:
         print(f"✓ Performance weights active for {len(weights)} strategies", flush=True)
+    if pruned:
+        print(f"✂ Auto-pruned (≥{_PRUNE_MIN_TRADES} trades, negative P&L, "
+              f"sharpe<{_PRUNE_SHARPE_BELOW}): {', '.join(sorted(pruned))}", flush=True)
     return weights
 
 
@@ -1262,8 +1277,13 @@ async def main() -> None:
                     )
                     continue
                 kelly_notional = _kelly_notional(equity, conf, bars=bars_cache.get(symbol))
-                # Self-scaling: winners (by live realized P&L) size up, losers down.
+                # Self-scaling: winners (by live realized P&L) size up, losers down,
+                # proven losers pruned outright (weight 0 → no order at all).
                 perf_w = _perf_weights.get(strategy.name, 1.0)
+                if perf_w == 0.0:
+                    print(f"  ✂ {strategy.name}/{symbol} pruned by attribution "
+                          f"(sustained negative live P&L) — no order", flush=True)
+                    continue
                 if perf_w != 1.0:
                     print(f"    · perf weight {perf_w:.2f}x for {strategy.name}", flush=True)
                     kelly_notional *= perf_w

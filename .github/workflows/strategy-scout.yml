@@ -69,12 +69,22 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: python .github/scripts/strategy_scout.py
 
+      - name: Run Symbol Scout
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/symbol_scout.py
+
       - name: Commit state + IMPROVEMENTS updates
         if: steps.gate.outputs.skip != 'true'
         run: |
           git config user.email "scout-bot@quantedge.ai"
           git config user.name "QuantEdge Strategy Scout"
-          git add .github/state/strategy_scout.json IMPROVEMENTS.md
+          git add .github/state/strategy_scout.json .github/state/symbol_scout.json IMPROVEMENTS.md
           git diff --cached --quiet || git commit -m "chore(strategy-scout): coverage report $(date -u +%Y-%m-%d) [skip ci]"
           for i in 1 2 3 4; do
             git pull --rebase --quiet origin main && git push origin main && break || sleep $((i*2))
