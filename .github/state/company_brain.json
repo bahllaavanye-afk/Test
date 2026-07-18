@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784361846.2597845,
+    "last_updated": 1784368481.3880904,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784355614.5629895
+    "last_brain_update": 1784368481.3871899
   },
   "episodic": [
     {
@@ -1651,6 +1651,34 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784336718.1799824
+    },
+    {
+      "lesson": "Repeated auto-fix failures indicate a systemic issue with automated patching; investigate root causes such as patch conflicts, missing dependencies, or codebase drift.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784368464.5875633
+    },
+    {
+      "lesson": "Deployment failed due to hitting Vercel's free daily limit (100 deploys). Consider upgrading to a paid plan or reducing unnecessary deployments to avoid blocking releases.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784368464.592484
+    },
+    {
+      "lesson": "Autonomous PR modifying protected file `backend/app/brokers/base.py` was revoked after a previous similar edit broke main. Strengthen path protection enforcement and require explicit human review for all changes to risk-manager and broker bases.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784368464.5961812
+    },
+    {
+      "lesson": "A prior autonomous edit (#298) broke main, indicating insufficient testing or rollback mechanisms for automated changes. Implement mandatory CI checks and automatic rollback on test failures for autonomous PRs.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784368464.5997603
     }
   ],
   "github_insights": [
@@ -2113,6 +2141,11 @@
       "summary": "The automated bot attempted to apply fixes but failed due to a patch application error, and skipped two other fixes deemed too complex\u2014one related to implementing per-desk logic and another based on the issue description.",
       "item_count": 20,
       "ts": 1784355614.554891
+    },
+    {
+      "summary": "The auto-fix process failed three times due to inability to apply a patch to the file, indicating a persistent issue with the automated patch application.",
+      "item_count": 20,
+      "ts": 1784368481.3785903
     }
   ],
   "experiment_results": [
