@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784368481.3880904,
+    "last_updated": 1784372350.0923357,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784368481.3871899
+    "last_brain_update": 1784372350.091437
   },
   "episodic": [
     {
@@ -2146,6 +2146,11 @@
       "summary": "The auto-fix process failed three times due to inability to apply a patch to the file, indicating a persistent issue with the automated patch application.",
       "item_count": 20,
       "ts": 1784368481.3785903
+    },
+    {
+      "summary": "The deployment failed due to resource limits, and automatic fix attempts were unsuccessful.",
+      "item_count": 20,
+      "ts": 1784372350.082163
     }
   ],
   "experiment_results": [
