@@ -14,6 +14,16 @@ import pandas as pd
 from app.config import settings
 from app.utils.logging import logger
 
+# Constants
+ALPACA_DATA_URL = "https://data.alpaca.markets"
+ALPACA_TIMEOUT = 15.0
+CLIENT_TIMEOUT = 20.0
+BAR_LIMIT = 1500
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+RESAMPLE_FREQ = "ME"
+CACHE_MAXSIZE = 1
+ALL_WEATHER_LABEL = "ALL_WEATHER"
+
 BENCHMARKS = {
     "SPY": {"name": "S&P 500", "color": "#2196F3"},
     "QQQ": {"name": "NASDAQ 100", "color": "#9C27B0"},
@@ -23,13 +33,11 @@ BENCHMARKS = {
 
 ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP": 0.075}
 
-ALPACA_DATA_URL = "https://data.alpaca.markets"
-
 # simple in‑memory cache for benchmark results keyed by (start, end)
 _benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
 
 
-@functools.lru_cache(maxsize=1)
+@functools.lru_cache(maxsize=CACHE_MAXSIZE)
 def _alpaca_headers() -> dict:
     """Static Alpaca authentication headers."""
     return {
@@ -46,15 +54,15 @@ async def _fetch_ticker_bars(
     Returns a pd.Series indexed by date, or an empty Series on failure.
     """
     sym = ticker.upper()
-    start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_str = datetime.combine(end, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start_str = datetime.combine(start, datetime.min.time()).strftime(DATE_FORMAT)
+    end_str = datetime.combine(end, datetime.min.time()).strftime(DATE_FORMAT)
 
     try:
         resp = await client.get(
             f"{ALPACA_DATA_URL}/v2/stocks/{sym}/bars",
-            params={"timeframe": "1Day", "start": start_str, "end": end_str, "limit": 1500},
+            params={"timeframe": "1Day", "start": start_str, "end": end_str, "limit": BAR_LIMIT},
             headers=_alpaca_headers(),
-            timeout=15.0,
+            timeout=ALPACA_TIMEOUT,
         )
         if resp.status_code != 200:
             logger.warning(
@@ -110,7 +118,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=CLIENT_TIMEOUT) as client:
         raw_series = await asyncio.gather(
             *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers],
             return_exceptions=True,
@@ -153,10 +161,10 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
         weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
         weights = weights / weights.sum()  # renormalize if any tickers missing
-        monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
+        monthly_returns = aw_prices.resample(RESAMPLE_FREQ).last().pct_change().dropna()
         aw_ret = (monthly_returns * weights).sum(axis=1)
         aw_equity = (1 + aw_ret).cumprod() * 100
-        result["ALL_WEATHER"] = [
+        result[ALL_WEATHER_LABEL] = [
             {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
         ]
 
