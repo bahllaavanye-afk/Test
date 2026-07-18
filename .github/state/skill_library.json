@@ -199,8 +199,13 @@
     "Restart on crash",
     "Ping external IPs",
     "Check port bindings",
-    "Validate config files"
+    "Validate config files",
+    "validation on risk/correlation.py: success \u2014 tests green",
+    "validation on brokers/alpaca_headers.py: success \u2014 tests green",
+    "validation on backtest/options_synthetic.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on ml/models/lightgbm_model.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T16:53:46.931791+00:00",
+  "last_updated": "2026-07-18T16:56:13.722600+00:00",
   "total": 200
 }
