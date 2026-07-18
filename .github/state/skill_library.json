@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Scan for timeouts",
-    "Check RAM usage",
     "Optimize log tracking",
     "Track network latency",
     "Check thread counts",
@@ -199,8 +197,10 @@
     "Test firewall rules",
     "Review dependency updates",
     "Scan for code improvements",
-    "Parse model performance"
+    "Parse model performance",
+    "Check CPU temps",
+    "Validate trade data"
   ],
-  "last_updated": "2026-07-18T00:53:40.919611+00:00",
+  "last_updated": "2026-07-18T03:52:03.885800+00:00",
   "total": 200
 }
