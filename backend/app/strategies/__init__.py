@@ -26,6 +26,9 @@ from app.strategies.manual.vrp_systematic import VRPSystematicStrategy
 from app.strategies.manual.hmm_regime import HMMRegimeStrategy
 from app.strategies.manual.opening_range_breakout import OpeningRangeBreakoutStrategy
 from app.strategies.manual.overnight_return import OvernightReturnStrategy
+from app.strategies.manual.turn_of_month import TurnOfMonthStrategy
+from app.strategies.manual.gap_fill_fade import GapFillFadeStrategy
+from app.strategies.manual.double_seven import DoubleSevenStrategy
 from app.strategies.manual.order_flow_imbalance import OrderFlowImbalanceStrategy
 from app.strategies.manual.earnings_accruals import EarningsAccrualsStrategy
 from app.strategies.manual.cross_asset_carry import CrossAssetCarryStrategy
@@ -204,6 +207,9 @@ STRATEGY_REGISTRY: dict[str, type[AbstractStrategy]] = {
     "hmm_regime": HMMRegimeStrategy,
     "opening_range_breakout": OpeningRangeBreakoutStrategy,
     "overnight_return": OvernightReturnStrategy,
+    "turn_of_month": TurnOfMonthStrategy,
+    "gap_fill_fade": GapFillFadeStrategy,
+    "double_seven": DoubleSevenStrategy,
     "order_flow_imbalance": OrderFlowImbalanceStrategy,
     "earnings_accruals": EarningsAccrualsStrategy,
     "cross_asset_carry": CrossAssetCarryStrategy,

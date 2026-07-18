@@ -90,6 +90,8 @@ DESKS: list[DeskConfig] = [
             "cci_reversion", "fifty_two_week_high", "triple_barrier_momentum",
             "ml_momentum", "ml_mean_reversion", "ml_breakout", "ensemble",
             "event_driven_gap", "open_close_revert",
+            # 2026-07-18: documented calendar/reversion premia (see modules)
+            "turn_of_month", "gap_fill_fade", "double_seven",
         ],
         notional_usd=500.0,
         confidence_min=0.60,
@@ -266,6 +268,7 @@ DESKS: list[DeskConfig] = [
             "mean_reversion", "low_volatility", "sector_rotation",
             # 2026-07-15 scale-up:
             "ichimoku_cloud_tv", "triple_barrier_momentum", "fifty_two_week_high",
+            "turn_of_month",
         ],
         notional_usd=400.0,
         confidence_min=0.60,
@@ -922,6 +925,10 @@ _STRATEGY_REGIME_MAP: dict[str, list[int]] = {
     "commodity_momentum":        [2],
     "commodity_reversion":       [1],
     "commodity_trend":           [2],
+    # 2026-07-18 — calendar/reversion premia
+    "turn_of_month":             [1, 2],       # flow anomaly — not in bear panic
+    "gap_fill_fade":             [1],          # mean reversion — range regime
+    "double_seven":              [1, 2],       # trend-filtered pullback buyer
 }
 _DEFAULT_REGIMES = [0, 1, 2]
 
