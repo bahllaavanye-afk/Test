@@ -1,7 +1,5 @@
 {
   "skills": [
-    "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
-    "Verify clock sync",
     "docstrings on execution/limit_first.py: success \u2014 tests green",
     "Handle DNS failures",
     "Review API status",
@@ -199,8 +197,10 @@
     "Check CPU temps",
     "Detect deadlocks",
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Check RAM overflow"
+    "Check RAM overflow",
+    "Log error states",
+    "Verify OS updates"
   ],
-  "last_updated": "2026-07-18T08:17:03.599527+00:00",
+  "last_updated": "2026-07-18T10:59:27.959631+00:00",
   "total": 200
 }
