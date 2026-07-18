@@ -199,8 +199,12 @@
     "Log error states",
     "Verify OS updates",
     "Test DB connections",
-    "Restart on crash"
+    "Restart on crash",
+    "docstrings on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "docstrings on ml/models/foundation_model.py: success \u2014 tests green",
+    "docstrings on risk/correlation_monitor.py: success \u2014 tests green",
+    "docstrings on brokers/alpaca_headers.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T11:58:31.781678+00:00",
+  "last_updated": "2026-07-18T12:11:17.738199+00:00",
   "total": 200
 }
