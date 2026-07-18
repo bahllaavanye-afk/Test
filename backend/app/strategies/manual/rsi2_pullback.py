@@ -38,6 +38,7 @@ class RSI2PullbackStrategy(AbstractStrategy):
         self.exit_period = effective["exit_period"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+        """Generate a buy signal if price is above trend SMA and RSI is oversold."""
         if "close" not in data.columns or len(data) < self.trend_period + 5:
             return None
 
@@ -52,19 +53,27 @@ class RSI2PullbackStrategy(AbstractStrategy):
         price = close.iloc[-1]
         rsi_val = rsi.iloc[-1]
         trend = trend_sma.iloc[-1]
+
         if pd.isna(trend) or pd.isna(rsi_val):
             return None
 
         if price > trend and rsi_val < self.rsi_buy:
             depth = (self.rsi_buy - rsi_val) / max(self.rsi_buy, 1e-8)
             confidence = min(0.85, 0.58 + depth * 0.25)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket, target_price=exit_sma.iloc[-1],
-                          metadata={"rsi2": round(float(rsi_val), 2), "trend": "up"})
+            return Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                target_price=exit_sma.iloc[-1],
+                metadata={"rsi2": round(float(rsi_val), 2), "trend": "up"},
+            )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        """Create entry and exit series for backtesting."""
         close = df["close"]
         rsi = ta.rsi(close, length=self.rsi_period)
         if rsi is None:
@@ -74,7 +83,6 @@ class RSI2PullbackStrategy(AbstractStrategy):
         trend_sma = close.rolling(self.trend_period).mean()
         exit_sma = close.rolling(self.exit_period).mean()
 
-        # shift(1): a signal at bar i may only use data through bar i-1 (no lookahead)
         price = close.shift(1)
         rsi_s = rsi.shift(1)
         trend = trend_sma.shift(1)
@@ -83,4 +91,7 @@ class RSI2PullbackStrategy(AbstractStrategy):
         entries = (price > trend) & (rsi_s < self.rsi_buy)
         exits = (rsi_s > self.rsi_exit) | (price > exit_ma)
 
-        return BacktestSignals(entries=entries.fillna(False), exits=exits.fillna(False))
+        return BacktestSignals(
+            entries=entries.fillna(False),
+            exits=exits.fillna(False),
+        )
