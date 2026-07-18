@@ -23,6 +23,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.tasks.free_llm_router import call_race
 from app.tasks.agent_memory import AgentMemory
 
+# -------------------------------------------------------------------------
+# Constants
+# -------------------------------------------------------------------------
+
+# Look‑back period for metric collection (days)
+LOOKBACK_DAYS: int = 30
+
+# Auto‑disable criteria
+SHARPE_DISABLE_THRESHOLD: float = 0.0
+MIN_TRADES_FOR_DISABLE: int = 10
+DISABLE_REASON_TEMPLATE: str = "auto-disabled: Sharpe={sharpe:.2f} (30d)"
+
+# LLM improvement pass parameters
+TOP_STRATEGIES_COUNT: int = 5
+BOTTOM_STRATEGIES_COUNT: int = 3
+LLM_TEMPERATURE: float = 0.4
+LLM_MAX_TOKENS: int = 512
+
+# Regime determination thresholds
+PROFITABLE_SHARPE_THRESHOLD: float = 0.5
+BULL_HEALTH_THRESHOLD: float = 0.6
+BEAR_HEALTH_THRESHOLD: float = 0.3
+
+# Regime identifiers
+REGIME_BULL: str = "bull"
+REGIME_BEAR: str = "bear"
+REGIME_SIDEWAYS: str = "sideways"
+
+# Redis channel
+REDIS_REGIME_CHANNEL: str = "platform:regime"
+
+# Memory keys
+MEMORY_KEY_AUTO_DISABLED: str = "auto_disabled"
+MEMORY_KEY_LLM_SUGGESTIONS: str = "llm_suggestions"
+MEMORY_KEY_PLATFORM_HEALTH: str = "platform_health"
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,17 +75,22 @@ class SelfImprovingLoop:
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
-            logger.info("SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics))
+            logger.info(
+                "SelfImprovingLoop: cycle complete (%d strategies evaluated)",
+                len(metrics),
+            )
         except Exception as e:
             logger.exception("SelfImprovingLoop cycle error: %s", e)
 
     # ── Metric collection ─────────────────────────────────────────────────────
 
     async def _collect_strategy_metrics(self) -> list[dict]:
-        """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        """Pull per-strategy Sharpe + win-rate from trade history (last LOOKBACK_DAYS days)."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
         async with self._factory() as session:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text(
+                    """
                 SELECT
                     strategy_name,
                     COUNT(*) AS num_trades,
@@ -60,45 +101,59 @@ class SelfImprovingLoop:
                 FROM trades
                 WHERE closed_at >= :cutoff AND strategy_name IS NOT NULL
                 GROUP BY strategy_name
-            """), {"cutoff": cutoff})
+                """
+                ),
+                {"cutoff": cutoff},
+            )
             rows = result.fetchall()
 
         metrics = []
         for row in rows:
             std = row.std_pnl or 1e-9
             sharpe = (row.avg_pnl / std) * (252 ** 0.5) if std > 0 else 0
-            metrics.append({
-                "strategy": row.strategy_name,
-                "num_trades": row.num_trades,
-                "total_pnl": float(row.total_pnl or 0),
-                "avg_pnl": float(row.avg_pnl or 0),
-                "win_rate": float(row.win_rate or 0),
-                "sharpe": round(sharpe, 3),
-            })
+            metrics.append(
+                {
+                    "strategy": row.strategy_name,
+                    "num_trades": row.num_trades,
+                    "total_pnl": float(row.total_pnl or 0),
+                    "avg_pnl": float(row.avg_pnl or 0),
+                    "win_rate": float(row.win_rate or 0),
+                    "sharpe": round(sharpe, 3),
+                }
+            )
         return metrics
 
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
     async def _auto_disable_underperformers(self, metrics: list[dict]) -> None:
-        """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        """Disable strategies with Sharpe < SHARPE_DISABLE_THRESHOLD and sufficient trade volume."""
+        underperformers = [
+            m
+            for m in metrics
+            if m["sharpe"] < SHARPE_DISABLE_THRESHOLD and m["num_trades"] >= MIN_TRADES_FOR_DISABLE
+        ]
         if not underperformers:
             return
 
         async with self._factory() as session:
             for m in underperformers:
-                await session.execute(text("""
+                await session.execute(
+                    text(
+                        """
                     UPDATE strategies SET is_active = false, disabled_reason = :reason
                     WHERE name = :name AND is_active = true
-                """), {
-                    "name": m["strategy"],
-                    "reason": f"auto-disabled: Sharpe={m['sharpe']:.2f} (30d)",
-                })
+                    """
+                    ),
+                    {
+                        "name": m["strategy"],
+                        "reason": DISABLE_REASON_TEMPLATE.format(sharpe=m["sharpe"]),
+                    },
+                )
             await session.commit()
 
         names = [m["strategy"] for m in underperformers]
         logger.info("SelfImprovingLoop: auto-disabled %s", names)
-        await self._memory.write("auto_disabled", {"strategies": names})
+        await self._memory.write(MEMORY_KEY_AUTO_DISABLED, {"strategies": names})
 
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
@@ -106,12 +161,12 @@ class SelfImprovingLoop:
         if not metrics:
             return
 
-        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
-        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
+        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:TOP_STRATEGIES_COUNT]
+        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:BOTTOM_STRATEGIES_COUNT]
 
         prompt = f"""You are a quantitative trading researcher.
 
-Top performing strategies (last 30d):
+Top performing strategies (last {LOOKBACK_DAYS}d):
 {json.dumps(top, indent=2)}
 
 Underperforming strategies:
@@ -123,35 +178,52 @@ Suggest 3 specific, actionable improvements:
 3. A risk rule change to protect capital
 
 Be concise. Each suggestion under 2 sentences."""
-
         response = await call_race(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=512,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
         )
         if response:
-            await self._memory.write("llm_suggestions", {
-                "provider": response.provider,
-                "suggestion": response.content,
-            })
-            logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
+            await self._memory.write(
+                MEMORY_KEY_LLM_SUGGESTIONS,
+                {
+                    "provider": response.provider,
+                    "suggestion": response.content,
+                },
+            )
+            logger.info(
+                "SelfImprovingLoop: LLM suggestion from %s stored",
+                response.provider,
+            )
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
     async def _broadcast_regime(self, metrics: list[dict]) -> None:
-        profitable = sum(1 for m in metrics if m["sharpe"] > 0.5)
+        profitable = sum(1 for m in metrics if m["sharpe"] > PROFITABLE_SHARPE_THRESHOLD)
         total = len(metrics) or 1
         health = profitable / total
 
-        regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
-        await self._memory.set_latest("platform_health", {
-            "regime": regime,
-            "health_ratio": round(health, 3),
-            "profitable_strategies": profitable,
-            "total_strategies": total,
-        })
+        if health > BULL_HEALTH_THRESHOLD:
+            regime = REGIME_BULL
+        elif health < BEAR_HEALTH_THRESHOLD:
+            regime = REGIME_BEAR
+        else:
+            regime = REGIME_SIDEWAYS
+
+        await self._memory.set_latest(
+            MEMORY_KEY_PLATFORM_HEALTH,
+            {
+                "regime": regime,
+                "health_ratio": round(health, 3),
+                "profitable_strategies": profitable,
+                "total_strategies": total,
+            },
+        )
 
         try:
-            await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
+            await self._redis.publish(
+                REDIS_REGIME_CHANNEL,
+                json.dumps({"regime": regime, "health": health}),
+            )
         except Exception as exc:  # noqa: BLE001 — subscribers just miss one regime tick
             logger.debug("self-improving loop: regime publish failed: %s", exc)
