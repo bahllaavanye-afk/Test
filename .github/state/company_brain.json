@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784392539.313091,
+    "last_updated": 1784396434.951798,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784392539.3121474
+    "last_brain_update": 1784396434.9510446
   },
   "episodic": [
     {
@@ -1763,6 +1763,34 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784392529.6054797
+    },
+    {
+      "lesson": "Auto-fix patches are consistently failing; investigate the patch generation logic and file write permissions.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784396402.9270163
+    },
+    {
+      "lesson": "Deployment is hitting Vercel's free-tier daily limit; upgrade to a paid plan or implement a deployment queue to avoid blocking.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784396402.9315484
+    },
+    {
+      "lesson": "Slack agent run is failing due to message quota exhaustion or token issues; review Slack API limits and rotate tokens.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784396402.9348207
+    },
+    {
+      "lesson": "Multiple CI/CD failures suggest brittle automation; add retry logic and better error handling for auto-fix and deployment steps.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784396402.9380555
     }
   ],
   "github_insights": [
@@ -2255,6 +2283,11 @@
       "summary": "Slack agent-team runs failed due to a message limit quota, deployment failed with a resource limit error (retry in 24 hours), and an auto-fix attempt also failed to apply a patch.",
       "item_count": 20,
       "ts": 1784392539.3036208
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784396434.94259
     }
   ],
   "experiment_results": [
