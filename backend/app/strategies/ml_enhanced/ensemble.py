@@ -18,51 +18,26 @@ class EnsembleStrategy(AbstractStrategy):
         """
         Produce a trading signal based on the ML inference combined with
         price‑based confirmation filters.
-
-        Entry Conditions
-        ----------------
-        1. ML model predicts a directional move (up/down) with confidence >= threshold.
-        2. Current close price is above the SMA for a long signal, or below the SMA for a short.
-        3. Volume is above the median of the recent window (default 20 periods).
-
-        Exit Conditions
-        ----------------
-        A signal is not emitted if any of the above conditions fail, which the
-        back‑testing engine interprets as an exit for the active position.
         """
         try:
-            inference = get_inference_service()
-            ml_result = await inference.predict(data, symbol)
-
-            # Basic ML validation
-            if not ml_result or ml_result.get("prediction") == "neutral":
-                return None
-            if ml_result.get("confidence", 0) < self.confidence_threshold:
+            ml_result = await self._fetch_ml_result(data, symbol)
+            if not self._is_valid_ml_result(ml_result):
                 return None
 
-            # Ensure we have price and volume data for confirmation
-            if "close" not in data.columns or "volume" not in data.columns:
+            if not self._has_required_columns(data):
                 return None
 
-            # Compute SMA and median volume on the latest slice
-            recent = data.tail(self.sma_window)
-            if recent.empty:
+            sma, median_vol = self._compute_confirmation_metrics(data)
+            if sma is None or median_vol is None:
                 return None
-            sma = recent["close"].mean()
-            median_vol = recent["volume"].median()
+
             latest_close = data["close"].iloc[-1]
             latest_vol = data["volume"].iloc[-1]
 
-            # Directional confirmation
-            if ml_result["prediction"] == "up":
-                if latest_close <= sma:
-                    return None
-            else:  # prediction == "down"
-                if latest_close >= sma:
-                    return None
+            if not self._passes_directional_check(ml_result["prediction"], latest_close, sma):
+                return None
 
-            # Volume confirmation
-            if latest_vol < median_vol:
+            if not self._passes_volume_check(latest_vol, median_vol):
                 return None
 
             return Signal(
@@ -78,6 +53,43 @@ class EnsembleStrategy(AbstractStrategy):
             # In production we would log the exception; for now we silently ignore.
             return None
 
+    async def _fetch_ml_result(self, data: pd.DataFrame, symbol: str) -> dict | None:
+        """Retrieve ML prediction for the given symbol."""
+        inference = get_inference_service()
+        return await inference.predict(data, symbol)
+
+    def _is_valid_ml_result(self, ml_result: dict | None) -> bool:
+        """Validate ML result presence, directionality, and confidence."""
+        if not ml_result or ml_result.get("prediction") == "neutral":
+            return False
+        if ml_result.get("confidence", 0) < self.confidence_threshold:
+            return False
+        return True
+
+    def _has_required_columns(self, data: pd.DataFrame) -> bool:
+        """Ensure price and volume columns are available."""
+        return {"close", "volume"}.issubset(data.columns)
+
+    def _compute_confirmation_metrics(self, data: pd.DataFrame) -> tuple[float | None, float | None]:
+        """Calculate SMA and median volume over the recent window."""
+        recent = data.tail(self.sma_window)
+        if recent.empty:
+            return None, None
+        sma = recent["close"].mean()
+        median_vol = recent["volume"].median()
+        return sma, median_vol
+
+    def _passes_directional_check(self, prediction: str, latest_close: float, sma: float) -> bool:
+        """Confirm price is on the correct side of SMA for the prediction."""
+        if prediction == "up":
+            return latest_close > sma
+        # prediction == "down"
+        return latest_close < sma
+
+    def _passes_volume_check(self, latest_vol: float, median_vol: float) -> bool:
+        """Confirm volume is above the median of the recent window."""
+        return latest_vol >= median_vol
+
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
         Generate entry and exit signals for back‑testing.
@@ -92,15 +104,12 @@ class EnsembleStrategy(AbstractStrategy):
         """
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
-            # If required columns are missing, return empty signals to avoid crashes.
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
-        # Compute rolling SMA and median volume
         sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
         median_vol = df["volume"].rolling(window=self.sma_window, min_periods=1).median()
 
-        # Conditions for a valid entry
         is_up = df["ml_prediction"] == "up"
         is_down = df["ml_prediction"] == "down"
         conf_ok = df["ml_confidence"] >= self.confidence_threshold
@@ -113,13 +122,10 @@ class EnsembleStrategy(AbstractStrategy):
 
         entries = long_entry | short_entry
 
-        # Exit when any of the entry conditions become false for the current side.
-        # For simplicity we treat the opposite side as an exit signal.
         exit_long = (~price_above_sma) | (~vol_ok) | (df["ml_prediction"] == "down")
         exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
         exits = exit_long | exit_short
 
-        # Align boolean Series with BacktestSignals expectations
         entries = entries.astype(bool)
         exits = exits.astype(bool)
 
