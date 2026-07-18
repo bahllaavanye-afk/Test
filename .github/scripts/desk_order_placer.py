@@ -963,6 +963,10 @@ _WEIGHT_MIN = 0.6
 # stats recover (weights re-fetch every run).
 _PRUNE_MIN_TRADES = 20
 _PRUNE_SHARPE_BELOW = -0.5
+# Hit-rate rule (TV-desk item, applied to ALL strategies): with a big sample,
+# a sub-45% win rate on roughly symmetric trades is a coin toss minus costs.
+_PRUNE_HITRATE_MIN_TRADES = 100
+_PRUNE_HITRATE_BELOW = 0.45
 _API_BASE = os.environ.get("QUANTEDGE_API_URL", "https://quantedge-api-agb8.onrender.com").rstrip("/")
 
 
@@ -995,8 +999,14 @@ def _fetch_performance_weights() -> dict[str, float]:
             continue  # not enough evidence to re-weight
         pnl = float(s.get("total_pnl") or 0)
         sharpe = s.get("pnl_sharpe")
+        win_rate = s.get("win_rate")
         if (n >= _PRUNE_MIN_TRADES and pnl < 0
                 and float(sharpe if sharpe is not None else 0) < _PRUNE_SHARPE_BELOW):
+            w = 0.0
+            pruned.append(s.get("strategy", ""))
+        elif (n >= _PRUNE_HITRATE_MIN_TRADES and pnl < 0
+                and win_rate is not None and float(win_rate) < _PRUNE_HITRATE_BELOW):
+            # hit-rate rule: large sample, losing money, sub-coin-toss accuracy
             w = 0.0
             pruned.append(s.get("strategy", ""))
         elif pnl > 0 and (sharpe or 0) > 0:
