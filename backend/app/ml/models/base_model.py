@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import logging
+import time
 from typing import Any, Dict, Optional, Union
 
 import numpy as np
@@ -12,6 +14,8 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
     torch = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -113,6 +117,38 @@ class AbstractModel(ABC):
             Aggregated evaluation metrics.
         """
 
+    def _log_metrics(
+        self,
+        *,
+        signal_count: Optional[int] = None,
+        execution_time_ms: Optional[float] = None,
+        pnl: Optional[float] = None,
+        **extra: Any,
+    ) -> None:
+        """
+        Emit structured INFO‑level log with key performance metrics.
+
+        Parameters
+        ----------
+        signal_count : int | None
+            Number of signals (e.g., predictions) generated.
+        execution_time_ms : float | None
+            Execution time of the operation in milliseconds.
+        pnl : float | None
+            Profit‑and‑Loss associated with the operation, if available.
+        extra : dict
+            Additional key‑value pairs to include in the log.
+        """
+        log_payload = {
+            "signal_count": signal_count,
+            "execution_time_ms": execution_time_ms,
+            "pnl": pnl,
+            **extra,
+        }
+        # Remove keys with None values to keep the log concise
+        log_payload = {k: v for k, v in log_payload.items() if v is not None}
+        logger.info("Model metrics", extra=log_payload)
+
     def save(self, path: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """
         Serialize the model to disk.
@@ -182,8 +218,16 @@ class AbstractModel(ABC):
         import torch as _torch
         if hasattr(self, "eval"):
             self.eval()  # type: ignore[attr-defined]
+        start_time = time.perf_counter()
         with _torch.no_grad():
             logits = self.forward(x)
             if logits.shape[-1] == 1 or logits.dim() == 1:
-                return _torch.sigmoid(logits).numpy().flatten()
-            return _torch.softmax(logits, dim=-1)[:, 1].numpy()
+                probs = _torch.sigmoid(logits).numpy().flatten()
+            else:
+                probs = _torch.softmax(logits, dim=-1)[:, 1].numpy()
+        end_time = time.perf_counter()
+        self._log_metrics(
+            signal_count=int(probs.shape[0]),
+            execution_time_ms=(end_time - start_time) * 1000,
+        )
+        return probs
