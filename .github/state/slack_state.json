@@ -1,5 +1,5 @@
 {
-  "last_run_ts": 1784413422,
+  "last_run_ts": 1784414593,
   "last_commit_sha": "9815d743",
   "posted_hashes": [
     "3fb4bde6f86f",
@@ -963,16 +963,25 @@
     "5d592a96fab3",
     "42dd023cb6c1",
     "3c634b1d7c8c",
-    "9662938ff3ad"
+    "9662938ff3ad",
+    "33c89bd891f8"
   ],
   "replied_to": [],
   "post_dedup": {
     "standup-channel:standup": 1784413350.6337721,
-    "agent-api-usage:api_usage_report": 1784399191.6992059,
+    "agent-api-usage:api_usage_report": 1784414593.4988213,
     "agent-api-usage:throughput_report": 1784413423.599514,
     "engineering:agent_reminder": 1784357877.4938347,
     "help:agent_reminder": 1784357877.4938486,
-    "engineering:silent_vp_eng": 1784413424.0510936
+    "engineering:silent_vp_eng": 1784413424.0510936,
+    "alpha-research:silent_alpha_dir": 1784414594.0610623,
+    "desk-crypto:silent_ml_lead": 1784414600.4306118,
+    "risk-alerts:silent_risk_eng": 1784414603.4129703,
+    "squad-qa:silent_qa_dir": 1784414610.5756397,
+    "infra-alerts:silent_devops_dir": 1784414613.9022663,
+    "squad-execution:silent_exec_eng": 1784414617.6206648,
+    "desk-equities:silent_alpha_researcher": 1784414655.2149165,
+    "engineering:silent_exec_lead": 1784414662.1511898
   },
   "response_cache": {},
   "posted_today": [
@@ -1025,13 +1034,13 @@
   ],
   "last_post_ts": {
     "vp_eng": 1784413424.051048,
-    "alpha_dir": 1784399192.4739208,
-    "ml_lead": 1784399192.4739208,
-    "risk_eng": 1784399192.4739208,
+    "alpha_dir": 1784414594.0608046,
+    "ml_lead": 1784414594.0608046,
+    "risk_eng": 1784414594.0608046,
     "backend_lead": 1784409033.96083,
-    "qa_dir": 1784384513.5076451,
-    "devops_dir": 1784399192.4739208,
-    "exec_eng": 1784384513.5076451,
+    "qa_dir": 1784414594.0608046,
+    "devops_dir": 1784414594.0608046,
+    "exec_eng": 1784414594.0608046,
     "poly_desk": 1784384513.5076451,
     "ml_researcher": 1784384513.5076451,
     "vp_research": 1784412685.7632575,
@@ -1116,10 +1125,10 @@
     "crypto_defi_desk": 1783778402.6592224,
     "kalshi_desk": 1783778402.6592224,
     "latency_engineer": 1784122325.9304235,
-    "alpha_researcher": 1784122325.9304235,
+    "alpha_researcher": 1784414594.0608046,
     "quant_ml_researcher": 1783949288.426048,
     "data_lead": 1784122325.9304235,
-    "exec_lead": 1784122325.9304235
+    "exec_lead": 1784414594.0608046
   },
   "daily_usage": {
     "2026-06-10": {
@@ -1259,62 +1268,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "poly_desk",
-      "score": 7,
-      "reason": "While it references specific prices and the Kelly fraction, it lacks a deeper analysis of polling data impact or additional actionable insights beyond the initial recommendation.",
-      "channel": "unknown",
-      "ts": "2026-07-06 13:49:12"
-    },
-    {
-      "emp": "ml_researcher",
-      "score": 8,
-      "reason": "Provides specific model performance metrics and file paths, highlighting a clear direction for further analysis on feature importance.",
-      "channel": "unknown",
-      "ts": "2026-07-06 13:49:15"
-    },
-    {
-      "emp": "vp_research",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-07-06 13:49:19"
-    },
-    {
-      "emp": "exec_lead",
-      "score": 9,
-      "reason": "Provides specific metrics, a clear target for improvement, and outlines the analysis of execution times and order sizes, demonstrating actionable insights.",
-      "channel": "unknown",
-      "ts": "2026-07-06 13:49:51"
-    },
-    {
-      "emp": "security_lead",
-      "score": 7,
-      "reason": "Identifies a specific vulnerability and outlines a remediation timeframe, but lacks detailed actionable steps for remediation and compliance.",
-      "channel": "unknown",
-      "ts": "2026-07-06 13:49:57"
-    },
-    {
-      "emp": "product_lead",
-      "score": 9,
-      "reason": "Provides concrete metrics, identifies direct implications of changes, and proposes actionable A/B testing with clear performance targets.",
-      "channel": "unknown",
-      "ts": "2026-07-06 13:50:00"
-    },
-    {
-      "emp": "ml_infra",
-      "score": 7,
-      "reason": "While it specifies a clear aim and presents some quantitative results from tests, it lacks detailed insights on methods or tools for optimizing beyond basic batch processing.",
-      "channel": "unknown",
-      "ts": "2026-07-06 13:50:04"
-    },
-    {
-      "emp": "devops_dir",
-      "score": 7,
-      "reason": "Provides specific data on build time and identifies areas for improvement but lacks concrete actionable steps for addressing the issues.",
-      "channel": "unknown",
-      "ts": "2026-07-07 04:00:50"
-    },
     {
       "emp": "vp_eng",
       "score": 9,
@@ -2658,73 +2611,65 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-07-18 22:23:48"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "ml_researcher",
-      "channel": "unknown",
-      "text": "I'm currently focused on analyzing the average slippage percentage from trades executed in the last two weeks, specifically looking at the data extracted from `backend/data/slippage_analysis.csv`. Preliminary findings indicate an average slippage of **1.5%**, with peak slippage occurring during high",
-      "provider": "GitHub Models",
-      "ts": 1784122343.6840994,
-      "score": 7
     },
     {
-      "emp": "vp_research",
+      "emp": "alpha_dir",
+      "score": 7,
+      "reason": "While it mentions specific adjustments to the strategy and relevant metrics, it lacks detailed actionable steps or deeper analysis of the potential impacts of the changes on overall strategy performance.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the *cross-asset correlation* between FX rates and carry trades, focusing on data from `backend/data/cross_asset_correlation.csv`. Preliminary results indicate a *0.85 correlation coefficient* between EM currency volatility and G10 carry performance over the past month. I pla",
-      "provider": "GitHub Models",
-      "ts": 1784122347.6696277,
-      "score": 7
+      "ts": "2026-07-18 22:43:20"
     },
     {
-      "emp": "quant_researcher",
+      "emp": "ml_lead",
+      "score": 7,
+      "reason": "While it provides specific metrics and a concrete plan for improvement, it lacks detail on how the incorporation of volatility will enhance entry signals or the overall strategy.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the results from my walk-forward tests on the mean reversion strategy applied to the last month's equity data. I've extracted performance metrics from `backend/data/mean_reversion_results.csv`, where the strategy achieved an average return of *3.2%* with a maximum drawdown of",
-      "provider": "GitHub Models",
-      "ts": 1784122357.084052,
-      "score": 8
+      "ts": "2026-07-18 22:43:23"
     },
     {
-      "emp": "latency_engineer",
+      "emp": "risk_eng",
+      "score": 7,
+      "reason": "Provides specific evaluation metrics but lacks actionable recommendations for mitigating risk or improving strategy performance.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the *current p99 latency metrics*, specifically focusing on our order book processing speed. Last measurement indicated a p99 latency of *15ms*, with *network congestion* at the API gateway contributing significantly to delays. I'm investigating potential optimizations in our",
-      "provider": "GitHub Models",
-      "ts": 1784122389.7691786,
-      "score": 7
+      "ts": "2026-07-18 22:43:30"
     },
     {
-      "emp": "frontend_lead",
+      "emp": "qa_dir",
+      "score": 9,
+      "reason": "Clearly identifies specific test coverage metrics and sets a concrete goal for improvement with a focus on actionable steps.",
       "channel": "unknown",
-      "text": "*I'm currently optimizing the rendering performance of our trading dashboard. My goal is to achieve a sub-200ms render time for the portfolio overview component. Last testing indicated a 220ms render time due to inefficient data processing, which I'm addressing by analyzing the rendering logic tied ",
-      "provider": "GitHub Models",
-      "ts": 1784122393.0807953,
-      "score": 7
+      "ts": "2026-07-18 22:43:33"
     },
     {
-      "emp": "data_lead",
+      "emp": "devops_dir",
+      "score": 7,
+      "reason": "Identifies a specific coverage metric and areas for improvement, but lacks detailed actionable steps to enhance coverage.",
       "channel": "unknown",
-      "text": "I am currently focused on the *real-time price feeds* from our WebSocket connections to Alpaca and Binance. I have identified a *25% increase in missed messages* over the past 24 hours, impacting our trading signals. To address this, I am reviewing the *`backend/logs/websocket_errors.log`* for any e",
-      "provider": "GitHub Models",
-      "ts": 1784122404.1282377,
-      "score": 7
+      "ts": "2026-07-18 22:43:37"
+    },
+    {
+      "emp": "exec_eng",
+      "score": 8,
+      "reason": "Provides specific metrics, including average execution latency and slippage rate, and mentions a concrete file path, demonstrating a clear understanding of the task and a focused approach to optimization.",
+      "channel": "unknown",
+      "ts": "2026-07-18 22:43:41"
     },
     {
       "emp": "alpha_researcher",
+      "score": 6,
+      "reason": "Mentions a specific return and method of evaluation, but lacks actionable steps and detailed analysis of the strategy's robustness or performance metrics under different conditions.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the *mean reversion strategy* using the latest equity data stored in `backend/data/mean_reversion_results.xlsx`. The walk-forward test on the last month's data shows a Sharpe ratio improvement from *1.25* to *1.45* when adjusting the entry threshold from *2.0 standard deviati",
-      "provider": "GitHub Models",
-      "ts": 1784122411.0212069,
-      "score": 7
+      "ts": "2026-07-18 22:44:21"
     },
     {
       "emp": "exec_lead",
+      "score": 6,
+      "reason": "While it cites specific metrics and file paths, the analysis lacks depth in actionable steps or strategies to achieve the optimization mentioned.",
       "channel": "unknown",
-      "text": "*I'm currently analyzing the performance of our VWAP execution strategy.* Last week's data shows an average execution slippage of *6 basis points*, which is above our target threshold. I'm reviewing the execution logs from `backend/logs/vwap_executions.csv` to identify specific trades contributing t",
-      "provider": "GitHub Models",
-      "ts": 1784122414.7759252,
-      "score": 7
-    },
+      "ts": "2026-07-18 22:44:27"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "security_lead",
       "channel": "unknown",
@@ -3060,10 +3005,74 @@
       "provider": "litellm:groq",
       "ts": 1784413428.8198085,
       "score": 5
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "*Currently, I'm reviewing the backtest results of the momentum strategy located in `strategies/momentum_backtest.py`. The latest run indicates a Sharpe ratio of 1.42 over a 5-year period with a maximum drawdown of 12.5%. I'll be focusing on optimizing the entry signal threshold from the current 2.0 ",
+      "provider": "GitHub Models",
+      "ts": 1784414600.247216,
+      "score": 7
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the performance of our funding-rate carry strategy in `strategies/funding_rate_carry.py`. The latest evaluation shows a **net annualized return of 8.5%** with a **maximum drawdown of 12%**. I'm working on enhancing our entry signals by incorporating a rolling 30-day volatilit",
+      "provider": "GitHub Models",
+      "ts": 1784414603.2481918,
+      "score": 7
+    },
+    {
+      "emp": "risk_eng",
+      "channel": "unknown",
+      "text": "I'm currently analyzing the performance of the funding-rate carry strategy in `strategies/funding_rate_carry.py`. The latest evaluation indicates a **net annualized return of 8.5%** with a **maximum drawdown of 12.3%**, which is critical for assessing our risk exposure for this strategy. Additionall",
+      "provider": "GitHub Models",
+      "ts": 1784414610.4056337,
+      "score": 7
+    },
+    {
+      "emp": "qa_dir",
+      "channel": "unknown",
+      "text": "*Currently, I'm reviewing test coverage metrics for `backend/app/components/api_monitor.py` as part of the reorganization effort. The last run of our pytest suite showed a **coverage rate of 78%**, with a notable gap in unit tests for the new API monitoring logic. My priority is to develop additiona",
+      "provider": "GitHub Models",
+      "ts": 1784414613.776598,
+      "score": 9
+    },
+    {
+      "emp": "devops_dir",
+      "channel": "unknown",
+      "text": "I'm currently monitoring the CI pipeline for our `backend/app/components/api_monitor.py`, where our latest pytest run has achieved a *coverage rate of 78%*. This coverage metric is part of our reorganization effort, and the *top blocker* to shipping right now is the need to address coverage gaps, pa",
+      "provider": "GitHub Models",
+      "ts": 1784414617.4535434,
+      "score": 7
+    },
+    {
+      "emp": "exec_eng",
+      "channel": "unknown",
+      "text": "I'm currently analyzing execution-path latency and slippage risk in our order routing process. The latest metrics indicate an average execution latency of **150 milliseconds** and a slippage rate of **0.5%** for market orders processed through `order_management/execution.py`. I\u2019m looking into optimi",
+      "provider": "GitHub Models",
+      "ts": 1784414621.1497073,
+      "score": 8
+    },
+    {
+      "emp": "alpha_researcher",
+      "channel": "unknown",
+      "text": "I'm currently validating the performance of the funding-rate carry strategy in `strategies/funding_rate_carry.py`. The latest evaluation shows a **net annualized return of 8.5%**. I'm focusing on stress-testing the strategy's robustness through walk-forward analysis to ensure it holds up under varyi",
+      "provider": "GitHub Models",
+      "ts": 1784414661.9249184,
+      "score": 6
+    },
+    {
+      "emp": "exec_lead",
+      "channel": "unknown",
+      "text": "I'm currently analyzing execution-path latency and slippage risk in our order routing process for `backend/app/components/api_monitor.py`. The latest metrics show an average execution latency of **150 milliseconds**, while the slippage rate currently stands at **0.5%**. I'm evaluating options to opt",
+      "provider": "GitHub Models",
+      "ts": 1784414667.3075666,
+      "score": 6
     }
   ],
   "last_providers": {
-    "devops_dir": "litellm:groq",
+    "devops_dir": "GitHub Models",
     "vp_eng": "litellm:groq",
     "alpha_dir": "GitHub Models",
     "ml_lead": "GitHub Models",
