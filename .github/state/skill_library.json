@@ -199,8 +199,12 @@
     "Check CPU temps",
     "Detect deadlocks",
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Check RAM overflow"
+    "Check RAM overflow",
+    "edge_cases on strategies/manual/stablecoin_depeg_arb.py: success \u2014 tests green",
+    "edge_cases on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "edge_cases on ml/features/alpha_decay.py: success \u2014 tests green",
+    "edge_cases on risk/portfolio_optimizer.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T08:17:03.599527+00:00",
+  "last_updated": "2026-07-18T08:18:06.479776+00:00",
   "total": 200
 }
