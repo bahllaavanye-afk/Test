@@ -199,8 +199,13 @@
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Check RAM overflow",
     "Log error states",
-    "Verify OS updates"
+    "Verify OS updates",
+    "monitoring on ml/models/base_model.py: success \u2014 tests green",
+    "monitoring on ml/features/macro_signals.py: success \u2014 tests green",
+    "monitoring on risk/kelly.py: success \u2014 tests green",
+    "monitoring on comparison/engine.py: success \u2014 tests green",
+    "monitoring on tasks/self_improver.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T10:59:27.959631+00:00",
+  "last_updated": "2026-07-18T11:01:50.445508+00:00",
   "total": 200
 }
