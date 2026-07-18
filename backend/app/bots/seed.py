@@ -48,13 +48,21 @@ async def seed_demo_bots() -> int:
                 await db.commit()
                 await db.refresh(user)
 
-            existing = (
-                await db.execute(
-                    select(func.count()).select_from(Bot).where(Bot.user_id == user.id)
-                )
-            ).scalar() or 0
-            if existing:
-                return 0  # already seeded — idempotent
+            # ADDITIVE seeding (2026-07-18): the old "any bots exist -> return 0"
+            # froze the fleet at whatever the template count was on first boot —
+            # the live site sat at 29 bots while the repo grew to 57 templates
+            # (every OA flagship invisible). Now: seed exactly the templates
+            # that don't have a bot yet; existing bots are never touched.
+            seeded_templates = set(
+                (await db.execute(
+                    select(Bot.template_id).where(Bot.user_id == user.id,
+                                                  Bot.template_id.isnot(None))
+                )).scalars().all()
+            )
+            missing = {tid: t for tid, t in BOT_TEMPLATES.items()
+                       if tid not in seeded_templates}
+            if not missing:
+                return 0  # fully seeded — idempotent
 
             account = (
                 await db.execute(select(Account).where(Account.user_id == user.id))
@@ -72,7 +80,7 @@ async def seed_demo_bots() -> int:
                 await db.refresh(account)
 
             created = 0
-            for template_id, t in BOT_TEMPLATES.items():
+            for template_id, t in missing.items():
                 db.add(
                     Bot(
                         id=str(uuid.uuid4()),
