@@ -25,6 +25,35 @@ import structlog
 
 logger = structlog.get_logger()
 
+# -------------------------------------------------------------------------
+# Constants
+# -------------------------------------------------------------------------
+
+# Gemini model configuration
+GEMINI_MODEL_NAME = "gemini-2.0-flash"
+GEMINI_TEMPERATURE = 0.1
+GEMINI_MAX_OUTPUT_TOKENS = 128
+
+# Prompt handling
+JSON_EXTRACT_REGEX = r'\{.*?"direction_prob_up".*?\}'
+DIRECTION_PROB_KEY = "direction_prob_up"
+
+# Technical indicator windows
+RSI_PERIOD = 14
+ATR_PERIOD = 14
+RETURN_5_PERIOD = 5
+RETURN_20_PERIOD = 20
+SMA_PERIOD = 20
+VOL_AVG_PERIOD = 20
+EMA_PERIOD = 50
+
+# Miscellaneous
+EPS = 1e-9
+MIN_DF_LENGTH = 20
+DEFAULT_INTERVAL = "1d"
+API_KEY_ENV_VARS = ("GEMINI_API_KEY", "GEMINI_API_KEY_1")
+
+# System and analysis prompts
 _SYSTEM_PROMPT = """You are a quantitative trading analyst. Given OHLCV data and
 technical indicators, output ONLY a JSON object with your directional forecast.
 No explanation, no markdown — just the JSON."""
@@ -54,50 +83,74 @@ def _compute_summary(df: pd.DataFrame, symbol: str, interval: str) -> str:
     n = len(close)
     price = float(close.iloc[-1])
 
-    ret5 = float(close.pct_change(5).iloc[-1]) if n >= 5 else 0.0
-    ret20 = float(close.pct_change(20).iloc[-1]) if n >= 20 else 0.0
+    ret5 = float(close.pct_change(RETURN_5_PERIOD).iloc[-1]) if n >= RETURN_5_PERIOD else 0.0
+    ret20 = float(close.pct_change(RETURN_20_PERIOD).iloc[-1]) if n >= RETURN_20_PERIOD else 0.0
 
     # RSI
     delta = close.diff()
-    gain = delta.clip(lower=0).ewm(span=14, adjust=False).mean()
-    loss = (-delta.clip(upper=0)).ewm(span=14, adjust=False).mean()
-    rs = gain / (loss + 1e-9)
+    gain = delta.clip(lower=0).ewm(span=RSI_PERIOD, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(span=RSI_PERIOD, adjust=False).mean()
+    rs = gain / (loss + EPS)
     rsi = float(100 - 100 / (1 + rs.iloc[-1]))
 
-    sma20 = float(close.rolling(20).mean().iloc[-1]) if n >= 20 else price
-    vs_sma = (price - sma20) / (sma20 + 1e-9)
+    sma20 = float(close.rolling(SMA_PERIOD).mean().iloc[-1]) if n >= SMA_PERIOD else price
+    vs_sma = (price - sma20) / (sma20 + EPS)
 
     # ATR
     if "high" in df.columns and "low" in df.columns:
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        tr = pd.concat([
-            high - low,
-            (high - close.shift()).abs(),
-            (low - close.shift()).abs(),
-        ], axis=1).max(axis=1)
-        atr = float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        atr = float(tr.ewm(span=ATR_PERIOD, adjust=False).mean().iloc[-1])
     else:
-        atr = float(close.rolling(14).std().iloc[-1]) if n >= 14 else 0.0
-    atr_pct = atr / (price + 1e-9)
+        atr = float(close.rolling(ATR_PERIOD).std().iloc[-1]) if n >= ATR_PERIOD else 0.0
+    atr_pct = atr / (price + EPS)
 
     vol_ratio = 1.0
     if "volume" in df.columns:
         vol = df["volume"].astype(float)
-        avg_vol = float(vol.rolling(20).mean().iloc[-1]) if n >= 20 else float(vol.mean())
-        vol_ratio = float(vol.iloc[-1]) / (avg_vol + 1e-9)
+        avg_vol = (
+            float(vol.rolling(VOL_AVG_PERIOD).mean().iloc[-1])
+            if n >= VOL_AVG_PERIOD
+            else float(vol.mean())
+        )
+        vol_ratio = float(vol.iloc[-1]) / (avg_vol + EPS)
 
-    high_20 = float(df["high"].astype(float).rolling(20).max().iloc[-1]) if "high" in df.columns and n >= 20 else price
-    low_20 = float(df["low"].astype(float).rolling(20).min().iloc[-1]) if "low" in df.columns and n >= 20 else price
-    range_pct = (high_20 - low_20) / (low_20 + 1e-9)
+    high_20 = (
+        float(df["high"].astype(float).rolling(SMA_PERIOD).max().iloc[-1])
+        if "high" in df.columns and n >= SMA_PERIOD
+        else price
+    )
+    low_20 = (
+        float(df["low"].astype(float).rolling(SMA_PERIOD).min().iloc[-1])
+        if "low" in df.columns and n >= SMA_PERIOD
+        else price
+    )
+    range_pct = (high_20 - low_20) / (low_20 + EPS)
 
-    ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if n >= 50 else price
+    ema50 = float(close.ewm(span=EMA_PERIOD, adjust=False).mean().iloc[-1]) if n >= EMA_PERIOD else price
     trend = "uptrend" if price > ema50 else "downtrend" if price < ema50 * 0.98 else "neutral"
 
     return _ANALYSIS_TEMPLATE.format(
-        symbol=symbol, interval=interval, n=n, price=price,
-        ret5=ret5, ret20=ret20, rsi=rsi, vs_sma=vs_sma,
-        atr_pct=atr_pct, vol_ratio=vol_ratio, range_pct=range_pct, trend=trend,
+        symbol=symbol,
+        interval=interval,
+        n=n,
+        price=price,
+        ret5=ret5,
+        ret20=ret20,
+        rsi=rsi,
+        vs_sma=vs_sma,
+        atr_pct=atr_pct,
+        vol_ratio=vol_ratio,
+        range_pct=range_pct,
+        trend=trend,
     )
 
 
@@ -105,17 +158,21 @@ def _call_gemini_json(prompt: str, api_key: str) -> dict[str, Any]:
     """Synchronous Gemini call returning parsed JSON dict."""
     try:
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            generation_config={"temperature": 0.1, "max_output_tokens": 128},
+            model_name=GEMINI_MODEL_NAME,
+            generation_config={
+                "temperature": GEMINI_TEMPERATURE,
+                "max_output_tokens": GEMINI_MAX_OUTPUT_TOKENS,
+            },
             system_instruction=_SYSTEM_PROMPT,
         )
         response = model.generate_content(prompt)
         text = response.text.strip() if response.text else ""
 
         # Extract JSON
-        m = re.search(r'\{.*?"direction_prob_up".*?\}', text, re.DOTALL)
+        m = re.search(JSON_EXTRACT_REGEX, text, re.DOTALL)
         if m:
             return json.loads(m.group(0))
     except ImportError:
@@ -133,11 +190,7 @@ class GeminiSignalEngine:
     model_type = "gemini_signal"
 
     def __init__(self):
-        self._key = (
-            os.environ.get("GEMINI_API_KEY")
-            or os.environ.get("GEMINI_API_KEY_1")
-            or ""
-        )
+        self._key = next((os.environ.get(var) for var in API_KEY_ENV_VARS if os.environ.get(var)), "")
         self._available = bool(self._key)
         if not self._available:
             logger.debug("GeminiSignalEngine: no API key — signals disabled")
@@ -146,29 +199,29 @@ class GeminiSignalEngine:
     def is_available(self) -> bool:
         return self._available
 
-    async def predict_proba(self, df: pd.DataFrame, symbol: str, interval: str = "1d") -> float | None:
+    async def predict_proba(self, df: pd.DataFrame, symbol: str, interval: str = DEFAULT_INTERVAL) -> float | None:
         """
         Returns probability of upward price movement (0.0–1.0), or None if unavailable.
         """
-        if not self._available or df is None or len(df) < 20:
+        if not self._available or df is None or len(df) < MIN_DF_LENGTH:
             return None
 
         prompt = _compute_summary(df, symbol, interval)
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _call_gemini_json, prompt, self._key)
 
-        prob = result.get("direction_prob_up")
+        prob = result.get(DIRECTION_PROB_KEY)
         if prob is not None:
             return float(np.clip(prob, 0.0, 1.0))
         return None
 
-    def predict_proba_sync(self, df: pd.DataFrame, symbol: str, interval: str = "1d") -> float | None:
+    def predict_proba_sync(self, df: pd.DataFrame, symbol: str, interval: str = DEFAULT_INTERVAL) -> float | None:
         """Synchronous version for use outside async context."""
-        if not self._available or df is None or len(df) < 20:
+        if not self._available or df is None or len(df) < MIN_DF_LENGTH:
             return None
         prompt = _compute_summary(df, symbol, interval)
         result = _call_gemini_json(prompt, self._key)
-        prob = result.get("direction_prob_up")
+        prob = result.get(DIRECTION_PROB_KEY)
         return float(np.clip(prob, 0.0, 1.0)) if prob is not None else None
 
 
