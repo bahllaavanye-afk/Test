@@ -1,0 +1,63 @@
+name: Improvements Worker — the queue drains itself
+
+# IMPROVEMENTS.md unchecked item → deduped `agent-fix-needed` issue → the
+# Free-Agent Engineer implements it → PR via the reward gate. The scouts keep
+# appending to the queue; this keeps draining it. Blocked items (user unlocks,
+# missing feeds) are skipped, not filed.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  schedule:
+    - cron: "37 5 * * *"   # daily backup — event chain is the heartbeat
+  workflow_dispatch: {}
+
+concurrency:
+  group: improvements-worker
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 50
+
+      # File at most one batch per day even though we're chained to every CI run.
+      - name: Cadence gate (~24h)
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          recent=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/issues?labels=agent-fix-needed&state=all&per_page=5&since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
+            | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" || echo 0)
+          if [ "$recent" -gt 0 ] && [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "filed ${recent} issue(s) in the last 24h — skipping chained trigger"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Run Improvements Worker
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python .github/scripts/improvements_worker.py

@@ -8,7 +8,18 @@
 
 _Last updated: 2026-07-15._
 
-## ⚡ STATE AS OF 2026-07-18 (read this first)
+## ⚡ STATE AS OF 2026-07-18 PM (read this first)
+**THE QUEUE NOW DRAINS ITSELF**: improvements-worker.yml (event-chained, ~24h gate)
+converts top unchecked IMPROVEMENTS.md items into deduped `agent-fix-needed` issues →
+Free-Agent Engineer implements → reward-gated PR. Scouts append, worker drains — the
+full loop runs with no session. Blocked items (user unlocks/missing feeds) are skipped,
+never filed. OA backend analysis in docs/research/OA_BACKEND_STACK_2026.md: OA runs on
+broker APIs (Tradier flagship; greeks are ORATS-via-Tradier) + a rules engine QuantEdge
+already mirrors; queued the two real gaps — Tradier sandbox data adapter (free real
+greeks/IV; needs TRADIER_SANDBOX_TOKEN) and SmartPricing laddered repricing.
+Synthetic options backtester landed (app/backtest/options_synthetic.py, 9 tests).
+
+## Earlier 2026-07-18 state
 All queue P1s+P2s from the scale-up session are DONE except Polymarket CLOB (needs
 POLYMARKET_PRIVATE_KEY wiring — queued). Landed since 07-15: auto-pruning (leaderboard
 weight 0.0 at ≥20 trades/neg P&L/sharpe<-0.5, PLUS hit-rate rule ≥100 trades/losing/
