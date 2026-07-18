@@ -199,8 +199,13 @@
     "Restart on crash",
     "Ping external IPs",
     "Check port bindings",
-    "Validate config files"
+    "Validate config files",
+    "constants on backtest/options_synth.py: success \u2014 tests green",
+    "constants on comparison/benchmarks.py: success \u2014 tests green",
+    "constants on tasks/self_improving_loop.py: success \u2014 tests green",
+    "constants on api/v1/regime.py: success \u2014 tests green",
+    "constants on ml/features/normalization.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-18T17:53:51.705171+00:00",
+  "last_updated": "2026-07-18T18:53:45.707806+00:00",
   "total": 200
 }
