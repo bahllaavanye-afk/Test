@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 
 @dataclass(slots=True)
@@ -39,7 +39,15 @@ class QuoteResult:
 
 
 class AbstractBroker(ABC):
-    """Interface that all brokers must implement."""
+    """Interface that all brokers must implement.
+
+    Provides a cached implementation for historical data retrieval,
+    which is typically the most expensive operation.
+    """
+
+    # Simple in‑memory cache for historical OHLCV data.
+    # Key: (symbol, interval, limit) -> List[dict]
+    _historical_cache: Dict[Tuple[str, str, int], List[dict]] = {}
 
     @abstractmethod
     async def place_order(self, request: OrderRequest) -> OrderResult:
@@ -66,7 +74,29 @@ class AbstractBroker(ABC):
         """Return current bid/ask/last for a symbol."""
 
     @abstractmethod
+    async def _fetch_historical(
+        self, symbol: str, interval: str, limit: int = 500
+    ) -> List[dict]:
+        """Concrete brokers must implement the raw historical data fetch."""
+
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
-    ) -> list[dict]:
-        """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+    ) -> List[dict]:
+        """Return OHLCV bars with in‑memory caching.
+
+        The cache key includes symbol, interval, and limit. If the same
+        request is made again, the cached result is returned immediately,
+        avoiding the expensive network call.
+        """
+        if limit <= 0:
+            return []
+
+        key = (symbol, interval, limit)
+        cached = self._historical_cache.get(key)
+        if cached is not None:
+            return cached
+
+        data = await self._fetch_historical(symbol, interval, limit)
+        # Store a shallow copy to prevent accidental mutation of cached data.
+        self._historical_cache[key] = list(data)
+        return data
