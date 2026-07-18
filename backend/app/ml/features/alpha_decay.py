@@ -136,3 +136,54 @@ class AlphaDecayTracker:
             -staleness_hours * np.log(2) / profile.half_life_hours
         )
         return float(base_confidence * max(float(decay), 0.0))
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import unittest
+
+
+class TestAlphaDecayTracker(unittest.TestCase):
+    def setUp(self):
+        self.tracker = AlphaDecayTracker()
+
+    def test_compute_ic_profile_insufficient_data(self):
+        """When data is too short, expect zero IC and infinite half-life."""
+        # Create a very short series (less than the 30-point threshold)
+        dates = pd.date_range(start="2023-01-01", periods=10, freq="H")
+        signals = pd.Series(np.random.choice([-1, 0, 1], size=10), index=dates)
+        prices = pd.DataFrame({"close": np.arange(10)}, index=dates)
+
+        profile = self.tracker.compute_ic_profile(signals, prices, "test_strategy")
+        self.assertEqual(profile.ic_0, 0.0)
+        self.assertTrue(np.isinf(profile.half_life_hours))
+        self.assertEqual(profile.horizons, {})
+
+    def test_scale_confidence_infinite_half_life(self):
+        """When half-life is infinite, confidence should remain unchanged."""
+        profile = DecayProfile(
+            strategy_name="inf_half",
+            ic_0=0.5,
+            half_life_hours=float("inf"),
+            horizons={1: 0.5, 4: 0.4},
+        )
+        base = 0.8
+        scaled = self.tracker.scale_confidence(base, profile, staleness_hours=5)
+        self.assertAlmostEqual(scaled, base)
+
+    def test_scale_confidence_zero_half_life(self):
+        """Zero or negative half-life should also leave confidence unchanged."""
+        profile = DecayProfile(
+            strategy_name="zero_half",
+            ic_0=0.5,
+            half_life_hours=0.0,
+            horizons={1: 0.5},
+        )
+        base = 0.6
+        scaled = self.tracker.scale_confidence(base, profile, staleness_hours=10)
+        self.assertAlmostEqual(scaled, base)
+
+
+if __name__ == "__main__":
+    unittest.main()
