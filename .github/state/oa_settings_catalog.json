@@ -1,0 +1,158 @@
+{
+  "_meta": {
+    "source": "docs.optionalpha.com (all 100 doc pages, llms.txt index) studied 2026-07-19",
+    "purpose": "Machine-readable catalog of EVERY Option Alpha bot/automation setting, so imported bots capture full fidelity and the template schema/oa_meta covers all of it. Consumed by the bot importer and referenced by app/bots/templates.py.",
+    "note": "Values marked default reflect OA documented defaults. Anything OA supports that QuantEdge doesn't map natively is preserved verbatim under a bot's oa_meta key."
+  },
+  "safeguards": {
+    "allocation": {"type": "usd", "required": true, "desc": "Total capital available to the bot; checked at position entry."},
+    "daily_position_limit": {"type": "int", "default": 10, "desc": "Max new positions opened per trading day. Scanner turns off when hit."},
+    "max_position_limit": {"type": "int", "default": 10, "desc": "Max positions open at any time. Scanner turns off when hit."},
+    "risk_defined_only": {"type": "bool", "default": true, "desc": "Bots may only open defined-risk positions (naked replicated via wide spreads)."}
+  },
+  "scan_speed": {
+    "options": ["15m", "5m", "1m"],
+    "default": "15m",
+    "window": "9:31am-3:59pm ET (customizable from settings; default 9:45am-3:45pm)",
+    "desc": "Bot-level frequency for scanner + monitor automations."
+  },
+  "automation_types": ["scanner", "monitor", "event", "scheduled", "unscheduled"],
+  "triggers": {
+    "continuous": ["scanner", "monitor"],
+    "event": [
+      {"id": "date", "desc": "Specific date + time (ET)"},
+      {"id": "repeating", "desc": "Recurring schedule (first of month, MWF, 3rd Friday, holidays handled)"},
+      {"id": "market_open", "desc": "10 min after open (9:40am ET)"},
+      {"id": "market_close", "desc": "10 min before close (3:50pm ET)"},
+      {"id": "position_opened", "desc": "Fires after the bot opens a position"},
+      {"id": "position_closed", "desc": "Fires after the bot closes a position"},
+      {"id": "webhook", "desc": "External call (TradingView/Zapier/Python). One webhook can trigger up to 10 automations across bots."},
+      {"id": "button", "desc": "Manual dashboard button, one click = one run"}
+    ],
+    "execution_order": ["exit_options", "scheduled_events", "monitors", "scanners"]
+  },
+  "smartpricing": {
+    "modes": {
+      "normal": {"prices": 4, "seconds_each": 10},
+      "fast": {"prices": 3, "seconds_each": 5},
+      "patient": {"prices": 5, "seconds_each": 20},
+      "off": {"desc": "single limit"},
+      "market": {"desc": "market order"}
+    },
+    "final_price": {
+      "desc": "Worst price the bot will try. Starts at mid (50%), traverses toward bid(sell)/ask(buy).",
+      "pct_of_bid_ask": {"range": "50-100", "desc": "50%=mid only, 100%=all the way to ask/bid"},
+      "slippage_from_mid_usd": {"desc": "e.g. $0.10 from mid; best of the selected options is used"},
+      "math_operator": {"desc": "In Close Position: references entry price. x1.15=+15% debit, +2.50=+$250/contract, x0.50=50% credit, -0.75=$75 credit/contract"}
+    },
+    "spx_rounding": "nearest nickel ($0.05), up when selling / down when buying",
+    "final_order_ttl_seconds": 120
+  },
+  "exit_options": {
+    "checked_every": "1 minute, 9:40am-3:59pm ET",
+    "eval_price": "position mid-price",
+    "order_ttl_seconds": 120,
+    "triggers": [
+      {"id": "profit_target", "desc": "% or $ gain; final price auto-set to lock the minimum profit"},
+      {"id": "price_target", "desc": "Underlying price level"},
+      {"id": "stop_loss", "desc": "% or $ loss (mid at/beyond value; realized may exceed)"},
+      {"id": "trailing_stop", "desc": "Trails high-water gain; tracked every minute"},
+      {"id": "touch", "desc": "ITM price touch exit"},
+      {"id": "expiration", "desc": "Before Expiration (calendar-day DTE); executes 3:29pm ET on day-based; keeps sending through the day if unfilled"},
+      {"id": "earnings", "desc": "Before Earnings (calendar days)"}
+    ],
+    "modifiers": {
+      "bid_ask_guard": {"desc": "Disable exit / high-low tracking when spread exceeds max width"},
+      "pdt_box": {"desc": "Wait >=1 day to close, avoid pattern-day-trading"},
+      "smartpricing": {"desc": "SmartPricing / off / market on the closing order"},
+      "presets": {"desc": "Save named exit-option presets for reuse"},
+      "instant_exit_options": {"desc": "Live bots: continuous monitoring vs 1-min"}
+    }
+  },
+  "options_expiration_protocol": {
+    "desc": "How the bot handles ITM positions on expiration day. Last moneyness check 10 min before close. OTM positions are never auto-closed. THE 3 SETTINGS:",
+    "settings": [
+      {"id": "calc_pl_from_underlying_close", "default": true, "desc": "Estimate P/L from underlying close; bot sends NO order; subject to assignment"},
+      {"id": "close_with_market_order", "desc": "Auto-close ITM position with a market order 10 min before close"},
+      {"id": "override_manual", "desc": "Bot auto-overrides at 3:50pm ET; trader manually enters results; position leaves bot management"}
+    ]
+  },
+  "loops": [
+    {"id": "position_loop", "order": "oldest_to_newest", "desc": "Repeat actions for each open position"},
+    {"id": "symbol_loop", "desc": "Run actions for each listed ticker; only passers continue down Yes path"},
+    {"id": "bot_symbol_loop", "desc": "Loop the bot's custom-watchlist symbols (dynamic sort/filter)"}
+  ],
+  "tags": {
+    "types": ["bot", "position", "symbol"],
+    "actions": ["tag", "untag", "reset"],
+    "desc": "Stateful labels used in decisions; bot tags persist, position/symbol tags scoped to their object"
+  },
+  "inputs": {
+    "hierarchy": ["decision_input", "automation_input", "bot_input"],
+    "priority": "bot_input > automation_input value > default_value (default used only when the link is broken)",
+    "note": "Bot Inputs are NOT updated on bot upgrade/clone — must be re-confirmed"
+  },
+  "decision_recipe_categories": [
+    {"id": "symbol", "desc": "Price, volatility, IV rank, change%, greeks of a symbol"},
+    {"id": "indicator", "desc": "Daily-close technical indicators (SMA/EMA, RSI, Bollinger, ADX/DX, GEX, etc.)"},
+    {"id": "position", "desc": "Open-position metrics: return%, DTE, moneyness, extrinsic/intrinsic value, chance ITM"},
+    {"id": "bot", "desc": "Bot's own properties/metrics"},
+    {"id": "opportunity", "desc": "Candidate-trade filters before opening: rate of return, premium, delta, etc."},
+    {"id": "general", "desc": "Time of day, day of week, economic-news/FOMC events"}
+  ],
+  "decision_logic": {
+    "structure": "binary tree (Yes/No paths), no negation by default but NOT property available",
+    "grouping": ["AND", "OR"],
+    "conditional_action": "runs Yes-branch subset if true, then returns to main flow"
+  },
+  "security_object_properties": [
+    "last", "close", "open", "low", "high", "mark", "change", "change_pct",
+    "volume", "ivr", "bid", "ask", "bidSize", "askSize", "delta", "gamma", "theta", "vega"
+  ],
+  "option_leg_properties": ["extrinsic_value", "intrinsic_value", "chance_of_itm", "otm_amount"],
+  "pl_metrics": {
+    "total_pl": "sum of open + closed P/L (mid-priced)",
+    "total_pl_pct": "total P/L / allocation",
+    "day_pl": "intraday total P/L minus previous day's close",
+    "day_pl_pct": "day P/L / previous day's net liquid (or allocation)",
+    "closed_pl": "P/L for all closed positions",
+    "change": "P/L change vs yesterday",
+    "change_pct": "change / yesterday's bot value",
+    "win_rate": "wins / total closed",
+    "profit_factor": "gross win $ / gross loss $",
+    "max_drawdown": "greatest peak-to-trough fall (0 anchor if never < 0)",
+    "avg_pl": "closed P/L / closed positions",
+    "avg_win": "closed P/L of winners / number of winners",
+    "avg_loss": "closed P/L of losers / number of losers",
+    "eod_settlement": "4:15pm ET",
+    "valuation": "mid-price of whole position (not last-trade per leg); excludes commissions/fees"
+  },
+  "capital_block": ["allocation", "net_liquid", "at_risk", "available", "maintenance"],
+  "analyze_metrics": ["positions", "wins", "losses", "sharpe_ratio", "sortino_ratio",
+    "avg_pl", "return_on_risk", "avg_risk", "avg_win", "avg_loss", "entry_pop", "avg_dte", "avg_days_in_trade"],
+  "analyze_breakdowns": ["closed_pl_total_daily_calendar", "pl_per_day", "day_of_week", "hour_of_day", "by_strategy", "by_symbol", "hindsight_report", "export_data"],
+  "backtester": {
+    "data": "1-minute historical, up to 3-year window, compare up to 4, combine into one P/L curve",
+    "entry_time": "5-min increments or custom 9:35am-3:55pm ET",
+    "entry_filters": ["change_pct_from_prev_close", "iv_rank", "indicators", "position_criteria min/max"],
+    "stats": ["total_pl", "high_pl", "low_pl", "max_risk", "max_drawdown", "profit_factor",
+      "count", "win_rate", "best_win", "worst_loss", "win_streak", "loss_streak", "max_profit_pct", "max_loss_pct"],
+    "top_backtests_columns": ["strategy", "time_size", "dte", "period", "pl", "max_drawdown",
+      "rdd_pct", "win_rate", "avg_ror", "avg_rr", "avg_win", "avg_loss", "profit_factor", "trades", "saves"],
+    "automate": "any backtest -> generate a bot with all its settings/filters"
+  },
+  "order_handling": {
+    "position_states": ["open", "opening", "closed", "closing"],
+    "partial_fills": "timed limit orders; 2-min timeout resets on each partial; leftover canceled -> stays 'open' with partial qty",
+    "no_broker_order_id_shared": true,
+    "assignment": "bots unaware of assignment; must manually override",
+    "closing": "submit BTC/STC, broker reconciles; errors if position absent"
+  },
+  "failsafes_and_enforcements": {
+    "warnings_no_shutdown": ["not_enough_capital", "pricing_anomaly", "daily_position_limit", "total_position_limit", "no_expiration_available"],
+    "errors": ["leg_enforcement", "unable_to_calculate_quantity", "daily_underlying_symbol_limit",
+      "broker_rejection_overlapping_strikes", "price_exceeds_strike_difference", "options_approval_level"],
+    "excessive_errors_failsafe": "automations auto-turn-off after too many errors",
+    "leg_enforcement": "credit spread short delta > long delta; iron condor 4 strikes; iron butterfly equal short strikes"
+  }
+}

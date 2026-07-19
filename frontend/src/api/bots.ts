@@ -145,10 +145,34 @@ export interface BotPerformance {
   days: number
   series: BotPerfPoint[]
   total_pnl: number
+  total_pnl_pct: number | null
+  day_pnl: number
   trades: number
+  wins: number
+  losses: number
   win_rate: number | null
+  profit_factor: number | null
+  avg_win: number | null
+  avg_loss: number | null
+  avg_pnl: number | null
+  high_pnl: number
+  low_pnl: number
   max_drawdown: number
+  streak: number
+  streak_kind: 'wins' | 'losses' | null
+  sharpe: number | null
+  sortino: number | null
   avg_hold_hours: number | null
+  allocation: number | null
+  net_liquid: number | null
+  at_risk: number
+  available: number | null
+  maintenance: number
+  breakdown?: {
+    by_weekday: { label: string; pnl: number }[]
+    by_hour: { label: string; pnl: number }[]
+    by_symbol: { label: string; pnl: number }[]
+  }
 }
 
 export interface BotOpenPosition {

@@ -1,5 +1,47 @@
 # QuantEdge — Improvements & Task Tracker
 
+## OA UI/UX parity roadmap (from 10 live OA screenshots, 2026-07-19)
+> Full setting inventory: `.github/state/oa_settings_catalog.json`. Study doc: `docs/research/OA_DOCS_STUDY.md`.
+> Goal (user): make the QuantEdge dashboard look/work like Option Alpha — "lots of vizz,
+> dashboard + graph in bot rows" — and use the Screener/Trade Ideas to find symbols and scale bots.
+- [x] **Bots list = OA layout** — SHIPPED this session: `30D` sparkline column (real /performance
+      series, dashed zero baseline), Total P/L, Return %, Win Rate, Allocation columns, AUTOS toggle,
+      + aggregate top cards (Total P/L / Return % / Change / Change % / Allocation). `BotBuilder.tsx`.
+- [x] **Per-bot dashboard = OA layout** — SHIPPED: filled Closed-P/L equity curve + Position Stats grid
+      (Closed Positions, Closed P/L, Profit Factor, Max Drawdown, Win Rate, Wins, Losses, Avg P/L,
+      Avg Win, Avg Loss, Streak, Sharpe) + Capital sidebar (Allocation/Net Liquid/At Risk/Available/
+      Maintenance). Backend `/bots/{id}/performance` now returns all OA metrics + weekday/hour/symbol breakdowns.
+- [ ] **[P1] Analyze page** (screenshot 3) — dedicated per-bot/portfolio Analyze view: CLOSED P/L +
+      P/L-PER-DAY + PROFIT-FACTOR-donut + WIN-RATE-donut cards; big Closed-P/L area chart (Total/Daily/
+      Calendar tabs); Metrics sidebar (Positions/Wins/Losses/Sharpe/Sortino); Averages (P/L, Return on
+      Risk, Risk, Win, Loss, Entry POP, DTE, Days in Trade); Day-of-Week + Hour-of-Day bar charts;
+      By-Strategy + By-Symbol horizontal bars; Hindsight Report + Export Data. **Backend breakdown data
+      already shipped** (`performance.breakdown`, `sharpe`, `sortino`) — this is the frontend page.
+- [ ] **[P1] Positions tables** (screenshots 5,6) — Open Positions (Bot icon, Description, Legs w/
+      call/put chips, Last, DTE, Qty, P/L, ROR, Net Liq, Premium, Risk, DIT + aggregate cards) and
+      Closed Positions (adds Exp, Status Expired/Closed, Trade Price, Close Price, Price at OI/CI).
+      Needs per-leg option instrument fields on Order/Position (Desk-consolidation Stage 3).
+- [ ] **[P2] Trade Log** (screenshot 4) — chronological grouped-by-day feed: Bot icon, Time, Action
+      (open/close), Description (full legs), Pricing (entry→exit), Status (filled at $x / canceled).
+- [ ] **[P1] Backtest→bot generator "Create Bot" panel** (screenshot 8, OA "Automate your strategy") —
+      from a backtest result: Create-new / Update-existing, Bot Name, Account (Paper), Allocation,
+      Position Entry (scan once at time / scan during range), Trade Pricing (Opening/Closing % of
+      bid/ask + slippage-from-mid). Backend: `POST /backtests/{id}/create-bot` → BotCreate from
+      BacktestRun.params. Ties to existing BacktestLab.
+- [ ] **[P1] Screener page → symbol-scaling feed** (screenshot 9) — Symbol, 1M sparkline, Last, Today%,
+      Liquidity bars, Beta, IV Rank, RSI, Techs, 3M/6M/12M returns, Earnings-in-Nd. Wire the ranked
+      output into Symbol Scout so bots auto-scale onto the best-ranked new symbols (user: "use this to
+      find symbols and scaling up").
+- [ ] **[P1] Trade Ideas / EV finder** (screenshot 10) — math/probability opportunity ranker: Position,
+      Leg/Delta, DTE, Reward/Risk, POP, PMP, PML, Alpha, EV, Max Profit, Max Loss, Earnings, Traders;
+      Credit/Debit + Bull/Bear/Neutral + DTE/RR/POP/OTM% filters. Compute from `options_synthetic` +
+      probability (shares the EV/probability P2 item below).
+- [ ] **[P1] Calendar + earnings strategies** (screenshot, user: "make calendars like this, add earnings
+      strategies") — month grid of Ex-Dividend, Earnings AM/PM, Market Holiday, Nonfarm Payrolls / FOMC,
+      End of Quarter/Month events (FF calendar feed + an earnings-date source). THEN earnings strategies:
+      pre-earnings IV-crush short premium (iron condor/strangle sized off Earnings Edge expected move),
+      post-earnings drift — gated by the calendar so they only fire around confirmed earnings dates.
+
 ## OA parity gaps (from docs.optionalpha.com audit, 2026-07-19 — see docs/research/OA_FEATURE_PARITY_2026.md)
 - [ ] **[P1] Options Expiration Protocol** — auto-manage 0DTE/expiring ITM positions before the bell (close or flag); critical now that the desk places real mleg spreads and 3 user bots trade 0DTE into the close.
 - [ ] **[P1] Bot safeguard depth** — daily-position counter and max-at-once limit per bot (OA: "N per day / M at once"); today only no_position exists.
