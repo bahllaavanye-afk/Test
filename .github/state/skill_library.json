@@ -199,8 +199,13 @@
     "Use failover node",
     "Reset on crash",
     "Refactor code for affinity",
-    "Test cache behavior"
+    "Test cache behavior",
+    "cleanup on api/v1/trades.py: success \u2014 tests green",
+    "cleanup on test/unit/test_momentum_no_lookahead.py: success \u2014 tests green",
+    "cleanup on ml/models/transformer.py: success \u2014 tests green",
+    "cleanup on ml/features/microstructure.py: success \u2014 tests green",
+    "cleanup on backtest/options_synthetic.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T20:22:21.811789+00:00",
+  "last_updated": "2026-07-19T21:24:16.839866+00:00",
   "total": 200
 }
