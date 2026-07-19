@@ -7,10 +7,12 @@ This prevents correlated drawdowns — the #1 unaddressed risk in multi-strategy
 """
 from __future__ import annotations
 import asyncio
+import time
 from collections import deque, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+
 import numpy as np
 
 from app.utils.logging import logger
@@ -21,7 +23,7 @@ class CorrelationAlert:
     strategy_a: str
     strategy_b: str
     correlation: float
-    action: str             # 'reduce_b' | 'reduce_a' | 'monitor'
+    action: str  # 'reduce_b' | 'reduce_a' | 'monitor'
     reduced_strategy: Optional[str]
     timestamp: datetime
 
@@ -45,7 +47,7 @@ class CrossStrategyCorrelationMonitor:
 
     def __init__(
         self,
-        window: int = 5,                   # rolling 5 bars
+        window: int = 5,  # rolling 5 bars
         kill_threshold: float = 0.70,
         resume_threshold: float = 0.50,
         scan_interval: int = 60,
@@ -55,7 +57,7 @@ class CrossStrategyCorrelationMonitor:
         self.resume_threshold = resume_threshold
         self.scan_interval = scan_interval
         self._returns: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=window))
-        self._reduced: set[str] = set()    # strategies currently halved
+        self._reduced: set[str] = set()  # strategies currently halved
         self._alerts: deque[CorrelationAlert] = deque(maxlen=200)
         self._running = False
 
@@ -66,7 +68,7 @@ class CrossStrategyCorrelationMonitor:
         strategies = [s for s, r in self._returns.items() if len(r) >= 3]
         result: dict[tuple[str, str], float] = {}
         for i, s_a in enumerate(strategies):
-            for s_b in strategies[i+1:]:
+            for s_b in strategies[i + 1 :]:
                 r_a = list(self._returns[s_a])
                 r_b = list(self._returns[s_b])
                 min_len = min(len(r_a), len(r_b))
@@ -80,8 +82,9 @@ class CrossStrategyCorrelationMonitor:
         return result
 
     def scan(self) -> list[CorrelationAlert]:
+        start_ts = time.time()
         matrix = self.correlation_matrix()
-        new_alerts = []
+        new_alerts: list[CorrelationAlert] = []
         for (s_a, s_b), corr in matrix.items():
             if corr > self.kill_threshold:
                 # reduce the strategy with fewer returns recorded (proxy for smaller)
@@ -89,7 +92,9 @@ class CrossStrategyCorrelationMonitor:
                 if smaller not in self._reduced:
                     self._reduced.add(smaller)
                     alert = CorrelationAlert(
-                        strategy_a=s_a, strategy_b=s_b, correlation=corr,
+                        strategy_a=s_a,
+                        strategy_b=s_b,
+                        correlation=corr,
                         action=f"reduce_{smaller.split('_')[0]}",
                         reduced_strategy=smaller,
                         timestamp=datetime.now(timezone.utc),
@@ -97,8 +102,7 @@ class CrossStrategyCorrelationMonitor:
                     self._alerts.append(alert)
                     new_alerts.append(alert)
                     logger.warning(
-                        f"CORR KILL-SWITCH: {s_a}↔{s_b} corr={corr:.2f} > {self.kill_threshold}. "
-                        f"Halving {smaller}."
+                        f"CORR KILL-SWITCH: {s_a}↔{s_b} corr={corr:.2f} > {self.kill_threshold}. Halving {smaller}."
                     )
             elif corr < self.resume_threshold:
                 # re-enable if corr dropped
@@ -106,6 +110,18 @@ class CrossStrategyCorrelationMonitor:
                     if s in self._reduced:
                         self._reduced.discard(s)
                         logger.info(f"CORR RESUME: {s} correlation normalized (corr={corr:.2f})")
+        # Structured logging of key metrics
+        duration_ms = (time.time() - start_ts) * 1000
+        total_signals = sum(len(dq) for dq in self._returns.values())
+        logger.info(
+            "Correlation scan completed",
+            extra={
+                "strategy_count": len(self._returns),
+                "total_signals": total_signals,
+                "alerts_generated": len(new_alerts),
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
         return new_alerts
 
     def is_reduced(self, strategy: str) -> bool:
@@ -130,13 +146,15 @@ class CrossStrategyCorrelationMonitor:
                 alerts = self.scan()
                 if alerts:
                     from app.notifications.tracker import tracker
+
                     for a in alerts:
                         tracker.record(
-                            "correlation_kill_switch", "risk",
+                            "correlation_kill_switch",
+                            "risk",
                             f"Halved {a.reduced_strategy}: corr {a.correlation:.2f} with {a.strategy_a}↔{a.strategy_b}",
                         )
-            except Exception as e:
-                logger.error(f"CorrelationMonitor scan error: {e}")
+            except Exception:
+                logger.exception("CorrelationMonitor scan error")
             await asyncio.sleep(self.scan_interval)
 
     def stop(self) -> None:
