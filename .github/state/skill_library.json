@@ -199,8 +199,12 @@
     "Verify timezone sync",
     "Refactor modules for maintainability",
     "Implement Temporal Fusion Transformers",
-    "Retrain models with new datasets"
+    "Retrain models with new datasets",
+    "docstrings on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "docstrings on ml/models/transformer.py: success \u2014 tests green",
+    "docstrings on risk/var.py: success \u2014 tests green",
+    "docstrings on brokers/polymarket.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T00:58:44.328815+00:00",
+  "last_updated": "2026-07-19T00:59:48.648295+00:00",
   "total": 200
 }
