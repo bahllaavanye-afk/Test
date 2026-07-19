@@ -199,8 +199,13 @@
     "Retry on timeout",
     "Use circuit breaker",
     "Rotate log files",
-    "Bind to core 0"
+    "Bind to core 0",
+    "monitoring on strategies/manual/mean_reversion.py: success \u2014 tests green",
+    "monitoring on strategies/ml_enhanced/ml_breakout.py: success \u2014 tests green",
+    "monitoring on execution/vwap.py: success \u2014 tests green",
+    "monitoring on brokers/alpaca_headers.py: success \u2014 tests green",
+    "monitoring on tasks/agent_bus.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T22:24:42.719723+00:00",
+  "last_updated": "2026-07-19T23:28:26.863520+00:00",
   "total": 200
 }
