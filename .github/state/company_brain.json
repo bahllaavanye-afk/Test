@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784500458.974084,
+    "last_updated": 1784504371.5533798,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784500458.9731057
+    "last_brain_update": 1784504371.552439
   },
   "episodic": [
     {
@@ -1815,11 +1815,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input shows three lines separated by \" | \". The first is an error message about resource limitation, the second is an auto-fix failure (could not apply patch), and the third is an auto-fix aborted due to validation failure with fix changes exceeding limit. So the summary should capture that deployment failed due to resource limits, and auto-fix attempts also failed because of patch application issues and excessive line",
-      "item_count": 20,
-      "ts": 1783559507.700048
-    },
-    {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input seems to be a string with a base64-encoded part? Actually it looks like a mix of a token or identifier and then some messages. The actual discussions: \"[vc]: #1UzFIGRd8R6sgOOBMID+dRl8gkQ8bvaubLvXZoUx6XY=:eyJpc01vbm9yZXBv",
       "item_count": 20,
       "ts": 1783573562.0409982
@@ -2313,6 +2308,11 @@
       "summary": "The deployment failed due to resource limits, and an automated fix was skipped because the issue was too complex for automated resolution.",
       "item_count": 20,
       "ts": 1784500458.9623704
+    },
+    {
+      "summary": "The deployment failed due to resource limits, and automated fixes were either unable to apply a patch or deemed too complex, with the underlying reason being the implementation of a calendar feature.",
+      "item_count": 20,
+      "ts": 1784504371.5413098
     }
   ],
   "experiment_results": [
