@@ -10,7 +10,7 @@ agree on direction, and it adjusts the confidence accordingly.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TypedDict
 
 import pandas as pd
 
@@ -22,11 +22,40 @@ from app.ml.inference import get_inference_service
 logger = logging.getLogger(__name__)
 
 
+class MLResult(TypedDict):
+    """Typed dictionary representing the output of the ML inference service.
+
+    Attributes
+    ----------
+    prediction: str
+        The predicted direction, e.g., ``"up"``, ``"down"``, or ``"neutral"``.
+    confidence: float
+        The model's confidence in the prediction, expressed as a float between 0 and 1.
+    """
+
+
 class MLMomentumStrategy(AbstractStrategy):
     """ML‑enhanced momentum strategy.
 
     The strategy wraps the classic momentum logic and applies an ML filter.
     It inherits from :class:`app.strategies.base.AbstractStrategy`.
+
+    Attributes
+    ----------
+    name: str
+        Internal identifier for the strategy.
+    display_name: str
+        Human‑readable name displayed in UI or logs.
+    market_type: str
+        Market classification, e.g., ``"equity"``.
+    strategy_type: str
+        Indicates that this is an ``"ml_enhanced"`` strategy.
+    risk_bucket: str
+        Risk categorisation used for allocation.
+    tick_interval_seconds: float
+        Minimum time between consecutive evaluations.
+    confidence_threshold: float
+        Minimum confidence required from the ML model to adjust the base signal.
     """
 
     name = "ml_momentum"
@@ -37,7 +66,7 @@ class MLMomentumStrategy(AbstractStrategy):
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.65
 
-    def __init__(self, params: Optional[Dict[str, Any]] = None):
+    def __init__(self, params: Optional[Dict[str, Any]] = None) -> None:
         """Create a new ``MLMomentumStrategy`` instance.
 
         Parameters
@@ -46,13 +75,13 @@ class MLMomentumStrategy(AbstractStrategy):
             Optional configuration parameters passed to the base strategy.
         """
         super().__init__(params)
-        self._base = MomentumStrategy(params)
+        self._base: MomentumStrategy = MomentumStrategy(params)
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """Generate a trading signal for a given symbol.
 
         The method first obtains a signal from the underlying momentum strategy.
-        If a base signal is present, it queries the ML inference service.  When the
+        If a base signal is present, it queries the ML inference service. When the
         ML prediction agrees with the base signal direction and the confidence
         exceeds the threshold, the signal confidence is adjusted and returned.
 
@@ -75,23 +104,23 @@ class MLMomentumStrategy(AbstractStrategy):
 
         try:
             inference = get_inference_service()
-            ml_result = await inference.predict(data, symbol)
+            ml_result = await inference.predict(data, symbol)  # type: ignore[assignment]
             if ml_result is None or ml_result["prediction"] == "neutral":
                 return None
 
-            return self._apply_ml_filter(base_signal, ml_result)
+            return self._apply_ml_filter(base_signal, ml_result)  # type: ignore[arg-type]
         except Exception as e:  # pragma: no cover
             logger.exception("ML inference failed for %s: %s", symbol, e)
             return None
 
-    def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
+    def _apply_ml_filter(self, base_signal: Signal, ml_result: MLResult) -> Optional[Signal]:
         """Adjust the base signal if the ML prediction agrees.
 
         Parameters
         ----------
         base_signal : Signal
             Signal produced by the underlying momentum strategy.
-        ml_result : dict
+        ml_result : MLResult
             Result from the ML inference service containing ``prediction`` and
             ``confidence`` keys.
 
