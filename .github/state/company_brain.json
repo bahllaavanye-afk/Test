@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784478940.6266944,
+    "last_updated": 1784482901.2290099,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784478940.6257517
+    "last_brain_update": 1784482901.2280555
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix failed twice and skipped due to complexity; improve automated patch generation by adding unit tests for broker base changes and requiring concrete issue descriptions before attempting fixes.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783461203.5059037
-    },
-    {
-      "lesson": "Previous autonomous edit (#298) broke main; implement mandatory staging deployment and automated regression tests for all autonomous PRs targeting protected files.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783461203.5068178
-    },
-    {
-      "lesson": "Commodities desk functionality requirements are undefined; schedule a discovery session with the desk to document missing features and define acceptance criteria before any code changes.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783461203.5076888
-    },
-    {
-      "lesson": "Skipped auto-fix indicates 50-line limit may be too restrictive for complex issues; review and adjust the limit or provide a manual override workflow for escalated problems.",
-      "category": "execution",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783461203.5086222
-    },
     {
       "lesson": "Autonomous PRs modifying protected files (broker bases) bypass human review and have previously broken main \u2014 enforce mandatory human approval for all changes to risk-manager, broker/strategy bases, models, and app factory paths.",
       "category": "risk",
@@ -1821,14 +1793,37 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784475459.9610503
+    },
+    {
+      "lesson": "Auto-fix reverted due to import verification failure after patch \u2014 patch generation logic does not validate imports, causing broken applications.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784482891.3043122
+    },
+    {
+      "lesson": "Two auto-fix attempts failed to apply patches to files, indicating fragile patch application mechanism.",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784482891.309987
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free-tier daily limit (100 deploys) \u2014 immediate risk of halted releases.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784482891.3142521
+    },
+    {
+      "lesson": "Slack agent run failed due to message quota exceeded or dead token \u2014 critical communication channel is down, risking team coordination.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784482891.318426
     }
   ],
   "github_insights": [
-    {
-      "summary": "Automated fixes were attempted but either skipped due to excessive complexity or failed when applying patches to files.",
-      "item_count": 20,
-      "ts": 1783521664.0383673
-    },
     {
       "summary": "We need to parse the input. The user provided a string that appears to be a base64-encoded or encrypted token? Actually it looks like a GitHub PR/issue discussion summary request with some encoded data. The user says: \"Summarize these GitHub PR/issue discussions in 1-2 sentences: [vc]: #J6IxYedgizBip7IEiEXjnTLDRaqV4qiIQ65GP9zCxzY=:eyJpc",
       "item_count": 20,
@@ -2323,6 +2318,11 @@
       "summary": "The discussions report three failures: a Slack agent run failed due to a message limit quota; a deployment failed with a resource limit error advising a 24-hour wait; and an auto-fix attempt failed because a patch could not be applied.",
       "item_count": 20,
       "ts": 1784478940.6171968
+    },
+    {
+      "summary": "The auto-fix attempts failed because import verification failed after applying a patch, and in other cases, patches could not be applied to files at all.",
+      "item_count": 20,
+      "ts": 1784482901.21817
     }
   ],
   "experiment_results": [
