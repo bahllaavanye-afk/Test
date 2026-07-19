@@ -14,6 +14,8 @@ import time
 from dataclasses import asdict
 from typing import Optional
 
+import pytest
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 
 logger = logging.getLogger(__name__)
@@ -205,3 +207,137 @@ class LimitFirstExecution:
             },
         )
         return result
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+
+class _MockQuote:
+    def __init__(self, bid: float, ask: float):
+        self.bid = bid
+        self.ask = ask
+
+
+class _MockBroker(AbstractBroker):
+    """
+    Minimal mock broker to simulate the required async methods.
+    It records calls for assertions and can be configured to raise errors.
+    """
+
+    def __init__(self, *, quote: _MockQuote = None, raise_on_quote: Exception = None):
+        self.quote = quote or _MockQuote(bid=100.0, ask=101.0)
+        self.raise_on_quote = raise_on_quote
+        self.placed_orders = []
+        self.canceled_orders = []
+        self.order_statuses = {}
+        self._next_order_id = 1
+
+    async def get_quote(self, symbol: str):
+        if self.raise_on_quote:
+            raise self.raise_on_quote
+        return self.quote
+
+    async def place_order(self, order: OrderRequest) -> OrderResult:
+        order_id = f"order-{self._next_order_id}"
+        self._next_order_id += 1
+        self.placed_orders.append((order_id, order))
+        # By default, limit orders are not filled; market orders are filled instantly.
+        status = "filled" if order.order_type == "market" else "new"
+        result = OrderResult(
+            broker_order_id=order_id,
+            status=status,
+            filled_qty=order.quantity if status == "filled" else 0.0,
+            filled_price=order.limit_price if order.order_type == "limit" else None,
+        )
+        # Store a stub status for later polling
+        self.order_statuses[order_id] = {"status": status, "filled_qty": order.quantity}
+        return result
+
+    async def get_order(self, broker_order_id: str):
+        # Return the stored status; if not present, assume still open.
+        return self.order_statuses.get(broker_order_id, {"status": "open"})
+
+    async def cancel_order(self, broker_order_id: str):
+        self.canceled_orders.append(broker_order_id)
+        # Simulate cancellation by marking as canceled.
+        self.order_statuses[broker_order_id] = {"status": "canceled", "filled_qty": 0.0}
+
+
+@pytest.mark.asyncio
+async def test_fallback_seconds_zero_triggers_immediate_market():
+    """
+    When ``fallback_seconds`` is set to 0 the limit order should be cancelled
+    immediately and a market order placed without any waiting loop.
+    """
+    broker = _MockBroker()
+    exec_strategy = LimitFirstExecution(broker=broker, offset_bps=5, fallback_seconds=0)
+
+    request = OrderRequest(
+        symbol="TEST",
+        side="buy",
+        quantity=10,
+        order_type="limit",  # placeholder, will be overridden
+        limit_price=None,
+    )
+    result = await exec_strategy.execute(request)
+
+    # Verify that a market order was placed last
+    assert result.status == "filled"
+    placed_order_types = [order.order_type for _, order in broker.placed_orders]
+    # The first placed order is the limit, the second should be market
+    assert placed_order_types == ["limit", "market"]
+    # The limit order should have been cancelled
+    assert len(broker.canceled_orders) == 1
+    assert broker.canceled_orders[0] == broker.placed_orders[0][0]
+
+
+@pytest.mark.asyncio
+async def test_offset_bps_zero_results_in_equal_limit_price():
+    """
+    With ``offset_bps`` set to 0 the limit price should equal the reference price
+    (ask for buys, bid for sells). This test validates the calculation.
+    """
+    broker = _MockBroker(quote=_MockQuote(bid=99.5, ask=100.5))
+    exec_strategy = LimitFirstExecution(broker=broker, offset_bps=0, fallback_seconds=1)
+
+    request = OrderRequest(
+        symbol="TEST",
+        side="sell",
+        quantity=5,
+        order_type="limit",
+        limit_price=None,
+    )
+    await exec_strategy.execute(request)
+
+    # The first placed order is the limit order; its limit_price should match the bid.
+    limit_order_id, limit_order = broker.placed_orders[0]
+    assert limit_order.order_type == "limit"
+    assert limit_order.limit_price == round(broker.quote.bid, 4)
+
+
+@pytest.mark.asyncio
+async def test_exception_during_get_quote_falls_back_to_market():
+    """
+    If ``get_quote`` raises an exception, the strategy should catch it and
+    immediately place a market order.
+    """
+    broker = _MockBroker(raise_on_quote=RuntimeError("quote failure"))
+    exec_strategy = LimitFirstExecution(broker=broker, offset_bps=5, fallback_seconds=5)
+
+    request = OrderRequest(
+        symbol="TEST",
+        side="buy",
+        quantity=1,
+        order_type="limit",
+        limit_price=None,
+    )
+    result = await exec_strategy.execute(request)
+
+    # Only one order should be placed (the fallback market order)
+    assert len(broker.placed_orders) == 1
+    order_id, placed_order = broker.placed_orders[0]
+    assert placed_order.order_type == "market"
+    assert result.status == "filled"
+    # No cancellation should have occurred because no limit order existed
+    assert broker.canceled_orders == []
