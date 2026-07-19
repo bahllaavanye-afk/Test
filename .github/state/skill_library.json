@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Based on the recent agent learnings, the following are the 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Check API keys",
     "* **Self-Improvement Focus**: Active focus on code modularity in `src/backends/app/backend.py` and reviewing function docstrings to ensure adherence to the same standard.",
     "Check dependency libs",
     "Rate limit APIs",
@@ -199,8 +197,10 @@
     "Retry on timeout",
     "Use circuit breaker",
     "Rotate log files",
-    "Bind to core 0"
+    "Bind to core 0",
+    "Limit DB queries",
+    "Implement rate limit"
   ],
-  "last_updated": "2026-07-19T22:24:42.719723+00:00",
+  "last_updated": "2026-07-19T23:27:58.033821+00:00",
   "total": 200
 }
