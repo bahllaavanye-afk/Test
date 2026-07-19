@@ -1,7 +1,12 @@
 """Ensemble strategy: pure ML signal from all models combined with additional confirmation filters."""
+import logging
+from typing import Optional
+
 import pandas as pd
-from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.ml.inference import get_inference_service
+from app.strategies.base import AbstractStrategy, BacktestSignals, Signal
+
+logger = logging.getLogger(__name__)
 
 
 class EnsembleStrategy(AbstractStrategy):
@@ -11,24 +16,33 @@ class EnsembleStrategy(AbstractStrategy):
     strategy_type = "ml_enhanced"
     risk_bucket = "directional"
     tick_interval_seconds = 300.0
+
+    # Core thresholds
     confidence_threshold = 0.70  # higher bar for pure ML
     sma_window = 20  # simple moving average window for confirmation
 
-    async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
+    # Additional confirmation parameters
+    momentum_window = 5
+    volatility_multiplier = 0.5
+    volume_multiplier = 1.10  # require volume > 10% above median
+
+    async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """
         Produce a trading signal based on the ML inference combined with
-        price‑based confirmation filters.
+        tighter price‑based confirmation filters.
 
-        Entry Conditions
-        ----------------
+        Entry Conditions (all must hold):
         1. ML model predicts a directional move (up/down) with confidence >= threshold.
-        2. Current close price is above the SMA for a long signal, or below the SMA for a short.
-        3. Volume is above the median of the recent window (default 20 periods).
+        2. Current close price is above the SMA for a long, below the SMA for a short.
+        3. Recent price momentum aligns with the prediction (price change > 0 for long,
+           < 0 for short) over ``momentum_window`` periods.
+        4. Absolute price change exceeds ``volatility_multiplier`` × recent price volatility
+           (rolling std dev).
+        5. Current volume exceeds ``volume_multiplier`` × median volume of the SMA window.
 
-        Exit Conditions
-        ----------------
-        A signal is not emitted if any of the above conditions fail, which the
-        back‑testing engine interprets as an exit for the active position.
+        Exit Conditions:
+        - Any entry condition fails for the active side.
+        - Additionally, a reversal in price relative to SMA triggers an exit.
         """
         try:
             inference = get_inference_service()
@@ -40,86 +54,125 @@ class EnsembleStrategy(AbstractStrategy):
             if ml_result.get("confidence", 0) < self.confidence_threshold:
                 return None
 
-            # Ensure we have price and volume data for confirmation
-            if "close" not in data.columns or "volume" not in data.columns:
+            # Ensure required columns exist
+            required_cols = {"close", "volume"}
+            if not required_cols.issubset(data.columns):
                 return None
 
-            # Compute SMA and median volume on the latest slice
+            # Recent slice for SMA, volume, volatility, and momentum
             recent = data.tail(self.sma_window)
             if recent.empty:
                 return None
+
             sma = recent["close"].mean()
             median_vol = recent["volume"].median()
+            volatility = recent["close"].rolling(window=self.sma_window, min_periods=1).std().iloc[-1]
+
             latest_close = data["close"].iloc[-1]
             latest_vol = data["volume"].iloc[-1]
 
-            # Directional confirmation
-            if ml_result["prediction"] == "up":
-                if latest_close <= sma:
-                    return None
-            else:  # prediction == "down"
-                if latest_close >= sma:
-                    return None
+            # Price‑SMA confirmation
+            prediction = ml_result["prediction"]
+            if prediction == "up" and latest_close <= sma:
+                return None
+            if prediction == "down" and latest_close >= sma:
+                return None
 
-            # Volume confirmation
-            if latest_vol < median_vol:
+            # Volume confirmation (strict)
+            if latest_vol < median_vol * self.volume_multiplier:
+                return None
+
+            # Momentum confirmation
+            if len(data) >= self.momentum_window + 1:
+                past_close = data["close"].iloc[-self.momentum_window - 1]
+                price_change = latest_close - past_close
+                if prediction == "up" and price_change <= 0:
+                    return None
+                if prediction == "down" and price_change >= 0:
+                    return None
+            else:
+                # Not enough data for momentum check
+                return None
+
+            # Volatility filter
+            if volatility > 0:
+                if abs(price_change) < volatility * self.volatility_multiplier:
+                    return None
+            else:
+                # Zero volatility (flat market) – be conservative
                 return None
 
             return Signal(
                 symbol=symbol,
-                side="buy" if ml_result["prediction"] == "up" else "sell",
+                side="buy" if prediction == "up" else "sell",
                 confidence=ml_result["confidence"],
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
                 risk_bucket=self.risk_bucket,
                 metadata=ml_result,
             )
-        except Exception:
-            # In production we would log the exception; for now we silently ignore.
+        except Exception as exc:  # pragma: no cover
+            logger.exception("Error in EnsembleStrategy.analyze for %s: %s", symbol, exc)
             return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
         """
-        Generate entry and exit signals for back‑testing.
+        Generate entry and exit signals for back‑testing, mirroring the runtime logic.
 
         Expected DataFrame columns:
         - 'close': price series
         - 'volume': volume series
         - 'ml_prediction': string ("up", "down", "neutral")
         - 'ml_confidence': float (0‑1)
-
-        The method mirrors the runtime `analyze` logic but operates row‑wise.
         """
         required_cols = {"close", "volume", "ml_prediction", "ml_confidence"}
         if not required_cols.issubset(df.columns):
-            # If required columns are missing, return empty signals to avoid crashes.
             empty = pd.Series(False, index=df.index)
             return BacktestSignals(entries=empty, exits=empty)
 
-        # Compute rolling SMA and median volume
+        # Rolling calculations
         sma = df["close"].rolling(window=self.sma_window, min_periods=1).mean()
         median_vol = df["volume"].rolling(window=self.sma_window, min_periods=1).median()
+        volatility = df["close"].rolling(window=self.sma_window, min_periods=1).std()
 
-        # Conditions for a valid entry
-        is_up = df["ml_prediction"] == "up"
-        is_down = df["ml_prediction"] == "down"
+        # Momentum over the defined window
+        momentum = df["close"].diff(self.momentum_window)
+
+        # Core conditions
         conf_ok = df["ml_confidence"] >= self.confidence_threshold
         price_above_sma = df["close"] > sma
         price_below_sma = df["close"] < sma
-        vol_ok = df["volume"] >= median_vol
+        vol_ok = df["volume"] > median_vol * self.volume_multiplier
+        momentum_up = momentum > 0
+        momentum_down = momentum < 0
+        volatilty_ok = (volatility * self.volatility_multiplier) <= momentum.abs()
 
-        long_entry = is_up & conf_ok & price_above_sma & vol_ok
-        short_entry = is_down & conf_ok & price_below_sma & vol_ok
+        # Long entry
+        long_entry = (
+            (df["ml_prediction"] == "up")
+            & conf_ok
+            & price_above_sma
+            & vol_ok
+            & momentum_up
+            & volatilty_ok
+        )
+        # Short entry
+        short_entry = (
+            (df["ml_prediction"] == "down")
+            & conf_ok
+            & price_below_sma
+            & vol_ok
+            & momentum_down
+            & volatilty_ok
+        )
 
         entries = long_entry | short_entry
 
-        # Exit when any of the entry conditions become false for the current side.
-        # For simplicity we treat the opposite side as an exit signal.
+        # Exit logic: opposite SMA breach, loss of volume, or reversal of ML prediction
         exit_long = (~price_above_sma) | (~vol_ok) | (df["ml_prediction"] == "down")
         exit_short = (~price_below_sma) | (~vol_ok) | (df["ml_prediction"] == "up")
         exits = exit_long | exit_short
 
-        # Align boolean Series with BacktestSignals expectations
         entries = entries.astype(bool)
         exits = exits.astype(bool)
 
