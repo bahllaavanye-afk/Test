@@ -28,9 +28,32 @@ def _norm_cdf(x: float) -> float:
 
 def bs_price(spot: float, strike: float, t_years: float, sigma: float,
              kind: str, rate: float = 0.04) -> float:
-    """Black-Scholes European price. At/past expiry returns intrinsic."""
+    """Black-Scholes European price. At/past expiry returns intrinsic.
+
+    Parameters
+    ----------
+    spot: float
+        Current underlying price (must be > 0).
+    strike: float
+        Option strike price (must be > 0).
+    t_years: float
+        Time to expiry in years.
+    sigma: float
+        Annualized volatility.
+    kind: str
+        Either ``"call"`` or ``"put"``.
+    rate: float, optional
+        Risk‑free rate, default 0.04.
+
+    Returns
+    -------
+    float
+        Option price.
+    """
     if spot <= 0 or strike <= 0:
         raise ValueError("spot and strike must be positive")
+    if kind not in {"call", "put"}:
+        raise ValueError("kind must be either 'call' or 'put'")
     intrinsic = max(spot - strike, 0.0) if kind == "call" else max(strike - spot, 0.0)
     if t_years <= 0 or sigma <= 0:
         return intrinsic
