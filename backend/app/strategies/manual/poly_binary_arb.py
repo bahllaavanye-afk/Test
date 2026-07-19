@@ -5,7 +5,51 @@ If YES_price + NO_price < $0.97 (accounting for fees), buy both sides.
 At resolution, one side pays $1.00 — guaranteed profit.
 """
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
+
+
+class PolyBinaryArbParams(BaseModel):
+    """Parameters for the PolyBinaryArbStrategy."""
+
+    min_edge_pct: float = Field(
+        ...,
+        description="Minimum edge percentage required for the arbitrage opportunity.",
+        example=3.0,
+        gt=0,
+        lt=100,
+    )
+    max_position_usd: float = Field(
+        ...,
+        description="Maximum USD exposure allowed per position.",
+        example=500,
+        gt=0,
+    )
+    kelly_fraction: float = Field(
+        ...,
+        description="Fraction of the Kelly criterion to apply when sizing the position.",
+        example=0.25,
+        ge=0,
+        le=1,
+    )
+    min_liquidity: float = Field(
+        100,
+        description="Minimum liquidity (in USD) required for each side of the binary market.",
+        example=100,
+        gt=0,
+    )
+
+    @validator("min_edge_pct")
+    def check_edge_range(cls, v):
+        if not (0 < v < 100):
+            raise ValueError("min_edge_pct must be between 0 and 100")
+        return v
+
+    @validator("kelly_fraction")
+    def check_kelly_range(cls, v):
+        if not (0 <= v <= 1):
+            raise ValueError("kelly_fraction must be between 0 and 1")
+        return v
 
 
 class PolyBinaryArbStrategy(AbstractStrategy):
@@ -14,23 +58,28 @@ class PolyBinaryArbStrategy(AbstractStrategy):
     market_type = "polymarket"
     strategy_type = "manual"
     risk_bucket = "arbitrage"
-    tick_interval_seconds = 5.0   # poll every 5 seconds
+    tick_interval_seconds = 5.0  # poll every 5 seconds
 
     DEFAULT_PARAMS = {
         "min_edge_pct": 3.0,
         "max_position_usd": 500,
         "kelly_fraction": 0.25,
+        "min_liquidity": 100,
     }
 
     def __init__(self, params: dict | None = None):
         super().__init__(params)
         effective = {**self.DEFAULT_PARAMS, **(params or {})}
-        self.min_edge_pct = effective["min_edge_pct"]
-        self.max_position_usd = effective["max_position_usd"]
-        self.kelly_fraction = effective["kelly_fraction"]
+        # Validate and parse parameters using the Pydantic schema
+        validated_params = PolyBinaryArbParams(**effective)
+
+        self.min_edge_pct = validated_params.min_edge_pct
+        self.max_position_usd = validated_params.max_position_usd
+        self.kelly_fraction = validated_params.kelly_fraction
+        self.min_liquidity = validated_params.min_liquidity
+
         # max_sum derived from min_edge_pct: if edge >= 3%, YES+NO <= 0.97
         self.max_sum = 1.0 - self.min_edge_pct / 100.0
-        self.min_liquidity = params.get("min_liquidity", 100) if params else 100  # $100 minimum depth
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
         # data has 'yes_price', 'no_price', 'yes_liquidity', 'no_liquidity'
@@ -50,7 +99,7 @@ class PolyBinaryArbStrategy(AbstractStrategy):
             confidence = min(0.99, 0.80 + profit_pct * 2)  # higher spread = higher confidence
             return Signal(
                 symbol=symbol,
-                side="buy",   # buy BOTH yes and no
+                side="buy",  # buy BOTH yes and no
                 confidence=confidence,
                 strategy_name=self.name,
                 strategy_type=self.strategy_type,
