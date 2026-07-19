@@ -49,13 +49,13 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784414344.8191223,
+    "last_updated": 1784462035.4262035,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "mean_rev_20_1.5"
     ],
-    "last_autopilot_run": 1784414344.799578,
+    "last_autopilot_run": 1784449776.668835,
     "autopilot_best_sharpe": 0.1586,
     "autopilot_best_oos_sharpe": 1.1864,
     "autopilot_best_blended": 0.4056,
@@ -152,136 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784413920.1684525
+    "last_brain_update": 1784462035.4254525
   },
   "episodic": [
-    {
-      "lesson": "Promoted lstm_btc_1h_v1 to paper_candidate: Sharpe=1.52, MaxDD=11.2%",
-      "category": "strategy",
-      "from_stage": "backtest",
-      "to_stage": "paper_candidate",
-      "ts": 1781116812.3087773
-    },
-    {
-      "lesson": "Promoted xgb_spy_daily_v1 to paper_candidate: Sharpe=1.21, MaxDD=8.9%",
-      "category": "strategy",
-      "from_stage": "backtest",
-      "to_stage": "paper_candidate",
-      "ts": 1781116812.3091338
-    },
-    {
-      "source": "market_opinion",
-      "regime": "neutral",
-      "score": -1,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.68,
-        "size_multiplier": 0.75
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1781127491.6488562
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781130480.7076263
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781130826.2626133
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 1,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=1). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781133054.650436
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781133434.3465724
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781136270.2918024
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 3,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "We need to write a 2-sentence morning market brief for QuantEdge trading desk. Given data: regime=bull (score=3), VIX 15.91 falling, SPY strong uptrend, credit spreads tightening, yield curve flat/inverted, breadth 7/11 sectors above 20-SMA. Tactical implication: which strategy type to favour today. Likely momentum or trend-following given strong uptrend and bull regime. Also note low VIX, tightening credit spreads support risk-on. Yield curve flat/inverted is a warning but not overriding. So favour trend-following or long-biased strategies. Keep brief: 2 sentences. First sentence: summarize market conditions. Second sentence: tactical implication.",
-      "ts": 1783356448.0721068
-    },
-    {
-      "lesson": "Repeated 'Auto-fix failed' across multiple commits indicates a systemic CI pipeline issue with patch application \u2014 investigate tooling and merge conflict resolution.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783364887.604071
-    },
-    {
-      "lesson": "CI debug shows Python 3.11.15 and aiohttp 3.14.1; verify compatibility with current codebase to rule out dependency-related patch failures.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783364887.6049309
-    },
     {
       "lesson": "Auto-fix failures block automated code quality and deployment; prioritize manual review or alternative fix strategies to unblock CI.",
       "category": "risk",
@@ -1834,44 +1707,128 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784413136.310825
+    },
+    {
+      "lesson": "Auto-fix pipeline repeatedly fails to apply patches, indicating conflicts or incorrect patch generation that requires manual code review and fix.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784417698.0673792
+    },
+    {
+      "lesson": "Deployment blocked due to Vercel free-tier daily limit (100 deploys/day), halting all releases for 24 hours.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784417698.072596
+    },
+    {
+      "lesson": "Continuous deployment strategy needs revision: either upgrade to a paid Vercel plan or implement deployment batching to avoid hitting the free-tier cap.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784417698.07674
+    },
+    {
+      "lesson": "Repeated auto-fix failures suggest insufficient automated testing or CI validation before patches are applied, increasing manual overhead.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784417698.0809152
+    },
+    {
+      "lesson": "Deployment blocked by free-tier rate limit (100/day). Pro upgrade or deployment scheduling needed to avoid production delays.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0385363
+    },
+    {
+      "lesson": "Auto-fix system repeatedly fails to apply patches, indicating brittle automation or insufficient test coverage for patch validation.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0440366
+    },
+    {
+      "lesson": "Complex cross-domain changes (e.g., SmartPricing repricing) are skipped by auto-fix, requiring manual engineering effort and escalation path.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0484483
+    },
+    {
+      "lesson": "Multiple failed auto-fixes suggest the need for improved error handling, fallback mechanisms, or human-in-the-loop for non-trivial code changes.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0527725
+    },
+    {
+      "lesson": "Rate limit and auto-fix failures together indicate systemic capacity and automation gaps that could erode developer velocity if unaddressed.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0571227
+    },
+    {
+      "lesson": "Repeated auto-fix failures suggest a systemic issue with the patch application pipeline; investigate and fix immediately to unblock deployments.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.915579
+    },
+    {
+      "lesson": "Experiment run results are truncated or missing; enforce complete logging of outcomes (metrics, errors) for all walk-forward runs.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.9210885
+    },
+    {
+      "lesson": "Walk-forward parameters (min_train=252, refit_every=21) may not adapt to recent market volatility; validate with out-of-sample testing.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.925246
+    },
+    {
+      "lesson": "Long threshold of 0.55 for GBC signals could increase false positives; perform sensitivity analysis and consider dynamic thresholding.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.929353
+    },
+    {
+      "lesson": "Automated code fixes are repeatedly failing to apply patches, indicating fragility in the codebase or CI/CD pipeline that needs manual review.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.3908365
+    },
+    {
+      "lesson": "A complex issue involving multiple data ingestion pipelines, external API changes, and diverse asset classes requires immediate manual investigation to prevent data quality degradation.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.3952792
+    },
+    {
+      "lesson": "Deployment is blocked by a Vercel free-tier rate limit (100 deployments/day), halting releases for 24 hours.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.3984606
+    },
+    {
+      "lesson": "To avoid recurring deployment blocks, evaluate upgrading to a Vercel Pro plan or implementing deployment batching to stay within free-tier limits.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.401683
     }
   ],
   "github_insights": [
-    {
-      "summary": "The automated fix was skipped due to complexity of the repository content,",
-      "item_count": 20,
-      "ts": 1783381491.575648
-    },
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of encoded text and messages. The first part seems like an encoded string (maybe a token or reference). Then there are two robot messages: \"Auto-fix skipped \u2014 too complex for automated resolution.\" and \"Auto-fix failed \u2014 could not apply patch to file.\" There's also a mention of \"Reason: The repository content\" but incomplete. The user wants a summary",
-      "item_count": 20,
-      "ts": 1783387546.3575475
-    },
-    {
-      "summary": "We need to summarize two separate discussions: one about Slack agent-team run failed due to message_limit_exceeded, and another about auto-fix failed to apply patch. The user gave a single input with two distinct items separated by \"|\". The first is \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" (truncated). The second is \"[:robot: **Auto-fix failed** \u2014 could not apply patch to",
-      "item_count": 20,
-      "ts": 1783402394.970713
-    },
-    {
-      "summary": "We need to summarize the given text in 1-2 sentences. The text appears to be a GitHub PR/issue discussion title or snippet. It mentions \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" and then some encoded string. The user wants a summary of the discussion. The summary should capture the main point: a Slack agent-team run failed because posts are not reaching the workspace, likely due to exceeding a message limit quota",
-      "item_count": 20,
-      "ts": 1783414490.7570062
-    },
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a truncated or encoded string. The first part seems to be a base64 or similar encoded string, but the actual content is partially readable: \"[vc]: #2fb9L0vzqSC8unOyyZyv282+ygEsG3lPSxLE0PF5En0=:eyJpc01vbm9yZXBvIjp",
-      "item_count": 20,
-      "ts": 1783461217.3089068
-    },
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a series of encoded strings and a message. The first two lines look like base64 or some encoded data, possibly from a tool like \"vc\" (version control?). The third line is a clear message: \"\ud83d\uded1 **Team Lead review \u2014 automerge revoked.** This autonomous PR modifies protected file(s): - `backe`\". The text is cut off at \"back",
-      "item_count": 20,
-      "ts": 1783465064.3467476
-    },
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a base64-encoded string or some identifier, but the actual content is: \"[vc]: #AxNKF0r7S1dT27lTIhwNFH6zhfzwxTAHby5AmsYVqZc=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBl",
-      "item_count": 20,
-      "ts": 1783468723.2040842
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input seems to be a mix of encoded references and actual text. The first part \"[vc]: #qsNb16RMvHWHXUyDvbMM2wqZjOylYKnS9P4on9BpAYA=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2",
       "item_count": 20,
@@ -2336,6 +2293,41 @@
       "summary": "The deployment failed due to resource limitations, with an error suggesting to retry in 24 hours. The workflow run is referenced at the provided link.",
       "item_count": 20,
       "ts": 1784413920.1593559
+    },
+    {
+      "summary": "The auto-fix bot failed to apply a patch to a file, and this error was reported twice.",
+      "item_count": 20,
+      "ts": 1784417707.6494691
+    },
+    {
+      "summary": "The discussions indicate that an automated fix attempt failed because the patch could not be applied to the file.",
+      "item_count": 20,
+      "ts": 1784423443.9249494
+    },
+    {
+      "summary": "Deployment failed due to resource limitations with a 24-hour retry suggestion, and two automatic fix attempts also failed to apply patches.",
+      "item_count": 20,
+      "ts": 1784435640.9579551
+    },
+    {
+      "summary": "A workflow run on 2026-07-19 attempted an auto-fix but failed because the patch could not be applied to the file.",
+      "item_count": 20,
+      "ts": 1784445315.212126
+    },
+    {
+      "summary": "The auto-fix workflow run on 2026-07-19 failed because it could not apply a patch to a file.",
+      "item_count": 20,
+      "ts": 1784452762.6236458
+    },
+    {
+      "summary": "The auto-fix process failed three times, each time unable to apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784458321.655916
+    },
+    {
+      "summary": "The automated fix attempts failed or were skipped due to the issue's complexity, with the reason involving \"mul\" (possibly multiple components or multiline changes).",
+      "item_count": 20,
+      "ts": 1784462035.4179275
     }
   ],
   "experiment_results": [
