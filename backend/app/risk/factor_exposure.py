@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Sequence
 
 import numpy as np
 
@@ -95,6 +95,37 @@ def _interpret(fe: FactorExposure) -> str:
     return ", ".join(parts) if parts else "Balanced factor exposure"
 
 
+def _validate_series(name: str, series: Sequence) -> List[float]:
+    """Validate that a series is numeric and convertible to float.
+
+    Parameters
+    ----------
+    name : str
+        Identifier used for logging.
+    series : Sequence
+        Input series to validate.
+
+    Returns
+    -------
+    List[float]
+        Cleaned list of floats.
+
+    Raises
+    ------
+    TypeError
+        If the series is not iterable or contains non‑numeric items.
+    """
+    if not isinstance(series, Sequence):
+        raise TypeError(f"{name} must be a sequence, got {type(series)}")
+    cleaned = []
+    for idx, val in enumerate(series):
+        try:
+            cleaned.append(float(val))
+        except (TypeError, ValueError) as e:
+            raise TypeError(f"Non‑numeric value at index {idx} in {name}: {val}") from e
+    return cleaned
+
+
 def compute_factor_exposure(
     portfolio_returns: List[float],
     spy_returns: List[float],
@@ -126,11 +157,19 @@ def compute_factor_exposure(
     FactorExposure
         The regression coefficients and diagnostics wrapped in a ``FactorExposure`` instance.
     """
-    n = min(len(portfolio_returns), len(spy_returns))
-    if n < 20:
-        logger.warning(
-            "Insufficient data for factor exposure calculation",
-            extra={"required_min": 20, "available": n},
+    # ------------------------------------------------------------------
+    # Input validation
+    # ------------------------------------------------------------------
+    try:
+        portfolio = _validate_series("portfolio_returns", portfolio_returns)
+        market = _validate_series("spy_returns", spy_returns)
+        momentum = _validate_series("momentum_factor", momentum_factor) if momentum_factor else None
+        low_vol = _validate_series("low_vol_factor", low_vol_factor) if low_vol_factor else None
+    except TypeError as e:
+        logger.error(
+            "Invalid input series for factor exposure calculation",
+            extra={"error": str(e)},
+            exc_info=True,
         )
         return FactorExposure(
             market_beta=1.0,
@@ -142,23 +181,53 @@ def compute_factor_exposure(
             tracking_error=0.02,
         )
 
+    n = min(len(portfolio), len(market))
+    if n < 20:
+        logger.warning(
+            "Insufficient data for factor exposure calculation",
+            extra={"required_min": 20, "available_portfolio": len(portfolio), "available_market": len(market)},
+        )
+        return FactorExposure(
+            market_beta=1.0,
+            momentum_loading=0.0,
+            low_vol_loading=0.0,
+            size_loading=0.0,
+            r_squared=0.0,
+            alpha_annualized=0.0,
+            tracking_error=0.02,
+        )
+
+    # ------------------------------------------------------------------
+    # Build regression matrices
+    # ------------------------------------------------------------------
     try:
-        y = np.array(portfolio_returns[-n:], dtype=float)
-        X_cols = [np.ones(n, dtype=float), np.array(spy_returns[-n:], dtype=float)]
+        y = np.array(portfolio[-n:], dtype=float)
+        X_cols = [np.ones(n, dtype=float), np.array(market[-n:], dtype=float)]
         col_names = ["alpha", "market"]
 
-        if momentum_factor and len(momentum_factor) >= n:
-            X_cols.append(np.array(momentum_factor[-n:], dtype=float))
+        if momentum and len(momentum) >= n:
+            X_cols.append(np.array(momentum[-n:], dtype=float))
             col_names.append("momentum")
-        if low_vol_factor and len(low_vol_factor) >= n:
-            X_cols.append(np.array(low_vol_factor[-n:], dtype=float))
+        else:
+            logger.info(
+                "Momentum factor not used (insufficient length or None)",
+                extra={"required": n, "available": len(momentum) if momentum else 0},
+            )
+        if low_vol and len(low_vol) >= n:
+            X_cols.append(np.array(low_vol[-n:], dtype=float))
             col_names.append("low_vol")
+        else:
+            logger.info(
+                "Low‑vol factor not used (insufficient length or None)",
+                extra={"required": n, "available": len(low_vol) if low_vol else 0},
+            )
 
         X = np.column_stack(X_cols)
     except (ValueError, TypeError) as e:
         logger.error(
             "Failed to construct regression matrices",
             extra={"error": str(e), "n": n, "col_names": col_names},
+            exc_info=True,
         )
         return FactorExposure(
             market_beta=1.0,
@@ -170,12 +239,16 @@ def compute_factor_exposure(
             tracking_error=0.02,
         )
 
+    # ------------------------------------------------------------------
+    # Perform OLS regression
+    # ------------------------------------------------------------------
     try:
         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
     except np.linalg.LinAlgError as e:
         logger.error(
             "Linear algebra error during OLS regression",
             extra={"error": str(e), "shape_X": X.shape, "shape_y": y.shape},
+            exc_info=True,
         )
         return FactorExposure(
             market_beta=1.0,
@@ -201,6 +274,9 @@ def compute_factor_exposure(
             tracking_error=0.02,
         )
 
+    # ------------------------------------------------------------------
+    # Extract coefficients and compute diagnostics
+    # ------------------------------------------------------------------
     alpha_daily = float(coeffs[0])
     market_beta = float(coeffs[1])
     momentum_loading = float(coeffs[2]) if len(coeffs) > 2 else 0.0
@@ -218,7 +294,7 @@ def compute_factor_exposure(
         momentum_loading=momentum_loading,
         low_vol_loading=low_vol_loading,
         size_loading=0.0,   # would need SMB factor data
-        r_squared=max(0, r_squared),
+        r_squared=max(0.0, r_squared),
         alpha_annualized=alpha_daily * 252,
         tracking_error=tracking_error,
     )
