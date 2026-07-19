@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784496873.1724603,
+    "last_updated": 1784500458.974084,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784496873.1715221
+    "last_brain_update": 1784500458.9731057
   },
   "episodic": [
     {
@@ -1815,11 +1815,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize three separate GitHub PR/issue discussion snippets. Each is a status message from an auto-fix robot. The user wants a 1-2 sentence summary of these discussions. The snippets are:\n\n1. \"Auto-fix aborted \u2014 validation failed: Fix changes ~72 lines (limit 50)\"\n2. \"Auto-fix failed \u2014 could not apply patch to file.\"\n3. \"Auto-fix skipped \u2014 too complex for automated resolution.\"\n\nPlus a trailing \"Reason:",
-      "item_count": 20,
-      "ts": 1783548159.0703187
-    },
-    {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input shows three lines separated by \" | \". The first is an error message about resource limitation, the second is an auto-fix failure (could not apply patch), and the third is an auto-fix aborted due to validation failure with fix changes exceeding limit. So the summary should capture that deployment failed due to resource limits, and auto-fix attempts also failed because of patch application issues and excessive line",
       "item_count": 20,
       "ts": 1783559507.700048
@@ -2313,6 +2308,11 @@
       "summary": "A deployment failed due to resource limits, and an automated fix was attempted but skipped as too complex, then failed when applying a patch.",
       "item_count": 20,
       "ts": 1784496873.161999
+    },
+    {
+      "summary": "The deployment failed due to resource limits, and an automated fix was skipped because the issue was too complex for automated resolution.",
+      "item_count": 20,
+      "ts": 1784500458.9623704
     }
   ],
   "experiment_results": [
