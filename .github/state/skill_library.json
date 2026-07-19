@@ -199,8 +199,12 @@
     "Monitor GPU temps",
     "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
     "Log error stacks",
-    "Ping dependencies"
+    "Ping dependencies",
+    "strategy_logic on strategies/ml_enhanced/ml_pca_arb.py: success \u2014 tests green",
+    "strategy_logic on execution/almgren_chriss.py: success \u2014 tests green",
+    "strategy_logic on risk/drawdown_recovery.py: success \u2014 tests green",
+    "strategy_logic on brokers/polymarket.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T09:25:25.230927+00:00",
+  "last_updated": "2026-07-19T10:52:55.012475+00:00",
   "total": 200
 }
