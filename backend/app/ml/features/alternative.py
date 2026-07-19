@@ -11,7 +11,6 @@ All API calls are async. For sync contexts, use compute_features_sync().
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 
 import httpx
 import numpy as np
@@ -126,24 +125,15 @@ class BinanceFundingRateFeatures:
 
         # Merge funding rate
         if not fr_df.empty:
-            fr_df = fr_df.set_index("ts")
-            fr_df = fr_df.resample("D").last()  # one value per day
+            fr_df = fr_df.set_index("ts").resample("D").last()
             fr_df["funding_rate_ma7"] = fr_df["funding_rate"].rolling(7).mean()
 
-            if hasattr(df.index, "tz") and df.index.tz is not None:
-                idx = df.index.normalize()
-            else:
-                idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
+            idx = df.index.normalize() if hasattr(df.index, "tz") and df.index.tz else pd.to_datetime(df.index).tz_localize("UTC").normalize()
 
             for i, ts in enumerate(idx):
-                ts_day = ts.normalize()
-                if ts_day in fr_df.index:
-                    df.iloc[i, df.columns.get_loc("funding_rate")] = float(
-                        fr_df.loc[ts_day, "funding_rate"]
-                    )
-                    df.iloc[i, df.columns.get_loc("funding_rate_ma7")] = float(
-                        fr_df.loc[ts_day, "funding_rate_ma7"]
-                    )
+                if ts in fr_df.index:
+                    df.iloc[i, df.columns.get_loc("funding_rate")] = float(fr_df.loc[ts, "funding_rate"])
+                    df.iloc[i, df.columns.get_loc("funding_rate_ma7")] = float(fr_df.loc[ts, "funding_rate_ma7"])
 
         # Merge OI
         if not oi_df.empty:
@@ -151,20 +141,12 @@ class BinanceFundingRateFeatures:
             oi_df["oi_change_pct"] = oi_df["open_interest"].pct_change() * 100
             oi_df["oi_momentum"] = oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
 
-            if hasattr(df.index, "tz") and df.index.tz is not None:
-                idx = df.index.normalize()
-            else:
-                idx = pd.to_datetime(df.index).tz_localize("UTC").normalize()
+            idx = df.index.normalize() if hasattr(df.index, "tz") and df.index.tz else pd.to_datetime(df.index).tz_localize("UTC").normalize()
 
             for i, ts in enumerate(idx):
-                ts_day = ts.normalize()
-                if ts_day in oi_df.index:
-                    df.iloc[i, df.columns.get_loc("oi_change_pct")] = float(
-                        oi_df.loc[ts_day, "oi_change_pct"]
-                    )
-                    df.iloc[i, df.columns.get_loc("oi_momentum")] = float(
-                        oi_df.loc[ts_day, "oi_momentum"]
-                    )
+                if ts in oi_df.index:
+                    df.iloc[i, df.columns.get_loc("oi_change_pct")] = float(oi_df.loc[ts, "oi_change_pct"])
+                    df.iloc[i, df.columns.get_loc("oi_momentum")] = float(oi_df.loc[ts, "oi_momentum"])
 
         return df
 
@@ -173,12 +155,9 @@ class BinanceFundingRateFeatures:
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                # Already inside an event loop (e.g., FastAPI) — create a task
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(
-                        asyncio.run, self.compute_features_async(symbol, df)
-                    )
+                    future = pool.submit(asyncio.run, self.compute_features_async(symbol, df))
                     return future.result(timeout=30)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
