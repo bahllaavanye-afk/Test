@@ -3,10 +3,13 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
 import json
 from pathlib import Path
 from dataclasses import dataclass
+
+import numpy as np
+import torch
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
@@ -21,8 +24,6 @@ try:
     HAS_SHAP = True
 except ImportError:
     HAS_SHAP = False
-
-import torch
 
 
 @dataclass
@@ -60,9 +61,14 @@ class LightGBMClassifier(AbstractModel):
             arr = arr[:, -1, :]  # use last timestep for flat features
         return torch.tensor(self._model.predict(arr), dtype=torch.float32)
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray,
-            X_val: np.ndarray | None = None, y_val: np.ndarray | None = None,
-            feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,
+        y_val: np.ndarray | None = None,
+        feature_names: list[str] | None = None,
+    ) -> dict:
         if not HAS_LGB:
             logger.warning("lightgbm not installed. Install: pip install lightgbm")
             return {"error": "lightgbm not installed"}
@@ -87,9 +93,13 @@ class LightGBMClassifier(AbstractModel):
             "max_depth": self.config.max_depth,
             "verbose": -1,
         }
-        callbacks = [lgb.early_stopping(self.config.early_stopping_rounds), lgb.log_evaluation(50)]
+        callbacks = [
+            lgb.early_stopping(self.config.early_stopping_rounds),
+            lgb.log_evaluation(50),
+        ]
         self._model = lgb.train(
-            params, train_set,
+            params,
+            train_set,
             num_boost_round=self.config.n_estimators,
             valid_sets=valid_sets,
             callbacks=callbacks,
@@ -127,6 +137,7 @@ class LightGBMClassifier(AbstractModel):
         acc = float(((preds > 0.5) == (Y > 0.5)).mean())
         try:
             from sklearn.metrics import roc_auc_score
+
             auc = float(roc_auc_score(Y, preds))
         except Exception:
             auc = 0.5
@@ -151,7 +162,11 @@ class LightGBMClassifier(AbstractModel):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         if self._model:
             self._model.save_model(path + ".lgb")
-        meta = {"model_type": self.model_type, "feature_names": self._feature_names, **(metadata or {})}
+        meta = {
+            "model_type": self.model_type,
+            "feature_names": self._feature_names,
+            **(metadata or {}),
+        }
         Path(path + ".json").write_text(json.dumps(meta, indent=2))
 
     @classmethod
