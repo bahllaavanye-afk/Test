@@ -23,11 +23,13 @@
       Needs per-leg option instrument fields on Order/Position (Desk-consolidation Stage 3).
 - [ ] **[P2] Trade Log** (screenshot 4) — chronological grouped-by-day feed: Bot icon, Time, Action
       (open/close), Description (full legs), Pricing (entry→exit), Status (filled at $x / canceled).
-- [ ] **[P1] Backtest→bot generator "Create Bot" panel** (screenshot 8, OA "Automate your strategy") —
-      from a backtest result: Create-new / Update-existing, Bot Name, Account (Paper), Allocation,
-      Position Entry (scan once at time / scan during range), Trade Pricing (Opening/Closing % of
-      bid/ask + slippage-from-mid). Backend: `POST /backtests/{id}/create-bot` → BotCreate from
-      BacktestRun.params. Ties to existing BacktestLab.
+- [x] **Backtest→bot generator** (screenshot 8, OA "Automate your strategy") — SHIPPED:
+      `POST /bots/from-backtest/{run_id}` maps the backtest's strategy family to real engine
+      conditions (mapped vs approx confidence), bakes provenance (source run + Sharpe/return/win)
+      into the description, creates the bot **disabled** (paper-first). Frontend: "→ Create Bot"
+      button on each done run in BacktestLab. `app/bots/backtest_to_bot.py` + 3 integration tests.
+      Follow-ups: the full "Create Bot" side-panel (name/allocation/entry-time/trade-pricing inputs)
+      and Update-existing mode.
 - [ ] **[P1] Screener page → symbol-scaling feed** (screenshot 9) — Symbol, 1M sparkline, Last, Today%,
       Liquidity bars, Beta, IV Rank, RSI, Techs, 3M/6M/12M returns, Earnings-in-Nd. Wire the ranked
       output into Symbol Scout so bots auto-scale onto the best-ranked new symbols (user: "use this to
@@ -48,7 +50,7 @@
 - [ ] **[P1] Decision-recipe catalog expansion** — condition types evidenced by the user's bots: FOMC-day gate (FF calendar feed exists), price-change-vs-N-min-ago, option-leg OI threshold, position-return%, touch-$ exit; then loops over watchlists and position tags.
 - [ ] **[P2] Failsafe family** — per-bot excessive-errors auto-disable (10/day → off + alert), overlapping-strikes check, pricing-anomaly gate.
 - [ ] **[P2] EV/probability metrics** — HV-based probability + EV per defined-risk trade (OA's Trade Ideas 2.0 'Alpha'), computable from options_synthetic.
-- [ ] **[P2] Backtest→bot generator** — one click from a synthetic-backtest result to a BOT_TEMPLATES entry (OA's 'Automate your strategy').
+- [x] **[P2] Backtest→bot generator** — SHIPPED (see the OA-UI roadmap above): `POST /bots/from-backtest/{run_id}` + BacktestLab "→ Create Bot" button.
 
 - [ ] **[P1] Kalshi desk — mirror the Polymarket pattern** (2026-07-19: public API live-verified, KALSHI_KEY_ID/KEY_SECRET provided in relay): kalshi_data.py desk feed from the public /trade-api/v2/markets + candlesticks (top markets by volume, KX: symbol prefix, guarded from the Alpaca order path like PM:), poly_* strategies run on it signal-only into #desk-kalshi; then RSA-signed order placement with the provided key pair. Backend /market-data/kalshi browse endpoint already exists.
 

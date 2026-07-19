@@ -12,7 +12,7 @@ from app.bots.engine import BotEngine
 from app.bots.templates import BOT_TEMPLATES
 from app.models.bot import Bot, MARKET_TYPES
 from app.models.user import User
-from app.schemas.bot import BotCreate, BotOut, BotUpdate
+from app.schemas.bot import BotCreate, BotCreateFromBacktestBase, BotOut, BotUpdate
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/bots", tags=["bots"])
@@ -90,6 +90,81 @@ async def create_bot(
     await db.refresh(bot)
     logger.info("Bot created", bot_id=bot.id, user_id=current_user.id, name=bot.name)
     return bot
+
+
+class CreateBotFromBacktest(BotCreateFromBacktestBase):
+    pass
+
+
+@router.post("/from-backtest/{run_id}", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def create_bot_from_backtest(
+    run_id: str,
+    payload: CreateBotFromBacktest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate a bot from a completed backtest (OA 'Automate your strategy').
+
+    Maps the backtest's strategy family to the closest bot conditions the engine
+    can actually run, bakes provenance (source run + realized Sharpe/return) into
+    the description, and creates the bot **disabled** so the user reviews it
+    before enabling (paper-first). Returns the bot plus a mapping-confidence flag.
+    """
+    from sqlalchemy.orm import selectinload
+
+    from app.bots.backtest_to_bot import build_bot_from_backtest
+    from app.models.backtest import BacktestRun
+
+    run = (await db.execute(
+        select(BacktestRun)
+        .where(BacktestRun.id == run_id, BacktestRun.user_id == current_user.id)
+        .options(selectinload(BacktestRun.result))
+    )).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    if run.status != "done":
+        raise HTTPException(status_code=409, detail=f"Backtest is '{run.status}', not done")
+
+    res = run.result
+    bot_payload, confidence = build_bot_from_backtest(
+        strategy_name=run.strategy_name,
+        symbol=run.symbol,
+        interval=run.interval,
+        market_type=payload.market_type or "equity",
+        name=payload.name,
+        size_pct=payload.size_pct,
+        take_profit_pct=payload.take_profit_pct,
+        stop_loss_pct=payload.stop_loss_pct,
+        sharpe=float(res.sharpe_ratio) if res and res.sharpe_ratio is not None else None,
+        total_return=float(res.total_return) if res and res.total_return is not None else None,
+        win_rate=float(res.win_rate) if res and res.win_rate is not None else None,
+        run_id=run.id,
+    )
+
+    bot = Bot(
+        user_id=current_user.id,
+        name=bot_payload.name,
+        description=bot_payload.description,
+        symbol=bot_payload.symbol,
+        market_type=bot_payload.market_type,
+        trigger=bot_payload.trigger.model_dump(),
+        conditions=[c.model_dump() for c in bot_payload.conditions],
+        condition_logic=bot_payload.condition_logic,
+        action=bot_payload.action.model_dump(),
+        exit_rules=[e.model_dump() for e in bot_payload.exit_rules],
+        template_id=bot_payload.template_id,
+        is_enabled=False,  # paper-first: user reviews the generated bot before enabling
+    )
+    db.add(bot)
+    await db.commit()
+    await db.refresh(bot)
+    logger.info("Bot generated from backtest", bot_id=bot.id, run_id=run_id,
+                strategy=run.strategy_name, confidence=confidence)
+    return {
+        "bot": BotOut.model_validate(bot).model_dump(mode="json"),
+        "confidence": confidence,
+        "source_backtest": run_id,
+    }
 
 
 @router.get("/{bot_id}", response_model=BotOut)

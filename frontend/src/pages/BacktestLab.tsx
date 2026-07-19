@@ -13,6 +13,39 @@ function isTerminal(status: string): boolean {
   return status === 'done' || status === 'completed' || status === 'failed'
 }
 
+/** OA "Automate your strategy": one click turns a done backtest into a bot.
+ *  The bot is created disabled (paper-first) — the button reports mapping
+ *  confidence so the user knows whether entry conditions were exact or approximated. */
+function CreateBotButton({ runId }: { runId: string }) {
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.post(`/bots/from-backtest/${runId}`, { size_pct: 5.0 }).then((r) => r.data),
+    onSuccess: (data) => {
+      const exact = data.confidence === 'mapped'
+      setMsg({
+        text: exact ? '✓ Bot created (disabled — review & enable)' : '✓ Bot created — entry approximated, review',
+        ok: true,
+      })
+    },
+    onError: (e: any) =>
+      setMsg({ text: e?.response?.data?.detail || 'Failed to create bot', ok: false }),
+  })
+  if (msg) {
+    return <span className={`text-[10px] font-mono ${msg.ok ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>{msg.text}</span>
+  }
+  return (
+    <button
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      className="text-[10px] font-mono px-2 py-1 rounded border border-[#f5a623]/40 text-[#f5a623] hover:bg-[#f5a623]/10 transition-colors disabled:opacity-50 shrink-0"
+      title="Generate a paper bot from this backtest (Option Alpha 'Automate your strategy')"
+    >
+      {mutation.isPending ? 'Creating…' : '→ Create Bot'}
+    </button>
+  )
+}
+
 function RunProgressBar({ status }: { status: string }) {
   const stepIdx = getStepIndex(status)
   const isFailed = status === 'failed'
@@ -268,15 +301,18 @@ export default function BacktestLab() {
                   {isRunning ? (
                     <RunProgressBar status={r.status} />
                   ) : isDone ? (
-                    <div className="flex items-center gap-4 pt-1">
-                      {r.sharpe != null && (
-                        <span className={`font-mono font-bold ${r.sharpe >= 2 ? 'text-[#00c853]' : r.sharpe >= 1 ? 'text-[#f5a623]' : 'text-[#ff1744]'}`}>
-                          Sharpe {r.sharpe.toFixed(3)}
-                        </span>
-                      )}
-                      {r.max_drawdown != null && <span className="text-[#ff1744] font-mono">DD {(r.max_drawdown * 100).toFixed(1)}%</span>}
-                      {r.total_return != null && <span className="text-[#2979ff] font-mono">Ret {(r.total_return * 100).toFixed(1)}%</span>}
-                      {r.win_rate != null && <span className="text-[#888888] font-mono">WR {(r.win_rate * 100).toFixed(0)}%</span>}
+                    <div className="flex items-center justify-between gap-4 pt-1">
+                      <div className="flex items-center gap-4">
+                        {r.sharpe != null && (
+                          <span className={`font-mono font-bold ${r.sharpe >= 2 ? 'text-[#00c853]' : r.sharpe >= 1 ? 'text-[#f5a623]' : 'text-[#ff1744]'}`}>
+                            Sharpe {r.sharpe.toFixed(3)}
+                          </span>
+                        )}
+                        {r.max_drawdown != null && <span className="text-[#ff1744] font-mono">DD {(r.max_drawdown * 100).toFixed(1)}%</span>}
+                        {r.total_return != null && <span className="text-[#2979ff] font-mono">Ret {(r.total_return * 100).toFixed(1)}%</span>}
+                        {r.win_rate != null && <span className="text-[#888888] font-mono">WR {(r.win_rate * 100).toFixed(0)}%</span>}
+                      </div>
+                      <CreateBotButton runId={r.id} />
                     </div>
                   ) : null}
                 </div>
