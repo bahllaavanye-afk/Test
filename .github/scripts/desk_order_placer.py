@@ -1166,6 +1166,20 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
 # ── Slack helper ──────────────────────────────────────────────────────────────
 
 def _post_slack(channel: str, message: str) -> None:
+    """Deliver a desk update to the team chat. Discord is the operator's live
+    surface (the Slack token is dead), so post there via the shared notify helper;
+    Slack is attempted too when a token exists. Named _post_slack for its many
+    call sites — it is really 'post to the desk channel on every wired surface'."""
+    # Discord first — it's where the operator actually reads desk activity.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from notify import discord_post
+        discord_post(channel, message, username="QuantEdge Desk")
+    except Exception as exc:  # noqa: BLE001 — delivery must never break trading
+        print(f"  ⚠ Discord post failed on {channel}: {exc}", flush=True)
+
     if not SLACK_BOT_TOKEN:
         return
     try:
