@@ -183,3 +183,58 @@ def optimize_portfolio(
     if method != "hrp":
         raise ValueError(f"Unknown method '{method}'. Choose 'hrp', 'cvar', or 'equal'.")
     return HRPOptimizer().compute_weights(returns)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case behaviour
+# ---------------------------------------------------------------------------
+import unittest
+
+
+class TestCVaROptimizer(unittest.TestCase):
+    """Edge‑case unit tests for CVaROptimizer."""
+
+    def test_confidence_bounds(self):
+        """Confidence values at the exclusive bounds must raise ValueError."""
+        with self.assertRaises(ValueError):
+            CVaROptimizer(confidence=0.5)
+        with self.assertRaises(ValueError):
+            CVaROptimizer(confidence=1.0)
+
+    def test_insufficient_data(self):
+        """When data are insufficient, the optimizer should fall back to equal weighting."""
+        # One asset (n < 2) – weight should be 1.0 for the sole asset.
+        returns_one = pd.DataFrame(np.random.randn(30, 1), columns=["A"])
+        opt = CVaROptimizer()
+        weights_one = opt.compute_weights(returns_one)
+        self.assertTrue(np.isclose(weights_one.sum(), 1.0))
+        self.assertEqual(weights_one["A"], 1.0)
+
+        # Two assets but fewer than 20 observations – equal weighting expected.
+        returns_few = pd.DataFrame(np.random.randn(10, 2), columns=["A", "B"])
+        weights_few = opt.compute_weights(returns_few)
+        self.assertTrue(np.isclose(weights_few.sum(), 1.0))
+        self.assertAlmostEqual(weights_few["A"], 0.5, places=7)
+        self.assertAlmostEqual(weights_few["B"], 0.5, places=7)
+
+    def test_all_nan_column_handling(self):
+        """Columns that are entirely NaN should be dropped; their weight becomes zero."""
+        np.random.seed(0)
+        # 20 observations satisfy the length check; column 'A' is all NaN, 'B' has data.
+        returns = pd.DataFrame(
+            {
+                "A": [np.nan] * 20,
+                "B": np.random.randn(20),
+            }
+        )
+        opt = CVaROptimizer()
+        weights = opt.compute_weights(returns)
+
+        # After dropping column A, the optimizer assigns all weight to B.
+        self.assertAlmostEqual(weights["A"], 0.0, places=7)
+        self.assertAlmostEqual(weights["B"], 1.0, places=7)
+        self.assertTrue(np.isclose(weights.sum(), 1.0))
+
+
+if __name__ == "__main__":
+    unittest.main()
