@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784468448.8090718,
+    "last_updated": 1784471702.384771,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784462035.4254525
+    "last_brain_update": 1784471702.383785
   },
   "episodic": [
     {
@@ -1830,11 +1830,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input seems to be a mix of encoded references and actual text. The first part \"[vc]: #qsNb16RMvHWHXUyDvbMM2wqZjOylYKnS9P4on9BpAYA=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2",
-      "item_count": 20,
-      "ts": 1783479290.1781611
-    },
-    {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a snippet from a GitHub discussion or log. It includes a reference to a PR/issue ID, then three lines: \"Auto-fix failed \u2014 could not apply patch to file.\", \"Auto-fix skipped \u2014 too complex for automated resolution.\", and \"Reason: The issue description\". The user likely wants a concise summary of the situation described.\n\nThe summary: An automated fix attempt failed",
       "item_count": 20,
       "ts": 1783489667.4806063
@@ -2328,6 +2323,11 @@
       "summary": "The automated fix attempts failed or were skipped due to the issue's complexity, with the reason involving \"mul\" (possibly multiple components or multiline changes).",
       "item_count": 20,
       "ts": 1784462035.4179275
+    },
+    {
+      "summary": "The deployment failed due to a resource limitation error, advising to retry after 24 hours. The AI PR review comment was started but contained no substantive feedback.",
+      "item_count": 20,
+      "ts": 1784471702.375198
     }
   ],
   "experiment_results": [
