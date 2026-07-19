@@ -45,28 +45,51 @@ def _get_cluster_var(cov: pd.DataFrame, items: list[int]) -> float:
     return float(w @ sub_cov @ w)
 
 
-def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
-    """Recursive bisection: split into two halves and allocate by inverse cluster variance."""
-    weights = pd.Series(1.0, index=sorted_items)
-    items_to_bisect = [sorted_items]
+def _split_cluster(cluster: list[int]) -> tuple[list[int], list[int]]:
+    """Split a cluster into two halves."""
+    mid = len(cluster) // 2
+    return cluster[:mid], cluster[mid:]
 
-    while items_to_bisect:
-        items_to_bisect = [
-            i[j:k]
-            for i in items_to_bisect
-            for j, k in ((0, len(i) // 2), (len(i) // 2, len(i)))
-            if len(i) > 1
-        ]
-        for i in range(0, len(items_to_bisect), 2):
-            if i + 1 >= len(items_to_bisect):
-                break
-            left = items_to_bisect[i]
-            right = items_to_bisect[i + 1]
-            var_left = _get_cluster_var(cov, left)
-            var_right = _get_cluster_var(cov, right)
-            alpha = 1.0 - var_left / max(var_left + var_right, 1e-10)
-            weights[left] *= alpha
-            weights[right] *= (1.0 - alpha)
+
+def _allocate_weights(
+    weights: pd.Series,
+    left: list[int],
+    right: list[int],
+    cov: pd.DataFrame,
+) -> None:
+    """Update weights for a pair of sibling clusters based on their variances."""
+    var_left = _get_cluster_var(cov, left)
+    var_right = _get_cluster_var(cov, right)
+    denom = max(var_left + var_right, 1e-10)
+    alpha = 1.0 - var_left / denom
+    weights[left] *= alpha
+    weights[right] *= (1.0 - alpha)
+
+
+def _recursive_bisect(cov: pd.DataFrame, sorted_items: list[int]) -> pd.Series:
+    """
+    Perform recursive bisection on the sorted items.
+
+    The algorithm repeatedly splits each cluster into two halves,
+    allocates capital between them proportional to inverse variance,
+    and continues until all clusters are singletons.
+    """
+    # Initialise equal weight for every asset
+    weights = pd.Series(1.0, index=sorted_items)
+
+    # Queue of clusters that still need to be bisected
+    queue: list[list[int]] = [sorted_items]
+
+    while queue:
+        cluster = queue.pop(0)
+        if len(cluster) <= 1:
+            continue
+
+        left, right = _split_cluster(cluster)
+        _allocate_weights(weights, left, right, cov)
+
+        # Enqueue the two new sub‑clusters for further splitting
+        queue.extend([left, right])
 
     return weights
 
@@ -98,13 +121,12 @@ class HRPOptimizer:
         if n < 2 or len(returns) < 10:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
-        # Drop columns with all-NaN and fill remaining NaN with 0
+        # Drop columns with all‑NaN and fill remaining NaN with 0
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
         if returns_clean.shape[1] < 2:
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         symbols_clean = list(returns_clean.columns)
-        n_clean = len(symbols_clean)
 
         try:
             corr = returns_clean.corr().clip(-0.9999, 0.9999)
@@ -119,7 +141,7 @@ class HRPOptimizer:
             # sorted_items contains indices into symbols_clean
             weights_raw = _recursive_bisect(cov, sorted_items)
 
-            # Re-index back to original symbols
+            # Re‑index back to original symbols
             result = pd.Series(0.0, index=symbols)
             for idx, sym in enumerate(symbols_clean):
                 if idx in weights_raw.index:
@@ -137,5 +159,7 @@ class HRPOptimizer:
         except Exception as exc:  # noqa: BLE001
             # Silently degrading the optimizer to equal weights hid real input
             # problems (bad covariance, NaNs) — say so when it happens.
-            logger.warning("HRP optimization failed — falling back to equal weights (%s)", exc)
+            logger.warning(
+                "HRP optimization failed — falling back to equal weights (%s)", exc
+            )
             return pd.Series(1.0 / n, index=symbols)
