@@ -199,8 +199,13 @@
     "Refactor code for affinity",
     "Test cache behavior",
     "Retry on timeout",
-    "Use circuit breaker"
+    "Use circuit breaker",
+    "strategy_logic on test/unit/test_llm_observability.py: success \u2014 tests green",
+    "strategy_logic on strategies/manual/rsi2_pullback.py: success \u2014 tests green",
+    "strategy_logic on strategies/ml_enhanced/ensemble.py: success \u2014 tests green",
+    "strategy_logic on execution/iceberg.py: success \u2014 tests green",
+    "strategy_logic on risk/hrp.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T21:22:26.097589+00:00",
+  "last_updated": "2026-07-19T22:25:15.583061+00:00",
   "total": 200
 }
