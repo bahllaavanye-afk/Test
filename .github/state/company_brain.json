@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784458321.6642492,
+    "last_updated": 1784462035.4262035,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,50 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784458321.6634097
+    "last_brain_update": 1784462035.4254525
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781136270.2918024
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 3,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "We need to write a 2-sentence morning market brief for QuantEdge trading desk. Given data: regime=bull (score=3), VIX 15.91 falling, SPY strong uptrend, credit spreads tightening, yield curve flat/inverted, breadth 7/11 sectors above 20-SMA. Tactical implication: which strategy type to favour today. Likely momentum or trend-following given strong uptrend and bull regime. Also note low VIX, tightening credit spreads support risk-on. Yield curve flat/inverted is a warning but not overriding. So favour trend-following or long-biased strategies. Keep brief: 2 sentences. First sentence: summarize market conditions. Second sentence: tactical implication.",
-      "ts": 1783356448.0721068
-    },
-    {
-      "lesson": "Repeated 'Auto-fix failed' across multiple commits indicates a systemic CI pipeline issue with patch application \u2014 investigate tooling and merge conflict resolution.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783364887.604071
-    },
-    {
-      "lesson": "CI debug shows Python 3.11.15 and aiohttp 3.14.1; verify compatibility with current codebase to rule out dependency-related patch failures.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783364887.6049309
-    },
     {
       "lesson": "Auto-fix failures block automated code quality and deployment; prioritize manual review or alternative fix strategies to unblock CI.",
       "category": "risk",
@@ -1839,14 +1798,37 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784445296.929353
+    },
+    {
+      "lesson": "Automated code fixes are repeatedly failing to apply patches, indicating fragility in the codebase or CI/CD pipeline that needs manual review.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.3908365
+    },
+    {
+      "lesson": "A complex issue involving multiple data ingestion pipelines, external API changes, and diverse asset classes requires immediate manual investigation to prevent data quality degradation.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.3952792
+    },
+    {
+      "lesson": "Deployment is blocked by a Vercel free-tier rate limit (100 deployments/day), halting releases for 24 hours.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.3984606
+    },
+    {
+      "lesson": "To avoid recurring deployment blocks, evaluate upgrading to a Vercel Pro plan or implementing deployment batching to stay within free-tier limits.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784462027.401683
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a base64-encoded string or some identifier, but the actual content is: \"[vc]: #AxNKF0r7S1dT27lTIhwNFH6zhfzwxTAHby5AmsYVqZc=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBl",
-      "item_count": 20,
-      "ts": 1783468723.2040842
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input seems to be a mix of encoded references and actual text. The first part \"[vc]: #qsNb16RMvHWHXUyDvbMM2wqZjOylYKnS9P4on9BpAYA=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2",
       "item_count": 20,
@@ -2341,6 +2323,11 @@
       "summary": "The auto-fix process failed three times, each time unable to apply a patch to the file.",
       "item_count": 20,
       "ts": 1784458321.655916
+    },
+    {
+      "summary": "The automated fix attempts failed or were skipped due to the issue's complexity, with the reason involving \"mul\" (possibly multiple components or multiline changes).",
+      "item_count": 20,
+      "ts": 1784462035.4179275
     }
   ],
   "experiment_results": [
