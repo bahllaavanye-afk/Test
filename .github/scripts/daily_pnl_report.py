@@ -44,6 +44,15 @@ def _alpaca(path: str, params: dict | None = None) -> dict | list:
 
 
 def _post_slack(text: str, blocks: list | None = None) -> None:
+    # Discord-first (operator's live surface); Slack only if a token exists.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from notify import discord_post
+        discord_post(SLACK_CHANNEL, text, username="QuantEdge P&L")
+    except Exception as _exc:  # noqa: BLE001
+        print(f"[discord] {_exc}", flush=True)
     if not SLACK_BOT_TOKEN:
         print(f"[SLACK (dry-run)]\n{text}")
         return

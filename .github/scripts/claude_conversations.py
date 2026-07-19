@@ -554,6 +554,17 @@ def get_or_create_channel(channel_name: str) -> str | None:
 
 def post_message(channel: str, text: str, thread_ts: str | None = None,
                  username: str | None = None, icon_emoji: str | None = None) -> dict:
+    # Discord is the operator's live surface — deliver there first (Slack token is
+    # dead). Best-effort so a delivery hiccup never breaks a conversation.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from notify import discord_post
+        discord_post(channel, text, username=username or "QuantEdge")
+    except Exception as _exc:  # noqa: BLE001
+        print(f"[discord] {_exc}", flush=True)
+
     payload: dict = {"channel": channel, "text": text, "mrkdwn": True}
     if thread_ts:
         payload["thread_ts"] = thread_ts

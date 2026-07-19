@@ -60,6 +60,15 @@ def _alpaca_get(path: str, params: dict | None = None, data_api: bool = False) -
 
 
 def _post_slack(channel: str, text: str) -> None:
+    # Discord-first (operator's live surface); Slack only if a token exists.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from notify import discord_post
+        discord_post(channel, text, username="QuantEdge Fills")
+    except Exception as _exc:  # noqa: BLE001
+        print(f"[discord] {_exc}", flush=True)
     if not SLACK_BOT_TOKEN:
         return
     try:
@@ -245,8 +254,9 @@ def main() -> None:
     OUTPUT_FILE.write_text(json.dumps(output, indent=2))
     print(f"\n✓ Saved performance data: {len(updated_perf)} strategies, {len(new_tracked)} new fills", flush=True)
 
-    # Slack summary
-    if SLACK_BOT_TOKEN and (new_wins or updated_perf):
+    # Fill summary → Discord (and Slack if a token exists). No longer gated on the
+    # dead Slack token, or the summary would never reach Discord either.
+    if new_wins or updated_perf:
         qualified = {k: v for k, v in updated_perf.items() if v["trades"] >= 3}
         if qualified:
             by_wr = sorted(qualified.items(), key=lambda x: x[1]["win_rate"], reverse=True)
