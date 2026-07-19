@@ -90,6 +90,21 @@ class BotCreate(BaseModel):
     template_id: str | None = None
 
 
+class BotCreateFromBacktestBase(BaseModel):
+    """Inputs for the OA-style 'Automate your strategy' (backtest → bot).
+
+    Everything but overrides comes from the backtest run itself. `allocation` is
+    accepted for parity with OA's Create Bot panel but is not persisted (the Bot
+    model has no allocation column); position sizing is `size_pct` of the account.
+    """
+    name: str | None = None
+    market_type: str = "equity"
+    allocation: float | None = None
+    size_pct: float = 5.0
+    take_profit_pct: float | None = None
+    stop_loss_pct: float | None = None
+
+
 class BotUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
