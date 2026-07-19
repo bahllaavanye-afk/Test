@@ -74,13 +74,6 @@ class LimitFirstExecution:
         OrderResult
             The final order result after either a successful limit fill or a
             fallback market execution.
-
-        Logs
-        ----
-        Emits an INFO log at the start and completion of execution containing
-        metrics such as ``signal_id``, ``symbol``, ``side``, ``quantity``,
-        ``execution_time_ms``, ``filled_qty``, ``fill_price``, ``status``, and
-        ``pnl`` when calculable.
         """
         # Increment signal counter and capture start time
         LimitFirstExecution._signal_counter += 1
@@ -100,51 +93,73 @@ class LimitFirstExecution:
         )
 
         try:
-            # Get current quote
-            quote = await self.broker.get_quote(request.symbol)
-            ref_price = quote.ask if request.side == "buy" else quote.bid
-            offset = ref_price * self.offset_bps / 10_000
-
-            if request.side == "buy":
-                limit_price = quote.ask - offset  # post below ask to improve fill
-            else:
-                limit_price = quote.bid + offset  # post above bid to improve fill
+            reference_price = await self._get_reference_price(request)
+            limit_price = self._compute_limit_price(request, reference_price)
 
             limit_req = OrderRequest(
                 **{**asdict(request), "order_type": "limit", "limit_price": round(limit_price, 4)}
             )
-            result = await self.broker.place_order(limit_req)
+            limit_result = await self.broker.place_order(limit_req)
 
-            if result.status in ("filled", "partially_filled"):
-                # Successful limit fill
-                return self._log_and_return(result, signal_id, start_ts, request, ref_price)
+            if limit_result.status in ("filled", "partially_filled"):
+                return self._log_and_return(limit_result, signal_id, start_ts, request, reference_price)
 
-            # Wait for fill, then fallback to market
-            for _ in range(self.fallback_seconds):
-                await asyncio.sleep(1)
-                order_status = await self.broker.get_order(result.broker_order_id)
-                if order_status.get("status") in ("filled", "closed"):
-                    result.status = "filled"
-                    result.filled_qty = float(
-                        order_status.get("filled_qty", request.quantity)
-                    )
-                    return self._log_and_return(result, signal_id, start_ts, request, ref_price)
+            filled_result = await self._wait_for_fill(limit_result, request, reference_price, start_ts, signal_id)
+            if filled_result:
+                return filled_result
 
-            # Cancel limit and submit market
-            await self.broker.cancel_order(result.broker_order_id)
-            market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
-            market_result = await self.broker.place_order(market_req)
-            return self._log_and_return(market_result, signal_id, start_ts, request, ref_price)
+            # If still not filled, cancel limit and place market order
+            await self.broker.cancel_order(limit_result.broker_order_id)
+            market_result = await self._place_market_order(request)
+            return self._log_and_return(market_result, signal_id, start_ts, request, reference_price)
 
         except Exception as exc:
             logger.exception(
                 "LimitFirstExecution encountered an error, falling back to market",
                 extra={"signal_id": signal_id, "error": str(exc)},
             )
-            # If anything fails, fall back to direct market order
-            market_req = OrderRequest(**{**asdict(request), "order_type": "market"})
-            market_result = await self.broker.place_order(market_req)
+            market_result = await self._place_market_order(request)
             return self._log_and_return(market_result, signal_id, start_ts, request, None)
+
+    async def _get_reference_price(self, request: OrderRequest) -> float:
+        """Fetch the current quote and return the appropriate reference price."""
+        quote = await self.broker.get_quote(request.symbol)
+        return quote.ask if request.side == "buy" else quote.bid
+
+    def _compute_limit_price(self, request: OrderRequest, reference_price: float) -> float:
+        """Calculate the limit price based on the offset and side."""
+        offset = reference_price * self.offset_bps / 10_000
+        if request.side == "buy":
+            return reference_price - offset  # post below ask
+        return reference_price + offset      # post above bid
+
+    async def _wait_for_fill(
+        self,
+        limit_result: OrderResult,
+        request: OrderRequest,
+        reference_price: float,
+        start_ts: float,
+        signal_id: int,
+    ) -> Optional[OrderResult]:
+        """
+        Poll the limit order status for ``fallback_seconds`` seconds.
+        Return a logged ``OrderResult`` if filled, otherwise ``None``.
+        """
+        for _ in range(self.fallback_seconds):
+            await asyncio.sleep(1)
+            order_status = await self.broker.get_order(limit_result.broker_order_id)
+            if order_status.get("status") in ("filled", "closed"):
+                limit_result.status = "filled"
+                limit_result.filled_qty = float(
+                    order_status.get("filled_qty", request.quantity)
+                )
+                return self._log_and_return(limit_result, signal_id, start_ts, request, reference_price)
+        return None
+
+    async def _place_market_order(self, request: OrderRequest) -> OrderResult:
+        """Create and place a market order based on the original request."""
+        market_req = OrderRequest(**{**asdict(request), "order_type": "market", "limit_price": None})
+        return await self.broker.place_order(market_req)
 
     def _log_and_return(
         self,
@@ -183,7 +198,6 @@ class LimitFirstExecution:
 
         pnl: Optional[float] = None
         if fill_price is not None and reference_price is not None:
-            # Simple P&L: (reference - fill) * quantity for buys, opposite for sells
             qty = getattr(result, "filled_qty", request.quantity)
             if request.side == "buy":
                 pnl = (reference_price - fill_price) * qty
