@@ -66,8 +66,8 @@ class OrderBookFeatures:
         """
         if not bids or not asks:
             return 1.0
-        best_bid_size = float(bids[0][1]) if bids else 0.0
-        best_ask_size = float(asks[0][1]) if asks else 0.0
+        best_bid_size = float(bids[0][1])
+        best_ask_size = float(asks[0][1])
         if best_ask_size <= 0:
             return 1.0
         return float(best_bid_size / best_ask_size)
@@ -100,7 +100,6 @@ class OrderBookFeatures:
         try:
             vol = np.array(signed_volumes, dtype=float)
             dp = np.array(price_changes, dtype=float)
-            # OLS: lambda = cov(dp, vol) / var(vol)
             var_vol = np.var(vol)
             if var_vol < 1e-12:
                 return 0.0
@@ -152,14 +151,17 @@ def add_microstructure_features(
     if imbalance_series is not None:
         df["lob_imbalance"] = imbalance_series.reindex(df.index).fillna(0.0)
     else:
-        # Proxy: (close - open) / range
         rng = (df["high"] - df["low"]).replace(0, np.nan)
         df["lob_imbalance"] = ((df["close"] - df["open"]) / rng).clip(-1, 1).fillna(0.0)
 
     if spread_bps_series is not None:
         df["spread_bps"] = spread_bps_series.reindex(df.index).fillna(0.0)
     else:
-        df["spread_bps"] = ((df["high"] - df["low"]) / df["close"].replace(0, np.nan) * 10_000).fillna(0.0)
+        df["spread_bps"] = (
+            (df["high"] - df["low"])
+            / df["close"].replace(0, np.nan)
+            * 10_000
+        ).fillna(0.0)
 
     return df
 
