@@ -130,3 +130,57 @@ IRON_CONDOR = [SpreadLeg("put", "sell", 0.95), SpreadLeg("put", "buy", 0.91),
                SpreadLeg("call", "sell", 1.05), SpreadLeg("call", "buy", 1.09)]
 BULL_PUT_SPREAD = [SpreadLeg("put", "sell", 0.96), SpreadLeg("put", "buy", 0.92)]
 BEAR_CALL_SPREAD = [SpreadLeg("call", "sell", 1.04), SpreadLeg("call", "buy", 1.08)]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case validation
+# ---------------------------------------------------------------------------
+import unittest
+
+
+class TestOptionSynthetic(unittest.TestCase):
+    """Edge‑case tests for the synthetic options backtester."""
+
+    def test_bs_price_zero_spot_raises(self):
+        """Spot or strike equal to zero should raise ValueError."""
+        with self.assertRaises(ValueError):
+            bs_price(0.0, 100.0, 0.5, 0.2, "call")
+        with self.assertRaises(ValueError):
+            bs_price(100.0, 0.0, 0.5, 0.2, "put")
+
+    def test_bs_price_nonpositive_time_or_vol_returns_intrinsic(self):
+        """When time to expiry or volatility is non‑positive the function returns the intrinsic value."""
+        # Call option intrinsic: max(spot - strike, 0)
+        spot, strike = 105.0, 100.0
+        intrinsic_call = max(spot - strike, 0.0)
+        price_t0 = bs_price(spot, strike, 0.0, 0.2, "call")
+        price_sigma0 = bs_price(spot, strike, 0.5, 0.0, "call")
+        self.assertAlmostEqual(price_t0, intrinsic_call)
+        self.assertAlmostEqual(price_sigma0, intrinsic_call)
+
+        # Put option intrinsic: max(strike - spot, 0)
+        spot, strike = 95.0, 100.0
+        intrinsic_put = max(strike - spot, 0.0)
+        price_t0 = bs_price(spot, strike, -0.1, 0.2, "put")
+        price_sigma0 = bs_price(spot, strike, 0.5, -0.01, "put")
+        self.assertAlmostEqual(price_t0, intrinsic_put)
+        self.assertAlmostEqual(price_sigma0, intrinsic_put)
+
+    def test_price_spread_empty_legs_returns_zero(self):
+        """An empty leg list should yield a spread value of zero."""
+        value = price_spread(spot=100.0, legs=[], strikes=[], t_years=0.1, sigma=0.2)
+        self.assertEqual(value, 0.0)
+
+    def test_backtest_spread_no_valid_entries(self):
+        """When volatility is non‑positive for all entry points, backtest returns zero trades."""
+        # Create a tiny dataframe with constant close prices
+        data = {"close": [100, 101, 102, 103, 104, 105]}
+        df = pd.DataFrame(data)
+        # Force a vol window that yields NaN (no finite vol)
+        result = backtest_spread(df, legs=BULL_PUT_SPREAD, entry_mask=pd.Series([True, False, False, False, False, False]))
+        self.assertEqual(result.trades, 0)
+        self.assertEqual(result.pnl_series, [])
+
+
+if __name__ == "__main__":
+    unittest.main()
