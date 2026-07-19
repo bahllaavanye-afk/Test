@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784471702.384771,
+    "last_updated": 1784475462.2702887,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,42 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784471702.383785
+    "last_brain_update": 1784475462.2693272
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix failures block automated code quality and deployment; prioritize manual review or alternative fix strategies to unblock CI.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783364887.605702
-    },
-    {
-      "lesson": "No ML model or data artifacts mentioned; the issue is purely operational \u2014 consider dedicating a sprint to harden CI patch application logic.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783364887.6064847
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 4,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1783441037.7572668
-    },
-    {
-      "lesson": "Automerge revoked for PR modifying protected broker base file; enforce mandatory human review for all changes to `backend/app/brokers/base.py` and similar risk-critical paths.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783461203.5049064
-    },
     {
       "lesson": "Auto-fix failed twice and skipped due to complexity; improve automated patch generation by adding unit tests for broker base changes and requiring concrete issue descriptions before attempting fixes.",
       "category": "code",
@@ -1826,14 +1793,37 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784462027.401683
+    },
+    {
+      "lesson": "Auto-fix failures are recurring and blocking patches; investigate root cause in patch generation or application logic.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784475459.9476533
+    },
+    {
+      "lesson": "Vercel free tier daily deployment limit (100/day) is being exceeded, halting all deployments.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784475459.9528425
+    },
+    {
+      "lesson": "Evaluate upgrading to a paid Vercel plan or reducing deployment frequency to avoid hitting the limit.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784475459.956931
+    },
+    {
+      "lesson": "Monitor auto-fix success rates and deployment counts to catch limit issues before they block releases.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784475459.9610503
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a snippet from a GitHub discussion or log. It includes a reference to a PR/issue ID, then three lines: \"Auto-fix failed \u2014 could not apply patch to file.\", \"Auto-fix skipped \u2014 too complex for automated resolution.\", and \"Reason: The issue description\". The user likely wants a concise summary of the situation described.\n\nThe summary: An automated fix attempt failed",
-      "item_count": 20,
-      "ts": 1783489667.4806063
-    },
     {
       "summary": "The automated",
       "item_count": 20,
@@ -2328,6 +2318,11 @@
       "summary": "The deployment failed due to a resource limitation error, advising to retry after 24 hours. The AI PR review comment was started but contained no substantive feedback.",
       "item_count": 20,
       "ts": 1784471702.375198
+    },
+    {
+      "summary": "The auto-fix process repeatedly failed to apply a patch to a file, occurring three times in the discussions.",
+      "item_count": 20,
+      "ts": 1784475462.2603967
     }
   ],
   "experiment_results": [
