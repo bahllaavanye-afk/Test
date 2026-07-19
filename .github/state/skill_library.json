@@ -199,8 +199,13 @@
     "Monitor GPU temps",
     "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
     "Log error stacks",
-    "Ping dependencies"
+    "Ping dependencies",
+    "cleanup on test/unit/test_time_series_momentum.py: success \u2014 tests green",
+    "cleanup on ml/models/lightgbm_model.py: success \u2014 tests green",
+    "cleanup on ml/features/alternative.py: success \u2014 tests green",
+    "cleanup on brokers/base.py: success \u2014 tests green",
+    "cleanup on backtest/options_synth.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T07:04:28.385133+00:00",
+  "last_updated": "2026-07-19T09:26:58.279666+00:00",
   "total": 200
 }
