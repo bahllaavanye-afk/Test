@@ -99,6 +99,7 @@ def backtest_template(template: dict, closes: list[float],
     Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
     plus expiry settlement. Returns ranking metrics — see module caveat.
     """
+    _ = trading_days_per_entry  # currently unused, kept for API compatibility
     action = template["action"]
     tp_pct = next((r["value"] for r in template.get("exit_rules", [])
                    if r["type"] == "take_profit"), 50) or 50
