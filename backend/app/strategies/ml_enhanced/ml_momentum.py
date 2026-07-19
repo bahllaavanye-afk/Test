@@ -13,6 +13,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.strategies.manual.momentum import MomentumStrategy
@@ -20,6 +21,53 @@ from app.ml.inference import get_inference_service
 
 
 logger = logging.getLogger(__name__)
+
+
+class MLMomentumParams(BaseModel):
+    """Configuration parameters for :class:`MLMomentumStrategy`.
+
+    The schema validates user‑provided parameters before they are passed to the
+    underlying momentum strategy. Only a subset of parameters is required for the
+    ML‑enhanced wrapper; additional keys are allowed and forwarded unchanged.
+    """
+
+    confidence_threshold: float = Field(
+        default=0.65,
+        description="Minimum combined confidence required for a signal to be emitted.",
+        ge=0.0,
+        le=1.0,
+        example=0.65,
+    )
+    tick_interval_seconds: float = Field(
+        default=3600.0,
+        description="Time interval, in seconds, between successive ticks for the strategy.",
+        gt=0.0,
+        example=3600.0,
+    )
+
+    @validator("confidence_threshold")
+    def _check_confidence(cls, v: float) -> float:
+        """Ensure the confidence threshold lies within the [0, 1] range."""
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("confidence_threshold must be between 0 and 1")
+        return v
+
+    @validator("tick_interval_seconds")
+    def _check_tick_interval(cls, v: float) -> float:
+        """Tick interval must be a positive number."""
+        if v <= 0:
+            raise ValueError("tick_interval_seconds must be greater than 0")
+        return v
+
+    class Config:
+        extra = "allow"
+        schema_extra = {
+            "example": {
+                "confidence_threshold": 0.65,
+                "tick_interval_seconds": 3600.0,
+                "custom_parameter": "value",
+            }
+        }
 
 
 class MLMomentumStrategy(AbstractStrategy):
@@ -44,9 +92,15 @@ class MLMomentumStrategy(AbstractStrategy):
         ----------
         params : dict | None, optional
             Optional configuration parameters passed to the base strategy.
+            The dictionary is validated against :class:`MLMomentumParams`.
         """
-        super().__init__(params)
-        self._base = MomentumStrategy(params)
+        # Validate and normalize incoming parameters using the Pydantic schema.
+        validated_params = {}
+        if params is not None:
+            validated = MLMomentumParams(**params)
+            validated_params = validated.dict()
+        super().__init__(validated_params)
+        self._base = MomentumStrategy(validated_params)
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Optional[Signal]:
         """Generate a trading signal for a given symbol.
