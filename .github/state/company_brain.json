@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784488601.4368327,
+    "last_updated": 1784490730.957144,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,38 +151,10 @@
       "ABT"
     ],
     "risk_flags": [],
-    "risk_status": "normal",
-    "last_brain_update": 1784486299.8550436
+    "risk_status": "alert",
+    "last_brain_update": 1784490730.9561965
   },
   "episodic": [
-    {
-      "lesson": "Autonomous PRs modifying protected files (broker bases) bypass human review and have previously broken main \u2014 enforce mandatory human approval for all changes to risk-manager, broker/strategy bases, models, and app factory paths.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783465047.0236306
-    },
-    {
-      "lesson": "Auto-fix patches repeatedly fail to apply \u2014 investigate root cause (e.g., conflicting edits, stale branches, or patch generation errors) and add fallback to manual intervention.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783465047.0249286
-    },
-    {
-      "lesson": "The automerge label was revoked due to a prior breakage (#298) \u2014 implement pre-merge smoke tests or integration checks for protected paths before allowing any autonomous merge.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783465047.0260386
-    },
-    {
-      "lesson": "No clear process exists for re-adding the automerge label after human review \u2014 define a workflow (e.g., manual approval + label re-apply) to avoid stalled PRs.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783465047.0270526
-    },
     {
       "source": "market_opinion",
       "regime": "bull",
@@ -1821,14 +1793,37 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1784482891.318426
+    },
+    {
+      "lesson": "Deployment failures due to Vercel free tier rate limit (100 deployments/day) blocking all pushes. Upgrade to Pro plan or reduce deployment frequency.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784490726.5641928
+    },
+    {
+      "lesson": "Autonomous PRs modifying protected file `base.py` are repeatedly rejected, referencing a prior break (#298). Implement pre-commit checks or stricter CI rules to prevent unauthorized edits to core broker/risk files.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784490726.5697904
+    },
+    {
+      "lesson": "Team lead review is required for protected paths but is being bypassed by automerge labels. Enforce mandatory human approval for all changes to `backend/app/brokers/base.py` and similar critical files.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784490726.5739424
+    },
+    {
+      "lesson": "Recurring identical errors (deployment limit, automerge revoke) suggest no corrective action has been taken. Establish an automated alert and escalation for repeated failures to avoid stagnation.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784490726.5783837
     }
   ],
   "github_insights": [
-    {
-      "summary": "The auto-fix bot encountered failures when attempting to apply patches to files, and",
-      "item_count": 20,
-      "ts": 1783533509.397368
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input seems to be a mix of text: \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce | [vc]: #t0fkql58PYxgkfHA8FTV+9c7n6QY5az87S4JgvHidIs=:eyJpc01vbm9yZXB",
       "item_count": 20,
@@ -2323,6 +2318,11 @@
       "summary": "The GitHub PR/issue discussion reports a Slack agent-team run failure due to a `message_limit_exceeded` quota, and a deployment error indicating resource limits\u2014advising a retry in 24 hours.",
       "item_count": 20,
       "ts": 1784486299.8464644
+    },
+    {
+      "summary": "Two deployment issues occurred: first, a resource limitation error advised waiting 24 hours; second, an autonomous PR modifying protected backend files had its automerge revoked by a team lead review.",
+      "item_count": 20,
+      "ts": 1784490730.9467006
     }
   ],
   "experiment_results": [
