@@ -23,26 +23,29 @@ import asyncio
 import json
 import logging
 import time
+from collections import defaultdict
 from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
 # All valid bus topics — unknown topics are rejected to prevent typos cascading silently
-TOPICS = frozenset({
-    "market:regime",
-    "trade:signal",
-    "trade:executed",
-    "trade:closed",
-    "research:finding",
-    "strategy:updated",
-    "experiment:done",
-    "risk:alert",
-    "knowledge:learned",
-    "auction:allocated",
-})
+TOPICS = frozenset(
+    {
+        "market:regime",
+        "trade:signal",
+        "trade:executed",
+        "trade:closed",
+        "research:finding",
+        "strategy:updated",
+        "experiment:done",
+        "risk:alert",
+        "knowledge:learned",
+        "auction:allocated",
+    }
+)
 
 _BUS_KEY_PREFIX = "bus:events:"
-_BUS_STREAM_MAX = 2000   # max events per topic (ring buffer)
+_BUS_STREAM_MAX = 2000  # max events per topic (ring buffer)
 
 Handler = Callable[[str, dict], Awaitable[None]]
 
@@ -65,6 +68,10 @@ class AgentBus:
         self._consumer_offsets: dict[str, str] = {}  # topic → last-read stream ID
         self._running = False
 
+        # Monitoring counters
+        self._publish_counts: defaultdict[str, int] = defaultdict(int)
+        self._process_counts: defaultdict[str, int] = defaultdict(int)
+
     # ── Publishing ────────────────────────────────────────────────────────────
 
     async def publish(self, topic: str, data: dict) -> None:
@@ -72,10 +79,26 @@ class AgentBus:
         if topic not in TOPICS:
             logger.warning("AgentBus: unknown topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
         key = f"{_BUS_KEY_PREFIX}{topic}"
         try:
             await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
+            # Monitoring: increment publish counter and log
+            self._publish_counts[topic] += 1
+            logger.info(
+                "AgentBus publish",
+                extra={
+                    "topic": topic,
+                    "publish_count": self._publish_counts[topic],
+                },
+            )
         except Exception as e:
             # Redis unavailable — log but don't crash the caller
             logger.debug("AgentBus.publish failed topic=%s: %s", topic, e)
@@ -134,12 +157,28 @@ class AgentBus:
                                 data[k] = v
 
                         for handler in self._handlers.get(topic, []):
+                            start = time.monotonic()
                             try:
                                 await handler(topic, data)
                             except Exception as exc:
                                 logger.error(
                                     "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
+                                    topic,
+                                    handler.__name__,
+                                    exc,
+                                )
+                            else:
+                                elapsed_ms = (time.monotonic() - start) * 1000
+                                self._process_counts[topic] += 1
+                                logger.info(
+                                    "AgentBus processed",
+                                    extra={
+                                        "topic": topic,
+                                        "handler": handler.__name__,
+                                        "elapsed_ms": round(elapsed_ms, 2),
+                                        "process_count": self._process_counts[topic],
+                                        "pnl": data.get("pnl"),
+                                    },
                                 )
             except Exception as exc:
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
@@ -165,6 +204,7 @@ def get_bus(redis_client: Any | None = None) -> AgentBus:
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _bus = AgentBus(redis_client)
     return _bus
