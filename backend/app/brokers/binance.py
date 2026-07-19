@@ -50,40 +50,46 @@ class BinanceBroker(AbstractBroker):
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
         try:
-            if request.order_type == "market":
-                order = await self.exchange.create_market_order(
-                    request.symbol, request.side, request.quantity
-                )
-            elif request.order_type == "limit" and request.limit_price:
-                order = await self.exchange.create_limit_order(
-                    request.symbol,
-                    request.side,
-                    request.quantity,
-                    request.limit_price,
-                )
-            else:
-                order = await self.exchange.create_market_order(
-                    request.symbol, request.side, request.quantity
-                )
-
+            order = await self._create_order(request)
             return OrderResult(
                 broker_order_id=str(order["id"]),
                 status=order["status"],
                 filled_qty=float(order.get("filled", 0)),
-                avg_fill_price=float(order["average"])
-                if order.get("average")
-                else None,
+                avg_fill_price=float(order["average"]) if order.get("average") else None,
                 raw_payload=order,
             )
         except Exception as e:
             raise BrokerError(f"Binance: {e}")
+
+    async def _create_order(self, request: OrderRequest) -> dict:
+        """Create a market or limit order based on the request."""
+        if request.order_type == "market":
+            return await self.exchange.create_market_order(
+                request.symbol, request.side, request.quantity
+            )
+        if request.order_type == "limit" and request.limit_price:
+            return await self.exchange.create_limit_order(
+                request.symbol,
+                request.side,
+                request.quantity,
+                request.limit_price,
+            )
+        # Fallback to market order if type is unrecognized
+        return await self.exchange.create_market_order(
+            request.symbol, request.side, request.quantity
+        )
 
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -108,13 +114,7 @@ class BinanceBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
-        try:
-            ticker = await asyncio.wait_for(
-                self.exchange.fetch_ticker(symbol), timeout=10.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Binance fetch_ticker timed out", symbol=symbol)
-            raise BrokerError(f"Binance quote timed out for {symbol}")
+        ticker = await self._fetch_ticker_with_timeout(symbol, timeout=10.0)
         return QuoteResult(
             symbol=symbol,
             bid=float(ticker["bid"]),
@@ -122,6 +122,14 @@ class BinanceBroker(AbstractBroker):
             last=float(ticker["last"]),
             volume=float(ticker.get("baseVolume", 0)),
         )
+
+    async def _fetch_ticker_with_timeout(self, symbol: str, timeout: float) -> dict:
+        """Fetch ticker data with a timeout, raising BrokerError on failure."""
+        try:
+            return await asyncio.wait_for(self.exchange.fetch_ticker(symbol), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning("Binance fetch_ticker timed out", symbol=symbol)
+            raise BrokerError(f"Binance quote timed out for {symbol}")
 
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
@@ -152,10 +160,14 @@ class BinanceBroker(AbstractBroker):
                 and now - self._ticker_cache["timestamp"] < cache_ttl
             ):
                 return self._ticker_cache["data"]
-            try:
-                data = await self.exchange.fetch_tickers()
-                self._ticker_cache.update({"data": data, "timestamp": now})
-                return data
-            except Exception as e:
-                logger.error("Failed to fetch tickers from Binance", error=str(e))
-                raise BrokerError(f"Binance ticker fetch error: {e}")
+            return await self._fetch_and_cache_tickers(now)
+
+    async def _fetch_and_cache_tickers(self, timestamp: float) -> dict:
+        """Fetch tickers from Binance and update the internal cache."""
+        try:
+            data = await self.exchange.fetch_tickers()
+            self._ticker_cache.update({"data": data, "timestamp": timestamp})
+            return data
+        except Exception as e:
+            logger.error("Failed to fetch tickers from Binance", error=str(e))
+            raise BrokerError(f"Binance ticker fetch error: {e}")
