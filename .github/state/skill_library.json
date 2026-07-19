@@ -199,8 +199,13 @@
     "Monitor GPU temps",
     "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
     "Log error stacks",
-    "Ping dependencies"
+    "Ping dependencies",
+    "schemas on api/v1/strategies.py: success \u2014 tests green",
+    "schemas on test/unit/test_ws_manager_wildcard.py: success \u2014 tests green",
+    "schemas on strategies/manual/poly_binary_arb.py: success \u2014 tests green",
+    "schemas on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green",
+    "schemas on risk/var.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T07:04:28.385133+00:00",
+  "last_updated": "2026-07-19T07:07:10.017558+00:00",
   "total": 200
 }
