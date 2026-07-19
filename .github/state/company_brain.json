@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784482901.2290099,
+    "last_updated": 1784486299.8560467,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784482901.2280555
+    "last_brain_update": 1784486299.8550436
   },
   "episodic": [
     {
@@ -1825,11 +1825,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to parse the input. The user provided a string that appears to be a base64-encoded or encrypted token? Actually it looks like a GitHub PR/issue discussion summary request with some encoded data. The user says: \"Summarize these GitHub PR/issue discussions in 1-2 sentences: [vc]: #J6IxYedgizBip7IEiEXjnTLDRaqV4qiIQ65GP9zCxzY=:eyJpc",
-      "item_count": 20,
-      "ts": 1783527682.6940882
-    },
-    {
       "summary": "The auto-fix bot encountered failures when attempting to apply patches to files, and",
       "item_count": 20,
       "ts": 1783533509.397368
@@ -2323,6 +2318,11 @@
       "summary": "The auto-fix attempts failed because import verification failed after applying a patch, and in other cases, patches could not be applied to files at all.",
       "item_count": 20,
       "ts": 1784482901.21817
+    },
+    {
+      "summary": "The GitHub PR/issue discussion reports a Slack agent-team run failure due to a `message_limit_exceeded` quota, and a deployment error indicating resource limits\u2014advising a retry in 24 hours.",
+      "item_count": 20,
+      "ts": 1784486299.8464644
     }
   ],
   "experiment_results": [
