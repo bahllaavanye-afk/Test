@@ -173,3 +173,85 @@ def get_benchmark_stats() -> dict:
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ----------------------------------------------------------------------
+import pytest
+from datetime import timedelta
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_invalid_range(monkeypatch, caplog):
+    """Start date equal to end date should return an empty dict and log a warning."""
+    start = date(2023, 1, 1)
+    end = start
+    caplog.set_level("WARNING")
+    result = await fetch_benchmark_curves(start, end)
+    assert result == {}
+    # Verify that a warning was emitted about the invalid range
+    warnings = [rec for rec in caplog.records if rec.levelname == "WARNING"]
+    assert any("Invalid benchmark date range" in w.getMessage() for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_all_weather_insufficient(monkeypatch):
+    """ALL_WEATHER should be omitted when fewer than three constituent tickers are available."""
+    start = date(2023, 1, 1)
+    end = date(2023, 1, 10)
+
+    # Mock _fetch_ticker_bars to return data only for two of the ALL_WEATHER components
+    async def mock_fetch(client, ticker, s, e):
+        if ticker in {"TLT", "IEF"}:
+            dates = pd.date_range(s, e, freq="D", tz=timezone.utc)
+            return pd.Series([100 + i for i in range(len(dates))], index=dates, name=ticker)
+        return pd.Series(dtype=float)
+
+    monkeypatch.setattr("backend.app.comparison.benchmarks._fetch_ticker_bars", mock_fetch)
+
+    result = await fetch_benchmark_curves(start, end)
+    # Ensure standard benchmarks may appear but ALL_WEATHER does not
+    assert "ALL_WEATHER" not in result
+    # Verify that the two mocked tickers are not in the result (they are only used for the composite)
+    assert "TLT" not in result
+    assert "IEF" not in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_benchmark_curves_non_200_response(monkeypatch, caplog):
+    """Tickers that receive a non‑200 response should be excluded from the output."""
+    start = date(2023, 1, 1)
+    end = date(2023, 1, 5)
+
+    class MockResponse:
+        def __init__(self, status_code, json_data=None):
+            self.status_code = status_code
+            self._json = json_data or {}
+
+        def json(self):
+            return self._json
+
+    class MockClient:
+        async def get(self, url, params=None, headers=None, timeout=None):
+            # Simulate a 404 for SPY, success for others
+            if "SPY" in url:
+                return MockResponse(404)
+            # Return a minimal valid payload for other tickers
+            return MockResponse(
+                200,
+                {"bars": [{"t": "2023-01-02T00:00:00Z", "c": 101.0}]},
+            )
+
+    # Patch the AsyncClient used inside fetch_benchmark_curves
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *args, **kwargs: MockClient())
+
+    caplog.set_level("WARNING")
+    result = await fetch_benchmark_curves(start, end)
+    # SPY should be missing because of the 404 response
+    assert "SPY" not in result
+    # At least one other benchmark (e.g., QQQ) should be present
+    assert any(ticker in result for ticker in {"QQQ", "BRK-B", "GLD"})
+
+
+# The tests are defined in the same module to keep the repository self‑contained.
+# They can be discovered by pytest when the module is imported as part of the test suite.
