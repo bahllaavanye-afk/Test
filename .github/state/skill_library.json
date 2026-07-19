@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Prioritize thread safety",
-    "Test market data",
-    "* **UCB1 bandit algorithm update**: The UCB1 selection logic in `src/band` is being updated.",
     "Track API payload size",
     "Leverage Temporal Attention",
     "Check NaN in technical.py",
@@ -199,8 +196,11 @@
     "Test network connectivity",
     "Limit API retries",
     "Scan for memory leaks",
-    "Timeout idle tasks"
+    "Timeout idle tasks",
+    "Rate limit trades",
+    "Bind to CPU core",
+    "Cache API results"
   ],
-  "last_updated": "2026-07-19T15:54:13.986448+00:00",
+  "last_updated": "2026-07-19T16:54:27.756640+00:00",
   "total": 200
 }
