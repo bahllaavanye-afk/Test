@@ -16,7 +16,7 @@ from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
 
 
-def _ohlcv(n=320, seed=11):
+def _ohlcv(n: int = 320, seed: int = 11) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     returns = rng.normal(0.0005, 0.015, n)
     close = 100.0 * np.cumprod(1 + returns)
