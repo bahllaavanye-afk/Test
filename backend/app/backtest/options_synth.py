@@ -91,6 +91,56 @@ def _net_value(legs: list[_Leg], S: float, T: float, sigma: float) -> float:
     return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
 
 
+def _historical_vol_and_sigma(closes: list[float], i: int) -> tuple[float, float]:
+    """Calculate 20‑day historical volatility (HV20) and implied sigma."""
+    rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
+    mean = sum(rets) / len(rets)
+    hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
+    sigma = max(hv * IV_PREMIUM, 0.05)
+    return hv, sigma
+
+
+def _build_position(action_legs: list[dict], S: float, T0: float,
+                    sigma: float) -> list[_Leg]:
+    """Create a list of _Leg objects from the template definition."""
+    pos: list[_Leg] = []
+    for lg in action_legs:
+        if lg.get("strike"):
+            K = float(lg["strike"])
+        else:
+            delta = float(lg.get("delta") or 0.5)
+            K = strike_from_delta(S, delta, T0, sigma, lg["option_type"])
+        pos.append(_Leg(
+            sign=+1 if lg["side"] == "buy" else -1,
+            option_type=lg["option_type"],
+            strike=K,
+            ratio=int(lg.get("ratio", 1)),
+        ))
+    return pos
+
+
+def _current_value(pos: list[_Leg], S: float, T_rem: float,
+                  sigma: float) -> float:
+    """Calculate portfolio value; fall back to intrinsic value after expiry."""
+    if T_rem > 0:
+        return _net_value(pos, S, T_rem, sigma)
+    # intrinsic value when time to expiry is zero
+    return sum(
+        l.sign * l.ratio *
+        max((S - l.strike) if l.option_type.startswith("c") else (l.strike - S), 0.0)
+        for l in pos
+    )
+
+
+def _exit_conditions(pnl: float, base: float, tp_pct: float,
+                     sl_pct: float | None, days_held: int, dte: int) -> bool:
+    """Determine whether the trade should be closed."""
+    expired = days_held >= max(dte, 1)
+    hit_tp = pnl >= (tp_pct / 100.0) * base
+    hit_sl = sl_pct is not None and pnl <= -(sl_pct / 100.0) * base
+    return hit_tp or hit_sl or expired
+
+
 def backtest_template(template: dict, closes: list[float],
                       trading_days_per_entry: int = 1) -> dict:
     """Walk daily closes; open the template's spread whenever flat, manage exits.
@@ -113,37 +163,22 @@ def backtest_template(template: dict, closes: list[float],
 
     for i in range(21, len(closes)):
         S = closes[i]
-        rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
-        mean = sum(rets) / len(rets)
-        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
-        sigma = max(hv * IV_PREMIUM, 0.05)
+        _, sigma = _historical_vol_and_sigma(closes, i)
 
         if pos is None:
             T0 = max(dte, 1) / 365.0
-            pos = []
-            for lg in action["legs"]:
-                if lg.get("strike"):
-                    K = float(lg["strike"])
-                else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
-                                int(lg.get("ratio", 1))))
+            pos = _build_position(action["legs"], S, T0, sigma)
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
             continue
 
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
-        cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
-                                   else (l.strike - S), 0.0) for l in pos)
+        cur = _current_value(pos, S, T_rem, sigma)
         pnl = (cur - entry_net) * MULTIPLIER
         base = max(abs(entry_net) * MULTIPLIER, 1.0)
 
-        expired = days_held >= max(dte, 1)
-        hit_tp = pnl >= (tp_pct / 100.0) * base
-        hit_sl = sl_pct is not None and pnl <= -(sl_pct / 100.0) * base
-        if hit_tp or hit_sl or expired:
+        if _exit_conditions(pnl, base, tp_pct, sl_pct, days_held, dte):
             trades.append(pnl)
             pos = None
 
@@ -155,6 +190,7 @@ def backtest_template(template: dict, closes: list[float],
         cum += t
         peak = max(peak, cum)
         mdd = max(mdd, peak - cum)
+
     return {
         "trades": n,
         "win_rate": round(wins / n, 4) if n else None,
