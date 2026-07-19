@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784417707.65997,
+    "last_updated": 1784423443.9346917,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784417707.6589282
+    "last_brain_update": 1784423443.933702
   },
   "episodic": [
     {
@@ -1866,11 +1866,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of encoded text and messages. The first part seems like an encoded string (maybe a token or reference). Then there are two robot messages: \"Auto-fix skipped \u2014 too complex for automated resolution.\" and \"Auto-fix failed \u2014 could not apply patch to file.\" There's also a mention of \"Reason: The repository content\" but incomplete. The user wants a summary",
-      "item_count": 20,
-      "ts": 1783387546.3575475
-    },
-    {
       "summary": "We need to summarize two separate discussions: one about Slack agent-team run failed due to message_limit_exceeded, and another about auto-fix failed to apply patch. The user gave a single input with two distinct items separated by \"|\". The first is \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" (truncated). The second is \"[:robot: **Auto-fix failed** \u2014 could not apply patch to",
       "item_count": 20,
       "ts": 1783402394.970713
@@ -2364,6 +2359,11 @@
       "summary": "The auto-fix bot failed to apply a patch to a file, and this error was reported twice.",
       "item_count": 20,
       "ts": 1784417707.6494691
+    },
+    {
+      "summary": "The discussions indicate that an automated fix attempt failed because the patch could not be applied to the file.",
+      "item_count": 20,
+      "ts": 1784423443.9249494
     }
   ],
   "experiment_results": [
