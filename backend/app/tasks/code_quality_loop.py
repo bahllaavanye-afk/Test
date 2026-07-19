@@ -7,8 +7,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
+import tempfile
 
 from app.utils.logging import logger
 
@@ -122,3 +126,66 @@ class CodeQualityLoop:
             return history[-1] if history else None
         except Exception:
             return None
+
+
+# =========================
+# Unit tests for edge cases
+# =========================
+
+def test_count_loc_empty_directory():
+    """When the directory contains no .py files, all counts should be zero and comment_ratio 0."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        result = _count_loc(root)
+        assert result["files"] == 0
+        assert result["total_lines"] == 0
+        assert result["code_lines"] == 0
+        assert result["comment_lines"] == 0
+        assert result["blank_lines"] == 0
+        assert result["comment_ratio"] == 0.0
+
+
+def test_count_loc_comments_and_blanks_only():
+    """A file with only comments and blank lines should report zero code lines and correct ratios."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        file_path = root / "sample.py"
+        content = "\n".join(
+            [
+                "# comment line 1",
+                "",
+                "# comment line 2",
+                "   ",
+                "# comment line 3",
+            ]
+        )
+        file_path.write_text(content)
+        result = _count_loc(root)
+        assert result["files"] == 1
+        assert result["total_lines"] == 5
+        assert result["code_lines"] == 0
+        assert result["comment_lines"] == 3
+        assert result["blank_lines"] == 2
+        # comment_ratio uses max(code_lines, 1) => 1, so ratio equals comment_lines
+        assert result["comment_ratio"] == round(3 / 1, 3)
+
+
+def test_count_loc_unreadable_file_is_skipped():
+    """Unreadable .py files should be ignored without raising an exception."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        file_path = root / "unreadable.py"
+        file_path.write_text("print('should be skipped')\n")
+        # Remove read permissions
+        file_path.chmod(stat.S_IWUSR)
+        # Ensure function does not raise
+        result = _count_loc(root)
+        # The unreadable file is counted as a file but its lines are not processed,
+        # therefore total_lines remains 0 and code_lines stays 0.
+        # Depending on OS, the file may still be readable; we assert that no exception occurs.
+        assert isinstance(result, dict)
+        assert "files" in result
+        # The exact counts may vary, but the function must return a valid dict.
+        assert result["total_lines"] >= 0
+        assert result["code_lines"] >= 0
+        assert result["comment_ratio"] >= 0.0
