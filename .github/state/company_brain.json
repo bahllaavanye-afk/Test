@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784490730.957144,
+    "last_updated": 1784493705.3550665,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,42 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784490730.9561965
+    "last_brain_update": 1784493705.3540838
   },
   "episodic": [
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 3,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1783526237.9095035
-    },
-    {
-      "lesson": "Deployment hitting daily free tier limit of 100 deployments; consider upgrading to Pro plan or reducing deployment frequency.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783559493.185591
-    },
-    {
-      "lesson": "Auto-fix failed to apply patch to file; investigate patch compatibility or file state at time of application.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783559493.1869648
-    },
-    {
-      "lesson": "Auto-fix aborted because changes exceeded 88 lines (limit 50); split fixes into smaller chunks or increase limit.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783559493.1881995
-    },
     {
       "lesson": "Multiple auto-fix failures indicate systematic issue with patch generation or validation; review auto-fix pipeline and error handling.",
       "category": "code",
@@ -1821,14 +1788,37 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784490726.5783837
+    },
+    {
+      "lesson": "Vercel free tier deployment limit (100/day) reached; upgrade to Pro or reduce deployment frequency to avoid blocking.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784493678.0383441
+    },
+    {
+      "lesson": "Autonomous PRs modifying protected broker base files require human review; enforce mandatory review policy for critical paths.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784493678.043605
+    },
+    {
+      "lesson": "Previous autonomous edit (#298) broke main due to unprotected changes; implement automated regression tests for protected modules.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784493678.0494103
+    },
+    {
+      "lesson": "Multiple deployment platforms (Render, Vercel) cause confusion; consolidate to single platform or define clear deployment pipeline.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784493678.0549953
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input seems to be a mix of text: \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce | [vc]: #t0fkql58PYxgkfHA8FTV+9c7n6QY5az87S4JgvHidIs=:eyJpc01vbm9yZXB",
-      "item_count": 20,
-      "ts": 1783539441.698523
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions. The input shows three lines: two identical lines saying \"Auto-fix failed \u2014 could not apply patch to file.\" and a third line that looks like a base64 encoded string with \"eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwi\" which decodes to something like {\"isMonorepo\":true,\"type",
       "item_count": 20,
@@ -2323,6 +2313,11 @@
       "summary": "Two deployment issues occurred: first, a resource limitation error advised waiting 24 hours; second, an autonomous PR modifying protected backend files had its automerge revoked by a team lead review.",
       "item_count": 20,
       "ts": 1784490730.9467006
+    },
+    {
+      "summary": "Two deployments succeeded and were closed automatically, while a third failed due to a resource limit error, advising a retry in 24 hours.",
+      "item_count": 20,
+      "ts": 1784493705.344674
     }
   ],
   "experiment_results": [
