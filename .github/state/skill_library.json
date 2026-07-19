@@ -199,8 +199,13 @@
     "Verify timezone sync",
     "Refactor modules for maintainability",
     "Implement Temporal Fusion Transformers",
-    "Retrain models with new datasets"
+    "Retrain models with new datasets",
+    "refactor on execution/iceberg.py: success \u2014 tests green",
+    "refactor on risk/hrp.py: success \u2014 tests green",
+    "refactor on brokers/binance.py: success \u2014 tests green",
+    "refactor on backtest/options_synthetic.py: success \u2014 tests green",
+    "refactor on comparison/benchmarks.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T00:58:44.328815+00:00",
+  "last_updated": "2026-07-19T03:08:07.466219+00:00",
   "total": 200
 }
