@@ -1,7 +1,5 @@
 {
   "skills": [
-    "* **Voting model needs retraining**: `ml_trainer` recommends retraining the 'voting_model.py' with Temporal Shift Embedding (TSE) to improve prediction accuracy.",
-    "Scan for code improvements",
     "Test queue lengths",
     "Validate config files",
     "Check SSL versions",
@@ -199,8 +197,10 @@
     "Refactor modules for maintainability",
     "Retrain models with new datasets",
     "Monitor GPU temps",
-    "Syntax check compiled code before writing to disk \u2014 prevents broken commits"
+    "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
+    "Log error stacks",
+    "Ping dependencies"
   ],
-  "last_updated": "2026-07-19T05:25:30.810897+00:00",
+  "last_updated": "2026-07-19T07:04:28.385133+00:00",
   "total": 200
 }
