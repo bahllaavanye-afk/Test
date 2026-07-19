@@ -1,29 +1,7 @@
 {
- "as_of": "2026-07-19T09:31:37.642770+00:00",
+ "as_of": "2026-07-19T13:23:18.650452+00:00",
  "method": "synthetic-BS (HV20\u00d71.1) over 2y daily bars \u2014 ranking only",
  "results": [
-  {
-   "trades": 39,
-   "win_rate": 0.4615,
-   "total_pnl": 14143.33,
-   "avg_pnl": 362.65,
-   "max_drawdown": 6276.45,
-   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
-   "template": "oa_long_calls_confirm",
-   "name": "Long Calls with confirmation",
-   "symbol": "QQQ"
-  },
-  {
-   "trades": 239,
-   "win_rate": 0.4184,
-   "total_pnl": 13872.43,
-   "avg_pnl": 58.04,
-   "max_drawdown": 4376.94,
-   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
-   "template": "hybrid_morning_momentum",
-   "name": "Hybrid \u2014 Morning Momentum Daytrade",
-   "symbol": "QQQ"
-  },
   {
    "trades": 239,
    "win_rate": 0.4142,
@@ -47,17 +25,6 @@
    "symbol": "SPY"
   },
   {
-   "trades": 13,
-   "win_rate": 0.8462,
-   "total_pnl": 11488.12,
-   "avg_pnl": 883.7,
-   "max_drawdown": 1429.19,
-   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
-   "template": "oa_best_weekly_diagonal",
-   "name": "OA Weekly Call Diagonal",
-   "symbol": "QQQ"
-  },
-  {
    "trades": 56,
    "win_rate": 0.6786,
    "total_pnl": 5842.2,
@@ -66,6 +33,17 @@
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_ib_0945_10d",
    "name": "IB @9:45 10D $2.5k",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 239,
+   "win_rate": 0.7908,
+   "total_pnl": 4338.84,
+   "avg_pnl": 18.15,
+   "max_drawdown": 1950.16,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_user_eod_time_decay",
+   "name": "OA EOD Time Decay 30\u0394 Put Spread (mine)",
    "symbol": "SPY"
   },
   {
@@ -91,6 +69,28 @@
    "symbol": "SPY"
   },
   {
+   "trades": 239,
+   "win_rate": 0.41,
+   "total_pnl": 2644.41,
+   "avg_pnl": 11.06,
+   "max_drawdown": 1492.84,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_user_0dte_sliquidity",
+   "name": "OA 0DTE Sliquidity (mine)",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 239,
+   "win_rate": 0.6067,
+   "total_pnl": 2596.57,
+   "avg_pnl": 10.86,
+   "max_drawdown": 362.6,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_user_0dte_atm_sps",
+   "name": "OA 0DTE Daily ATM Short Put Spread (mine)",
+   "symbol": "SPY"
+  },
+  {
    "trades": 81,
    "win_rate": 0.7654,
    "total_pnl": 2198.99,
@@ -99,6 +99,17 @@
    "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
    "template": "oa_short_put_spread",
    "name": "Short Put Spread 25\u0394",
+   "symbol": "SPY"
+  },
+  {
+   "trades": 239,
+   "win_rate": 0.2176,
+   "total_pnl": 2075.69,
+   "avg_pnl": 8.68,
+   "max_drawdown": 227.03,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_user_magical_300s",
+   "name": "OA 0DTE SPY Magical 300 Seconds (mine)",
    "symbol": "SPY"
   },
   {
@@ -168,6 +179,17 @@
    "symbol": "SPY"
   },
   {
+   "trades": 21,
+   "win_rate": 0.7619,
+   "total_pnl": 686.1,
+   "avg_pnl": 32.67,
+   "max_drawdown": 1251.3,
+   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
+   "template": "oa_best_slow_steady_ic",
+   "name": "OA Slow & Steady Iron Condor",
+   "symbol": "DIA"
+  },
+  {
    "trades": 239,
    "win_rate": 0.7615,
    "total_pnl": 647.9,
@@ -188,17 +210,6 @@
    "template": "oa_ncr_0dte_spx_a",
    "name": "NCR_0DTE_SPX (A)",
    "symbol": "SPY"
-  },
-  {
-   "trades": 150,
-   "win_rate": 0.74,
-   "total_pnl": 25.44,
-   "avg_pnl": 0.17,
-   "max_drawdown": 1616.75,
-   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
-   "template": "oa_steamrolled_qqq",
-   "name": "Steamrolled - Tractor QQQ",
-   "symbol": "QQQ"
   },
   {
    "trades": 189,
@@ -287,17 +298,6 @@
    "template": "oa_delta_adjusting_strangle",
    "name": "Delta Adjusting Strangle",
    "symbol": "SPY"
-  },
-  {
-   "trades": 68,
-   "win_rate": 0.5588,
-   "total_pnl": -3550.76,
-   "avg_pnl": -52.22,
-   "max_drawdown": 8311.55,
-   "method": "synthetic-BS (HV20\u00d71.1 IV proxy) \u2014 ranking signal, not a return promise",
-   "template": "oa_iron_butter_clone",
-   "name": "Iron butter 1 Clone",
-   "symbol": "QQQ"
   }
  ]
 }
