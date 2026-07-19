@@ -199,8 +199,13 @@
     "Verify market data",
     "Check API timeouts",
     "schemas on tasks/scheduler.py: success \u2014 tests green",
-    "Implement Temporal Fusion Transformers"
+    "Implement Temporal Fusion Transformers",
+    "refactor on execution/limit_first.py: success \u2014 tests green",
+    "refactor on brokers/alpaca_headers.py: success \u2014 tests green",
+    "refactor on backtest/options_synth.py: success \u2014 tests green",
+    "refactor on comparison/benchmarks.py: success \u2014 tests green",
+    "refactor on test/unit/test_data_loader_crypto.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T03:15:44.273777+00:00",
+  "last_updated": "2026-07-19T03:22:39.590322+00:00",
   "total": 200
 }
