@@ -199,8 +199,13 @@
     "Bind to CPU core",
     "Cache API results",
     "Log API errors",
-    "Monitor CPU temp"
+    "Monitor CPU temp",
+    "schemas on comparison/engine.py: success \u2014 tests green",
+    "schemas on tasks/free_llm_router.py: success \u2014 tests green",
+    "schemas on api/v1/router.py: success \u2014 tests green",
+    "schemas on test/unit/test_income_macro_strategies.py: success \u2014 tests green",
+    "schemas on strategies/ml_enhanced/ml_momentum.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T19:02:54.646037+00:00",
+  "last_updated": "2026-07-19T19:09:41.123698+00:00",
   "total": 200
 }
