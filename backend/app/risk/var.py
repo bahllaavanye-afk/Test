@@ -1,16 +1,18 @@
 """
-Value at Risk (VaR) and Conditional Value at Risk (CVaR/Expected Shortfall).
-These are the primary risk metrics used by institutional desks.
+Value at Risk (VaR) and Conditional Value at Risk (CVaR/Expected Shortfall) utilities.
 
-VaR(95%) = worst 5% of daily returns threshold
-CVaR(95%) = average loss in the worst 5% of days
+This module provides a simple implementation for calculating 1‑day VaR and CVaR
+using either a historical (empirical) method or a parametric Gaussian
+approach. The results are wrapped in a :class:`VaRResult` dataclass for easy
+consumption by downstream risk reporting components.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Dict, Any, List
 
 import numpy as np
 
@@ -19,6 +21,32 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class VaRResult:
+    """
+    Container for VaR and CVaR calculation results.
+
+    Attributes
+    ----------
+    var_95: float
+        1‑day 95 % VaR expressed as a fraction of the portfolio (positive number).
+    var_99: float
+        1‑day 99 % VaR expressed as a fraction of the portfolio.
+    cvar_95: float
+        Expected shortfall at the 95 % confidence level.
+    cvar_99: float
+        Expected shortfall at the 99 % confidence level.
+    method: str
+        Calculation method used – ``'historical'`` or ``'parametric'`` (or a
+        fallback identifier when data are insufficient).
+    n_observations: int
+        Number of return observations supplied to the calculation.
+    portfolio_value: float
+        Current portfolio value in USD.
+    var_95_usd: float
+        95 % VaR expressed in USD.
+    var_99_usd: float
+        99 % VaR expressed in USD.
+    """
+
     var_95: float        # 1-day 95% VaR (as fraction of portfolio)
     var_99: float        # 1-day 99% VaR
     cvar_95: float       # Expected shortfall at 95% (CVaR)
@@ -29,7 +57,16 @@ class VaRResult:
     var_95_usd: float    # VaR in USD
     var_99_usd: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the result to a JSON‑serialisable dictionary.
+
+        Returns
+        -------
+        dict
+            Mapping with rounded percentage values, USD amounts and a short
+            textual interpretation.
+        """
         return {
             "var_95_pct": round(self.var_95 * 100, 3),
             "var_99_pct": round(self.var_99 * 100, 3),
@@ -44,17 +81,29 @@ class VaRResult:
 
 
 def historical_var(
-    returns: list[float],
+    returns: List[float],
     portfolio_value: float,
     method: Literal["historical", "parametric"] = "historical",
 ) -> VaRResult:
     """
-    Compute VaR and CVaR from a return series.
+    Compute 1‑day VaR and CVaR from a series of daily returns.
 
-    Args:
-        returns: List of daily returns (e.g. 0.01 = +1%)
-        portfolio_value: Current portfolio value in USD
-        method: 'historical' (empirical) or 'parametric' (Gaussian)
+    Parameters
+    ----------
+    returns : list[float]
+        Daily return values where ``0.01`` represents a +1 % move.
+    portfolio_value : float
+        Current portfolio value in USD.
+    method : {"historical", "parametric"}, optional
+        The calculation approach:
+        * ``"historical"`` – empirical quantiles from the supplied returns.
+        * ``"parametric"`` – assumes returns follow a Gaussian distribution.
+
+    Returns
+    -------
+    VaRResult
+        Dataclass instance containing VaR/CVaR metrics, method metadata, and
+        USD equivalents.
     """
     start_time = time.perf_counter()
 
@@ -103,7 +152,7 @@ def historical_var(
         mu, sigma = float(np.mean(arr)), float(np.std(arr, ddof=1))
         var_95 = float(-(mu + norm.ppf(0.05) * sigma))
         var_99 = float(-(mu + norm.ppf(0.01) * sigma))
-        # CVaR for Gaussian: E[X | X < q] = mu - sigma * phi(z) / Phi(z)
+        # CVaR for Gaussian: E[X | X < q] = mu - sigma * φ(z) / Φ(z)
         cvar_95 = float(-(mu - sigma * norm.pdf(norm.ppf(0.05)) / 0.05))
         cvar_99 = float(-(mu - sigma * norm.pdf(norm.ppf(0.01)) / 0.01))
 
