@@ -35,8 +35,17 @@ _TIMER_FILE = f"/tmp/_qe_job_timer_{RUN_ID}.txt"
 
 
 def _post(channel: str, text: str, blocks: list | None = None) -> None:
+    # Discord-first (operator's live surface); Slack only if a token exists.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from notify import discord_post
+        discord_post(channel, text, username="QuantEdge CI")
+    except Exception as _exc:  # noqa: BLE001
+        print(f"[notify_slack] discord: {_exc}", flush=True)
     if not SLACK_BOT_TOKEN:
-        print(f"[notify_slack] No SLACK_BOT_TOKEN — would post to {channel}:\n{text}", flush=True)
+        print(f"[notify_slack] No SLACK_BOT_TOKEN — posted to Discord only for {channel}", flush=True)
         return
     payload: dict = {"channel": channel, "text": text}
     if blocks:

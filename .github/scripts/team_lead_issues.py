@@ -321,6 +321,16 @@ def create_issue(title: str, body: str, labels: list[str]) -> dict | None:
 # ── Slack notification ─────────────────────────────────────────────────────────
 
 def slack_post(channel: str, text: str, username: str) -> None:
+    # Discord-first (the operator's live surface); Slack only if a token exists.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from notify import discord_post
+        discord_post(channel, text, username=username)
+    except Exception as _exc:  # noqa: BLE001
+        print(f"[discord] {_exc}", flush=True)
+
     if not SLACK_TOKEN:
         return
     url = "https://slack.com/api/chat.postMessage"
