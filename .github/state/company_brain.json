@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784475462.2702887,
+    "last_updated": 1784478940.6266944,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784475462.2693272
+    "last_brain_update": 1784478940.6257517
   },
   "episodic": [
     {
@@ -1825,11 +1825,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The automated",
-      "item_count": 20,
-      "ts": 1783512506.16878
-    },
-    {
       "summary": "Automated fixes were attempted but either skipped due to excessive complexity or failed when applying patches to files.",
       "item_count": 20,
       "ts": 1783521664.0383673
@@ -2323,6 +2318,11 @@
       "summary": "The auto-fix process repeatedly failed to apply a patch to a file, occurring three times in the discussions.",
       "item_count": 20,
       "ts": 1784475462.2603967
+    },
+    {
+      "summary": "The discussions report three failures: a Slack agent run failed due to a message limit quota; a deployment failed with a resource limit error advising a 24-hour wait; and an auto-fix attempt failed because a patch could not be applied.",
+      "item_count": 20,
+      "ts": 1784478940.6171968
     }
   ],
   "experiment_results": [
