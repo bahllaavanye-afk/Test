@@ -13,9 +13,6 @@ except ImportError:
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
 
-# Use the real nn.Module base when torch is present; fall back to ``object`` so these
-# classes still *import* (as inert placeholders) in torch-free environments. The model
-# registry can then expose them without crashing; instantiating them still needs torch.
 _NNModule = nn.Module if _TORCH_AVAILABLE else object
 import numpy as np
 from app.ml.models.base_model import AbstractModel, EvalMetrics
@@ -28,7 +25,7 @@ class GatedLinearUnit(_NNModule):
 
     def forward(self, x):
         h = self.fc(x)
-        return h[..., :h.shape[-1]//2] * torch.sigmoid(h[..., h.shape[-1]//2:])
+        return h[..., :h.shape[-1] // 2] * torch.sigmoid(h[..., h.shape[-1] // 2:])
 
 
 class GatedResidualNetwork(_NNModule):
@@ -58,7 +55,12 @@ class VariableSelectionNetwork(_NNModule):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # x: (batch, seq, n_vars * d_model) — pre-embedded features
-        processed = [self.grns[i](x[..., i*x.shape[-1]//len(self.grns):(i+1)*x.shape[-1]//len(self.grns)]) for i in range(len(self.grns))]
+        processed = [
+            self.grns[i](
+                x[..., i * x.shape[-1] // len(self.grns) : (i + 1) * x.shape[-1] // len(self.grns)]
+            )
+            for i in range(len(self.grns))
+        ]
         stacked = torch.stack(processed, dim=-1)   # (batch, seq, d, n_vars)
         flat = x.reshape(x.shape[0], x.shape[1], -1)
         weights = torch.softmax(self.softmax_grn(flat), dim=-1).unsqueeze(-2)  # (batch, seq, 1, n_vars)
