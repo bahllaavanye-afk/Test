@@ -65,12 +65,13 @@ jobs:
           if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
             echo "render creds absent — cannot deploy"; exit 1
           fi
-          read last last_status <<<"$(curl -sS "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys?limit=1" \
+          info=$(curl -sS "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys?limit=1" \
             -H "Authorization: Bearer $RENDER_API_KEY" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); x=(d[0].get('deploy',{}) if d else {}); print(x.get('commit',{}).get('id',''), x.get('status',''))" || echo " ")
+            | python3 -c "import json,sys; d=json.load(sys.stdin); x=(d[0].get('deploy',{}) if d else {}); print(x.get('commit',{}).get('id',''), x.get('status',''))" 2>/dev/null || echo "")
+          last=$(printf '%s' "$info" | awk '{print $1}')
+          last_status=$(printf '%s' "$info" | awk '{print $2}')
           # Only skip when this commit is ALREADY LIVE. A previous FAILED deploy of
-          # the same commit must NOT block a re-deploy (that's how the SECRET_KEY
-          # crash kept the site stale — the failed deploy "was" this commit).
+          # the same commit must NOT block a re-deploy.
           if [ "$last" = "$GITHUB_SHA" ] && [ "$last_status" = "live" ]; then
             echo "newest deploy is already live at $GITHUB_SHA — nothing to do"; exit 0
           fi
@@ -108,6 +109,31 @@ jobs:
               ev = e.get('event', e)
               print(ev.get('timestamp',''), ev.get('type',''), '-', json.dumps(ev.get('details',{}))[:300])
           " || echo "(events fetch failed)"
+
+      - name: Fetch Render APPLICATION logs (the real startup traceback)
+        if: failure()
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          echo "── Render application logs (newest last) — the actual boot error ──"
+          OWNER=$(curl -sS "https://api.render.com/v1/services/$RENDER_SERVICE_ID" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('ownerId',''))" 2>/dev/null || echo "")
+          if [ -z "$OWNER" ]; then echo "(could not resolve ownerId — skipping app logs)"; exit 0; fi
+          curl -sS -G "https://api.render.com/v1/logs" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            --data-urlencode "ownerId=$OWNER" \
+            --data-urlencode "resource=$RENDER_SERVICE_ID" \
+            --data-urlencode "limit=100" \
+            --data-urlencode "direction=backward" \
+            | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          logs = d.get('logs', []) if isinstance(d, dict) else d
+          for l in reversed(logs):
+              print(l.get('timestamp',''), l.get('message', l.get('text','')))
+          " || echo "(app logs fetch failed — check Render dashboard → Logs)"
 
       - name: Page Discord on deploy failure
         if: failure()
