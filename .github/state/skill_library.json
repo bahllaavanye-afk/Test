@@ -199,8 +199,13 @@
     "Bind to CPU core",
     "Cache API results",
     "Log API errors",
-    "Monitor CPU temp"
+    "Monitor CPU temp",
+    "optimization on brokers/base.py: success \u2014 tests green",
+    "optimization on backtest/walk_forward.py: success \u2014 tests green",
+    "optimization on comparison/benchmarks.py: success \u2014 tests green",
+    "optimization on tasks/agent_bus.py: success \u2014 tests green",
+    "optimization on api/v1/positions.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T17:55:44.227055+00:00",
+  "last_updated": "2026-07-19T17:57:09.795155+00:00",
   "total": 200
 }
