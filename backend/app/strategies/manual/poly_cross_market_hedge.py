@@ -183,3 +183,79 @@ class PolyCrossMarketHedgeStrategy(AbstractStrategy):
         exits = (price_sum >= 0.99).fillna(False)
 
         return BacktestSignals(entries=entries.astype(bool), exits=exits.astype(bool))
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases (boundary conditions)
+# ----------------------------------------------------------------------
+import pytest
+import numpy as np
+
+
+def _strategy_instance(params: dict | None = None) -> PolyCrossMarketHedgeStrategy:
+    """Helper to create a strategy instance with default parameters."""
+    return PolyCrossMarketHedgeStrategy(params)
+
+
+def test_backtest_signals_missing_columns():
+    """When required columns are absent, both entries and exits should be all False."""
+    df = pd.DataFrame({"price": [0.5, 0.6]})
+    strat = _strategy_instance()
+    signals = strat.backtest_signals(df)
+    assert not signals.entries.any()
+    assert not signals.exits.any()
+
+
+def test_backtest_signals_boundary_exact_max_sum():
+    """
+    Verify that a price sum exactly equal to max_sum does NOT generate an entry.
+    With default min_edge_pct=5, max_sum = 0.95.
+    """
+    strat = _strategy_instance()
+    # Construct DataFrame where shifted yes+no equals exactly 0.95 on the second row
+    df = pd.DataFrame(
+        {
+            "yes_price": [0.5, 0.5],
+            "no_price": [0.45, 0.45],
+        }
+    )
+    signals = strat.backtest_signals(df)
+    # First row is NaN after shift -> entry False
+    # Second row price_sum == max_sum -> entry should be False
+    assert signals.entries.tolist() == [False, False]
+    # No exit condition met
+    assert signals.exits.tolist() == [False, False]
+
+
+def test_backtest_signals_just_below_max_sum():
+    """
+    When price_sum is marginally below max_sum, an entry should be generated.
+    """
+    strat = _strategy_instance()
+    # Use a price sum of 0.949 (just below 0.95)
+    df = pd.DataFrame(
+        {
+            "yes_price": [0.5, 0.5],
+            "no_price": [0.449, 0.449],
+        }
+    )
+    signals = strat.backtest_signals(df)
+    # After shift, second row price_sum = 0.5 + 0.449 = 0.949 < max_sum => entry True
+    assert signals.entries.tolist() == [False, True]
+
+
+def test_backtest_signals_nan_handling():
+    """
+    Ensure rows containing NaN after shift are treated as False for both entries and exits.
+    """
+    strat = _strategy_instance()
+    df = pd.DataFrame(
+        {
+            "yes_price": [np.nan, 0.6],
+            "no_price": [0.3, np.nan],
+        }
+    )
+    signals = strat.backtest_signals(df)
+    # Both rows contain NaN after shifting, so both should be False
+    assert signals.entries.tolist() == [False, False]
+    assert signals.exits.tolist() == [False, False]
