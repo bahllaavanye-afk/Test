@@ -97,6 +97,7 @@ async def list_trades(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Retrieve a list of trades for the current user, optionally filtered."""
     query = (
         select(Trade)
         .join(Account, Trade.account_id == Account.id)
@@ -111,7 +112,6 @@ async def list_trades(
     result = await db.execute(query)
     trades = result.scalars().all()
 
-    # Build response manually so we can compute avg_fill_price from existing columns
     out: list[TradeOut] = []
     for t in trades:
         fill_price: float | None
