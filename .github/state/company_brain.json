@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784432116.9322884,
+    "last_updated": 1784435640.968934,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,35 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784423443.933702
+    "last_brain_update": 1784435640.9679193
   },
   "episodic": [
-    {
-      "lesson": "Promoted lstm_btc_1h_v1 to paper_candidate: Sharpe=1.52, MaxDD=11.2%",
-      "category": "strategy",
-      "from_stage": "backtest",
-      "to_stage": "paper_candidate",
-      "ts": 1781116812.3087773
-    },
-    {
-      "lesson": "Promoted xgb_spy_daily_v1 to paper_candidate: Sharpe=1.21, MaxDD=8.9%",
-      "category": "strategy",
-      "from_stage": "backtest",
-      "to_stage": "paper_candidate",
-      "ts": 1781116812.3091338
-    },
-    {
-      "source": "market_opinion",
-      "regime": "neutral",
-      "score": -1,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.68,
-        "size_multiplier": 0.75
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1781127491.6488562
-    },
     {
       "source": "market_scanner_v2",
       "regime": "neutral",
@@ -1862,14 +1836,44 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784417698.0809152
+    },
+    {
+      "lesson": "Deployment blocked by free-tier rate limit (100/day). Pro upgrade or deployment scheduling needed to avoid production delays.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0385363
+    },
+    {
+      "lesson": "Auto-fix system repeatedly fails to apply patches, indicating brittle automation or insufficient test coverage for patch validation.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0440366
+    },
+    {
+      "lesson": "Complex cross-domain changes (e.g., SmartPricing repricing) are skipped by auto-fix, requiring manual engineering effort and escalation path.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0484483
+    },
+    {
+      "lesson": "Multiple failed auto-fixes suggest the need for improved error handling, fallback mechanisms, or human-in-the-loop for non-trivial code changes.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0527725
+    },
+    {
+      "lesson": "Rate limit and auto-fix failures together indicate systemic capacity and automation gaps that could erode developer velocity if unaddressed.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784435639.0571227
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize two separate discussions: one about Slack agent-team run failed due to message_limit_exceeded, and another about auto-fix failed to apply patch. The user gave a single input with two distinct items separated by \"|\". The first is \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" (truncated). The second is \"[:robot: **Auto-fix failed** \u2014 could not apply patch to",
-      "item_count": 20,
-      "ts": 1783402394.970713
-    },
     {
       "summary": "We need to summarize the given text in 1-2 sentences. The text appears to be a GitHub PR/issue discussion title or snippet. It mentions \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" and then some encoded string. The user wants a summary of the discussion. The summary should capture the main point: a Slack agent-team run failed because posts are not reaching the workspace, likely due to exceeding a message limit quota",
       "item_count": 20,
@@ -2364,6 +2368,11 @@
       "summary": "The discussions indicate that an automated fix attempt failed because the patch could not be applied to the file.",
       "item_count": 20,
       "ts": 1784423443.9249494
+    },
+    {
+      "summary": "Deployment failed due to resource limitations with a 24-hour retry suggestion, and two automatic fix attempts also failed to apply patches.",
+      "item_count": 20,
+      "ts": 1784435640.9579551
     }
   ],
   "experiment_results": [
