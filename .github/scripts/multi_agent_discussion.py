@@ -81,7 +81,23 @@ def _read_json(p: Path) -> dict:
 
 
 def call_llm(messages: list[dict], max_tokens: int = 400) -> str:
-    """Groq → DeepSeek → SambaNova → Cerebras → Hyperbolic → Together → Gemini."""
+    """Delegate to the maintained llm_common cascade (current model slugs, parallel
+    racing, visible metrics, OpenRouter→Claude backstop). The hardcoded providers
+    below are a last-resort fallback if that import fails — they carried STALE model
+    IDs (llama-3.1-8b-instant etc.) that now 400 and were silently swallowed, which
+    is exactly why discussions produced nothing despite the keys being present."""
+    system = next((m["content"] for m in messages if m.get("role") == "system"), "")
+    user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+    try:
+        from llm_common import llm as _llm
+        out = _llm(user, system=system or "You are an agent at QuantEdge.",
+                   max_tokens=max_tokens, use_cache=False, inject_company_context=False)
+        if out and not out.startswith("[LLM unavailable"):
+            return out.strip()
+        print(f"[call_llm] llm_common returned no content: {out[:80]}", flush=True)
+    except Exception as exc:  # noqa: BLE001 — fall through to the local cascade
+        print(f"[call_llm] llm_common import/call failed: {exc}", flush=True)
+
     if GROQ_KEY:
         try:
             r = requests.post(
