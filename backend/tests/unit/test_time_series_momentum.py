@@ -14,18 +14,24 @@ def _df_trending(direction: int = 1, n: int = 300) -> pd.DataFrame:
     drift = direction * 0.003  # ~75% annual drift, large enough to dominate seed-noise
     rets = rng.normal(drift, 0.008, n)
     close = 100 * np.exp(np.cumsum(rets))
-    return pd.DataFrame({
-        "open": close, "high": close * 1.01, "low": close * 0.99,
-        "close": close, "volume": np.full(n, 1_000_000.0),
-    })
+    return pd.DataFrame(
+        {
+            "open": close,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": np.full(n, 1_000_000.0),
+        }
+    )
 
 
-def test_registered():
+def test_registered() -> None:
     from app.strategies import STRATEGY_REGISTRY
+
     assert "time_series_momentum" in STRATEGY_REGISTRY
 
 
-def test_backtest_signal_shape():
+def test_backtest_signal_shape() -> None:
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=1, n=300)
     out = s.backtest_signals(df)
@@ -34,7 +40,7 @@ def test_backtest_signal_shape():
     assert out.short_entries.dtype == bool
 
 
-def test_uptrend_produces_long_entries():
+def test_uptrend_produces_long_entries() -> None:
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=1, n=300)
     out = s.backtest_signals(df)
@@ -43,7 +49,7 @@ def test_uptrend_produces_long_entries():
     assert not out.short_entries.iloc[-30:].any()
 
 
-def test_downtrend_produces_short_entries():
+def test_downtrend_produces_short_entries() -> None:
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=-1, n=300)
     out = s.backtest_signals(df)
@@ -51,16 +57,16 @@ def test_downtrend_produces_short_entries():
     assert not out.entries.iloc[-30:].any()
 
 
-def test_no_lookahead_in_warmup():
+def test_no_lookahead_in_warmup() -> None:
     """The first `lookback` bars must produce no signals — need 252 bars of history."""
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=1, n=300)
     out = s.backtest_signals(df)
-    assert not out.entries.iloc[:s.lookback].any()
-    assert not out.short_entries.iloc[:s.lookback].any()
+    assert not out.entries.iloc[: s.lookback].any()
+    assert not out.short_entries.iloc[: s.lookback].any()
 
 
-def test_short_data_returns_empty():
+def test_short_data_returns_empty() -> None:
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=1, n=50)  # less than lookback
     out = s.backtest_signals(df)
@@ -69,7 +75,7 @@ def test_short_data_returns_empty():
 
 
 @pytest.mark.asyncio
-async def test_analyze_uptrend_returns_buy():
+async def test_analyze_uptrend_returns_buy() -> None:
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=1, n=300)
     sig = await s.analyze(df, "SPY")
@@ -81,7 +87,7 @@ async def test_analyze_uptrend_returns_buy():
 
 
 @pytest.mark.asyncio
-async def test_analyze_downtrend_returns_sell():
+async def test_analyze_downtrend_returns_sell() -> None:
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=-1, n=300)
     sig = await s.analyze(df, "QQQ")
@@ -91,7 +97,7 @@ async def test_analyze_downtrend_returns_sell():
 
 
 @pytest.mark.asyncio
-async def test_analyze_returns_none_on_short_data():
+async def test_analyze_returns_none_on_short_data() -> None:
     s = TimeSeriesMomentumStrategy()
     df = _df_trending(direction=1, n=50)
     sig = await s.analyze(df, "MSFT")
