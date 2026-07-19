@@ -32,16 +32,16 @@ dop = _load()
 
 def test_credit_spread_is_directional():
     bull = dop._income_leg_spec("credit_spread_income", "buy")
-    assert [(t, s) for t, s, _ in bull] == [("put", "sell"), ("put", "buy")]
+    assert [(t, s) for t, s, *_ in bull] == [("put", "sell"), ("put", "buy")]
     bear = dop._income_leg_spec("credit_spread_income", "sell")
-    assert [(t, s) for t, s, _ in bear] == [("call", "sell"), ("call", "buy")]
+    assert [(t, s) for t, s, *_ in bear] == [("call", "sell"), ("call", "buy")]
 
 
 def test_iron_condor_is_four_leg_any_side():
     for side in ("buy", "sell"):
         legs = dop._income_leg_spec("iron_condor", side)
         assert len(legs) == 4
-        assert sum(1 for _, s, _ in legs if s == "sell") == 2
+        assert sum(1 for _t, s, *_ in legs if s == "sell") == 2
 
 
 def test_non_income_strategy_returns_none():
