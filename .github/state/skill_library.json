@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Validate market hours",
-    "Analyze signal strength",
     "**Research validation:** The `research_scientist` agent is actively working on validating key components, such as investor pipelines (`investor_pipeline`) in the latest cycle.",
     "Test data feeds",
     "Sanitize query strings",
@@ -199,8 +197,10 @@
     "Verify market data",
     "Check API timeouts",
     "schemas on tasks/scheduler.py: success \u2014 tests green",
-    "Implement Temporal Fusion Transformers"
+    "Implement Temporal Fusion Transformers",
+    "Monitor system resources",
+    "Log API response codes"
   ],
-  "last_updated": "2026-07-19T03:15:44.273777+00:00",
+  "last_updated": "2026-07-19T04:25:33.745742+00:00",
   "total": 200
 }
