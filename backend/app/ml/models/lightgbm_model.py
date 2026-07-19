@@ -3,10 +3,15 @@ LightGBM classifier — faster than XGBoost, often matches on financial data.
 Includes SHAP explainability.
 """
 from __future__ import annotations
-import numpy as np
+
 import json
 from pathlib import Path
 from dataclasses import dataclass
+from typing import Any, List, Optional
+
+import numpy as np
+import torch
+
 from app.ml.models.base_model import AbstractModel, EvalMetrics
 from app.utils.logging import logger
 
@@ -21,8 +26,6 @@ try:
     HAS_SHAP = True
 except ImportError:
     HAS_SHAP = False
-
-import torch
 
 
 @dataclass
@@ -46,31 +49,64 @@ class LightGBMClassifier(AbstractModel):
     """
     model_type = "lightgbm"
 
-    def __init__(self, config: LightGBMConfig | None = None):
+    def __init__(self, config: Optional[LightGBMConfig] = None):
         self.config = config or LightGBMConfig()
         self._model: "lgb.Booster | None" = None
-        self._feature_names: list[str] = []
+        self._feature_names: List[str] = []
         self._shap_explainer = None
+
+    @staticmethod
+    def _prepare_array(arr: np.ndarray) -> np.ndarray:
+        """
+        Convert a possibly 3‑dimensional array to 2‑dimensional by using the last timestep.
+        Handles edge cases where the array is empty or does not have the expected dimensions.
+        """
+        if arr is None:
+            raise ValueError("Input array is None")
+        if arr.ndim == 0:
+            raise ValueError("Input array has no dimensions")
+        if arr.ndim == 3:
+            if arr.shape[1] == 0:
+                raise ValueError("3‑D input array has zero timesteps")
+            arr = arr[:, -1, :]  # use last timestep for flat features
+        return arr
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self._model is None:
             raise RuntimeError("Model not trained yet")
-        arr = x.numpy() if isinstance(x, torch.Tensor) else x
-        if arr.ndim == 3:
-            arr = arr[:, -1, :]  # use last timestep for flat features
-        return torch.tensor(self._model.predict(arr), dtype=torch.float32)
+        if x is None:
+            raise ValueError("Input tensor is None")
+        arr = x.numpy() if isinstance(x, torch.Tensor) else np.asarray(x)
+        arr = self._prepare_array(arr)
+        preds = self._model.predict(arr)
+        return torch.tensor(preds, dtype=torch.float32)
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray,
-            X_val: np.ndarray | None = None, y_val: np.ndarray | None = None,
-            feature_names: list[str] | None = None) -> dict:
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,
+        y_val: np.ndarray | None = None,
+        feature_names: List[str] | None = None,
+    ) -> dict:
         if not HAS_LGB:
             logger.warning("lightgbm not installed. Install: pip install lightgbm")
             return {"error": "lightgbm not installed"}
 
+        if X_train is None or y_train is None:
+            raise ValueError("Training data cannot be None")
+        if X_train.size == 0 or y_train.size == 0:
+            raise ValueError("Training data cannot be empty")
+        if X_train.shape[0] != y_train.shape[0]:
+            raise ValueError("Number of training samples and labels must match")
+
         self._feature_names = feature_names or [f"f{i}" for i in range(X_train.shape[1])]
         train_set = lgb.Dataset(X_train, label=y_train, feature_name=self._feature_names)
+
         valid_sets = [train_set]
         if X_val is not None and y_val is not None:
+            if X_val.shape[0] != y_val.shape[0]:
+                raise ValueError("Number of validation samples and labels must match")
             val_set = lgb.Dataset(X_val, label=y_val, reference=train_set)
             valid_sets.append(val_set)
 
@@ -89,7 +125,8 @@ class LightGBMClassifier(AbstractModel):
         }
         callbacks = [lgb.early_stopping(self.config.early_stopping_rounds), lgb.log_evaluation(50)]
         self._model = lgb.train(
-            params, train_set,
+            params,
+            train_set,
             num_boost_round=self.config.n_estimators,
             valid_sets=valid_sets,
             callbacks=callbacks,
@@ -100,29 +137,34 @@ class LightGBMClassifier(AbstractModel):
 
     def train_epoch(self, loader, optimizer, criterion) -> dict:
         # Collect all data and do a full LightGBM fit
-        X, Y = [], []
+        X_list: List[np.ndarray] = []
+        Y_list: List[np.ndarray] = []
         for x, y in loader:
             arr = x.numpy()
-            if arr.ndim == 3:
-                arr = arr[:, -1, :]
-            X.append(arr)
-            Y.append(y.numpy())
-        X = np.vstack(X)
-        Y = np.concatenate(Y)
+            arr = self._prepare_array(arr)
+            X_list.append(arr)
+            Y_list.append(y.numpy())
+        if not X_list:
+            raise ValueError("Data loader returned no batches")
+        X = np.vstack(X_list)
+        Y = np.concatenate(Y_list)
         return self.fit(X, Y)
 
     def evaluate(self, loader) -> EvalMetrics:
         if self._model is None:
             return EvalMetrics(accuracy=0.5, auc=0.5, sharpe=0.0)
-        X, Y = [], []
+        X_list: List[np.ndarray] = []
+        Y_list: List[np.ndarray] = []
         for x, y in loader:
             arr = x.numpy()
-            if arr.ndim == 3:
-                arr = arr[:, -1, :]
-            X.append(arr)
-            Y.append(y.numpy())
-        X = np.vstack(X)
-        Y = np.concatenate(Y)
+            arr = self._prepare_array(arr)
+            X_list.append(arr)
+            Y_list.append(y.numpy())
+        if not X_list:
+            logger.warning("Evaluation loader is empty; returning default metrics")
+            return EvalMetrics(accuracy=0.5, auc=0.5, sharpe=0.0)
+        X = np.vstack(X_list)
+        Y = np.concatenate(Y_list)
         preds = self._model.predict(X)
         acc = float(((preds > 0.5) == (Y > 0.5)).mean())
         try:
@@ -137,11 +179,25 @@ class LightGBMClassifier(AbstractModel):
             return {}
         imp = self._model.feature_importance(importance_type="gain")
         names = self._feature_names or self._model.feature_name()
-        total = sum(imp) or 1
+        # Guard against mismatched lengths
+        if len(imp) != len(names):
+            logger.warning(
+                "Feature importance length (%d) does not match number of feature names (%d); "
+                "truncating to the smaller size",
+                len(imp),
+                len(names),
+            )
+            min_len = min(len(imp), len(names))
+            imp = imp[:min_len]
+            names = names[:min_len]
+        total = float(sum(imp)) or 1.0
         return {n: round(float(v) / total, 4) for n, v in zip(names, imp)}
 
     def shap_values(self, X: np.ndarray) -> np.ndarray | None:
         if not HAS_SHAP or self._model is None:
+            return None
+        if X is None or X.size == 0:
+            logger.warning("Empty input provided to shap_values; returning None")
             return None
         if self._shap_explainer is None:
             self._shap_explainer = shap.TreeExplainer(self._model)
