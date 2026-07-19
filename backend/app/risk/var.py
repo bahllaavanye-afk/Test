@@ -9,27 +9,97 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, List
 
 import numpy as np
+from pydantic import BaseModel, Field, validator
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class VaRResult:
-    var_95: float        # 1-day 95% VaR (as fraction of portfolio)
-    var_99: float        # 1-day 99% VaR
-    cvar_95: float       # Expected shortfall at 95% (CVaR)
-    cvar_99: float       # Expected shortfall at 99%
-    method: str          # 'historical' | 'parametric'
-    n_observations: int
-    portfolio_value: float
-    var_95_usd: float    # VaR in USD
-    var_99_usd: float
+class VaRResult(BaseModel):
+    """Pydantic schema representing VaR calculation results."""
+
+    var_95: float = Field(
+        ...,
+        description="1‑day 95% VaR as a fraction of the portfolio",
+        example=0.02,
+        ge=0,
+        le=1,
+    )
+    var_99: float = Field(
+        ...,
+        description="1‑day 99% VaR as a fraction of the portfolio",
+        example=0.03,
+        ge=0,
+        le=1,
+    )
+    cvar_95: float = Field(
+        ...,
+        description="Expected shortfall at 95% confidence (CVaR)",
+        example=0.03,
+        ge=0,
+        le=1,
+    )
+    cvar_99: float = Field(
+        ...,
+        description="Expected shortfall at 99% confidence (CVaR)",
+        example=0.04,
+        ge=0,
+        le=1,
+    )
+    method: Literal["historical", "parametric", "default_insufficient_data"] = Field(
+        ...,
+        description="Method used for the VaR calculation",
+        example="historical",
+    )
+    n_observations: int = Field(
+        ...,
+        description="Number of return observations used in the calculation",
+        ge=0,
+        example=250,
+    )
+    portfolio_value: float = Field(
+        ...,
+        description="Current portfolio value in USD",
+        gt=0,
+        example=1_000_000,
+    )
+    var_95_usd: float = Field(
+        ...,
+        description="VaR 95 expressed in USD",
+        ge=0,
+        example=20_000,
+    )
+    var_99_usd: float = Field(
+        ...,
+        description="VaR 99 expressed in USD",
+        ge=0,
+        example=30_000,
+    )
+
+    @validator("var_95", "var_99", "cvar_95", "cvar_99")
+    def _non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("risk metric values must be non‑negative")
+        return v
+
+    @validator("var_99")
+    def _var99_ge_var95(cls, v: float, values: dict) -> float:
+        var95 = values.get("var_95")
+        if var95 is not None and v < var95:
+            raise ValueError("var_99 must be greater than or equal to var_95")
+        return v
+
+    @validator("cvar_99")
+    def _cvar99_ge_cvar95(cls, v: float, values: dict) -> float:
+        cvar95 = values.get("cvar_95")
+        if cvar95 is not None and v < cvar95:
+            raise ValueError("cvar_99 must be greater than or equal to cvar_95")
+        return v
 
     def to_dict(self) -> dict:
+        """Return a JSON‑serialisable representation with human‑readable formatting."""
         return {
             "var_95_pct": round(self.var_95 * 100, 3),
             "var_99_pct": round(self.var_99 * 100, 3),
@@ -39,12 +109,12 @@ class VaRResult:
             "var_99_usd": round(self.var_99_usd, 2),
             "method": self.method,
             "n_observations": self.n_observations,
-            "interpretation": f"With 95% confidence, max 1-day loss ≤ ${self.var_95_usd:,.0f}",
+            "interpretation": f"With 95% confidence, max 1‑day loss ≤ ${self.var_95_usd:,.0f}",
         }
 
 
 def historical_var(
-    returns: list[float],
+    returns: List[float],
     portfolio_value: float,
     method: Literal["historical", "parametric"] = "historical",
 ) -> VaRResult:
