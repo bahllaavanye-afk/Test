@@ -199,8 +199,13 @@
     "Test network connectivity",
     "Limit API retries",
     "Scan for memory leaks",
-    "Timeout idle tasks"
+    "Timeout idle tasks",
+    "refactor on execution/iceberg.py: success \u2014 tests green",
+    "refactor on risk/correlation.py: success \u2014 tests green",
+    "refactor on brokers/binance.py: success \u2014 tests green",
+    "refactor on backtest/stress_test.py: success \u2014 tests green",
+    "refactor on comparison/benchmarks.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T15:54:13.986448+00:00",
+  "last_updated": "2026-07-19T15:55:22.405960+00:00",
   "total": 200
 }
