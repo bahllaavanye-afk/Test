@@ -27,14 +27,25 @@ class DonchianBreakoutStrategy(AbstractStrategy):
     }
 
     def __init__(self, params: dict | None = None):
+        if params is not None and not isinstance(params, dict):
+            raise ValueError("params must be a dict if provided")
         super().__init__(params)
         effective = {**self.DEFAULT_PARAMS, **(params or {})}
+        for key in ("entry_period", "exit_period", "atr_period"):
+            value = effective.get(key)
+            if not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{key} must be a positive integer, got {value!r}")
         self.entry_period = effective["entry_period"]
         self.exit_period = effective["exit_period"]
         self.atr_period = effective["atr_period"]
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        if not {"high", "low", "close"}.issubset(data.columns):
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("data must be a pandas DataFrame")
+        if not isinstance(symbol, str) or not symbol:
+            raise ValueError("symbol must be a non-empty string")
+        required_cols = {"high", "low", "close"}
+        if not required_cols.issubset(data.columns):
             return None
         if len(data) < self.entry_period + self.atr_period + 5:
             return None
@@ -53,18 +64,38 @@ class DonchianBreakoutStrategy(AbstractStrategy):
             return None
 
         if price > res:
-            atr_val = float(atr.iloc[-1]) if atr is not None and not pd.isna(atr.iloc[-1]) else 0.0
+            atr_val = (
+                float(atr.iloc[-1])
+                if atr is not None and not pd.isna(atr.iloc[-1])
+                else 0.0
+            )
             # how many ATRs past the channel — bigger thrust = more conviction
-            thrust = (price - res) / atr_val if atr_val > 0 else (price - res) / max(res, 1e-8)
+            thrust = (
+                (price - res) / atr_val
+                if atr_val > 0
+                else (price - res) / max(res, 1e-8)
+            )
             confidence = min(0.80, 0.56 + thrust * 0.15)
-            return Signal(symbol=symbol, side="buy", confidence=confidence,
-                          strategy_name=self.name, strategy_type=self.strategy_type,
-                          risk_bucket=self.risk_bucket,
-                          metadata={"channel_high": round(float(res), 4),
-                                    "atr": round(atr_val, 4)})
+            return Signal(
+                symbol=symbol,
+                side="buy",
+                confidence=confidence,
+                strategy_name=self.name,
+                strategy_type=self.strategy_type,
+                risk_bucket=self.risk_bucket,
+                metadata={
+                    "channel_high": round(float(res), 4),
+                    "atr": round(atr_val, 4),
+                },
+            )
         return None
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("df must be a pandas DataFrame")
+        required_cols = {"high", "low", "close"}
+        if not required_cols.issubset(df.columns):
+            raise ValueError(f"DataFrame must contain columns: {required_cols}")
         high = df["high"]
         low = df["low"]
         close = df["close"]
@@ -75,7 +106,10 @@ class DonchianBreakoutStrategy(AbstractStrategy):
         lower = low.rolling(self.exit_period).min().shift(2)
         prev_close = close.shift(1)
 
-        entries = prev_close > upper          # breakout above prior N-bar high
-        exits = prev_close < lower            # breakdown below prior M-bar low
+        entries = prev_close > upper  # breakout above prior N-bar high
+        exits = prev_close < lower    # breakdown below prior M-bar low
 
-        return BacktestSignals(entries=entries.fillna(False), exits=exits.fillna(False))
+        return BacktestSignals(
+            entries=entries.fillna(False),
+            exits=exits.fillna(False),
+        )
