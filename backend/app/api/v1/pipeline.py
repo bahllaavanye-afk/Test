@@ -133,3 +133,102 @@ def pipeline_run_detail(run_id: str):
 def pipeline_definitions():
     """Return static pipeline stage definitions for the frontend."""
     return PIPELINE_DEFS
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case behavior
+# --------------------------------------------------------------------------- #
+
+import pytest
+from datetime import datetime, timedelta
+
+
+def _write_state(tmp_path: Path, data) -> Path:
+    """Helper to write JSON data to a temporary state file and return its path."""
+    p = tmp_path / "pipeline_runs.json"
+    p.write_text(json.dumps(data))
+    return p
+
+
+def test_load_runs_file_missing(monkeypatch, tmp_path):
+    """When the state file does not exist, _load_runs should return an empty list."""
+    monkeypatch.setattr(
+        "backend.app.api.v1.pipeline._STATE_FILE",
+        tmp_path / "nonexistent.json",
+    )
+    assert _load_runs() == []
+
+
+def test_load_runs_invalid_json(monkeypatch, tmp_path):
+    """Invalid JSON content should be treated as an empty result."""
+    bad_file = tmp_path / "pipeline_runs.json"
+    bad_file.write_text("not a json")
+    monkeypatch.setattr(
+        "backend.app.api.v1.pipeline._STATE_FILE",
+        bad_file,
+    )
+    assert _load_runs() == []
+
+
+def test_load_runs_respects_limit_and_sort(monkeypatch, tmp_path):
+    """_load_runs must sort by started_at descending and respect the limit."""
+    now = datetime.utcnow()
+    runs = [
+        {"run_id": f"id_{i}", "started_at": (now - timedelta(minutes=i)).isoformat()}
+        for i in range(10)
+    ]
+    state_path = _write_state(tmp_path, runs)
+    monkeypatch.setattr(
+        "backend.app.api.v1.pipeline._STATE_FILE",
+        state_path,
+    )
+    result = _load_runs(limit=5)
+    assert len(result) == 5
+    # Verify ordering: most recent first
+    expected_ids = [f"id_{i}" for i in range(5)]
+    assert [r["run_id"] for r in result] == expected_ids
+
+
+def test_enrich_run_unknown_pipeline(monkeypatch):
+    """When a pipeline is not defined, enrich should preserve original data."""
+    unknown = {"pipeline": "unknown_pipe", "stages": [{"name": "custom", "status": "done"}]}
+    enriched = _enrich_run(unknown)
+    assert enriched["pipeline_label"] == "unknown_pipe"
+    assert enriched["stages"] == unknown["stages"]
+
+
+def test_pipeline_status_latest_deduplication(monkeypatch, tmp_path):
+    """Only the newest run per pipeline+desk pair should be returned."""
+    now = datetime.utcnow()
+    runs = [
+        {
+            "run_id": "first",
+            "pipeline": "ml_experiments",
+            "desk": "alpha",
+            "started_at": (now - timedelta(hours=2)).isoformat(),
+        },
+        {
+            "run_id": "second",
+            "pipeline": "ml_experiments",
+            "desk": "alpha",
+            "started_at": (now - timedelta(hours=1)).isoformat(),
+        },
+        {
+            "run_id": "third",
+            "pipeline": "desk_trading",
+            "desk": "beta",
+            "started_at": now.isoformat(),
+        },
+    ]
+    state_path = _write_state(tmp_path, runs)
+    monkeypatch.setattr(
+        "backend.app.api.v1.pipeline._STATE_FILE",
+        state_path,
+    )
+    latest = pipeline_status_latest()
+    # Expect two entries: the most recent for each unique key
+    ids = {run["run_id"] for run in latest}
+    assert ids == {"second", "third"}
+    # Ensure ordering respects the original sorted order (most recent first)
+    assert latest[0]["run_id"] == "third"
+    assert latest[1]["run_id"] == "second"
