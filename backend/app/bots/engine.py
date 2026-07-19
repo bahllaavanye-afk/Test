@@ -792,10 +792,19 @@ class BotEngine:
         raw_conditions: list[dict] = bot.conditions or []
         conditions = [ConditionConfig(**c) for c in raw_conditions]
 
+        # Real position state for this bot (open now / opened today), used both
+        # for position-based conditions and the OA position-limit safeguards.
+        open_count, today_count = await self._count_bot_positions(bot, db)
+
         condition_results: list[bool] = []
         for cond in conditions:
             try:
-                passed = evaluate_condition(cond, df, current_price)
+                if cond.type == "no_position":
+                    passed = open_count == 0
+                elif cond.type == "position_exists":
+                    passed = open_count > 0
+                else:
+                    passed = evaluate_condition(cond, df, current_price)
                 condition_results.append(passed)
             except Exception as exc:
                 logger.warning("Condition evaluation error", bot_id=bot.id, error=str(exc))
@@ -822,6 +831,26 @@ class BotEngine:
         action = ActionConfig(**action_dict)
         orders_created: list[str] = []
         signal = "hold"
+
+        # OA position-limit safeguards: refuse to open once a limit is reached.
+        opens_a_position = action.type in ("open_long", "open_short", "open_option_spread")
+        if opens_a_position:
+            if action.max_open_positions is not None and open_count >= action.max_open_positions:
+                result = BotResult(
+                    fired=False,
+                    reason=f"Position limit reached ({open_count}/{action.max_open_positions} open)",
+                    signal="hold",
+                )
+                await self._update_bot_stats(bot, db, result)
+                return result
+            if action.max_daily_positions is not None and today_count >= action.max_daily_positions:
+                result = BotResult(
+                    fired=False,
+                    reason=f"Daily position limit reached ({today_count}/{action.max_daily_positions} today)",
+                    signal="hold",
+                )
+                await self._update_bot_stats(bot, db, result)
+                return result
 
         if action.type in ("open_long", "open_short"):
             signal = "buy" if action.type == "open_long" else "sell"
@@ -985,6 +1014,39 @@ class BotEngine:
                 error=str(exc),
             )
             return None
+
+    async def _count_bot_positions(self, bot: Bot, db: AsyncSession) -> tuple[int, int]:
+        """(open_now, opened_today) paper positions for this bot.
+
+        Open positions are still-`paper` Orders tagged with this bot_id (the same
+        attribution the activity/performance endpoints use); daily count is those
+        created since UTC midnight. Filtered in Python to stay portable across the
+        JSON column on both Postgres and the SQLite test DB. Fail-open (0, 0) so a
+        transient query error never blocks trading — the safeguard is a cap, not a
+        correctness gate.
+        """
+        try:
+            from datetime import timezone as _tz
+
+            from sqlalchemy import select as _select
+
+            from app.models.order import Order
+
+            rows = (await db.execute(
+                _select(Order).where(Order.status == "paper").limit(1000)
+            )).scalars().all()
+            today = datetime.now(_tz.utc).date()
+            open_now = today_count = 0
+            for o in rows:
+                if (o.raw_payload or {}).get("bot_id") != bot.id:
+                    continue
+                open_now += 1
+                if o.created_at and o.created_at.date() == today:
+                    today_count += 1
+            return open_now, today_count
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Position count failed (fail-open)", bot_id=bot.id, error=str(exc))
+            return 0, 0
 
     async def _create_paper_order(
         self,

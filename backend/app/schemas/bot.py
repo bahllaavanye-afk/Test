@@ -65,6 +65,11 @@ class ActionConfig(BaseModel):
     alert_message: str | None = None
     reduce_by_pct: float | None = None
     legs: list[OptionLeg] | None = None   # required for open_option_spread
+    # Option Alpha-style per-bot safeguards (checked before opening a position).
+    # None = unlimited. Bot won't open once a limit is reached; existing
+    # positions must close (or the day roll over) before it opens again.
+    max_open_positions: int | None = None    # OA "Position limit" (max open at once)
+    max_daily_positions: int | None = None    # OA "Daily positions limit"
 
 
 class ExitRuleConfig(BaseModel):
