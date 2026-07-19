@@ -1,8 +1,5 @@
 {
   "skills": [
-    "ALLOW_PAID_APIS must always be False \u2014 never change this",
-    "Refactor code for quality",
-    "Validate input types",
     "Prioritize thread safety",
     "Test market data",
     "* **UCB1 bandit algorithm update**: The UCB1 selection logic in `src/band` is being updated.",
@@ -199,8 +196,11 @@
     "Ping dependencies",
     "Check RAM usage",
     "Validate API calls",
-    "Test network connectivity"
+    "Test network connectivity",
+    "Limit API retries",
+    "Scan for memory leaks",
+    "Timeout idle tasks"
   ],
-  "last_updated": "2026-07-19T14:37:14.830764+00:00",
+  "last_updated": "2026-07-19T15:54:13.986448+00:00",
   "total": 200
 }
