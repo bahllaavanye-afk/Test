@@ -1,5 +1,6 @@
 """Portfolio positions endpoint."""
 import json
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,10 +10,15 @@ from app.models.position import Position
 from app.models.user import User
 from app.models.account import Account
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/positions", tags=["positions"])
+
+# Simple in‑memory cache for position queries.
+# Key: (user_id, account_id or None)
+# Value: (timestamp, data)
+_positions_cache: dict[tuple[str, str | None], tuple[float, list[dict]]] = {}
+_CACHE_TTL_SECONDS = 5.0  # short‑lived cache to reduce DB/Alpaca load
 
 
 class PositionOut(BaseModel):
@@ -41,12 +47,35 @@ def _alpaca_position_to_out(p: dict) -> dict:
     }
 
 
+def _cache_get(user_id: str, account_id: str | None):
+    """Retrieve cached positions if still fresh."""
+    key = (user_id, account_id)
+    entry = _positions_cache.get(key)
+    if entry:
+        ts, data = entry
+        if time.time() - ts < _CACHE_TTL_SECONDS:
+            return data
+        # stale entry – remove
+        _positions_cache.pop(key, None)
+    return None
+
+
+def _cache_set(user_id: str, account_id: str | None, data: list[dict]):
+    """Store positions in cache."""
+    _positions_cache[(user_id, account_id)] = (time.time(), data)
+
+
 @router.get("/", response_model=list[PositionOut])
 async def list_positions(
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Try cached result first
+    cached = _cache_get(current_user.id, account_id)
+    if cached is not None:
+        return cached
+
     # If account_id provided, try live Alpaca data for that account
     if account_id:
         acct_result = await db.execute(
@@ -55,9 +84,12 @@ async def list_positions(
         account = acct_result.scalar_one_or_none()
         if account and account.broker == "alpaca" and account.encrypted_key:
             from app.brokers.alpaca_orders import get_alpaca_positions
+
             try:
                 live_positions = await get_alpaca_positions(account)
-                return [_alpaca_position_to_out(p) for p in live_positions]
+                out = [_alpaca_position_to_out(p) for p in live_positions]
+                _cache_set(current_user.id, account_id, out)
+                return out
             except Exception as e:
                 logger.warning(f"Alpaca positions fetch failed: {e} — falling back to DB positions")
 
@@ -72,7 +104,11 @@ async def list_positions(
         query = query.where(Position.account_id == account_id)
 
     result = await db.execute(query)
-    return result.scalars().all()
+    positions = result.scalars().all()
+    # Convert ORM objects to dicts using Pydantic's from_attributes for consistency with cached format
+    out = [PositionOut.from_orm(p).model_dump() for p in positions]
+    _cache_set(current_user.id, account_id, out)
+    return out
 
 
 @router.get("/{symbol}/exit-config")
