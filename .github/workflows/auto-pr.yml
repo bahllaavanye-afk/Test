@@ -56,6 +56,27 @@ jobs:
             echo "✅ draft PR opened for $BRANCH" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           # GITHUB_TOKEN-created PRs never fire pull_request workflows — run CI
-          # explicitly so the gate has real checks to verify.
+          # explicitly so the checks the merge gate needs actually exist.
           gh workflow run test.yml --ref "$BRANCH"
           echo "✅ CI dispatched on $BRANCH" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Arm GitHub NATIVE auto-merge so the PR merges itself the moment the
+          # required status checks (set in branch protection) pass — no human, no
+          # PAT, no self-modifying merge job. The merge decision stays inside
+          # GitHub's protected mechanism (the operator owns the required-checks
+          # gate), so this only ARMS it; branch protection is what enforces green.
+          # Requires a one-time repo setup (see docs/AUTOMATION.md): "Allow
+          # auto-merge" ON + a branch-protection rule on main with required
+          # checks. Auto-merge can't arm on a draft, so mark ready first. All
+          # steps are best-effort: if auto-merge isn't enabled yet, the PR simply
+          # waits for a human — nothing breaks.
+          num=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh pr ready "$num" 2>/dev/null || true
+            if gh pr merge "$num" --auto --squash 2>/tmp/am.err; then
+              echo "✅ native auto-merge armed on #$num" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "ℹ️ auto-merge not armed (enable it once per docs/AUTOMATION.md): $(cat /tmp/am.err)" \
+                | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
