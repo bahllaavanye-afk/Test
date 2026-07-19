@@ -4,9 +4,28 @@ Regression test for the `/ws/prices` all-symbols bug: the all-symbols socket
 subscribes to the literal topic ``prices:*`` while the feed broadcasts to
 ``prices:{symbol}``. Before the fix, the wildcard subscriber received nothing.
 """
+import inspect
+
 import pytest
 
 from app.ws.manager import ConnectionManager
+
+
+def _validate_ws(ws) -> None:
+    """Validate that a WebSocket-like object provides the required async interface."""
+    required_attrs = ("accept", "send_text")
+    for attr in required_attrs:
+        if not hasattr(ws, attr):
+            raise ValueError(f"WebSocket object must have a '{attr}' attribute")
+        method = getattr(ws, attr)
+        if not inspect.iscoroutinefunction(method):
+            raise ValueError(f"WebSocket '{attr}' must be an async function")
+
+
+def _validate_topic(topic) -> None:
+    """Validate that a topic is a non‑empty string."""
+    if not isinstance(topic, str) or not topic:
+        raise ValueError("Topic must be a non‑empty string")
 
 
 class _FakeWS:
@@ -25,7 +44,12 @@ class _FakeWS:
 async def test_wildcard_subscriber_receives_concrete_topic():
     m = ConnectionManager()
     all_sub, one_sub = _FakeWS(), _FakeWS()
+    _validate_ws(all_sub)
+    _validate_ws(one_sub)
+
+    _validate_topic("prices:*")
     await m.connect(all_sub, "prices:*")
+    _validate_topic("prices:AAPL")
     await m.connect(one_sub, "prices:AAPL")
 
     await m.broadcast("prices:AAPL", {"symbol": "AAPL", "last": 1.0})
@@ -43,7 +67,11 @@ async def test_wildcard_is_prefix_scoped():
     """A ``prices:*`` subscriber must NOT receive a different prefix's broadcasts."""
     m = ConnectionManager()
     price_sub = _FakeWS()
+    _validate_ws(price_sub)
+
+    _validate_topic("prices:*")
     await m.connect(price_sub, "prices:*")
+    _validate_topic("alerts:risk")
     await m.broadcast("alerts:risk", {"msg": "VaR breach"})
     assert price_sub.sent == []
 
@@ -56,6 +84,9 @@ async def test_dead_socket_is_purged():
 
     m = ConnectionManager()
     dead = _Dead()
+    _validate_ws(dead)
+
+    _validate_topic("prices:*")
     await m.connect(dead, "prices:*")
     await m.broadcast("prices:AAPL", {"symbol": "AAPL"})
     # Purged from every topic set so it is not retried forever.
