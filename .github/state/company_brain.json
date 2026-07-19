@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784435640.968934,
+    "last_updated": 1784445315.2227294,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,69 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784435640.9679193
+    "last_brain_update": 1784445315.2217567
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781130480.7076263
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781130826.2626133
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 1,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=1). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781133054.650436
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 0,
-      "sector_leaders": [
-        "Healthcare",
-        "Cons. Staples",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=0). Leading: Healthcare, Cons. Staples. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1781133434.3465724
-    },
     {
       "source": "market_scanner_v2",
       "regime": "neutral",
@@ -1871,14 +1811,37 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1784435639.0571227
+    },
+    {
+      "lesson": "Repeated auto-fix failures suggest a systemic issue with the patch application pipeline; investigate and fix immediately to unblock deployments.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.915579
+    },
+    {
+      "lesson": "Experiment run results are truncated or missing; enforce complete logging of outcomes (metrics, errors) for all walk-forward runs.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.9210885
+    },
+    {
+      "lesson": "Walk-forward parameters (min_train=252, refit_every=21) may not adapt to recent market volatility; validate with out-of-sample testing.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.925246
+    },
+    {
+      "lesson": "Long threshold of 0.55 for GBC signals could increase false positives; perform sensitivity analysis and consider dynamic thresholding.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784445296.929353
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given text in 1-2 sentences. The text appears to be a GitHub PR/issue discussion title or snippet. It mentions \"Slack agent-team run failed \u2014 posts are likely not reaching the workspace (quota `message_limit_exce\" and then some encoded string. The user wants a summary of the discussion. The summary should capture the main point: a Slack agent-team run failed because posts are not reaching the workspace, likely due to exceeding a message limit quota",
-      "item_count": 20,
-      "ts": 1783414490.7570062
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a truncated or encoded string. The first part seems to be a base64 or similar encoded string, but the actual content is partially readable: \"[vc]: #2fb9L0vzqSC8unOyyZyv282+ygEsG3lPSxLE0PF5En0=:eyJpc01vbm9yZXBvIjp",
       "item_count": 20,
@@ -2373,6 +2336,11 @@
       "summary": "Deployment failed due to resource limitations with a 24-hour retry suggestion, and two automatic fix attempts also failed to apply patches.",
       "item_count": 20,
       "ts": 1784435640.9579551
+    },
+    {
+      "summary": "A workflow run on 2026-07-19 attempted an auto-fix but failed because the patch could not be applied to the file.",
+      "item_count": 20,
+      "ts": 1784445315.212126
     }
   ],
   "experiment_results": [
