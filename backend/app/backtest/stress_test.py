@@ -87,16 +87,55 @@ class StressResult:
     data_points: int
 
 
-def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
+def _slice_series(
+    series: pd.Series | None,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.Series | None:
     """Vectorized slice of a Series using .loc; returns None if input is None."""
     if series is None:
         return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
     try:
         return series.loc[start:end]
     except Exception:
         mask = (series.index >= start) & (series.index <= end)
         return series.loc[mask]
+
+
+def _scenario_intersects_price_index(
+    scenario: StressScenario,
+    price_index: pd.Index,
+) -> bool:
+    """Return True if the scenario window overlaps any timestamp in price_index."""
+    start_ts = pd.Timestamp(scenario.start)
+    end_ts = pd.Timestamp(scenario.end)
+    return ((price_index >= start_ts) & (price_index <= end_ts)).any()
+
+
+def _prepare_slices(
+    signals: pd.Series,
+    prices: pd.Series,
+    opens: pd.Series | None,
+    volume: pd.Series | None,
+    scenario: StressScenario,
+) -> tuple[pd.Series | None, pd.Series | None, pd.Series | None, pd.Series | None]:
+    """Slice all input series to the scenario window."""
+    start_ts = pd.Timestamp(scenario.start)
+    end_ts = pd.Timestamp(scenario.end)
+
+    s_signals = _slice_series(signals, start_ts, end_ts)
+    s_prices = _slice_series(prices, start_ts, end_ts)
+    s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
+    s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+    return s_signals, s_prices, s_opens, s_volume
+
+
+def _evaluate_scenario(
+    sliced_prices: pd.Series | None,
+    min_data_points: int = 5,
+) -> bool:
+    """Determine whether the sliced price series is sufficient for backtesting."""
+    return sliced_prices is not None and len(sliced_prices) >= min_data_points
 
 
 def run_stress_tests(
@@ -119,16 +158,11 @@ def run_stress_tests(
         scenarios = STRESS_SCENARIOS
 
     results: list[StressResult] = []
-
-    # Convert once to pandas Timestamp for efficient comparison
     price_index = prices.index
 
     for scenario in scenarios:
-        start_ts = pd.Timestamp(scenario.start)
-        end_ts = pd.Timestamp(scenario.end)
-
-        # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+        # Early skip if the scenario does not intersect the price data at all
+        if not _scenario_intersects_price_index(scenario, price_index):
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -139,18 +173,18 @@ def run_stress_tests(
             )
             continue
 
-        s_signals = _slice_series(signals, start_ts, end_ts)
-        s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+        s_signals, s_prices, s_opens, s_volume = _prepare_slices(
+            signals, prices, opens, volume, scenario
+        )
 
-        if s_prices is None or len(s_prices) < 5:
+        if not _evaluate_scenario(s_prices):
+            data_pts = len(s_prices) if s_prices is not None else 0
             results.append(
                 StressResult(
                     scenario=scenario,
                     metrics=None,
                     period_covered=False,
-                    data_points=len(s_prices) if s_prices is not None else 0,
+                    data_points=data_pts,
                 )
             )
             continue
@@ -181,7 +215,7 @@ def stress_summary(results: list[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
+    Returns per‑scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
     out: dict = {}
