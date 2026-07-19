@@ -1123,4 +1123,28 @@ BOT_TEMPLATES: dict[str, dict] = {
         },
         "exit_rules": [{"type": "time_exit", "hours": 456}],
     },
+
+    # ── User's own OA bots (Chrome-agent export, 2026-07-19) ─────────────────
+    "oa_user_0dte_atm_sps": {
+        "name": "OA 0DTE Daily ATM Short Put Spread (mine)",
+        "description": "Copied from the user's live OA paper bot BOTjeVLzHfBP…213 (71 closed trades, recent wins +$155/+$110). Daily 9:45am ET: short put ~ATM, long put ~$10 lower on SPX — proxied here on SPY with delta strikes (0.50/0.42 ≈ same geometry at 1/10 scale). TP 30% of credit, hard time exit ~3h. OA's reward/risk>40% entry gate has no engine equivalent yet — noted, not silently dropped. Allocation $2.5k → 2.5%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "13:45", "end_time": "13:55"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2.5,
+            "take_profit_pct": 30,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.50, "dte": 0, "ratio": 1},
+                {"side": "buy",  "option_type": "put", "delta": 0.42, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 3}],
+    },
 }
