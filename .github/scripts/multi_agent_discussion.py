@@ -26,6 +26,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 import requests
 
+# Discord is the operator's actual chat surface (Slack token is dead). Deliver
+# every discussion message to Discord via the shared notify helper — bot-token
+# routing to the matching channel, per-channel webhook, or default webhook.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from notify import discord_post as _discord_post
+except Exception:  # noqa: BLE001 — never let a delivery import break the run
+    def _discord_post(channel: str, text: str, username: str = "QuantEdge") -> bool:
+        print(f"[discord-unavailable] #{channel} {username}: {text[:100]}", flush=True)
+        return False
+
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
@@ -291,8 +302,10 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
         f"_{len(round_config['speakers'])} agents contributing · {len(skills)} skills in shared memory_"
     )
     thread_ts = post_slack(channel, opening, username="QuantEdge Multi-Agent", icon="speech_balloon")
+    _discord_post(channel, opening, "QuantEdge Multi-Agent")  # Discord is the live surface
 
     # Each agent speaks in turn
+    real_replies = 0
     prev_content = opening
     for agent_name, display_name, icon, task_prompt in round_config["speakers"]:
         agent_stats = stats.get(agent_name, {})
@@ -317,7 +330,11 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
         ]
         reply = call_llm(messages, max_tokens=300)
 
-        if not reply:
+        if reply:
+            real_replies += 1
+            # Only real LLM replies go to Discord — no canned filler in the channel.
+            _discord_post(channel, f"**{display_name}**: {reply}", display_name)
+        else:
             reply = f"[{agent_name}] LLM unavailable — set API keys in GitHub Secrets to enable real collaboration."
 
         ts = post_slack(channel, reply, username=display_name, icon=icon, thread_ts=thread_ts)
@@ -341,7 +358,19 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
 
         print(f"  {agent_name}: {reply[:80]}…")
 
-    print(f"  Discussion complete: {len(new_learnings)} learnings added")
+    # If not one speaker produced a real reply, the free-LLM keys are missing.
+    # Say so ONCE in the channel (not one canned line per speaker) so the operator
+    # sees an actionable reason instead of silence.
+    if real_replies == 0:
+        _discord_post(
+            channel,
+            "⚠️ Discussion could not run — no free-LLM API key is set. Add any of "
+            "`GROQ_API_KEY_1` / `GEMINI_API_KEY_1` / `DEEPSEEK_API_KEY` (all free tiers) "
+            "to GitHub → Settings → Secrets → Actions to turn on real agent conversations.",
+            "QuantEdge Multi-Agent",
+        )
+
+    print(f"  Discussion complete: {len(new_learnings)} learnings added, {real_replies} real replies")
     return new_learnings
 
 
