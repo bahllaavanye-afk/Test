@@ -3,14 +3,17 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
+from typing import List
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, validator
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -37,15 +40,23 @@ class ExperimentOut(BaseModel):
 async def list_experiments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> List[ExperimentOut]:
+    """Return the most recent experiments, up to 50."""
     result = await db.execute(
         select(Experiment).order_by(Experiment.started_at.desc()).limit(50)
     )
-    return result.scalars().all()
+    experiments = result.scalars().all()
+    return experiments if experiments is not None else []
 
 
 class TrainRequest(BaseModel):
     config_name: str  # e.g. "lstm_btc_1h"
+
+    @validator("config_name")
+    def non_empty(cls, v: str) -> str:
+        if v is None or not v.strip():
+            raise ValueError("config_name must be a non‑empty string")
+        return v.strip()
 
 
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
@@ -57,19 +68,23 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         await proc.wait()
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.error("Experiment %s failed: %s", experiment_id, exc)
 
 
 @router.post("/train")
 async def trigger_training(
-    body: TrainRequest,
+    body: TrainRequest = Body(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -78,12 +93,18 @@ async def trigger_training(
     Returns immediately with experiment_id and status='queued'.
     The training runs as a background asyncio task.
     """
+    # Normalise config name, ensuring we don't end up with an empty string
     config_name = body.config_name.removesuffix(".yaml")
+    if not config_name:
+        raise HTTPException(400, "Config name cannot be empty after processing")
 
     # Validate config exists
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
-    if not config_path.exists():
-        available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    if not config_path.is_file():
+        if not CONFIGS_DIR.is_dir():
+            available = []
+        else:
+            available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
         raise HTTPException(
             404,
             f"Config '{config_name}' not found. Available: {available[:10]}{'...' if len(available) > 10 else ''}",
@@ -101,7 +122,12 @@ async def trigger_training(
         created_at=now,
     )
     db.add(exp)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception as exc:  # pragma: no cover
+        await db.rollback()
+        logger.error("Failed to commit experiment %s: %s", experiment_id, exc)
+        raise HTTPException(500, "Failed to create experiment record")
 
     # Launch background training task (fire-and-forget)
     asyncio.create_task(_run_experiment_async(config_name, experiment_id))
@@ -118,7 +144,7 @@ async def list_train_configs(
     current_user: User = Depends(get_current_user),
 ):
     """List available training config names."""
-    if not CONFIGS_DIR.exists():
+    if not CONFIGS_DIR.is_dir():
         return {"configs": []}
     configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
     return {"configs": configs}
@@ -130,6 +156,7 @@ async def get_experiment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Retrieve details for a single experiment."""
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
