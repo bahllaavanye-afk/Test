@@ -11,12 +11,12 @@
       (Closed Positions, Closed P/L, Profit Factor, Max Drawdown, Win Rate, Wins, Losses, Avg P/L,
       Avg Win, Avg Loss, Streak, Sharpe) + Capital sidebar (Allocation/Net Liquid/At Risk/Available/
       Maintenance). Backend `/bots/{id}/performance` now returns all OA metrics + weekday/hour/symbol breakdowns.
-- [ ] **[P1] Analyze page** (screenshot 3) — dedicated per-bot/portfolio Analyze view: CLOSED P/L +
-      P/L-PER-DAY + PROFIT-FACTOR-donut + WIN-RATE-donut cards; big Closed-P/L area chart (Total/Daily/
-      Calendar tabs); Metrics sidebar (Positions/Wins/Losses/Sharpe/Sortino); Averages (P/L, Return on
-      Risk, Risk, Win, Loss, Entry POP, DTE, Days in Trade); Day-of-Week + Hour-of-Day bar charts;
-      By-Strategy + By-Symbol horizontal bars; Hindsight Report + Export Data. **Backend breakdown data
-      already shipped** (`performance.breakdown`, `sharpe`, `sortino`) — this is the frontend page.
+- [x] **[P1] Analyze page** (screenshot 3) — SHIPPED (first pass): the expanded bot panel now has a
+      **Dashboard / Analyze** tab toggle; Analyze renders Metrics (Positions/Wins/Losses/Sharpe/Sortino/
+      Profit Factor) + signed bar charts for **P/L by Day-of-Week**, **by Hour-of-Day**, and horizontal
+      **P/L by Symbol** — all from the real `/performance` breakdown. `BotAnalyzePanel` in BotBuilder.tsx.
+      Follow-ups: donut cards, big area chart with Total/Daily/Calendar tabs, Averages (Return-on-Risk/
+      Entry-POP/DTE/Days-in-Trade), Hindsight Report, Export Data.
 - [ ] **[P1] Positions tables** (screenshots 5,6) — Open Positions (Bot icon, Description, Legs w/
       call/put chips, Last, DTE, Qty, P/L, ROR, Net Liq, Premium, Risk, DIT + aggregate cards) and
       Closed Positions (adds Exp, Status Expired/Closed, Trade Price, Close Price, Price at OI/CI).

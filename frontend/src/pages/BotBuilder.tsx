@@ -1482,6 +1482,101 @@ function BotActivityPanel({ botId }: { botId: string }) {
   )
 }
 
+/** Option Alpha "Analyze" tab — Metrics (Positions/Wins/Losses/Sharpe/Sortino/
+ *  Profit Factor) + P&L broken down by day-of-week, hour-of-day and symbol.
+ *  All from the real /performance payload (shared cached query, breakdown +
+ *  sharpe/sortino shipped by the backend). Honest empty state when no trades. */
+function BotAnalyzePanel({ botId }: { botId: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['bot-perf', botId],
+    queryFn: () => botsPerfApi.performance(botId),
+    staleTime: 60_000,
+  })
+
+  if (isLoading) return <div className="text-[#555] text-xs font-mono py-3">Loading analysis…</div>
+  if (error || !data) return <div className="text-[#ff1744] text-xs font-mono py-3">Failed to load analysis.</div>
+  if (!data.series.length || !data.breakdown) {
+    return <div className="text-[#555] text-xs font-mono py-3">No closed trades yet — analysis appears after the first round trip.</div>
+  }
+
+  const money = (v: number) => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })
+
+  // Signed bar chart (day-of-week / hour-of-day): green above zero, red below.
+  const Bars = ({ rows }: { rows: { label: string; pnl: number }[] }) => {
+    const w = 320, h = 110, pad = 18
+    const vals = rows.map((r) => r.pnl)
+    const max = Math.max(1, ...vals), min = Math.min(0, ...vals)
+    const span = max - min || 1
+    const bw = (w - 2 * pad) / Math.max(rows.length, 1)
+    const zeroY = pad + ((max - 0) * (h - 2 * pad)) / span
+    return (
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full h-auto">
+        <line x1={pad} y1={zeroY} x2={w - pad} y2={zeroY} stroke="#2a2a2a" strokeWidth={0.5} />
+        {rows.map((r, i) => {
+          const barH = (Math.abs(r.pnl) * (h - 2 * pad)) / span
+          const x = pad + i * bw + bw * 0.15
+          const y = r.pnl >= 0 ? zeroY - barH : zeroY
+          return (
+            <g key={r.label}>
+              <rect x={x} y={y} width={bw * 0.7} height={Math.max(barH, 0.5)} fill={r.pnl >= 0 ? '#00c853' : '#ff1744'} opacity={0.75} />
+              <text x={x + bw * 0.35} y={h - 4} textAnchor="middle" fontSize="7" fill="#666" fontFamily="monospace">{r.label}</text>
+            </g>
+          )
+        })}
+      </svg>
+    )
+  }
+
+  // Horizontal P&L-by-symbol bars.
+  const SymbolBars = ({ rows }: { rows: { label: string; pnl: number }[] }) => {
+    const max = Math.max(1, ...rows.map((r) => Math.abs(r.pnl)))
+    return (
+      <div className="space-y-1">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center gap-2 text-[10px] font-mono">
+            <span className="w-14 shrink-0 text-[#f5a623]">{r.label}</span>
+            <div className="flex-1 h-3.5 bg-[#0a0a0a] rounded-sm overflow-hidden">
+              <div className={`h-full ${r.pnl >= 0 ? 'bg-[#00c853]' : 'bg-[#ff1744]'}`} style={{ width: `${(Math.abs(r.pnl) / max) * 100}%`, opacity: 0.75 }} />
+            </div>
+            <span className={`w-14 text-right ${r.pnl >= 0 ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>{money(r.pnl)}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const metric = (label: string, value: string, cls = 'text-[#e8e8e8]') => (
+    <div><div className="text-[#555] uppercase text-[10px]">{label}</div><div className={cls}>{value}</div></div>
+  )
+
+  return (
+    <div className="mt-2">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-6 gap-y-2 text-xs font-mono mb-4">
+        {metric('Positions', String(data.trades))}
+        {metric('Wins', String(data.wins), 'text-[#00c853]')}
+        {metric('Losses', String(data.losses), 'text-[#ff1744]')}
+        {metric('Sharpe', data.sharpe != null ? data.sharpe.toFixed(2) : '—')}
+        {metric('Sortino', data.sortino != null ? data.sortino.toFixed(2) : '—')}
+        {metric('Profit Factor', data.profit_factor != null ? data.profit_factor.toFixed(2) : '—')}
+      </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div>
+          <div className="text-[#555] text-[10px] font-mono uppercase mb-1">P/L by Day of Week</div>
+          <Bars rows={data.breakdown.by_weekday} />
+        </div>
+        <div>
+          <div className="text-[#555] text-[10px] font-mono uppercase mb-1">P/L by Hour of Day</div>
+          {data.breakdown.by_hour.length ? <Bars rows={data.breakdown.by_hour} /> : <div className="text-[#555] text-[10px] font-mono py-4">no intraday data</div>}
+        </div>
+        <div>
+          <div className="text-[#555] text-[10px] font-mono uppercase mb-1">P/L by Symbol</div>
+          <SymbolBars rows={data.breakdown.by_symbol} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ListView({
   bots,
   isLoading,
@@ -1496,6 +1591,7 @@ function ListView({
   archived = false,
 }: ListViewProps) {
   const [expandedPerf, setExpandedPerf] = useState<string | null>(null)
+  const [detailTab, setDetailTab] = useState<'dashboard' | 'analyze'>('dashboard')
   const [perfs, setPerfs] = useState<Record<string, BotPerformance>>({})
   const handlePerfLoad = useCallback((id: string, p: BotPerformance) => {
     setPerfs((prev) => (prev[id] === p ? prev : { ...prev, [id]: p }))
@@ -1672,9 +1768,26 @@ function ListView({
                 </tr>
                 {expandedPerf === bot.id && (
                   <tr className="border-b border-[#111111]">
-                    <td colSpan={10} className="px-3 pb-3 pt-1 bg-[#0d0d0d]">
-                      <BotPerfPanel botId={bot.id} />
-                      <BotActivityPanel botId={bot.id} />
+                    <td colSpan={10} className="px-3 pb-3 pt-2 bg-[#0d0d0d]">
+                      <div className="flex gap-1 mb-2">
+                        {(['dashboard', 'analyze'] as const).map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setDetailTab(t)}
+                            className={`text-[11px] font-mono px-3 py-1 rounded transition-colors ${detailTab === t ? 'bg-[#1a1a1a] text-[#f5a623]' : 'text-[#888] hover:text-[#e8e8e8]'}`}
+                          >
+                            {t === 'dashboard' ? 'Dashboard' : 'Analyze'}
+                          </button>
+                        ))}
+                      </div>
+                      {detailTab === 'dashboard' ? (
+                        <>
+                          <BotPerfPanel botId={bot.id} />
+                          <BotActivityPanel botId={bot.id} />
+                        </>
+                      ) : (
+                        <BotAnalyzePanel botId={bot.id} />
+                      )}
                     </td>
                   </tr>
                 )}
