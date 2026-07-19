@@ -33,6 +33,10 @@ class AgentMemory:
 
     async def write(self, topic: str, data: dict) -> None:
         """Append an observation to a topic list with a timestamp."""
+        if not isinstance(topic, str) or not topic:
+            raise ValueError("topic must be a non‑empty string")
+        if not isinstance(data, dict):
+            raise ValueError("data must be a dict")
         payload = json.dumps({"ts": time.time(), **data})
         key = f"{_PREFIX}{topic}"
         try:
@@ -43,6 +47,10 @@ class AgentMemory:
 
     async def set_latest(self, topic: str, data: dict) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
+        if not isinstance(topic, str) or not topic:
+            raise ValueError("topic must be a non‑empty string")
+        if not isinstance(data, dict):
+            raise ValueError("data must be a dict")
         key = f"{_PREFIX}latest:{topic}"
         payload = json.dumps({"ts": time.time(), **data})
         try:
@@ -53,7 +61,11 @@ class AgentMemory:
     # ── Read ──────────────────────────────────────────────────────────────────
 
     async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
-        """Return up to n most-recent observations for a topic."""
+        """Return up to n most‑recent observations for a topic."""
+        if not isinstance(topic, str) or not topic:
+            raise ValueError("topic must be a non‑empty string")
+        if not isinstance(n, int) or n < 0:
+            raise ValueError("n must be a non‑negative integer")
         key = f"{_PREFIX}{topic}"
         try:
             items = await self._r.lrange(key, 0, n - 1)
@@ -63,7 +75,9 @@ class AgentMemory:
             return []
 
     async def get_latest(self, topic: str) -> dict | None:
-        """Return the latest single-value for a topic."""
+        """Return the latest single‑value for a topic."""
+        if not isinstance(topic, str) or not topic:
+            raise ValueError("topic must be a non‑empty string")
         key = f"{_PREFIX}latest:{topic}"
         try:
             val = await self._r.get(key)
