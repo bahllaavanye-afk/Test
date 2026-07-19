@@ -83,7 +83,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -146,16 +151,25 @@ class BinanceBroker(AbstractBroker):
     async def get_all_tickers(self, cache_ttl: int = 30) -> dict:
         """Fetch all tickers for triangular arb scanning with simple TTL caching."""
         async with self._ticker_lock:
-            now = time.monotonic()
-            if (
-                self._ticker_cache["data"] is not None
-                and now - self._ticker_cache["timestamp"] < cache_ttl
-            ):
+            if self._is_ticker_cache_valid(cache_ttl):
                 return self._ticker_cache["data"]
-            try:
-                data = await self.exchange.fetch_tickers()
-                self._ticker_cache.update({"data": data, "timestamp": now})
-                return data
-            except Exception as e:
-                logger.error("Failed to fetch tickers from Binance", error=str(e))
-                raise BrokerError(f"Binance ticker fetch error: {e}")
+            return await self._fetch_and_update_tickers()
+
+    def _is_ticker_cache_valid(self, ttl: int) -> bool:
+        """Check if cached ticker data is still valid based on TTL."""
+        now = time.monotonic()
+        cache_timestamp = self._ticker_cache["timestamp"]
+        return (
+            self._ticker_cache["data"] is not None
+            and now - cache_timestamp < ttl
+        )
+
+    async def _fetch_and_update_tickers(self) -> dict:
+        """Fetch tickers from Binance and update the internal cache."""
+        try:
+            data = await self.exchange.fetch_tickers()
+            self._ticker_cache.update({"data": data, "timestamp": time.monotonic()})
+            return data
+        except Exception as e:
+            logger.error("Failed to fetch tickers from Binance", error=str(e))
+            raise BrokerError(f"Binance ticker fetch error: {e}")
