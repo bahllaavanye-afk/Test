@@ -31,6 +31,8 @@ export interface ActionConfig {
   trailing_stop_pct?: number
   alert_message?: string
   reduce_by_pct?: number
+  max_open_positions?: number   // OA safeguard: max positions open at once
+  max_daily_positions?: number  // OA safeguard: max positions opened per day
 }
 
 export interface ExitRuleConfig {

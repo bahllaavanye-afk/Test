@@ -46,7 +46,7 @@
 
 ## OA parity gaps (from docs.optionalpha.com audit, 2026-07-19 — see docs/research/OA_FEATURE_PARITY_2026.md)
 - [ ] **[P1] Options Expiration Protocol** — auto-manage 0DTE/expiring ITM positions before the bell (close or flag); critical now that the desk places real mleg spreads and 3 user bots trade 0DTE into the close.
-- [ ] **[P1] Bot safeguard depth** — daily-position counter and max-at-once limit per bot (OA: "N per day / M at once"); today only no_position exists.
+- [x] **[P1] Bot safeguard depth** — SHIPPED: `ActionConfig.max_open_positions` / `max_daily_positions` (OA "N at once / N per day"); the engine counts this bot's open paper positions + today's opens and refuses to open once a limit is hit ("Position limit reached"). Also wired `no_position`/`position_exists` conditions to real open-position state (they were stubs returning True). `app/bots/engine.py` + `test_bot_safeguards.py` (5 tests).
 - [ ] **[P1] Decision-recipe catalog expansion** — condition types evidenced by the user's bots: FOMC-day gate (FF calendar feed exists), price-change-vs-N-min-ago, option-leg OI threshold, position-return%, touch-$ exit; then loops over watchlists and position tags.
 - [ ] **[P2] Failsafe family** — per-bot excessive-errors auto-disable (10/day → off + alert), overlapping-strikes check, pricing-anomaly gate.
 - [ ] **[P2] EV/probability metrics** — HV-based probability + EV per defined-risk trade (OA's Trade Ideas 2.0 'Alpha'), computable from options_synthetic.
