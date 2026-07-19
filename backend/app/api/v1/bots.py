@@ -136,14 +136,28 @@ async def get_bot_performance(
     wins = 0
     peak = 0.0
     max_dd = 0.0
+    high_pnl = 0.0
+    low_pnl = 0.0
+    gross_win = 0.0
+    gross_loss = 0.0
     holds: list[int] = []
+    # Day P/L = cumulative from trades closed today only (OA "Day P/L").
+    today = datetime.now(timezone.utc).date()
+    day_pnl = 0.0
     for t in rows:
         pnl = float(t.realized_pnl or 0)
         cum += pnl
         if pnl > 0:
             wins += 1
+            gross_win += pnl
+        else:
+            gross_loss += -pnl
         peak = max(peak, cum)
         max_dd = max(max_dd, peak - cum)
+        high_pnl = max(high_pnl, cum)
+        low_pnl = min(low_pnl, cum)
+        if t.closed_at and t.closed_at.date() == today:
+            day_pnl += pnl
         if t.hold_seconds:
             holds.append(int(t.hold_seconds))
         series.append({
@@ -154,16 +168,93 @@ async def get_bot_performance(
         })
 
     n = len(rows)
+    losses = n - wins
+    alloc = float(getattr(bot, "allocation", 0) or 0) or None
+
+    # Sharpe / Sortino on per-trade returns (OA "Analyze" sidebar). Unitless,
+    # annualization-free ratios over the closed-trade P&L sequence — enough to
+    # rank consistency; None when too few trades to be meaningful.
+    import statistics
+    pnls = [float(t.realized_pnl or 0) for t in rows]
+    sharpe = sortino = None
+    if len(pnls) >= 2:
+        mean = statistics.fmean(pnls)
+        sd = statistics.pstdev(pnls)
+        downside = statistics.pstdev([min(0.0, p) for p in pnls])
+        sharpe = round(mean / sd, 2) if sd else None
+        sortino = round(mean / downside, 2) if downside else None
+
+    # OA "Analyze" breakdowns: P&L grouped by weekday, entry hour, and symbol.
+    from collections import defaultdict
+    by_weekday: dict[int, float] = defaultdict(float)
+    by_hour: dict[int, float] = defaultdict(float)
+    by_symbol: dict[str, float] = defaultdict(float)
+    for t in rows:
+        pnl = float(t.realized_pnl or 0)
+        when = t.opened_at or t.closed_at
+        if when:
+            by_weekday[when.weekday()] += pnl
+            by_hour[when.hour] += pnl
+        by_symbol[t.symbol] += pnl
+    _wd = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    breakdown = {
+        "by_weekday": [{"label": _wd[k], "pnl": round(v, 2)} for k, v in sorted(by_weekday.items())],
+        "by_hour": [{"label": f"{h:02d}:00", "pnl": round(v, 2)} for h, v in sorted(by_hour.items())],
+        "by_symbol": [{"label": k, "pnl": round(v, 2)}
+                      for k, v in sorted(by_symbol.items(), key=lambda kv: -kv[1])[:12]],
+    }
+
+    # Current win/loss streak (OA "Streak"): sign + length of the trailing run.
+    streak_n = 0
+    streak_kind: str | None = None
+    for t in reversed(rows):
+        won = float(t.realized_pnl or 0) > 0
+        kind = "wins" if won else "losses"
+        if streak_kind is None:
+            streak_kind, streak_n = kind, 1
+        elif kind == streak_kind:
+            streak_n += 1
+        else:
+            break
+
+    # Capital block (OA sidebar). Net liquid = allocation + realized P/L. At-risk /
+    # maintenance require live open-option margin which the paper engine doesn't
+    # track per-bot yet, so they're reported as 0 rather than guessed.
+    net_liquid = round((alloc or 0) + cum, 2) if alloc is not None else None
+    change_pnl = day_pnl  # OA "Change" = day P/L vs prior close
+    # OA metrics: Profit Factor = gross win / gross loss; Return % = P/L / allocation.
     return {
         "bot_id": bot.id,
         "bot_name": bot.name,
         "days": days,
         "series": series,
         "total_pnl": round(cum, 2),
+        "total_pnl_pct": round(cum / alloc * 100, 2) if alloc else None,
+        "day_pnl": round(day_pnl, 2),
+        "change_pnl": round(change_pnl, 2),
+        "change_pct": round(change_pnl / net_liquid * 100, 2) if net_liquid else None,
         "trades": n,
+        "wins": wins,
+        "losses": losses,
         "win_rate": round(wins / n, 4) if n else None,
+        "profit_factor": round(gross_win / gross_loss, 2) if gross_loss else (None if not gross_win else 99.99),
+        "avg_win": round(gross_win / wins, 2) if wins else None,
+        "avg_loss": round(-gross_loss / losses, 2) if losses else None,
+        "avg_pnl": round(cum / n, 2) if n else None,
+        "high_pnl": round(high_pnl, 2),
+        "low_pnl": round(low_pnl, 2),
         "max_drawdown": round(max_dd, 2),
+        "streak": streak_n,
+        "streak_kind": streak_kind,
+        "sharpe": sharpe,
+        "sortino": sortino,
         "avg_hold_hours": round(sum(holds) / len(holds) / 3600, 2) if holds else None,
+        "allocation": alloc,
+        "net_liquid": net_liquid,
+        "at_risk": 0.0,
+        "available": net_liquid,
+        "maintenance": 0.0,
+        "breakdown": breakdown,
     }
 
 

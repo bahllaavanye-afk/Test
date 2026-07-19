@@ -1123,4 +1123,127 @@ BOT_TEMPLATES: dict[str, dict] = {
         },
         "exit_rules": [{"type": "time_exit", "hours": 456}],
     },
+
+    # ── User's own OA bots (Chrome-agent export, 2026-07-19) ─────────────────
+    "oa_user_0dte_atm_sps": {
+        "name": "OA 0DTE Daily ATM Short Put Spread (mine)",
+        "description": "Copied from the user's live OA paper bot BOTjeVLzHfBP…213 (71 closed trades, recent wins +$155/+$110). Daily 9:45am ET: short put ~ATM, long put ~$10 lower on SPX — proxied here on SPY with delta strikes (0.50/0.42 ≈ same geometry at 1/10 scale). TP 30% of credit, hard time exit ~3h. OA's reward/risk>40% entry gate has no engine equivalent yet — noted, not silently dropped. Allocation $2.5k → 2.5%.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "13:45", "end_time": "13:55"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2.5,
+            "take_profit_pct": 30,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.50, "dte": 0, "ratio": 1},
+                {"side": "buy",  "option_type": "put", "delta": 0.42, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 3}],
+    },
+
+    "oa_user_0dte_sliquidity": {
+        "name": "OA 0DTE Sliquidity (mine)",
+        "description": "Copied from the user's OA bot BOTjeVLzHfBP…282 (v1 Jul 2). 0DTE momentum scalper: on short-term price thrust, buy a near-ATM call debit spread (long ~$0.50 ITM, ~$5 wing), aggressive 150% pricing, SL 50%, 15-MINUTE time exit. Original loops SPY/IWM/QQQ both directions with trail 15%/5%, FOMC-day gate and OI>1000 filter — those have no engine equivalent yet and are preserved in oa_meta (each is a queued engine upgrade). Long-call side on SPY here; up to 10/day in OA → no single-position guard.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "13:35", "end_time": "18:55"},
+            {"type": "price_vs_ma", "ma_period": 5, "operator": "above"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2.5,
+            "stop_loss_pct": 50,
+            "legs": [
+                {"side": "buy",  "option_type": "call", "delta": 0.52, "dte": 0, "ratio": 1},
+                {"side": "sell", "option_type": "call", "delta": 0.15, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 1}],
+        "oa_meta": {
+            "bot_id": "BOTjeVLzHfBP4017832241654049282",
+            "true_time_exit": "15 minutes (engine time_exit is integer-hours; 1h used — sub-hour exits queued as engine upgrade)",
+            "unmapped_features": {
+                "put_side_twin": "long put spread mirror on down-thrust (engine: one action per template)",
+                "symbol_loop": ["SPY", "IWM", "QQQ"],
+                "price": "150% of bid/ask",
+                "trailing_stop": "15% / 5%",
+                "fomc_day_gate": "skip FOMC days",
+                "min_open_interest": 1000,
+                "momentum_rule": "0.01% price change vs 5m & 15m closes",
+                "daily_positions": "10 per day",
+                "gex_magnet_close": "monitor: for long-call-spread/short-put-spread positions, close when SPX within 0-10 below (or 0-1 above) the max-absolute-GEX strike (50 strikes, nearest, 0DTE) AND position return% > 0; needs a GEX data source — queued",
+                "auto_scalp": "trigger on any open → immediately close (scalp the fill)",
+                "scanner_verbatim": "FOMC-today gate → loop SPY/IWM/QQQ → +0.01% vs 5m AND 15m closes → <1 same-type position → OI>min → open long call spread; mirrored for puts on -0.01%",
+                "oa_dashboard_pnl": "-$127 / -5.1% (v1; v3 available upstream)",
+            },
+            "source_url": "https://app.optionalpha.com/bots/bot/BOTjeVLzHfBP4017832241654049282",
+        },
+    },
+
+    "oa_user_magical_300s": {
+        "name": "OA 0DTE SPY Magical 300 Seconds (mine)",
+        "description": "User's OA bot BOT…771 (Nov 2024, from backtest): daily 3:55pm ET — the last 5 minutes — sell a SPY 0DTE iron butterfly (ATM straddle + $1 wings) when intraday RSI(14) < 75. SL 20%; OA also uses a -$20 touch exit (no engine equivalent — oa_meta). Harvests terminal time decay into the close.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "19:50", "end_time": "19:59"},
+            {"type": "indicator", "indicator": "rsi", "period": 14, "operator": "below", "value": 75},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2.5,
+            "stop_loss_pct": 20,
+            "legs": [
+                {"side": "buy",  "option_type": "put",  "delta": 0.40, "dte": 0, "ratio": 1},
+                {"side": "sell", "option_type": "put",  "delta": 0.50, "dte": 0, "ratio": 1},
+                {"side": "sell", "option_type": "call", "delta": 0.50, "dte": 0, "ratio": 1},
+                {"side": "buy",  "option_type": "call", "delta": 0.40, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 1}],
+        "oa_meta": {
+            "bot_id": "BOTjeVLzHfBP2417737393221681771",
+            "unmapped_features": {"touch_exit": "-$20.00", "strikes": "short legs $0.01 above underlying (same strike); wings $1"},
+            "source_url": "https://app.optionalpha.com/bots/bot/BOTjeVLzHfBP2417737393221681771",
+        },
+    },
+    "oa_user_eod_time_decay": {
+        "name": "OA EOD Time Decay 30Δ Put Spread (mine)",
+        "description": "User's OA bot BOT…026 (Sep 2025, from backtest): daily 3:55pm ET, sell a SPY 0DTE put spread — short at -.30 delta, long $10 below — riding the final 5 minutes of decay with a bullish close bias. No exit rules in OA (expires at the bell); FOMC-day skip preserved in oa_meta (engine gate queued).",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "19:50", "end_time": "19:59"},
+            {"type": "no_position"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2.5,
+            "legs": [
+                {"side": "sell", "option_type": "put", "delta": 0.30, "dte": 0, "ratio": 1},
+                {"side": "buy",  "option_type": "put", "delta": 0.08, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 1}],
+        "oa_meta": {
+            "bot_id": "BOTjeVLzHfBP1217584790828716026",
+            "unmapped_features": {"fomc_day_gate": "skip FOMC days", "pricing": "100% bid/ask, $.02 from mid", "long_strike": "$10 below underlying (≈0.08Δ used)"},
+            "source_url": "https://app.optionalpha.com/bots/bot/BOTjeVLzHfBP1217584790828716026",
+        },
+    },
 }

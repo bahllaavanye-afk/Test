@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Bot,
@@ -25,6 +25,7 @@ import {
   botsPerfApi,
   BotCreate,
   BotOut,
+  BotPerformance,
   BotTemplate,
   TriggerConfig,
   ConditionConfig,
@@ -1182,6 +1183,109 @@ interface ListViewProps {
 }
 
 
+const money0 = (v: number) =>
+  (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })
+const moneySigned = (v: number) =>
+  (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })
+
+/** 30D column sparkline — a thin cumulative-P&L line over a dashed zero baseline,
+ *  exactly Option Alpha's bots-list "30D" cell. Real /performance series; renders
+ *  an empty framed cell (no fake line) when the bot hasn't closed a trade. */
+function Sparkline30D({ perf }: { perf?: BotPerformance }) {
+  const w = 96, h = 34, pad = 3
+  if (!perf || !perf.series.length) {
+    return (
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0">
+        <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#2a2a2a" strokeDasharray="3 3" strokeWidth={0.75} />
+      </svg>
+    )
+  }
+  const vals = perf.series.map((p) => p.cum_pnl)
+  const min = Math.min(0, ...vals), max = Math.max(0, ...vals)
+  const span = max - min || 1
+  const x = (i: number) => pad + (i * (w - 2 * pad)) / Math.max(vals.length - 1, 1)
+  const y = (v: number) => h - pad - ((v - min) * (h - 2 * pad)) / span
+  const line = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  const up = perf.total_pnl >= 0
+  const color = up ? '#00c853' : '#ff1744'
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0">
+      <line x1={pad} y1={y(0)} x2={w - pad} y2={y(0)} stroke="#2a2a2a" strokeDasharray="3 3" strokeWidth={0.75} />
+      <polyline points={line} fill="none" stroke={color} strokeWidth={1.4} />
+    </svg>
+  )
+}
+
+/** The Option Alpha bots-list metric columns for one row: 30D, Total P/L, Return %,
+ *  Win Rate, Allocation. Returns a fragment of <td> cells sharing the cached
+ *  ['bot-perf'] query (one request per bot, reused by the expanded dashboard).
+ *  Reports totals up via onLoad so the page can sum the aggregate cards. */
+function BotRowMetrics({ botId, onLoad }: { botId: string; onLoad?: (id: string, p: BotPerformance) => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['bot-perf', botId],
+    queryFn: () => botsPerfApi.performance(botId),
+    staleTime: 60_000,
+  })
+  useEffect(() => { if (data) onLoad?.(botId, data) }, [data, botId, onLoad])
+
+  const dash = <span className="text-[#555]">--</span>
+  if (isLoading) {
+    return (
+      <>
+        <td className="py-2.5 px-3"><div className="h-8 w-[96px] rounded bg-[#111111] animate-pulse" /></td>
+        <td className="py-2.5 px-3 text-right">{dash}</td>
+        <td className="py-2.5 px-3 text-right">{dash}</td>
+        <td className="py-2.5 px-3 text-right">{dash}</td>
+        <td className="py-2.5 px-3 text-right">{dash}</td>
+      </>
+    )
+  }
+  const p = data
+  const has = !!p && p.trades > 0
+  const up = (p?.total_pnl ?? 0) >= 0
+  const clr = up ? 'text-[#00c853]' : 'text-[#ff1744]'
+  return (
+    <>
+      <td className="py-2.5 px-3"><Sparkline30D perf={p} /></td>
+      <td className={`py-2.5 px-3 text-right ${has ? clr : ''}`}>{has ? moneySigned(p!.total_pnl) : dash}</td>
+      <td className={`py-2.5 px-3 text-right ${has ? clr : ''}`}>
+        {has && p!.total_pnl_pct != null ? `${p!.total_pnl_pct >= 0 ? '+' : ''}${p!.total_pnl_pct.toFixed(1)}%` : dash}
+      </td>
+      <td className="py-2.5 px-3 text-right text-[#e8e8e8]">{has && p!.win_rate != null ? `${(p!.win_rate * 100).toFixed(0)}%` : dash}</td>
+      <td className="py-2.5 px-3 text-right text-[#888]">{p?.allocation != null ? money0(p.allocation) : dash}</td>
+    </>
+  )
+}
+
+/** Portfolio aggregate cards over every bot's loaded performance (Option Alpha's
+ *  top-of-page Total P/L / Return % / Change / Risk / Allocation strip). */
+function BotAggregateCards({ perfs }: { perfs: Record<string, BotPerformance> }) {
+  const list = Object.values(perfs)
+  const totalPnl = list.reduce((s, p) => s + (p.total_pnl || 0), 0)
+  const dayPnl = list.reduce((s, p) => s + (p.day_pnl || 0), 0)
+  const alloc = list.reduce((s, p) => s + (p.allocation || 0), 0)
+  const netLiq = list.reduce((s, p) => s + (p.net_liquid || p.allocation || 0), 0)
+  const returnPct = alloc ? (totalPnl / alloc) * 100 : null
+  const changePct = netLiq ? (dayPnl / netLiq) * 100 : null
+  const card = (label: string, value: string, color: string) => (
+    <div className="border border-[#1e1e1e] rounded px-4 py-2.5 bg-[#111111] min-w-[130px]">
+      <div className="text-[#555] text-[10px] font-mono uppercase tracking-wide">{label}</div>
+      <div className={`text-lg font-mono ${color}`}>{value}</div>
+    </div>
+  )
+  const gc = totalPnl >= 0 ? 'text-[#00c853]' : 'text-[#ff1744]'
+  const cc = dayPnl >= 0 ? 'text-[#00c853]' : 'text-[#ff1744]'
+  return (
+    <div className="flex flex-wrap gap-3 px-4 pt-4">
+      {card('Total P/L', moneySigned(totalPnl), gc)}
+      {card('Return %', returnPct != null ? `${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(1)}%` : '--', gc)}
+      {card('Change', moneySigned(dayPnl), cc)}
+      {card('Change %', changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}%` : '--', cc)}
+      {card('Allocation', money0(alloc), 'text-[#e8e8e8]')}
+    </div>
+  )
+}
+
 /** Option Alpha-style per-bot performance: 30D cumulative P&L sparkline + stats.
  *  Honest by construction: renders real closed-trade data from
  *  /bots/{id}/performance, and says so when there is none yet. */
@@ -1202,35 +1306,84 @@ function BotPerfPanel({ botId }: { botId: string }) {
     )
   }
 
-  const w = 560, h = 96, pad = 6
+  const w = 720, h = 200, pad = 8
   const vals = data.series.map((p) => p.cum_pnl)
   const min = Math.min(0, ...vals), max = Math.max(0, ...vals)
   const span = max - min || 1
   const x = (i: number) => pad + (i * (w - 2 * pad)) / Math.max(data.series.length - 1, 1)
   const y = (v: number) => h - pad - ((v - min) * (h - 2 * pad)) / span
-  const points = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  const line = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  const area = `${pad},${y(0).toFixed(1)} ${line} ${x(vals.length - 1).toFixed(1)},${y(0).toFixed(1)}`
   const up = data.total_pnl >= 0
+  const color = up ? '#00c853' : '#ff1744'
   const zeroY = y(0)
 
+  const money = (v: number | null | undefined) =>
+    v == null ? '—' : (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })
+  const moneyS = (v: number | null | undefined) =>
+    v == null ? '—' : (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })
+
+  // OA "Position Stats" grid + Capital block, all from real closed-trade data.
+  const stat = (label: string, value: string, cls = 'text-[#e8e8e8]') => (
+    <div>
+      <div className="text-[#555] uppercase text-[10px] tracking-wide">{label}</div>
+      <div className={cls}>{value}</div>
+    </div>
+  )
+
   return (
-    <div className="flex flex-wrap items-center gap-6">
-      <svg width={w} height={h} className="shrink-0 max-w-full" viewBox={`0 0 ${w} ${h}`}>
-        <line x1={pad} y1={zeroY} x2={w - pad} y2={zeroY} stroke="#2a2a2a" strokeDasharray="4 4" />
-        <polyline points={points} fill="none" stroke={up ? '#00c853' : '#ff1744'} strokeWidth={1.5} />
-      </svg>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-8 gap-y-2 text-xs font-mono">
-        <div><div className="text-[#555] uppercase">Total P/L</div>
-          <div className={up ? 'text-[#00c853]' : 'text-[#ff1744]'}>
-            {up ? '+' : ''}{data.total_pnl.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-          </div></div>
-        <div><div className="text-[#555] uppercase">Win rate</div>
-          <div className="text-[#e8e8e8]">{data.win_rate != null ? `${(data.win_rate * 100).toFixed(0)}%` : '—'}</div></div>
-        <div><div className="text-[#555] uppercase">Trades</div>
-          <div className="text-[#e8e8e8]">{data.trades}</div></div>
-        <div><div className="text-[#555] uppercase">Max DD</div>
-          <div className="text-[#e8e8e8]">${data.max_drawdown.toLocaleString()}</div></div>
-        <div><div className="text-[#555] uppercase">Avg hold</div>
-          <div className="text-[#e8e8e8]">{data.avg_hold_hours != null ? `${data.avg_hold_hours.toFixed(1)}h` : '—'}</div></div>
+    <div className="grid gap-4 lg:grid-cols-[1fr_200px] mt-2">
+      <div>
+        {/* Closed P/L equity curve (filled area, OA dashboard) */}
+        <div className="flex items-baseline gap-3 mb-1">
+          <span className="text-[#555] text-[10px] font-mono uppercase">Closed P/L</span>
+          <span className={`font-mono text-sm ${up ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>{moneyS(data.total_pnl)}</span>
+          {data.total_pnl_pct != null && (
+            <span className={`font-mono text-xs ${up ? 'text-[#00c853]' : 'text-[#ff1744]'}`}>
+              {data.total_pnl_pct >= 0 ? '+' : ''}{data.total_pnl_pct.toFixed(1)}%
+            </span>
+          )}
+        </div>
+        <svg width={w} height={h} className="w-full h-auto" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+          <polygon points={area} fill={color} opacity={0.12} />
+          <line x1={pad} y1={zeroY} x2={w - pad} y2={zeroY} stroke="#2a2a2a" strokeDasharray="4 4" />
+          <polyline points={line} fill="none" stroke={color} strokeWidth={1.75} />
+        </svg>
+        {/* Position Stats */}
+        <div className="text-[#e8e8e8] text-xs font-semibold mt-3 mb-1.5">Position Stats</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2.5 text-xs font-mono">
+          {stat('Closed Positions', String(data.trades))}
+          {stat('Closed P/L', moneyS(data.total_pnl), up ? 'text-[#00c853]' : 'text-[#ff1744]')}
+          {stat('Profit Factor', data.profit_factor != null ? data.profit_factor.toFixed(2) : '—')}
+          {stat('Max Drawdown', money(data.max_drawdown), 'text-[#ff1744]')}
+          {stat('Win Rate', data.win_rate != null ? `${(data.win_rate * 100).toFixed(1)}%` : '—')}
+          {stat('Wins', String(data.wins), 'text-[#00c853]')}
+          {stat('Losses', String(data.losses), 'text-[#ff1744]')}
+          {stat('Avg P/L', money(data.avg_pnl))}
+          {stat('Avg Win', moneyS(data.avg_win), 'text-[#00c853]')}
+          {stat('Avg Loss', moneyS(data.avg_loss), 'text-[#ff1744]')}
+          {stat('Streak', data.streak ? `${data.streak} ${data.streak_kind ?? ''}` : '—',
+            data.streak_kind === 'wins' ? 'text-[#00c853]' : data.streak_kind === 'losses' ? 'text-[#ff1744]' : 'text-[#e8e8e8]')}
+          {stat('Sharpe', data.sharpe != null ? data.sharpe.toFixed(2) : '—')}
+        </div>
+      </div>
+      {/* Capital sidebar (OA) */}
+      <div className="border border-[#1e1e1e] rounded p-3 h-fit">
+        <div className="text-[#e8e8e8] text-xs font-semibold mb-2">Capital</div>
+        <div className="space-y-1.5 text-xs font-mono">
+          {[
+            ['Allocation', money(data.allocation)],
+            ['Net Liquid', money(data.net_liquid)],
+            ['At Risk', money(data.at_risk)],
+            ['Available', money(data.available)],
+            ['Maintenance', money(data.maintenance)],
+          ].map(([k, v]) => (
+            <div key={k} className="flex justify-between">
+              <span className="text-[#555] uppercase text-[10px]">{k}</span>
+              <span className="text-[#e8e8e8]">{v}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -1343,6 +1496,10 @@ function ListView({
   archived = false,
 }: ListViewProps) {
   const [expandedPerf, setExpandedPerf] = useState<string | null>(null)
+  const [perfs, setPerfs] = useState<Record<string, BotPerformance>>({})
+  const handlePerfLoad = useCallback((id: string, p: BotPerformance) => {
+    setPerfs((prev) => (prev[id] === p ? prev : { ...prev, [id]: p }))
+  }, [])
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center text-[#555]">
@@ -1380,16 +1537,20 @@ function ListView({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="overflow-x-auto">
+    <div className="flex-1 overflow-y-auto">
+      {!archived && <BotAggregateCards perfs={perfs} />}
+      <div className="overflow-x-auto p-4">
         <table className="w-full text-xs font-mono border-collapse">
           <thead>
             <tr className="text-[#555] border-b border-[#1e1e1e]">
-              <th className="text-left py-2 px-3">Name</th>
+              <th className="text-left py-2 px-3">Bot</th>
               <th className="text-left py-2 px-3">Symbol</th>
-              <th className="text-left py-2 px-3">Status</th>
-              <th className="text-left py-2 px-3">Last Signal</th>
-              <th className="text-left py-2 px-3">Runs</th>
+              <th className="text-left py-2 px-3">30D</th>
+              <th className="text-right py-2 px-3">Total P/L</th>
+              <th className="text-right py-2 px-3">Return %</th>
+              <th className="text-right py-2 px-3">Win Rate</th>
+              <th className="text-right py-2 px-3">Allocation</th>
+              <th className="text-left py-2 px-3">Autos</th>
               <th className="text-left py-2 px-3">Last Run</th>
               <th className="text-left py-2 px-3">Actions</th>
             </tr>
@@ -1412,6 +1573,7 @@ function ListView({
                     <span className="text-[#f5a623]">{bot.symbol}</span>
                     <span className="text-[#555] ml-1">{bot.market_type}</span>
                   </td>
+                  <BotRowMetrics botId={bot.id} onLoad={handlePerfLoad} />
                   <td className="py-2.5 px-3">
                     {archived ? (
                       <span className="flex items-center gap-1.5 text-[#888]">
@@ -1437,10 +1599,6 @@ function ListView({
                       </button>
                     )}
                   </td>
-                  <td className="py-2.5 px-3">
-                    <SignalBadge signal={rr?.signal ?? bot.last_signal} />
-                  </td>
-                  <td className="py-2.5 px-3 text-[#888]">{bot.run_count}</td>
                   <td className="py-2.5 px-3 text-[#555]">
                     {bot.last_run_at
                       ? new Date(bot.last_run_at).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })
@@ -1514,7 +1672,7 @@ function ListView({
                 </tr>
                 {expandedPerf === bot.id && (
                   <tr className="border-b border-[#111111]">
-                    <td colSpan={7} className="px-3 pb-3 pt-1 bg-[#0d0d0d]">
+                    <td colSpan={10} className="px-3 pb-3 pt-1 bg-[#0d0d0d]">
                       <BotPerfPanel botId={bot.id} />
                       <BotActivityPanel botId={bot.id} />
                     </td>

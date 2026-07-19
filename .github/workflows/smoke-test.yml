@@ -40,6 +40,28 @@ jobs:
           SMOKE_BASE_URL: ${{ vars.RENDER_API_URL || 'https://quantedge-api-agb8.onrender.com' }}
         run: python .github/scripts/smoke_test_live.py
 
+      # Runs EVERY smoke: proves whether Discord delivery works and prints
+      # exactly where the message landed (bot channel_id vs default webhook).
+      # 'All channels empty' was undiagnosable because success printed nothing.
+      - name: Discord delivery diagnostic
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+        run: |
+          python - <<'PY'
+          import sys, datetime
+          sys.path.insert(0, ".github/scripts")
+          from notify import discord_post
+          ts = datetime.datetime.utcnow().strftime("%H:%M UTC")
+          ok = discord_post("ci-failures",
+                            f"🩺 delivery self-test {ts} — if you can read this, Discord routing works.",
+                            username="QuantEdge Delivery Check")
+          print(f"delivery result: {'OK' if ok else 'FAILED'}")
+          sys.exit(0 if ok else 1)
+          PY
+
       - name: Page Discord on failure
         if: failure()
         env:
