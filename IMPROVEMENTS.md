@@ -1,5 +1,7 @@
 # QuantEdge — Improvements & Task Tracker
 
+- [ ] **[P1] Kalshi desk — mirror the Polymarket pattern** (2026-07-19: public API live-verified, KALSHI_KEY_ID/KEY_SECRET provided in relay): kalshi_data.py desk feed from the public /trade-api/v2/markets + candlesticks (top markets by volume, KX: symbol prefix, guarded from the Alpaca order path like PM:), poly_* strategies run on it signal-only into #desk-kalshi; then RSA-signed order placement with the provided key pair. Backend /market-data/kalshi browse endpoint already exists.
+
 - [ ] **[P0] Render deploys fail at STARTUP (update_failed)** — found 2026-07-18: the deploy pipeline works end-to-end (build succeeds), but the new app fails to boot, so Render keeps the weeks-old build live — THIS is the true staleness root cause (autoDeploy:false only hid it). deploy-on-main.yml now dumps Render service events on failure; read the next failed run's CI log for the boot error (likely alembic migration vs Supabase, a missing prod dep, or startup-timeout on free tier) and fix start.sh/boot path. The 30-min smoke stays red until fixed.
 
 ## 🚨 DEEP REVIEW 2026-07-18 PM — why "nothing is working" was TRUE on the live site
