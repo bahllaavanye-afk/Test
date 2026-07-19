@@ -3,6 +3,7 @@ Drawdown recovery time estimator.
 Given current drawdown and historical avg daily return, estimate when portfolio recovers.
 """
 from __future__ import annotations
+
 import numpy as np
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -22,10 +23,38 @@ class RecoveryEstimate:
             "current_drawdown_pct": round(self.current_drawdown_pct * 100, 2),
             "avg_daily_return_pct": round(self.avg_daily_return * 100, 3),
             "expected_recovery_days": self.expected_recovery_days,
-            "expected_recovery_date": self.expected_recovery_date.isoformat() if self.expected_recovery_date else None,
+            "expected_recovery_date": self.expected_recovery_date.isoformat()
+            if self.expected_recovery_date
+            else None,
             "probability_recover_30d": round(self.probability_recover_30d, 3),
             "probability_recover_90d": round(self.probability_recover_90d, 3),
         }
+
+
+def _validate_inputs(returns: list[float], current_drawdown: float) -> None:
+    """
+    Validate inputs for estimate_recovery.
+
+    Raises:
+        ValueError: If any input is invalid.
+    """
+    if not isinstance(returns, (list, tuple)):
+        raise ValueError("`returns` must be a list or tuple of numeric daily returns.")
+    if len(returns) == 0:
+        raise ValueError("`returns` cannot be empty.")
+    for i, r in enumerate(returns):
+        if not isinstance(r, (int, float)):
+            raise ValueError(
+                f"Element {i} in `returns` is not numeric: {repr(r)}"
+            )
+        if np.isnan(r):
+            raise ValueError(f"Element {i} in `returns` is NaN.")
+    if not isinstance(current_drawdown, (int, float)):
+        raise ValueError("`current_drawdown` must be a numeric value.")
+    if np.isnan(current_drawdown):
+        raise ValueError("`current_drawdown` cannot be NaN.")
+    if current_drawdown <= 0:
+        raise ValueError("`current_drawdown` must be greater than 0.")
 
 
 def estimate_recovery(
@@ -36,26 +65,31 @@ def estimate_recovery(
     Monte Carlo estimate of drawdown recovery time.
 
     Args:
-        returns: Historical daily returns list
-        current_drawdown: Current drawdown as fraction (e.g. 0.05 = 5% below peak)
-    """
-    if not returns or current_drawdown <= 0:
-        return RecoveryEstimate(
-            current_drawdown_pct=0, avg_daily_return=0,
-            expected_recovery_days=0, expected_recovery_date=date.today(),
-            probability_recover_30d=1.0, probability_recover_90d=1.0,
-        )
+        returns: Historical daily returns list.
+        current_drawdown: Current drawdown as a positive fraction (e.g., 0.05 = 5% below peak).
 
-    arr = np.array(returns)
+    Returns:
+        RecoveryEstimate containing the estimated recovery metrics.
+
+    Raises:
+        ValueError: If `returns` is empty or contains non‑numeric values, or if
+                    `current_drawdown` is non‑positive or non‑numeric.
+    """
+    _validate_inputs(returns, current_drawdown)
+
+    arr = np.array(returns, dtype=float)
     mu = float(np.mean(arr))
     sigma = float(np.std(arr, ddof=1))
 
     if mu <= 0:
         # Negative drift — unlikely to recover
         return RecoveryEstimate(
-            current_drawdown_pct=current_drawdown, avg_daily_return=mu,
-            expected_recovery_days=None, expected_recovery_date=None,
-            probability_recover_30d=0.1, probability_recover_90d=0.25,
+            current_drawdown_pct=current_drawdown,
+            avg_daily_return=mu,
+            expected_recovery_days=None,
+            expected_recovery_date=None,
+            probability_recover_30d=0.1,
+            probability_recover_90d=0.25,
         )
 
     # Simple estimate: days = drawdown / avg_daily_return
@@ -82,7 +116,8 @@ def estimate_recovery(
 
     recovery_date = date.today() + timedelta(days=median_days)
     return RecoveryEstimate(
-        current_drawdown_pct=current_drawdown, avg_daily_return=mu,
+        current_drawdown_pct=current_drawdown,
+        avg_daily_return=mu,
         expected_recovery_days=median_days,
         expected_recovery_date=recovery_date,
         probability_recover_30d=recover_30,
