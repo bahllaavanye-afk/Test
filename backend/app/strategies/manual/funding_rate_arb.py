@@ -101,9 +101,30 @@ class FundingRateArbStrategy(AbstractStrategy):
           5. Exit long:  proxy_z > -EXIT_Z
              Exit short: proxy_z < +EXIT_Z
         """
+        # Guard against None or non‑DataFrame inputs
+        if df is None or not isinstance(df, pd.DataFrame):
+            empty_series = pd.Series([], dtype=bool)
+            return BacktestSignals(
+                entries=empty_series,
+                exits=empty_series,
+                short_entries=empty_series,
+                short_exits=empty_series,
+            )
+
+        # Guard against empty DataFrames
+        if df.empty:
+            empty_series = pd.Series([], dtype=bool)
+            return BacktestSignals(
+                entries=empty_series,
+                exits=empty_series,
+                short_entries=empty_series,
+                short_exits=empty_series,
+            )
+
         min_bars = self.LOOKBACK + 5
         false_series = pd.Series(False, index=df.index, dtype=bool)
 
+        # Ensure required column exists and enough rows are present
         if "close" not in df.columns or len(df) < min_bars:
             return BacktestSignals(
                 entries=false_series,
@@ -119,19 +140,21 @@ class FundingRateArbStrategy(AbstractStrategy):
 
         # Rolling z-score of the 3-bar return
         roll_mean = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).mean()
-        roll_std  = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).std()
-        proxy_z   = (mom3 - roll_mean) / roll_std.clip(lower=1e-8)
+        roll_std = mom3.rolling(self.LOOKBACK, min_periods=self.LOOKBACK // 2).std()
+        # Clip to avoid division by zero
+        safe_std = roll_std.clip(lower=1e-8)
+        proxy_z = (mom3 - roll_mean) / safe_std
 
         # Shift(1) — no lookahead
         proxy_z_lag = proxy_z.shift(1)
 
         # Long: shorts crowded (z very negative → expect squeeze → collect funding)
-        entries       = (proxy_z_lag < -self.ENTRY_Z).fillna(False)
-        exits         = (proxy_z_lag > -self.EXIT_Z).fillna(False)
+        entries = (proxy_z_lag < -self.ENTRY_Z).fillna(False)
+        exits = (proxy_z_lag > -self.EXIT_Z).fillna(False)
 
         # Short: longs crowded (z very positive → expect flush)
-        short_entries = (proxy_z_lag >  self.ENTRY_Z).fillna(False)
-        short_exits   = (proxy_z_lag <  self.EXIT_Z).fillna(False)
+        short_entries = (proxy_z_lag > self.ENTRY_Z).fillna(False)
+        short_exits = (proxy_z_lag < self.EXIT_Z).fillna(False)
 
         return BacktestSignals(
             entries=entries.astype(bool),
