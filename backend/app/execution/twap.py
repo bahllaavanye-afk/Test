@@ -19,8 +19,7 @@ class TWAPExecution:
         self.sleep_seconds = (duration_minutes * 60) / slices
 
     async def execute(self, request: OrderRequest) -> OrderResult:
-        """
-        Execute a TWAP order.
+        """Execute a TWAP order.
 
         Parameters
         ----------
@@ -39,30 +38,21 @@ class TWAPExecution:
         consecutive_failures = 0
 
         for i in range(self.slices):
-            slice_req = OrderRequest(
-                **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
-            )
+            slice_req = self._create_slice_request(request, slice_qty)
+
             try:
                 result = await self.broker.place_order(slice_req)
-                total_filled += result.filled_qty
-                if result.avg_fill_price:
-                    total_cost += result.avg_fill_price * result.filled_qty
-                last_result = result
+                total_filled, total_cost, last_result = self._process_slice_result(
+                    result, total_filled, total_cost
+                )
                 consecutive_failures = 0
             except (BrokerError, ConnectionError, TimeoutError) as e:
-                consecutive_failures += 1
-                logger.warning(
-                    f"TWAP slice {i + 1}/{self.slices} failed for {request.symbol}: {e}",
-                    extra={"symbol": request.symbol, "slice": i + 1, "error": str(e)},
+                consecutive_failures = self._handle_slice_error(
+                    e, request, i, consecutive_failures
                 )
                 if consecutive_failures >= 3:
-                    logger.error(
-                        f"TWAP {request.symbol}: {consecutive_failures} consecutive failures — aborting",
-                        extra={"symbol": request.symbol, "consecutive_failures": consecutive_failures},
-                    )
                     break
             except Exception as e:
-                # Unexpected exception: log full traceback and abort execution
                 logger.exception(
                     f"Unexpected error during TWAP execution for {request.symbol} slice {i + 1}",
                     extra={"symbol": request.symbol, "slice": i + 1, "error": str(e)},
@@ -81,3 +71,41 @@ class TWAPExecution:
             filled_qty=total_filled,
             avg_fill_price=avg_price,
         )
+
+    def _create_slice_request(self, original: OrderRequest, slice_qty: float) -> OrderRequest:
+        """Create a market order request for a single TWAP slice."""
+        return OrderRequest(
+            **{**asdict(original), "quantity": slice_qty, "order_type": "market"}
+        )
+
+    def _process_slice_result(
+        self,
+        result: OrderResult,
+        total_filled: float,
+        total_cost: float,
+    ) -> tuple[float, float, OrderResult]:
+        """Update aggregation metrics based on a successful slice."""
+        total_filled += result.filled_qty
+        if result.avg_fill_price:
+            total_cost += result.avg_fill_price * result.filled_qty
+        return total_filled, total_cost, result
+
+    def _handle_slice_error(
+        self,
+        error: Exception,
+        request: OrderRequest,
+        slice_index: int,
+        consecutive_failures: int,
+    ) -> int:
+        """Log the error for a failed slice and return updated failure count."""
+        consecutive_failures += 1
+        logger.warning(
+            f"TWAP slice {slice_index + 1}/{self.slices} failed for {request.symbol}: {error}",
+            extra={"symbol": request.symbol, "slice": slice_index + 1, "error": str(error)},
+        )
+        if consecutive_failures >= 3:
+            logger.error(
+                f"TWAP {request.symbol}: {consecutive_failures} consecutive failures — aborting",
+                extra={"symbol": request.symbol, "consecutive_failures": consecutive_failures},
+            )
+        return consecutive_failures
