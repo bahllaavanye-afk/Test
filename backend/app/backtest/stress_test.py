@@ -205,3 +205,99 @@ def stress_summary(results: list[StressResult]) -> dict:
                 "num_trades": r.metrics.num_trades,
             }
     return out
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case handling of run_stress_tests
+# ----------------------------------------------------------------------
+def _create_series(start: str, periods: int, freq: str = "B", value: float = 1.0) -> pd.Series:
+    """Utility to generate a simple numeric series with a DatetimeIndex."""
+    idx = pd.date_range(start=start, periods=periods, freq=freq)
+    return pd.Series([value] * periods, index=idx)
+
+
+def test_exact_boundary_five_points():
+    """
+    Scenario where the price series contains exactly 5 data points
+    within the stress window. The function should treat this as a
+    valid period (period_covered=True).
+    """
+    # Define a scenario covering 5 business days
+    scenario = StressScenario(
+        name="exact_five",
+        label="Exact Five Days",
+        start=date(2021, 1, 4),   # Monday
+        end=date(2021, 1, 8),     # Friday
+        description="Exactly five trading days",
+    )
+    # Create price and signal series that align with the scenario dates
+    prices = _create_series(start="2021-01-04", periods=5)
+    signals = _create_series(start="2021-01-04", periods=5, value=0.0)
+
+    results = run_stress_tests(
+        signals=signals,
+        prices=prices,
+        scenarios=[scenario],
+    )
+    assert len(results) == 1
+    res = results[0]
+    assert res.period_covered is True
+    assert res.data_points == 5
+    # Metrics should be produced (non‑None) when the backtest runs
+    assert res.metrics is not None
+
+
+def test_insufficient_data_points():
+    """
+    Scenario where the price series contains fewer than 5 data points
+    within the stress window. The function should return period_covered=False.
+    """
+    scenario = StressScenario(
+        name="insufficient",
+        label="Insufficient Data",
+        start=date(2021, 2, 1),
+        end=date(2021, 2, 10),
+        description="Less than five data points",
+    )
+    # Only 4 business days in the range
+    prices = _create_series(start="2021-02-01", periods=4)
+    signals = _create_series(start="2021-02-01", periods=4, value=0.0)
+
+    results = run_stress_tests(
+        signals=signals,
+        prices=prices,
+        scenarios=[scenario],
+    )
+    assert len(results) == 1
+    res = results[0]
+    assert res.period_covered is False
+    assert res.data_points == 4
+    assert res.metrics is None
+
+
+def test_no_intersection_between_price_and_scenario():
+    """
+    Scenario where the price index does not intersect the stress window at all.
+    The function should quickly return period_covered=False with zero data points.
+    """
+    scenario = StressScenario(
+        name="no_intersect",
+        label="No Intersection",
+        start=date(1999, 1, 1),
+        end=date(1999, 1, 31),
+        description="Price series outside scenario range",
+    )
+    # Price series well after the scenario dates
+    prices = _create_series(start="2022-01-01", periods=10)
+    signals = _create_series(start="2022-01-01", periods=10, value=0.0)
+
+    results = run_stress_tests(
+        signals=signals,
+        prices=prices,
+        scenarios=[scenario],
+    )
+    assert len(results) == 1
+    res = results[0]
+    assert res.period_covered is False
+    assert res.data_points == 0
+    assert res.metrics is None
