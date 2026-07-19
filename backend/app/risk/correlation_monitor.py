@@ -6,11 +6,14 @@ auto-reduce the smaller one (by total_pnl) by 50% until correlation drops below 
 This prevents correlated drawdowns — the #1 unaddressed risk in multi-strategy bots.
 """
 from __future__ import annotations
+
 import asyncio
+import traceback
 from collections import deque, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+
 import numpy as np
 
 from app.utils.logging import logger
@@ -21,7 +24,7 @@ class CorrelationAlert:
     strategy_a: str
     strategy_b: str
     correlation: float
-    action: str             # 'reduce_b' | 'reduce_a' | 'monitor'
+    action: str  # 'reduce_b' | 'reduce_a' | 'monitor'
     reduced_strategy: Optional[str]
     timestamp: datetime
 
@@ -45,7 +48,7 @@ class CrossStrategyCorrelationMonitor:
 
     def __init__(
         self,
-        window: int = 5,                   # rolling 5 bars
+        window: int = 5,  # rolling 5 bars
         kill_threshold: float = 0.70,
         resume_threshold: float = 0.50,
         scan_interval: int = 60,
@@ -55,57 +58,106 @@ class CrossStrategyCorrelationMonitor:
         self.resume_threshold = resume_threshold
         self.scan_interval = scan_interval
         self._returns: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=window))
-        self._reduced: set[str] = set()    # strategies currently halved
+        self._reduced: set[str] = set()  # strategies currently halved
         self._alerts: deque[CorrelationAlert] = deque(maxlen=200)
         self._running = False
 
     def record_return(self, strategy: str, ret: float) -> None:
-        self._returns[strategy].append(ret)
+        """
+        Record a new return value for a given strategy.
+
+        Raises:
+            TypeError: If `ret` is not a numeric type.
+        """
+        if not isinstance(ret, (int, float, np.floating)):
+            logger.error(
+                "Invalid return type recorded",
+                extra={"strategy": strategy, "invalid_value": ret, "expected_type": "float"},
+            )
+            raise TypeError(f"Return value must be numeric, got {type(ret)}")
+        self._returns[strategy].append(float(ret))
+
+    def _safe_correlation(self, r_a: list[float], r_b: list[float]) -> Optional[float]:
+        """
+        Compute Pearson correlation safely.
+
+        Returns:
+            float: Correlation coefficient if computable.
+            None: If computation fails due to insufficient variance or other issues.
+        """
+        try:
+            if np.std(r_a) == 0 or np.std(r_b) == 0:
+                return None
+            corr = float(np.corrcoef(r_a, r_b)[0, 1])
+            return corr
+        except (ValueError, TypeError) as exc:
+            logger.exception(
+                "Correlation computation error",
+                extra={"r_a": r_a, "r_b": r_b, "error": str(exc)},
+            )
+            return None
 
     def correlation_matrix(self) -> dict[tuple[str, str], float]:
         strategies = [s for s, r in self._returns.items() if len(r) >= 3]
         result: dict[tuple[str, str], float] = {}
         for i, s_a in enumerate(strategies):
-            for s_b in strategies[i+1:]:
+            for s_b in strategies[i + 1 :]:
                 r_a = list(self._returns[s_a])
                 r_b = list(self._returns[s_b])
                 min_len = min(len(r_a), len(r_b))
                 if min_len < 3:
                     continue
                 r_a, r_b = r_a[-min_len:], r_b[-min_len:]
-                if np.std(r_a) == 0 or np.std(r_b) == 0:
+                corr = self._safe_correlation(r_a, r_b)
+                if corr is None:
                     continue
-                corr = float(np.corrcoef(r_a, r_b)[0, 1])
                 result[(s_a, s_b)] = corr
         return result
 
     def scan(self) -> list[CorrelationAlert]:
         matrix = self.correlation_matrix()
-        new_alerts = []
+        new_alerts: list[CorrelationAlert] = []
         for (s_a, s_b), corr in matrix.items():
-            if corr > self.kill_threshold:
-                # reduce the strategy with fewer returns recorded (proxy for smaller)
-                smaller = s_b if len(self._returns[s_a]) >= len(self._returns[s_b]) else s_a
-                if smaller not in self._reduced:
-                    self._reduced.add(smaller)
-                    alert = CorrelationAlert(
-                        strategy_a=s_a, strategy_b=s_b, correlation=corr,
-                        action=f"reduce_{smaller.split('_')[0]}",
-                        reduced_strategy=smaller,
-                        timestamp=datetime.now(timezone.utc),
-                    )
-                    self._alerts.append(alert)
-                    new_alerts.append(alert)
-                    logger.warning(
-                        f"CORR KILL-SWITCH: {s_a}↔{s_b} corr={corr:.2f} > {self.kill_threshold}. "
-                        f"Halving {smaller}."
-                    )
-            elif corr < self.resume_threshold:
-                # re-enable if corr dropped
-                for s in (s_a, s_b):
-                    if s in self._reduced:
-                        self._reduced.discard(s)
-                        logger.info(f"CORR RESUME: {s} correlation normalized (corr={corr:.2f})")
+            try:
+                if corr > self.kill_threshold:
+                    # reduce the strategy with fewer returns recorded (proxy for smaller)
+                    smaller = s_b if len(self._returns[s_a]) >= len(self._returns[s_b]) else s_a
+                    if smaller not in self._reduced:
+                        self._reduced.add(smaller)
+                        alert = CorrelationAlert(
+                            strategy_a=s_a,
+                            strategy_b=s_b,
+                            correlation=corr,
+                            action=f"reduce_{smaller.split('_')[0]}",
+                            reduced_strategy=smaller,
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        self._alerts.append(alert)
+                        new_alerts.append(alert)
+                        logger.warning(
+                            "CORR KILL-SWITCH triggered",
+                            extra={
+                                "strategy_a": s_a,
+                                "strategy_b": s_b,
+                                "correlation": corr,
+                                "threshold": self.kill_threshold,
+                                "reduced_strategy": smaller,
+                            },
+                        )
+                elif corr < self.resume_threshold:
+                    # re-enable if corr dropped
+                    for s in (s_a, s_b):
+                        if s in self._reduced:
+                            self._reduced.discard(s)
+                            logger.info(
+                                "CORR RESUME triggered",
+                                extra={"strategy": s, "correlation": corr, "threshold": self.resume_threshold},
+                            )
+            except Exception as exc:
+                logger.exception(
+                    "Error processing correlation pair",
+                    extra={"pair": (s_a, s_b), "correlation": corr, "error": str(exc)},
+                )
         return new_alerts
 
     def is_reduced(self, strategy: str) -> bool:
@@ -130,13 +182,18 @@ class CrossStrategyCorrelationMonitor:
                 alerts = self.scan()
                 if alerts:
                     from app.notifications.tracker import tracker
+
                     for a in alerts:
                         tracker.record(
-                            "correlation_kill_switch", "risk",
+                            "correlation_kill_switch",
+                            "risk",
                             f"Halved {a.reduced_strategy}: corr {a.correlation:.2f} with {a.strategy_a}↔{a.strategy_b}",
                         )
-            except Exception as e:
-                logger.error(f"CorrelationMonitor scan error: {e}")
+            except Exception as exc:
+                logger.exception(
+                    "CorrelationMonitor run_forever iteration error",
+                    extra={"error": str(exc), "traceback": traceback.format_exc()},
+                )
             await asyncio.sleep(self.scan_interval)
 
     def stop(self) -> None:
