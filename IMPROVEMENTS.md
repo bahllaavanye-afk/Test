@@ -1,5 +1,13 @@
 # QuantEdge — Improvements & Task Tracker
 
+## OA parity gaps (from docs.optionalpha.com audit, 2026-07-19 — see docs/research/OA_FEATURE_PARITY_2026.md)
+- [ ] **[P1] Options Expiration Protocol** — auto-manage 0DTE/expiring ITM positions before the bell (close or flag); critical now that the desk places real mleg spreads and 3 user bots trade 0DTE into the close.
+- [ ] **[P1] Bot safeguard depth** — daily-position counter and max-at-once limit per bot (OA: "N per day / M at once"); today only no_position exists.
+- [ ] **[P1] Decision-recipe catalog expansion** — condition types evidenced by the user's bots: FOMC-day gate (FF calendar feed exists), price-change-vs-N-min-ago, option-leg OI threshold, position-return%, touch-$ exit; then loops over watchlists and position tags.
+- [ ] **[P2] Failsafe family** — per-bot excessive-errors auto-disable (10/day → off + alert), overlapping-strikes check, pricing-anomaly gate.
+- [ ] **[P2] EV/probability metrics** — HV-based probability + EV per defined-risk trade (OA's Trade Ideas 2.0 'Alpha'), computable from options_synthetic.
+- [ ] **[P2] Backtest→bot generator** — one click from a synthetic-backtest result to a BOT_TEMPLATES entry (OA's 'Automate your strategy').
+
 - [ ] **[P1] Kalshi desk — mirror the Polymarket pattern** (2026-07-19: public API live-verified, KALSHI_KEY_ID/KEY_SECRET provided in relay): kalshi_data.py desk feed from the public /trade-api/v2/markets + candlesticks (top markets by volume, KX: symbol prefix, guarded from the Alpaca order path like PM:), poly_* strategies run on it signal-only into #desk-kalshi; then RSA-signed order placement with the provided key pair. Backend /market-data/kalshi browse endpoint already exists.
 
 - [ ] **[P0] Render deploys fail at STARTUP (update_failed)** — found 2026-07-18: the deploy pipeline works end-to-end (build succeeds), but the new app fails to boot, so Render keeps the weeks-old build live — THIS is the true staleness root cause (autoDeploy:false only hid it). deploy-on-main.yml now dumps Render service events on failure; read the next failed run's CI log for the boot error (likely alembic migration vs Supabase, a missing prod dep, or startup-timeout on free tier) and fix start.sh/boot path. The 30-min smoke stays red until fixed.
