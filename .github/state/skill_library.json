@@ -199,8 +199,13 @@
     "Timeout idle tasks",
     "Rate limit trades",
     "Bind to CPU core",
-    "Cache API results"
+    "Cache API results",
+    "validation on risk/drawdown_recovery.py: success \u2014 tests green",
+    "validation on brokers/base.py: success \u2014 tests green",
+    "validation on backtest/walk_forward.py: success \u2014 tests green",
+    "validation on comparison/benchmarks.py: success \u2014 tests green",
+    "validation on test/unit/test_ws_manager_wildcard.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T16:54:27.756640+00:00",
+  "last_updated": "2026-07-19T16:56:10.143331+00:00",
   "total": 200
 }
