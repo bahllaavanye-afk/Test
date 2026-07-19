@@ -14,9 +14,36 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
+
+
+class StrategyInfo(BaseModel):
+    """Schema representing minimal metadata for a strategy used in tests.
+
+    Attributes
+    ----------
+    name: str
+        The registry key for the strategy.
+    risk_bucket: str
+        Classification of the strategy's risk profile. Must be one of the
+        allowed buckets.
+    """
+    name: str = Field(..., description="Registry key for the strategy")
+    risk_bucket: str = Field(
+        ...,
+        description="Risk bucket classification for the strategy",
+        examples=["arbitrage", "directional"],
+    )
+
+    @validator("risk_bucket")
+    def validate_risk_bucket(cls, v: str) -> str:
+        allowed = {"arbitrage", "directional", "market_neutral", "macro"}
+        if v not in allowed:
+            raise ValueError(f"Invalid risk bucket: {v}")
+        return v
 
 
 @pytest.fixture
@@ -45,7 +72,7 @@ _STRATEGIES = {
 }
 
 
-def _get(name):
+def _get(name: str):
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         pytest.skip(f"{name} not in registry")
@@ -53,12 +80,15 @@ def _get(name):
 
 
 @pytest.mark.parametrize("name", list(_STRATEGIES))
-def test_registered(name):
+def test_registered(name: str):
     assert name in STRATEGY_REGISTRY
 
 
 @pytest.mark.parametrize("name,bucket", list(_STRATEGIES.items()))
-def test_required_attrs(name, bucket):
+def test_required_attrs(name: str, bucket: str):
+    # Validate schema for test metadata
+    StrategyInfo(name=name, risk_bucket=bucket)
+
     inst = _get(name)
     assert inst.name == name
     assert inst.market_type == "equity"
@@ -67,7 +97,7 @@ def test_required_attrs(name, bucket):
 
 
 @pytest.mark.parametrize("name", list(_STRATEGIES))
-def test_backtest_signals_shape(name, daily_ohlcv):
+def test_backtest_signals_shape(name: str, daily_ohlcv: pd.DataFrame):
     inst = _get(name)
     sig = inst.backtest_signals(daily_ohlcv)
     assert isinstance(sig, BacktestSignals)
@@ -79,19 +109,24 @@ def test_backtest_signals_shape(name, daily_ohlcv):
 
 
 @pytest.mark.parametrize("name", list(_STRATEGIES))
-def test_no_bar0_lookahead(name, daily_ohlcv):
+def test_no_bar0_lookahead(name: str, daily_ohlcv: pd.DataFrame):
     inst = _get(name)
     sig = inst.backtest_signals(daily_ohlcv)
     assert not bool(sig.entries.iloc[0]), "entry on the first bar is lookahead bias"
 
 
 @pytest.mark.parametrize("name", list(_STRATEGIES))
-def test_insufficient_data_no_crash(name):
+def test_insufficient_data_no_crash(name: str):
     """Too few rows must return empty/aligned signals, never raise."""
     inst = _get(name)
     tiny = pd.DataFrame(
-        {"open": [100.0, 101.0], "high": [101.0, 102.0], "low": [99.0, 100.0],
-         "close": [100.5, 101.5], "volume": [1e6, 1e6]},
+        {
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.5, 101.5],
+            "volume": [1e6, 1e6],
+        },
         index=pd.date_range("2023-01-01", periods=2, freq="1D"),
     )
     sig = inst.backtest_signals(tiny)
