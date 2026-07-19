@@ -199,8 +199,13 @@
     "Ping dependencies",
     "Check RAM usage",
     "Validate API calls",
-    "Test network connectivity"
+    "Test network connectivity",
+    "error_handling on ml/models/lstm.py: success \u2014 tests green",
+    "error_handling on execution/slippage_tracker.py: success \u2014 tests green",
+    "error_handling on risk/factor_exposure.py: success \u2014 tests green",
+    "error_handling on brokers/alpaca_headers.py: success \u2014 tests green",
+    "error_handling on backtest/options_synthetic.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T13:09:42.304012+00:00",
+  "last_updated": "2026-07-19T13:13:47.925940+00:00",
   "total": 200
 }
