@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784493705.3550665,
+    "last_updated": 1784496873.1724603,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,42 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784493705.3540838
+    "last_brain_update": 1784496873.1715221
   },
   "episodic": [
-    {
-      "lesson": "Multiple auto-fix failures indicate systematic issue with patch generation or validation; review auto-fix pipeline and error handling.",
-      "category": "code",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783559493.189416
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 4,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1783614123.7549894
-    },
-    {
-      "lesson": "Repeated auto-fix failures indicate a systemic issue in the patch application pipeline, likely due to incompatible code patterns or tool misconfiguration.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783640158.7081091
-    },
-    {
-      "lesson": "Lack of specific error details in the issue titles hinders debugging; improve logging in the auto-fix process to capture file names and patch context.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783640158.7096097
-    },
     {
       "lesson": "Consider temporarily disabling the auto-fix feature until root cause is resolved to prevent false positives and wasted CI cycles.",
       "category": "execution",
@@ -1816,14 +1783,37 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784493678.0549953
+    },
+    {
+      "lesson": "Deployment hitting Vercel free tier daily limit (100) \u2014 consider upgrading to Pro to avoid blocking.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784496871.2024941
+    },
+    {
+      "lesson": "Automated fix skipped due to insufficient issue details \u2014 enforce structured bug reports (code snippet, stack trace, expected vs actual).",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784496871.2082698
+    },
+    {
+      "lesson": "Multiple auto-fix patch failures indicate fragile automated patching logic \u2014 review and harden patch generation.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784496871.2124553
+    },
+    {
+      "lesson": "Manual intervention (Render deploy) resolved the issue \u2014 document fallback procedure for deployment failures.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784496871.2166398
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions. The input shows three lines: two identical lines saying \"Auto-fix failed \u2014 could not apply patch to file.\" and a third line that looks like a base64 encoded string with \"eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwi\" which decodes to something like {\"isMonorepo\":true,\"type",
-      "item_count": 20,
-      "ts": 1783543624.9227757
-    },
     {
       "summary": "We need to summarize three separate GitHub PR/issue discussion snippets. Each is a status message from an auto-fix robot. The user wants a 1-2 sentence summary of these discussions. The snippets are:\n\n1. \"Auto-fix aborted \u2014 validation failed: Fix changes ~72 lines (limit 50)\"\n2. \"Auto-fix failed \u2014 could not apply patch to file.\"\n3. \"Auto-fix skipped \u2014 too complex for automated resolution.\"\n\nPlus a trailing \"Reason:",
       "item_count": 20,
@@ -2318,6 +2308,11 @@
       "summary": "Two deployments succeeded and were closed automatically, while a third failed due to a resource limit error, advising a retry in 24 hours.",
       "item_count": 20,
       "ts": 1784493705.344674
+    },
+    {
+      "summary": "A deployment failed due to resource limits, and an automated fix was attempted but skipped as too complex, then failed when applying a patch.",
+      "item_count": 20,
+      "ts": 1784496873.161999
     }
   ],
   "experiment_results": [
