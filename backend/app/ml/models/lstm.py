@@ -15,6 +15,9 @@ codebase, providing ``train_epoch`` and ``evaluate`` helpers that work with
 PyTorch data loaders.
 """
 
+import logging
+from typing import Iterable, Tuple, Dict
+
 try:
     import torch
     import torch.nn as nn
@@ -28,9 +31,15 @@ except ImportError:  # pragma: no cover
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
-from typing import Iterable, Tuple, Dict
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
+
+logger = logging.getLogger(__name__)
+
+
+class LSTMModelError(RuntimeError):
+    """Custom exception for errors occurring within the LSTM model pipeline."""
+    pass
 
 
 class SelfAttention(nn.Module):
@@ -67,9 +76,17 @@ class SelfAttention(nn.Module):
             Tensor of shape ``(batch, hidden)`` representing the weighted
             aggregation over the time dimension.
         """
-        scores = self.attention(x)                  # (batch, seq, 1)
-        weights = torch.softmax(scores, dim=1)      # (batch, seq, 1)
-        return (weights * x).sum(dim=1)             # (batch, hidden)
+        try:
+            scores = self.attention(x)                  # (batch, seq, 1)
+            weights = torch.softmax(scores, dim=1)      # (batch, seq, 1)
+            return (weights * x).sum(dim=1)             # (batch, hidden)
+        except Exception as exc:
+            logger.error(
+                "SelfAttention forward failed",
+                exc_info=True,
+                extra={"input_shape": getattr(x, "shape", None)},
+            )
+            raise LSTMModelError("SelfAttention forward error") from exc
 
 
 class LSTMPredictor(AbstractModel, nn.Module):
@@ -142,10 +159,18 @@ class LSTMPredictor(AbstractModel, nn.Module):
         torch.Tensor
             Logits tensor of shape ``(batch,)``.
         """
-        out, _ = self.lstm(x)               # (batch, seq, hidden*dirs)
-        ctx = self.attention(out)           # (batch, hidden*dirs)
-        ctx = self.norm(ctx)
-        return self.head(ctx).squeeze(-1)   # (batch,) logits
+        try:
+            out, _ = self.lstm(x)               # (batch, seq, hidden*dirs)
+            ctx = self.attention(out)           # (batch, hidden*dirs)
+            ctx = self.norm(ctx)
+            return self.head(ctx).squeeze(-1)   # (batch,) logits
+        except Exception as exc:
+            logger.error(
+                "LSTMPredictor forward failed",
+                exc_info=True,
+                extra={"input_shape": getattr(x, "shape", None)},
+            )
+            raise LSTMModelError("Forward pass error") from exc
 
     def train_epoch(
         self,
@@ -173,16 +198,27 @@ class LSTMPredictor(AbstractModel, nn.Module):
         self.train()
         total_loss, correct, total = 0.0, 0, 0
         for X, y in loader:
-            optimizer.zero_grad()
-            logits = self.forward(X)
-            loss = criterion(logits, y.float())
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-            optimizer.step()
-            total_loss += loss.item() * len(y)
-            preds = (torch.sigmoid(logits) > 0.5).long()
-            correct += (preds == y.long()).sum().item()
-            total += len(y)
+            try:
+                optimizer.zero_grad()
+                logits = self.forward(X)
+                loss = criterion(logits, y.float())
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+                optimizer.step()
+                total_loss += loss.item() * len(y)
+                preds = (torch.sigmoid(logits) > 0.5).long()
+                correct += (preds == y.long()).sum().item()
+                total += len(y)
+            except Exception as exc:
+                logger.error(
+                    "Error during training epoch batch",
+                    exc_info=True,
+                    extra={"batch_input_shape": getattr(X, "shape", None), "batch_label_shape": getattr(y, "shape", None)},
+                )
+                raise LSTMModelError("Training epoch error") from exc
+        if total == 0:
+            logger.warning("Training epoch completed with zero samples")
+            return {"loss": 0.0, "accuracy": 0.0}
         return {"loss": total_loss / total, "accuracy": correct / total}
 
     def evaluate(self, loader: Iterable[Tuple[torch.Tensor, torch.Tensor]]) -> EvalMetrics:
@@ -192,7 +228,7 @@ class LSTMPredictor(AbstractModel, nn.Module):
         Parameters
         ----------
         loader : iterable of (features, labels)
-            Data loader providing evaluation data.
+            Evaluation data.
 
         Returns
         -------
@@ -206,12 +242,24 @@ class LSTMPredictor(AbstractModel, nn.Module):
         criterion = nn.BCEWithLogitsLoss()
         with torch.no_grad():
             for X, y in loader:
-                logits = self.forward(X)
-                loss = criterion(logits, y.float())
-                total_loss += loss.item() * len(y)
-                all_logits.append(logits)
-                all_labels.append(y)
-                total += len(y)
+                try:
+                    logits = self.forward(X)
+                    loss = criterion(logits, y.float())
+                    total_loss += loss.item() * len(y)
+                    all_logits.append(logits)
+                    all_labels.append(y)
+                    total += len(y)
+                except Exception as exc:
+                    logger.error(
+                        "Error during evaluation batch",
+                        exc_info=True,
+                        extra={"batch_input_shape": getattr(X, "shape", None), "batch_label_shape": getattr(y, "shape", None)},
+                    )
+                    raise LSTMModelError("Evaluation batch error") from exc
+        if total == 0:
+            logger.warning("Evaluation called with empty dataset")
+            return EvalMetrics(accuracy=0.0, auc=0.5, sharpe=0.0, loss=0.0)
+
         logits_cat = torch.cat(all_logits).numpy()
         labels_cat = torch.cat(all_labels).numpy()
         probs = 1 / (1 + np.exp(-logits_cat))
@@ -219,6 +267,18 @@ class LSTMPredictor(AbstractModel, nn.Module):
         acc = (preds == labels_cat).mean()
         try:
             auc = float(roc_auc_score(labels_cat, probs))
-        except ValueError:
+        except ValueError as exc:
+            logger.warning(
+                "ROC AUC computation failed; defaulting to 0.5",
+                exc_info=True,
+                extra={"labels": labels_cat, "probs": probs},
+            )
             auc = 0.5
+        except Exception as exc:
+            logger.error(
+                "Unexpected error during AUC calculation",
+                exc_info=True,
+                extra={"labels": labels_cat, "probs": probs},
+            )
+            raise LSTMModelError("AUC calculation error") from exc
         return EvalMetrics(accuracy=float(acc), auc=auc, sharpe=0.0, loss=total_loss / total)
