@@ -1,21 +1,3 @@
-"""
-Free LLM Router — dispatches to 7 free providers in parallel.
-
-Priority cascade (fastest/highest-quota first):
-  1. Gemini Flash 2.0 (Google AI Studio — 1M TPM free)
-  2. Groq  (llama-3.3-70b — 6000 TPD free, very fast)
-  3. DeepSeek (deepseek-chat — $5 free credit, cheap)
-  4. SambaNova (Meta-Llama-3.3-70B — free tier)
-  5. Cerebras (llama-3.3-70b — free tier, fast inference)
-  6. Together AI (Llama-3.3-70B — $25 free credit)
-  7. Hyperbolic (llama-3.3-70b — $10 free credit)
-
-Modes:
-  - "race":      first successful response wins, rest cancelled
-  - "consensus": all respond, majority vote on yes/no questions
-  - "best_of":   all respond, pick longest coherent answer
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -23,13 +5,15 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, List
 
 import httpx
+from pydantic import BaseModel, Field, validator
 
 logger = logging.getLogger(__name__)
 
 # ── Provider definitions ──────────────────────────────────────────────────────
+
 
 @dataclass
 class LLMProvider:
@@ -95,19 +79,67 @@ PROVIDERS: list[LLMProvider] = [
 ]
 
 
-@dataclass
-class LLMResponse:
-    provider: str
-    content: str
-    latency_ms: float
-    tokens_used: int = 0
+class Message(BaseModel):
+    """Schema representing a single chat message."""
+
+    role: str = Field(
+        ...,
+        description="Role of the message sender, e.g., 'user' or 'assistant'.",
+        examples=["user", "assistant"],
+    )
+    content: str = Field(
+        ...,
+        description="Content of the message.",
+        examples=["Explain the theory of relativity."],
+    )
+
+    @validator("role")
+    def validate_role(cls, v: str) -> str:
+        allowed = {"system", "user", "assistant", "tool"}
+        if v not in allowed:
+            raise ValueError(f"role must be one of {allowed}")
+        return v
+
+
+class LLMResponse(BaseModel):
+    """Standardized response from an LLM provider."""
+
+    provider: str = Field(
+        ...,
+        description="Name of the LLM provider that generated the response.",
+        examples=["gemini"],
+    )
+    content: str = Field(
+        ...,
+        description="Generated text content returned by the LLM.",
+        examples=["The answer is 42."],
+    )
+    latency_ms: float = Field(
+        ...,
+        ge=0,
+        description="Latency of the request in milliseconds.",
+        examples=[123.4],
+    )
+    tokens_used: int = Field(
+        0,
+        ge=0,
+        description="Number of tokens consumed for the request.",
+        examples=[56],
+    )
+
+    @validator("provider")
+    def provider_non_empty(cls, v: str) -> str:
+        if not v:
+            raise ValueError("provider must be a non-empty string")
+        return v
 
 
 # ── Core caller ───────────────────────────────────────────────────────────────
 
+
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
@@ -127,7 +159,10 @@ async def _call_provider(
         async with httpx.AsyncClient(timeout=provider.timeout) as client:
             resp = await client.post(
                 f"{provider.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
                 json=payload,
             )
             resp.raise_for_status()
@@ -135,7 +170,12 @@ async def _call_provider(
             content = data["choices"][0]["message"]["content"]
             tokens = data.get("usage", {}).get("total_tokens", 0)
             latency = (time.monotonic() - t0) * 1000
-            return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
+            return LLMResponse(
+                provider=provider.name,
+                content=content,
+                latency_ms=latency,
+                tokens_used=tokens,
+            )
     except Exception as e:
         logger.debug("Provider %s failed: %s", provider.name, e)
         return None
@@ -143,8 +183,9 @@ async def _call_provider(
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 async def call_race(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
@@ -176,11 +217,11 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
-) -> list[LLMResponse]:
+) -> List[LLMResponse]:
     """Call all providers and return all successful responses for consensus analysis."""
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
@@ -193,6 +234,6 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
+def available_providers() -> List[str]:
     """Return names of providers with configured API keys."""
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
