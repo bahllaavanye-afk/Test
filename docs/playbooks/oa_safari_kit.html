@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuantEdge — OA Safari Export Kit</title>
+<style>
+ body{font-family:-apple-system,Inter,sans-serif;background:#0a0a0a;color:#e8e8e8;max-width:720px;margin:0 auto;padding:24px;line-height:1.55}
+ h1{color:#f5a623;font-size:1.4rem} h2{font-size:1.05rem;color:#f5a623;margin-top:28px}
+ a.bm{display:inline-block;background:#f5a623;color:#0a0a0a;font-weight:700;padding:10px 18px;border-radius:8px;text-decoration:none;margin:8px 0}
+ code,textarea{background:#161616;color:#9fe870;border:1px solid #2a2a2a;border-radius:6px}
+ textarea{width:100%;height:130px;font-size:11px;padding:8px}
+ ol li{margin:8px 0} .muted{color:#888;font-size:.9rem}
+ .step{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:14px 16px;margin:12px 0}
+</style>
+</head>
+<body>
+<h1>QuantEdge — Options Alpha Export Kit (Safari)</h1>
+<p>One-time setup, then one tap on any OA page exports what's on screen (bot list, a bot's settings, community templates) as JSON — copied to your clipboard and shown in a box.</p>
+
+<div class="step">
+<h2>1 · Install the bookmarklet</h2>
+<p><b>Easiest (Mac):</b> drag this button to your Favorites bar (View → Show Favorites Bar):</p>
+<p><a class="bm" href="javascript:(function(){try{var d={url:location.href,title:document.title,ts:new Date().toISOString(),store:{},text:''};try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=localStorage.getItem(k);if(v&&v.length<200000){d.store[k]=v}}}catch(e){}var m=document.querySelector('main')||document.body;d.text=(m.innerText||'').slice(0,30000);var s=JSON.stringify(d);var t=document.createElement('textarea');t.style.cssText='position:fixed;top:5%25;left:5%25;width:90%25;height:80%25;z-index:99999;background:%23fff;color:%23000;font-size:11px;padding:8px;border:4px solid %23f5a623;border-radius:8px';t.value=s;document.body.appendChild(t);t.select();try{document.execCommand('copy')}catch(e){}t.onblur=function(){t.remove()};alert('QuantEdge export ready — JSON copied to clipboard (also shown in the yellow box). Paste it into a GitHub issue titled [oa-import] or into Claude chat.')}catch(e){alert('export failed: '+e)}})();">📦 OA → QuantEdge Export</a></p>
+<p><b>Or manually (works on iPhone too):</b> bookmark any page, then Edit the bookmark and replace its address with the code below (select-all inside the box → copy):</p>
+<textarea readonly>javascript:(function(){try{var d={url:location.href,title:document.title,ts:new Date().toISOString(),store:{},text:''};try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=localStorage.getItem(k);if(v&&v.length<200000){d.store[k]=v}}}catch(e){}var m=document.querySelector('main')||document.body;d.text=(m.innerText||'').slice(0,30000);var s=JSON.stringify(d);var t=document.createElement('textarea');t.style.cssText='position:fixed;top:5%;left:5%;width:90%;height:80%;z-index:99999;background:#fff;color:#000;font-size:11px;padding:8px;border:4px solid #f5a623;border-radius:8px';t.value=s;document.body.appendChild(t);t.select();try{document.execCommand('copy')}catch(e){}t.onblur=function(){t.remove()};alert('QuantEdge export ready — JSON copied to clipboard (also shown in the yellow box). Paste it into a GitHub issue titled [oa-import] or into Claude chat.')}catch(e){alert('export failed: '+e)}})();</textarea>
+</div>
+
+<div class="step">
+<h2>2 · Export your bots</h2>
+<ol>
+<li>Open <code>app.optionalpha.com/bots</code> (logged in) and tap the bookmarklet → paste the JSON.</li>
+<li>Then open <b>each bot you care about</b> (its settings/detail view) and tap it again — the detail page carries the legs/deltas/DTE/exits that the list view doesn't.</li>
+<li>Repeat on <code>/community/toptpls</code> and <code>/community/templates</code> for community bots you want cloned.</li>
+</ol>
+<p class="muted">The export contains only what YOUR logged-in browser rendered plus the page's local cache — no passwords, no cookies.</p>
+</div>
+
+<div class="step">
+<h2>3 · Deliver it</h2>
+<p>Paste each JSON blob into either:</p>
+<ol>
+<li>a GitHub issue on <code>bahllaavanye-afk/Test</code> titled <code>[oa-import] &lt;bot name&gt;</code> — the import pipeline converts it to a bot template, tests it, and PRs it, or</li>
+<li>Claude chat — same result, done in-session.</li>
+</ol>
+</div>
+
+<p class="muted">Kit lives in the repo at docs/playbooks/oa_safari_kit.html · QuantEdge 2026</p>
+</body>
+</html>
