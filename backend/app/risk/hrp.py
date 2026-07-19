@@ -86,21 +86,30 @@ class HRPOptimizer:
 
         Args:
             returns: DataFrame of asset returns, columns = symbols, rows = dates.
-                     Must have at least 2 assets and 10 rows.
+                     Must be a pandas DataFrame with at least 2 columns and 10 rows.
 
         Returns:
             pd.Series of portfolio weights summing to 1.0, indexed by symbol.
-            Falls back to equal weights if data is insufficient or degenerate.
+
+        Raises:
+            ValueError: If `returns` is not a DataFrame, or does not meet the minimum
+                        size requirements (>=2 assets and >=10 observations).
         """
+        # Input validation
+        if not isinstance(returns, pd.DataFrame):
+            raise ValueError("`returns` must be a pandas DataFrame.")
+        if returns.shape[0] < 10:
+            raise ValueError("`returns` must contain at least 10 rows (observations).")
+        if returns.shape[1] < 2:
+            raise ValueError("`returns` must contain at least 2 columns (assets).")
+
         symbols = list(returns.columns)
         n = len(symbols)
-
-        if n < 2 or len(returns) < 10:
-            return pd.Series(1.0 / max(n, 1), index=symbols)
 
         # Drop columns with all-NaN and fill remaining NaN with 0
         returns_clean = returns.dropna(axis=1, how="all").fillna(0.0)
         if returns_clean.shape[1] < 2:
+            # After cleaning there are not enough usable assets; fall back to equal weighting.
             return pd.Series(1.0 / max(n, 1), index=symbols)
 
         symbols_clean = list(returns_clean.columns)
