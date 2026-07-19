@@ -5,6 +5,7 @@ No database needed: the JSON file is the source of truth.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -12,7 +13,31 @@ from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
-_STATE_FILE = Path(__file__).resolve().parents[5] / "pipeline_runs.json"
+
+def _resolve_state_file() -> Path:
+    """Locate pipeline_runs.json without a hardcoded ancestor depth.
+
+    The old `parents[5]` assumed a fixed directory depth and crashed the ENTIRE
+    app at import on Render (IndexError: 5) — there the file is /app/app/api/v1/
+    pipeline.py, only 5 parents (0-4), so index 5 doesn't exist. This searches
+    ancestors for the file (it's written to the repo root by GitHub Actions),
+    honours a PIPELINE_STATE_FILE override, and falls back to a repo-root-ish
+    default that simply may not exist (readers already handle absence). Never
+    raises at import.
+    """
+    override = os.environ.get("PIPELINE_STATE_FILE")
+    if override:
+        return Path(override)
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "pipeline_runs.json"
+        if candidate.exists():
+            return candidate
+    idx = min(4, len(here.parents) - 1)
+    return here.parents[idx] / "pipeline_runs.json"
+
+
+_STATE_FILE = _resolve_state_file()
 
 PIPELINE_DEFS = {
     "ml_experiments": {
