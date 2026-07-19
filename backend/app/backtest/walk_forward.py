@@ -1,14 +1,17 @@
 """Walk-forward validation: train on N years, test on M months, roll forward."""
 
 from __future__ import annotations
+
 import pandas as pd
 from dataclasses import dataclass, field
+
 from app.backtest.engine import run_backtest, BacktestMetrics
 
 TIMEFRAME_TRAIN = 2  # years of training data
 TIMEFRAME_TEST = 6  # months of testing data
 
 MAX_EQUIITY = 100_000
+
 
 @dataclass
 class WalkForwardResult:
@@ -19,7 +22,7 @@ class WalkForwardResult:
 
 
 def walk_forward(
-    signals_fn,               # callable(train_df, test_df) -> pd.Series of signals on test_df
+    signals_fn,
     prices: pd.Series,
     train_years: int | None = None,
     test_months: int | None = None,
@@ -28,32 +31,74 @@ def walk_forward(
     Rolls a train/test window across entire history.
     signals_fn receives (train_prices, test_prices) and must return signals for test period only.
     """
+    # ---- Input validation ----
+    if not callable(signals_fn):
+        raise ValueError("signals_fn must be a callable that accepts (train_df, test_df) and returns a pandas Series of signals.")
+    if not isinstance(prices, pd.Series):
+        raise ValueError("prices must be a pandas Series.")
+    if prices.empty:
+        raise ValueError("prices series must not be empty.")
+    if not isinstance(prices.index, pd.DatetimeIndex):
+        raise ValueError("prices index must be a pandas DatetimeIndex.")
+    if not prices.index.is_monotonic_increasing:
+        raise ValueError("prices index must be monotonic increasing.")
+    if train_years is not None and (not isinstance(train_years, int) or train_years <= 0):
+        raise ValueError("train_years must be a positive integer if provided.")
+    if test_months is not None and (not isinstance(test_months, int) or test_months <= 0):
+        raise ValueError("test_months must be a positive integer if provided.")
+
     train_bars = (train_years if train_years is not None else TIMEFRAME_TRAIN) * 252
     test_bars = (test_months if test_months is not None else TIMEFRAME_TEST) * 21
+
+    if train_bars <= 0:
+        raise ValueError("Computed train window size must be greater than zero.")
+    if test_bars <= 0:
+        raise ValueError("Computed test window size must be greater than zero.")
+    if train_bars + test_bars > len(prices):
+        raise ValueError("Not enough data for the specified train and test windows.")
+
+    # ---- Core logic ----
     result = WalkForwardResult()
     equity_carry = MAX_EQUIITY
 
     i = train_bars
     while i + test_bars <= len(prices):
-        train = prices.iloc[i - train_bars:i]
-        test = prices.iloc[i:i + test_bars]
+        train = prices.iloc[i - train_bars : i]
+        test = prices.iloc[i : i + test_bars]
 
         try:
             test_signals = signals_fn(train, test)
-            metrics = run_backtest(test_signals, test, initial_equity=equity_carry)
-            equity_carry = metrics.equity_curve[-1]["equity"] if metrics.equity_curve else equity_carry
+            if not isinstance(test_signals, pd.Series):
+                raise ValueError("signals_fn must return a pandas Series.")
+            if len(test_signals) != len(test):
+                raise ValueError(
+                    f"signals_fn returned series length {len(test_signals)}; expected {len(test)} matching the test period."
+                )
 
-            result.windows.append({
-                "start": str(test.index[0].date()),
-                "end": str(test.index[-1].date()),
-                "sharpe": metrics.sharpe,
-                "max_drawdown": metrics.max_drawdown,
-                "total_return": metrics.total_return,
-                "num_trades": metrics.num_trades,
-            })
+            metrics = run_backtest(test_signals, test, initial_equity=equity_carry)
+            equity_carry = (
+                metrics.equity_curve[-1]["equity"] if metrics.equity_curve else equity_carry
+            )
+
+            result.windows.append(
+                {
+                    "start": str(test.index[0].date()),
+                    "end": str(test.index[-1].date()),
+                    "sharpe": metrics.sharpe,
+                    "max_drawdown": metrics.max_drawdown,
+                    "total_return": metrics.total_return,
+                    "num_trades": metrics.num_trades,
+                }
+            )
             result.combined_equity.extend(metrics.equity_curve)
         except Exception as e:
-            result.windows.append({"start": str(test.index[0].date()), "end": str(test.index[-1].date()), "error": str(e)})
+            result.windows.append(
+                {
+                    "start": str(test.index[0].date()),
+                    "end": str(test.index[-1].date()),
+                    "error": str(e),
+                }
+            )
 
         i += test_bars
 
