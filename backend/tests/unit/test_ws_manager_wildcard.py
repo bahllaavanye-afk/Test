@@ -5,8 +5,43 @@ subscribes to the literal topic ``prices:*`` while the feed broadcasts to
 ``prices:{symbol}``. Before the fix, the wildcard subscriber received nothing.
 """
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.ws.manager import ConnectionManager
+
+
+class PriceMessage(BaseModel):
+    """Schema for price broadcast messages.
+
+    Attributes:
+        symbol: Ticker symbol being broadcast.
+        last: Last traded price for the symbol.
+    """
+    symbol: str = Field(..., description="Ticker symbol", example="AAPL")
+    last: float = Field(..., description="Last traded price", example=1.23)
+
+    @validator("last")
+    def last_must_be_positive(cls, v):
+        if v <= 0:
+            raise ValueError("last price must be positive")
+        return v
+
+    class Config:
+        schema_extra = {
+            "example": {"symbol": "AAPL", "last": 1.0}
+        }
+
+
+class AlertMessage(BaseModel):
+    """Schema for alert broadcast messages.
+
+    Attributes:
+        msg: Human‑readable alert description.
+    """
+    msg: str = Field(..., description="Alert message", example="VaR breach")
+
+    class Config:
+        schema_extra = {"example": {"msg": "VaR breach"}}
 
 
 class _FakeWS:
