@@ -7,28 +7,54 @@ from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, desk_of, list_desks, strategies_by_desk
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, validator
 import uuid
+from typing import List
+
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
 
 class StrategyOut(BaseModel):
-    id: str
-    name: str
-    market_type: str
-    strategy_type: str
-    risk_bucket: str
-    is_enabled: bool
-    symbols: list[str]
-    tick_interval_seconds: float
-    confidence_threshold: float
+    id: str = Field(
+        ..., description="Unique identifier of the strategy (UUID format).", example="123e4567-e89b-12d3-a456-426614174000"
+    )
+    name: str = Field(..., description="Human‑readable name of the strategy.", example="mean_rev_20_1.5")
+    market_type: str = Field(..., description="Market classification (e.g., equities, crypto).", example="equities")
+    strategy_type: str = Field(..., description="Type of strategy logic.", example="mean_reversion")
+    risk_bucket: str = Field(..., description="Risk bucket classification.", example="low")
+    is_enabled: bool = Field(..., description="Flag indicating if the strategy is active.", example=True)
+    symbols: List[str] = Field(
+        default_factory=list,
+        description="List of ticker symbols the strategy operates on.",
+        example=["AAPL", "MSFT"],
+    )
+    tick_interval_seconds: float = Field(
+        ..., description="Time interval in seconds between strategy ticks.", example=3600.0, gt=0
+    )
+    confidence_threshold: float = Field(
+        ..., description="Confidence threshold for signal generation (0‑1).", example=0.6, ge=0.0, le=1.0
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
+    @validator("id")
+    def validate_uuid(cls, v: str) -> str:
+        try:
+            uuid.UUID(v)
+        except ValueError as exc:
+            raise ValueError("id must be a valid UUID string") from exc
+        return v
+
+    @validator("symbols", each_item=True)
+    def validate_symbol(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            raise ValueError("each symbol must be a non‑empty string")
+        return v
+
 
 class StrategyToggle(BaseModel):
-    is_enabled: bool
+    is_enabled: bool = Field(..., description="Desired enabled state for the strategy.", example=False)
 
 
 @router.get("/params-schema")
