@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-19T03:15:44.273777+00:00",
+  "last_updated": "2026-07-19T05:25:30.810897+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,9 +28,9 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent learnings, here are the most important and actionable knowledge points:\n\n* **Experiment Runner Initialization**: The `run_experiments` agent is currently initializing the experiment runner by parsing the `config/experiment_runner.cfg` file and related experiment scripts to prepare for automatic runner setup. (`run_experiments @ 2026-07-18T20:46`)\n* **Investor Pipeline Validation**: The `investor_pipeline` agent is continuously validating investor pipeline settings and auto-advancing investors by parsing the `/quantedge/config/investor_pipeline.cfg` and related configuration files. (`investor_pipeline @ 2026-07-18T20:46` and `@ 2026-07-19T02:41`)\n* **Algo Agent Status**: The `algo_agent` is actively working on reviewing and analyzing model performance metrics from the `/quantedge/models/performance_metrics.csv` file to optimize trading strategies. (`algo_agent @ 2026-07-",
+      "summary": "Based on the recent agent learnings, the following are the 2-3 concise bullet points of the most important, actionable knowledge:\n\n* `investor_pipeline` is actively parsing settings from the `/quantedge/config/investor_pipeline.cfg` file to ensure seamless auto-advancement of investor status.\n* `algo_agent` is working on analyzing data from the `research_scientist/reports/experiment_results.csv` file, located in `/home/user/quantedge`, while `research_scientist` is actively working on updating the `/home/user/quantedge/docs/research_notes.md` file with recent findings.\n* `self_improver` is scanning through the `/home/user/quantedge/logs/self_improvement_log.log` file to identify areas for improvement within the QuantEdge system.",
       "source_count": 74,
-      "updated_at": "2026-07-19T03:15:44.273777+00:00",
+      "updated_at": "2026-07-19T05:25:30.810897+00:00",
       "raw_recent": [
         "[research_scientist @ 2026-07-18T20:46] The user asks for a one-sentence status update: what the assistant is actively working on right now. As the research_scientist agent, need to respond ",
         "[continuous_improver in #engineering @ 2026-07-18T22:38] I'm reviewing my recent activities and enhancements in the `peer_learnings` section of the `.github/state/agent_memory.json` file. In the last cycle, ",
