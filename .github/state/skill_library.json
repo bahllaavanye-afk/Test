@@ -199,8 +199,13 @@
     "Ping dependencies",
     "Check RAM usage",
     "Validate API calls",
-    "Test network connectivity"
+    "Test network connectivity",
+    "error_handling on ml/features/macro_signals.py: success \u2014 tests green",
+    "error_handling on risk/correlation_monitor.py: success \u2014 tests green",
+    "error_handling on backtest/stress_test.py: success \u2014 tests green",
+    "error_handling on comparison/engine.py: success \u2014 tests green",
+    "error_handling on tasks/research_pipeline.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-19T13:09:42.304012+00:00",
+  "last_updated": "2026-07-19T13:21:19.582056+00:00",
   "total": 200
 }
