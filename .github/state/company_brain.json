@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784452762.6339622,
+    "last_updated": 1784458321.6642492,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784452762.6329618
+    "last_brain_update": 1784458321.6634097
   },
   "episodic": [
     {
@@ -1843,11 +1843,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a series of encoded strings and a message. The first two lines look like base64 or some encoded data, possibly from a tool like \"vc\" (version control?). The third line is a clear message: \"\ud83d\uded1 **Team Lead review \u2014 automerge revoked.** This autonomous PR modifies protected file(s): - `backe`\". The text is cut off at \"back",
-      "item_count": 20,
-      "ts": 1783465064.3467476
-    },
-    {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a base64-encoded string or some identifier, but the actual content is: \"[vc]: #AxNKF0r7S1dT27lTIhwNFH6zhfzwxTAHby5AmsYVqZc=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBl",
       "item_count": 20,
       "ts": 1783468723.2040842
@@ -2341,6 +2336,11 @@
       "summary": "The auto-fix workflow run on 2026-07-19 failed because it could not apply a patch to a file.",
       "item_count": 20,
       "ts": 1784452762.6236458
+    },
+    {
+      "summary": "The auto-fix process failed three times, each time unable to apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784458321.655916
     }
   ],
   "experiment_results": [
