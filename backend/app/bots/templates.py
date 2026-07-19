@@ -1147,4 +1147,43 @@ BOT_TEMPLATES: dict[str, dict] = {
         },
         "exit_rules": [{"type": "time_exit", "hours": 3}],
     },
+
+    "oa_user_0dte_sliquidity": {
+        "name": "OA 0DTE Sliquidity (mine)",
+        "description": "Copied from the user's OA bot BOTjeVLzHfBP…282 (v1 Jul 2). 0DTE momentum scalper: on short-term price thrust, buy a near-ATM call debit spread (long ~$0.50 ITM, ~$5 wing), aggressive 150% pricing, SL 50%, 15-MINUTE time exit. Original loops SPY/IWM/QQQ both directions with trail 15%/5%, FOMC-day gate and OI>1000 filter — those have no engine equivalent yet and are preserved in oa_meta (each is a queued engine upgrade). Long-call side on SPY here; up to 10/day in OA → no single-position guard.",
+        "symbol": "SPY",
+        "market_type": "options",
+        "trigger": {"type": "schedule", "interval": "1m"},
+        "conditions": [
+            {"type": "time_window", "start_time": "13:35", "end_time": "18:55"},
+            {"type": "price_vs_ma", "ma_period": 5, "operator": "above"},
+        ],
+        "condition_logic": "ALL",
+        "action": {
+            "type": "open_option_spread",
+            "size_pct": 2.5,
+            "stop_loss_pct": 50,
+            "legs": [
+                {"side": "buy",  "option_type": "call", "delta": 0.52, "dte": 0, "ratio": 1},
+                {"side": "sell", "option_type": "call", "delta": 0.15, "dte": 0, "ratio": 1},
+            ],
+        },
+        "exit_rules": [{"type": "time_exit", "hours": 1}],
+        "oa_meta": {
+            "bot_id": "BOTjeVLzHfBP4017832241654049282",
+            "true_time_exit": "15 minutes (engine time_exit is integer-hours; 1h used — sub-hour exits queued as engine upgrade)",
+            "unmapped_features": {
+                "put_side_twin": "long put spread mirror on down-thrust (engine: one action per template)",
+                "symbol_loop": ["SPY", "IWM", "QQQ"],
+                "price": "150% of bid/ask",
+                "trailing_stop": "15% / 5%",
+                "fomc_day_gate": "skip FOMC days",
+                "min_open_interest": 1000,
+                "momentum_rule": "0.01% price change vs 5m & 15m closes",
+                "daily_positions": "10 per day",
+                "automations_pending": ["Gex Magnet Close", "Auto Scalp"],
+            },
+            "source_url": "https://app.optionalpha.com/bots/bot/BOTjeVLzHfBP4017832241654049282",
+        },
+    },
 }

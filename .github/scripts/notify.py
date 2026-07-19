@@ -124,7 +124,10 @@ def discord_post(channel: str, text: str, username: str = "QuantEdge") -> bool:
     # 1) bot-token routing to the actual channel
     if _BOT_TOKEN:
         cid = _load_channel_ids().get(name)
-        if cid and _post_to_channel_id(cid, text, username):
+        if not cid:
+            print(f"[notify] no channel id for '#{name}' in this guild — webhook fallback", flush=True)
+        elif _post_to_channel_id(cid, text, username):
+            print(f"[notify] delivered #{name} via BOT → channel_id={cid}", flush=True)
             stats["discord_ok"] += 1
             time.sleep(0.4)
             return True
@@ -148,6 +151,9 @@ def discord_post(channel: str, text: str, username: str = "QuantEdge") -> bool:
     try:
         with urllib.request.urlopen(req, timeout=15):
             pass
+        print(f"[notify] delivered #{name} via WEBHOOK "
+              f"({'default → lands in whichever channel the default webhook targets' if using_default else 'per-channel'})",
+              flush=True)
         stats["discord_ok"] += 1
         time.sleep(0.5)
         return True
