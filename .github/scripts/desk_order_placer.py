@@ -1458,8 +1458,39 @@ async def main() -> None:
                 if dropped:
                     print(f"  · top-K[{dname}]: dropped {dropped} lower-confidence signals", flush=True)
             approved_signals = top_k_signals
+
+            # ── Exploration allocation ────────────────────────────────────────
+            # Without live fills the ≥20-trade pruning/promotion loop can never
+            # judge ~95% of the book (fills concentrate in a couple of winners).
+            # One MIN-notional clip per desk per run for a strategy the gates
+            # filtered, rotating daily. Regime gate stays enforced (checked
+            # above), pruned strategies stay excluded (perf-weight 0 check in
+            # the execution loop), and a 0.45 noise floor keeps it sane.
+            chosen = {(i["strategy"].name, i["symbol"]) for i in approved_signals}
+            explore_pool: dict[str, list[dict]] = {}
+            for item in raw_signals:
+                sname = item["strategy"].name
+                if (sname, item["symbol"]) in chosen or sname in {n for n, _ in chosen}:
+                    continue
+                if current_regime not in _STRATEGY_REGIME_MAP.get(sname, _DEFAULT_REGIMES):
+                    continue
+                if item["confidence"] < 0.45:
+                    continue
+                explore_pool.setdefault(item["desk"].name, []).append(item)
+            _day_seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
+            explored = 0
+            for dname, items in sorted(explore_pool.items()):
+                items.sort(key=lambda x: (x["strategy"].name, x["symbol"]))
+                pick = items[(_day_seed + len(dname)) % len(items)]
+                pick["explore"] = True
+                approved_signals.append(pick)
+                explored += 1
+                print(f"  · explore[{dname}]: {pick['strategy'].name}/{pick['symbol']} "
+                      f"conf={pick['confidence']:.2f} — min-notional evidence clip", flush=True)
+
             filtered = len(raw_signals) - len(approved_signals)
-            tracker.set_output(passed=len(approved_signals), filtered=filtered)
+            tracker.set_output(passed=len(approved_signals), filtered=filtered,
+                               explored=explored)
 
         # ── Stage 5: Order Execution ──────────────────────────────────────────
         all_orders: list[dict] = []
@@ -1510,6 +1541,10 @@ async def main() -> None:
                 if perf_w != 1.0:
                     print(f"    · perf weight {perf_w:.2f}x for {strategy.name}", flush=True)
                     kelly_notional *= perf_w
+                if item.get("explore"):
+                    # Evidence clip: smallest placeable size — exploration buys
+                    # information, not exposure.
+                    kelly_notional = min(kelly_notional, MIN_ORDER_USD) or MIN_ORDER_USD
                 kelly_notional = cash_capped_notional(kelly_notional, symbol, account)
                 if kelly_notional <= 0:
                     print(f"  · {strategy.name}/{symbol} skipped — insufficient available cash "
