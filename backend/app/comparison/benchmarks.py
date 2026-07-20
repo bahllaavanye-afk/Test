@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import time
 from datetime import date, datetime, timezone
 from typing import Dict, List
 
@@ -103,8 +104,18 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         )
         return {}
 
+    start_time = time.perf_counter()
     cache_key = (start, end)
     if cached := _benchmark_cache.get(cache_key):
+        duration = time.perf_counter() - start_time
+        logger.info(
+            "Benchmark curves retrieved from cache",
+            extra={
+                "signal_count": len(cached),
+                "execution_time_s": round(duration, 3),
+                "source": "cache",
+            },
+        )
         # Return a shallow copy to avoid accidental mutation by callers
         return {k: v.copy() for k, v in cached.items()}
 
@@ -162,6 +173,26 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     # Cache the result for future identical requests
     _benchmark_cache[cache_key] = {k: v.copy() for k, v in result.items()}
+
+    # Logging key metrics
+    exec_time = time.perf_counter() - start_time
+    signal_count = len(result)
+    total_points = sum(len(v) for v in result.values())
+    pnl_snapshot = {
+        ticker: (entries[-1]["value"] - 100.0) if entries else None
+        for ticker, entries in result.items()
+    }
+
+    logger.info(
+        "Fetched benchmark curves",
+        extra={
+            "signal_count": signal_count,
+            "total_points": total_points,
+            "execution_time_s": round(exec_time, 3),
+            "pnl_snapshot": pnl_snapshot,
+            "source": "api",
+        },
+    )
     return result
 
 
