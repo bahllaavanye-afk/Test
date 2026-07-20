@@ -1,9 +1,32 @@
 """InferenceLog ORM — records every prediction made by a serving model."""
 import uuid
 from datetime import datetime
+
 from sqlalchemy import String, Numeric, DateTime, Boolean, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
+
+# Constants for column specifications
+MODEL_NAME_MAX_LENGTH = 64
+VERSION_MAX_LENGTH = 32
+SYMBOL_MAX_LENGTH = 32
+SIGNAL_MAX_LENGTH = 8
+AB_GROUP_MAX_LENGTH = 16
+
+PRED_PRECISION = 10
+PRED_SCALE = 6
+CONFIDENCE_PRECISION = 6
+CONFIDENCE_SCALE = 4
+LATENCY_PRECISION = 8
+LATENCY_SCALE = 3
+
+# Allowed categorical values
+SIGNAL_CHOICES = ("buy", "sell", "hold")
+AB_GROUP_CHOICES = ("champion", "challenger", "shadow")
+
+# Index names
+INDEX_RELEASE_TS = "ix_inf_release_ts"
+INDEX_MODEL_SYMBOL = "ix_inf_model_symbol"
 
 
 class InferenceLog(Base):
@@ -15,29 +38,32 @@ class InferenceLog(Base):
     """
     __tablename__ = "inference_logs"
     __table_args__ = (
-        Index("ix_inf_release_ts", "release_id", "ts"),
-        Index("ix_inf_model_symbol", "model_name", "symbol"),
+        Index(INDEX_RELEASE_TS, "release_id", "ts"),
+        Index(INDEX_MODEL_SYMBOL, "model_name", "symbol"),
     )
 
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
     release_id: Mapped[str] = mapped_column(
-        String, ForeignKey("model_releases.id", ondelete="CASCADE"), nullable=False, index=True
+        String,
+        ForeignKey("model_releases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
-    model_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    version: Mapped[str] = mapped_column(String(32), nullable=False)
-    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(MODEL_NAME_MAX_LENGTH), nullable=False)
+    version: Mapped[str] = mapped_column(String(VERSION_MAX_LENGTH), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(SYMBOL_MAX_LENGTH), nullable=False)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     # Raw model output in [0, 1]
-    prediction: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    prediction: Mapped[float] = mapped_column(Numeric(PRED_PRECISION, PRED_SCALE), nullable=False)
     # Discretised trading signal
-    signal: Mapped[str] = mapped_column(String(8), nullable=False)       # buy|sell|hold
+    signal: Mapped[str] = mapped_column(String(SIGNAL_MAX_LENGTH), nullable=False)  # buy|sell|hold
     # Calibration metric: abs(pred - 0.5) * 2
-    confidence: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
-    latency_ms: Mapped[float] = mapped_column(Numeric(8, 3), nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric(CONFIDENCE_PRECISION, CONFIDENCE_SCALE), nullable=False)
+    latency_ms: Mapped[float] = mapped_column(Numeric(LATENCY_PRECISION, LATENCY_SCALE), nullable=False)
     # Which branch of the A/B test served this request
-    ab_group: Mapped[str] = mapped_column(String(16), nullable=False)    # champion|challenger|shadow
+    ab_group: Mapped[str] = mapped_column(String(AB_GROUP_MAX_LENGTH), nullable=False)  # champion|challenger|shadow
     # Filled in ex-post when actual market return is known
-    actual_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
+    actual_return: Mapped[float | None] = mapped_column(Numeric(PRED_PRECISION, PRED_SCALE))
     is_correct: Mapped[bool | None] = mapped_column(Boolean)

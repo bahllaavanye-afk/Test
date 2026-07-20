@@ -17,8 +17,37 @@ import httpx
 import numpy as np
 import pandas as pd
 
+# Constants
 _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
+
+DEFAULT_LIMIT = 500
+MAX_FUNDING_LIMIT = 1000
+MAX_OI_LIMIT = 500
+DEFAULT_OI_PERIOD = "1d"
+HTTP_TIMEOUT = 10.0
+RESAMPLE_DAILY = "D"
+WINDOW_SIZE = 7
+PCT_MULTIPLIER = 100
+SYNC_TIMEOUT = 30
+
+ALTERNATIVE_FEATURE_COLS = [
+    "funding_rate",
+    "funding_rate_ma7",
+    "oi_change_pct",
+    "oi_momentum",
+]
+
+_CRYPTO_KEYWORDS = (
+    "BTC",
+    "ETH",
+    "BNB",
+    "SOL",
+    "XRP",
+    "USDT",
+    "USDC",
+    "CRYPTO",
+)
 
 
 def _to_binance_symbol(symbol: str) -> str:
@@ -35,7 +64,7 @@ class BinanceFundingRateFeatures:
     async def get_funding_rate_history(
         self,
         symbol: str,
-        limit: int = 500,
+        limit: int = DEFAULT_LIMIT,
     ) -> pd.DataFrame:
         """
         GET /fapi/v1/fundingRate
@@ -45,9 +74,9 @@ class BinanceFundingRateFeatures:
         """
         bn_sym = _to_binance_symbol(symbol)
         url = f"{_FAPI_BASE}/fapi/v1/fundingRate"
-        params = {"symbol": bn_sym, "limit": min(limit, 1000)}
+        params = {"symbol": bn_sym, "limit": min(limit, MAX_FUNDING_LIMIT)}
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
@@ -68,8 +97,8 @@ class BinanceFundingRateFeatures:
     async def get_open_interest_hist(
         self,
         symbol: str,
-        period: str = "1d",
-        limit: int = 500,
+        period: str = DEFAULT_OI_PERIOD,
+        limit: int = DEFAULT_LIMIT,
     ) -> pd.DataFrame:
         """
         GET /futures/data/openInterestHist
@@ -80,9 +109,9 @@ class BinanceFundingRateFeatures:
         """
         bn_sym = _to_binance_symbol(symbol)
         url = f"{_FUTURES_DATA_BASE}/futures/data/openInterestHist"
-        params = {"symbol": bn_sym, "period": period, "limit": min(limit, 500)}
+        params = {"symbol": bn_sym, "period": period, "limit": min(limit, MAX_OI_LIMIT)}
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
@@ -120,15 +149,15 @@ class BinanceFundingRateFeatures:
             df[col] = np.nan
 
         fr_df, oi_df = await asyncio.gather(
-            self.get_funding_rate_history(symbol, limit=500),
-            self.get_open_interest_hist(symbol, period="1d", limit=500),
+            self.get_funding_rate_history(symbol, limit=DEFAULT_LIMIT),
+            self.get_open_interest_hist(symbol, period=DEFAULT_OI_PERIOD, limit=DEFAULT_LIMIT),
         )
 
         # Merge funding rate
         if not fr_df.empty:
             fr_df = fr_df.set_index("ts")
-            fr_df = fr_df.resample("D").last()  # one value per day
-            fr_df["funding_rate_ma7"] = fr_df["funding_rate"].rolling(7).mean()
+            fr_df = fr_df.resample(RESAMPLE_DAILY).last()  # one value per day
+            fr_df["funding_rate_ma7"] = fr_df["funding_rate"].rolling(WINDOW_SIZE).mean()
 
             if hasattr(df.index, "tz") and df.index.tz is not None:
                 idx = df.index.normalize()
@@ -147,9 +176,9 @@ class BinanceFundingRateFeatures:
 
         # Merge OI
         if not oi_df.empty:
-            oi_df = oi_df.set_index("ts").resample("D").last()
-            oi_df["oi_change_pct"] = oi_df["open_interest"].pct_change() * 100
-            oi_df["oi_momentum"] = oi_df["open_interest"] / oi_df["open_interest"].rolling(7).mean() - 1
+            oi_df = oi_df.set_index("ts").resample(RESAMPLE_DAILY).last()
+            oi_df["oi_change_pct"] = oi_df["open_interest"].pct_change() * PCT_MULTIPLIER
+            oi_df["oi_momentum"] = oi_df["open_interest"] / oi_df["open_interest"].rolling(WINDOW_SIZE).mean() - 1
 
             if hasattr(df.index, "tz") and df.index.tz is not None:
                 idx = df.index.normalize()
@@ -179,7 +208,7 @@ class BinanceFundingRateFeatures:
                     future = pool.submit(
                         asyncio.run, self.compute_features_async(symbol, df)
                     )
-                    return future.result(timeout=30)
+                    return future.result(timeout=SYNC_TIMEOUT)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
         except Exception:
@@ -188,13 +217,6 @@ class BinanceFundingRateFeatures:
                 df[col] = np.nan
             return df
 
-
-ALTERNATIVE_FEATURE_COLS = [
-    "funding_rate",
-    "funding_rate_ma7",
-    "oi_change_pct",
-    "oi_momentum",
-]
 
 _binance_features = BinanceFundingRateFeatures()
 
@@ -206,7 +228,7 @@ def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame
     """
     is_crypto = any(
         kw in symbol.upper()
-        for kw in ("BTC", "ETH", "BNB", "SOL", "XRP", "USDT", "USDC", "CRYPTO")
+        for kw in _CRYPTO_KEYWORDS
     )
     if is_crypto and symbol:
         return _binance_features.compute_features(symbol, df)
