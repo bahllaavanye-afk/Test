@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-13",
+  "last_updated": "2026-07-20",
   "pipeline": [
     {
       "name": "a16z Crypto Fund",
@@ -31,30 +31,30 @@
     },
     {
       "name": "Dragoneer Investment Group",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "info@dragoneer.com",
-      "added": "2026-07-06",
+      "added": "2026-07-20",
       "notes": "Late-stage tech growth"
     },
     {
       "name": "Tiger Global",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "info@tigerglobal.com",
-      "added": "2026-07-06",
+      "added": "2026-07-20",
       "notes": "Growth equity"
     },
     {
       "name": "Founders Fund",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "info@foundersfund.com",
-      "added": "2026-07-06",
+      "added": "2026-07-20",
       "notes": "Peter Thiel aligned, tech-first"
     },
     {
       "name": "Andreessen Horowitz",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "a16z-fintech@a16z.com",
-      "added": "2026-07-06",
+      "added": "2026-07-20",
       "notes": "FinTech team"
     },
     {
