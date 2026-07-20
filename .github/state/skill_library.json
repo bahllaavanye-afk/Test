@@ -199,8 +199,13 @@
     "Use thread pooling",
     "Add unit tests",
     "Implement retry logic",
-    "Parse JSON feeds"
+    "Parse JSON feeds",
+    "error_handling on ml/models/lstm.py: success \u2014 tests green",
+    "error_handling on risk/circuit_breaker.py: success \u2014 tests green",
+    "error_handling on brokers/base.py: success \u2014 tests green",
+    "error_handling on comparison/engine.py: success \u2014 tests green",
+    "error_handling on tasks/agent_memory.py: success \u2014 tests green"
   ],
-  "last_updated": "2026-07-20T01:05:13.605257+00:00",
+  "last_updated": "2026-07-20T01:06:22.988807+00:00",
   "total": 200
 }
