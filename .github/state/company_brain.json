@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784547904.5688643,
+    "last_updated": 1784552603.2914376,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784547525.359172
+    "last_brain_update": 1784552603.290507
   },
   "episodic": [
     {
@@ -1834,11 +1834,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize three separate error messages from a robot (likely automated system) related to auto-fix attempts. The first: auto-fix aborted due to validation failure (fix changes ~51 lines, limit 50). Second: auto-fix failed because patch could not be applied. Third: could not parse LLM response due to JSON parsing error. Combine into 1-2 sentences.\n\nSummarize: The auto-fix system encountered three issues: a validation failure for exceeding line limit",
-      "item_count": 20,
-      "ts": 1783629891.161125
-    },
-    {
       "summary": "The auto-fix bot failed three times to apply a patch to a file, each time reporting the same error.",
       "item_count": 20,
       "ts": 1783634949.5116296
@@ -2332,6 +2327,11 @@
       "summary": "The PR was flagged by the team lead, who revoked automerge because it modifies protected files; deployment subsequently failed due to a resource limit error, advising a 24-hour wait.",
       "item_count": 20,
       "ts": 1784547525.349823
+    },
+    {
+      "summary": "The deployment failed due to resource limitations, with an error message advising to retry in 24 hours. The workflow run occurred on July 20, 2026.",
+      "item_count": 20,
+      "ts": 1784552603.281716
     }
   ],
   "experiment_results": [
