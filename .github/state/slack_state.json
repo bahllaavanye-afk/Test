@@ -1,8 +1,7 @@
 {
-  "last_run_ts": 1784522339,
+  "last_run_ts": 1784524809,
   "last_commit_sha": "c650500",
   "posted_hashes": [
-    "4eb6b8ed8066",
     "e41c551c251a",
     "ef568c3b146a",
     "9863e60749d2",
@@ -1001,32 +1000,16 @@
     "32ae47ae5f41",
     "4a0803fa8c67",
     "04b69d0d0b1a",
-    "d38f3cfe3a0a"
+    "d38f3cfe3a0a",
+    "a0888c4e40b4"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1784510650.7817047,
+    "standup-channel:standup": 1784524789.290895,
     "agent-api-usage:api_usage_report": 1784510745.5302832,
-    "agent-api-usage:throughput_report": 1784510751.0352921,
+    "agent-api-usage:throughput_report": 1784524809.85073,
     "engineering:agent_reminder": 1784468157.58864,
-    "help:agent_reminder": 1784468157.9254193,
-    "engineering:silent_vp_eng": 1784510751.6468384,
-    "risk-alerts:silent_risk_eng": 1784510766.4709148,
-    "alpha-research:silent_alpha_dir": 1784510755.3983312,
-    "desk-crypto:silent_ml_lead": 1784510759.2671416,
-    "squad-backend:silent_backend_lead": 1784510770.245006,
-    "squad-qa:silent_qa_dir": 1784510773.178522,
-    "infra-alerts:silent_devops_dir": 1784511579.2218535,
-    "squad-execution:silent_exec_eng": 1784511589.787039,
-    "desk-polymarket:silent_poly_desk": 1784511593.2386496,
-    "ml-experiments:silent_ml_researcher": 1784511596.8032587,
-    "desk-fx-rates:silent_vp_research": 1784511600.8079605,
-    "alpha-research:silent_quant_researcher": 1784511604.9033885,
-    "engineering:silent_model_validator": 1784511629.7447078,
-    "engineering:silent_arb_trader": 1784511641.6543818,
-    "engineering:silent_portfolio_manager": 1784511646.1869395,
-    "engineering:silent_market_maker": 1784511650.4569564,
-    "engineering:silent_regime_analyst": 1784511653.848474
+    "help:agent_reminder": 1784468157.9254193
   },
   "response_cache": {},
   "posted_today": [
