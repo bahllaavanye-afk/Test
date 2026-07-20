@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, List, Tuple
 
 import httpx
 
@@ -72,10 +72,16 @@ async def post(
     channel: str,
     text: str,
     *,
-    blocks: list[dict] | None = None,
+    blocks: List[dict] | None = None,
     color: str | None = None,
 ) -> bool:
     """Post a message to the given channel. Returns True on success."""
+    if not channel:
+        logger.debug("slack: channel name is empty or None")
+        return False
+    if text is None:
+        text = ""
+
     webhook = _resolve_webhook(channel)
     if not webhook:
         logger.debug("slack: no webhook for channel", channel=channel)
@@ -100,59 +106,143 @@ async def post(
 
 # ── High-level helpers used across the codebase ───────────────────────────
 
-async def post_standup(squad: str, shipped: list[str], planned: list[str], blockers: list[str]) -> bool:
+async def post_standup(
+    squad: str,
+    shipped: List[str] | None,
+    planned: List[str] | None,
+    blockers: List[str] | None,
+) -> bool:
+    """Post a daily standup summary."""
+    shipped = shipped or []
+    planned = planned or []
+    blockers = blockers or []
+
     blocks = [
-        {"type": "header", "text": {"type": "plain_text", "text": f"🌅 {squad} standup — {datetime.now(timezone.utc):%Y-%m-%d}"}},
-        {"type": "section", "fields": [
-            {"type": "mrkdwn", "text": f"*Shipped*\n" + ("\n".join(f"• {x}" for x in shipped) or "_nothing yet_")},
-            {"type": "mrkdwn", "text": f"*Planned*\n" + ("\n".join(f"• {x}" for x in planned) or "_to be set_")},
-        ]},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"🌅 {squad} standup — {datetime.now(timezone.utc):%Y-%m-%d}"},
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Shipped*\n" + ("\n".join(f"• {x}" for x in shipped) or "_nothing yet_"),
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Planned*\n" + ("\n".join(f"• {x}" for x in planned) or "_to be set_"),
+                },
+            ],
+        },
     ]
     if blockers:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn",
-            "text": "*🚧 Blockers*\n" + "\n".join(f"• {x}" for x in blockers)}})
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚧 Blockers*\n" + "\n".join(f"• {x}" for x in blockers),
+                },
+            }
+        )
     return await post(SlackChannel.STANDUP, f"{squad} standup", blocks=blocks)
 
 
 async def post_alpha_review(strategy: str, sharpe: float, maxdd: float, decision: str) -> bool:
+    """Post a review of a new strategy."""
     color = "good" if decision == "promoted" else "warning" if decision == "iterate" else "danger"
     text = f"📈 *{strategy}* — Sharpe {sharpe:.2f}, MaxDD {maxdd:.1%}, decision: {decision}"
     return await post(SlackChannel.ALPHA, text, color=color)
 
 
-async def post_eod_pnl(date: str, total_pnl: float, top: list[tuple[str, float]], bottom: list[tuple[str, float]]) -> bool:
+async def post_eod_pnl(
+    date: str,
+    total_pnl: float,
+    top: List[Tuple[str, float]] | None,
+    bottom: List[Tuple[str, float]] | None,
+) -> bool:
+    """Post end‑of‑day P&L attribution."""
+    top = top or []
+    bottom = bottom or []
+
     sign = "+" if total_pnl >= 0 else ""
-    top_str = "\n".join(f"  🟢 {s}: {sign}${p:,.0f}" for s, p in top[:5])
-    bot_str = "\n".join(f"  🔴 {s}: ${p:,.0f}" for s, p in bottom[:5])
-    text = f"💰 *EOD P&L {date}* — Total: {sign}${total_pnl:,.0f}\n\n*Top 5*\n{top_str}\n\n*Bottom 5*\n{bot_str}"
+    top_slice = top[:5]
+    bottom_slice = bottom[:5]
+
+    top_str = "\n".join(f"  🟢 {s}: {sign}${p:,.0f}" for s, p in top_slice)
+    bottom_str = "\n".join(f"  🔴 {s}: ${p:,.0f}" for s, p in bottom_slice)
+
+    # Show a placeholder when there are no entries
+    if not top_str:
+        top_str = "_none_"
+    if not bottom_str:
+        bottom_str = "_none_"
+
+    text = (
+        f"💰 *EOD P&L {date}* — Total: {sign}${total_pnl:,.0f}\n\n"
+        f"*Top 5*\n{top_str}\n\n"
+        f"*Bottom 5*\n{bottom_str}"
+    )
     color = "good" if total_pnl >= 0 else "danger"
     return await post(SlackChannel.PNL, text, color=color)
 
 
-async def post_risk_alert(severity: str, message: str, metric: str | None = None, value: float | None = None) -> bool:
+async def post_risk_alert(
+    severity: str,
+    message: str,
+    metric: str | None = None,
+    value: float | None = None,
+) -> bool:
+    """Post a risk alert."""
     color = {"P0": "danger", "P1": "warning", "P2": "good"}.get(severity, "warning")
     detail = f" ({metric}={value:.4f})" if metric and value is not None else ""
-    return await post(SlackChannel.RISK, f"⚠️ *[{severity}] Risk*: {message}{detail}", color=color)
+    return await post(
+        SlackChannel.RISK,
+        f"⚠️ *[{severity}] Risk*: {message}{detail}",
+        color=color,
+    )
 
 
-async def post_deploy(service: str, version: str, status: str, url: str | None = None) -> bool:
+async def post_deploy(
+    service: str,
+    version: str,
+    status: str,
+    url: str | None = None,
+) -> bool:
+    """Post a deploy notification."""
     color = "good" if status == "success" else "danger"
     link = f"\n<{url}|View deploy>" if url else ""
-    return await post(SlackChannel.DEPLOYS, f"🚀 *{service}* deploy `{version}` → {status}{link}", color=color)
+    return await post(
+        SlackChannel.DEPLOYS,
+        f"🚀 *{service}* deploy `{version}` → {status}{link}",
+        color=color,
+    )
 
 
 async def post_ci_failure(branch: str, run_url: str, failing_step: str) -> bool:
+    """Post a CI failure notification."""
     text = f"❌ CI failed on `{branch}` — step *{failing_step}*\n<{run_url}|View logs>"
     return await post(SlackChannel.CI, text, color="danger")
 
 
 async def post_incident(severity: str, component: str, description: str, oncall: str) -> bool:
+    """Post an incident report."""
     color = {"P0": "danger", "P1": "warning"}.get(severity, "good")
     text = f"🚨 *[{severity}] Incident* — {component}\n{description}\n_On-call: {oncall}_"
     return await post(SlackChannel.INCIDENTS, text, color=color)
 
 
-async def post_ml_run_complete(model: str, symbol: str, val_sharpe: float, run_id: str) -> bool:
+async def post_ml_run_complete(
+    model: str,
+    symbol: str,
+    val_sharpe: float,
+    run_id: str,
+) -> bool:
+    """Post a completed ML training run."""
     color = "good" if val_sharpe > 1.0 else "warning"
-    text = f"🧠 ML training complete — *{model}* on *{symbol}* — val Sharpe {val_sharpe:.2f} (run `{run_id}`)"
+    text = (
+        f"🧠 ML training complete — *{model}* on *{symbol}* — "
+        f"val Sharpe {val_sharpe:.2f} (run `{run_id}`)"
+    )
     return await post(SlackChannel.ML, text, color=color)

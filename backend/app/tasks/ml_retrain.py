@@ -32,7 +32,10 @@ except Exception as exc:  # pragma: no cover
     # crashes the scheduler at import — degrade instead: retrain simply skips
     # data downloads (matches how torch-backed models degrade elsewhere).
     yf = None
-    logger.error("yfinance unavailable — nightly retrain will skip downloads", error=str(exc))
+    logger.error(
+        "yfinance unavailable — nightly retrain will skip downloads",
+        error=str(exc),
+    )
 
 try:
     import yaml as _yaml
@@ -41,13 +44,38 @@ except Exception:  # pragma: no cover
     _load_yaml = None
 
 
-async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
+async def _download_hist(
+    symbol: str | None,
+    interval: str | None,
+    start: datetime | None,
+    end: datetime | None,
+) -> pd.DataFrame | None:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
     downloads within the same nightly run.
 
-    Returns a pandas DataFrame or ``None`` on failure.
+    Returns a pandas DataFrame or ``None`` on failure or invalid input.
     """
+    # Guard against missing or empty inputs.
+    if not symbol or not interval or start is None or end is None:
+        logger.warning(
+            "Invalid parameters for _download_hist",
+            symbol=symbol,
+            interval=interval,
+            start=start,
+            end=end,
+        )
+        return None
+
+    # Ensure a sensible date range (start must be before end).
+    if start >= end:
+        logger.warning(
+            "Start date is not before end date in _download_hist",
+            start=start,
+            end=end,
+        )
+        return None
+
     cache_key = (symbol, interval)
     cached = _DATA_CACHE.get(cache_key)
     if cached:
@@ -74,28 +102,56 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
             ),
         )
     except Exception as exc:  # pragma: no cover
-        logger.error("Failed to download data", symbol=symbol, interval=interval, error=str(exc))
+        logger.error(
+            "Failed to download data",
+            symbol=symbol,
+            interval=interval,
+            error=str(exc),
+        )
         return None
 
+    # Guard against None or insufficient data.
     if hist is None or len(hist) < 200:
+        logger.info(
+            "Downloaded data insufficient or empty",
+            symbol=symbol,
+            interval=interval,
+            rows=len(hist) if hasattr(hist, "__len__") else 0,
+        )
         return None
 
     # Normalize column names once.
-    hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
+    hist.columns = [
+        c.lower() if isinstance(c, str) else c[0].lower()
+        for c in hist.columns
+    ]
 
     # Store in cache for potential reuse.
     _DATA_CACHE[cache_key] = (datetime.now(timezone.utc), hist.copy())
     return hist
 
 
-async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> dict:
+async def retrain_model(
+    model_name: str | None,
+    symbol: str | None,
+    interval: str = "1h",
+) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
+    # Validate inputs early.
+    if not model_name or not symbol:
+        logger.warning(
+            "Missing model_name or symbol in retrain_model",
+            model_name=model_name,
+            symbol=symbol,
+        )
+        return {"status": "skipped", "reason": "invalid inputs"}
+
     try:
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=730)
 
         hist = await _download_hist(symbol, interval, start, end)
-        if hist is None:
+        if hist is None or hist.empty:
             return {"status": "skipped", "reason": "insufficient data"}
 
         from app.ml.training.train_lstm import train
@@ -132,11 +188,20 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
     seen: set[tuple[str, str, str]] = set()
     results: list[tuple[str, str, str]] = []
 
+    if not configs_dir.is_dir():
+        logger.warning("Config directory does not exist", path=str(configs_dir))
+        # Return defaults directly.
+        return [
+            ("lstm", "BTC-USD", "1h"),
+            ("lstm", "ETH-USD", "1h"),
+            ("lstm", "SPY", "1d"),
+        ]
+
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
             with open(cfg_path) as f:
                 if _load_yaml:
-                    cfg = _load_yaml(f)
+                    cfg = _load_yaml(f) or {}
                 else:
                     # Minimal fallback: regex‑extract model/symbol/interval from YAML text
                     text = f.read()
@@ -158,7 +223,8 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
             if key not in seen:
                 seen.add(key)
                 results.append(key)
-        except Exception:
+        except Exception as exc:
+            logger.error("Failed to parse config", path=str(cfg_path), error=str(exc))
             continue
 
     if not results:
@@ -186,7 +252,11 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = sum(
+        1
+        for r in results
+        if isinstance(r, dict) and r.get("status") != "error"
+    )
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
