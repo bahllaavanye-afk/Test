@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784547362.467155,
+    "last_updated": 1784547525.360126,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,38 +151,10 @@
       "ABT"
     ],
     "risk_flags": [],
-    "risk_status": "alert",
-    "last_brain_update": 1784534150.3213758
+    "risk_status": "normal",
+    "last_brain_update": 1784547525.359172
   },
   "episodic": [
-    {
-      "lesson": "The deployment rate limit introduces operational risk for continuous delivery. Evaluate cost-benefit of upgrading vs. reducing deployment frequency.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783802537.9420168
-    },
-    {
-      "lesson": "Auto-fix reliability should be monitored as a metric; persistent failures could indicate model drift or codebase changes that require retraining.",
-      "category": "ml",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783802537.9436853
-    },
-    {
-      "lesson": "Investigate root cause of repeated auto-fix patch failures to prevent CI pipeline blockage and ensure code quality.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.5720012
-    },
-    {
-      "lesson": "Upgrade Vercel plan to Pro to remove daily deployment limit and avoid blocking critical deployments.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.5735762
-    },
     {
       "lesson": "Reduce deployment frequency by batching changes or using preview deployments only for significant commits to stay within free tier limits if upgrade is not immediate.",
       "category": "strategy",
@@ -1830,14 +1802,37 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784546396.5151017
+    },
+    {
+      "lesson": "Automerge on protected files (e.g., models) was revoked after a prior breakage. Enforce explicit human review for all changes to high-risk paths and implement a mandatory approval gate before merge.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8394608
+    },
+    {
+      "lesson": "Deployment failed due to Vercel's free-tier rate limit (100 deploys/day). Upgrade to a paid plan or throttle deployment frequency to avoid blocking critical releases.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8447745
+    },
+    {
+      "lesson": "Two auto-fix attempts were skipped for being too complex (LLM-brain personas and process improvement). Establish a clear escalation path for non-trivial tasks and allocate manual engineering time to prevent feature stagnation.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8489077
+    },
+    {
+      "lesson": "CI debug reveals Python 3.11.15 and package versions (aiohttp, aiosqlite). Ensure lock files and dependency updates are reviewed to avoid compatibility surprises in production.",
+      "category": "code",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8530524
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of a token (maybe for authentication) and two separate messages: \"Deployment failed with the following error: Resource is limited - try again in 24 hours\" and \":robot: **Auto-fix failed** \u2014 could not apply patch to file.\"\n\nThe token part \"[vc]: #sMaUEfX5MCURdiU/hLT7FAU79IM",
-      "item_count": 20,
-      "ts": 1783606572.0379152
-    },
     {
       "summary": "We need to summarize three separate error messages from a robot (likely automated system) related to auto-fix attempts. The first: auto-fix aborted due to validation failure (fix changes ~51 lines, limit 50). Second: auto-fix failed because patch could not be applied. Third: could not parse LLM response due to JSON parsing error. Combine into 1-2 sentences.\n\nSummarize: The auto-fix system encountered three issues: a validation failure for exceeding line limit",
       "item_count": 20,
@@ -2332,6 +2327,11 @@
       "summary": "The auto-fix repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1784534150.3128066
+    },
+    {
+      "summary": "The PR was flagged by the team lead, who revoked automerge because it modifies protected files; deployment subsequently failed due to a resource limit error, advising a 24-hour wait.",
+      "item_count": 20,
+      "ts": 1784547525.349823
     }
   ],
   "experiment_results": [
