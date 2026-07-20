@@ -35,6 +35,34 @@ class ComparisonResult:
 
 
 class StrategyComparisonEngine:
+    @staticmethod
+    def _validate_series(name: str, series: pd.Series) -> None:
+        if not isinstance(series, pd.Series):
+            raise ValueError(f"'{name}' must be a pandas Series.")
+        if series.empty:
+            raise ValueError(f"'{name}' cannot be empty.")
+        if not np.issubdtype(series.dtype, np.number):
+            raise ValueError(f"'{name}' must contain numeric values.")
+
+    @staticmethod
+    def _validate_string(name: str, value: str) -> None:
+        if not isinstance(value, str):
+            raise ValueError(f"'{name}' must be a string.")
+        if not value.strip():
+            raise ValueError(f"'{name}' cannot be empty or whitespace.")
+
+    @staticmethod
+    def _validate_date(name: str, value: date) -> None:
+        if not isinstance(value, date):
+            raise ValueError(f"'{name}' must be a datetime.date instance.")
+
+    @staticmethod
+    def _validate_initial_equity(value: float) -> None:
+        if not isinstance(value, (int, float)):
+            raise ValueError("initial_equity must be a numeric type.")
+        if value <= 0:
+            raise ValueError("initial_equity must be positive.")
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -47,6 +75,30 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        # Input validation
+        self._validate_series("manual_signals", manual_signals)
+        self._validate_series("ml_signals", ml_signals)
+        self._validate_series("prices", prices)
+
+        self._validate_string("strategy_name", strategy_name)
+        self._validate_string("symbol", symbol)
+        self._validate_string("interval", interval)
+
+        self._validate_date("start_date", start_date)
+        self._validate_date("end_date", end_date)
+        if start_date > end_date:
+            raise ValueError("start_date must be on or before end_date.")
+
+        self._validate_initial_equity(initial_equity)
+
+        # Ensure the series align on the same index for fair comparison
+        common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
+        if common_index.empty:
+            raise ValueError("No overlapping index between manual_signals, ml_signals, and prices.")
+        manual_signals = manual_signals.loc[common_index]
+        ml_signals = ml_signals.loc[common_index]
+        prices = prices.loc[common_index]
+
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
@@ -70,11 +122,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,

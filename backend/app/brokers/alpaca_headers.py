@@ -7,8 +7,25 @@ from app.config import settings
 
 
 def alpaca_headers() -> dict[str, str]:
-    """Return Alpaca authentication headers for REST requests."""
+    """Return Alpaca authentication headers for REST requests.
+
+    Raises:
+        ValueError: If the Alpaca API key or secret key is missing,
+            empty, or not a string.
+    """
+    api_key = getattr(settings, "alpaca_api_key", None)
+    secret_key = getattr(settings, "alpaca_secret_key", None)
+
+    if not isinstance(api_key, str) or not api_key:
+        raise ValueError(
+            "Invalid Alpaca API key: must be a non-empty string in settings."
+        )
+    if not isinstance(secret_key, str) or not secret_key:
+        raise ValueError(
+            "Invalid Alpaca secret key: must be a non-empty string in settings."
+        )
+
     return {
-        "APCA-API-KEY-ID": settings.alpaca_api_key,
-        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+        "APCA-API-KEY-ID": api_key,
+        "APCA-API-SECRET-KEY": secret_key,
     }
