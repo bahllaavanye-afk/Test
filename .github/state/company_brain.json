@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784519387.3870003,
+    "last_updated": 1784523227.111074,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,49 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784510037.8849528
+    "last_brain_update": 1784523227.1104524
   },
   "episodic": [
-    {
-      "lesson": "Implement a monitoring alert for approaching the daily deployment limit to proactively manage capacity and avoid unexpected failures.",
-      "category": "risk",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783646153.5192902
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 4,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1783700028.819595
-    },
-    {
-      "lesson": "Auto-fix pipeline is failing repeatedly; investigate root cause and apply manual fixes to unblock builds.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783717389.1007986
-    },
-    {
-      "lesson": "Review recent patches that triggered auto-fix failures; likely related to code conflicts or formatting issues in quant_edge repository.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783717389.102585
-    },
-    {
-      "lesson": "Check Vercel deployment logs and environment variables for misconfiguration indicated by encoded references.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783717389.104186
-    },
     {
       "lesson": "Consider disabling auto-fix temporarily and enforcing manual code reviews to prevent cascading failures.",
       "category": "strategy",
@@ -1811,14 +1771,44 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784510005.8692513
+    },
+    {
+      "lesson": "Autonomous PRs modifying protected broker base files are blocked after a prior break; human review is now mandatory.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784523217.5869308
+    },
+    {
+      "lesson": "Three consecutive auto-fix failures suggest a broken CI patch pipeline or incompatible changes.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784523217.5907967
+    },
+    {
+      "lesson": "Base64 token or webhook secret exposed in issue comments poses a security breach risk.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784523217.5936034
+    },
+    {
+      "lesson": "Policy gap: no automated guardrails to prevent risky autonomous edits on critical paths like broker bases.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784523217.5963469
+    },
+    {
+      "lesson": "Auto-fix reliability is low; consider manual intervention or rollback for repeated patch failures.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784523217.599022
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions. However, the user provided two encoded strings that look like some kind of encrypted or encoded data (possibly base64 or similar). The user says \"Summarize these GitHub PR/issue discussions in 1-2 sentences\" but then provides these encoded strings. It's unclear what the actual content is. Perhaps the user intended to provide links or text but it got encoded. As an AI, I need to respond appropriately. I cannot decode these",
-      "item_count": 20,
-      "ts": 1783586650.1303108
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussion. The input appears to be a snippet of a deployment error message, possibly from a CI/CD system. It mentions \"Resource is limited - try again in 24 hours\" and then some encoded string, and then \"Auto-fix failed \u2014 could not apply patch to file.\" \n\nThe user asks to summarize in 1-2 sentences. So we need to capture the essence: deployment failed due to resource limits, and an auto-fix",
       "item_count": 20,
@@ -2313,6 +2303,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784510037.8747993
+    },
+    {
+      "summary": "The team lead revoked automerge for an autonomous PR that modifies protected files, and auto-fix attempts failed to apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784523227.1038113
     }
   ],
   "experiment_results": [
