@@ -17,7 +17,15 @@ from __future__ import annotations
 import json
 import logging
 import time
+from json import JSONDecodeError
 from typing import Any
+
+# Attempt to import RedisError for more specific exception handling.
+# Fallback to generic Exception if the specific class is unavailable.
+try:
+    from redis.exceptions import RedisError  # type: ignore
+except Exception:  # pragma: no cover
+    RedisError = Exception  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -33,22 +41,60 @@ class AgentMemory:
 
     async def write(self, topic: str, data: dict) -> None:
         """Append an observation to a topic list with a timestamp."""
-        payload = json.dumps({"ts": time.time(), **data})
+        try:
+            payload = json.dumps({"ts": time.time(), **data})
+        except (TypeError, ValueError) as e:
+            logger.error(
+                "AgentMemory.write JSON serialization failed for topic %s: %s",
+                topic,
+                e,
+            )
+            return
+
         key = f"{_PREFIX}{topic}"
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
-        except Exception as e:
-            logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
+        except RedisError as e:
+            logger.error(
+                "AgentMemory.write Redis operation failed for topic %s: %s",
+                topic,
+                e,
+            )
+        except Exception as e:  # pragma: no cover
+            logger.error(
+                "AgentMemory.write unexpected error for topic %s: %s",
+                topic,
+                e,
+            )
 
     async def set_latest(self, topic: str, data: dict) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
+        try:
+            payload = json.dumps({"ts": time.time(), **data})
+        except (TypeError, ValueError) as e:
+            logger.error(
+                "AgentMemory.set_latest JSON serialization failed for topic %s: %s",
+                topic,
+                e,
+            )
+            return
+
         key = f"{_PREFIX}latest:{topic}"
-        payload = json.dumps({"ts": time.time(), **data})
         try:
             await self._r.set(key, payload)
-        except Exception as e:
-            logger.warning("AgentMemory.set_latest failed for topic %s: %s", topic, e)
+        except RedisError as e:
+            logger.error(
+                "AgentMemory.set_latest Redis operation failed for topic %s: %s",
+                topic,
+                e,
+            )
+        except Exception as e:  # pragma: no cover
+            logger.error(
+                "AgentMemory.set_latest unexpected error for topic %s: %s",
+                topic,
+                e,
+            )
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
@@ -58,9 +104,25 @@ class AgentMemory:
         try:
             items = await self._r.lrange(key, 0, n - 1)
             return [json.loads(i) for i in items]
-        except Exception as e:
-            logger.warning("AgentMemory.read_recent failed for topic %s: %s", topic, e)
-            return []
+        except RedisError as e:
+            logger.error(
+                "AgentMemory.read_recent Redis operation failed for topic %s: %s",
+                topic,
+                e,
+            )
+        except JSONDecodeError as e:
+            logger.error(
+                "AgentMemory.read_recent JSON decode failed for topic %s: %s",
+                topic,
+                e,
+            )
+        except Exception as e:  # pragma: no cover
+            logger.error(
+                "AgentMemory.read_recent unexpected error for topic %s: %s",
+                topic,
+                e,
+            )
+        return []
 
     async def get_latest(self, topic: str) -> dict | None:
         """Return the latest single-value for a topic."""
@@ -68,9 +130,25 @@ class AgentMemory:
         try:
             val = await self._r.get(key)
             return json.loads(val) if val else None
-        except Exception as e:
-            logger.warning("AgentMemory.get_latest failed for topic %s: %s", topic, e)
-            return None
+        except RedisError as e:
+            logger.error(
+                "AgentMemory.get_latest Redis operation failed for topic %s: %s",
+                topic,
+                e,
+            )
+        except JSONDecodeError as e:
+            logger.error(
+                "AgentMemory.get_latest JSON decode failed for topic %s: %s",
+                topic,
+                e,
+            )
+        except Exception as e:  # pragma: no cover
+            logger.error(
+                "AgentMemory.get_latest unexpected error for topic %s: %s",
+                topic,
+                e,
+            )
+        return None
 
     async def read_all_topics(self) -> list[str]:
         """List all memory topics currently stored."""
@@ -78,6 +156,12 @@ class AgentMemory:
             pattern = f"{_PREFIX}*"
             keys = await self._r.keys(pattern)
             return [k.removeprefix(_PREFIX) for k in keys]
-        except Exception as e:
-            logger.warning("AgentMemory.read_all_topics failed: %s", e)
-            return []
+        except RedisError as e:
+            logger.error(
+                "AgentMemory.read_all_topics Redis operation failed: %s", e
+            )
+        except Exception as e:  # pragma: no cover
+            logger.error(
+                "AgentMemory.read_all_topics unexpected error: %s", e
+            )
+        return []
