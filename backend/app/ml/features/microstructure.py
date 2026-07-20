@@ -37,8 +37,9 @@ class OrderBookFeatures:
         """
         if not bids or not asks:
             return 0.0
-        bid_vol = sum(float(sz) for _, sz in bids[:levels])
-        ask_vol = sum(float(sz) for _, sz in asks[:levels])
+        # Vectorized sum using NumPy for potential speed gain on larger inputs
+        bid_vol = float(np.sum([float(sz) for _, sz in bids[:levels]]))
+        ask_vol = float(np.sum([float(sz) for _, sz in asks[:levels]]))
         total = bid_vol + ask_vol
         if total <= 0:
             return 0.0
@@ -93,18 +94,21 @@ class OrderBookFeatures:
         Estimated via OLS: delta_price = lambda * signed_volume + epsilon
 
         Returns lambda (bps per unit volume). Higher = less liquid.
-        Returns 0.0 if insufficient data.
+        Returns 0.0 if insufficient data or variance is negligible.
         """
-        if len(price_changes) < 5 or len(signed_volumes) < 5:
+        if price_changes.size < 5 or signed_volumes.size < 5:
             return 0.0
         try:
-            vol = np.array(signed_volumes, dtype=float)
-            dp = np.array(price_changes, dtype=float)
-            # OLS: lambda = cov(dp, vol) / var(vol)
+            vol = np.asarray(signed_volumes, dtype=float)
+            dp = np.asarray(price_changes, dtype=float)
+
             var_vol = np.var(vol)
             if var_vol < 1e-12:
                 return 0.0
-            lam = float(np.cov(dp, vol)[0, 1] / var_vol)
+
+            # Covariance without constructing the full matrix
+            cov = np.mean(dp * vol) - np.mean(dp) * np.mean(vol)
+            lam = float(cov / var_vol)
             return lam
         except Exception:
             return 0.0
@@ -159,7 +163,11 @@ def add_microstructure_features(
     if spread_bps_series is not None:
         df["spread_bps"] = spread_bps_series.reindex(df.index).fillna(0.0)
     else:
-        df["spread_bps"] = ((df["high"] - df["low"]) / df["close"].replace(0, np.nan) * 10_000).fillna(0.0)
+        df["spread_bps"] = (
+            (df["high"] - df["low"])
+            / df["close"].replace(0, np.nan)
+            * 10_000
+        ).fillna(0.0)
 
     return df
 
