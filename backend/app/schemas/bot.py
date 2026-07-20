@@ -18,7 +18,7 @@ class TriggerConfig(BaseModel):
 
 
 class ConditionConfig(BaseModel):
-    type: Literal["indicator", "price_vs_ma", "pnl", "time_window", "position_exists", "no_position", "ml_signal"]
+    type: Literal["indicator", "price_vs_ma", "pnl", "time_window", "position_exists", "no_position", "ml_signal", "regime"]
     indicator: str | None = None
     period: int = 14
     operator: str = "<"   # < | > | == | != | crosses_above | crosses_below
@@ -42,6 +42,9 @@ class ConditionConfig(BaseModel):
     # no trained model / inference error → the condition is simply False.
     direction: str | None = None        # "up" | "down"
     min_confidence: float | None = None  # default 0.65 in the engine
+    # regime: fire only in the listed market regimes (OA-style "trade only when
+    # VIX/trend says so"). trend ∈ {bear,sideways,bull}; vol ∈ {calm,stressed}.
+    regimes: list[str] | None = None    # e.g. ["bull", "sideways"] or ["stressed"]
 
 
 class OptionLeg(BaseModel):

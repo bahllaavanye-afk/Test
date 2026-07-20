@@ -219,7 +219,12 @@ async def run() -> int:
             if conf < CONFIDENCE_MIN:
                 print(f"  · {name}/{pair} conf={conf:.2f} < {CONFIDENCE_MIN} — skipped", flush=True)
                 continue
+            try:
+                _px = float(df["close"].iloc[-1])
+            except Exception:
+                _px = 0.0
             signals.append({"pair": pair, "side": side, "conf": conf, "strategy": name,
+                            "price": _px,
                             "units": max(int(BASE_UNITS * conf * vol_scalar(df)), 100)})
 
     signals.sort(key=lambda s: -s["conf"])
@@ -236,10 +241,19 @@ async def run() -> int:
     print(f"FX desk done: {len(signals)} signal(s) ≥ gate, {placed} order(s) placed.")
     try:
         import notify
-        notify.post("#desk-fx-rates",
-                    f"FX desk: {len(signals)} signals ≥ {CONFIDENCE_MIN}, {placed} orders "
-                    f"({', '.join(s['pair'] for s in signals[:MAX_ORDERS_PER_RUN]) or 'none'})",
-                    username="QuantEdge FX Desk")
+        # Enriched + deduped: each placed order shows side + entry price so
+        # genuinely-new runs differ (and identical no-op runs are suppressed,
+        # instead of the old "N signals, M orders (pairs)" spam every 2h).
+        top = signals[:MAX_ORDERS_PER_RUN]
+        if placed and top:
+            legs = ", ".join(
+                f"{s['pair']} {s['side'].upper()}@{s.get('price', 0):.5f}" for s in top
+            )
+            msg = (f"FX desk — {placed} order(s) placed of {len(signals)} signal(s) "
+                   f"≥ {CONFIDENCE_MIN}: {legs}")
+        else:
+            msg = f"FX desk — quiet: {len(signals)} signal(s) ≥ {CONFIDENCE_MIN}, 0 orders"
+        notify.post_dedup("#desk-fx-rates", msg, username="QuantEdge FX Desk")
     except Exception as exc:  # noqa: BLE001
         print(f"  (notify skipped: {exc})")
     return 0

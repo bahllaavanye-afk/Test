@@ -428,6 +428,36 @@ def _compare(a: float, op: str, b: float) -> bool:
 # Condition evaluator
 # ---------------------------------------------------------------------------
 
+def detect_regime(data: pd.DataFrame) -> tuple[str, str]:
+    """Classify the market from a bar DataFrame into (trend, vol) regimes.
+
+    trend ∈ {bear, sideways, bull} from 20-bar drift + short/long vol ratio;
+    vol ∈ {calm, stressed} from recent realized-vol vs its own history (free,
+    no new feed). Mirrors desk_order_placer's regime logic so bot `regime`
+    conditions and the desks agree. Fail-soft → ("sideways", "calm").
+    """
+    import numpy as np
+    try:
+        close = data["close"].astype(float).values
+        if len(close) < 25:
+            return "sideways", "calm"
+        log_rets = np.diff(np.log(close))
+        recent_ret = float(np.mean(log_rets[-20:]))
+        recent_vol = float(np.std(log_rets[-20:]))
+        long_vol = float(np.std(log_rets[-min(252, len(log_rets)):]))
+        vol_ratio = recent_vol / max(long_vol, 1e-8)
+        if recent_ret < -0.002 and vol_ratio > 1.3:
+            trend = "bear"
+        elif recent_ret > 0.001 and vol_ratio < 1.2:
+            trend = "bull"
+        else:
+            trend = "sideways"
+        vol = "stressed" if vol_ratio >= 1.25 else "calm"
+        return trend, vol
+    except Exception:
+        return "sideways", "calm"
+
+
 def evaluate_condition(
     cond: ConditionConfig, data: pd.DataFrame, current_price: float,
     ml_result: dict | None = None,
@@ -446,6 +476,13 @@ def evaluate_condition(
     volume = data["volume"] if "volume" in data.columns else pd.Series([0.0] * len(close))
 
     ctype = cond.type
+
+    if ctype == "regime":
+        want = {str(r).lower() for r in (cond.regimes or [])}
+        if not want:
+            return True   # no filter configured → always allowed
+        trend, vol = detect_regime(data)
+        return trend in want or vol in want
 
     if ctype == "ml_signal":
         # OA-style ML decision: the model must predict `direction` with confidence

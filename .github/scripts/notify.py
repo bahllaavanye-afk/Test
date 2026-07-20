@@ -314,6 +314,46 @@ def slack_post(channel: str, text: str) -> bool:
         return False
 
 
+def _is_recent_duplicate(channel: str, text: str, within_last: int = 4) -> bool:
+    """True if an identical message is among the last `within_last` posts in the
+    Discord channel. STATELESS — reads channel history via the bot API, so no
+    git-committed dedup state (which is what caused the improver-clobber mess).
+    Fails open (returns False) when the bot token or channel id is unavailable.
+    """
+    if not _BOT_TOKEN or not text:
+        return False
+    cid = _load_channel_ids().get(str(channel).lower().lstrip("#"))
+    if not cid:
+        return False
+    try:
+        recent = _bot_req("GET", f"/channels/{cid}/messages?limit={within_last}") or []
+    except Exception:
+        return False
+    needle = text.strip()
+    for m in recent if isinstance(recent, list) else []:
+        body = (m.get("content") or "").strip()
+        # strip a leading "**Username**" prefix the bot path adds
+        if body.startswith("**"):
+            body = body.split("** ", 1)[-1].strip()
+        if needle and needle in body:
+            return True
+    return False
+
+
+def post_dedup(channel: str, text: str, username: str = "QuantEdge",
+               within_last: int = 4) -> bool:
+    """Like post(), but suppresses a message identical to a recent one in the
+    same channel — the fix for desks spamming the SAME line every run. Enrich
+    the text (direction/price/P&L) so genuinely-new runs still differ and post.
+    """
+    if not text:
+        return False
+    if _is_recent_duplicate(channel, text, within_last=within_last):
+        print(f"[notify] dedup: identical to a recent #{channel} message — skipped", flush=True)
+        return False
+    return post(channel, text, username=username)
+
+
 def post(channel: str, text: str, username: str = "QuantEdge") -> bool:
     """Deliver anywhere: Slack when healthy, Discord otherwise.
 
