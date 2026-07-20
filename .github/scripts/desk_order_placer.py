@@ -1104,6 +1104,37 @@ def _detect_regime_from_bars(spy_df) -> int:
         return 1
 
 
+def _detect_vol_regime_from_bars(spy_df) -> str:
+    """Volatility regime from SPY bars: 'stressed' when recent realized vol is
+    elevated vs its own history, else 'calm'. Free (no new feed), fail-soft."""
+    import numpy as np
+    try:
+        close = spy_df["close"].astype(float).values
+        if len(close) < 25:
+            return "calm"
+        log_rets = np.diff(np.log(close))
+        recent_vol = float(np.std(log_rets[-20:]))
+        long_vol = float(np.std(log_rets[-min(252, len(log_rets)):]))
+        return "stressed" if recent_vol / max(long_vol, 1e-8) >= 1.25 else "calm"
+    except Exception:
+        return "calm"
+
+
+# Premium-selling income structures: selling option premium is most rewarded when
+# implied/realized vol is elevated. In CALM vol these face a higher confidence bar
+# (defined below) rather than a hard block, so the income desk still trades but
+# leans into stressed regimes — matching the documented 0DTE variance-risk-premium.
+_PREMIUM_SELLERS: frozenset[str] = frozenset(_MLEG_STRUCTURES.keys()) | {"vol_carry"}
+_CALM_PREMIUM_THRESHOLD_BUMP = 0.08
+
+
+def _vol_adjusted_threshold(strategy_name: str, base_threshold: float, vol_regime: str) -> float:
+    """Raise the bar for premium sellers in calm vol; unchanged otherwise."""
+    if vol_regime == "calm" and strategy_name in _PREMIUM_SELLERS:
+        return base_threshold + _CALM_PREMIUM_THRESHOLD_BUMP
+    return base_threshold
+
+
 # ── Strategy dispatch ─────────────────────────────────────────────────────────
 
 def _load_strategy(strategy_name: str):
@@ -1349,7 +1380,12 @@ async def main() -> None:
         _REGIME_NAMES = {0: "bear", 1: "sideways", 2: "bull"}
         spy_df = bars_cache.get("SPY")
         current_regime: int = _detect_regime_from_bars(spy_df) if spy_df is not None else 1
-        print(f"  Market regime: {_REGIME_NAMES[current_regime]} ({current_regime})", flush=True)
+        # Volatility axis (calm|stressed): the dimension that decides whether
+        # selling option premium is worth it. Premium sellers face a HIGHER
+        # confidence bar in calm vol (thin premium — 0DTE VRP evidence), rather
+        # than a hard block that would starve the income desk.
+        vol_regime: str = _detect_vol_regime_from_bars(spy_df)
+        print(f"  Market regime: {_REGIME_NAMES[current_regime]} ({current_regime}) | vol: {vol_regime}", flush=True)
 
         # Live P&L-based sizing weights (self-scaling loop; {} on any failure)
         _perf_weights = await asyncio.to_thread(_fetch_performance_weights)
@@ -1438,8 +1474,10 @@ async def main() -> None:
                     print(f"  · {sname}/{item['symbol']} skipped — regime {_REGIME_NAMES[current_regime]} not in {[_REGIME_NAMES[r] for r in allowed_regimes]}", flush=True)
                     continue
 
-                # Use auto-tuned threshold if available, floored at desk minimum
+                # Use auto-tuned threshold if available, floored at desk minimum,
+                # then raise the bar for premium sellers in calm vol.
                 threshold = max(_TUNED_THRESHOLDS.get(sname, desk.confidence_min), desk.confidence_min)
+                threshold = _vol_adjusted_threshold(sname, threshold, vol_regime)
                 if conf < threshold:
                     print(f"  · {sname}/{item['symbol']} conf={conf:.2f} < {threshold:.2f} — skipped", flush=True)
                 else:
@@ -1642,12 +1680,33 @@ async def main() -> None:
             _survivors = len(approved_signals)
             _explored = locals().get("explored", 0)
             _regime_lbl = _REGIME_NAMES.get(current_regime, str(current_regime))
-            summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  regime={_regime_lbl}\n"
+            summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  regime={_regime_lbl}/{vol_regime}\n"
             summary += (f"funnel: {_gen} generated → {_survivors} survived gate+topK "
                         f"({_explored} exploration) → {len(all_orders)} placed\n")
             summary += "\n".join(desk_summaries)
             summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
             _post_slack("#pnl-daily", summary)
+
+            # Graphical companion (user: "show me more graphical"): orders-per-desk
+            # bar chart. Only when something was placed, so we don't spam empty runs.
+            if all_orders:
+                try:
+                    from notify import discord_post_chart
+                    per_desk: dict[str, int] = {}
+                    for _o in all_orders:
+                        per_desk[_o.get("desk", "?")] = per_desk.get(_o.get("desk", "?"), 0) + 1
+                    if per_desk:
+                        discord_post_chart(
+                            "#pnl-daily",
+                            title=f"Orders by desk — {now_str}",
+                            labels=list(per_desk.keys()),
+                            series={"orders": list(per_desk.values())},
+                            kind="bar",
+                            description=f"{len(all_orders)} orders | regime {_regime_lbl}/{vol_regime}",
+                            username="QuantEdge Desk",
+                        )
+                except Exception as _exc:  # noqa: BLE001
+                    print(f"  (desk chart skipped: {_exc})", flush=True)
             tracker.set_output(desks_run=len(active_desks), total_orders=len(all_orders))
 
     print(f"\n{'═'*60}", flush=True)
