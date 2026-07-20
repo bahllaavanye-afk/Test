@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784571046.4464781,
+    "last_updated": 1784573468.954635,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784566436.6660502
+    "last_brain_update": 1784573468.9536626
   },
   "episodic": [
     {
@@ -1863,11 +1863,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The deployment failed due to resource limits, with a suggestion to retry in 24 hours, and automated attempts to fix the issue were unsuccessful.",
-      "item_count": 20,
-      "ts": 1783646158.4924853
-    },
-    {
       "summary": "The auto-fix bot attempted to apply a patch but failed,",
       "item_count": 20,
       "ts": 1783684063.6465108
@@ -2361,6 +2356,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784566436.657594
+    },
+    {
+      "summary": "The automated fix failed to apply a patch to the file, and another fix was skipped because the issue was too complex for automated resolution.",
+      "item_count": 20,
+      "ts": 1784573468.9450495
     }
   ],
   "experiment_results": [
