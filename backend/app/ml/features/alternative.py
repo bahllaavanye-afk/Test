@@ -11,7 +11,9 @@ All API calls are async. For sync contexts, use compute_features_sync().
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 import httpx
 import numpy as np
@@ -19,6 +21,8 @@ import pandas as pd
 
 _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
+
+_logger = logging.getLogger(__name__)
 
 
 def _to_binance_symbol(symbol: str) -> str:
@@ -115,6 +119,7 @@ class BinanceFundingRateFeatures:
 
         Missing data → NaN (not filled with fake values).
         """
+        start_time = datetime.now(timezone.utc)
         df = df.copy()
         for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
             df[col] = np.nan
@@ -166,6 +171,16 @@ class BinanceFundingRateFeatures:
                         oi_df.loc[ts_day, "oi_momentum"]
                     )
 
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+        _logger.info(
+            "Computed alternative features",
+            extra={
+                "symbol": symbol,
+                "signal_count": len(df),
+                "execution_time_sec": elapsed,
+                "pnl": _extract_pnl(df),
+            },
+        )
         return df
 
     def compute_features(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
@@ -173,12 +188,11 @@ class BinanceFundingRateFeatures:
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                # Already inside an event loop (e.g., FastAPI) — create a task
+                # Already inside an event loop (e.g., FastAPI) — create a thread pool task
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(
-                        asyncio.run, self.compute_features_async(symbol, df)
-                    )
+                    future = pool.submit(asyncio.run, self.compute_features_async(symbol, df))
                     return future.result(timeout=30)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
@@ -186,7 +200,26 @@ class BinanceFundingRateFeatures:
             df = df.copy()
             for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
                 df[col] = np.nan
+            _logger.info(
+                "Failed to compute alternative features, returning NaNs",
+                extra={"symbol": symbol, "signal_count": len(df)},
+            )
             return df
+
+
+def _extract_pnl(df: pd.DataFrame) -> Optional[float]:
+    """
+    Helper to extract a simple P&L metric if possible.
+    Returns (last - first) of the 'close' column if present, else None.
+    """
+    if "close" in df.columns and not df["close"].empty:
+        try:
+            first = float(df["close"].iloc[0])
+            last = float(df["close"].iloc[-1])
+            return last - first
+        except Exception:
+            return None
+    return None
 
 
 ALTERNATIVE_FEATURE_COLS = [
@@ -209,9 +242,18 @@ def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame
         for kw in ("BTC", "ETH", "BNB", "SOL", "XRP", "USDT", "USDC", "CRYPTO")
     )
     if is_crypto and symbol:
-        return _binance_features.compute_features(symbol, df)
+        result = _binance_features.compute_features(symbol, df)
+        _logger.info(
+            "Added alternative features to crypto data",
+            extra={"symbol": symbol, "signal_count": len(result)},
+        )
+        return result
 
     df = df.copy()
     for col in ALTERNATIVE_FEATURE_COLS:
         df[col] = np.nan
+    _logger.info(
+        "Added placeholder alternative features for non‑crypto symbol",
+        extra={"symbol": symbol, "signal_count": len(df)},
+    )
     return df
