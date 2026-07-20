@@ -7,6 +7,7 @@ Covers:
   3. backtest_signals() returns BacktestSignals with correct dtype
   4. No-lookahead: first row is always False
   5. Insufficient data returns None / empty signals
+  6. Edge cases: None inputs, empty DataFrames, single‑row DataFrames
 """
 from __future__ import annotations
 
@@ -72,6 +73,29 @@ def short_df():
     return pd.DataFrame(
         {"close": prices},
         index=pd.date_range("2023-01-01", periods=n, freq="D"),
+    )
+
+
+@pytest.fixture
+def empty_df():
+    """Empty DataFrame with expected columns."""
+    return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+
+@pytest.fixture
+def single_row_df():
+    """DataFrame with a single row of data."""
+    rng = np.random.default_rng(1)
+    price = 100.0
+    return pd.DataFrame(
+        {
+            "open": [price * 0.999],
+            "high": [price * 1.005],
+            "low": [price * 0.995],
+            "close": [price],
+            "volume": [float(rng.integers(100_000, 1_000_000))],
+        },
+        index=[pd.Timestamp("2023-01-01")],
     )
 
 
@@ -147,17 +171,23 @@ class TestBondEquityRotationAnalyze:
         """High positive corr between returns and dvix → fear regime → sell."""
         rng = np.random.default_rng(0)
         n = 100
-        # Create close prices and vix that move together (high positive corr)
         base = rng.normal(0, 0.01, n)
         close = 100 * np.cumprod(1 + base)
-        vix = 20 * np.cumprod(1 + base + rng.normal(0, 0.005, n))  # correlated with close returns
+        vix = 20 * np.cumprod(1 + base + rng.normal(0, 0.005, n))
         df = pd.DataFrame(
             {"close": close, "vix_close": vix},
             index=pd.date_range("2023-01-01", periods=n, freq="D"),
         )
         result = asyncio.run(BondEquityRotationStrategy().analyze(df, "SPY"))
-        # Accept either a valid signal or None (correlation may not hit threshold)
         assert result is None or isinstance(result, Signal)
+
+    def test_analyze_none_input_returns_none(self):
+        result = asyncio.run(BondEquityRotationStrategy().analyze(None, "SPY"))
+        assert result is None
+
+    def test_analyze_empty_dataframe_returns_none(self, empty_df):
+        result = asyncio.run(BondEquityRotationStrategy().analyze(empty_df, "SPY"))
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -203,3 +233,28 @@ class TestBondEquityRotationBacktest:
         result = BondEquityRotationStrategy().backtest_signals(price_df)
         assert result.short_entries is not None
         assert len(result.short_entries) == len(price_df)
+
+
+class TestBondEquityRotationBacktestEdgeCases:
+    def test_backtest_none_input_returns_empty_signals(self):
+        result = BondEquityRotationStrategy().backtest_signals(None)
+        assert isinstance(result, BacktestSignals)
+        assert len(result.entries) == 0
+        assert len(result.exits) == 0
+
+    def test_backtest_empty_dataframe_returns_empty_signals(self, empty_df):
+        result = BondEquityRotationStrategy().backtest_signals(empty_df)
+        assert isinstance(result, BacktestSignals)
+        assert len(result.entries) == 0
+        assert len(result.exits) == 0
+
+    def test_backtest_single_row_dataframe(self, single_row_df):
+        result = BondEquityRotationStrategy().backtest_signals(single_row_df)
+        assert isinstance(result, BacktestSignals)
+        assert len(result.entries) == 1
+        assert len(result.exits) == 1
+        # First (and only) entry must be False to avoid look‑ahead bias
+        assert not bool(result.entries.iloc[0])
+        # Ensure no NaNs
+        assert not result.entries.isna().any()
+        assert not result.exits.isna().any()
