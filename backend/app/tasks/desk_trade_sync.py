@@ -192,14 +192,12 @@ def reconstruct_closed_trades(
     return trades
 
 
-async def _fetch_closed_orders(acct, lookback_days: int = 30) -> list[dict]:
-    """Fetch recently-closed orders for an Alpaca account (paginated, bounded)."""
+async def _fetch_closed_orders_raw(
+    headers: dict[str, str], base: str, lookback_days: int = 30
+) -> list[dict]:
+    """Fetch recently-closed Alpaca orders given ready headers + base URL (paginated, bounded)."""
     import httpx
 
-    from app.brokers.alpaca_orders import _base_url, _headers
-
-    headers = await _headers(acct)
-    base = _base_url(acct)
     after = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
@@ -232,6 +230,106 @@ async def _fetch_closed_orders(acct, lookback_days: int = 30) -> list[dict]:
     return collected
 
 
+async def _fetch_closed_orders(acct, lookback_days: int = 30) -> list[dict]:
+    """Fetch recently-closed orders for a DB Account (decrypts its stored keys)."""
+    from app.brokers.alpaca_orders import _base_url, _headers
+
+    headers = await _headers(acct)
+    base = _base_url(acct)
+    return await _fetch_closed_orders_raw(headers, base, lookback_days)
+
+
+def _env_alpaca_creds() -> tuple[str, str] | None:
+    """The desk trades on the *env* ALPACA key (GitHub Actions secret, relayed to Render),
+    which usually has NO corresponding DB Account. Without this, `qe-`-tagged desk fills
+    live only on Alpaca and never become Trades — the exact reason the site shows "no
+    trades". Returns (key, secret) when both are set, else None.
+    """
+    import os
+
+    from app.config import settings
+
+    key = (getattr(settings, "alpaca_api_key", "") or os.environ.get("ALPACA_API_KEY", "")).strip()
+    secret = (
+        getattr(settings, "alpaca_secret_key", "") or os.environ.get("ALPACA_SECRET_KEY", "")
+    ).strip()
+    return (key, secret) if key and secret else None
+
+
+async def _fetch_closed_orders_env(creds: tuple[str, str], lookback_days: int = 30) -> list[dict]:
+    """Fetch the desk account's closed paper orders directly via the env credentials."""
+    from app.brokers.alpaca_orders import ALPACA_PAPER
+
+    key, secret = creds
+    headers = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+    return await _fetch_closed_orders_raw(headers, ALPACA_PAPER, lookback_days)
+
+
+async def _persist_reconstructed(
+    db_session_factory,
+    account_id: str,
+    reconstructed: list[dict],
+    strat_id_by_name: dict[str, str],
+    lookback_start: datetime,
+) -> int:
+    """Write newly-closed round trips as Trades under ``account_id`` (idempotent).
+
+    Dedup key is the closing Alpaca order id stored in ``raw_payload.close_order_id``,
+    scoped to the account + lookback window, so re-running never duplicates rows.
+    Returns the number of new Trade rows written.
+    """
+    from sqlalchemy import select
+
+    from app.models.trade import Trade
+
+    async with db_session_factory() as db:
+        existing = (await db.execute(
+            select(Trade).where(
+                Trade.account_id == account_id,
+                Trade.closed_at >= lookback_start,
+            )
+        )).scalars().all()
+        seen_close_ids = {
+            (t.raw_payload or {}).get("close_order_id")
+            for t in existing
+            if t.raw_payload
+        }
+
+        new_rows = 0
+        for tr in reconstructed:
+            close_id = tr.get("close_order_id")
+            if close_id and close_id in seen_close_ids:
+                continue
+            seen_close_ids.add(close_id)
+            db.add(Trade(
+                account_id=account_id,
+                strategy_id=strat_id_by_name.get(tr["strategy_name"]),
+                strategy_name=tr["strategy_name"],
+                symbol=tr["symbol"],
+                side=tr["side"],
+                entry_price=tr["entry_price"],
+                exit_price=tr["exit_price"],
+                quantity=tr["quantity"],
+                realized_pnl=tr["realized_pnl"],
+                fees=0.0,
+                opened_at=tr["opened_at"],
+                closed_at=tr["closed_at"],
+                hold_seconds=tr["hold_seconds"],
+                raw_payload={
+                    "source": "desk_alpaca_sync",
+                    "close_order_id": tr["close_order_id"],
+                    "open_order_id": tr["open_order_id"],
+                    "strategy": tr["strategy_name"],
+                },
+            ))
+            new_rows += 1
+
+        if new_rows:
+            await db.commit()
+            logger.info("Desk trade sync wrote trades", account_id=account_id, count=new_rows)
+        return new_rows
+
+
 async def sync_desk_trades(db_session_factory=None, lookback_days: int = 30) -> int:
     """Pull desk fills from Alpaca and persist newly-closed round trips as Trades.
 
@@ -245,7 +343,6 @@ async def sync_desk_trades(db_session_factory=None, lookback_days: int = 30) -> 
 
     from app.models.account import Account
     from app.models.strategy import Strategy
-    from app.models.trade import Trade
 
     if db_session_factory is None:
         try:
@@ -264,7 +361,7 @@ async def sync_desk_trades(db_session_factory=None, lookback_days: int = 30) -> 
     written = 0
     try:
         async with db_session_factory() as db:
-            accounts = (await db.execute(
+            keyed_accounts = (await db.execute(
                 select(Account).where(
                     Account.broker == "alpaca",
                     Account.mode == "paper",
@@ -273,75 +370,70 @@ async def sync_desk_trades(db_session_factory=None, lookback_days: int = 30) -> 
                 )
             )).scalars().all()
 
+            # The system/demo paper account owns the seeded bots but stores NO key
+            # (the desk trades on the env secret). It's what the site & global
+            # leaderboard read, so env-keyed desk fills are attributed here.
+            fallback_account = (await db.execute(
+                select(Account).where(
+                    Account.broker == "alpaca",
+                    Account.mode == "paper",
+                    Account.is_active == True,  # noqa: E712
+                    Account.encrypted_key.is_(None),
+                ).order_by(Account.created_at.asc())
+            )).scalars().first()
+
             # name → strategy_id, for FK attribution (best-effort).
             strat_rows = (await db.execute(select(Strategy.id, Strategy.name))).all()
             strat_id_by_name = {r.name: r.id for r in strat_rows}
 
-        if not accounts:
-            logger.debug("Desk trade sync: no active Alpaca paper accounts")
-            return 0
-
         lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        processed_key_ids: set[str] = set()
 
-        for acct in accounts:
+        # ── Keyed DB accounts (real user-connected Alpaca accounts) ──────────
+        for acct in keyed_accounts:
             try:
+                from app.brokers.alpaca_orders import _headers
+                kid = (await _headers(acct)).get("APCA-API-KEY-ID")
+                if kid:
+                    processed_key_ids.add(kid)
                 orders = await _fetch_closed_orders(acct, lookback_days=lookback_days)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Desk trade sync: fetch error", account_id=acct.id, error=str(exc))
                 continue
             if not orders:
                 continue
-
             reconstructed = reconstruct_closed_trades(orders, registry_names)
             if not reconstructed:
                 continue
+            written += await _persist_reconstructed(
+                db_session_factory, acct.id, reconstructed, strat_id_by_name, lookback_start
+            )
 
-            async with db_session_factory() as db:
-                existing = (await db.execute(
-                    select(Trade).where(
-                        Trade.account_id == acct.id,
-                        Trade.closed_at >= lookback_start,
-                    )
-                )).scalars().all()
-                seen_close_ids = {
-                    (t.raw_payload or {}).get("close_order_id")
-                    for t in existing
-                    if t.raw_payload
-                }
+        # ── Env-keyed desk account (the qe-* fills the site was missing) ─────
+        # The desks place ~59 strategies' orders on the env ALPACA key, which
+        # normally has no DB Account, so those fills never became Trades. Fetch
+        # them directly and attribute to the system/demo account. Skip if a keyed
+        # account already covered this exact key (avoids double-counting).
+        creds = _env_alpaca_creds()
+        if creds and creds[0] not in processed_key_ids:
+            if fallback_account is None:
+                logger.debug(
+                    "Desk trade sync: env ALPACA key present but no system paper account to attribute to"
+                )
+            else:
+                try:
+                    orders = await _fetch_closed_orders_env(creds, lookback_days=lookback_days)
+                    reconstructed = reconstruct_closed_trades(orders, registry_names)
+                    if reconstructed:
+                        written += await _persist_reconstructed(
+                            db_session_factory, fallback_account.id, reconstructed,
+                            strat_id_by_name, lookback_start,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Desk trade sync: env fetch error", error=str(exc))
 
-                new_rows = 0
-                for tr in reconstructed:
-                    close_id = tr.get("close_order_id")
-                    if close_id and close_id in seen_close_ids:
-                        continue
-                    seen_close_ids.add(close_id)
-                    db.add(Trade(
-                        account_id=acct.id,
-                        strategy_id=strat_id_by_name.get(tr["strategy_name"]),
-                        strategy_name=tr["strategy_name"],
-                        symbol=tr["symbol"],
-                        side=tr["side"],
-                        entry_price=tr["entry_price"],
-                        exit_price=tr["exit_price"],
-                        quantity=tr["quantity"],
-                        realized_pnl=tr["realized_pnl"],
-                        fees=0.0,
-                        opened_at=tr["opened_at"],
-                        closed_at=tr["closed_at"],
-                        hold_seconds=tr["hold_seconds"],
-                        raw_payload={
-                            "source": "desk_alpaca_sync",
-                            "close_order_id": tr["close_order_id"],
-                            "open_order_id": tr["open_order_id"],
-                            "strategy": tr["strategy_name"],
-                        },
-                    ))
-                    new_rows += 1
-
-                if new_rows:
-                    await db.commit()
-                    written += new_rows
-                    logger.info("Desk trade sync wrote trades", account_id=acct.id, count=new_rows)
+        if not keyed_accounts and creds is None:
+            logger.debug("Desk trade sync: no Alpaca paper accounts and no env key")
 
     except Exception as exc:  # noqa: BLE001
         logger.error("Desk trade sync failed", error=str(exc))
