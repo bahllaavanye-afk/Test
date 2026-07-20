@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784566436.666796,
+    "last_updated": 1784571046.4464781,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 17.57,
-    "market_scan_ts": 1784564498.0190663,
+    "vix": 18.05,
+    "market_scan_ts": 1784571046.4246647,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -127,21 +127,21 @@
       "ORCL",
       "NOW",
       "TSLA",
-      "C",
       "MS",
       "PANW",
+      "C",
+      "MPC",
       "CVX",
+      "WFC",
       "CRWD",
       "AAPL",
-      "BAC",
-      "HD",
-      "XLF",
-      "MPC",
-      "QQQ",
-      "WFC",
-      "ADBE",
       "XLI",
-      "IWM"
+      "ADBE",
+      "HD",
+      "QQQ",
+      "JNJ",
+      "BAC",
+      "XLK"
     ],
     "top_momentum": [
       "MPC",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784566436.6660502
   },
   "episodic": [
-    {
-      "lesson": "Exposed encrypted tokens in GitHub issue comments present a security risk; rotate all potentially compromised secrets and enforce policies to prevent secret leakage in public channels.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784013617.1344862
-    },
     {
       "lesson": "Multiple identical auto-fix failures suggest a root cause in the automated patch mechanism (e.g., incorrect diff format or merge conflicts); review pipeline logs and fix the underlying script or integration.",
       "category": "code",
@@ -1851,6 +1844,21 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784566404.6530209
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784571046.4506593
     }
   ],
   "github_insights": [
