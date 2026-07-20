@@ -42,7 +42,7 @@ Owner of record for the 61 bots is the AUTOMATION, not the user. Already live:
 `bot_lifecycle` scheduler job (disable proven losers, promote winners, grow fleet from
 templates — deterministic policy over real closed trades), 5-min exit sweep (fixed
 today), safeguards, additive seeding, reward-gated code changes. Gaps to close:
-- [ ] **[P1] Lifecycle decisions → Discord** — every enable/disable/promote decision posts WHY (stats in hand) to #bot-fleet; decisions also append to peer_learnings so employees can veto/discuss.
+- [x] **[P1] Lifecycle decisions → Discord** — SHIPPED 2026-07-20: bot_lifecycle posts each enable/disable to Discord (slack.send fails over to Discord) WITH the stats that drove it — `name (N trades, win X%, P&L $Y)` — to #bot-fleet, no black-box decisions. Remaining: append to peer_learnings for employee discussion (folded into the desk-posts→shared-brain item). — every enable/disable/promote decision posts WHY (stats in hand) to #bot-fleet; decisions also append to peer_learnings so employees can veto/discuss.
 - [ ] **[P2] Bot parameter tuner** — weekly: for bots with ≥30 closed trades, grid-walk TP/SL% against their own trade history (pure pandas, free) and open a reward-gated PR adjusting template params; never touches live config directly.
 - [ ] **[P2] Weekly OA-comparison report** — auto-generate a positions/P&L table per bot (entry/exit/hold/P&L) as a Discord chart + markdown artifact so the user's "match vs Option Alpha" check is a 2-minute read, not manual data pulling.
 

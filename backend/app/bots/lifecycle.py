@@ -181,15 +181,24 @@ async def run_bot_lifecycle(db_session_factory=None) -> dict:
             logger.info("Bot lifecycle actions", **{k: v for k, v in summary.items() if v})
             try:
                 from app.notifications.slack import slack
+
+                def _why(s) -> str:
+                    wr = f"{s.win_rate:.0%}" if s.win_rate is not None else "n/a"
+                    return f"{s.name} ({s.trades} trades, win {wr}, P&L ${s.total_pnl:+,.0f})"
+
                 lines = []
-                if summary["disabled"]:
-                    lines.append("⛔ Disabled (losing record): " + ", ".join(summary["disabled"]))
-                if summary["enabled"]:
-                    lines.append("✅ Re-enabled (record turned positive): " + ", ".join(summary["enabled"]))
+                # Each decision carries the STATS that drove it — no black-box
+                # enable/disable. Reasons come from the actual BotStats records.
+                if actions["disable"]:
+                    lines.append("⛔ *Disabled* (losing record): "
+                                 + "; ".join(_why(s) for s in actions["disable"]))
+                if actions["enable"]:
+                    lines.append("✅ *Re-enabled* (record turned positive): "
+                                 + "; ".join(_why(s) for s in actions["enable"]))
                 if summary["created"]:
-                    lines.append("🆕 Created from templates: " + ", ".join(summary["created"]))
+                    lines.append("🆕 *Created* from templates: " + ", ".join(summary["created"]))
                 await slack.send(
-                    channel="orders", event_type="info",
+                    channel="bot-fleet", event_type="info",
                     title="🤖 Bot lifecycle manager", text="\n".join(lines),
                 )
             except Exception:  # notification is best-effort
