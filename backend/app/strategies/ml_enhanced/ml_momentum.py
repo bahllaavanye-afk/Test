@@ -10,9 +10,10 @@ agree on direction, and it adjusts the confidence accordingly.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
+from pandas.util import hash_pandas_object
 
 from app.strategies.base import AbstractStrategy, Signal, BacktestSignals
 from app.strategies.manual.momentum import MomentumStrategy
@@ -36,6 +37,9 @@ class MLMomentumStrategy(AbstractStrategy):
     risk_bucket = "directional"
     tick_interval_seconds = 3600.0
     confidence_threshold = 0.65
+
+    # Simple in‑memory cache for ML predictions: (symbol, data_hash) -> ml_result
+    _ml_cache: Dict[Tuple[str, int], Dict[str, Any]] = {}
 
     def __init__(self, params: Optional[Dict[str, Any]] = None):
         """Create a new ``MLMomentumStrategy`` instance.
@@ -73,16 +77,54 @@ class MLMomentumStrategy(AbstractStrategy):
         if base_signal is None:
             return None
 
+        # Early exit: skip ML inference if base confidence is already below the
+        # configured threshold – the combined confidence cannot exceed it.
+        if base_signal.confidence < self.confidence_threshold:
+            return None
+
         try:
-            inference = get_inference_service()
-            ml_result = await inference.predict(data, symbol)
-            if ml_result is None or ml_result["prediction"] == "neutral":
+            ml_result = await self._cached_ml_predict(data, symbol)
+            if ml_result is None or ml_result.get("prediction") == "neutral":
                 return None
 
             return self._apply_ml_filter(base_signal, ml_result)
         except Exception as e:  # pragma: no cover
             logger.exception("ML inference failed for %s: %s", symbol, e)
             return None
+
+    async def _cached_ml_predict(self, data: pd.DataFrame, symbol: str) -> Optional[Dict[str, Any]]:
+        """Retrieve ML prediction, using an in‑memory cache to avoid duplicate work.
+
+        The cache key is a tuple of the symbol and a deterministic hash of the
+        DataFrame contents. If a cached result exists, it is returned immediately;
+        otherwise the inference service is queried and the result cached.
+
+        Parameters
+        ----------
+        data : pd.DataFrame
+            Input data for the ML model.
+        symbol : str
+            Symbol identifier.
+
+        Returns
+        -------
+        dict | None
+            Prediction result from the ML service, or ``None`` on failure.
+        """
+        # Compute a lightweight hash of the DataFrame; the result is an int.
+        data_hash = int(hash_pandas_object(data, index=True).sum())
+        cache_key = (symbol, data_hash)
+
+        cached = self._ml_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        inference = get_inference_service()
+        ml_result = await inference.predict(data, symbol)
+        if ml_result is not None:
+            # Store in cache for future calls.
+            self._ml_cache[cache_key] = ml_result
+        return ml_result
 
     def _apply_ml_filter(self, base_signal: Signal, ml_result: Dict[str, Any]) -> Optional[Signal]:
         """Adjust the base signal if the ML prediction agrees.
