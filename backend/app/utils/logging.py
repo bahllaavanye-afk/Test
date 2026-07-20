@@ -22,3 +22,24 @@ def configure_logging() -> None:
 
 
 logger = structlog.get_logger()
+
+
+def log_metrics(signal_count: int, execution_time: float, pnl: float) -> None:
+    """
+    Log key trading metrics in a structured format.
+
+    Parameters
+    ----------
+    signal_count : int
+        Number of signals generated in the current run.
+    execution_time : float
+        Execution time in seconds for the evaluated segment.
+    pnl : float
+        Profit and loss value for the evaluated segment.
+    """
+    logger.info(
+        "trading_metrics",
+        signal_count=signal_count,
+        execution_time=execution_time,
+        pnl=pnl,
+    )
