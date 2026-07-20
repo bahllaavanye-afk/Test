@@ -22,12 +22,11 @@ from app.ml.models.a3c_lstm import A3CLSTMAgent
 logger = logging.getLogger(__name__)
 
 _CHECKPOINT_DIR = Path(__file__).parents[3] / "checkpoints"
-
-# Feature builder (mirrors rl_trader.py feature construction)
-_SEQ_LEN = 30
+_SEQ_LEN = 30  # Feature builder (mirrors rl_trader.py feature construction)
 
 
 def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """Relative Strength Index."""
     delta = series.diff()
     gain = delta.clip(lower=0).ewm(com=period - 1, adjust=False).mean()
     loss = (-delta.clip(upper=0)).ewm(com=period - 1, adjust=False).mean()
@@ -54,12 +53,11 @@ def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
     if t + 1 >= len(df):
         return 0.0
     next_ret = float(df["close"].iloc[t + 1] / df["close"].iloc[t] - 1.0)
-    if action == 0:    # buy — reward is positive return
+    if action == 0:  # buy — reward is positive return
         return next_ret
-    elif action == 2:  # sell — reward is negative return (profit from short)
+    if action == 2:  # sell — reward is negative return (profit from short)
         return -next_ret
-    else:              # hold
-        return 0.0
+    return 0.0  # hold
 
 
 async def train_rl_agent(
@@ -71,7 +69,7 @@ async def train_rl_agent(
     checkpoint_every: int = 100,
     n_features: int = 3,
     hidden_size: int = 128,
-    model_path: str | None = None,
+    model_path: str | Path | None = None,
 ) -> A3CLSTMAgent:
     """
     Train an A3C-LSTM agent on OHLCV data.
@@ -81,15 +79,15 @@ async def train_rl_agent(
     then performs one gradient update per episode.
 
     Args:
-        ohlcv_df:         DataFrame with columns [open, high, low, close, volume]
-        n_episodes:       Number of training episodes
-        gamma:            Discount factor
-        lr:               Adam learning rate
-        grad_clip:        Gradient clipping max norm
+        ohlcv_df:           DataFrame with columns [open, high, low, close, volume]
+        n_episodes:        Number of training episodes
+        gamma:             Discount factor
+        lr:                Adam learning rate
+        grad_clip:         Gradient clipping max norm
         checkpoint_every: Save checkpoint every N episodes
-        n_features:       Feature dimension (must match model architecture)
-        hidden_size:      LSTM hidden size
-        model_path:       Where to save the final model; defaults to checkpoints dir
+        n_features:        Feature dimension (must match model architecture)
+        hidden_size:       LSTM hidden size
+        model_path:        Where to save the final model; defaults to checkpoints dir
 
     Returns:
         Trained A3CLSTMAgent
@@ -98,9 +96,11 @@ async def train_rl_agent(
     T = len(features)
 
     if T < _SEQ_LEN + 2:
-        raise ValueError(f"DataFrame too short ({T} rows); need at least {_SEQ_LEN + 2}")
+        raise ValueError(
+            f"DataFrame too short ({T} rows); need at least {_SEQ_LEN + 2}"
+        )
 
-    # Pad or trim to expected n_features
+    # Adjust feature dimension to match model expectations
     raw_dim = features.shape[1]
     if raw_dim < n_features:
         pad = np.zeros((T, n_features - raw_dim))
@@ -111,7 +111,8 @@ async def train_rl_agent(
     agent = A3CLSTMAgent(n_features=n_features, hidden_size=hidden_size, n_actions=3)
     optimizer = torch.optim.Adam(agent.parameters(), lr=lr)
 
-    save_path = model_path or str(_CHECKPOINT_DIR / "a3c_lstm_latest.pt")
+    save_path = Path(model_path) if model_path else _CHECKPOINT_DIR / "a3c_lstm_latest.pt"
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
     total_rewards: list[float] = []
 
@@ -135,12 +136,10 @@ async def train_rl_agent(
         if not states:
             continue
 
-        # Stack trajectory
-        states_tensor = torch.stack(states)           # (T', seq_len, n_features)
+        states_tensor = torch.stack(states)  # (T', seq_len, n_features)
         actions_tensor = torch.tensor(actions, dtype=torch.long)
         dones = [False] * len(rewards)
 
-        # Single gradient update
         agent.train()
         optimizer.zero_grad()
         loss_dict = agent.actor_critic_loss(
@@ -164,9 +163,8 @@ async def train_rl_agent(
                 loss_dict["loss"].item(),
             )
 
-        # Save checkpoint
         if episode % checkpoint_every == 0:
-            ckpt_path = save_path.replace(".pt", f"_ep{episode:04d}.pt")
+            ckpt_path = save_path.with_name(f"{save_path.stem}_ep{episode:04d}{save_path.suffix}")
             agent.save(
                 ckpt_path,
                 metadata={
@@ -178,7 +176,6 @@ async def train_rl_agent(
             )
             logger.info("Checkpoint saved → %s", ckpt_path)
 
-    # Save final model as the "latest" checkpoint
     agent.save(
         save_path,
         metadata={
