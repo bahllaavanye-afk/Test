@@ -72,7 +72,14 @@ class AgentBus:
         if topic not in TOPICS:
             logger.warning("AgentBus: unknown topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
         key = f"{_BUS_KEY_PREFIX}{topic}"
         try:
             await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
@@ -119,31 +126,56 @@ class AgentBus:
                 if not results:
                     continue
 
-                for stream_key, messages in (results or []):
-                    topic = stream_key.removeprefix(_BUS_KEY_PREFIX)
+                for stream_key, messages in results:
+                    # Slice off the prefix once per stream for efficiency
+                    topic = stream_key[len(_BUS_KEY_PREFIX) :]
+
+                    # If no handlers, skip processing entirely
+                    handlers = self._handlers.get(topic)
+                    if not handlers:
+                        continue
+
+                    coros = []
                     for msg_id, fields in messages:
                         # Advance consumer offset so we don't re-read this message
                         self._consumer_offsets[topic] = msg_id
 
-                        # Deserialize fields back to dict
-                        data: dict = {}
-                        for k, v in fields.items():
-                            try:
-                                data[k] = json.loads(v)
-                            except (json.JSONDecodeError, TypeError):
-                                data[k] = v
+                        # Deserialize fields back to dict using a comprehension
+                        data = {
+                            k: self._try_json_load(v) for k, v in fields.items()
+                        }
 
-                        for handler in self._handlers.get(topic, []):
-                            try:
-                                await handler(topic, data)
-                            except Exception as exc:
-                                logger.error(
-                                    "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
-                                )
+                        for handler in handlers:
+                            coros.append(self._safe_invoke(handler, topic, data))
+
+                    # Run all handler coroutines concurrently; capture exceptions inside _safe_invoke
+                    if coros:
+                        await asyncio.gather(*coros)
             except Exception as exc:
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
                 await asyncio.sleep(1.0)
+
+    @staticmethod
+    def _try_json_load(value: Any) -> Any:
+        """Attempt to JSON‑decode a string; fall back to the original value."""
+        if not isinstance(value, (bytes, str)):
+            return value
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value
+
+    async def _safe_invoke(self, handler: Handler, topic: str, data: dict) -> None:
+        """Invoke a handler and log any exception without propagating."""
+        try:
+            await handler(topic, data)
+        except Exception as exc:
+            logger.error(
+                "AgentBus handler error topic=%s handler=%s: %s",
+                topic,
+                getattr(handler, "__name__", repr(handler)),
+                exc,
+            )
 
     # ── Introspection ─────────────────────────────────────────────────────────
 
@@ -165,6 +197,7 @@ def get_bus(redis_client: Any | None = None) -> AgentBus:
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _bus = AgentBus(redis_client)
     return _bus
