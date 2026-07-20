@@ -41,6 +41,26 @@ class QuoteResult:
 class AbstractBroker(ABC):
     """Interface that all brokers must implement."""
 
+    @staticmethod
+    def _validate_order_request(request: OrderRequest) -> None:
+        """Validate an OrderRequest instance.
+
+        Raises:
+            ValueError: If any required field is invalid.
+        """
+        if not request.symbol:
+            raise ValueError("OrderRequest.symbol must be non-empty")
+        if request.side not in {"buy", "sell"}:
+            raise ValueError("OrderRequest.side must be 'buy' or 'sell'")
+        if request.order_type not in {"market", "limit", "stop", "bracket"}:
+            raise ValueError(
+                "OrderRequest.order_type must be one of "
+                "'market', 'limit', 'stop', 'bracket'"
+            )
+        if request.quantity <= 0:
+            raise ValueError("OrderRequest.quantity must be positive")
+        # Additional optional validations can be added by concrete brokers.
+
     @abstractmethod
     async def place_order(self, request: OrderRequest) -> OrderResult:
         """Submit an order to the broker. Raises BrokerError on failure."""

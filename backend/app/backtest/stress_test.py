@@ -91,12 +91,71 @@ def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timesta
     """Vectorized slice of a Series using .loc; returns None if input is None."""
     if series is None:
         return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
     try:
         return series.loc[start:end]
     except Exception:
         mask = (series.index >= start) & (series.index <= end)
         return series.loc[mask]
+
+
+def _scenario_intersects_price_index(scenario: StressScenario, price_index: pd.Index) -> bool:
+    """Return True if the scenario window overlaps any date in the price index."""
+    start_ts = pd.Timestamp(scenario.start)
+    end_ts = pd.Timestamp(scenario.end)
+    return ((price_index >= start_ts) & (price_index <= end_ts)).any()
+
+
+def _prepare_slices(
+    signals: pd.Series,
+    prices: pd.Series,
+    opens: pd.Series | None,
+    volume: pd.Series | None,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+) -> tuple[pd.Series | None, pd.Series | None, pd.Series | None, pd.Series | None]:
+    """Slice all input series to the scenario window."""
+    s_signals = _slice_series(signals, start_ts, end_ts)
+    s_prices = _slice_series(prices, start_ts, end_ts)
+    s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
+    s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+    return s_signals, s_prices, s_opens, s_volume
+
+
+def _evaluate_scenario(
+    scenario: StressScenario,
+    s_signals: pd.Series | None,
+    s_prices: pd.Series | None,
+    s_opens: pd.Series | None,
+    s_volume: pd.Series | None,
+    initial_equity: float,
+    commission_pct: float,
+    slippage_pct: float,
+) -> StressResult:
+    """Run backtest for a single scenario and build the corresponding StressResult."""
+    if s_prices is None or len(s_prices) < 5:
+        data_points = len(s_prices) if s_prices is not None else 0
+        return StressResult(
+            scenario=scenario,
+            metrics=None,
+            period_covered=False,
+            data_points=data_points,
+        )
+
+    metrics = run_backtest(
+        signals=s_signals,
+        prices=s_prices,
+        opens=s_opens,
+        volume=s_volume,
+        initial_equity=initial_equity,
+        commission_pct=commission_pct,
+        slippage_pct=slippage_pct,
+    )
+    return StressResult(
+        scenario=scenario,
+        metrics=metrics,
+        period_covered=True,
+        data_points=len(s_prices),
+    )
 
 
 def run_stress_tests(
@@ -119,16 +178,10 @@ def run_stress_tests(
         scenarios = STRESS_SCENARIOS
 
     results: list[StressResult] = []
-
-    # Convert once to pandas Timestamp for efficient comparison
     price_index = prices.index
 
     for scenario in scenarios:
-        start_ts = pd.Timestamp(scenario.start)
-        end_ts = pd.Timestamp(scenario.end)
-
-        # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+        if not _scenario_intersects_price_index(scenario, price_index):
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -139,40 +192,29 @@ def run_stress_tests(
             )
             continue
 
-        s_signals = _slice_series(signals, start_ts, end_ts)
-        s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+        start_ts = pd.Timestamp(scenario.start)
+        end_ts = pd.Timestamp(scenario.end)
 
-        if s_prices is None or len(s_prices) < 5:
-            results.append(
-                StressResult(
-                    scenario=scenario,
-                    metrics=None,
-                    period_covered=False,
-                    data_points=len(s_prices) if s_prices is not None else 0,
-                )
-            )
-            continue
-
-        metrics = run_backtest(
-            signals=s_signals,
-            prices=s_prices,
-            opens=s_opens,
-            volume=s_volume,
-            initial_equity=initial_equity,
-            commission_pct=commission_pct,
-            slippage_pct=slippage_pct,
+        s_signals, s_prices, s_opens, s_volume = _prepare_slices(
+            signals,
+            prices,
+            opens,
+            volume,
+            start_ts,
+            end_ts,
         )
 
-        results.append(
-            StressResult(
-                scenario=scenario,
-                metrics=metrics,
-                period_covered=True,
-                data_points=len(s_prices),
-            )
+        result = _evaluate_scenario(
+            scenario,
+            s_signals,
+            s_prices,
+            s_opens,
+            s_volume,
+            initial_equity,
+            commission_pct,
+            slippage_pct,
         )
+        results.append(result)
 
     return results
 
