@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Verify API keys",
-    "* `self_improver` is scanning through the `/home/user/quantedge/logs/self_improvement_log.log` file to identify areas for improvement within the QuantEdge system.",
-    "Review dependency updates",
-    "Check file paths",
-    "Use circuit breaker",
-    "Check API certs",
     "Handle SQL errors",
     "Test API keys",
     "Log exception stacks",
@@ -199,8 +193,14 @@
     "Check disk space",
     "Verify SSL certs",
     "Rate limit requests",
-    "Retry failed trades"
+    "Retry failed trades",
+    "Validate API keys",
+    "Detect network partitions",
+    "Track dependency updates",
+    "Tighten signal-log validation",
+    "Enhance input validation",
+    "Strengthen SSL certificates"
   ],
-  "last_updated": "2026-07-20T16:56:48.299573+00:00",
+  "last_updated": "2026-07-20T22:56:36.525491+00:00",
   "total": 200
 }
