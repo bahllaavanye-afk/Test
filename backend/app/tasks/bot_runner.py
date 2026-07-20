@@ -1,8 +1,9 @@
 """BotRunner — schedules and executes all enabled bots via APScheduler."""
 from __future__ import annotations
 
+import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -14,21 +15,26 @@ if TYPE_CHECKING:
 
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
 class BotRunner:
     """Loads all enabled bots from DB and schedules them on APScheduler."""
 
+    # Cache lifetime in seconds
+    _CACHE_TTL = 60
+
     def __init__(self, scheduler: AsyncIOScheduler):
         self._scheduler = scheduler
+        # bot_id -> (Bot instance, timestamp)
+        self._bot_cache: Dict[str, Tuple["Bot", float]] = {}
 
     async def start(self) -> None:
         """Load all enabled bots from DB and schedule them."""
@@ -47,9 +53,26 @@ class BotRunner:
 
             logger.info("BotRunner: scheduling bots", count=len(bots))
             for bot in bots:
+                # Prime cache to avoid immediate DB hit on first run
+                self._bot_cache[bot.id] = (bot, time.time())
                 await self.reschedule(bot)
         except Exception as exc:
             logger.error("BotRunner.start failed", error=str(exc))
+
+    async def _get_bot_cached(self, bot_id: str, db) -> "Bot | None":
+        """Retrieve bot from cache if fresh; otherwise query DB and update cache."""
+        cached = self._bot_cache.get(bot_id)
+        now = time.time()
+        if cached:
+            bot_obj, ts = cached
+            if now - ts < self._CACHE_TTL:
+                return bot_obj
+
+        result = await db.execute(select(Bot).where(Bot.id == bot_id))
+        bot = result.scalar_one_or_none()
+        if bot:
+            self._bot_cache[bot_id] = (bot, now)
+        return bot
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
@@ -60,10 +83,12 @@ class BotRunner:
 
             engine = BotEngine()
             async with AsyncSessionLocal() as db:
-                result = await db.execute(select(Bot).where(Bot.id == bot_id))
-                bot = result.scalar_one_or_none()
+                bot = await self._get_bot_cached(bot_id, db)
                 if bot is None or not bot.is_enabled:
+                    # Ensure stale entries are removed from cache
+                    self._bot_cache.pop(bot_id, None)
                     return
+
                 bot_result = await engine.evaluate(bot, db)
                 logger.info(
                     "Bot evaluated",
