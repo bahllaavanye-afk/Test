@@ -5,8 +5,17 @@ from app.redis_client import get_redis, price_cache
 from app.ws.manager import manager
 from app.utils.logging import logger
 
-POLL_INTERVAL = 2      # seconds between full cycles
-BATCH_SIZE    = 20     # max concurrent quote fetches per cycle
+# Configuration constants
+POLL_INTERVAL_SECONDS = 2      # seconds between full cycles
+BATCH_SIZE_MAX = 20            # max concurrent quote fetches per cycle
+YFINANCE_CADENCE_SECONDS = 60  # cadence for yfinance polling
+
+EXCHANGE_CRYPTO = "crypto"
+EXCHANGE_ALPACA = "alpaca"
+EXCHANGE_YFINANCE = "yfinance"
+
+BROADCAST_PREFIX = "prices:"
+QUOTE_TYPE = "quote"
 
 # Default symbols to track in paper/stub mode (when no broker keys are available)
 DEFAULT_EQUITY_SYMBOLS = [
@@ -27,11 +36,11 @@ async def _fetch_and_publish(broker, symbol: str, cache) -> None:
             "last":    quote.last,
             "volume":  quote.volume,
         }
-        exchange = "crypto" if "/" in symbol else "alpaca"
+        exchange = EXCHANGE_CRYPTO if "/" in symbol else EXCHANGE_ALPACA
         # Fire-and-forget: write to Redis and broadcast concurrently
         await asyncio.gather(
             cache.set_price(exchange, symbol, {"last": quote.last, "bid": quote.bid, "ask": quote.ask}),
-            manager.broadcast(f"prices:{symbol}", {"type": "quote", **price_data}),
+            manager.broadcast(f"{BROADCAST_PREFIX}{symbol}", {"type": QUOTE_TYPE, **price_data}),
             return_exceptions=True,
         )
     except Exception as e:
@@ -40,21 +49,21 @@ async def _fetch_and_publish(broker, symbol: str, cache) -> None:
 
 async def run_price_feed(broker, symbols: list[str]) -> None:
     """
-    Polls all symbols concurrently in batches of BATCH_SIZE every POLL_INTERVAL seconds.
-    Concurrent fetches reduce end-to-end latency from O(N) to O(ceil(N/BATCH_SIZE)).
+    Polls all symbols concurrently in batches of BATCH_SIZE_MAX every POLL_INTERVAL_SECONDS seconds.
+    Concurrent fetches reduce end-to-end latency from O(N) to O(ceil(N/BATCH_SIZE_MAX)).
     """
     # get_redis() is synchronous — do NOT await it; use the module-level price_cache singleton
     cache = price_cache
-    logger.info("Price feed started", symbols=len(symbols), batch_size=BATCH_SIZE)
+    logger.info("Price feed started", symbols=len(symbols), batch_size=BATCH_SIZE_MAX)
     while True:
         # Process symbols in parallel batches
-        for i in range(0, len(symbols), BATCH_SIZE):
-            batch = symbols[i : i + BATCH_SIZE]
+        for i in range(0, len(symbols), BATCH_SIZE_MAX):
+            batch = symbols[i : i + BATCH_SIZE_MAX]
             await asyncio.gather(
                 *[_fetch_and_publish(broker, sym, cache) for sym in batch],
                 return_exceptions=True,
             )
-        await asyncio.sleep(POLL_INTERVAL)
+        await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
 async def start_price_feed() -> None:
@@ -104,7 +113,7 @@ async def start_price_feed() -> None:
 
 
 async def _yfinance_price_feed(symbols: list[str]) -> None:
-    """Poll yfinance every 60 s and publish last-close prices to Redis + WebSocket."""
+    """Poll yfinance every YFINANCE_CADENCE_SECONDS s and publish last-close prices to Redis + WebSocket."""
     cache = price_cache
     while True:
         for sym in symbols:
@@ -114,7 +123,7 @@ async def _yfinance_price_feed(symbols: list[str]) -> None:
                 )
             except Exception as exc:
                 logger.debug("yfinance price feed error", symbol=sym, error=str(exc))
-        await asyncio.sleep(60)
+        await asyncio.sleep(YFINANCE_CADENCE_SECONDS)
 
 
 def _yf_publish_sync(symbol: str, cache) -> None:
@@ -122,16 +131,22 @@ def _yf_publish_sync(symbol: str, cache) -> None:
         import yfinance as yf
         yf_sym = symbol.replace("/USD", "-USD").replace("/USDT", "-USD")
         info = yf.Ticker(yf_sym).fast_info
-        last = float(getattr(info, "last_price", 0) or getattr(info, "regularMarketPrice", 0) or 0)
+        last = float(
+            getattr(info, "last_price", 0)
+            or getattr(info, "regularMarketPrice", 0)
+            or 0
+        )
         if last <= 0:
             return
         import asyncio
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(asyncio.gather(
-            cache.set_price("yfinance", symbol, {"last": last, "bid": last, "ask": last}),
-            manager.broadcast(f"prices:{symbol}", {"type": "quote", "symbol": symbol, "last": last, "bid": last, "ask": last}),
-            return_exceptions=True,
-        ))
+        loop.run_until_complete(
+            asyncio.gather(
+                cache.set_price(EXCHANGE_YFINANCE, symbol, {"last": last, "bid": last, "ask": last}),
+                manager.broadcast(f"{BROADCAST_PREFIX}{symbol}", {"type": QUOTE_TYPE, "symbol": symbol, "last": last, "bid": last, "ask": last}),
+                return_exceptions=True,
+            )
+        )
         loop.close()
     except Exception as exc:  # noqa: BLE001 — one symbol's tick lost, next cycle retries
         logger.debug("yfinance publish failed", symbol=symbol, error=str(exc))
