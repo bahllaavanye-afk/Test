@@ -2,11 +2,20 @@
 import hashlib
 import hmac
 import time
+import functools
 
 from app.api.v1.notifications import _verify_slack_signature
 
 
+@functools.lru_cache(maxsize=None)
 def _sign(secret: str, ts: str, body: bytes) -> str:
+    """Generate a Slack request signature.
+
+    The function is cached to avoid redundant HMAC calculations when the same
+    inputs appear multiple times in the test suite.
+    """
+    if not secret or not ts or not body:
+        return ""
     base = b"v0:" + ts.encode() + b":" + body
     return "v0=" + hmac.new(secret.encode(), base, hashlib.sha256).hexdigest()
 
