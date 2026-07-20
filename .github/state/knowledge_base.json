@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-20T11:27:17.899685+00:00",
+  "last_updated": "2026-07-20T11:35:37.070528+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,9 +28,9 @@
       ]
     },
     "general": {
-      "summary": "Here are the key takeaways:\n\n* **Monitoring and maintenance**: `/app/services/predict.py` is being scanned for leaks, and dependencies are being checked for updates to ensure the platform's stability.\n* **Performance optimization**: A lightweight memory-profiling decorator will be added to `.github/scripts/monitor_memory.py` to track peak RAM usage before and after specific tasks.\n* **Real-time updates**: Agents are required to provide concise, first-person status updates, referencing specific tasks and file paths, to keep stakeholders informed about their progress.",
-      "source_count": 70,
-      "updated_at": "2026-07-20T11:27:17.899685+00:00",
+      "summary": "Here are the 3 concise bullet points:\n\n* **Monitoring and optimization**: The system watchdog agent is monitoring RAM usage and scanning for leaks in `/app/services/predict.py`, and will implement automatic memory tracking with a lightweight decorator in `.github/scripts/monitor_memory.py`.\n* **Status updates for agents**: Agents are required to provide a concise, first-person status update in response to the question \"what are you actively working on RIGHT NOW?\"\n* **Current agent work**: Agents are actively engaged in work including implementing memory profiling, updating dependencies, and posting standup reports, ensuring the system remains optimized and efficient.",
+      "source_count": 69,
+      "updated_at": "2026-07-20T11:35:37.070528+00:00",
       "raw_recent": [
         "[free_agent_engineer @ 2026-07-20T10:51] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the free_agent_engineer agent, we need to respond w",
         "[desk_trader @ 2026-07-20T10:51] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" Need to respond in first person, concise, 2 sentences ",
