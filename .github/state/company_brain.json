@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784583664.3818574,
+    "last_updated": 1784587128.0404484,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,54 +151,10 @@
       "TMO"
     ],
     "risk_flags": [],
-    "risk_status": "normal",
-    "last_brain_update": 1784583664.3812108
+    "risk_status": "alert",
+    "last_brain_update": 1784587128.0394545
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Financials",
-        "Utilities",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Financials, Utilities. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784049694.0887363
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Financials",
-        "Utilities",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Financials, Utilities. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784052461.654109
-    },
-    {
-      "lesson": "Investigate root cause of repeated auto-fix patch failures to prevent code quality degradation.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784054230.0672328
-    },
-    {
-      "lesson": "Review Vercel deployment logs for errors corresponding to the two failed preview links.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784054230.069553
-    },
     {
       "lesson": "Implement human-in-the-loop alerting when auto-fix fails to apply patch, reducing silent failures.",
       "category": "risk",
@@ -1878,14 +1834,37 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 0, Breakouts: 0, Risk flags: 0.",
       "ts": 1784581520.0080254
+    },
+    {
+      "lesson": "Upgrade Vercel plan from free to Pro to remove the 100 deployments per day limit and prevent recurring build failures.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784587126.1020348
+    },
+    {
+      "lesson": "Investigate and fix the root cause of repeated auto-fix failures to reduce unnecessary deployment attempts and CI noise.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784587126.1073325
+    },
+    {
+      "lesson": "Implement a deployment throttle or batching mechanism to stay within free-tier limits if upgrading is not immediately possible.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784587126.1115177
+    },
+    {
+      "lesson": "Add monitoring and alerting for deployment errors to detect resource limits early and trigger manual intervention or plan upgrades.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784587126.116891
     }
   ],
   "github_insights": [
-    {
-      "summary": "The discussions report multiple instances where automated fixes failed because the system could not apply the patch to the file.",
-      "item_count": 20,
-      "ts": 1783713081.7092476
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a string that includes a base64-encoded part? Actually the text: \"[vc]: #SCU1OKSsuDmCvUJLKeWnxOULlN6V60VQnvTgKxfPRvo=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjo",
       "item_count": 20,
@@ -2380,6 +2359,11 @@
       "summary": "The auto-fix attempt repeatedly failed because the patch could not be applied to the file.",
       "item_count": 20,
       "ts": 1784583664.3752031
+    },
+    {
+      "summary": "The deployment failed due to resource limits, and two attempts to automatically fix the issue were unsuccessful.",
+      "item_count": 20,
+      "ts": 1784587128.0300436
     }
   ],
   "experiment_results": [
