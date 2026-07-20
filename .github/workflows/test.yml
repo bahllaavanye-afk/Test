@@ -243,7 +243,7 @@ jobs:
         continue-on-error: true
         run: |
           curl -s -o /dev/null -w "health ping: HTTP %{http_code}\n" --max-time 120 \
-            "https://quantedge-api-agb8.onrender.com/health" || true
+            "https://quantedge-api-9jz0.onrender.com/health" || true
       - name: Create Discord channels + register slash commands (idempotent)
         continue-on-error: true
         env:
@@ -335,11 +335,21 @@ jobs:
               | python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" || echo "")
             echo "[$i] $st"
             case "$st" in
-              live) echo "✓ deploy live"; exit 0 ;;
+              live) echo "✓ deploy live"; break ;;
               build_failed|update_failed|canceled|deactivated) echo "✗ deploy $st"; exit 1 ;;
             esac
           done
-          echo "✗ deploy timed out after 15m"; exit 1
+          [ "$st" = "live" ] || { echo "✗ deploy timed out after 15m"; exit 1; }
+          # DB smoke — /health alone stayed green through the 2026-07-20 Supabase
+          # pause while every DB endpoint 500'd. Fail loud when the live build's
+          # database is dead (the SQLite fallback still reports ok:true, so a
+          # functional-but-degraded fallback boot passes).
+          sleep 10
+          db_ok=$(curl -sS --max-time 90 "https://quantedge-api-9jz0.onrender.com/health/detailed" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['checks']['database'].get('ok'))" || echo "")
+          echo "post-deploy database.ok=$db_ok"
+          [ "$db_ok" = "True" ] || { echo "✗ live build has a DEAD database — endpoints will 500"; exit 1; }
+          echo "✓ deploy live + database functional"
 
       - name: Page Discord on deploy failure
         if: failure()
