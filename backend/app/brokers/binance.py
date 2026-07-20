@@ -10,12 +10,23 @@ from app.utils.logging import logger
 
 try:
     import ccxt.async_support as ccxt
+    from ccxt.base.errors import (
+        BaseError,
+        NetworkError,
+        ExchangeError,
+        AuthenticationError,
+        InvalidOrder,
+    )
     CCXT_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     ccxt = None  # type: ignore
+    BaseError = Exception  # fallback for type checking
+    NetworkError = Exception
+    ExchangeError = Exception
+    AuthenticationError = Exception
+    InvalidOrder = Exception
     CCXT_AVAILABLE = False
     logger.info("ccxt not installed — Binance broker disabled")
-
 
 INTERVAL_MAP = {
     "1m": "1m",
@@ -75,22 +86,69 @@ class BinanceBroker(AbstractBroker):
                 else None,
                 raw_payload=order,
             )
-        except Exception as e:
-            raise BrokerError(f"Binance: {e}")
+        except (InvalidOrder, NetworkError, ExchangeError, AuthenticationError) as e:
+            logger.error(
+                "Binance place_order failed",
+                symbol=request.symbol,
+                side=request.side,
+                qty=request.quantity,
+                order_type=request.order_type,
+                error=str(e),
+            )
+            raise BrokerError(f"Binance place_order error: {e}") from e
+        except BaseError as e:
+            logger.error(
+                "Binance unexpected error during place_order",
+                symbol=request.symbol,
+                error=str(e),
+            )
+            raise BrokerError(f"Binance unexpected error: {e}") from e
 
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
-        except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+        except (NetworkError, ExchangeError) as e:
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
+            return False
+        except BaseError as e:
+            logger.error(
+                "Binance unexpected error during cancel_order",
+                order_id=broker_order_id,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
-        return await self.exchange.fetch_order(broker_order_id, symbol)
+        try:
+            return await self.exchange.fetch_order(broker_order_id, symbol)
+        except (NetworkError, ExchangeError) as e:
+            logger.error(
+                "Binance get_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
+            raise BrokerError(f"Binance get_order error: {e}") from e
+        except BaseError as e:
+            logger.error(
+                "Binance unexpected error during get_order",
+                order_id=broker_order_id,
+                error=str(e),
+            )
+            raise BrokerError(f"Binance unexpected error: {e}") from e
 
     async def get_positions(self) -> list[dict]:
-        balance = await self.exchange.fetch_balance()
+        try:
+            balance = await self.exchange.fetch_balance()
+        except (NetworkError, ExchangeError) as e:
+            logger.error("Binance fetch_balance failed for positions", error=str(e))
+            raise BrokerError(f"Binance fetch_balance error: {e}") from e
         positions = []
         for asset, info in balance["total"].items():
             if info > 0 and asset != "USDT":
@@ -98,7 +156,11 @@ class BinanceBroker(AbstractBroker):
         return positions
 
     async def get_account(self) -> dict:
-        balance = await self.exchange.fetch_balance()
+        try:
+            balance = await self.exchange.fetch_balance()
+        except (NetworkError, ExchangeError) as e:
+            logger.error("Binance fetch_balance failed for account", error=str(e))
+            raise BrokerError(f"Binance fetch_balance error: {e}") from e
         usdt = balance["total"].get("USDT", 0)
         return {
             "equity": usdt,
@@ -115,6 +177,9 @@ class BinanceBroker(AbstractBroker):
         except asyncio.TimeoutError:
             logger.warning("Binance fetch_ticker timed out", symbol=symbol)
             raise BrokerError(f"Binance quote timed out for {symbol}")
+        except (NetworkError, ExchangeError) as e:
+            logger.error("Binance fetch_ticker failed", symbol=symbol, error=str(e))
+            raise BrokerError(f"Binance quote error for {symbol}: {e}") from e
         return QuoteResult(
             symbol=symbol,
             bid=float(ticker["bid"]),
@@ -127,7 +192,17 @@ class BinanceBroker(AbstractBroker):
         self, symbol: str, interval: str = "1d", limit: int = 500
     ) -> list[dict]:
         tf = INTERVAL_MAP.get(interval, "1d")
-        ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
+        try:
+            ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
+        except (NetworkError, ExchangeError) as e:
+            logger.error(
+                "Binance fetch_ohlcv failed",
+                symbol=symbol,
+                interval=interval,
+                limit=limit,
+                error=str(e),
+            )
+            raise BrokerError(f"Binance historical data error: {e}") from e
         return [
             {
                 "ts": self.exchange.iso8601(bar[0]),
@@ -141,7 +216,16 @@ class BinanceBroker(AbstractBroker):
         ]
 
     async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
-        return await self.exchange.fetch_order_book(symbol, limit)
+        try:
+            return await self.exchange.fetch_order_book(symbol, limit)
+        except (NetworkError, ExchangeError) as e:
+            logger.error(
+                "Binance fetch_order_book failed",
+                symbol=symbol,
+                limit=limit,
+                error=str(e),
+            )
+            raise BrokerError(f"Binance order book error: {e}") from e
 
     async def get_all_tickers(self, cache_ttl: int = 30) -> dict:
         """Fetch all tickers for triangular arb scanning with simple TTL caching."""
@@ -156,6 +240,9 @@ class BinanceBroker(AbstractBroker):
                 data = await self.exchange.fetch_tickers()
                 self._ticker_cache.update({"data": data, "timestamp": now})
                 return data
-            except Exception as e:
+            except (NetworkError, ExchangeError) as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
-                raise BrokerError(f"Binance ticker fetch error: {e}")
+                raise BrokerError(f"Binance ticker fetch error: {e}") from e
+            except BaseError as e:
+                logger.error("Unexpected error fetching Binance tickers", error=str(e))
+                raise BrokerError(f"Binance unexpected ticker error: {e}") from e
