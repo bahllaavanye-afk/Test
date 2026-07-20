@@ -1,6 +1,7 @@
 """BotRunner — schedules and executes all enabled bots via APScheduler."""
 from __future__ import annotations
 
+import time
 import uuid
 from typing import TYPE_CHECKING
 
@@ -53,6 +54,7 @@ class BotRunner:
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        start_time = time.monotonic()
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -65,13 +67,27 @@ class BotRunner:
                 if bot is None or not bot.is_enabled:
                     return
                 bot_result = await engine.evaluate(bot, db)
+
+                # Determine signal count (handle iterable signals)
+                signal = getattr(bot_result, "signal", None)
+                if hasattr(signal, "__len__") and not isinstance(signal, (str, bytes)):
+                    signal_count = len(signal)
+                else:
+                    signal_count = 1 if signal is not None else 0
+
+                execution_time_ms = (time.monotonic() - start_time) * 1000
+                pnl = getattr(bot_result, "pnl", None)
+
                 logger.info(
                     "Bot evaluated",
                     bot_id=bot_id,
                     bot_name=bot.name,
                     fired=bot_result.fired,
-                    signal=bot_result.signal,
+                    signal=signal,
+                    signal_count=signal_count,
                     reason=bot_result.reason,
+                    execution_time_ms=round(execution_time_ms, 2),
+                    pnl=pnl,
                 )
         except Exception as exc:
             logger.error("Bot run failed", bot_id=bot_id, error=str(exc))
