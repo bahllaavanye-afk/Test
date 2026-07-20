@@ -691,26 +691,28 @@ async def _ensure_filled(order: dict | None, symbol: str, side: str,
 MLEG_DTE_TARGET = 35
 MLEG_DTE_WINDOW = (25, 50)
 
-# structure spec: list of (option_type, side, moneyness). side_hint picks the
-# put or call wing for directional credit spreads.
+# structure spec: list of (option_type, side, moneyness, target_delta). The
+# moneyness is the fallback strike; target_delta is the real-greek strike when a
+# Tradier feed is available (short legs ~0.30Δ, long protective legs ~0.15Δ —
+# standard OA-style defined-risk deltas). side_hint picks the put or call wing.
 _MLEG_STRUCTURES: dict[str, dict] = {
     "credit_spread_income": {
-        "buy":  [("put", "sell", 0.96), ("put", "buy", 0.92)],      # bull put
-        "sell": [("call", "sell", 1.04), ("call", "buy", 1.08)],    # bear call
+        "buy":  [("put", "sell", 0.96, 0.30), ("put", "buy", 0.92, 0.15)],      # bull put
+        "sell": [("call", "sell", 1.04, 0.30), ("call", "buy", 1.08, 0.15)],    # bear call
     },
     "iron_condor": {
-        "any": [("put", "sell", 0.95), ("put", "buy", 0.91),
-                ("call", "sell", 1.05), ("call", "buy", 1.09)],
+        "any": [("put", "sell", 0.95, 0.30), ("put", "buy", 0.91, 0.15),
+                ("call", "sell", 1.05, 0.30), ("call", "buy", 1.09, 0.15)],
     },
     "vol_carry_short": {
-        "any": [("put", "sell", 0.95), ("put", "buy", 0.91),
-                ("call", "sell", 1.05), ("call", "buy", 1.09)],
+        "any": [("put", "sell", 0.95, 0.30), ("put", "buy", 0.91, 0.15),
+                ("call", "sell", 1.05, 0.30), ("call", "buy", 1.09, 0.15)],
     },
     "cash_secured_put": {
-        "buy": [("put", "sell", 0.95), ("put", "buy", 0.90)],       # defined-risk CSP
+        "buy": [("put", "sell", 0.95, 0.30), ("put", "buy", 0.90, 0.12)],       # defined-risk CSP
     },
     "wheel": {
-        "buy": [("put", "sell", 0.95), ("put", "buy", 0.90)],       # wheel entry leg
+        "buy": [("put", "sell", 0.95, 0.30), ("put", "buy", 0.90, 0.12)],       # wheel entry leg
     },
 }
 
@@ -739,17 +741,62 @@ def _pick_contract(contracts: list[dict], target_strike: float, target_expiry: s
     return best
 
 
+def _tradier_target_strikes(underlying: str, spec: list[tuple]) -> dict[tuple[str, float], float]:
+    """{(opt_type, moneyness): real_strike} from Tradier's actual deltas, or {}.
+
+    One expirations + one chain call for the whole spread (all legs share the
+    nearest ~35-DTE expiration). Fail-soft: any miss just omits that leg's key so
+    the caller falls back to the moneyness strike. Real deltas replace the OTM
+    guess with OA-style delta-selected strikes.
+    """
+    try:
+        import tradier_data
+    except Exception:  # noqa: BLE001
+        return {}
+    if not tradier_data.available():
+        return {}
+    exp = tradier_data.nearest_expiration(underlying, MLEG_DTE_TARGET)
+    if not exp:
+        return {}
+    tchain = tradier_data.chain(underlying, exp, greeks=True)
+    if not tchain:
+        return {}
+    out: dict[tuple[str, float], float] = {}
+    for opt_type, _side, moneyness, target_delta in spec:
+        cands = [o for o in tchain
+                 if o.get("option_type") == opt_type
+                 and o.get("strike") is not None
+                 and (o.get("greeks") or {}).get("delta") is not None]
+        if not cands:
+            continue
+        best = min(cands, key=lambda o: abs(abs(float(o["greeks"]["delta"])) - abs(target_delta)))
+        out[(opt_type, moneyness)] = float(best["strike"])
+    return out
+
+
 async def _resolve_income_legs(underlying: str, spot: float,
-                               spec: list[tuple[str, str, float]]) -> list[dict] | None:
-    """Resolve every leg to a real OCC contract, or None (never partial)."""
+                               spec: list[tuple]) -> list[dict] | None:
+    """Resolve every leg to a real OCC contract, or None (never partial).
+
+    Target strike per leg = Tradier's real-delta strike when a Tradier feed is
+    configured, else the moneyness proxy (spot * moneyness). Orders still route
+    through Alpaca, so Tradier only refines the target; Alpaca resolves the
+    tradable contract nearest that strike.
+    """
     today = datetime.now(timezone.utc).date()
     exp_gte = (today + timedelta(days=MLEG_DTE_WINDOW[0])).isoformat()
     exp_lte = (today + timedelta(days=MLEG_DTE_WINDOW[1])).isoformat()
     target_exp = (today + timedelta(days=MLEG_DTE_TARGET)).isoformat()
 
+    # Real-delta strikes (one Tradier chain fetch), off the event loop; {} if no feed.
+    real = await asyncio.to_thread(_tradier_target_strikes, underlying, spec)
+
+    def _target(opt_type: str, moneyness: float) -> float:
+        return real.get((opt_type, moneyness), spot * moneyness)
+
     by_type: dict[str, list[dict]] = {}
-    for opt_type in {t for t, _, _ in spec}:
-        strikes = [spot * m for t, _, m in spec if t == opt_type]
+    for opt_type in {t for t, *_ in spec}:
+        strikes = [_target(t, m) for t, _s, m, _d in spec if t == opt_type]
         try:
             resp = await _alpaca_get("/v2/options/contracts", {
                 "underlying_symbols": underlying, "status": "active", "type": opt_type,
@@ -764,10 +811,11 @@ async def _resolve_income_legs(underlying: str, spot: float,
             return None
 
     legs: list[dict] = []
-    for opt_type, side, moneyness in spec:
-        pick = _pick_contract(by_type.get(opt_type, []), spot * moneyness, target_exp)
+    for opt_type, side, moneyness, _target_delta in spec:
+        tgt = _target(opt_type, moneyness)
+        pick = _pick_contract(by_type.get(opt_type, []), tgt, target_exp)
         if not pick or not pick.get("symbol"):
-            print(f"    ⚠ no {opt_type} contract near {spot * moneyness:.0f} — proxy fallback", flush=True)
+            print(f"    ⚠ no {opt_type} contract near {tgt:.0f} — proxy fallback", flush=True)
             return None
         legs.append({
             "symbol": pick["symbol"],

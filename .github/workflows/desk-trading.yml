@@ -75,6 +75,10 @@ jobs:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Real ORATS greeks/IV for delta-selected mleg strikes (fallback: moneyness).
+          TRADIER_SANDBOX_TOKEN: ${{ secrets.TRADIER_SANDBOX_TOKEN }}
           DESK_FILTER:       ${{ github.event.inputs.desk }}
           TRADING_MODE:      paper
           # Hardcoded paper-trading key — not a production secret
