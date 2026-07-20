@@ -1,5 +1,56 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔬 SOTA RESEARCH SWEEP 2026-07-20 (web-grounded; apply-not-cite items)
+Multi-agent trading (arXiv 2412.20138 TradingAgents; FinCon; HedgeAgents; ContestTrade 2508.00554; eval taxonomy 2603.27539):
+- [ ] **[P1] TradingAgents-style role separation for the debate gate** — our queued bull/bear/judge debate should mirror the proven analyst→researcher→trader→risk-manager pipeline: analysts summarize (cacheable), researchers debate, trader proposes, risk manager holds VETO. Fits llm_common cascade; run pre-order for large notionals only (cost-aware — the 2603.27539 finding: coordination structure matters more than model size).
+- [ ] **[P2] ContestTrade-style internal contest** — score each desk-strategy's LIVE hit-rate weekly and allocate the top-K budget by contest rank (we already have perf weighting/pruning; add the contest layer to the top-K selection itself).
+- [ ] **[P2] Look-ahead hygiene** — TradingAgents v0.3.x shipped look-ahead filtering as a correctness fix; audit our backtester/data loaders for same-bar leakage (entry uses shift(1) in strategies, verify backtest engine + options_synthetic too).
+Options income (0DTE VRP evidence 2016→2026 positive+significant; deep-learning options 2407.21791):
+- [ ] **[P1] 0DTE variance-risk-premium desk mode** — evidence: implied > realized variance holds for 0DTE SPX through 2026. Our iron-condor/credit-spread templates already exist; add a 0DTE defined-risk variant sized off expected-move, with the documented practice of LETTING expire (avoids 2–5% spread-crossing close cost) under the Expiration Protocol item (do that first).
+- [ ] **[P2] End-to-end learned options signals** — 2407.21791 shows learning position sizing directly from option surfaces beats hand-crafted rules; feasible later via the CI-trained-GBM pipeline on Tradier chain snapshots (start LOGGING daily chain snapshots now — free, and the dataset compounds).
+
+## 📣 WEAK DESKS + DEAD MESSAGES (user evidence 2026-07-20: #desk-fx-rates screenshot)
+Screenshot shows the FX desk posting the IDENTICAL line ("10 signals ≥ 0.6, 3 orders
+EUR_USD, GBP_USD, USD_JPY") ~8×/day: no direction, no prices, no fills, no P&L — and
+nothing consumes these posts (peer_learnings only captures agent discussions, not desk
+output). Write-only noise. Same weakness class hits Polymarket + arbitrage desks.
+- [ ] **[P1] Desk posts: dedupe + enrich + chart** — suppress consecutive identical posts (hash last message per channel in state); every desk post must carry direction, entry px, open-position count, running desk P&L; attach `discord_post_chart` P&L bars (helper shipped). Applies to fx_desk.py AND desk_order_placer P&L posts.
+- [ ] **[P1] Desk posts → shared brain** — pipe each desk's run summary into peer_learnings/company_brain so employees DISCUSS actual desk results in the morning loop (the missing consume-side; extends the queued outcome-linked-learning item).
+- [ ] **[P1] FX desk audit: same-3-orders monotony** — always EUR_USD/GBP_USD/USD_JPY means top-K by confidence is static → likely stale/constant signal inputs or too-narrow universe ranking. Audit signal variance; add no-repeat-position guard (skip if an equivalent open position exists) and log WHY each pair won.
+- [ ] **[P1] Polymarket desk is signal-only** — signals flow (dry run: live markets, conf=1.00 ensembles) but NO order path: py-clob-client signing still unwired (POLYMARKET_PRIVATE_KEY is in the relay). Implement CLOB order placement with $1–5 clips + the same never-partial guard, or the desk stays a commentary bot.
+- [ ] **[P2] Arbitrage-bucket audit** — 32 strategies in the arb bucket but near-zero desk fills attributed to them; verify their signals reach a desk with an order path and aren't all filtered at the confidence gate.
+
+## 🤖 BOT FLEET = FULLY AUTOMATED MANAGEMENT (user directive 2026-07-20)
+Owner of record for the 61 bots is the AUTOMATION, not the user. Already live:
+`bot_lifecycle` scheduler job (disable proven losers, promote winners, grow fleet from
+templates — deterministic policy over real closed trades), 5-min exit sweep (fixed
+today), safeguards, additive seeding, reward-gated code changes. Gaps to close:
+- [ ] **[P1] Lifecycle decisions → Discord** — every enable/disable/promote decision posts WHY (stats in hand) to #bot-fleet; decisions also append to peer_learnings so employees can veto/discuss.
+- [ ] **[P2] Bot parameter tuner** — weekly: for bots with ≥30 closed trades, grid-walk TP/SL% against their own trade history (pure pandas, free) and open a reward-gated PR adjusting template params; never touches live config directly.
+- [ ] **[P2] Weekly OA-comparison report** — auto-generate a positions/P&L table per bot (entry/exit/hold/P&L) as a Discord chart + markdown artifact so the user's "match vs Option Alpha" check is a 2-minute read, not manual data pulling.
+
+## 🤖 OA-BOT THOROUGH TEST 2026-07-20 PM — found + fixed a live P0
+- [x] **[P0 FOUND+FIXED] Bot positions NEVER closed on the live (SQLite-fallback) deploy** — the new `test_bot_lifecycle.py` (first-ever coverage of `check_bot_exits`, the OA profit-taking half) reproduced it: SQLite returns NAIVE datetimes even for `DateTime(timezone=True)` columns, so `now − order.created_at` raised `TypeError`, and the scheduler's catch-all silently killed the ENTIRE exit sweep every 5 min ("Bot exit checker failed"). Positions opened with TP/SL brackets and then sat there forever. FIX: normalize `created_at` to aware-UTC at both subtraction sites in `engine.py`. Lifecycle now pinned by 6 tests: bracket math on open (±TP%/−SL% both sides), profit-target close AT target with +P&L, stop-loss close AT stop with −P&L, short-side TP, inside-bracket stays open, 7-day safety expiry.
+- [ ] **[P2] Test-isolation flake pattern** — two known cross-file flakes under `-n 4 --dist loadfile` (breakeven_inflation contract, tearsheet-on-sqlite): shared per-worker DB lets one file's rows leak into another's expectations. Fix: per-file DB fixtures or scoped assertions (lifecycle tests already scope per-bot).
+
+## 🔍 DEEP REVIEW 2026-07-20 PM — findings + tech/scalability roadmap
+> Full-repo sweep: security, schema, workflows, code health, infra. Secrets scan CLEAN
+> (no real keys committed — only doc placeholders). Suite: 1,699 passed / 0 failed.
+
+- [ ] **[P0] Schema-drift landmine when Supabase unpauses** — the live schema has evolved via `create_all` on the SQLite fallback, but `create_all` NEVER adds columns to existing tables and only 6 alembic migrations exist for a fast-moving model layer (e.g. `strategy_name` referenced by 6 model files, covered by 1 migration). The moment the user unpauses Supabase, the backend binds to an OLD Postgres schema → column-not-found 500s on the endpoints we just fixed. FIX: CI job that spins ephemeral Postgres, runs `alembic upgrade head`, diffs against `Base.metadata` (alembic autogenerate), FAILS on drift and opens a catch-up-revision PR. Must land before the unpause.
+- [ ] **[P1] agb8 double-execution hazard** — TWO backends run 24×7 against the SAME Alpaca paper account: the stale `quantedge-api-agb8` (old build, own working DB, own scheduler → places bot orders + runs desk sync) plus the keeper `9jz0`. Duplicate order placement and split-brain state. User action (30s): suspend/delete the agb8 service in the Render dashboard.
+- [ ] **[P1] Slack long-tail removal (user directive, half-done)** — notify.py is Discord-first, but **65 of 105 workflows** still wire the dead `SLACK_BOT_TOKEN` env and pure `slack-*.yml` workflows still exist. Sweep: drop the env var everywhere, archive slack-only workflows, delete `app/integrations/slack*` after confirming no live caller.
+- [ ] **[P2] Workflow consolidation** — 105 workflows with overlapping families (agent-health-check / agent-health-monitor / agent-heartbeat / agent-status-check; gemini-task-runner vs generic runners). Merge each family into one parameterized workflow; fewer schedules = less cron starvation.
+- [ ] **[P2] Money-path exception audit** — 502 `except Exception` in backend/app is the intended fail-soft culture, but in `execution/`, `risk/`, `brokers/` a swallowed error can silently eat an exit or a risk check. Audit those three dirs only; escalate swallowed failures to Discord pages.
+- [ ] **[P3] Test hygiene batch** — pytest warns "ignoring pytest config in pyproject.toml" (two config sources); Starlette TestClient deprecation; `HTTP_422_UNPROCESSABLE_ENTITY` rename; wavelet_features fragmentation warnings. One small PR.
+
+### Tech roadmap (scalability assessment 2026-07-20 — architecture is sound, free-tier infra is the risk)
+- [ ] **[P1] Database durability** — NOW: unpause Supabase + keep-alive ping (queued below). NEXT: migrate to Neon serverless Postgres (auto-wakes on connection — eliminates the pause failure class at $0) or Supabase Pro. The SQLite fallback stays as the last-resort guard.
+- [ ] **[P0-GATE for live trading] Always-on execution worker** — GitHub Actions cadence (cron starvation, ~15-min floor, suppressed events) is acceptable for PAPER only. Before `TRADING_MODE=live` ever flips: move desk execution into an always-on worker (Fly.io/Railway/Render starter ~$7/mo) driving the existing APScheduler loop. Missed exits on live capital is not an acceptable failure mode.
+- [ ] **[P2] Agent state out of git** — `.github/state/*.json` committed hundreds of times/day caused the improver-clobbering incident and pollutes history. Move agent memory/company brain to Postgres tables + the queued BM25 retrieval; keep git snapshots as daily backup only.
+- [ ] **[P2] Single-origin serving** — drop Vercel: `static_server` already serves the built frontend from the backend. One origin kills the CORS, rewrite-target, VITE_API_URL-mismatch AND deploy-rate-limit failure classes (all four bit us this week).
+- **Keep as-is (scales fine):** FastAPI/SQLAlchemy async, React+Vite, broker plugin layer, reward-gated PR loop, LLM cascade with paid backstop. No rewrites, no Kubernetes.
+
 ## OA UI/UX parity roadmap (from 10 live OA screenshots, 2026-07-19)
 > Full setting inventory: `.github/state/oa_settings_catalog.json`. Study doc: `docs/research/OA_DOCS_STUDY.md`.
 > Goal (user): make the QuantEdge dashboard look/work like Option Alpha — "lots of vizz,

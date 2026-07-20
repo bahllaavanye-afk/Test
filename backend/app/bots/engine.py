@@ -1278,9 +1278,15 @@ async def check_bot_exits(db: AsyncSession) -> int:
                 exit_reason, exit_price = "stop_loss", sl
 
         if exit_reason is None:
-            # Also close if the position has been open > 7 days (safety expiry)
+            # Also close if the position has been open > 7 days (safety expiry).
+            # SQLite (the DB-fallback deploy) returns NAIVE datetimes even for
+            # DateTime(timezone=True) columns — normalize or this subtraction
+            # raises and the scheduler's catch-all silently kills the WHOLE
+            # exit sweep: no bot position would ever close.
             opened_at = getattr(order, "created_at", None)
             if opened_at:
+                if opened_at.tzinfo is None:
+                    opened_at = opened_at.replace(tzinfo=timezone.utc)
                 age_days = (now - opened_at).total_seconds() / 86400
                 if age_days > 7:
                     exit_reason = "expired"
@@ -1297,8 +1303,10 @@ async def check_bot_exits(db: AsyncSession) -> int:
         else:
             realized_pnl = (entry_price - exit_price) * qty
 
-        opened_at = getattr(order, "created_at", now)
-        hold_seconds = int((now - opened_at).total_seconds()) if opened_at else None
+        opened_at = getattr(order, "created_at", now) or now
+        if opened_at.tzinfo is None:  # SQLite returns naive datetimes — see above
+            opened_at = opened_at.replace(tzinfo=timezone.utc)
+        hold_seconds = int((now - opened_at).total_seconds())
 
         trade = Trade(
             id=str(uuid.uuid4()),
