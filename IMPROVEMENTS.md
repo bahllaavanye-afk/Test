@@ -1,5 +1,9 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🤖 OA-BOT THOROUGH TEST 2026-07-20 PM — found + fixed a live P0
+- [x] **[P0 FOUND+FIXED] Bot positions NEVER closed on the live (SQLite-fallback) deploy** — the new `test_bot_lifecycle.py` (first-ever coverage of `check_bot_exits`, the OA profit-taking half) reproduced it: SQLite returns NAIVE datetimes even for `DateTime(timezone=True)` columns, so `now − order.created_at` raised `TypeError`, and the scheduler's catch-all silently killed the ENTIRE exit sweep every 5 min ("Bot exit checker failed"). Positions opened with TP/SL brackets and then sat there forever. FIX: normalize `created_at` to aware-UTC at both subtraction sites in `engine.py`. Lifecycle now pinned by 6 tests: bracket math on open (±TP%/−SL% both sides), profit-target close AT target with +P&L, stop-loss close AT stop with −P&L, short-side TP, inside-bracket stays open, 7-day safety expiry.
+- [ ] **[P2] Test-isolation flake pattern** — two known cross-file flakes under `-n 4 --dist loadfile` (breakeven_inflation contract, tearsheet-on-sqlite): shared per-worker DB lets one file's rows leak into another's expectations. Fix: per-file DB fixtures or scoped assertions (lifecycle tests already scope per-bot).
+
 ## 🔍 DEEP REVIEW 2026-07-20 PM — findings + tech/scalability roadmap
 > Full-repo sweep: security, schema, workflows, code health, infra. Secrets scan CLEAN
 > (no real keys committed — only doc placeholders). Suite: 1,699 passed / 0 failed.
