@@ -10,11 +10,17 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
+import time
+from typing import Dict
+
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
-from scipy.stats import spearmanr
 from scipy.optimize import curve_fit
+from scipy.stats import spearmanr
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -22,7 +28,7 @@ class DecayProfile:
     strategy_name: str
     ic_0: float           # IC at t=0
     half_life_hours: float  # hours until IC halves
-    horizons: dict = field(default_factory=dict)  # {horizon_hours: ic_value}
+    horizons: Dict[int, float] = field(default_factory=dict)  # {horizon_hours: ic_value}
 
 
 class AlphaDecayTracker:
@@ -54,10 +60,14 @@ class AlphaDecayTracker:
             DecayProfile with IC at each horizon and fitted half-life in hours.
             Raises ValueError if prices has no 'close' column.
         """
+        start_time = time.perf_counter()
+
         if "close" not in prices.columns:
             raise ValueError("prices DataFrame must contain a 'close' column")
 
         ics: dict[int, float] = {}
+        pnl_accumulator = 0.0
+        pnl_counts = 0
 
         for h in self.HORIZONS:
             fwd_ret = prices["close"].pct_change(h).shift(-h)
@@ -76,13 +86,35 @@ class AlphaDecayTracker:
             if not np.isnan(ic_val):
                 ics[h] = float(ic_val)
 
+            # Accumulate P&L metric (average forward return) for logging
+            if not r.empty:
+                pnl_accumulator += float(r.mean())
+                pnl_counts += 1
+
+        signal_count = int(signals.shape[0])
+        horizons_used = len(ics)
+
         if len(ics) < 2:
-            return DecayProfile(
+            half_life = float("inf")
+            ic_0 = 0.0
+            profile = DecayProfile(
                 strategy_name=strategy_name,
-                ic_0=0.0,
-                half_life_hours=float("inf"),
+                ic_0=ic_0,
+                half_life_hours=half_life,
                 horizons=ics,
             )
+            elapsed = time.perf_counter() - start_time
+            avg_pnl = pnl_accumulator / pnl_counts if pnl_counts else 0.0
+            logger.info(
+                "AlphaDecay compute_ic_profile - insufficient data: strategy=%s, signals=%d, horizons=%d, "
+                "half_life=inf, ic0=0.0, exec_time=%.4fs, avg_pnl=%.6f",
+                strategy_name,
+                signal_count,
+                horizons_used,
+                elapsed,
+                avg_pnl,
+            )
+            return profile
 
         horizons_arr = np.array(list(ics.keys()), dtype=float)
         ic_arr = np.array(list(ics.values()), dtype=float)
@@ -101,8 +133,22 @@ class AlphaDecayTracker:
             ic_0, lam = float(popt[0]), float(popt[1])
             half_life = np.log(2) / lam if lam > 0 else float("inf")
         except Exception:
-            ic_0 = float(ic_arr[0]) if len(ic_arr) > 0 else 0.0
+            ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
             half_life = float("inf")
+
+        elapsed = time.perf_counter() - start_time
+        avg_pnl = pnl_accumulator / pnl_counts if pnl_counts else 0.0
+        logger.info(
+            "AlphaDecay compute_ic_profile: strategy=%s, signals=%d, horizons=%d, ic0=%.4f, half_life=%.4f, "
+            "exec_time=%.4fs, avg_pnl=%.6f",
+            strategy_name,
+            signal_count,
+            horizons_used,
+            ic_0,
+            half_life,
+            elapsed,
+            avg_pnl,
+        )
 
         return DecayProfile(
             strategy_name=strategy_name,
@@ -130,9 +176,26 @@ class AlphaDecayTracker:
             when half-life is infinite (signal does not decay).
         """
         if profile.half_life_hours == float("inf") or profile.half_life_hours <= 0:
-            return float(base_confidence)
+            adjusted = float(base_confidence)
+            logger.info(
+                "AlphaDecay scale_confidence: strategy=%s, base_conf=%.4f, staleness=%.2f, half_life=inf, adjusted=%.4f",
+                profile.strategy_name,
+                base_confidence,
+                staleness_hours,
+                adjusted,
+            )
+            return adjusted
 
         decay = np.exp(
             -staleness_hours * np.log(2) / profile.half_life_hours
         )
-        return float(base_confidence * max(float(decay), 0.0))
+        adjusted = float(base_confidence * max(float(decay), 0.0))
+        logger.info(
+            "AlphaDecay scale_confidence: strategy=%s, base_conf=%.4f, staleness=%.2f, half_life=%.4f, adjusted=%.4f",
+            profile.strategy_name,
+            base_confidence,
+            staleness_hours,
+            profile.half_life_hours,
+            adjusted,
+        )
+        return adjusted
