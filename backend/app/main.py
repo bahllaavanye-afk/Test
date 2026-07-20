@@ -124,6 +124,17 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"DB connection attempt {attempt + 1} failed: {e}. Retrying in {wait_secs}s")
                 await asyncio.sleep(wait_secs)
 
+    # Seed demo content in-process (idempotent, DEMO_MODE-gated). start.sh seeds
+    # pre-boot too, but that standalone step dies against a dead primary DB; seeding
+    # here — after the fallback probe — guarantees the site never boots empty.
+    try:
+        from app.bots.seed import seed_all
+        seeded = await seed_all()
+        if any(seeded.values()):
+            logger.info("Demo seed on boot", **seeded)
+    except Exception as e:
+        logger.warning(f"Demo seed skipped: {e}")
+
     # Start background scheduler
     scheduler = start_scheduler(db_session_factory=None)
     app.state.scheduler = scheduler

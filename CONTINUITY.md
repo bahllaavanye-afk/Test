@@ -6,9 +6,30 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-15._
+_Last updated: 2026-07-20._
 
-## ⚡ STATE AS OF 2026-07-18 PM (read this first)
+## ⚡ STATE AS OF 2026-07-20 (read this first)
+**"Everything seems broken" was TWO stacked infra faults, both root-caused + fixed:**
+1. **Supabase project PAUSED** (free tier, 7 idle days) → the keeper backend
+   (quantedge-api-9jz0.onrender.com) 500'd on every DB endpoint while /health stayed
+   green. FIX (PR #769): `ensure_database_alive()` probes the primary at boot and falls
+   back to local SQLite (rebinds AsyncSessionLocal in place, creates schema; bots reseed;
+   desk trades resync from Alpaca 30d). /health/detailed keeps a failing
+   `database_primary` check → status stays degraded until the user unpauses Supabase.
+2. **Frontend pointed at the WRONG backend**: vercel.json proxied /api to the STALE
+   agb8 service (29-bot old build, 0 trades) — new merges deploy to 9jz0. FIX (PR #771):
+   rewrite → 9jz0. Site login = "Explore as Guest (Demo)" button (POST /auth/demo, the
+   demo user owns the account desk trades attribute to).
+**Improver contained**: 226 stuck improver PRs closed (each carried a stale
+.github/state snapshot that would REVERT live agent memory on merge; reward gate can't
+validate whole-file LLM rewrites of trading logic — ml_breakout regression found in
+review). continuous_improver.py now (a) never commits state files into PRs, (b) is
+barred from strategies/execution/risk/ml.models/bots via _is_protected. Desk→Trades
+attribution (PR #764) + Tradier delta-strikes (PR #762) landed earlier today.
+USER ACTIONS pending: unpause Supabase (durable DB); add TRADIER_SANDBOX_TOKEN secret
+(real greeks); optionally delete the stale agb8 Render service.
+
+## Earlier: STATE AS OF 2026-07-18 PM
 **THE QUEUE NOW DRAINS ITSELF**: improvements-worker.yml (event-chained, ~24h gate)
 converts top unchecked IMPROVEMENTS.md items into deduped `agent-fix-needed` issues →
 Free-Agent Engineer implements → reward-gated PR. Scouts append, worker drains — the

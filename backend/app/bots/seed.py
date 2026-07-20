@@ -177,5 +177,15 @@ async def seed_all() -> dict:
     }
 
 
+async def _seed_standalone() -> dict:
+    """start.sh runs this pre-boot as its own process: probe the primary DB first so
+    seeding lands in the same SQLite fallback the app will use when Supabase is dead
+    (otherwise this process just errors out and every desk boots empty)."""
+    from app.database import ensure_database_alive
+
+    await ensure_database_alive()
+    return await seed_all()
+
+
 if __name__ == "__main__":
-    print("seeded:", asyncio.run(seed_all()))
+    print("seeded:", asyncio.run(_seed_standalone()))
