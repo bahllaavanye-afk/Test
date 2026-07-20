@@ -10,6 +10,7 @@ Or import and call directly:
 """
 import asyncio
 import logging
+import time
 from pathlib import Path
 
 import numpy as np
@@ -94,6 +95,7 @@ async def train_rl_agent(
     Returns:
         Trained A3CLSTMAgent
     """
+    start_training = time.perf_counter()
     features = _build_features(ohlcv_df)  # (T, n_features_raw)
     T = len(features)
 
@@ -116,6 +118,7 @@ async def train_rl_agent(
     total_rewards: list[float] = []
 
     for episode in range(1, n_episodes + 1):
+        episode_start = time.perf_counter()
         states: list[torch.Tensor] = []
         actions: list[int] = []
         rewards: list[float] = []
@@ -153,15 +156,20 @@ async def train_rl_agent(
         ep_reward = float(sum(rewards))
         total_rewards.append(ep_reward)
 
+        # Structured logging of key metrics
         if episode % 10 == 0:
-            avg = np.mean(total_rewards[-10:])
+            avg_last_10 = np.mean(total_rewards[-10:])
+            signal_count = len(actions)
+            duration = time.perf_counter() - episode_start
             logger.info(
-                "Episode %d/%d  reward=%.4f  avg10=%.4f  loss=%.4f",
+                "episode=%d total_episodes=%d reward=%.4f avg_last_10=%.4f loss=%.4f signals=%d duration_sec=%.3f",
                 episode,
                 n_episodes,
                 ep_reward,
-                avg,
+                avg_last_10,
                 loss_dict["loss"].item(),
+                signal_count,
+                duration,
             )
 
         # Save checkpoint
@@ -176,7 +184,7 @@ async def train_rl_agent(
                     "hidden_size": hidden_size,
                 },
             )
-            logger.info("Checkpoint saved → %s", ckpt_path)
+            logger.info("checkpoint_saved path=%s episode=%d", ckpt_path, episode)
 
     # Save final model as the "latest" checkpoint
     agent.save(
@@ -188,7 +196,13 @@ async def train_rl_agent(
             "hidden_size": hidden_size,
         },
     )
-    logger.info("Training complete. Final model saved → %s", save_path)
+    total_duration = time.perf_counter() - start_training
+    logger.info(
+        "training_complete final_model=%s total_episodes=%d total_duration_sec=%.3f",
+        save_path,
+        n_episodes,
+        total_duration,
+    )
     return agent
 
 
