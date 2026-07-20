@@ -1,5 +1,13 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🎯 STRATEGY DIVERSITY (user directive 2026-07-20: "trades across strategies irrespective of market confusion")
+Evidence: dry run funnel 49 signals → conf≥0.6 gate → 34 conflict stand-asides → top-K
+→ 5 survivors; live fills concentrate in 1–2 strategies. Consequence: the pruning/
+promotion loop (needs ≥20 live trades per strategy) is EVIDENCE-STARVED for ~95% of the
+book — most strategies can never be judged. Fix = exploration, not looser risk:
+- [ ] **[P1] Exploration allocation in desk_order_placer** — reserve ~5% of each desk's budget for MIN-NOTIONAL clips ($10–25) allocated to wirable strategies with the FEWEST live fills in 30d (rotate round-robin; skip pruned-to-zero strategies; conflict stand-asides still apply within a symbol). Every strategy accrues real stats → pruning/promotion becomes decisive instead of starved. Tag fills `qe-explore-*` so attribution can report exploration P&L separately from conviction P&L.
+- [ ] **[P2] Funnel telemetry post** — after each desk run, post the funnel (generated → gated → conflicted → topK → placed, per desk) as a Discord chart so "why no trades" is visible at a glance, not a mystery.
+
 ## 🔬 SOTA RESEARCH SWEEP 2026-07-20 (web-grounded; apply-not-cite items)
 Multi-agent trading (arXiv 2412.20138 TradingAgents; FinCon; HedgeAgents; ContestTrade 2508.00554; eval taxonomy 2603.27539):
 - [ ] **[P1] TradingAgents-style role separation for the debate gate** — our queued bull/bear/judge debate should mirror the proven analyst→researcher→trader→risk-manager pipeline: analysts summarize (cacheable), researchers debate, trader proposes, risk manager holds VETO. Fits llm_common cascade; run pre-order for large notionals only (cost-aware — the 2603.27539 finding: coordination structure matters more than model size).
