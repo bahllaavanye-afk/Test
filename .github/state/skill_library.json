@@ -1,10 +1,5 @@
 {
   "skills": [
-    "* **Self-Improvement Focus**: Active focus on code modularity in `src/backends/app/backend.py` and reviewing function docstrings to ensure adherence to the same standard.",
-    "Check dependency libs",
-    "Rate limit APIs",
-    "Check disk space",
-    "Monitor GPU memory usage",
     "Log system restarts",
     "Verify API keys",
     "Here are 3 concise bullet points of the most important, actionable knowledge extracted from the recent agent learnings:",
@@ -199,8 +194,13 @@
     "Rotate log files",
     "Bind to core 0",
     "Limit DB queries",
-    "Implement rate limit"
+    "Implement rate limit",
+    "Monitor heap size",
+    "Use thread pooling",
+    "Add unit tests",
+    "Implement retry logic",
+    "Parse JSON feeds"
   ],
-  "last_updated": "2026-07-19T23:27:58.033821+00:00",
+  "last_updated": "2026-07-20T01:05:13.605257+00:00",
   "total": 200
 }
