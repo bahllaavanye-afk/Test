@@ -1,0 +1,81 @@
+name: Schema Drift Gate
+
+# P0 guard (deep review 2026-07-20): the live schema has evolved via create_all
+# on the SQLite fallback, but create_all never ALTERs existing tables and only a
+# handful of alembic migrations exist. The moment Supabase is unpaused, the
+# backend binds to the OLD Postgres schema → column-not-found 500s. This gate
+# spins an ephemeral Postgres, runs `alembic upgrade head`, then asks alembic
+# autogenerate whether the migrated schema matches the models. Any drift fails
+# the job and prints the missing operations — the catch-up revision to write.
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/models/**"
+      - "backend/alembic/**"
+  push:
+    branches: [main]
+    paths:
+      - "backend/app/models/**"
+      - "backend/alembic/**"
+  workflow_dispatch: {}
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qe
+          POSTGRES_PASSWORD: qe
+          POSTGRES_DB: qe
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U qe" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          pip install --quiet 'sqlalchemy[asyncio]>=2.0.36' 'alembic>=1.14.0' \
+            'psycopg2-binary' 'asyncpg' 'pydantic>=2.10.0' 'pydantic-settings>=2.6.0' \
+            'python-jose[cryptography]' 'passlib[bcrypt]' 'bcrypt==4.0.1' structlog \
+            'python-dotenv' fastapi
+      - name: Migrate to head, then diff models vs schema
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://qe:qe@localhost:5432/qe
+          ALEMBIC_DATABASE_URL: postgresql://qe:qe@localhost:5432/qe
+          SECRET_KEY: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+          TRADING_MODE: paper
+        run: |
+          python -m alembic upgrade head
+          python - <<'EOF'
+          # Compare migrated schema against the model metadata. Non-empty diff =
+          # a model change with no migration = the exact landmine that re-breaks
+          # the site on Supabase unpause.
+          from alembic.migration import MigrationContext
+          from alembic.autogenerate import compare_metadata
+          from sqlalchemy import create_engine
+
+          import app.models  # noqa: F401 — registers all ORM models
+          from app.database import Base
+
+          engine = create_engine("postgresql://qe:qe@localhost:5432/qe")
+          with engine.connect() as conn:
+              ctx = MigrationContext.configure(conn)
+              diff = compare_metadata(ctx, Base.metadata)
+
+          if diff:
+              print(f"❌ SCHEMA DRIFT — {len(diff)} operation(s) missing from migrations:")
+              for op in diff:
+                  print("  •", op)
+              print("\nWrite a catch-up revision: cd backend && alembic revision --autogenerate -m 'catch-up'")
+              raise SystemExit(1)
+          print("✓ migrations reproduce the model schema — no drift")
+          EOF
