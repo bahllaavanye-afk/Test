@@ -3,17 +3,21 @@ In-memory event tracker — records all significant events with timestamps.
 Used by the Slack bot and the dashboard /activity endpoint.
 """
 from __future__ import annotations
+
+import logging
 from collections import deque
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TrackedEvent:
     timestamp: datetime
     event_type: str
-    category: str        # 'order' | 'signal' | 'risk' | 'experiment' | 'system'
+    category: str  # 'order' | 'signal' | 'risk' | 'experiment' | 'system'
     summary: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -43,8 +47,22 @@ class ActivityTracker:
             metadata=metadata,
         )
         self._events.append(event)
+
         key = f"{category}.{event_type}"
         self._counts[key] = self._counts.get(key, 0) + 1
+
+        # Structured logging of key metrics at INFO level
+        log_data: dict[str, Any] = {
+            "event_type": event_type,
+            "category": category,
+            "signal_count": self._counts.get(f"{category}.signal", 0) if category == "signal" else None,
+            "execution_time": metadata.get("execution_time"),
+            "pnl": metadata.get("pnl"),
+        }
+        # Remove entries with None values to keep log clean
+        log_data = {k: v for k, v in log_data.items() if v is not None}
+        logger.info("Recorded event", extra=log_data)
+
         return event
 
     def recent(self, limit: int = 100, category: str | None = None) -> list[dict]:
