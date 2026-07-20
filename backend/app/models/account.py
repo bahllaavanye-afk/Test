@@ -1,9 +1,12 @@
 import uuid
+import logging
 from datetime import datetime
 from sqlalchemy import String, Boolean, ForeignKey, Numeric, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
+
+logger = logging.getLogger(__name__)
 
 
 class Account(Base, TimestampMixin):
@@ -11,9 +14,9 @@ class Account(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    broker: Mapped[str] = mapped_column(String(50), nullable=False)  # alpaca|tradestation|binance|polymarket
+    broker: Mapped[str] = mapped_column(String(50), nullable=False)
     label: Mapped[str] = mapped_column(String(100), nullable=False)
-    mode: Mapped[str] = mapped_column(String(10), nullable=False, default="paper")  # paper|live
+    mode: Mapped[str] = mapped_column(String(10), nullable=False, default="paper")
     encrypted_key: Mapped[str | None] = mapped_column(String(1024))
     encrypted_secret: Mapped[str | None] = mapped_column(String(1024))
     extra_config: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -24,6 +27,13 @@ class Account(Base, TimestampMixin):
     orders: Mapped[list["Order"]] = relationship("Order", back_populates="account")
     positions: Mapped[list["Position"]] = relationship("Position", back_populates="account")
     strategies: Mapped[list["Strategy"]] = relationship("Strategy", back_populates="account")
+
+    def __init__(self, **kwargs):
+        try:
+            super().__init__(**kwargs)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Account initialization error: {str(e)}", extra={"kwargs": kwargs}, exc_info=True)
+            raise
 
 
 class AccountSnapshot(Base):
@@ -38,3 +48,16 @@ class AccountSnapshot(Base):
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
 
     account: Mapped["Account"] = relationship("Account", back_populates="snapshots")
+
+    def __init__(self, **kwargs):
+        try:
+            if "total_equity" in kwargs and not isinstance(kwargs["total_equity"], (int, float)):
+                raise TypeError(f"total_equity must be numeric, got {type(kwargs['total_equity'])}")
+            if "cash" in kwargs and not isinstance(kwargs["cash"], (int, float)):
+                raise TypeError(f"cash must be numeric, got {type(kwargs['cash'])}")
+            if "unrealized_pnl" in kwargs and not isinstance(kwargs["unrealized_pnl"], (int, float)):
+                raise TypeError(f"unrealized_pnl must be numeric, got {type(kwargs['unrealized_pnl'])}")
+            super().__init__(**kwargs)
+        except (ValueError, TypeError) as e:
+            logger.error(f"AccountSnapshot initialization error: {str(e)}", extra={"kwargs": kwargs}, exc_info=True)
+            raise
