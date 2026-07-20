@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784577110.1139512,
+    "last_updated": 1784578690.1039042,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784573468.9536626
+    "last_brain_update": 1784578690.102932
   },
   "episodic": [
     {
@@ -1882,11 +1882,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The auto-fix bot attempted to apply a patch but failed,",
-      "item_count": 20,
-      "ts": 1783684063.6465108
-    },
-    {
       "summary": "The auto-fix feature repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1783701277.2146878
@@ -2380,6 +2375,11 @@
       "summary": "The automated fix failed to apply a patch to the file, and another fix was skipped because the issue was too complex for automated resolution.",
       "item_count": 20,
       "ts": 1784573468.9450495
+    },
+    {
+      "summary": "The deployment repeatedly failed due to resource limits, with the error advising to try again in 24 hours.",
+      "item_count": 20,
+      "ts": 1784578690.0943353
     }
   ],
   "experiment_results": [
