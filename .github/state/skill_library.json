@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Check thread counts",
-    "Validate user inputs",
-    "Bloomberg dark theme: #0a0a0a bg, #f5a623 accent, #00c853 profit, #ff1744 loss",
-    "Rate limit trades",
-    "Limit API retries",
-    "Check CPU usage",
-    "error_handling on backtest/engine.py: success \u2014 tests green",
     "**Tracking peak RAM usage**: The `system_watchdog` agent is monitoring RAM usage and scanning for leaks in `/app/services/predict.py` to prevent memory-related issues.",
     "Check CPU temps",
     "Cache API results",
@@ -199,8 +192,15 @@
     "Monitor disk space",
     "Validate inputs",
     "Track API calls",
-    "Profile memory usage"
+    "Profile memory usage",
+    "Check API keys",
+    "Bind port timeouts",
+    "Implement circuit breaker",
+    "Cache recent data",
+    "Set thread limits",
+    "Monitor model drift",
+    "Validate signal logs"
   ],
-  "last_updated": "2026-07-20T13:24:50.471015+00:00",
+  "last_updated": "2026-07-20T15:27:27.546728+00:00",
   "total": 200
 }
