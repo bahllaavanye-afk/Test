@@ -1,15 +1,20 @@
 """Audit log endpoint — returns recent audit events for the current user."""
+import logging
+import time
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
+logger = logging.getLogger(__name__)
 
 
 class AuditLogOut(BaseModel):
@@ -52,6 +57,7 @@ async def list_audit_log(
     elif limit > 500:
         limit = 500
 
+    start_time = time.perf_counter()
     result = await db.execute(
         select(AuditLog)
         .where(AuditLog.user_id == current_user.id)
@@ -59,5 +65,17 @@ async def list_audit_log(
         .limit(limit)
     )
     rows = result.scalars().all()
+    duration_ms = (time.perf_counter() - start_time) * 1000
+
+    # Structured logging of key metrics.
+    logger.info(
+        "audit_log.list",
+        extra={
+            "user_id": str(current_user.id),
+            "record_count": len(rows) if rows else 0,
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
+
     # Ensure we always return a list, even if the query yields no rows.
     return rows if rows is not None else []
