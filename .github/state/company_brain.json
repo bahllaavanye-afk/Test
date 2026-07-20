@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784573672.194925,
+    "last_updated": 1784574410.11663,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,15 +109,15 @@
     },
     "opinion_score": 3,
     "macro_score": 2,
-    "vix": 18.09,
-    "market_scan_ts": 1784573672.1727664,
+    "vix": 18.39,
+    "market_scan_ts": 1784574410.094791,
     "sector_leaders": [
       "Energy",
       "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Cons. Disc.",
+      "Industrials",
       "Materials",
       "Tech"
     ],
@@ -128,26 +128,26 @@
       "NOW",
       "TSLA",
       "MS",
-      "PANW",
       "C",
-      "MPC",
+      "PANW",
       "AAPL",
-      "CVX",
+      "MPC",
       "WFC",
+      "CVX",
       "XLF",
       "HD",
       "XLI",
       "JNJ",
-      "CRWD",
       "QQQ",
       "ADBE",
-      "BAC"
+      "CRWD",
+      "IWM"
     ],
     "top_momentum": [
       "MPC",
       "PANW",
-      "CRWD",
       "ABT",
+      "CRWD",
       "ADBE"
     ],
     "risk_flags": [],
@@ -155,13 +155,6 @@
     "last_brain_update": 1784573468.9536626
   },
   "episodic": [
-    {
-      "lesson": "The auto-fix failures may be linked to ML model updates or auto-generated code patches; validate the model output and ensure proper versioning and testing before deployment.",
-      "category": "ml",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784013617.139137
-    },
     {
       "source": "market_opinion",
       "regime": "bull",
@@ -1867,6 +1860,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
       "ts": 1784573672.1991076
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784574410.1207952
     }
   ],
   "github_insights": [
