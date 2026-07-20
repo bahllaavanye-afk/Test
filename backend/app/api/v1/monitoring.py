@@ -9,10 +9,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 
-router = APIRouter(prefix="/monitoring", tags=["monitoring"])
-
+# Constants
 HEALTH_REPORT_PATH = Path(__file__).parents[4] / "qa_health_report.json"
 FIX_LOG_PATH = Path(__file__).parents[4] / "qa_fix_log.jsonl"
+DEFAULT_FIX_LOG_LIMIT = 50
+HEALTH_UNKNOWN_STATUS = "unknown"
+HEALTH_UNKNOWN_MESSAGE = "QA monitor not yet run"
+HEALTH_CORRUPTED_DETAIL = "Health report corrupted"
+FIX_LOG_READ_ERROR_DETAIL = "Could not read fix log: {}"
+QA_CYCLE_STARTED_MESSAGE = "QA cycle started — poll /monitoring/health for results"
+
+router = APIRouter(prefix="/monitoring", tags=["monitoring"])
 
 
 @router.get("/health")
@@ -26,13 +33,13 @@ async def get_health_report():
         try:
             return json.loads(HEALTH_REPORT_PATH.read_text())
         except Exception:
-            raise HTTPException(status_code=500, detail="Health report corrupted")
-    return {"status": "unknown", "message": "QA monitor not yet run"}
+            raise HTTPException(status_code=500, detail=HEALTH_CORRUPTED_DETAIL)
+    return {"status": HEALTH_UNKNOWN_STATUS, "message": HEALTH_UNKNOWN_MESSAGE}
 
 
 @router.get("/fixes")
 async def get_fix_log(
-    limit: int = 50,
+    limit: int = DEFAULT_FIX_LOG_LIMIT,
     current_user: User = Depends(get_current_user),
 ):
     """Recent auto-fixes applied by the QA monitor (requires auth).
@@ -48,7 +55,7 @@ async def get_fix_log(
         lines = text.splitlines()
         return [json.loads(line) for line in lines[-limit:]]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Could not read fix log: {e}")
+        raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(e))
 
 
 @router.post("/run-now")
@@ -60,5 +67,6 @@ async def trigger_qa_cycle(
     The cycle runs asynchronously; poll GET /monitoring/health to see the result.
     """
     from app.tasks.qa_monitor import run_one_cycle
+
     asyncio.create_task(run_one_cycle())
-    return {"message": "QA cycle started — poll /monitoring/health for results"}
+    return {"message": QA_CYCLE_STARTED_MESSAGE}

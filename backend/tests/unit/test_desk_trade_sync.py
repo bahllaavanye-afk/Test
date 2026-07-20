@@ -13,8 +13,14 @@ from app.tasks.desk_trade_sync import (
     reconstruct_closed_trades,
 )
 
+# Constants for default values and expected results
+DEFAULT_STATUS = "filled"
+DEFAULT_SYMBOL = "SPY"
+EXPECTED_HOLD_SECONDS_ONE_HOUR = 3600
+EXPECTED_HOLD_SECONDS_HALF_HOUR = 1800
 
-def _order(coid, side, qty, price, ts, oid, status="filled", symbol="SPY"):
+
+def _order(coid, side, qty, price, ts, oid, status=DEFAULT_STATUS, symbol=DEFAULT_SYMBOL):
     return {
         "id": oid,
         "client_order_id": coid,
@@ -68,7 +74,7 @@ def test_long_round_trip_pnl():
     assert t["exit_price"] == 110.0
     assert t["quantity"] == 10
     assert t["realized_pnl"] == 100.0  # (110-100)*10
-    assert t["hold_seconds"] == 3600
+    assert t["hold_seconds"] == EXPECTED_HOLD_SECONDS_ONE_HOUR
     assert t["close_order_id"] == "o2"
     assert t["open_order_id"] == "o1"
 
@@ -83,7 +89,7 @@ def test_short_round_trip_pnl():
     t = trades[0]
     assert t["side"] == "sell"
     assert t["realized_pnl"] == 50.0  # (200-190)*5 for a short
-    assert t["hold_seconds"] == 1800
+    assert t["hold_seconds"] == EXPECTED_HOLD_SECONDS_HALF_HOUR
 
 
 def test_open_only_position_yields_no_trade():
