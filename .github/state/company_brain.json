@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784524491.4969797,
+    "last_updated": 1784524646.285102,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,7 +110,7 @@
     "opinion_score": 4,
     "macro_score": 2,
     "vix": 18.77,
-    "market_scan_ts": 1784413136.28313,
+    "market_scan_ts": 1784524646.2634876,
     "sector_leaders": [
       "Healthcare",
       "Energy",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784523227.1104524
   },
   "episodic": [
-    {
-      "lesson": "Consider disabling auto-fix temporarily and enforcing manual code reviews to prevent cascading failures.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783717389.1067696
-    },
     {
       "lesson": "Multiple auto-fix failures indicate a systemic issue with patch application; investigate root cause and consider manual intervention or improved error handling.",
       "category": "code",
@@ -1806,6 +1799,21 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784523217.599022
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Healthcare",
+        "Energy",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784524646.2892735
     }
   ],
   "github_insights": [
