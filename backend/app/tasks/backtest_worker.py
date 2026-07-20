@@ -14,8 +14,12 @@ from sqlalchemy import select
 from app.utils.logging import logger
 
 
-async def run_backtest_job(run_id: str) -> None:
+async def run_backtest_job(run_id: str | None) -> None:
     """Fetch one queued BacktestRun, execute it, write results back to DB."""
+    if not run_id:
+        logger.warning("run_backtest_job called with None or empty run_id")
+        return
+
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun, BacktestResult
     from app.backtest.engine import run_backtest
@@ -26,6 +30,15 @@ async def run_backtest_job(run_id: str) -> None:
         run = await db.get(BacktestRun, run_id)
         if not run or run.status != "queued":
             return
+        # Validate essential fields
+        if not all([run.symbol, run.start_date, run.end_date, run.interval, run.strategy_name]):
+            logger.error(f"BacktestRun {run_id} missing required fields")
+            run.status = "failed"
+            run.error_message = "Missing required backtest parameters"
+            run.completed_at = datetime.now(timezone.utc)
+            await db.commit()
+            return
+
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
@@ -50,20 +63,36 @@ async def run_backtest_job(run_id: str) -> None:
         # backtest_signals may be sync or async depending on the strategy
         import inspect
         from app.strategies.base import BacktestSignals as _BSig
+
         _result = strategy.backtest_signals(df)
         raw_signals = (await _result) if inspect.isawaitable(_result) else _result
 
         # Convert BacktestSignals → pd.Series[int] expected by run_backtest
         if isinstance(raw_signals, _BSig):
             import numpy as np
+
+            # Ensure entries/exits are not None and have matching index
+            entries = raw_signals.entries
+            exits = raw_signals.exits
+            if entries is None or exits is None:
+                raise ValueError("BacktestSignals must contain entries and exits arrays")
+
             sig = pd.Series(0, index=df.index, dtype=int)
-            sig[raw_signals.entries.astype(bool)] = 1
-            sig[raw_signals.exits.astype(bool)] = 0
+            sig[entries.astype(bool)] = 1
+            sig[exits.astype(bool)] = 0
             if raw_signals.short_entries is not None:
                 sig[raw_signals.short_entries.astype(bool)] = -1
             signals_series = sig
         else:
-            signals_series = raw_signals  # already a pd.Series
+            # Expect a pandas Series; guard against empty or mismatched index
+            if not isinstance(raw_signals, pd.Series):
+                raise TypeError("Strategy signals must be a pandas Series")
+            if raw_signals.empty:
+                # An empty signal series is treated as no trades
+                signals_series = pd.Series(0, index=df.index, dtype=int)
+            else:
+                # Align index if needed
+                signals_series = raw_signals.reindex(df.index, fill_value=0).astype(int)
 
         metrics = run_backtest(
             signals=signals_series,
@@ -126,8 +155,8 @@ async def backtest_worker_loop() -> None:
                     .order_by(BacktestRun.created_at)
                     .limit(5)
                 )
-                queued = result.scalars().all()
-                run_ids = [r.id for r in queued]
+                queued = result.scalars().all() or []
+                run_ids = [r.id for r in queued if r.id]
 
             for run_id in run_ids:
                 asyncio.create_task(run_backtest_job(run_id))
