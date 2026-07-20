@@ -1,5 +1,14 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🌡️ REGIME-AWARE STRATEGY SELECTION (user directive 2026-07-20: "different market conditions → different strategies")
+EXISTS today: `_detect_regime_from_bars` (SPY trend → bear/sideways/bull) +
+`_STRATEGY_REGIME_MAP` gating in desk_order_placer. Gaps: trend-only (no volatility
+axis — the dimension that decides options premium selling vs buying), unmapped
+strategies default to ALL regimes, and the active regime is invisible.
+- [ ] **[P1] Add the volatility axis** — realized-vol percentile on SPY bars (free, no new feed) → calm/stressed; 3×2 = 6 regimes. Map options income (condors/credit spreads/0DTE-VRP) to STRESSED-elevated-IV regimes, long-premium + trend-followers to CALM-trending, mean-reversion to SIDEWAYS-calm. Audit every default-mapped strategy into an explicit cell.
+- [ ] **[P1] Make the regime visible + felt** — post regime transitions to Discord (with the SPY/vol chart via discord_post_chart); per-run funnel post shows which strategies were regime-gated; bot engine gets a `regime` condition type so OA-style bots can say "only in bull-calm" (same pattern as ml_signal).
+- [ ] **[P2] Regime-aware exploration** — the 5% exploration budget (below) rotates strategies within their FITTING regime, so accrued evidence is regime-conditional (a mean-reverter judged in a trend is bad science).
+
 ## 🎯 STRATEGY DIVERSITY (user directive 2026-07-20: "trades across strategies irrespective of market confusion")
 Evidence: dry run funnel 49 signals → conf≥0.6 gate → 34 conflict stand-asides → top-K
 → 5 survivors; live fills concentrate in 1–2 strategies. Consequence: the pruning/
