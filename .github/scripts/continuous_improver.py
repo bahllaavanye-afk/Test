@@ -91,15 +91,38 @@ CANDIDATE_PATTERNS = [
     "backend/tests/unit/*.py",
 ]
 
+# Core trading-logic modules are OFF-LIMITS to the improver. It does whole-file
+# LLM rewrites with no per-change behavior test, and the reward gate (full CI)
+# doesn't cover the changed behavior — so subtle logic changes here slip through
+# green. That is exactly how the stuck PRs regressed live strategies (ml_breakout
+# stopped suppressing ML-unconfirmed signals; ensemble/rsi2/hrp/iceberg silently
+# reworked). Quality passes on docs/logging/error-handling for NON-core files are
+# still fine; behavior in the money-path is not the improver's to touch.
+PROTECTED_PREFIXES = (
+    "backend/app/strategies/",
+    "backend/app/execution/",
+    "backend/app/risk/",
+    "backend/app/ml/models/",
+    "backend/app/bots/",
+)
+
+
+def _is_protected(path: str) -> bool:
+    p = path.replace("\\", "/")
+    return any(p.startswith(pre) for pre in PROTECTED_PREFIXES)
+
+
 def pick_target_file(hour: int, skip_files: set[str]) -> str | None:
     pattern_idx = hour % len(CANDIDATE_PATTERNS)
     pattern = CANDIDATE_PATTERNS[pattern_idx]
     files = [f for f in glob.glob(pattern)
-             if not f.endswith("__init__.py") and f not in skip_files]
+             if not f.endswith("__init__.py") and f not in skip_files
+             and not _is_protected(f)]
     if not files:
         all_files = glob.glob("backend/app/**/*.py", recursive=True)
         files = [f for f in all_files
-                 if "__init__" not in f and "__pycache__" not in f and f not in skip_files]
+                 if "__init__" not in f and "__pycache__" not in f
+                 and f not in skip_files and not _is_protected(f)]
     return random.choice(files) if files else None
 
 # ── Improvement types ─────────────────────────────────────────────────────────
@@ -341,24 +364,21 @@ def main():
             if tests_passed:
                 save_skill(f"{improvement_type} on {short_path}: success — tests green")
 
+    # Persist memory to disk for in-run reflexion only. DO NOT commit the state
+    # files (agent_memory.json / skill_library.json) onto the run branch: they are
+    # live runtime state that many workflows write to main continuously, so every
+    # improver PR that carried a stale snapshot REVERTED newer agent memory on
+    # merge. That state-clobbering is why these PRs must never be merged. The
+    # improver's own telemetry is non-critical; keeping it out of the code PR is
+    # the fix. (Only the reset below guarantees the files never enter the diff.)
     save_memory(mem)
-
-    # Commit updated memory onto the run branch (not main)
-    try:
-        subprocess.run(["git", "add", str(STATE_FILE), str(SKILLS_FILE)], capture_output=True)
-        subprocess.run(["git", "commit", "-m", f"state: continuous_improver memory update — {improved_count} improvements",
-                        "--allow-empty"],
-                       capture_output=True,
-                       env={**os.environ, "GIT_AUTHOR_NAME": "QuantEdge AI",
-                            "GIT_AUTHOR_EMAIL": "ai@quantedge.ai",
-                            "GIT_COMMITTER_NAME": "QuantEdge AI",
-                            "GIT_COMMITTER_EMAIL": "ai@quantedge.ai"})
-    except Exception as e:
-        print(f"Memory commit error: {e}")
+    subprocess.run(["git", "checkout", "--", str(STATE_FILE), str(SKILLS_FILE)],
+                   capture_output=True)
 
     # ── Reward gate ────────────────────────────────────────────────────────────
     # Push the run branch and open an automerge PR — the full CI suite must pass
     # before anything lands on main. No more unvalidated direct-to-main pushes.
+    # The PR now contains ONLY code files (no .github/state/** snapshot).
     if improved_count > 0:
         subprocess.run(["git", "push", "-u", "origin", run_branch], capture_output=True)
         _open_reward_gated_pr(run_branch, improved_count, improvement_type)

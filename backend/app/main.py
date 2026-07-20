@@ -103,10 +103,17 @@ async def _slack_startup_catchup() -> None:
 async def lifespan(app: FastAPI):
     logger.info("QuantEdge starting up", mode=settings.trading_mode)
 
-    # Create tables (managed by Alembic in production; this covers dev/test)
+    # Probe the primary DB first; if it's dead (Supabase pause), switch to the
+    # SQLite fallback NOW so everything below (create_all, seeding, scheduler)
+    # binds to a database that actually works instead of 500ing all session.
+    import app.database as db_mod
+    live_engine = await db_mod.ensure_database_alive()
+
+    # Create tables (managed by Alembic in production; this covers dev/test and
+    # is a no-op re-run when the fallback path already created the schema)
     for attempt in range(5):
         try:
-            async with engine.begin() as conn:
+            async with live_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             break
         except Exception as e:
@@ -358,6 +365,18 @@ def create_app() -> FastAPI:
                         "find your project and click Unpause (free tier pauses after 7d inactivity). "
                         "You have 90 days before data is lost.")
             checks["database"] = {"ok": False, "error": err_str + hint}
+
+        # Primary DB, when the app booted onto the SQLite fallback: keep the outage
+        # visible (status stays degraded, watchdogs page) even though the app works.
+        import app.database as _db_mod
+        if _db_mod.db_fallback_active:
+            checks["database"]["fallback"] = "sqlite"
+            checks["database_primary"] = {
+                "ok": False,
+                "error": (_db_mod.db_primary_error or "unreachable at boot")
+                + " | Running on the local SQLite fallback: functional but EPHEMERAL "
+                "(data resets on redeploy). Unpause the Supabase project to restore durable state.",
+            }
 
         # Redis
         try:
