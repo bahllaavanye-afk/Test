@@ -10,7 +10,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, validator
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ async def list_experiments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Return the most recent 50 experiments."""
     result = await db.execute(
         select(Experiment).order_by(Experiment.started_at.desc()).limit(50)
     )
@@ -46,6 +47,15 @@ async def list_experiments(
 
 class TrainRequest(BaseModel):
     config_name: str  # e.g. "lstm_btc_1h"
+
+    @validator("config_name")
+    def config_name_must_be_nonempty(cls, v: str) -> str:
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("config_name must be a non‑empty string")
+        # Disallow path traversal characters
+        if "/" in v or "\\" in v:
+            raise ValueError("config_name must not contain path separators")
+        return v
 
 
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
@@ -57,8 +67,12 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -78,6 +92,7 @@ async def trigger_training(
     Returns immediately with experiment_id and status='queued'.
     The training runs as a background asyncio task.
     """
+    # Validation performed by TrainRequest validator; additional safety checks:
     config_name = body.config_name.removesuffix(".yaml")
 
     # Validate config exists
@@ -130,6 +145,13 @@ async def get_experiment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Retrieve a specific experiment by its UUID."""
+    # Validate experiment_id format
+    try:
+        uuid.UUID(experiment_id)
+    except ValueError as exc:
+        raise ValueError(f"experiment_id '{experiment_id}' is not a valid UUID") from exc
+
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
