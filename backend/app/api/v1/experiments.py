@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import uuid
+import time
 from pathlib import Path
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +56,18 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
 
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    start_time = time.time()
+    
     try:
+        logger.info(
+            "Experiment started",
+            extra={
+                "experiment_id": experiment_id,
+                "config_name": config_name,
+                "event": "experiment_start",
+            },
+        )
+        
         proc = await asyncio.create_subprocess_exec(
             sys.executable, str(script), "--config", str(config_path),
             "--experiment-id", experiment_id,
@@ -63,8 +75,30 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
             stderr=subprocess.DEVNULL,
         )
         await proc.wait()
+        
+        execution_time = time.time() - start_time
+        logger.info(
+            "Experiment completed",
+            extra={
+                "experiment_id": experiment_id,
+                "config_name": config_name,
+                "execution_time_seconds": round(execution_time, 2),
+                "event": "experiment_end",
+            },
+        )
     except Exception as exc:
-        logger.error("Experiment %s failed: %s", experiment_id, exc)
+        execution_time = time.time() - start_time
+        logger.error(
+            "Experiment failed",
+            extra={
+                "experiment_id": experiment_id,
+                "config_name": config_name,
+                "error": str(exc),
+                "execution_time_seconds": round(execution_time, 2),
+                "event": "experiment_error",
+            },
+            exc_info=True,
+        )
 
 
 @router.post("/train")
@@ -84,6 +118,14 @@ async def trigger_training(
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     if not config_path.exists():
         available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+        logger.warning(
+            "Config not found",
+            extra={
+                "requested_config": config_name,
+                "available_count": len(available),
+                "event": "config_not_found",
+            },
+        )
         raise HTTPException(
             404,
             f"Config '{config_name}' not found. Available: {available[:10]}{'...' if len(available) > 10 else ''}",
@@ -103,6 +145,16 @@ async def trigger_training(
     db.add(exp)
     await db.commit()
 
+    logger.info(
+        "Training queued",
+        extra={
+            "experiment_id": experiment_id,
+            "config_name": config_name,
+            "user_id": current_user.id if current_user else None,
+            "event": "training_queued",
+        },
+    )
+
     # Launch background training task (fire-and-forget)
     asyncio.create_task(_run_experiment_async(config_name, experiment_id))
 
@@ -119,8 +171,16 @@ async def list_train_configs(
 ):
     """List available training config names."""
     if not CONFIGS_DIR.exists():
+        logger.warning("Configs directory not found", extra={"event": "configs_dir_missing"})
         return {"configs": []}
     configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    logger.info(
+        "Configs listed",
+        extra={
+            "config_count": len(configs),
+            "event": "configs_listed",
+        },
+    )
     return {"configs": configs}
 
 
@@ -133,7 +193,26 @@ async def get_experiment(
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
+        logger.warning(
+            "Experiment not found",
+            extra={
+                "experiment_id": experiment_id,
+                "event": "experiment_not_found",
+            },
+        )
         raise HTTPException(404, "Experiment not found")
+    
+    logger.info(
+        "Experiment retrieved",
+        extra={
+            "experiment_id": experiment_id,
+            "status": exp.status,
+            "val_sharpe": exp.val_sharpe,
+            "test_sharpe": exp.test_sharpe,
+            "event": "experiment_retrieved",
+        },
+    )
+    
     return {
         "id": exp.id,
         "name": exp.name,
