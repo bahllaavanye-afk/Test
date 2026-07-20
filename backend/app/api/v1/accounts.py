@@ -1,4 +1,5 @@
 """Account management endpoints."""
+import time
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -26,7 +27,8 @@ async def latest_total_equity(db: AsyncSession) -> float:
 
     account_ids = (
         (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
-        .scalars().all()
+        .scalars()
+        .all()
     )
     total = 0.0
     for acc_id in account_ids:
@@ -75,8 +77,19 @@ async def list_accounts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    start = time.perf_counter()
     result = await db.execute(select(Account).where(Account.user_id == current_user.id))
-    return result.scalars().all()
+    accounts = result.scalars().all()
+    duration = time.perf_counter() - start
+    logger.info(
+        "list_accounts completed",
+        extra={
+            "user_id": current_user.id,
+            "account_count": len(accounts),
+            "duration_ms": int(duration * 1000),
+        },
+    )
+    return accounts
 
 
 @router.post("/", response_model=AccountOut)
@@ -86,6 +99,7 @@ async def create_account(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
+    start = time.perf_counter()
     account = Account(
         user_id=current_user.id,
         broker=body.broker,
@@ -116,6 +130,16 @@ async def create_account(
     log.resource_id = account.id
     await db.commit()
 
+    duration = time.perf_counter() - start
+    logger.info(
+        "create_account completed",
+        extra={
+            "user_id": current_user.id,
+            "account_id": account.id,
+            "broker": body.broker,
+            "duration_ms": int(duration * 1000),
+        },
+    )
     return account
 
 
@@ -126,6 +150,7 @@ async def get_account_equity(
     current_user: User = Depends(get_current_user),
 ):
     """Return live equity, buying power, and day-trade count from Alpaca."""
+    start = time.perf_counter()
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
     )
@@ -134,24 +159,43 @@ async def get_account_equity(
         raise HTTPException(404, "Account not found")
 
     if account.broker != "alpaca" or not account.encrypted_key:
-        raise HTTPException(400, "Live equity is only available for Alpaca accounts with stored credentials")
+        raise HTTPException(
+            400, "Live equity is only available for Alpaca accounts with stored credentials"
+        )
 
     from app.brokers.alpaca_orders import get_alpaca_account
+
     try:
         data = await get_alpaca_account(account)
     except Exception as e:
         logger.warning(f"Alpaca account fetch failed for account {account_id}: {e}")
         raise HTTPException(502, "Unable to fetch live account data from Alpaca")
 
-    return AccountEquityOut(
+    equity_out = AccountEquityOut(
         equity=float(data.get("equity", 0)),
         cash=float(data.get("cash", 0)),
         buying_power=float(data.get("buying_power", 0)),
         portfolio_value=float(data.get("portfolio_value", 0)),
-        day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
-        pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
+        day_trade_count=int(data["daytrade_count"])
+        if data.get("daytrade_count") is not None
+        else None,
+        pattern_day_trader=bool(data.get("pattern_day_trader"))
+        if data.get("pattern_day_trader") is not None
+        else None,
     )
-
+    duration = time.perf_counter() - start
+    logger.info(
+        "get_account_equity completed",
+        extra={
+            "user_id": current_user.id,
+            "account_id": account_id,
+            "equity": equity_out.equity,
+            "cash": equity_out.cash,
+            "buying_power": equity_out.buying_power,
+            "duration_ms": int(duration * 1000),
+        },
+    )
+    return equity_out
 
 
 @router.delete("/{account_id}")
@@ -160,10 +204,22 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
+    start = time.perf_counter()
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+    )
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(404, "Account not found")
     await db.delete(account)
     await db.commit()
+    duration = time.perf_counter() - start
+    logger.info(
+        "delete_account completed",
+        extra={
+            "user_id": current_user.id,
+            "account_id": account_id,
+            "duration_ms": int(duration * 1000),
+        },
+    )
     return {"deleted": account_id}
