@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Handle SQL errors",
-    "Test API keys",
-    "Log exception stacks",
-    "Review market briefs",
-    "Implement rate limit",
-    "Review agent memory",
-    "Check queue lengths",
     "Check thread timeouts",
     "Monitor queue size",
     "Scan for dependency updates",
@@ -199,8 +192,15 @@
     "Track dependency updates",
     "Tighten signal-log validation",
     "Enhance input validation",
-    "Strengthen SSL certificates"
+    "Strengthen SSL certificates",
+    "Log trade timeouts",
+    "Check API rate",
+    "Verify clock sync",
+    "Validate config",
+    "Refactor dark theme",
+    "Add input validation",
+    "Test SSL modes"
   ],
-  "last_updated": "2026-07-20T22:56:36.525491+00:00",
+  "last_updated": "2026-07-20T23:55:57.050055+00:00",
   "total": 200
 }
