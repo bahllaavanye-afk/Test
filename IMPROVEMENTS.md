@@ -1,5 +1,14 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔬 SOTA RESEARCH SWEEP 2026-07-20 (web-grounded; apply-not-cite items)
+Multi-agent trading (arXiv 2412.20138 TradingAgents; FinCon; HedgeAgents; ContestTrade 2508.00554; eval taxonomy 2603.27539):
+- [ ] **[P1] TradingAgents-style role separation for the debate gate** — our queued bull/bear/judge debate should mirror the proven analyst→researcher→trader→risk-manager pipeline: analysts summarize (cacheable), researchers debate, trader proposes, risk manager holds VETO. Fits llm_common cascade; run pre-order for large notionals only (cost-aware — the 2603.27539 finding: coordination structure matters more than model size).
+- [ ] **[P2] ContestTrade-style internal contest** — score each desk-strategy's LIVE hit-rate weekly and allocate the top-K budget by contest rank (we already have perf weighting/pruning; add the contest layer to the top-K selection itself).
+- [ ] **[P2] Look-ahead hygiene** — TradingAgents v0.3.x shipped look-ahead filtering as a correctness fix; audit our backtester/data loaders for same-bar leakage (entry uses shift(1) in strategies, verify backtest engine + options_synthetic too).
+Options income (0DTE VRP evidence 2016→2026 positive+significant; deep-learning options 2407.21791):
+- [ ] **[P1] 0DTE variance-risk-premium desk mode** — evidence: implied > realized variance holds for 0DTE SPX through 2026. Our iron-condor/credit-spread templates already exist; add a 0DTE defined-risk variant sized off expected-move, with the documented practice of LETTING expire (avoids 2–5% spread-crossing close cost) under the Expiration Protocol item (do that first).
+- [ ] **[P2] End-to-end learned options signals** — 2407.21791 shows learning position sizing directly from option surfaces beats hand-crafted rules; feasible later via the CI-trained-GBM pipeline on Tradier chain snapshots (start LOGGING daily chain snapshots now — free, and the dataset compounds).
+
 ## 📣 WEAK DESKS + DEAD MESSAGES (user evidence 2026-07-20: #desk-fx-rates screenshot)
 Screenshot shows the FX desk posting the IDENTICAL line ("10 signals ≥ 0.6, 3 orders
 EUR_USD, GBP_USD, USD_JPY") ~8×/day: no direction, no prices, no fills, no P&L — and
