@@ -6,10 +6,31 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-20._
+_Last updated: 2026-07-20 (PM)._
 
-## ⚡ STATE AS OF 2026-07-20 (read this first)
-**"Everything seems broken" was TWO stacked infra faults, both root-caused + fixed:**
+## ⚡ STATE AS OF 2026-07-20 PM (read this first)
+**Shipped this session (all merged to main, free stack):** bot exit sweep was
+silently dead on the SQLite-fallback deploy (naive-datetime TypeError killed the
+5-min sweep → positions never closed) — FIXED + 6 lifecycle tests. Exploration
+allocation (min-notional evidence clips so the ≥20-trade pruning loop can judge the
+whole book). `regime` + `ml_signal` bot conditions (OA-style decision recipes; run
+inference/regime once per tick, fail-soft). Desk-post dedupe (`notify.post_dedup`,
+stateless via bot API — fixes the FX-desk "same line 8×/day" spam) + FX post enriched
+with side/entry px. Funnel telemetry (`regime=` + generated→survived→explored→placed)
+in the desk summary. Schema-drift CI gate + Supabase keep-alive. LLM backstop
+(ANTHROPIC/OPENROUTER) wired into all 28 LLM workflows (was why Discord went silent).
+Frontend→keeper backend + client base-URL guard. 226 stale improver PRs closed;
+continuous_improver barred from money-path files + never commits state into PRs.
+**USER ACTIONS (dashboard, ~5 min):** (1) suspend the stale `agb8` Render service
+(double-executes vs the same Alpaca account); (2) run schema-drift-gate via
+workflow_dispatch, then UNPAUSE Supabase (fallback SQLite is ephemeral until then);
+(3) optional: add TRADIER_SANDBOX_TOKEN secret for real greeks.
+**NEXT in queue (IMPROVEMENTS.md, specs ready):** Polymarket CLOB order path;
+desk-posts→shared-brain; regime volatility axis in desk_order_placer; 0DTE-VRP mode
+(after Expiration Protocol); TradingAgents-style debate gate; weekly OA-comparison
+report + bot TP/SL tuner.
+
+## Earlier 2026-07-20: TWO stacked infra faults, both root-caused + fixed:
 1. **Supabase project PAUSED** (free tier, 7 idle days) → the keeper backend
    (quantedge-api-9jz0.onrender.com) 500'd on every DB endpoint while /health stayed
    green. FIX (PR #769): `ensure_database_alive()` probes the primary at boot and falls
