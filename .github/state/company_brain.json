@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784524646.285102,
+    "last_updated": 1784524766.2298188,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,7 +110,7 @@
     "opinion_score": 4,
     "macro_score": 2,
     "vix": 18.77,
-    "market_scan_ts": 1784524646.2634876,
+    "market_scan_ts": 1784524766.2079773,
     "sector_leaders": [
       "Healthcare",
       "Energy",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784523227.1104524
   },
   "episodic": [
-    {
-      "lesson": "Multiple auto-fix failures indicate a systemic issue with patch application; investigate root cause and consider manual intervention or improved error handling.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783802537.9376578
-    },
     {
       "lesson": "Deployment blocked by Vercel free-tier daily limit (100 deployments). Upgrade to Pro plan or implement deployment batching to avoid interruptions.",
       "category": "execution",
@@ -1814,6 +1807,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784524646.2892735
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Healthcare",
+        "Energy",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784524766.2340834
     }
   ],
   "github_insights": [
