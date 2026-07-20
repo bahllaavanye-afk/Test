@@ -35,7 +35,9 @@ class StrategyToggle(BaseModel):
 async def get_params_schema(current_user: User = Depends(get_current_user)):
     """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
     schema = {}
-    for name, cls in STRATEGY_REGISTRY.items():
+    # Guard against STRATEGY_REGISTRY being None or non‑dict
+    registry = STRATEGY_REGISTRY if isinstance(STRATEGY_REGISTRY, dict) else {}
+    for name, cls in registry.items():
         if hasattr(cls, "DEFAULT_PARAMS"):
             schema[name] = {
                 "params": cls.DEFAULT_PARAMS,
@@ -47,7 +49,8 @@ async def get_params_schema(current_user: User = Depends(get_current_user)):
 @router.get("/available")
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
-    return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    registry = STRATEGY_REGISTRY if isinstance(STRATEGY_REGISTRY, dict) else {}
+    return [{"name": k} for k in registry.keys()]
 
 
 @router.get("/desks")
@@ -58,12 +61,15 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     so the equities/crypto/options/prediction-market/TradingView desks all share one
     format and a new strategy is placed automatically.
     """
-    grouped = strategies_by_desk()
+    grouped = strategies_by_desk() or {}
+    desks = list_desks() or []
+    counts = {desk: len(members) for desk, members in grouped.items()}
+    total = sum(counts.values())
     return {
-        "desks": list_desks(),
+        "desks": desks,
         "by_desk": grouped,
-        "counts": {desk: len(members) for desk, members in grouped.items()},
-        "total": sum(len(m) for m in grouped.values()),
+        "counts": counts,
+        "total": total,
     }
 
 
@@ -93,12 +99,14 @@ async def list_active(
             ).where(Strategy.is_enabled == True)  # noqa: E712
             result = await db.execute(stmt)
             rows = result.mappings().all()
+            if not rows:
+                return []
             return [
                 {
                     "name": row["name"],
                     "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
-                    "tick_interval_seconds": int(row.get("tick_interval_seconds", 3600)),
-                    "confidence_threshold": float(row.get("confidence_threshold", 0.6)),
+                    "tick_interval_seconds": int(row.get("tick_interval_seconds", 3600) or 3600),
+                    "confidence_threshold": float(row.get("confidence_threshold", 0.6) or 0.6),
                     "is_running": True,
                 }
                 for row in rows
@@ -114,7 +122,8 @@ async def list_strategies(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Strategy))
-    return result.scalars().all()
+    strategies = result.scalars().all()
+    return strategies if strategies is not None else []
 
 
 @router.patch("/{strategy_id}/toggle")
@@ -124,10 +133,19 @@ async def toggle_strategy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
+    # Validate strategy_id format; treat invalid UUID as not found
+    try:
+        uuid.UUID(strategy_id)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="Strategy not found")
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
-        raise HTTPException(404, "Strategy not found")
-    strategy.is_enabled = body.is_enabled
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    # Guard against None body (should be validated by FastAPI, but defensive)
+    is_enabled = getattr(body, "is_enabled", None)
+    if is_enabled is None:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    strategy.is_enabled = is_enabled
     await db.commit()
-    return {"id": strategy_id, "is_enabled": body.is_enabled}
+    return {"id": strategy_id, "is_enabled": is_enabled}
