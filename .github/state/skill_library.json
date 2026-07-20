@@ -1,9 +1,5 @@
 {
   "skills": [
-    "**Tracking peak RAM usage**: The `system_watchdog` agent is monitoring RAM usage and scanning for leaks in `/app/services/predict.py` to prevent memory-related issues.",
-    "Check CPU temps",
-    "Cache API results",
-    "* `investor_pipeline` is actively parsing settings from the `/quantedge/config/investor_pipeline.cfg` file to ensure seamless auto-advancement of investor status.",
     "Verify API keys",
     "* `self_improver` is scanning through the `/home/user/quantedge/logs/self_improvement_log.log` file to identify areas for improvement within the QuantEdge system.",
     "Review dependency updates",
@@ -199,8 +195,12 @@
     "Cache recent data",
     "Set thread limits",
     "Monitor model drift",
-    "Validate signal logs"
+    "Validate signal logs",
+    "Check disk space",
+    "Verify SSL certs",
+    "Rate limit requests",
+    "Retry failed trades"
   ],
-  "last_updated": "2026-07-20T15:27:27.546728+00:00",
+  "last_updated": "2026-07-20T16:56:48.299573+00:00",
   "total": 200
 }
