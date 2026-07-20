@@ -428,8 +428,16 @@ def _compare(a: float, op: str, b: float) -> bool:
 # Condition evaluator
 # ---------------------------------------------------------------------------
 
-def evaluate_condition(cond: ConditionConfig, data: pd.DataFrame, current_price: float) -> bool:  # noqa: C901
-    """Evaluate a single condition against the data and current price."""
+def evaluate_condition(
+    cond: ConditionConfig, data: pd.DataFrame, current_price: float,
+    ml_result: dict | None = None,
+) -> bool:  # noqa: C901
+    """Evaluate a single condition against the data and current price.
+
+    ``ml_result`` is the (optional) pre-computed inference output for this bot's
+    symbol — the engine computes it once per tick only when an ``ml_signal``
+    condition is present, because inference is async and this evaluator is not.
+    """
     close = data["close"] if "close" in data.columns else pd.Series([current_price])
 
     # Extract OHLCV columns with safe fallbacks
@@ -438,6 +446,19 @@ def evaluate_condition(cond: ConditionConfig, data: pd.DataFrame, current_price:
     volume = data["volume"] if "volume" in data.columns else pd.Series([0.0] * len(close))
 
     ctype = cond.type
+
+    if ctype == "ml_signal":
+        # OA-style ML decision: the model must predict `direction` with confidence
+        # ≥ min_confidence. No trained model / failed inference → False (the bot
+        # simply doesn't fire), never an error.
+        if not ml_result:
+            return False
+        want = (cond.direction or "up").lower()
+        try:
+            conf = float(ml_result.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            return False
+        return ml_result.get("prediction") == want and conf >= (cond.min_confidence or 0.65)
 
     if ctype == "indicator":
         ind = (cond.indicator or "").lower()
@@ -796,6 +817,17 @@ class BotEngine:
         # for position-based conditions and the OA position-limit safeguards.
         open_count, today_count = await self._count_bot_positions(bot, db)
 
+        # ML inference is async and priced per call — run it once per tick, and
+        # only when this bot actually uses an ml_signal condition. Fail-soft:
+        # no trained model / inference error leaves ml_result None (condition False).
+        ml_result: dict | None = None
+        if any(c.type == "ml_signal" for c in conditions):
+            try:
+                from app.ml.inference import get_inference_service
+                ml_result = await get_inference_service().predict(df, bot.symbol)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("ml_signal inference unavailable", bot_id=bot.id, error=str(exc))
+
         condition_results: list[bool] = []
         for cond in conditions:
             try:
@@ -804,7 +836,7 @@ class BotEngine:
                 elif cond.type == "position_exists":
                     passed = open_count > 0
                 else:
-                    passed = evaluate_condition(cond, df, current_price)
+                    passed = evaluate_condition(cond, df, current_price, ml_result=ml_result)
                 condition_results.append(passed)
             except Exception as exc:
                 logger.warning("Condition evaluation error", bot_id=bot.id, error=str(exc))

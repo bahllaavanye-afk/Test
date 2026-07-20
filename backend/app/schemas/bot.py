@@ -18,7 +18,7 @@ class TriggerConfig(BaseModel):
 
 
 class ConditionConfig(BaseModel):
-    type: Literal["indicator", "price_vs_ma", "pnl", "time_window", "position_exists", "no_position"]
+    type: Literal["indicator", "price_vs_ma", "pnl", "time_window", "position_exists", "no_position", "ml_signal"]
     indicator: str | None = None
     period: int = 14
     operator: str = "<"   # < | > | == | != | crosses_above | crosses_below
@@ -37,6 +37,11 @@ class ConditionConfig(BaseModel):
     d_period: int | None = None
     # Supertrend multiplier
     multiplier: float | None = None
+    # ml_signal: the trained model must predict `direction` with confidence ≥ min_confidence
+    # (OA-style decision: "IF ML says up with ≥65% confidence THEN ..."). Fails safe:
+    # no trained model / inference error → the condition is simply False.
+    direction: str | None = None        # "up" | "down"
+    min_confidence: float | None = None  # default 0.65 in the engine
 
 
 class OptionLeg(BaseModel):

@@ -1,7 +1,10 @@
 import axios from 'axios'
 import { getStoredRefreshToken, setStoredRefreshToken } from '../store/slices/authSlice'
 
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+// VITE_API_URL must be the bare backend origin. Old docs (and possibly the Vercel
+// project env) suffixed it with /api/v1, which double-pathed every request
+// (…/api/v1/api/v1/auth/demo → 404: "guest doesn't work"). Normalize both forms.
+const BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '').replace(/\/api\/v1$/, '')
 
 export const api = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
