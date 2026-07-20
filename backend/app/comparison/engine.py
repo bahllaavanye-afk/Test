@@ -3,9 +3,11 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,6 +16,10 @@ from scipy import stats
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
+
+# Simple async cache for benchmark curves to avoid redundant fetches
+_benchmark_cache: Dict[Tuple[date, date], dict] = {}
+_benchmark_lock = asyncio.Lock()
 
 
 @dataclass
@@ -35,6 +41,16 @@ class ComparisonResult:
 
 
 class StrategyComparisonEngine:
+    async def _get_benchmark_curves(self, start: date, end: date) -> dict:
+        """Fetch benchmark curves with simple async caching."""
+        key = (start, end)
+        async with _benchmark_lock:
+            if key in _benchmark_cache:
+                return _benchmark_cache[key]
+            curves = await fetch_benchmark_curves(start, end)
+            _benchmark_cache[key] = curves
+            return curves
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -47,21 +63,39 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        # Run backtests (assumed to be the dominant cost; cannot be optimized here)
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        # Cached benchmark retrieval
+        benchmark_curves = await self._get_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
-        # Extract daily return series for t-test
-        manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
-        ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
-        manual_ret = manual_eq.pct_change().dropna()
-        ml_ret = ml_eq.pct_change().dropna()
+        # Vectorized extraction of equity curves
+        # Convert list of dicts to DataFrame once for each metrics object
+        manual_eq_df = pd.DataFrame(manual_metrics.equity_curve)
+        ml_eq_df = pd.DataFrame(ml_metrics.equity_curve)
 
+        # Ensure 'equity' column exists; fallback to empty series if missing
+        manual_eq = manual_eq_df["equity"] if "equity" in manual_eq_df else pd.Series(dtype=float)
+        ml_eq = ml_eq_df["equity"] if "equity" in ml_eq_df else pd.Series(dtype=float)
+
+        # Compute daily returns using NumPy for speed
+        manual_ret = pd.Series(np.diff(manual_eq.values) / manual_eq.values[:-1])
+        ml_ret = pd.Series(np.diff(ml_eq.values) / ml_eq.values[:-1])
+
+        # Align lengths
         min_len = min(len(manual_ret), len(ml_ret))
         if min_len > 10:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+            # Early exit if variance is zero (identical returns)
+            if np.var(manual_ret.iloc[:min_len]) == 0 and np.var(ml_ret.iloc[:min_len]) == 0:
+                t_stat, p_val = 0.0, 1.0
+            else:
+                t_stat, p_val = stats.ttest_ind(
+                    ml_ret.iloc[:min_len].to_numpy(),
+                    manual_ret.iloc[:min_len].to_numpy(),
+                    equal_var=False,
+                )
         else:
             t_stat, p_val = 0.0, 1.0
 
@@ -70,11 +104,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
