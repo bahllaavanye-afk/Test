@@ -15,10 +15,22 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from functools import lru_cache
 
 
 class OrderBookFeatures:
     """Compute LOB features from real-time bid/ask depth."""
+
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _slice_volumes(
+        data: tuple[tuple[float, float], ...],
+        levels: int,
+    ) -> np.ndarray:
+        """Extract volumes up to `levels` and return as NumPy array."""
+        # Convert to NumPy array of shape (n, 2) and slice volumes
+        arr = np.fromiter((sz for _, sz in data[:levels]), dtype=float, count=levels)
+        return arr
 
     def compute_imbalance(
         self,
@@ -37,10 +49,18 @@ class OrderBookFeatures:
         """
         if not bids or not asks:
             return 0.0
-        bid_vol = sum(float(sz) for _, sz in bids[:levels])
-        ask_vol = sum(float(sz) for _, sz in asks[:levels])
+
+        # Convert to immutable tuple for caching
+        bid_tuple = tuple(bids)
+        ask_tuple = tuple(asks)
+
+        bid_vols = self._slice_volumes(bid_tuple, levels)
+        ask_vols = self._slice_volumes(ask_tuple, levels)
+
+        bid_vol = float(bid_vols.sum())
+        ask_vol = float(ask_vols.sum())
         total = bid_vol + ask_vol
-        if total <= 0:
+        if total <= 0.0:
             return 0.0
         return float((bid_vol - ask_vol) / total)
 
@@ -49,9 +69,9 @@ class OrderBookFeatures:
         Bid-ask spread in basis points: (ask - bid) / mid * 10_000.
         Returns 0.0 for invalid inputs.
         """
-        if best_bid <= 0 or best_ask <= 0 or best_ask <= best_bid:
+        if best_bid <= 0.0 or best_ask <= 0.0 or best_ask <= best_bid:
             return 0.0
-        mid = (best_bid + best_ask) / 2.0
+        mid = (best_bid + best_ask) * 0.5
         return float((best_ask - best_bid) / mid * 10_000.0)
 
     def compute_depth_ratio(
@@ -66,9 +86,9 @@ class OrderBookFeatures:
         """
         if not bids or not asks:
             return 1.0
-        best_bid_size = float(bids[0][1]) if bids else 0.0
-        best_ask_size = float(asks[0][1]) if asks else 0.0
-        if best_ask_size <= 0:
+        best_bid_size = float(bids[0][1])
+        best_ask_size = float(asks[0][1])
+        if best_ask_size <= 0.0:
             return 1.0
         return float(best_bid_size / best_ask_size)
 
@@ -79,7 +99,7 @@ class OrderBookFeatures:
         Returns value in [0, 1]. Near 1 = highly informed order flow.
         """
         total = buy_volume + sell_volume
-        if total <= 0:
+        if total <= 0.0:
             return 0.0
         return float(abs(buy_volume - sell_volume) / total)
 
@@ -95,16 +115,19 @@ class OrderBookFeatures:
         Returns lambda (bps per unit volume). Higher = less liquid.
         Returns 0.0 if insufficient data.
         """
-        if len(price_changes) < 5 or len(signed_volumes) < 5:
+        if price_changes.size < 5 or signed_volumes.size < 5:
             return 0.0
         try:
-            vol = np.array(signed_volumes, dtype=float)
-            dp = np.array(price_changes, dtype=float)
-            # OLS: lambda = cov(dp, vol) / var(vol)
+            vol = np.asarray(signed_volumes, dtype=float)
+            dp = np.asarray(price_changes, dtype=float)
+
             var_vol = np.var(vol)
             if var_vol < 1e-12:
                 return 0.0
-            lam = float(np.cov(dp, vol)[0, 1] / var_vol)
+
+            # Covariance via means to avoid np.cov overhead
+            cov = np.mean(dp * vol) - np.mean(dp) * np.mean(vol)
+            lam = float(cov / var_vol)
             return lam
         except Exception:
             return 0.0
@@ -152,14 +175,14 @@ def add_microstructure_features(
     if imbalance_series is not None:
         df["lob_imbalance"] = imbalance_series.reindex(df.index).fillna(0.0)
     else:
-        # Proxy: (close - open) / range
         rng = (df["high"] - df["low"]).replace(0, np.nan)
         df["lob_imbalance"] = ((df["close"] - df["open"]) / rng).clip(-1, 1).fillna(0.0)
 
     if spread_bps_series is not None:
         df["spread_bps"] = spread_bps_series.reindex(df.index).fillna(0.0)
     else:
-        df["spread_bps"] = ((df["high"] - df["low"]) / df["close"].replace(0, np.nan) * 10_000).fillna(0.0)
+        close_nonzero = df["close"].replace(0, np.nan)
+        df["spread_bps"] = ((df["high"] - df["low"]) / close_nonzero * 10_000).fillna(0.0)
 
     return df
 
