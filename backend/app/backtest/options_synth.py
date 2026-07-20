@@ -15,6 +15,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
 MULTIPLIER = 100        # options contract multiplier
@@ -111,11 +113,23 @@ def backtest_template(template: dict, closes: list[float],
     days_held = 0
     dte = max(int(action["legs"][0].get("dte", 30)), 0)
 
+    # Pre‑compute rolling statistics using numpy for speed
+    closes_arr = np.asarray(closes, dtype=float)
+    log_returns = np.log(closes_arr[1:] / closes_arr[:-1])
+    cum = np.concatenate(([0.0], np.cumsum(log_returns)))
+    cum_sq = np.concatenate(([0.0], np.cumsum(log_returns ** 2)))
+    window_len = 20
+    sqrt_252 = math.sqrt(252)
+
     for i in range(21, len(closes)):
         S = closes[i]
-        rets = [math.log(closes[j] / closes[j - 1]) for j in range(i - 19, i + 1)]
-        mean = sum(rets) / len(rets)
-        hv = math.sqrt(sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) * math.sqrt(252)
+
+        # Efficient rolling mean and variance (20‑day window)
+        sum_ret = cum[i] - cum[i - window_len]
+        sum_sq = cum_sq[i] - cum_sq[i - window_len]
+        mean = sum_ret / window_len
+        var = (sum_sq - (sum_ret ** 2) / window_len) / (window_len - 1)
+        hv = math.sqrt(var) * sqrt_252
         sigma = max(hv * IV_PREMIUM, 0.05)
 
         if pos is None:
@@ -126,17 +140,23 @@ def backtest_template(template: dict, closes: list[float],
                     K = float(lg["strike"])
                 else:
                     K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1, lg["option_type"], K,
-                                int(lg.get("ratio", 1))))
+                pos.append(_Leg(+1 if lg["side"] == "buy" else -1,
+                                lg["option_type"], K, int(lg.get("ratio", 1))))
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
             continue
 
         days_held += 1
         T_rem = max(dte - days_held, 0) / 365.0
-        cur = _net_value(pos, S, T_rem, sigma) if T_rem > 0 else sum(
-            l.sign * l.ratio * max((S - l.strike) if l.option_type.startswith("c")
-                                   else (l.strike - S), 0.0) for l in pos)
+        if T_rem > 0:
+            cur = _net_value(pos, S, T_rem, sigma)
+        else:
+            cur = sum(
+                l.sign * l.ratio *
+                max((S - l.strike) if l.option_type.startswith("c")
+                    else (l.strike - S), 0.0)
+                for l in pos
+            )
         pnl = (cur - entry_net) * MULTIPLIER
         base = max(abs(entry_net) * MULTIPLIER, 1.0)
 

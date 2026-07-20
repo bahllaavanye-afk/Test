@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-20T05:17:02.252702+00:00",
+  "last_updated": "2026-07-20T05:43:02.078318+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,9 +28,9 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Status Updates Required**: Agents must provide concise status updates in first person, referencing real file paths, with a maximum of 2 sentences (e.g. \"[ml_trainer @ 2026-07-19T16:57] I am training models in data/models/latest.csv\").\n* **Code Improvements**: Agents should maintain a record of specific code improvements made in the last cycle, referencing the .github/state/agent_memory.json peer_learning log (e.g. \"[continuous_improver in #engineering @ 2026-07-19T22:51]\").\n* **Experiment Reports**: Agents should provide one-sentence status updates referencing real file paths, even in the absence of LLM providers (e.g. \"[run_experiments @ 2026-07-20T02:54] I am analyzing results in results/2026-07-",
+      "summary": "Based on the recent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* The algo_agent, self_improver, run_experiments, and research_scientist agents require concise 1-2 sentence status updates, referencing real file paths, to provide timely and informative updates.\n* The .github/state/agent_memory.json file is referenced in the continuous_improver agent's report for specific code improvements made in the last cycle.\n* Agent responses should be in first person, concise, and specific, adhering to the format and instructions provided, such as [ml_trainer @ 2026-07-19T16:57].",
       "source_count": 74,
-      "updated_at": "2026-07-20T05:17:02.252702+00:00",
+      "updated_at": "2026-07-20T05:43:02.078318+00:00",
       "raw_recent": [
         "[continuous_improver in #engineering @ 2026-07-19T22:51] The user wants a report: \"Report what specific code improvements you made in the last cycle. Read the .github/state/agent_memory.json peer_learnings a",
         "[run_experiments @ 2026-07-20T02:54] We need to respond as the run_experiments agent. Provide a one-sentence status update, first person, concise, referencing real file paths. Must be 2 s",

@@ -49,13 +49,13 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784524646.285102,
+    "last_updated": 1784539782.858513,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "mean_rev_20_1.5"
     ],
-    "last_autopilot_run": 1784524491.4773607,
+    "last_autopilot_run": 1784539782.8390095,
     "autopilot_best_sharpe": 0.1586,
     "autopilot_best_oos_sharpe": 1.1864,
     "autopilot_best_blended": 0.4056,
@@ -110,7 +110,7 @@
     "opinion_score": 4,
     "macro_score": 2,
     "vix": 18.77,
-    "market_scan_ts": 1784524646.2634876,
+    "market_scan_ts": 1784524766.2079773,
     "sector_leaders": [
       "Healthcare",
       "Energy",
@@ -152,16 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784523227.1104524
+    "last_brain_update": 1784534150.3213758
   },
   "episodic": [
-    {
-      "lesson": "Multiple auto-fix failures indicate a systemic issue with patch application; investigate root cause and consider manual intervention or improved error handling.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783802537.9376578
-    },
     {
       "lesson": "Deployment blocked by Vercel free-tier daily limit (100 deployments). Upgrade to Pro plan or implement deployment batching to avoid interruptions.",
       "category": "execution",
@@ -1814,14 +1807,24 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784524646.2892735
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Healthcare",
+        "Energy",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784524766.2340834
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussion. The input appears to be a snippet of a deployment error message, possibly from a CI/CD system. It mentions \"Resource is limited - try again in 24 hours\" and then some encoded string, and then \"Auto-fix failed \u2014 could not apply patch to file.\" \n\nThe user asks to summarize in 1-2 sentences. So we need to capture the essence: deployment failed due to resource limits, and an auto-fix",
-      "item_count": 20,
-      "ts": 1783597005.7995594
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of a token (maybe for authentication) and two separate messages: \"Deployment failed with the following error: Resource is limited - try again in 24 hours\" and \":robot: **Auto-fix failed** \u2014 could not apply patch to file.\"\n\nThe token part \"[vc]: #sMaUEfX5MCURdiU/hLT7FAU79IM",
       "item_count": 20,
@@ -2316,6 +2319,11 @@
       "summary": "The team lead revoked automerge for an autonomous PR that modifies protected files, and auto-fix attempts failed to apply a patch to the file.",
       "item_count": 20,
       "ts": 1784523227.1038113
+    },
+    {
+      "summary": "The auto-fix repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
+      "item_count": 20,
+      "ts": 1784534150.3128066
     }
   ],
   "experiment_results": [
