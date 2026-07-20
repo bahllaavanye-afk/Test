@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Monitor RAM leaks",
-    "Here are 3 reusable patterns or skills extracted from the given learnings:",
-    "# Reusable Patterns from QuantEdge Autonomous Agents",
-    "Test cache behavior",
     "Check thread counts",
     "Validate user inputs",
     "Bloomberg dark theme: #0a0a0a bg, #f5a623 accent, #00c853 profit, #ff1744 loss",
@@ -199,8 +195,12 @@
     "Based on the agent learnings, the following are the most important and actionable takeaways:",
     "Log algo errors",
     "Reset on crash",
-    "**Lightweight Backtesting**: Quick backtest will begin running lightweight backtests with no prior runs or successes, likely to test new strategies."
+    "**Lightweight Backtesting**: Quick backtest will begin running lightweight backtests with no prior runs or successes, likely to test new strategies.",
+    "Monitor disk space",
+    "Validate inputs",
+    "Track API calls",
+    "Profile memory usage"
   ],
-  "last_updated": "2026-07-20T11:35:37.070528+00:00",
+  "last_updated": "2026-07-20T13:24:50.471015+00:00",
   "total": 200
 }
