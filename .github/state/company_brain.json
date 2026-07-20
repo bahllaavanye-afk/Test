@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784557475.1703713,
+    "last_updated": 1784560858.4402223,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784552603.290507
+    "last_brain_update": 1784560858.4392684
   },
   "episodic": [
-    {
-      "lesson": "Reduce deployment frequency by batching changes or using preview deployments only for significant commits to stay within free tier limits if upgrade is not immediate.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.5750382
-    },
-    {
-      "lesson": "Implement monitoring and alerting for deployment rate limits to proactively manage capacity before hitting the cap.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.576513
-    },
-    {
-      "lesson": "Review auto-fix patch logic to ensure it handles edge cases and can reapply without manual intervention.",
-      "category": "code",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.577983
-    },
-    {
-      "lesson": "Investigate root cause of repeated auto-fix failures; likely due to patch conflicts or malformed patches, blocking code integration.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783918072.2528822
-    },
     {
       "lesson": "Deployment blocked by Vercel free-tier daily limit (100 deployments). Upgrade to Pro plan or reduce deployment frequency to avoid 24-hour delays.",
       "category": "execution",
@@ -1830,14 +1802,37 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784547515.8530524
+    },
+    {
+      "lesson": "Autonomous PRs modifying protected model files (`inference_log.py`, `account.py`) are being revoked due to past breakage. Enforce stricter pre-merge checks and require explicit human review for all changes to protected paths.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.069452
+    },
+    {
+      "lesson": "Auto-fix skipped for complex feature requests (debate gate for desk orders, LLM-brain Discord personas) indicates insufficient automated capability. Assign these to senior engineers for manual design and implementation.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.0749087
+    },
+    {
+      "lesson": "A patch application failure occurred during auto-fix. Investigate the root cause (e.g., file state mismatch, syntax errors) and improve the patch generation pipeline to handle edge cases.",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.0790796
+    },
+    {
+      "lesson": "Recurring automerge revocation for model changes suggests a gap in automated regression testing. Add integration tests that simulate past breakage scenarios (#298) to catch regressions before merge.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.0831735
     }
   ],
   "github_insights": [
-    {
-      "summary": "The auto-fix bot failed three times to apply a patch to a file, each time reporting the same error.",
-      "item_count": 20,
-      "ts": 1783634949.5116296
-    },
     {
       "summary": "The auto-fix repeatedly failed because it could not apply the patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
@@ -2332,6 +2327,11 @@
       "summary": "The deployment failed due to resource limitations, with an error message advising to retry in 24 hours. The workflow run occurred on July 20, 2026.",
       "item_count": 20,
       "ts": 1784552603.281716
+    },
+    {
+      "summary": "The team lead revoked automerge for an autonomous PR that modifies protected files, and an automated fix was skipped because resolving the conflict was too complex\u2014specifically, it involved implementing a debate.",
+      "item_count": 20,
+      "ts": 1784560858.4297976
     }
   ],
   "experiment_results": [
