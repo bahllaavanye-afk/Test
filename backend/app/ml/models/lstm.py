@@ -15,6 +15,8 @@ codebase, providing ``train_epoch`` and ``evaluate`` helpers that work with
 PyTorch data loaders.
 """
 
+import logging
+
 try:
     import torch
     import torch.nn as nn
@@ -31,6 +33,8 @@ from sklearn.metrics import roc_auc_score
 from typing import Iterable, Tuple, Dict
 
 from app.ml.models.base_model import AbstractModel, EvalMetrics
+
+logger = logging.getLogger(__name__)
 
 
 class SelfAttention(nn.Module):
@@ -67,9 +71,17 @@ class SelfAttention(nn.Module):
             Tensor of shape ``(batch, hidden)`` representing the weighted
             aggregation over the time dimension.
         """
-        scores = self.attention(x)                  # (batch, seq, 1)
-        weights = torch.softmax(scores, dim=1)      # (batch, seq, 1)
-        return (weights * x).sum(dim=1)             # (batch, hidden)
+        try:
+            scores = self.attention(x)                  # (batch, seq, 1)
+            weights = torch.softmax(scores, dim=1)      # (batch, seq, 1)
+            return (weights * x).sum(dim=1)             # (batch, hidden)
+        except (RuntimeError, TypeError) as e:
+            logger.error(
+                "SelfAttention forward failed",
+                exc_info=True,
+                extra={"input_shape": getattr(x, "shape", None)},
+            )
+            raise
 
 
 class LSTMPredictor(AbstractModel, nn.Module):
@@ -142,10 +154,18 @@ class LSTMPredictor(AbstractModel, nn.Module):
         torch.Tensor
             Logits tensor of shape ``(batch,)``.
         """
-        out, _ = self.lstm(x)               # (batch, seq, hidden*dirs)
-        ctx = self.attention(out)           # (batch, hidden*dirs)
-        ctx = self.norm(ctx)
-        return self.head(ctx).squeeze(-1)   # (batch,) logits
+        try:
+            out, _ = self.lstm(x)               # (batch, seq, hidden*dirs)
+            ctx = self.attention(out)           # (batch, hidden*dirs)
+            ctx = self.norm(ctx)
+            return self.head(ctx).squeeze(-1)   # (batch,) logits
+        except (RuntimeError, TypeError) as e:
+            logger.error(
+                "LSTMPredictor forward failed",
+                exc_info=True,
+                extra={"input_shape": getattr(x, "shape", None)},
+            )
+            raise
 
     def train_epoch(
         self,
@@ -173,16 +193,24 @@ class LSTMPredictor(AbstractModel, nn.Module):
         self.train()
         total_loss, correct, total = 0.0, 0, 0
         for X, y in loader:
-            optimizer.zero_grad()
-            logits = self.forward(X)
-            loss = criterion(logits, y.float())
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-            optimizer.step()
-            total_loss += loss.item() * len(y)
-            preds = (torch.sigmoid(logits) > 0.5).long()
-            correct += (preds == y.long()).sum().item()
-            total += len(y)
+            try:
+                optimizer.zero_grad()
+                logits = self.forward(X)
+                loss = criterion(logits, y.float())
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+                optimizer.step()
+                total_loss += loss.item() * len(y)
+                preds = (torch.sigmoid(logits) > 0.5).long()
+                correct += (preds == y.long()).sum().item()
+                total += len(y)
+            except (RuntimeError, ValueError, TypeError) as e:
+                logger.error(
+                    "Error during training epoch batch",
+                    exc_info=True,
+                    extra={"batch_input_shape": getattr(X, "shape", None), "batch_label_shape": getattr(y, "shape", None)},
+                )
+                raise
         return {"loss": total_loss / total, "accuracy": correct / total}
 
     def evaluate(self, loader: Iterable[Tuple[torch.Tensor, torch.Tensor]]) -> EvalMetrics:
@@ -206,19 +234,40 @@ class LSTMPredictor(AbstractModel, nn.Module):
         criterion = nn.BCEWithLogitsLoss()
         with torch.no_grad():
             for X, y in loader:
-                logits = self.forward(X)
-                loss = criterion(logits, y.float())
-                total_loss += loss.item() * len(y)
-                all_logits.append(logits)
-                all_labels.append(y)
-                total += len(y)
-        logits_cat = torch.cat(all_logits).numpy()
-        labels_cat = torch.cat(all_labels).numpy()
+                try:
+                    logits = self.forward(X)
+                    loss = criterion(logits, y.float())
+                    total_loss += loss.item() * len(y)
+                    all_logits.append(logits)
+                    all_labels.append(y)
+                    total += len(y)
+                except (RuntimeError, ValueError, TypeError) as e:
+                    logger.error(
+                        "Error during evaluation batch",
+                        exc_info=True,
+                        extra={"batch_input_shape": getattr(X, "shape", None), "batch_label_shape": getattr(y, "shape", None)},
+                    )
+                    raise
+        try:
+            logits_cat = torch.cat(all_logits).numpy()
+            labels_cat = torch.cat(all_labels).numpy()
+        except RuntimeError as e:
+            logger.error(
+                "Failed to concatenate evaluation tensors",
+                exc_info=True,
+                extra={"num_logits": len(all_logits), "num_labels": len(all_labels)},
+            )
+            raise
+
         probs = 1 / (1 + np.exp(-logits_cat))
         preds = (probs > 0.5).astype(int)
         acc = (preds == labels_cat).mean()
         try:
             auc = float(roc_auc_score(labels_cat, probs))
-        except ValueError:
+        except ValueError as e:
+            logger.warning(
+                "ROC AUC computation failed, likely due to single-class labels",
+                exc_info=True,
+            )
             auc = 0.5
         return EvalMetrics(accuracy=float(acc), auc=auc, sharpe=0.0, loss=total_loss / total)
