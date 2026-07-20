@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784574410.11663,
+    "last_updated": 1784576226.202138,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,7 +60,7 @@
     "autopilot_best_oos_sharpe": 1.1402,
     "autopilot_best_blended": 0.4002,
     "autopilot_overfit_count": 0,
-    "market_regime": "bull",
+    "market_regime": "neutral",
     "market_opinion": {
       "generated_at": "2026-07-20T15:43:29.255602+00:00",
       "signals": {
@@ -108,9 +108,9 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 3,
-    "macro_score": 2,
-    "vix": 18.39,
-    "market_scan_ts": 1784574410.094791,
+    "macro_score": 1,
+    "vix": 18.64,
+    "market_scan_ts": 1784576226.1799028,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -122,51 +122,39 @@
       "Tech"
     ],
     "active_universe": [
-      "NFLX",
       "ABT",
-      "ORCL",
-      "NOW",
-      "TSLA",
       "MS",
-      "C",
-      "PANW",
-      "AAPL",
-      "MPC",
-      "WFC",
-      "CVX",
       "XLF",
-      "HD",
+      "C",
+      "XLE",
+      "WFC",
+      "AAPL",
+      "CVX",
+      "MPC",
       "XLI",
+      "XLU",
+      "IWM",
       "JNJ",
       "QQQ",
-      "ADBE",
-      "CRWD",
-      "IWM"
+      "TLT",
+      "SPY",
+      "XLK",
+      "BAC",
+      "SHY",
+      "COP"
     ],
     "top_momentum": [
       "MPC",
-      "PANW",
       "ABT",
-      "CRWD",
-      "ADBE"
+      "MA",
+      "TMO",
+      "AAPL"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784573468.9536626
   },
   "episodic": [
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 3,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "Bull regime with a strong SPY uptrend and tightening credit spreads supports risk-on positioning, though a flat yield curve and moderate breadth (6/11 sectors above 20-SMA) warrant selective exposure. Favour trend-following strategies today to capture momentum while avoiding overconcentration in lagging sectors.",
-      "ts": 1784042130.3871737
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1875,6 +1863,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
       "ts": 1784574410.1207952
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 0,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 0, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784576226.206418
     }
   ],
   "github_insights": [
