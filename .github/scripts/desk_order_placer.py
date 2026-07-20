@@ -1686,6 +1686,27 @@ async def main() -> None:
             summary += "\n".join(desk_summaries)
             summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
             _post_slack("#pnl-daily", summary)
+
+            # Graphical companion (user: "show me more graphical"): orders-per-desk
+            # bar chart. Only when something was placed, so we don't spam empty runs.
+            if all_orders:
+                try:
+                    from notify import discord_post_chart
+                    per_desk: dict[str, int] = {}
+                    for _o in all_orders:
+                        per_desk[_o.get("desk", "?")] = per_desk.get(_o.get("desk", "?"), 0) + 1
+                    if per_desk:
+                        discord_post_chart(
+                            "#pnl-daily",
+                            title=f"Orders by desk — {now_str}",
+                            labels=list(per_desk.keys()),
+                            series={"orders": list(per_desk.values())},
+                            kind="bar",
+                            description=f"{len(all_orders)} orders | regime {_regime_lbl}/{vol_regime}",
+                            username="QuantEdge Desk",
+                        )
+                except Exception as _exc:  # noqa: BLE001
+                    print(f"  (desk chart skipped: {_exc})", flush=True)
             tracker.set_output(desks_run=len(active_desks), total_orders=len(all_orders))
 
     print(f"\n{'═'*60}", flush=True)
