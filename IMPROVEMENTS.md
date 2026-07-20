@@ -1,5 +1,25 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 📣 WEAK DESKS + DEAD MESSAGES (user evidence 2026-07-20: #desk-fx-rates screenshot)
+Screenshot shows the FX desk posting the IDENTICAL line ("10 signals ≥ 0.6, 3 orders
+EUR_USD, GBP_USD, USD_JPY") ~8×/day: no direction, no prices, no fills, no P&L — and
+nothing consumes these posts (peer_learnings only captures agent discussions, not desk
+output). Write-only noise. Same weakness class hits Polymarket + arbitrage desks.
+- [ ] **[P1] Desk posts: dedupe + enrich + chart** — suppress consecutive identical posts (hash last message per channel in state); every desk post must carry direction, entry px, open-position count, running desk P&L; attach `discord_post_chart` P&L bars (helper shipped). Applies to fx_desk.py AND desk_order_placer P&L posts.
+- [ ] **[P1] Desk posts → shared brain** — pipe each desk's run summary into peer_learnings/company_brain so employees DISCUSS actual desk results in the morning loop (the missing consume-side; extends the queued outcome-linked-learning item).
+- [ ] **[P1] FX desk audit: same-3-orders monotony** — always EUR_USD/GBP_USD/USD_JPY means top-K by confidence is static → likely stale/constant signal inputs or too-narrow universe ranking. Audit signal variance; add no-repeat-position guard (skip if an equivalent open position exists) and log WHY each pair won.
+- [ ] **[P1] Polymarket desk is signal-only** — signals flow (dry run: live markets, conf=1.00 ensembles) but NO order path: py-clob-client signing still unwired (POLYMARKET_PRIVATE_KEY is in the relay). Implement CLOB order placement with $1–5 clips + the same never-partial guard, or the desk stays a commentary bot.
+- [ ] **[P2] Arbitrage-bucket audit** — 32 strategies in the arb bucket but near-zero desk fills attributed to them; verify their signals reach a desk with an order path and aren't all filtered at the confidence gate.
+
+## 🤖 BOT FLEET = FULLY AUTOMATED MANAGEMENT (user directive 2026-07-20)
+Owner of record for the 61 bots is the AUTOMATION, not the user. Already live:
+`bot_lifecycle` scheduler job (disable proven losers, promote winners, grow fleet from
+templates — deterministic policy over real closed trades), 5-min exit sweep (fixed
+today), safeguards, additive seeding, reward-gated code changes. Gaps to close:
+- [ ] **[P1] Lifecycle decisions → Discord** — every enable/disable/promote decision posts WHY (stats in hand) to #bot-fleet; decisions also append to peer_learnings so employees can veto/discuss.
+- [ ] **[P2] Bot parameter tuner** — weekly: for bots with ≥30 closed trades, grid-walk TP/SL% against their own trade history (pure pandas, free) and open a reward-gated PR adjusting template params; never touches live config directly.
+- [ ] **[P2] Weekly OA-comparison report** — auto-generate a positions/P&L table per bot (entry/exit/hold/P&L) as a Discord chart + markdown artifact so the user's "match vs Option Alpha" check is a 2-minute read, not manual data pulling.
+
 ## 🤖 OA-BOT THOROUGH TEST 2026-07-20 PM — found + fixed a live P0
 - [x] **[P0 FOUND+FIXED] Bot positions NEVER closed on the live (SQLite-fallback) deploy** — the new `test_bot_lifecycle.py` (first-ever coverage of `check_bot_exits`, the OA profit-taking half) reproduced it: SQLite returns NAIVE datetimes even for `DateTime(timezone=True)` columns, so `now − order.created_at` raised `TypeError`, and the scheduler's catch-all silently killed the ENTIRE exit sweep every 5 min ("Bot exit checker failed"). Positions opened with TP/SL brackets and then sat there forever. FIX: normalize `created_at` to aware-UTC at both subtraction sites in `engine.py`. Lifecycle now pinned by 6 tests: bracket math on open (±TP%/−SL% both sides), profit-target close AT target with +P&L, stop-loss close AT stop with −P&L, short-side TP, inside-bracket stays open, 7-day safety expiry.
 - [ ] **[P2] Test-isolation flake pattern** — two known cross-file flakes under `-n 4 --dist loadfile` (breakeven_inflation contract, tearsheet-on-sqlite): shared per-worker DB lets one file's rows leak into another's expectations. Fix: per-file DB fixtures or scoped assertions (lifecycle tests already scope per-bot).
