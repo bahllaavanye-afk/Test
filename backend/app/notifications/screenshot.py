@@ -1,13 +1,81 @@
 """Screenshot capture utility. Uses Playwright if installed, falls back to dummy."""
 from __future__ import annotations
+
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.utils.logging import logger
+from pydantic import BaseModel, Field, HttpUrl, validator
+
 
 SCREENSHOTS_DIR = Path(__file__).parents[3] / "screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class ScreenshotRequest(BaseModel):
+    """Schema for requesting a dashboard screenshot."""
+
+    url: HttpUrl = Field(
+        ...,
+        description="Base URL of the dashboard to capture.",
+        example="https://quantedge.vercel.app",
+    )
+    page: str = Field(
+        "",
+        description="Relative page path on the dashboard (without leading slash).",
+        example="analytics",
+    )
+
+    @validator("page")
+    def normalize_page(cls, v: str) -> str:
+        """Strip leading slashes and ensure the page name is safe for filenames."""
+        normalized = v.lstrip("/")
+        if "/" in normalized:
+            # Nested paths are allowed but will be flattened for the filename
+            normalized = normalized.replace("/", "_")
+        return normalized
+
+
+class ScreenshotResponse(BaseModel):
+    """Schema representing the result of a screenshot capture."""
+
+    filepath: str = Field(
+        ...,
+        description="Absolute filesystem path where the screenshot image was saved.",
+        example="/app/screenshots/dashboard_analytics_20240101_120000.png",
+    )
+    timestamp: datetime = Field(
+        ...,
+        description="UTC timestamp of when the screenshot was taken.",
+        example="2024-01-01T12:00:00Z",
+    )
+
+    @validator("filepath")
+    def check_path_exists(cls, v: str) -> str:
+        """Validate that the screenshot file exists on disk."""
+        if not Path(v).exists():
+            raise ValueError(f"Screenshot file does not exist at path: {v}")
+        return v
+
+
+class ScreenshotBatchResponse(BaseModel):
+    """Schema for a batch screenshot operation returning multiple file paths."""
+
+    files: list[ScreenshotResponse] = Field(
+        ...,
+        description="List of screenshot results for each requested page.",
+        example=[
+            {
+                "filepath": "/app/screenshots/dashboard_root_20240101_120000.png",
+                "timestamp": "2024-01-01T12:00:00Z",
+            },
+            {
+                "filepath": "/app/screenshots/dashboard_analytics_20240101_120100.png",
+                "timestamp": "2024-01-01T12:01:00Z",
+            },
+        ],
+    )
 
 
 async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str = "") -> str | None:

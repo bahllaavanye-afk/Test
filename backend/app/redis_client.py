@@ -6,10 +6,11 @@ This lets the app run on Render/local without a Redis instance — strategies
 and the API still work; only real-time price caching and pub/sub are skipped.
 """
 import json
-from typing import Any
+from typing import Any, List
 
 import redis.asyncio as aioredis
 from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
+from pydantic import BaseModel, Field, ValidationError, validator
 
 from app.config import settings
 from app.utils.logging import logger
@@ -105,6 +106,101 @@ def get_redis() -> aioredis.Redis | None:
     return aioredis.Redis(connection_pool=pool)
 
 
+# -------------------------------------------------------------------------
+# Pydantic schemas for cache payloads
+# -------------------------------------------------------------------------
+
+class PriceData(BaseModel):
+    """Schema for a price snapshot."""
+
+    price: float = Field(..., description="Current price of the asset", example=123.45)
+    timestamp: int = Field(..., description="Unix timestamp in seconds", example=1721234567)
+
+    class Config:
+        extra = "allow"
+        schema_extra = {
+            "example": {"price": 123.45, "timestamp": 1721234567, "exchange": "binance", "symbol": "BTCUSDT"}
+        }
+
+    @validator("price")
+    def price_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("price must be positive")
+        return v
+
+
+class OHLCVEntry(BaseModel):
+    """Single OHLCV candle."""
+
+    open: float = Field(..., description="Opening price", example=120.0)
+    high: float = Field(..., description="Highest price during interval", example=125.0)
+    low: float = Field(..., description="Lowest price during interval", example=119.5)
+    close: float = Field(..., description="Closing price", example=124.0)
+    volume: float = Field(..., description="Traded volume", example=350.2)
+    timestamp: int = Field(..., description="Unix timestamp for the candle", example=1721234600)
+
+    class Config:
+        extra = "allow"
+        schema_extra = {
+            "example": {
+                "open": 120.0,
+                "high": 125.0,
+                "low": 119.5,
+                "close": 124.0,
+                "volume": 350.2,
+                "timestamp": 1721234600,
+            }
+        }
+
+
+class ArbOpportunity(BaseModel):
+    """Arbitrage opportunity payload."""
+
+    profit: float = Field(..., description="Estimated profit in base currency", example=15.2)
+    side: str = Field(..., description="Buy/Sell side", example="buy")
+    exchange: str = Field(..., description="Exchange where the opportunity exists", example="binance")
+    symbol: str = Field(..., description="Trading pair", example="ETHUSDT")
+    timestamp: int = Field(..., description="Unix timestamp when detected", example=1721234700)
+
+    class Config:
+        extra = "allow"
+        schema_extra = {
+            "example": {
+                "profit": 15.2,
+                "side": "buy",
+                "exchange": "binance",
+                "symbol": "ETHUSDT",
+                "timestamp": 1721234700,
+            }
+        }
+
+    @validator("profit")
+    def profit_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("profit must be positive")
+        return v
+
+
+class PredictionData(BaseModel):
+    """Machine‑learning prediction payload."""
+
+    prediction: float = Field(..., description="Predicted value", example=0.67)
+    confidence: float = Field(..., description="Model confidence (0‑1)", example=0.92)
+    timestamp: int = Field(..., description="Unix timestamp of prediction", example=1721234800)
+
+    class Config:
+        extra = "allow"
+        schema_extra = {
+            "example": {"prediction": 0.67, "confidence": 0.92, "timestamp": 1721234800, "symbol": "BTCUSDT"}
+        }
+
+    @validator("confidence")
+    def confidence_range(cls, v: float) -> float:
+        if not 0 <= v <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+        return v
+
+
 class PriceCache:
     """Redis price cache. No-ops gracefully when Redis is unavailable.
 
@@ -128,7 +224,11 @@ class PriceCache:
             return
         key = f"price:{exchange}:{symbol}"
         try:
-            await r.setex(key, ttl, json.dumps(data))
+            # Validate payload against schema
+            validated = PriceData(**data)
+            await r.setex(key, ttl, json.dumps(validated.dict()))
+        except ValidationError as exc:
+            _note_redis_error("set_price_validation", exc, key=key, data=data)
         except Exception as exc:
             _note_redis_error("set_price", exc, key=key)
 
@@ -144,13 +244,17 @@ class PriceCache:
             _note_redis_error("get_price", exc, key=key)
             return None
 
-    async def set_ohlcv(self, exchange: str, symbol: str, interval: str, data: list, ttl: int = 60) -> None:
+    async def set_ohlcv(self, exchange: str, symbol: str, interval: str, data: List[dict], ttl: int = 60) -> None:
         r = self._client()
         if r is None:
             return
         key = f"ohlcv:{exchange}:{symbol}:{interval}"
         try:
-            await r.setex(key, ttl, json.dumps(data))
+            # Validate each candle
+            validated = [OHLCVEntry(**item).dict() for item in data]
+            await r.setex(key, ttl, json.dumps(validated))
+        except ValidationError as exc:
+            _note_redis_error("set_ohlcv_validation", exc, key=key, data=data)
         except Exception as exc:
             _note_redis_error("set_ohlcv", exc, key=key)
 
@@ -172,7 +276,10 @@ class PriceCache:
             return
         redis_key = f"arb:{key}"
         try:
-            await r.setex(redis_key, ttl, json.dumps(data))
+            validated = ArbOpportunity(**data)
+            await r.setex(redis_key, ttl, json.dumps(validated.dict()))
+        except ValidationError as exc:
+            _note_redis_error("set_arb_validation", exc, key=redis_key, data=data)
         except Exception as exc:
             _note_redis_error("set_arb", exc, key=redis_key)
 
@@ -191,7 +298,10 @@ class PriceCache:
             return
         key = f"ml:prediction:{symbol}:{model_id}"
         try:
-            await r.setex(key, ttl, json.dumps(data))
+            validated = PredictionData(**data)
+            await r.setex(key, ttl, json.dumps(validated.dict()))
+        except ValidationError as exc:
+            _note_redis_error("cache_prediction_validation", exc, key=key, data=data)
         except Exception as exc:
             _note_redis_error("cache_prediction", exc, key=key)
 
