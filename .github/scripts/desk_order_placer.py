@@ -1635,7 +1635,16 @@ async def main() -> None:
         # ── Stage 6: PnL Snapshot / Slack Summary ────────────────────────────
         with tracker.stage(PNL_SNAPSHOT, "Post PnL snapshot to Slack"):
             now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
-            summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}\n"
+            # Funnel telemetry: makes "why so few trades?" visible at a glance —
+            # generated → gated/topK survivors → exploration clips → placed —
+            # plus the active regime that gated strategy selection.
+            _gen = len(raw_signals)
+            _survivors = len(approved_signals)
+            _explored = locals().get("explored", 0)
+            _regime_lbl = _REGIME_NAMES.get(current_regime, str(current_regime))
+            summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  regime={_regime_lbl}\n"
+            summary += (f"funnel: {_gen} generated → {_survivors} survived gate+topK "
+                        f"({_explored} exploration) → {len(all_orders)} placed\n")
             summary += "\n".join(desk_summaries)
             summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
             _post_slack("#pnl-daily", summary)
