@@ -49,51 +49,51 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784546396.5112166,
+    "last_updated": 1784571046.4464781,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "mean_rev_20_1.5"
     ],
-    "last_autopilot_run": 1784546072.7093961,
-    "autopilot_best_sharpe": 0.1586,
-    "autopilot_best_oos_sharpe": 1.1864,
-    "autopilot_best_blended": 0.4056,
+    "last_autopilot_run": 1784557475.150791,
+    "autopilot_best_sharpe": 0.1484,
+    "autopilot_best_oos_sharpe": 1.1582,
+    "autopilot_best_blended": 0.402,
     "autopilot_overfit_count": 0,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-17T15:04:15.510112+00:00",
+      "generated_at": "2026-07-20T15:43:29.255602+00:00",
       "signals": {
         "vix": {
-          "value": 18.14,
-          "trend": "rising"
+          "value": 17.97,
+          "trend": "flat"
         },
         "spy": {
-          "price": 744.26,
-          "sma50": 743.25,
-          "sma200": 693.44,
+          "price": 745.91,
+          "sma50": 743.51,
+          "sma200": 693.87,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0323,
+          "ratio": 1.025,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.155,
+          "hyg_lqd_momentum_20d": 1.437,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 8,
+          "sectors_above_sma20": 6,
           "total_sectors": 11,
-          "breadth_pct": 72.7
+          "breadth_pct": 54.5
         },
         "btc": {
-          "price": 63107,
-          "24h_pct": -2.07
+          "price": 64879,
+          "24h_pct": 0.55
         }
       },
-      "score": 4,
+      "score": 3,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
@@ -107,166 +107,54 @@
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 4,
+    "opinion_score": 3,
     "macro_score": 3,
-    "vix": 18.25,
-    "market_scan_ts": 1784546396.4909492,
+    "vix": 18.05,
+    "market_scan_ts": 1784571046.4246647,
     "sector_leaders": [
-      "Healthcare",
       "Energy",
+      "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Cons. Disc.",
+      "Industrials",
       "Materials",
       "Tech"
     ],
     "active_universe": [
       "NFLX",
       "ABT",
-      "PANW",
       "ORCL",
-      "C",
-      "QQQ",
-      "MPC",
-      "XOM",
-      "UNH",
-      "XLK",
-      "ADBE",
-      "MRK",
+      "NOW",
+      "TSLA",
       "MS",
-      "BAC",
-      "EOG",
-      "AAPL",
+      "PANW",
+      "C",
+      "MPC",
+      "CVX",
+      "WFC",
       "CRWD",
-      "AVGO",
-      "META",
-      "NVDA"
+      "AAPL",
+      "XLI",
+      "ADBE",
+      "HD",
+      "QQQ",
+      "JNJ",
+      "BAC",
+      "XLK"
     ],
     "top_momentum": [
       "MPC",
       "PANW",
-      "ADBE",
       "CRWD",
-      "ABT"
+      "ABT",
+      "ADBE"
     ],
     "risk_flags": [],
-    "risk_status": "alert",
-    "last_brain_update": 1784534150.3213758
+    "risk_status": "normal",
+    "last_brain_update": 1784566436.6660502
   },
   "episodic": [
-    {
-      "lesson": "The deployment rate limit introduces operational risk for continuous delivery. Evaluate cost-benefit of upgrading vs. reducing deployment frequency.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783802537.9420168
-    },
-    {
-      "lesson": "Auto-fix reliability should be monitored as a metric; persistent failures could indicate model drift or codebase changes that require retraining.",
-      "category": "ml",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783802537.9436853
-    },
-    {
-      "lesson": "Investigate root cause of repeated auto-fix patch failures to prevent CI pipeline blockage and ensure code quality.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.5720012
-    },
-    {
-      "lesson": "Upgrade Vercel plan to Pro to remove daily deployment limit and avoid blocking critical deployments.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.5735762
-    },
-    {
-      "lesson": "Reduce deployment frequency by batching changes or using preview deployments only for significant commits to stay within free tier limits if upgrade is not immediate.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.5750382
-    },
-    {
-      "lesson": "Implement monitoring and alerting for deployment rate limits to proactively manage capacity before hitting the cap.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.576513
-    },
-    {
-      "lesson": "Review auto-fix patch logic to ensure it handles edge cases and can reapply without manual intervention.",
-      "category": "code",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783867100.577983
-    },
-    {
-      "lesson": "Investigate root cause of repeated auto-fix failures; likely due to patch conflicts or malformed patches, blocking code integration.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783918072.2528822
-    },
-    {
-      "lesson": "Deployment blocked by Vercel free-tier daily limit (100 deployments). Upgrade to Pro plan or reduce deployment frequency to avoid 24-hour delays.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783918072.2549753
-    },
-    {
-      "lesson": "Implement deployment batching or staging environments to minimize free-tier usage and ensure critical updates can be deployed without rate limits.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783918072.2569354
-    },
-    {
-      "lesson": "Deployment blocked by Vercel free tier daily limit (100 deployments). Consider upgrading to Pro plan or reducing deployment frequency.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783976063.3005052
-    },
-    {
-      "lesson": "Auto-fix patches repeatedly fail to apply, indicating code conflicts or automation misconfiguration. Investigate and fix underlying code issues manually.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1783976063.3024533
-    },
-    {
-      "lesson": "Rate limit error suggests need for strategic decision on Vercel plan upgrade to avoid blocking critical deployments.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783976063.3041844
-    },
-    {
-      "lesson": "Frequent auto-fix failures may signal insufficient test coverage or unstable patches. Improve CI/CD pipeline resilience.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1783976063.30584
-    },
-    {
-      "lesson": "Repeated auto-fix patch application failures indicate a systemic CI/CD pipeline issue; investigate the patch generation and application process to resolve conflicts or formatting errors.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784013617.1319134
-    },
-    {
-      "lesson": "Exposed encrypted tokens in GitHub issue comments present a security risk; rotate all potentially compromised secrets and enforce policies to prevent secret leakage in public channels.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784013617.1344862
-    },
     {
       "lesson": "Multiple identical auto-fix failures suggest a root cause in the automated patch mechanism (e.g., incorrect diff format or merge conflicts); review pipeline logs and fix the underlying script or integration.",
       "category": "code",
@@ -1830,29 +1718,150 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784546396.5151017
+    },
+    {
+      "lesson": "Automerge on protected files (e.g., models) was revoked after a prior breakage. Enforce explicit human review for all changes to high-risk paths and implement a mandatory approval gate before merge.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8394608
+    },
+    {
+      "lesson": "Deployment failed due to Vercel's free-tier rate limit (100 deploys/day). Upgrade to a paid plan or throttle deployment frequency to avoid blocking critical releases.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8447745
+    },
+    {
+      "lesson": "Two auto-fix attempts were skipped for being too complex (LLM-brain personas and process improvement). Establish a clear escalation path for non-trivial tasks and allocate manual engineering time to prevent feature stagnation.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8489077
+    },
+    {
+      "lesson": "CI debug reveals Python 3.11.15 and package versions (aiohttp, aiosqlite). Ensure lock files and dependency updates are reviewed to avoid compatibility surprises in production.",
+      "category": "code",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784547515.8530524
+    },
+    {
+      "lesson": "Autonomous PRs modifying protected model files (`inference_log.py`, `account.py`) are being revoked due to past breakage. Enforce stricter pre-merge checks and require explicit human review for all changes to protected paths.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.069452
+    },
+    {
+      "lesson": "Auto-fix skipped for complex feature requests (debate gate for desk orders, LLM-brain Discord personas) indicates insufficient automated capability. Assign these to senior engineers for manual design and implementation.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.0749087
+    },
+    {
+      "lesson": "A patch application failure occurred during auto-fix. Investigate the root cause (e.g., file state mismatch, syntax errors) and improve the patch generation pipeline to handle edge cases.",
+      "category": "ml",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.0790796
+    },
+    {
+      "lesson": "Recurring automerge revocation for model changes suggests a gap in automated regression testing. Add integration tests that simulate past breakage scenarios (#298) to catch regressions before merge.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784560836.0831735
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1784562244.8684964
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784562374.9542797
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784564498.0452635
+    },
+    {
+      "lesson": "Deployment fails daily due to free-tier rate limit (100 deploys/day). Upgrade to Pro plan or implement deployment batching to avoid blocking releases.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784566404.6419795
+    },
+    {
+      "lesson": "Autonomous PRs modifying protected model files (inference_log.py, account.py) are being revoked because prior similar PR (#298) broke main. Strengthen CI to require human review for all protected paths and add automated regression tests.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784566404.6465223
+    },
+    {
+      "lesson": "Automated fixes are skipped for complex features like 'debate gate for large desk orders' due to lack of codebase visibility. Establish a design review process for multi-component features before automation attempts.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784566404.6498222
+    },
+    {
+      "lesson": "New feature requests (e.g., LLM-brain employee personas on Discord) lack concrete code context, making automated resolution infeasible. Implement a triage step to require design documents or user stories before assigning to automation.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784566404.6530209
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784571046.4506593
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of a token (maybe for authentication) and two separate messages: \"Deployment failed with the following error: Resource is limited - try again in 24 hours\" and \":robot: **Auto-fix failed** \u2014 could not apply patch to file.\"\n\nThe token part \"[vc]: #sMaUEfX5MCURdiU/hLT7FAU79IM",
-      "item_count": 20,
-      "ts": 1783606572.0379152
-    },
-    {
-      "summary": "We need to summarize three separate error messages from a robot (likely automated system) related to auto-fix attempts. The first: auto-fix aborted due to validation failure (fix changes ~51 lines, limit 50). Second: auto-fix failed because patch could not be applied. Third: could not parse LLM response due to JSON parsing error. Combine into 1-2 sentences.\n\nSummarize: The auto-fix system encountered three issues: a validation failure for exceeding line limit",
-      "item_count": 20,
-      "ts": 1783629891.161125
-    },
-    {
-      "summary": "The auto-fix bot failed three times to apply a patch to a file, each time reporting the same error.",
-      "item_count": 20,
-      "ts": 1783634949.5116296
-    },
-    {
-      "summary": "The auto-fix repeatedly failed because it could not apply the patch to the file, as indicated by three identical error messages.",
-      "item_count": 20,
-      "ts": 1783640182.2203329
-    },
     {
       "summary": "The deployment failed due to resource limits, with a suggestion to retry in 24 hours, and automated attempts to fix the issue were unsuccessful.",
       "item_count": 20,
@@ -2332,6 +2341,26 @@
       "summary": "The auto-fix repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1784534150.3128066
+    },
+    {
+      "summary": "The PR was flagged by the team lead, who revoked automerge because it modifies protected files; deployment subsequently failed due to a resource limit error, advising a 24-hour wait.",
+      "item_count": 20,
+      "ts": 1784547525.349823
+    },
+    {
+      "summary": "The deployment failed due to resource limitations, with an error message advising to retry in 24 hours. The workflow run occurred on July 20, 2026.",
+      "item_count": 20,
+      "ts": 1784552603.281716
+    },
+    {
+      "summary": "The team lead revoked automerge for an autonomous PR that modifies protected files, and an automated fix was skipped because resolving the conflict was too complex\u2014specifically, it involved implementing a debate.",
+      "item_count": 20,
+      "ts": 1784560858.4297976
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784566436.657594
     }
   ],
   "experiment_results": [
