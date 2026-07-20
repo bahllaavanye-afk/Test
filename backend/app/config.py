@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # Database — accepts sqlite+aiosqlite:// for local dev, or postgres:// for production.
     # Defaults to SQLite so the app starts without any credentials.
     database_url: str = "sqlite+aiosqlite:///./dev.db"
+    # When the primary DATABASE_URL is unreachable at boot (Supabase free tier auto-pauses
+    # after 7 idle days and every endpoint 500s), fall back to a local SQLite file so the
+    # platform stays functional: bots reseed from templates, desk trades resync from Alpaca.
+    # Loudly surfaced in /health/detailed as a failing database_primary check.
+    db_fallback_to_sqlite: bool = True
     alembic_database_url: str = "sqlite:///./dev.db"
 
     @model_validator(mode="before")
