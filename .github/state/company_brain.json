@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784524766.2298188,
+    "last_updated": 1784534150.3223467,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784523227.1104524
+    "last_brain_update": 1784534150.3213758
   },
   "episodic": [
     {
@@ -1826,11 +1826,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize the given GitHub PR/issue discussion. The input appears to be a snippet of a deployment error message, possibly from a CI/CD system. It mentions \"Resource is limited - try again in 24 hours\" and then some encoded string, and then \"Auto-fix failed \u2014 could not apply patch to file.\" \n\nThe user asks to summarize in 1-2 sentences. So we need to capture the essence: deployment failed due to resource limits, and an auto-fix",
-      "item_count": 20,
-      "ts": 1783597005.7995594
-    },
-    {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of a token (maybe for authentication) and two separate messages: \"Deployment failed with the following error: Resource is limited - try again in 24 hours\" and \":robot: **Auto-fix failed** \u2014 could not apply patch to file.\"\n\nThe token part \"[vc]: #sMaUEfX5MCURdiU/hLT7FAU79IM",
       "item_count": 20,
       "ts": 1783606572.0379152
@@ -2324,6 +2319,11 @@
       "summary": "The team lead revoked automerge for an autonomous PR that modifies protected files, and auto-fix attempts failed to apply a patch to the file.",
       "item_count": 20,
       "ts": 1784523227.1038113
+    },
+    {
+      "summary": "The auto-fix repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
+      "item_count": 20,
+      "ts": 1784534150.3128066
     }
   ],
   "experiment_results": [
