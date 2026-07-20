@@ -28,8 +28,11 @@ _DATA_CACHE: Dict[Tuple[str, str], Tuple[datetime, pd.DataFrame]] = {}
 try:
     import yfinance as yf
 except Exception as exc:  # pragma: no cover
-    logger.error("Failed to import yfinance", error=str(exc))
-    raise
+    # Optional dependency: absent in CI and slim deploys. A hard raise here
+    # crashes the scheduler at import — degrade instead: retrain simply skips
+    # data downloads (matches how torch-backed models degrade elsewhere).
+    yf = None
+    logger.error("yfinance unavailable — nightly retrain will skip downloads", error=str(exc))
 
 try:
     import yaml as _yaml
@@ -53,6 +56,9 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
         if cache_ts >= end and not df.empty:
             logger.debug("Using cached data for %s %s", symbol, interval)
             return df.copy()
+
+    if yf is None:
+        return None  # yfinance not installed (CI / slim deploy) — skip download
 
     loop = asyncio.get_running_loop()
     try:
