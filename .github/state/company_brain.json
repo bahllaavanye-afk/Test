@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784562244.8643775,
+    "last_updated": 1784562374.9500747,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,59 +109,52 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 18.25,
-    "market_scan_ts": 1784546396.4909492,
+    "vix": 17.9,
+    "market_scan_ts": 1784562374.927997,
     "sector_leaders": [
-      "Healthcare",
       "Energy",
+      "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Cons. Disc.",
+      "Industrials",
       "Materials",
       "Tech"
     ],
     "active_universe": [
       "NFLX",
       "ABT",
-      "PANW",
+      "NOW",
       "ORCL",
+      "TSLA",
       "C",
-      "QQQ",
-      "MPC",
-      "XOM",
-      "UNH",
-      "XLK",
-      "ADBE",
-      "MRK",
       "MS",
-      "BAC",
-      "EOG",
+      "PANW",
+      "CVX",
       "AAPL",
+      "XLF",
+      "BAC",
       "CRWD",
-      "AVGO",
-      "META",
-      "NVDA"
+      "QQQ",
+      "XLI",
+      "WFC",
+      "HD",
+      "XLK",
+      "IWM",
+      "XLV"
     ],
     "top_momentum": [
       "MPC",
       "PANW",
-      "ADBE",
       "CRWD",
-      "ABT"
+      "ABT",
+      "ADBE"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784560858.4392684
   },
   "episodic": [
-    {
-      "lesson": "Implement deployment batching or staging environments to minimize free-tier usage and ensure critical updates can be deployed without rate limits.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1783918072.2569354
-    },
     {
       "lesson": "Deployment blocked by Vercel free tier daily limit (100 deployments). Consider upgrading to Pro plan or reducing deployment frequency.",
       "category": "execution",
@@ -1835,6 +1828,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1784562244.8684964
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784562374.9542797
     }
   ],
   "github_insights": [
