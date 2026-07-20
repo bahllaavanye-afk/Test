@@ -76,6 +76,16 @@ evidence:
 - [ ] **[P1] Supabase keep-alive** — once unpaused, add a tiny scheduled workflow ping (one cheap SELECT via the pooler a few times/day) so the free-tier project never idles into a pause again.
 - [x] **[P0] Frontend pointed at the WRONG backend** — root-caused 2026-07-20: `frontend/vercel.json` proxied `/api/*` to `quantedge-api-agb8.onrender.com`, a STALE deploy (29 bots = pre-07-18 build, 0 trades, no relayed env keys) — while every new merge deploys to the keeper `quantedge-api-9jz0.onrender.com`. So users saw an old, empty app no matter what shipped. FIXED: rewrite now targets 9jz0. Follow-up decision for user: delete/suspend the agb8 service (it costs a free-tier slot and confuses debugging).
 
+## LLM/Discord silence — ROOT-CAUSED + FIXED 2026-07-20 (second pass)
+- [x] **[P0] 29 workflows had NO paid-LLM backstop** — `ai-pr-review.yml` (the one flow that visibly produces real LLM output) passes `OPENROUTER_API_KEY` + `ANTHROPIC_API_KEY`; the other 29 LLM workflows (multi-agent-discussion, daily-standup, collective-learning, peer-review, team-lead-issues, employee reviews, watchdogs…) passed ONLY free-tier keys — when those rate-limit/fail the conversation dies silently. That asymmetry is why the AI review works while Discord stays quiet. FIXED: backstop keys added to all 28 consumer workflows (key-relay excluded — not an LLM consumer). The Anthropic Messages API path already existed in `llm_common` (`ANTHROPIC_API_KEY`/`_2`) — it was simply never fed in these jobs.
+- [ ] **[P1] Everyday-improvement visibility loop** — now that desk fills become real `Trade` rows (PR #764) and conversations have a working LLM backstop, wire the daily P&L attribution INTO `peer_learnings` so agents discuss actual results each morning in #trading-floor (outcome-linked learning, not status theater).
+
+## SOTA multi-agent 24×7 queue (user ask 2026-07-20)
+- [ ] **[P1] Debate gate for large desk orders** — bull/bear/judge 3-role LLM debate (one `llm()` call each, shared context) before any paper order above a notional threshold; verdict + reasoning posted to the desk channel. (Du et al. multi-agent debate; cheap with the cascade.)
+- [ ] **[P2] Market-based task allocation on AgentBus** — auction `agent-fix-needed` issues to employee agents by bid (past success rate per improvement_type from improvement_stats) instead of round-robin; the auction record IS the Discord conversation.
+- [ ] **[P2] Verifier-role expansion** — extend ai-pr-review into a two-pass generate→verify pattern for Free-Agent Engineer PRs (verifier must reproduce the failure the PR claims to fix before automerge label is granted).
+- [ ] **[P2] Shared-brain retrieval upgrade** — company_brain.json grows unbounded; add embedding-free BM25-style retrieval (pure-python) so `inject_company_context` pulls the 5 most relevant memories per prompt instead of the newest N.
+
 ## SOTA research + pipeline upgrades queue (user ask 2026-07-20)
 - [ ] **[P2] SOTA sweep — execution**: SmartPricing-style laddered repricing (already queued below), plus survey adaptive limit-order placement literature (queue-position aware repricing) for _ensure_filled.
 - [ ] **[P2] SOTA sweep — ML**: evaluate PatchTST/iTransformer-family for the existing feature pipeline vs the current LSTM/ensemble; only via walk-forward gate, paper-first.

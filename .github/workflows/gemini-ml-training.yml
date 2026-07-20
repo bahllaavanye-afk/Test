@@ -43,6 +43,10 @@ jobs:
           fi
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}
+          # Paid backstop: free-tier keys rate-limit silently; ai-pr-review proved
+          # these work. Without them every conversation dies quiet (Discord silence).
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - uses: actions/checkout@v4
         with:
