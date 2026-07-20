@@ -1,13 +1,5 @@
 {
   "skills": [
-    "monitoring on backtest/cpcv.py: success \u2014 tests green",
-    "Monitor heap size",
-    "Here are 3 concise bullet points of the most important, actionable knowledge extracted from the recent agent learnings:",
-    "Monitor disk space",
-    "Log exception types",
-    "Timeout idle tasks",
-    "Log trade timeouts",
-    "Scan for memory leaks",
     "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Test data feeds",
     "Sanitize query strings",
@@ -199,8 +191,16 @@
     "Test API timeouts",
     "Bind to core 0",
     "Check RAM usage",
-    "Review code changes"
+    "Review code changes",
+    "To provide meaningful recommendations, I would need:",
+    "- Error messages or exception types",
+    "- Timestamps and failure patterns",
+    "- System state at failure (CPU, network, market conditions)",
+    "- Which trading strategies/components failed",
+    "# Reusable Patterns from QuantEdge Autonomous Agents",
+    "**1. Modular Refactoring with Monitoring**",
+    "**2. Concurrent Status Tracking Across Domains**"
   ],
-  "last_updated": "2026-07-20T11:19:41.564730+00:00",
+  "last_updated": "2026-07-20T11:20:57.301690+00:00",
   "total": 200
 }
