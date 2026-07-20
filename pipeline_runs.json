@@ -1,5 +1,123 @@
 [
   {
+    "run_id": "local-1784548662",
+    "pipeline": "desk_trading",
+    "desk": null,
+    "branch": "local",
+    "triggered_by": "manual",
+    "started_at": "2026-07-20T11:57:42.312294+00:00",
+    "completed_at": "2026-07-20T11:59:06.085518+00:00",
+    "status": "success",
+    "stages": [
+      {
+        "name": "market_status",
+        "label": "Check market status",
+        "status": "success",
+        "started_at": "2026-07-20T11:57:42.314101+00:00",
+        "completed_at": "2026-07-20T11:57:42.890757+00:00",
+        "duration_s": 0.58,
+        "output": {
+          "is_open": true
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "data_fetch",
+        "label": "Fetch account and market bars",
+        "status": "success",
+        "started_at": "2026-07-20T11:57:42.892268+00:00",
+        "completed_at": "2026-07-20T11:57:55.572782+00:00",
+        "duration_s": 12.68,
+        "output": {
+          "bars_fetched": 20,
+          "symbols": [
+            "DOGE/USD",
+            "BTC/USD",
+            "LINK/USD",
+            "AVAX/USD",
+            "SHIB/USD",
+            "BCH/USD",
+            "LTC/USD",
+            "XTZ/USD",
+            "GRT/USD",
+            "MKR/USD",
+            "AAVE/USD",
+            "ETH/USD",
+            "BAT/USD",
+            "YFI/USD",
+            "XRP/USD",
+            "CRV/USD",
+            "SOL/USD",
+            "DOT/USD",
+            "UNI/USD",
+            "SUSHI/USD"
+          ]
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "signal_generation",
+        "label": "Generate trading signals",
+        "status": "success",
+        "started_at": "2026-07-20T11:57:56.982034+00:00",
+        "completed_at": "2026-07-20T11:59:06.041274+00:00",
+        "duration_s": 69.06,
+        "output": {
+          "signals_generated": 49
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "risk_check",
+        "label": "Apply confidence threshold + top-K filter",
+        "status": "success",
+        "started_at": "2026-07-20T11:59:06.045678+00:00",
+        "completed_at": "2026-07-20T11:59:06.051788+00:00",
+        "duration_s": 0.01,
+        "output": {
+          "passed": 5,
+          "filtered": 4,
+          "explored": 0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "order_execution",
+        "label": "Place orders",
+        "status": "success",
+        "started_at": "2026-07-20T11:59:06.054822+00:00",
+        "completed_at": "2026-07-20T11:59:06.063512+00:00",
+        "duration_s": 0.01,
+        "output": {
+          "orders_placed": 0,
+          "reason": "account_unavailable",
+          "total_notional": 0.0
+        },
+        "error": null,
+        "channel": null
+      },
+      {
+        "name": "pnl_snapshot",
+        "label": "Post PnL snapshot to Slack",
+        "status": "success",
+        "started_at": "2026-07-20T11:59:06.066509+00:00",
+        "completed_at": "2026-07-20T11:59:06.073772+00:00",
+        "duration_s": 0.01,
+        "output": {
+          "desks_run": 9,
+          "total_orders": 0
+        },
+        "error": null,
+        "channel": null
+      }
+    ],
+    "run_url": "https://github.com/unknown/unknown/actions/runs/local-1784548662"
+  },
+  {
     "run_id": "local-1784546273",
     "pipeline": "desk_trading",
     "desk": null,
