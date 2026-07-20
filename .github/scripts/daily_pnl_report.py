@@ -139,6 +139,24 @@ def main() -> None:
     full_text = f"{header}\n{body}\n{footer}"
     _post_slack(full_text)
 
+    # Chart companion (user: "Discord messages show me more graphical") — top
+    # symbols by signed notional as a green/red bar chart embed. Fail-soft.
+    if ranked:
+        try:
+            from notify import discord_post_chart
+            top = ranked[:12]
+            discord_post_chart(
+                SLACK_CHANNEL,
+                title=f"Net notional by symbol — {date_str}",
+                labels=[sym for sym, _ in top],
+                series={"net $ (buy − sell)": [s["side_vol"] for _, s in top]},
+                kind="bar",
+                description=f"Day P&L {sign}${day_pnl:,.2f} | equity ${equity:,.0f}",
+                username="QuantEdge P&L",
+            )
+        except Exception as _exc:  # noqa: BLE001
+            print(f"[chart] skipped: {_exc}", flush=True)
+
     # ── Save JSON artifact ─────────────────────────────────────────────────────
     report = {
         "date": date_str,

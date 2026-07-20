@@ -163,6 +163,95 @@ def discord_post(channel: str, text: str, username: str = "QuantEdge") -> bool:
         return False
 
 
+def _chart_url(labels: list, series: dict, kind: str = "bar", title: str = "") -> str:
+    """Build a QuickChart render URL (no deps, no key — Discord shows it inline).
+
+    ``series`` maps name → list of numbers. Bars auto-color green/red by sign
+    (P&L semantics); lines get a steady palette. Values are rounded and label
+    counts capped to keep the URL short enough for Discord embeds.
+    """
+    import urllib.parse as _up
+
+    labels = [str(x)[:12] for x in labels][:24]
+    palette = ["#00c853", "#42a5f5", "#f5a623", "#ab47bc"]
+    datasets = []
+    for i, (name, values) in enumerate(list(series.items())[:4]):
+        vals = [round(float(v), 2) for v in values][:24]
+        ds: dict = {"label": str(name)[:24], "data": vals}
+        if kind == "bar" and len(series) == 1:
+            ds["backgroundColor"] = ["#00c853" if v >= 0 else "#ff1744" for v in vals]
+        else:
+            ds["borderColor"] = palette[i % len(palette)]
+            ds["fill"] = False
+        datasets.append(ds)
+    cfg = {
+        "type": kind,
+        "data": {"labels": labels, "datasets": datasets},
+        "options": {
+            "plugins": {"legend": {"display": len(series) > 1}},
+            "title": {"display": bool(title), "text": str(title)[:60]},
+        },
+    }
+    q = _up.urlencode({"c": json.dumps(cfg, separators=(",", ":")),
+                       "backgroundColor": "#111111", "width": 700, "height": 340})
+    return f"https://quickchart.io/chart?{q}"
+
+
+def discord_post_chart(channel: str, title: str, labels: list, series: dict,
+                       kind: str = "bar", description: str = "",
+                       username: str = "QuantEdge") -> bool:
+    """Post a rendered CHART to Discord as an image embed (the fix for
+    'Discord is too much text'). Same delivery ladder as discord_post:
+    bot-token routing first, webhook fallback. Never raises.
+    """
+    if not labels or not series:
+        return False
+    if stats["discord_ok"] >= _DISCORD_CAP:
+        stats["discord_skipped"] += 1
+        return False
+    embed = {
+        "title": str(title)[:250],
+        "description": str(description)[:1000],
+        "color": 0x00C853,
+        "image": {"url": _chart_url(labels, series, kind=kind, title=title)},
+    }
+    name = str(channel).lower().lstrip("#")
+    prefix = f"**{str(username).strip()[:60]}**" if username and username != "QuantEdge" else ""
+    if _BOT_TOKEN:
+        cid = _load_channel_ids().get(name)
+        if cid:
+            try:
+                _bot_req("POST", f"/channels/{cid}/messages",
+                         {"content": prefix, "embeds": [embed]})
+                stats["discord_ok"] += 1
+                time.sleep(0.4)
+                return True
+            except Exception as e:  # noqa: BLE001
+                print(f"[notify] bot chart post failed: {str(e)[:80]}")
+    webhook = _discord_webhook_for(channel)
+    if not webhook:
+        return False
+    body = json.dumps({
+        "content": f"**[#{name}]**" if webhook == _DEFAULT_WEBHOOK else "",
+        "username": (str(username).strip()[:80] or "QuantEdge"),
+        "embeds": [embed],
+    }).encode()
+    req = urllib.request.Request(
+        webhook, data=body,
+        headers={"Content-Type": "application/json", "User-Agent": _UA}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+        stats["discord_ok"] += 1
+        time.sleep(0.5)
+        return True
+    except Exception as e:  # noqa: BLE001
+        stats["failed"] += 1
+        print(f"[notify] discord chart failed: {str(e)[:80]}")
+        return False
+
+
 def _discord_post_LEGACY(channel: str, text: str, username: str = "QuantEdge") -> bool:
     """Superseded by the bot-token-routing discord_post above; kept for reference."""
     webhook = _discord_webhook_for(channel)
