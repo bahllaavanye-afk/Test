@@ -1,8 +1,5 @@
 {
   "skills": [
-    "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors.",
-    "Here are 3 concise bullet points representing the most important knowledge from the recent agent learnings:",
-    "Verify SSL certs",
     "**Improve status updates**: Agents need to respond to status update requests with concise, 1-2 sentence answers, as seen in responses from `continuous_improver` and `frontend_design` agents.",
     "Monitor queue sizes",
     "* **Frontend design updates**: `frontend_design` is actively working on updating code, but specific files or scripts referenced are not available in the latest learnings.",
@@ -199,8 +196,11 @@
     "Limit API bursts",
     "Cache market data",
     "Validate user inputs",
-    "Track CPU usage"
+    "Track CPU usage",
+    "Verify OS updates",
+    "Log API timeouts",
+    "Check dependency versions"
   ],
-  "last_updated": "2026-07-21T14:33:14.236540+00:00",
+  "last_updated": "2026-07-21T17:52:27.669331+00:00",
   "total": 200
 }
