@@ -1,6 +1,37 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub‑routers.
+
+This module creates a central :class:`fastapi.APIRouter` instance and
+includes the individual routers for each functional area of the
+QuantEdge backend. The resulting ``api_router`` is mounted by the main
+FastAPI application under the ``/api/v1`` prefix, providing a single
+entry point for all version‑1 API endpoints.
+"""
+
 from fastapi import APIRouter
-from app.api.v1 import auth, accounts, orders, positions, trades, strategies, backtests, comparison, experiments, ml, risk, market_data, analytics, agents, notifications, archive, improvements, monitoring, integrations, pipeline, leaderboard, releases
+from app.api.v1 import (
+    auth,
+    accounts,
+    orders,
+    positions,
+    trades,
+    strategies,
+    backtests,
+    comparison,
+    experiments,
+    ml,
+    risk,
+    market_data,
+    analytics,
+    agents,
+    notifications,
+    archive,
+    improvements,
+    monitoring,
+    integrations,
+    pipeline,
+    leaderboard,
+    releases,
+)
 from app.api.v1.scanners import router as scanners_router
 from app.api.v1.options import router as options_router
 from app.api.v1.regime import router as regime_router
@@ -9,7 +40,10 @@ from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
 
-api_router = APIRouter()
+# Central router for API version 1
+api_router: APIRouter = APIRouter()
+
+# Register sub‑routers
 api_router.include_router(auth.router)
 api_router.include_router(accounts.router)
 api_router.include_router(orders.router)
@@ -22,7 +56,7 @@ api_router.include_router(experiments.router)
 api_router.include_router(ml.router)
 api_router.include_router(risk.router)
 api_router.include_router(market_data.router)
-# Underscore-prefix alias so /market_data/* and /market-data/* both resolve
+# Underscore‑prefix alias so /market_data/* and /market-data/* both resolve
 api_router.include_router(market_data.router_underscore)
 api_router.include_router(analytics.router)
 api_router.include_router(agents.router)
