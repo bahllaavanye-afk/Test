@@ -23,26 +23,28 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Dict, List
 
 logger = logging.getLogger(__name__)
 
 # All valid bus topics — unknown topics are rejected to prevent typos cascading silently
-TOPICS = frozenset({
-    "market:regime",
-    "trade:signal",
-    "trade:executed",
-    "trade:closed",
-    "research:finding",
-    "strategy:updated",
-    "experiment:done",
-    "risk:alert",
-    "knowledge:learned",
-    "auction:allocated",
-})
+TOPICS = frozenset(
+    {
+        "market:regime",
+        "trade:signal",
+        "trade:executed",
+        "trade:closed",
+        "research:finding",
+        "strategy:updated",
+        "experiment:done",
+        "risk:alert",
+        "knowledge:learned",
+        "auction:allocated",
+    }
+)
 
 _BUS_KEY_PREFIX = "bus:events:"
-_BUS_STREAM_MAX = 2000   # max events per topic (ring buffer)
+_BUS_STREAM_MAX = 2000  # max events per topic (ring buffer)
 
 Handler = Callable[[str, dict], Awaitable[None]]
 
@@ -61,8 +63,8 @@ class AgentBus:
 
     def __init__(self, redis_client: Any) -> None:
         self._r = redis_client
-        self._handlers: dict[str, list[Handler]] = {}
-        self._consumer_offsets: dict[str, str] = {}  # topic → last-read stream ID
+        self._handlers: Dict[str, List[Handler]] = {}
+        self._consumer_offsets: Dict[str, str] = {}  # topic → last-read stream ID
         self._running = False
 
     # ── Publishing ────────────────────────────────────────────────────────────
@@ -72,11 +74,18 @@ class AgentBus:
         if topic not in TOPICS:
             logger.warning("AgentBus: unknown topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
         key = f"{_BUS_KEY_PREFIX}{topic}"
         try:
             await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             # Redis unavailable — log but don't crash the caller
             logger.debug("AgentBus.publish failed topic=%s: %s", topic, e)
 
@@ -105,45 +114,62 @@ class AgentBus:
         """Continuously poll all subscribed topics and call handlers."""
         while self._running:
             try:
-                streams = {
-                    f"{_BUS_KEY_PREFIX}{topic}": offset
-                    for topic, offset in self._consumer_offsets.items()
-                    if topic in self._handlers
-                }
+                streams = self._build_streams()
                 if not streams:
                     await asyncio.sleep(0.5)
                     continue
 
-                # XREAD with 200ms block — yields when events arrive, not on a fixed interval
                 results = await self._r.xread(streams, block=200, count=50)
                 if not results:
                     continue
 
-                for stream_key, messages in (results or []):
-                    topic = stream_key.removeprefix(_BUS_KEY_PREFIX)
-                    for msg_id, fields in messages:
-                        # Advance consumer offset so we don't re-read this message
-                        self._consumer_offsets[topic] = msg_id
-
-                        # Deserialize fields back to dict
-                        data: dict = {}
-                        for k, v in fields.items():
-                            try:
-                                data[k] = json.loads(v)
-                            except (json.JSONDecodeError, TypeError):
-                                data[k] = v
-
-                        for handler in self._handlers.get(topic, []):
-                            try:
-                                await handler(topic, data)
-                            except Exception as exc:
-                                logger.error(
-                                    "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
-                                )
-            except Exception as exc:
+                await self._process_results(results)
+            except Exception as exc:  # pragma: no cover
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
                 await asyncio.sleep(1.0)
+
+    def _build_streams(self) -> Dict[str, str]:
+        """Create the mapping of stream keys to consumer offsets for active topics."""
+        return {
+            f"{_BUS_KEY_PREFIX}{topic}": offset
+            for topic, offset in self._consumer_offsets.items()
+            if topic in self._handlers
+        }
+
+    async def _process_results(self, results: list) -> None:
+        """Iterate over XREAD results, deserialize messages, and dispatch to handlers."""
+        for stream_key, messages in results:
+            topic = stream_key.removeprefix(_BUS_KEY_PREFIX)
+            for msg_id, fields in messages:
+                self._consumer_offsets[topic] = msg_id
+                data = self._deserialize_fields(fields)
+                await self._dispatch_to_handlers(topic, data)
+
+    async def _dispatch_to_handlers(self, topic: str, data: dict) -> None:
+        """Execute all registered handlers for a topic, protecting against exceptions."""
+        for handler in self._handlers.get(topic, []):
+            try:
+                await handler(topic, data)
+            except Exception as exc:
+                logger.error(
+                    "AgentBus handler error topic=%s handler=%s: %s",
+                    topic,
+                    getattr(handler, "__name__", repr(handler)),
+                    exc,
+                )
+
+    @staticmethod
+    def _deserialize_fields(fields: dict) -> dict:
+        """Convert raw Redis field values back to native Python types."""
+        data: dict = {}
+        for k, v in fields.items():
+            key = k.decode() if isinstance(k, (bytes, bytearray)) else k
+            try:
+                value = json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                value = v.decode() if isinstance(v, (bytes, bytearray)) else v
+            data[key] = value
+        return data
 
     # ── Introspection ─────────────────────────────────────────────────────────
 
@@ -165,6 +191,7 @@ def get_bus(redis_client: Any | None = None) -> AgentBus:
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _bus = AgentBus(redis_client)
     return _bus
