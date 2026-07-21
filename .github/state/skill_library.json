@@ -1,11 +1,5 @@
 {
   "skills": [
-    "strategy_logic on ml/features/multi_timeframe.py: success \u2014 tests green",
-    "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Cache recent data",
-    "Set retry limits",
-    "Here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Use thread pooling",
     "Track dependency updates",
     "Implement early-stopping",
     "Optimize log tracking",
@@ -199,8 +193,14 @@
     "Check RAM leaks",
     "Integrate S4 layers",
     "Retrain LSTM models",
-    "Monitor Sharpe ratio"
+    "Monitor Sharpe ratio",
+    "Detect NaN values",
+    "Check thread counts",
+    "Ping network nodes",
+    "Combine MACD with RSI",
+    "Use Temporal Fusion",
+    "Inspect model logs"
   ],
-  "last_updated": "2026-07-21T19:15:30.750950+00:00",
+  "last_updated": "2026-07-21T20:43:21.090645+00:00",
   "total": 200
 }
