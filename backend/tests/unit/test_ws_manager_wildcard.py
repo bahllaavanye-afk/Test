@@ -18,6 +18,8 @@ class _FakeWS:
         self.accepted = True
 
     async def send_text(self, message: str) -> None:
+        if not isinstance(message, str):
+            raise ValueError("send_text expects a string message")
         self.sent.append(message)
 
 
@@ -52,6 +54,8 @@ async def test_wildcard_is_prefix_scoped():
 async def test_dead_socket_is_purged():
     class _Dead(_FakeWS):
         async def send_text(self, message: str) -> None:
+            if not isinstance(message, str):
+                raise ValueError("send_text expects a string message")
             raise RuntimeError("connection closed")
 
     m = ConnectionManager()

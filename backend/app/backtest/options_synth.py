@@ -1,19 +1,20 @@
 """Synthetic options backtester — score option-spread bot templates on history.
 
 We have years of underlying OHLCV but no historical option chains, so spreads
-are repriced with Black-Scholes using realized vol as the IV proxy (HV20 ×
-IV_PREMIUM, the variance-risk-premium markup). This is the standard research
+are repriced with Black‑Scholes using realized vol as the IV proxy (HV20 ×
+IV_PREMIUM, the variance‑risk‑premium markup). This is the standard research
 approximation; it captures theta/delta/vega mechanics and regime behavior but
 NOT skew dynamics or bid/ask — results are for RANKING templates against each
 other, not for promising returns. Every consumer must carry that caveat.
 
 Pure numpy/math (no scipy): norm CDF via math.erf, inverse CDF via the
-Acklam approximation. Deterministic; fully unit-testable.
+Acklam approximation. Deterministic; fully unit‑testable.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -23,12 +24,37 @@ MULTIPLIER = 100        # options contract multiplier
 MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
 
 
+def _validate_positive_number(name: str, value: Any) -> None:
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+    if value <= 0:
+        raise ValueError(f"{name} must be positive, got {value}")
+
+
+def _validate_non_negative_number(name: str, value: Any) -> None:
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+    if value < 0:
+        raise ValueError(f"{name} must be non‑negative, got {value}")
+
+
+def _validate_option_type(option_type: str) -> None:
+    if not isinstance(option_type, str):
+        raise ValueError(f"option_type must be a string, got {type(option_type).__name__}")
+    if not (option_type.lower().startswith("c") or option_type.lower().startswith("p")):
+        raise ValueError(f"option_type must start with 'c' (call) or 'p' (put), got '{option_type}'")
+
+
 def norm_cdf(x: float) -> float:
+    if not isinstance(x, (int, float)):
+        raise ValueError(f"x must be a number, got {type(x).__name__}")
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 def norm_ppf(p: float) -> float:
     """Acklam's inverse-normal approximation (|err| < 1.15e-9)."""
+    if not isinstance(p, (int, float)):
+        raise ValueError(f"p must be a number, got {type(p).__name__}")
     if not 0.0 < p < 1.0:
         raise ValueError("p must be in (0,1)")
     a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
@@ -56,27 +82,52 @@ def norm_ppf(p: float) -> float:
 
 def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
+    """Black‑Scholes price for a European option."""
+    _validate_positive_number("S (spot)", S)
+    _validate_positive_number("K (strike)", K)
+    _validate_non_negative_number("T (time to expiry)", T)
+    _validate_positive_number("sigma (volatility)", sigma)
+    _validate_option_type(option_type)
+    _validate_non_negative_number("r (risk‑free rate)", r)
+
     T = max(T, MIN_T)
     sigma = max(sigma, 1e-4)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
-    if option_type.startswith("c"):
+    if option_type.lower().startswith("c"):
         return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
     return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
 
 
 def bs_delta(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
+    """Black‑Scholes delta."""
+    _validate_positive_number("S (spot)", S)
+    _validate_positive_number("K (strike)", K)
+    _validate_non_negative_number("T (time to expiry)", T)
+    _validate_positive_number("sigma (volatility)", sigma)
+    _validate_option_type(option_type)
+    _validate_non_negative_number("r (risk‑free rate)", r)
+
     T = max(T, MIN_T)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
-    return norm_cdf(d1) if option_type.startswith("c") else norm_cdf(d1) - 1.0
+    return norm_cdf(d1) if option_type.lower().startswith("c") else norm_cdf(d1) - 1.0
 
 
 def strike_from_delta(S: float, target_delta: float, T: float, sigma: float,
                       option_type: str, r: float = RISK_FREE) -> float:
     """Invert BS delta → strike (calls: Δ=N(d1); puts: |Δ|=N(-d1))."""
+    _validate_positive_number("S (spot)", S)
+    _validate_positive_number("target_delta (absolute delta)", target_delta)
+    if not 0 < target_delta < 1:
+        raise ValueError(f"target_delta must be in (0,1), got {target_delta}")
+    _validate_non_negative_number("T (time to expiry)", T)
+    _validate_positive_number("sigma (volatility)", sigma)
+    _validate_option_type(option_type)
+    _validate_non_negative_number("r (risk‑free rate)", r)
+
     T = max(T, MIN_T)
-    p = target_delta if option_type.startswith("c") else 1.0 - target_delta
+    p = target_delta if option_type.lower().startswith("c") else 1.0 - target_delta
     d1 = norm_ppf(p)
     return S * math.exp((r + sigma ** 2 / 2) * T - d1 * sigma * math.sqrt(T))
 
@@ -89,26 +140,39 @@ class _Leg:
     ratio: int
 
 
-def _net_value(legs: list[_Leg], S: float, T: float, sigma: float) -> float:
+def _net_value(legs: List[_Leg], S: float, T: float, sigma: float) -> float:
     return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
 
 
-def backtest_template(template: dict, closes: list[float],
-                      trading_days_per_entry: int = 1) -> dict:
+def backtest_template(template: Dict[str, Any], closes: List[float],
+                      trading_days_per_entry: int = 1) -> Dict[str, Any]:
     """Walk daily closes; open the template's spread whenever flat, manage exits.
 
     Entry uses HV20×IV_PREMIUM as sigma and resolves strikes from leg deltas.
     Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
     plus expiry settlement. Returns ranking metrics — see module caveat.
     """
+    if not isinstance(template, dict):
+        raise ValueError("template must be a dict")
+    if "action" not in template or not isinstance(template["action"], dict):
+        raise ValueError("template must contain an 'action' dict")
+    if "legs" not in template["action"] or not isinstance(template["action"]["legs"], list):
+        raise ValueError("template['action'] must contain a 'legs' list")
+    if not isinstance(closes, list) or len(closes) < 22:
+        raise ValueError("closes must be a list with at least 22 price points")
+    if not all(isinstance(c, (int, float)) for c in closes):
+        raise ValueError("all entries in closes must be numbers")
+    if not isinstance(trading_days_per_entry, int) or trading_days_per_entry <= 0:
+        raise ValueError("trading_days_per_entry must be a positive integer")
+
     action = template["action"]
     tp_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "take_profit"), 50) or 50
+                   if r.get("type") == "take_profit"), 50) or 50
     sl_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "stop_loss"), None)
+                   if r.get("type") == "stop_loss"), None)
 
-    trades: list[float] = []
-    pos: list[_Leg] | None = None
+    trades: List[float] = []
+    pos: List[_Leg] | None = None
     entry_net = 0.0
     days_held = 0
     dte = max(int(action["legs"][0].get("dte", 30)), 0)
@@ -153,7 +217,7 @@ def backtest_template(template: dict, closes: list[float],
         else:
             cur = sum(
                 l.sign * l.ratio *
-                max((S - l.strike) if l.option_type.startswith("c")
+                max((S - l.strike) if l.option_type.lower().startswith("c")
                     else (l.strike - S), 0.0)
                 for l in pos
             )
