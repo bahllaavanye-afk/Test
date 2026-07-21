@@ -1,9 +1,13 @@
 """InferenceLog ORM — records every prediction made by a serving model."""
 import uuid
+import logging
 from datetime import datetime
-from sqlalchemy import String, Numeric, DateTime, Boolean, ForeignKey, Index
+
+from sqlalchemy import String, Numeric, DateTime, Boolean, ForeignKey, Index, event
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
+
+logger = logging.getLogger(__name__)
 
 
 class InferenceLog(Base):
@@ -18,6 +22,9 @@ class InferenceLog(Base):
         Index("ix_inf_release_ts", "release_id", "ts"),
         Index("ix_inf_model_symbol", "model_name", "symbol"),
     )
+
+    # Class‑level counter for quick insight into total logs created during runtime
+    _log_counter: int = 0
 
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
@@ -41,3 +48,34 @@ class InferenceLog(Base):
     # Filled in ex-post when actual market return is known
     actual_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
     is_correct: Mapped[bool | None] = mapped_column(Boolean)
+
+
+def _log_inference(mapper, connection, target: InferenceLog):
+    """
+    Structured INFO‑level logging for each inference record.
+
+    Includes:
+        - Cumulative signal count
+        - Execution latency (ms)
+        - P&L (actual_return) if available
+        - Model and version identifiers
+    """
+    # Increment the class‑level counter safely
+    InferenceLog._log_counter += 1
+
+    log_data = {
+        "model": target.model_name,
+        "version": target.version,
+        "symbol": target.symbol,
+        "signal": target.signal,
+        "latency_ms": float(target.latency_ms),
+        "actual_return": float(target.actual_return) if target.actual_return is not None else None,
+        "is_correct": target.is_correct,
+        "total_records": InferenceLog._log_counter,
+    }
+
+    logger.info("InferenceLog created", extra=log_data)
+
+
+# Register the listener so logging occurs after each INSERT operation
+event.listen(InferenceLog, "after_insert", _log_inference)
