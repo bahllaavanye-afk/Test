@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784647816.3213923,
+    "last_updated": 1784650838.6050763,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 17.23,
-    "market_scan_ts": 1784647816.30447,
+    "vix": 17.17,
+    "market_scan_ts": 1784650838.583415,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -123,31 +123,31 @@
     ],
     "active_universe": [
       "TMO",
-      "CRWD",
-      "TSLA",
       "NFLX",
+      "CRWD",
       "ABT",
+      "TSLA",
+      "NOW",
       "PANW",
       "ADBE",
-      "NOW",
-      "GS",
-      "SLB",
-      "MPC",
-      "XOM",
-      "COP",
-      "NVDA",
       "WFC",
-      "QQQ",
+      "GS",
+      "MPC",
+      "BAC",
+      "NVDA",
+      "SLB",
+      "XOM",
+      "MRK",
+      "COP",
       "XLK",
-      "ORCL",
-      "AAPL",
-      "MRK"
+      "CVX",
+      "QQQ"
     ],
     "top_momentum": [
       "MPC",
       "ABT",
+      "PANW",
       "ADBE",
-      "INTU",
       "AAPL"
     ],
     "risk_flags": [],
@@ -155,13 +155,6 @@
     "last_brain_update": 1784647396.1648898
   },
   "episodic": [
-    {
-      "lesson": "Deployment is blocked by a free-tier daily limit; upgrade to a Pro plan or implement usage monitoring to avoid production downtime.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784172913.6954799
-    },
     {
       "lesson": "Multiple auto-fix failures indicate a systemic issue; prioritize a review of the automated patching logic and test coverage.",
       "category": "code",
@@ -1790,6 +1783,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784647816.3245628
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784650838.6091173
     }
   ],
   "github_insights": [
