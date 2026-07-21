@@ -1,12 +1,7 @@
 {
-  "last_run_ts": 1784585160,
-  "last_commit_sha": "f50c78b",
+  "last_run_ts": 1784615618,
+  "last_commit_sha": "b9e4224",
   "posted_hashes": [
-    "a89079ceb4bb",
-    "a2be47b60f2e",
-    "08972d35d07c",
-    "48d6015f3603",
-    "4843beadd0ae",
     "46c78415fbc4",
     "68332d27d963",
     "36970873012f",
@@ -1001,7 +996,12 @@
     "482b952d7813",
     "52d8a5694277",
     "2f1f5c67a827",
-    "a3f2297afba9"
+    "a3f2297afba9",
+    "a5cbbf15f5a8",
+    "ecfd23b8e09f",
+    "933e7b79f259",
+    "72117e16ab4f",
+    "e8992819a337"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -1021,52 +1021,52 @@
   },
   "response_cache": {},
   "posted_today": [
-    "ML Infrastructure Engineer",
-    "Equity desk bot",
-    "PnL bot",
-    "VP Engineering",
-    "StatArb desk bot",
-    "Backend Lead",
-    "Kalshi desk bot",
-    "Security Engineer",
-    "CEO / Founder",
-    "Macro/FX desk bot",
-    "Finance Engineer",
-    "ML Research Lead",
-    "Frontend Lead",
-    "Alpha Research Director",
-    "ML Modeling Lead (MP)",
-    "Rates desk bot",
-    "Options desk bot",
-    "Futures desk bot",
-    "Feature Engineering Lead",
-    "Deep Learning Engineer",
-    "Chief Risk Officer",
-    "VP Research",
     "Polymarket Researcher",
-    "Director of DevOps",
+    "Feature Engineering Lead",
+    "Options desk bot",
+    "Rates desk bot",
+    "Finance Engineer",
     "Data Engineer",
-    "Junior Engineer",
-    "Risk Engineer",
-    "Wins bot",
-    "Alpha Research Director (SR)",
-    "Incident Bot",
-    "Standup bot",
-    "Commodities desk bot",
-    "Director of QA",
-    "Laavanye Bahl \u2014 CEO/Founder",
-    "VP Engineering (CR)",
-    "Options Researcher",
-    "Frontend Bot",
-    "Execution Engineer",
-    "Compliance Engineer",
-    "Quant Researcher",
-    "Crypto desk bot",
-    "CEO/Founder",
     "Polymarket desk bot",
+    "StatArb desk bot",
+    "Alpha Research Director",
+    "Commodities desk bot",
+    "Deep Learning Engineer",
+    "Incident Bot",
+    "CEO / Founder",
+    "VP Engineering",
+    "Macro/FX desk bot",
+    "ML Infrastructure Engineer",
+    "Chief Risk Officer",
+    "Backend Lead",
+    "Futures desk bot",
+    "Security Engineer",
+    "CEO/Founder",
+    "Research Scientist",
+    "VP Research",
+    "Director of DevOps",
+    "ML Research Lead",
+    "PnL bot",
+    "Crypto desk bot",
+    "Wins bot",
+    "Frontend Lead",
+    "Risk Engineer",
+    "Quant Researcher",
+    "Director of QA",
     "Quant ML Researcher",
+    "Equity desk bot",
+    "VP Engineering (CR)",
+    "Compliance Engineer",
+    "Laavanye Bahl \u2014 CEO/Founder",
+    "Options Researcher",
+    "ML Modeling Lead (MP)",
+    "Alpha Research Director (SR)",
+    "Execution Engineer",
     "ML Modeling Lead",
-    "Research Scientist"
+    "Junior Engineer",
+    "Standup bot",
+    "Kalshi desk bot",
+    "Frontend Bot"
   ],
   "last_post_ts": {
     "vp_eng": 1784577884.601525,
@@ -1101,9 +1101,9 @@
     "crypto_desk_bot": 1784584994.3860526,
     "rates_desk_bot": 1784585031.1647716,
     "execution_engineer": 1784522235.546491,
-    "ml_infrastructure_engineer": 1783984020.8503034,
+    "ml_infrastructure_engineer": 1784615507.1054444,
     "frontend_lead": 1784548143.923361,
-    "options_researcher": 1784556730.627844,
+    "options_researcher": 1784615487.41697,
     "junior_engineer": 1784556775.051202,
     "ml_modeling_lead": 1784503002.6864483,
     "commodities_desk_bot": 1784433669.4400392,
@@ -1117,9 +1117,9 @@
     "deep_learning_engineer": 1784443554.9964104,
     "equity_desk_bot": 1784489784.2820442,
     "risk_engineer": 1784522239.6670141,
-    "standup_bot": 1784556733.3911383,
+    "standup_bot": 1784615492.173506,
     "alpha_research_director_(sr)": 1784501885.872568,
-    "director_of_qa": 1784556732.0351393,
+    "director_of_qa": 1784615521.7873528,
     "finance_engineer": 1784411713.212296,
     "security_engineer": 1784419081.5947504,
     "ml_modeling_lead_(mp)": 1784408064.5131598,
@@ -1242,79 +1242,79 @@
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "alpha_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "ml_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "risk_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "backend_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "qa_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "devops_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "exec_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "poly_desk": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "ml_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "vp_research": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "quant_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       },
       "cro": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-20"
+        "date": "2026-07-21"
       }
     }
   },
@@ -3219,6 +3219,6 @@
       "GEMINI_API_KEY_3": 300
     }
   },
-  "posted_today_date": "2026-07-20",
+  "posted_today_date": "2026-07-21",
   "skip_wave": false
 }
