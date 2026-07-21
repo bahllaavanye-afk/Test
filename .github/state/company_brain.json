@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784662978.0750651,
+    "last_updated": 1784663615.5549362,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784652831.876013
+    "last_brain_update": 1784663615.553994
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix failures on three patches indicate patch application pipeline instability; investigate CI/CD tooling or merge conflicts before further scaling.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784190803.6079876
-    },
-    {
-      "lesson": "Scaling to 103 strategies and adding a 9th desk without verified integration tests risks runtime failures; mandate end-to-end validation for new strategy onboarding.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784190803.6109235
-    },
-    {
-      "lesson": "Strategy Scout feature may lack test coverage for edge cases in fresh_unwired logic; add unit tests and review for off-by-one or exclusion list errors.",
-      "category": "ml",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784190803.6135867
-    },
-    {
-      "lesson": "Autonomous PR modifying protected file 'backend/app/brokers/base.py' broke main in a previous similar edit, leading to automerge revocation. Need stricter enforcement of human review for critical base class files.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784198088.952121
-    },
     {
       "lesson": "Auto-fix failed to apply patch, indicating unreliable automated patching. Investigate patch generation and application pipeline for common failure modes.",
       "category": "execution",
@@ -1822,14 +1794,37 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784661047.2938857
+    },
+    {
+      "lesson": "Auto-fix system repeatedly fails to apply patches, indicating a systemic issue with patch application logic or environment mismatch.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784663598.0373785
+    },
+    {
+      "lesson": "Complex multi-source data ingestion logic is being skipped by auto-fix, requiring manual investigation and potential refactoring for maintainability.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784663598.042654
+    },
+    {
+      "lesson": "Accumulated auto-fix failures risk technical debt and delayed resolution of data pipeline issues, impacting data quality.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784663598.0467646
+    },
+    {
+      "lesson": "Lack of automated resolution for complex ingestion suggests need for improved modularization and integration testing.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784663598.0508585
     }
   ],
   "github_insights": [
-    {
-      "summary": "The deployment failed due to resource limits,",
-      "item_count": 20,
-      "ts": 1783784212.2430017
-    },
     {
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
@@ -2324,6 +2319,11 @@
       "summary": "A deployment failed due to a resource limit error (\"try again in 24 hours\"), while an autonomous PR that modifies protected backend files had its automerge revoked by a team lead and then failed to auto-fix because the patch could not be applied.",
       "item_count": 20,
       "ts": 1784652831.8675303
+    },
+    {
+      "summary": "The automated fix attempts failed because the patch could not be applied to the file, and another fix was skipped as the issue was deemed too complex for automated resolution.",
+      "item_count": 20,
+      "ts": 1784663615.5446632
     }
   ],
   "experiment_results": [
