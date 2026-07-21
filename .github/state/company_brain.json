@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784652831.876948,
+    "last_updated": 1784655412.607497,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 17.17,
-    "market_scan_ts": 1784650838.583415,
+    "vix": 17.12,
+    "market_scan_ts": 1784655412.5864677,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -125,43 +125,36 @@
       "TMO",
       "NFLX",
       "CRWD",
+      "PANW",
       "ABT",
       "TSLA",
       "NOW",
-      "PANW",
-      "ADBE",
       "WFC",
+      "ADBE",
       "GS",
       "MPC",
       "BAC",
       "NVDA",
-      "SLB",
       "XOM",
-      "MRK",
       "COP",
-      "XLK",
+      "SLB",
+      "MS",
       "CVX",
-      "QQQ"
+      "QQQ",
+      "MRK"
     ],
     "top_momentum": [
       "MPC",
       "ABT",
-      "PANW",
       "ADBE",
-      "AAPL"
+      "PANW",
+      "INTU"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784652831.876013
   },
   "episodic": [
-    {
-      "lesson": "Multiple auto-fix failures indicate a systemic issue; prioritize a review of the automated patching logic and test coverage.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784172913.6974788
-    },
     {
       "lesson": "Rate limiting on deployments suggests a need for capacity planning; consider optimizing build frequency or moving to a paid tier.",
       "category": "execution",
@@ -1798,6 +1791,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784650838.6091173
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784655412.6114957
     }
   ],
   "github_insights": [
