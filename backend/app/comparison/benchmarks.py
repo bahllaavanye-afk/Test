@@ -1,12 +1,13 @@
 """Download benchmark equity curves via Alpaca historical bars API.
 Benchmarks: SPY, QQQ, BRK-B, GLD + Ray Dalio All Weather (rebalanced monthly).
 """
+
 from __future__ import annotations
 
 import asyncio
 import functools
 from datetime import date, datetime, timezone
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple, Union
 
 import httpx
 import pandas as pd
@@ -14,24 +15,38 @@ import pandas as pd
 from app.config import settings
 from app.utils.logging import logger
 
-BENCHMARKS = {
+BENCHMARKS: Dict[str, Dict[str, str]] = {
     "SPY": {"name": "S&P 500", "color": "#2196F3"},
     "QQQ": {"name": "NASDAQ 100", "color": "#9C27B0"},
     "BRK-B": {"name": "Warren Buffett (BRK.B)", "color": "#FF9800"},
     "GLD": {"name": "Gold", "color": "#FFC107"},
 }
 
-ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP": 0.075}
+ALL_WEATHER_WEIGHTS: Dict[str, float] = {
+    "TLT": 0.40,
+    "IEF": 0.15,
+    "VTI": 0.30,
+    "GLD": 0.075,
+    "DJP": 0.075,
+}
 
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # simple in‑memory cache for benchmark results keyed by (start, end)
-_benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
+_benchmark_cache: Dict[Tuple[date, date], Dict[str, List[Dict[str, Any]]]] = {}
 
 
 @functools.lru_cache(maxsize=1)
-def _alpaca_headers() -> dict:
-    """Static Alpaca authentication headers."""
+def _alpaca_headers() -> Dict[str, str]:
+    """Return static Alpaca authentication headers.
+
+    The headers are cached to avoid repeated construction on each request.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping containing the API key and secret required by Alpaca.
+    """
     return {
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
@@ -43,7 +58,22 @@ async def _fetch_ticker_bars(
 ) -> pd.Series:
     """
     Fetch daily close prices for a single ticker from Alpaca.
-    Returns a pd.Series indexed by date, or an empty Series on failure.
+
+    Parameters
+    ----------
+    client : httpx.AsyncClient
+        The HTTP client used to perform the request.
+    ticker : str
+        Ticker symbol to query (case‑insensitive).
+    start : date
+        Inclusive start date for the historical data.
+    end : date
+        Inclusive end date for the historical data.
+
+    Returns
+    -------
+    pd.Series
+        Series indexed by date containing close prices, or an empty Series on failure.
     """
     sym = ticker.upper()
     start_str = datetime.combine(start, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -94,8 +124,29 @@ async def _fetch_ticker_bars(
         return pd.Series(dtype=float)
 
 
-async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
-    """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
+async def fetch_benchmark_curves(start: date, end: date) -> Dict[str, List[Dict[str, Union[str, float]]]]:
+    """
+    Retrieve normalized benchmark equity curves for a date range.
+
+    The function downloads daily close prices for the defined benchmarks,
+    normalizes each series to a base value of 100 on the first available day,
+    and constructs a monthly‑rebalanced All Weather portfolio when sufficient data
+    is present.
+
+    Parameters
+    ----------
+    start : date
+        Inclusive start date for the benchmark data.
+    end : date
+        Inclusive end date for the benchmark data.
+
+    Returns
+    -------
+    dict[str, list[dict]]
+        Mapping from ticker symbol (or ``ALL_WEATHER``) to a list of dictionaries,
+        each containing ``date`` (ISO string) and ``value`` (float) fields.
+        An empty dictionary is returned for invalid date ranges.
+    """
     if start >= end:
         logger.warning(
             "Invalid benchmark date range",
@@ -128,13 +179,13 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         else:
             series_list.append(result)
 
-    closes_dict: dict[str, pd.Series] = {
+    closes_dict: Dict[str, pd.Series] = {
         ticker: series
         for ticker, series in zip(all_tickers, series_list)
         if not series.empty
     }
 
-    result: dict[str, List[dict]] = {}
+    result: Dict[str, List[Dict[str, Union[str, float]]]] = {}
 
     # Process individual benchmarks
     for ticker in BENCHMARKS:
@@ -165,8 +216,8 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     return result
 
 
-def get_benchmark_stats() -> dict:
-    """Static benchmark reference stats for display."""
+def get_benchmark_stats() -> Dict[str, Dict[str, Any]]:
+    """Return static benchmark reference statistics for display."""
     return {
         "SPY": {"name": "S&P 500", "annual_return": 0.100, "sharpe": 0.47, "max_dd": -0.57},
         "QQQ": {"name": "NASDAQ 100", "annual_return": 0.145, "sharpe": 0.61, "max_dd": -0.83},
