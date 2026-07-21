@@ -1,8 +1,10 @@
 """InferenceLog ORM — records every prediction made by a serving model."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Numeric, DateTime, Boolean, ForeignKey, Index
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 
 
@@ -23,7 +25,10 @@ class InferenceLog(Base):
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
     release_id: Mapped[str] = mapped_column(
-        String, ForeignKey("model_releases.id", ondelete="CASCADE"), nullable=False, index=True
+        String,
+        ForeignKey("model_releases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     model_name: Mapped[str] = mapped_column(String(64), nullable=False)
     version: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -32,12 +37,12 @@ class InferenceLog(Base):
     # Raw model output in [0, 1]
     prediction: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
     # Discretised trading signal
-    signal: Mapped[str] = mapped_column(String(8), nullable=False)       # buy|sell|hold
+    signal: Mapped[str] = mapped_column(String(8), nullable=False)  # buy|sell|hold
     # Calibration metric: abs(pred - 0.5) * 2
     confidence: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
     latency_ms: Mapped[float] = mapped_column(Numeric(8, 3), nullable=False)
     # Which branch of the A/B test served this request
-    ab_group: Mapped[str] = mapped_column(String(16), nullable=False)    # champion|challenger|shadow
+    ab_group: Mapped[str] = mapped_column(String(16), nullable=False)  # champion|challenger|shadow
     # Filled in ex-post when actual market return is known
     actual_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
     is_correct: Mapped[bool | None] = mapped_column(Boolean)
