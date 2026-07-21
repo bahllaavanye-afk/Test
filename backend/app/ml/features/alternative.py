@@ -11,11 +11,15 @@ All API calls are async. For sync contexts, use compute_features_sync().
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 from datetime import datetime, timezone
 
 import httpx
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 _FAPI_BASE = "https://fapi.binance.com"
 _FUTURES_DATA_BASE = "https://fapi.binance.com"
@@ -46,12 +50,23 @@ class BinanceFundingRateFeatures:
         bn_sym = _to_binance_symbol(symbol)
         url = f"{_FAPI_BASE}/fapi/v1/fundingRate"
         params = {"symbol": bn_sym, "limit": min(limit, 1000)}
+        start_time = time.time()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
             if not data:
+                elapsed = time.time() - start_time
+                logger.info(
+                    "funding_rate_fetch",
+                    extra={
+                        "symbol": symbol,
+                        "signal_count": 0,
+                        "execution_time_ms": elapsed * 1000,
+                        "status": "empty",
+                    },
+                )
                 return pd.DataFrame()
             rows = [
                 {
@@ -61,8 +76,29 @@ class BinanceFundingRateFeatures:
                 for r in data
             ]
             df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
+            elapsed = time.time() - start_time
+            logger.info(
+                "funding_rate_fetch",
+                extra={
+                    "symbol": symbol,
+                    "signal_count": len(df),
+                    "execution_time_ms": elapsed * 1000,
+                    "status": "success",
+                },
+            )
             return df
-        except Exception:
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.info(
+                "funding_rate_fetch",
+                extra={
+                    "symbol": symbol,
+                    "signal_count": 0,
+                    "execution_time_ms": elapsed * 1000,
+                    "status": "error",
+                    "error": str(e),
+                },
+            )
             return pd.DataFrame()
 
     async def get_open_interest_hist(
@@ -81,12 +117,24 @@ class BinanceFundingRateFeatures:
         bn_sym = _to_binance_symbol(symbol)
         url = f"{_FUTURES_DATA_BASE}/futures/data/openInterestHist"
         params = {"symbol": bn_sym, "period": period, "limit": min(limit, 500)}
+        start_time = time.time()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(url, params=params)
                 resp.raise_for_status()
                 data = resp.json()
             if not data:
+                elapsed = time.time() - start_time
+                logger.info(
+                    "open_interest_fetch",
+                    extra={
+                        "symbol": symbol,
+                        "period": period,
+                        "signal_count": 0,
+                        "execution_time_ms": elapsed * 1000,
+                        "status": "empty",
+                    },
+                )
                 return pd.DataFrame()
             rows = [
                 {
@@ -97,8 +145,31 @@ class BinanceFundingRateFeatures:
                 for r in data
             ]
             df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
+            elapsed = time.time() - start_time
+            logger.info(
+                "open_interest_fetch",
+                extra={
+                    "symbol": symbol,
+                    "period": period,
+                    "signal_count": len(df),
+                    "execution_time_ms": elapsed * 1000,
+                    "status": "success",
+                },
+            )
             return df
-        except Exception:
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.info(
+                "open_interest_fetch",
+                extra={
+                    "symbol": symbol,
+                    "period": period,
+                    "signal_count": 0,
+                    "execution_time_ms": elapsed * 1000,
+                    "status": "error",
+                    "error": str(e),
+                },
+            )
             return pd.DataFrame()
 
     async def compute_features_async(
@@ -115,6 +186,7 @@ class BinanceFundingRateFeatures:
 
         Missing data → NaN (not filled with fake values).
         """
+        start_time = time.time()
         df = df.copy()
         for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
             df[col] = np.nan
@@ -123,6 +195,8 @@ class BinanceFundingRateFeatures:
             self.get_funding_rate_history(symbol, limit=500),
             self.get_open_interest_hist(symbol, period="1d", limit=500),
         )
+
+        feature_count = 0
 
         # Merge funding rate
         if not fr_df.empty:
@@ -144,6 +218,7 @@ class BinanceFundingRateFeatures:
                     df.iloc[i, df.columns.get_loc("funding_rate_ma7")] = float(
                         fr_df.loc[ts_day, "funding_rate_ma7"]
                     )
+                    feature_count += 2
 
         # Merge OI
         if not oi_df.empty:
@@ -165,11 +240,25 @@ class BinanceFundingRateFeatures:
                     df.iloc[i, df.columns.get_loc("oi_momentum")] = float(
                         oi_df.loc[ts_day, "oi_momentum"]
                     )
+                    feature_count += 2
+
+        elapsed = time.time() - start_time
+        logger.info(
+            "compute_features",
+            extra={
+                "symbol": symbol,
+                "signal_count": feature_count,
+                "execution_time_ms": elapsed * 1000,
+                "dataframe_rows": len(df),
+                "status": "success",
+            },
+        )
 
         return df
 
     def compute_features(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
         """Sync wrapper — runs the async version via asyncio."""
+        start_time = time.time()
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
@@ -182,7 +271,18 @@ class BinanceFundingRateFeatures:
                     return future.result(timeout=30)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
-        except Exception:
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.info(
+                "compute_features",
+                extra={
+                    "symbol": symbol,
+                    "signal_count": 0,
+                    "execution_time_ms": elapsed * 1000,
+                    "status": "error",
+                    "error": str(e),
+                },
+            )
             df = df.copy()
             for col in ("funding_rate", "funding_rate_ma7", "oi_change_pct", "oi_momentum"):
                 df[col] = np.nan
@@ -204,14 +304,36 @@ def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame
     Add Binance alternative data features for crypto symbols.
     For non-crypto symbols, adds columns filled with NaN.
     """
+    start_time = time.time()
     is_crypto = any(
         kw in symbol.upper()
         for kw in ("BTC", "ETH", "BNB", "SOL", "XRP", "USDT", "USDC", "CRYPTO")
     )
     if is_crypto and symbol:
-        return _binance_features.compute_features(symbol, df)
+        result = _binance_features.compute_features(symbol, df)
+        elapsed = time.time() - start_time
+        logger.info(
+            "add_alternative_features",
+            extra={
+                "symbol": symbol,
+                "is_crypto": True,
+                "execution_time_ms": elapsed * 1000,
+                "status": "success",
+            },
+        )
+        return result
 
     df = df.copy()
     for col in ALTERNATIVE_FEATURE_COLS:
         df[col] = np.nan
+    elapsed = time.time() - start_time
+    logger.info(
+        "add_alternative_features",
+        extra={
+            "symbol": symbol,
+            "is_crypto": False,
+            "execution_time_ms": elapsed * 1000,
+            "status": "skipped",
+        },
+    )
     return df
