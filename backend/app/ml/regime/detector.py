@@ -7,12 +7,15 @@ Used to scale Kelly position sizing:
   HIGH_VOL    → 0.5x (half size — protect capital)
 """
 from __future__ import annotations
+import logging
+import time
 import numpy as np
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
+logger = logging.getLogger(__name__)
 
 class Regime(str, Enum):
     TRENDING = "trending"
@@ -152,8 +155,29 @@ class RegimeMonitor:
         self._states: dict[str, RegimeState] = {}
 
     def update(self, symbol: str, prices: list[float]) -> RegimeState:
+        start_time = time.perf_counter()
         state = detect_regime(prices)
+        elapsed = time.perf_counter() - start_time
+
+        # Simple P&L proxy: percentage change from first to last price
+        pnl = 0.0
+        if prices:
+            try:
+                pnl = (prices[-1] - prices[0]) / prices[0]
+            except ZeroDivisionError:
+                pnl = 0.0
+
         self._states[symbol] = state
+
+        logger.info(
+            "Regime update - symbol=%s, signal_count=%d, exec_time=%.4fs, pnl=%.4f, regime=%s, confidence=%.2f",
+            symbol,
+            len(prices),
+            elapsed,
+            pnl,
+            state.regime.value,
+            state.confidence,
+        )
         return state
 
     def get(self, symbol: str) -> RegimeState | None:
