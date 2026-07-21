@@ -1,9 +1,5 @@
 {
   "skills": [
-    "**Improve status updates**: Agents need to respond to status update requests with concise, 1-2 sentence answers, as seen in responses from `continuous_improver` and `frontend_design` agents.",
-    "Monitor queue sizes",
-    "* **Frontend design updates**: `frontend_design` is actively working on updating code, but specific files or scripts referenced are not available in the latest learnings.",
-    "Backtest new strategy variants",
     "strategy_logic on ml/features/multi_timeframe.py: success \u2014 tests green",
     "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Cache recent data",
@@ -199,8 +195,12 @@
     "Track CPU usage",
     "Verify OS updates",
     "Log API timeouts",
-    "Check dependency versions"
+    "Check dependency versions",
+    "Check RAM leaks",
+    "Integrate S4 layers",
+    "Retrain LSTM models",
+    "Monitor Sharpe ratio"
   ],
-  "last_updated": "2026-07-21T17:52:27.669331+00:00",
+  "last_updated": "2026-07-21T19:15:30.750950+00:00",
   "total": 200
 }
