@@ -1,36 +1,72 @@
 """Continuous price ingestion from brokers → Redis cache → WebSocket broadcast."""
 from __future__ import annotations
+
 import asyncio
+from typing import Any, List
+
 from app.redis_client import get_redis, price_cache
 from app.ws.manager import manager
 from app.utils.logging import logger
 
 POLL_INTERVAL = 2      # seconds between full cycles
-BATCH_SIZE    = 20     # max concurrent quote fetches per cycle
+BATCH_SIZE = 20        # max concurrent quote fetches per cycle
 
 # Default symbols to track in paper/stub mode (when no broker keys are available)
 DEFAULT_EQUITY_SYMBOLS = [
-    "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "BRK.B",
+    "SPY",
+    "QQQ",
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "TSLA",
+    "NVDA",
+    "META",
+    "BRK.B",
 ]
 DEFAULT_CRYPTO_SYMBOLS = [
-    "BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD", "DOGE/USD",
+    "BTC/USD",
+    "ETH/USD",
+    "SOL/USD",
+    "BNB/USD",
+    "DOGE/USD",
 ]
 
 
-async def _fetch_and_publish(broker, symbol: str, cache) -> None:
+async def _fetch_and_publish(broker: Any, symbol: str, cache: Any) -> None:
+    """
+    Retrieve a quote for ``symbol`` from ``broker`` and publish it.
+
+    The function fetches a live quote, writes the price information to the Redis
+    price cache and broadcasts the same data over the WebSocket manager.  Errors
+    are logged but otherwise ignored to keep the feed resilient.
+
+    Parameters
+    ----------
+    broker: Any
+        Broker instance exposing an ``await get_quote(symbol)`` coroutine.
+    symbol: str
+        Symbol to fetch (e.g., ``AAPL`` or ``BTC/USD``).
+    cache: Any
+        Redis price cache with a ``set_price(exchange, symbol, data)`` method.
+    """
     try:
         quote = await broker.get_quote(symbol)
         price_data = {
-            "symbol":  symbol,
-            "bid":     quote.bid,
-            "ask":     quote.ask,
-            "last":    quote.last,
-            "volume":  quote.volume,
+            "symbol": symbol,
+            "bid": quote.bid,
+            "ask": quote.ask,
+            "last": quote.last,
+            "volume": quote.volume,
         }
         exchange = "crypto" if "/" in symbol else "alpaca"
         # Fire-and-forget: write to Redis and broadcast concurrently
         await asyncio.gather(
-            cache.set_price(exchange, symbol, {"last": quote.last, "bid": quote.bid, "ask": quote.ask}),
+            cache.set_price(
+                exchange,
+                symbol,
+                {"last": quote.last, "bid": quote.bid, "ask": quote.ask},
+            ),
             manager.broadcast(f"prices:{symbol}", {"type": "quote", **price_data}),
             return_exceptions=True,
         )
@@ -38,14 +74,29 @@ async def _fetch_and_publish(broker, symbol: str, cache) -> None:
         logger.debug("Price feed error", symbol=symbol, error=str(e))
 
 
-async def run_price_feed(broker, symbols: list[str]) -> None:
+async def run_price_feed(broker: Any, symbols: List[str]) -> None:
     """
-    Polls all symbols concurrently in batches of BATCH_SIZE every POLL_INTERVAL seconds.
-    Concurrent fetches reduce end-to-end latency from O(N) to O(ceil(N/BATCH_SIZE)).
+    Continuously poll ``symbols`` using ``broker`` and publish updates.
+
+    The symbols are processed in parallel batches of size :data:`BATCH_SIZE`.  After
+    each full cycle the coroutine sleeps for :data:`POLL_INTERVAL` seconds before
+    starting the next round.  This design reduces latency from O(N) to
+    O(ceil(N / BATCH_SIZE)) per cycle.
+
+    Parameters
+    ----------
+    broker: Any
+        Broker instance used to fetch live quotes.
+    symbols: List[str]
+        List of symbols to poll.
     """
     # get_redis() is synchronous — do NOT await it; use the module-level price_cache singleton
     cache = price_cache
-    logger.info("Price feed started", symbols=len(symbols), batch_size=BATCH_SIZE)
+    logger.info(
+        "Price feed started",
+        symbols=len(symbols),
+        batch_size=BATCH_SIZE,
+    )
     while True:
         # Process symbols in parallel batches
         for i in range(0, len(symbols), BATCH_SIZE):
@@ -59,19 +110,20 @@ async def run_price_feed(broker, symbols: list[str]) -> None:
 
 async def start_price_feed() -> None:
     """
-    Factory coroutine registered as a supervised background task in main.py.
+    Entry point for the background price‑feed task.
 
-    Creates the Alpaca broker from settings (if keys are available) and starts
-    the price feed loop.  When ALPACA_API_KEY is missing, logs a warning and
-    parks in stub mode (strategies fall back to broker REST calls or skip on
-    missing data) — the process does NOT crash.
+    The coroutine creates an Alpaca broker when API credentials are present.
+    If credentials are missing or broker creation fails, the feed falls back to
+    a lightweight yfinance implementation.  The function never raises; it
+    logs warnings and continues running in stub mode.
     """
     from app.config import settings
 
-    broker = None
+    broker: Any | None = None
     if settings.alpaca_api_key and settings.alpaca_secret_key:
         try:
             from app.brokers.alpaca import AlpacaBroker
+
             broker = AlpacaBroker(
                 api_key=settings.alpaca_api_key,
                 secret_key=settings.alpaca_secret_key,
@@ -94,8 +146,10 @@ async def start_price_feed() -> None:
 
     if broker is None:
         # No Alpaca keys — fall back to yfinance polling (free, no auth needed).
-        # 60-second cadence is fine for daily-resolution strategies.
-        logger.info("Price feed: no Alpaca broker — using yfinance fallback (60s cadence)")
+        # 60‑second cadence is fine for daily‑resolution strategies.
+        logger.info(
+            "Price feed: no Alpaca broker — using yfinance fallback (60s cadence)"
+        )
         await _yfinance_price_feed(DEFAULT_EQUITY_SYMBOLS + DEFAULT_CRYPTO_SYMBOLS)
         return
 
@@ -103,8 +157,13 @@ async def start_price_feed() -> None:
     await run_price_feed(broker, symbols)
 
 
-async def _yfinance_price_feed(symbols: list[str]) -> None:
-    """Poll yfinance every 60 s and publish last-close prices to Redis + WebSocket."""
+async def _yfinance_price_feed(symbols: List[str]) -> None:
+    """
+    Poll yfinance for each ``symbol`` every 60 seconds and publish the last‑close price.
+
+    The function runs indefinitely, invoking a synchronous helper in a thread
+    pool for each symbol and then sleeping for a minute before the next cycle.
+    """
     cache = price_cache
     while True:
         for sym in symbols:
@@ -113,25 +172,51 @@ async def _yfinance_price_feed(symbols: list[str]) -> None:
                     None, _yf_publish_sync, sym, cache
                 )
             except Exception as exc:
-                logger.debug("yfinance price feed error", symbol=sym, error=str(exc))
+                logger.debug(
+                    "yfinance price feed error", symbol=sym, error=str(exc)
+                )
         await asyncio.sleep(60)
 
 
-def _yf_publish_sync(symbol: str, cache) -> None:
+def _yf_publish_sync(symbol: str, cache: Any) -> None:
+    """
+    Synchronous helper used by :func:`_yfinance_price_feed`.
+
+    Retrieves the most recent price for ``symbol`` via the ``yfinance`` library,
+    then writes the data to the Redis cache and broadcasts it over the WebSocket
+    manager.  Errors are logged; a failing symbol does not stop the overall
+    feed.
+    """
     try:
         import yfinance as yf
-        yf_sym = symbol.replace("/USD", "-USD").replace("/USDT", "-USD")
+
+        yf_sym = (
+            symbol.replace("/USD", "-USD")
+            .replace("/USDT", "-USD")
+        )
         info = yf.Ticker(yf_sym).fast_info
-        last = float(getattr(info, "last_price", 0) or getattr(info, "regularMarketPrice", 0) or 0)
+        last = float(
+            getattr(info, "last_price", 0)
+            or getattr(info, "regularMarketPrice", 0)
+            or 0
+        )
         if last <= 0:
             return
         import asyncio
+
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(asyncio.gather(
-            cache.set_price("yfinance", symbol, {"last": last, "bid": last, "ask": last}),
-            manager.broadcast(f"prices:{symbol}", {"type": "quote", "symbol": symbol, "last": last, "bid": last, "ask": last}),
-            return_exceptions=True,
-        ))
+        loop.run_until_complete(
+            asyncio.gather(
+                cache.set_price("yfinance", symbol, {"last": last, "bid": last, "ask": last}),
+                manager.broadcast(
+                    f"prices:{symbol}",
+                    {"type": "quote", "symbol": symbol, "last": last, "bid": last, "ask": last},
+                ),
+                return_exceptions=True,
+            )
+        )
         loop.close()
     except Exception as exc:  # noqa: BLE001 — one symbol's tick lost, next cycle retries
-        logger.debug("yfinance publish failed", symbol=symbol, error=str(exc))
+        logger.debug(
+            "yfinance publish failed", symbol=symbol, error=str(exc)
+        )
