@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784647396.1658418,
+    "last_updated": 1784647699.9150963,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,37 +60,37 @@
     "autopilot_best_oos_sharpe": 1.145,
     "autopilot_best_blended": 0.4008,
     "autopilot_overfit_count": 0,
-    "market_regime": "neutral",
+    "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-20T15:43:29.255602+00:00",
+      "generated_at": "2026-07-21T15:27:43.503155+00:00",
       "signals": {
         "vix": {
-          "value": 17.97,
+          "value": 17.22,
           "trend": "flat"
         },
         "spy": {
-          "price": 745.91,
-          "sma50": 743.51,
-          "sma200": 693.87,
+          "price": 747.91,
+          "sma50": 743.8,
+          "sma200": 694.27,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.025,
+          "ratio": 1.0221,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.437,
+          "hyg_lqd_momentum_20d": 1.482,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 6,
+          "sectors_above_sma20": 4,
           "total_sectors": 11,
-          "breadth_pct": 54.5
+          "breadth_pct": 36.4
         },
         "btc": {
-          "price": 64879,
-          "24h_pct": 0.55
+          "price": 66640,
+          "24h_pct": 2.75
         }
       },
       "score": 3,
@@ -155,21 +155,6 @@
     "last_brain_update": 1784647396.1648898
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Industrials"
-      ],
-      "gap_count": 4,
-      "breakout_count": 2,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 4, Breakouts: 2, Risk flags: 0.",
-      "ts": 1784148787.7984297
-    },
     {
       "lesson": "Auto-fix failures are occurring repeatedly; investigate the root cause in the patch generation pipeline or ML model.",
       "category": "ml",
@@ -1785,6 +1770,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784608248.5887935
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1784647699.9191282
     }
   ],
   "github_insights": [
