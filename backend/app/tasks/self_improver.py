@@ -14,6 +14,9 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import pandas as pd
+import yfinance as yf
+
 from app.utils.logging import logger
 
 RESULTS_FILE = Path(__file__).parents[3] / "experiments" / "results" / "self_improver.json"
@@ -46,6 +49,8 @@ PARAM_SPACES = {
 
 
 class SelfImprover:
+    _HIST_TTL = timedelta(hours=1)  # cache lifetime for price history
+
     def __init__(self, algo_agent=None, interval_seconds: int = 900):
         self.algo_agent = algo_agent
         self.interval_seconds = interval_seconds
@@ -53,29 +58,58 @@ class SelfImprover:
         self._best_sharpe: dict[str, float] = {}   # strategy → best Sharpe
         self._running = False
         self._iteration = 0
+        self._hist_cache: dict[str, tuple[pd.DataFrame, datetime]] = {}
+        self._hist_lock = asyncio.Lock()
 
     def _sample_params(self, strategy: str) -> dict:
         """Random sample from PARAM_SPACES."""
         space = PARAM_SPACES.get(strategy, {})
         return {k: random.choice(v) for k, v in space.items()}
 
+    async def _get_history(self, symbol: str) -> pd.DataFrame | None:
+        """Retrieve cached history or download fresh data if stale."""
+        async with self._hist_lock:
+            cached = self._hist_cache.get(symbol)
+            now = datetime.now(timezone.utc)
+            if cached:
+                data, ts = cached
+                if now - ts < self._HIST_TTL:
+                    return data
+
+            # Download fresh data
+            end = now
+            start = end - timedelta(days=730)
+            loop = asyncio.get_running_loop()
+            try:
+                hist = await loop.run_in_executor(
+                    None,
+                    lambda: yf.download(
+                        symbol,
+                        start=str(start.date()),
+                        end=str(end.date()),
+                        interval="1d",
+                        auto_adjust=True,
+                        progress=False,
+                    ),
+                )
+            except Exception as exc:
+                logger.debug("Failed to download history", symbol=symbol, error=str(exc))
+                return None
+
+            if hist is None or len(hist) < 60:
+                return None
+
+            self._hist_cache[symbol] = (hist, now)
+            return hist
+
     async def _evaluate(self, strategy: str, symbol: str, params: dict) -> float:
         """Run a quick backtest with the given params. Returns Sharpe."""
         try:
-            import pandas as pd
-            import yfinance as yf
             from app.backtest.engine import run_backtest
             from app.strategies import STRATEGY_REGISTRY
 
-            end = datetime.now(timezone.utc)
-            start = end - timedelta(days=730)
-            loop = asyncio.get_running_loop()
-            hist = await loop.run_in_executor(
-                None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
-            )
-            if hist is None or len(hist) < 60:
+            hist = await self._get_history(symbol)
+            if hist is None:
                 return 0.0
 
             close = hist["Close"].squeeze() if hasattr(hist["Close"], "squeeze") else hist["Close"]
@@ -93,7 +127,11 @@ class SelfImprover:
             if signals is None or (hasattr(signals, "__len__") and len(signals) < 30):
                 return 0.0
 
-            sig_series = signals if hasattr(signals, "values") else pd.Series(signals, index=hist.index)
+            sig_series = (
+                signals
+                if hasattr(signals, "values")
+                else pd.Series(signals, index=hist.index)
+            )
             metrics = run_backtest(sig_series, close)
             return float(metrics.sharpe)
         except Exception as e:
@@ -106,7 +144,8 @@ class SelfImprover:
         if not space:
             return None
 
-        current_best = self._best_sharpe.get(f"{strategy}:{symbol}", 0.0)
+        key = f"{strategy}:{symbol}"
+        current_best = self._best_sharpe.get(key, 0.0)
         best_iter_sharpe = current_best
         best_iter_params = None
 
@@ -120,7 +159,6 @@ class SelfImprover:
 
         # Promote if improvement > 10%
         if best_iter_params and best_iter_sharpe > current_best * 1.10 and best_iter_sharpe > 0.5:
-            key = f"{strategy}:{symbol}"
             self._best_params[key] = best_iter_params
             self._best_sharpe[key] = best_iter_sharpe
             promotion = {
@@ -130,7 +168,9 @@ class SelfImprover:
                 "params": best_iter_params,
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
+                "improvement_pct": round(
+                    (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
+                ),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
@@ -163,8 +203,14 @@ class SelfImprover:
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
         # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        TARGETS = [
+            ("momentum", "SPY"),
+            ("momentum", "QQQ"),
+            ("mean_reversion", "AAPL"),
+            ("rsi_macd", "MSFT"),
+            ("breakout", "NVDA"),
+            ("supertrend", "SPY"),
+        ]
 
         while self._running:
             self._iteration += 1
@@ -175,7 +221,12 @@ class SelfImprover:
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                    )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
