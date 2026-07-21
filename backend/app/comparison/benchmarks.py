@@ -14,6 +14,18 @@ import pandas as pd
 from app.config import settings
 from app.utils.logging import logger
 
+# Constants
+ALPACA_DATA_URL = "https://data.alpaca.markets"
+ALPACA_TIMEOUT = 15.0
+HTTP_CLIENT_TIMEOUT = 20.0
+TIMEFRAME = "1Day"
+MAX_BARS_LIMIT = 1500
+NORMALIZATION_BASE = 100
+NORMALIZATION_PRECISION = 2
+RESAMPLE_RULE = "ME"
+MIN_AW_TICKERS = 3
+ALL_WEATHER_KEY = "ALL_WEATHER"
+
 BENCHMARKS = {
     "SPY": {"name": "S&P 500", "color": "#2196F3"},
     "QQQ": {"name": "NASDAQ 100", "color": "#9C27B0"},
@@ -22,8 +34,6 @@ BENCHMARKS = {
 }
 
 ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP": 0.075}
-
-ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # simple in‑memory cache for benchmark results keyed by (start, end)
 _benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
@@ -52,9 +62,14 @@ async def _fetch_ticker_bars(
     try:
         resp = await client.get(
             f"{ALPACA_DATA_URL}/v2/stocks/{sym}/bars",
-            params={"timeframe": "1Day", "start": start_str, "end": end_str, "limit": 1500},
+            params={
+                "timeframe": TIMEFRAME,
+                "start": start_str,
+                "end": end_str,
+                "limit": MAX_BARS_LIMIT,
+            },
             headers=_alpaca_headers(),
-            timeout=15.0,
+            timeout=ALPACA_TIMEOUT,
         )
         if resp.status_code != 200:
             logger.warning(
@@ -110,7 +125,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
         raw_series = await asyncio.gather(
             *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers],
             return_exceptions=True,
@@ -141,23 +156,23 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         series = closes_dict.get(ticker)
         if series is None or series.empty:
             continue
-        normalized = (series.dropna() / series.iloc[0] * 100).round(2)
+        normalized = (series.dropna() / series.iloc[0] * NORMALIZATION_BASE).round(NORMALIZATION_PRECISION)
         result[ticker] = [
             {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
         ]
 
     # All Weather: monthly rebalanced weighted portfolio
     aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
-    if len(aw_tickers) >= 3:
+    if len(aw_tickers) >= MIN_AW_TICKERS:
         aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
         aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
         weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
         weights = weights / weights.sum()  # renormalize if any tickers missing
-        monthly_returns = aw_prices.resample("ME").last().pct_change().dropna()
+        monthly_returns = aw_prices.resample(RESAMPLE_RULE).last().pct_change().dropna()
         aw_ret = (monthly_returns * weights).sum(axis=1)
-        aw_equity = (1 + aw_ret).cumprod() * 100
-        result["ALL_WEATHER"] = [
-            {"date": idx.date().isoformat(), "value": round(float(v), 2)} for idx, v in aw_equity.items()
+        aw_equity = (1 + aw_ret).cumprod() * NORMALIZATION_BASE
+        result[ALL_WEATHER_KEY] = [
+            {"date": idx.date().isoformat(), "value": round(float(v), NORMALIZATION_PRECISION)} for idx, v in aw_equity.items()
         ]
 
     # Cache the result for future identical requests
@@ -165,11 +180,15 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     return result
 
 
+# Static benchmark reference stats for display.
+BENCHMARK_STATS = {
+    "SPY": {"name": "S&P 500", "annual_return": 0.100, "sharpe": 0.47, "max_dd": -0.57},
+    "QQQ": {"name": "NASDAQ 100", "annual_return": 0.145, "sharpe": 0.61, "max_dd": -0.83},
+    "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
+    ALL_WEATHER_KEY: {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
+}
+
+
 def get_benchmark_stats() -> dict:
     """Static benchmark reference stats for display."""
-    return {
-        "SPY": {"name": "S&P 500", "annual_return": 0.100, "sharpe": 0.47, "max_dd": -0.57},
-        "QQQ": {"name": "NASDAQ 100", "annual_return": 0.145, "sharpe": 0.61, "max_dd": -0.83},
-        "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
-        "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
-    }
+    return BENCHMARK_STATS
