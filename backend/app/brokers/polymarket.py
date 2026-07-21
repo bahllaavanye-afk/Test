@@ -2,6 +2,9 @@
 Polymarket CLOB broker integration via py-clob-client.
 Supports YES/NO binary market trading and arbitrage scanning.
 """
+import asyncio
+from typing import List, Dict
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -25,30 +28,26 @@ class PolymarketBroker(AbstractBroker):
             chain_id=chain_id,
         )
 
-    async def get_markets(self, min_open_interest: float = 10000) -> list[dict]:
+    async def get_markets(self, min_open_interest: float = 10000) -> List[Dict]:
         """Auto-discover active markets with sufficient liquidity."""
         try:
-            import asyncio
             markets = await asyncio.to_thread(self.client.get_markets)
-            return [m for m in markets if float(m.get("openInterest", 0)) >= min_open_interest]
+            return [
+                m
+                for m in markets
+                if float(m.get("openInterest", 0)) >= min_open_interest
+            ]
         except Exception as e:
             logger.error("Polymarket market fetch failed", error=str(e))
             return []
 
-    async def get_order_book(self, token_id: str) -> dict:
-        import asyncio
+    async def get_order_book(self, token_id: str) -> Dict:
         return await asyncio.to_thread(self.client.get_order_book, token_id)
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
         try:
-            import asyncio
-            args = OrderArgs(
-                token_id=request.symbol,
-                price=request.limit_price or 0.5,
-                size=request.quantity,
-                side=request.side.upper(),
-            )
-            order = await asyncio.to_thread(self.client.create_and_post_order, args)
+            args = self._build_order_args(request)
+            order = await self._run_async(self.client.create_and_post_order, args)
             return OrderResult(
                 broker_order_id=str(order.get("orderID", "")),
                 status=order.get("status", "pending"),
@@ -59,21 +58,23 @@ class PolymarketBroker(AbstractBroker):
 
     async def cancel_order(self, broker_order_id: str) -> bool:
         try:
-            import asyncio
-            await asyncio.to_thread(self.client.cancel, broker_order_id)
+            await self._run_async(self.client.cancel, broker_order_id)
             return True
         except Exception as e:
-            logger.warning("Polymarket cancel_order failed", order_id=broker_order_id, error=str(e))
+            logger.warning(
+                "Polymarket cancel_order failed",
+                order_id=broker_order_id,
+                error=str(e),
+            )
             return False
 
-    async def get_order(self, broker_order_id: str) -> dict:
-        import asyncio
+    async def get_order(self, broker_order_id: str) -> Dict:
         return await asyncio.to_thread(self.client.get_order, broker_order_id)
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[Dict]:
         return []
 
-    async def get_account(self) -> dict:
+    async def get_account(self) -> Dict:
         return {}
 
     async def get_quote(self, symbol: str) -> QuoteResult:
@@ -82,7 +83,29 @@ class PolymarketBroker(AbstractBroker):
         asks = ob.get("asks", [])
         best_bid = float(bids[0]["price"]) if bids else 0.0
         best_ask = float(asks[0]["price"]) if asks else 1.0
-        return QuoteResult(symbol=symbol, bid=best_bid, ask=best_ask, last=(best_bid + best_ask) / 2)
+        return QuoteResult(
+            symbol=symbol,
+            bid=best_bid,
+            ask=best_ask,
+            last=(best_bid + best_ask) / 2,
+        )
 
-    async def get_historical(self, symbol: str, interval: str = "1d", limit: int = 500) -> list[dict]:
+    async def get_historical(self, symbol: str, interval: str = "1d", limit: int = 500) -> List[Dict]:
         return []  # Polymarket doesn't have traditional OHLCV
+
+    # -------------------------------------------------------------------------
+    # Helper methods
+    # -------------------------------------------------------------------------
+
+    def _build_order_args(self, request: OrderRequest) -> OrderArgs:
+        """Create OrderArgs instance from an OrderRequest."""
+        return OrderArgs(
+            token_id=request.symbol,
+            price=request.limit_price or 0.5,
+            size=request.quantity,
+            side=request.side.upper(),
+        )
+
+    async def _run_async(self, func, *args, **kwargs):
+        """Execute a blocking function in a thread without blocking the event loop."""
+        return await asyncio.to_thread(func, *args, **kwargs)
